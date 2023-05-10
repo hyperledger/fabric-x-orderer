@@ -10,7 +10,6 @@ import (
 	"github.com/SmartBFT-Go/consensus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,7 +17,7 @@ import (
 )
 
 func TestBatchBytes(t *testing.T) {
-	var b Batch
+	var b BatchedRequests
 	for i := 0; i < 10; i++ {
 		req := make([]byte, 100)
 		rand.Read(req)
@@ -47,11 +46,11 @@ func (noopLedger) Append(_ uint16, _ uint64, _ []byte) {
 }
 
 type replication struct {
-	subscribers []chan []byte
+	subscribers []chan Batch
 	i           uint32
 }
 
-func (r *replication) Replicate(_ uint16, _ uint64) <-chan []byte {
+func (r *replication) Replicate(_ uint16, _ uint64) <-chan Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
@@ -59,9 +58,32 @@ func (r *replication) Replicate(_ uint16, _ uint64) <-chan []byte {
 func (r *replication) Append(_ uint16, seq uint64, bytes []byte) {
 	t1 := time.Now()
 	for _, s := range r.subscribers {
-		s <- bytes
+		s <- &simpleBatch{
+			requests: BatchFromRaw(bytes),
+		}
 	}
 	fmt.Println("Appended request to subscribers in", time.Since(t1))
+}
+
+type simpleBatch struct {
+	node     uint16
+	requests [][]byte
+}
+
+func (s *simpleBatch) Party() uint16 {
+	return s.node
+}
+
+func (s *simpleBatch) Digest() []byte {
+	h := sha256.New()
+	for _, req := range s.Requests() {
+		h.Write(req)
+	}
+	return h.Sum(nil)
+}
+
+func (s *simpleBatch) Requests() BatchedRequests {
+	return s.requests
 }
 
 func TestBatcherNetwork(t *testing.T) {
@@ -104,10 +126,10 @@ func TestBatcherNetwork(t *testing.T) {
 	r := &replication{}
 
 	for i := 1; i < n; i++ {
-		r.subscribers = append(r.subscribers, make(chan []byte, 100))
+		r.subscribers = append(r.subscribers, make(chan Batch, 100))
 	}
 
-	r.subscribers = append(r.subscribers, make(chan []byte, 100))
+	r.subscribers = append(r.subscribers, make(chan Batch, 100))
 	commit := r.Replicate(0, 0)
 
 	batchers[0].Ledger = r
@@ -158,25 +180,14 @@ func TestBatcherNetwork(t *testing.T) {
 	var committedRequests sync.Map
 
 	for {
-		rawBatch := <-commit
-		b := BatchFromRaw(rawBatch)
-		atomic.AddUint32(&committedRequestCount, uint32(len(b)))
-		for _, req := range b {
+		batch := <-commit
+		requests := batch.Requests()
+		atomic.AddUint32(&committedRequestCount, uint32(len(requests)))
+		for _, req := range requests {
 			_, loaded := committedRequests.LoadOrStore(string(req), struct{}{})
 			if loaded {
 				panic("request was delivered twice")
 			}
 		}
-	}
-}
-
-func Stack() []byte {
-	buf := make([]byte, 1024)
-	for {
-		n := runtime.Stack(buf, true)
-		if n < len(buf) {
-			return buf[:n]
-		}
-		buf = make([]byte, 2*len(buf))
 	}
 }

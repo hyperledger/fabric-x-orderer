@@ -19,13 +19,19 @@ type Logger interface {
 	Panicf(template string, args ...interface{})
 }
 
-type Replicator interface {
-	Replicate(uint16, uint64) <-chan []byte
+type Batch interface {
+	Digest() []byte
+	Requests() BatchedRequests
+	Party() uint16
 }
 
-type Batch [][]byte
+type BatchReplicator interface {
+	Replicate(uint16, uint64) <-chan Batch
+}
 
-func (batch Batch) ToBytes() []byte {
+type BatchedRequests [][]byte
+
+func (batch BatchedRequests) ToBytes() []byte {
 	if len(batch) == 0 {
 		return nil
 	}
@@ -52,8 +58,8 @@ func (batch Batch) ToBytes() []byte {
 	return buff
 }
 
-func BatchFromRaw(raw []byte) Batch {
-	var batch Batch
+func BatchFromRaw(raw []byte) BatchedRequests {
+	var batch BatchedRequests
 	for len(raw) > 0 {
 		size := binary.BigEndian.Uint32(raw[0:4])
 		raw = raw[4:]
@@ -65,7 +71,7 @@ func BatchFromRaw(raw []byte) Batch {
 	return batch
 }
 
-type Ledger interface {
+type BatchLedger interface {
 	Append(uint16, uint64, []byte)
 }
 
@@ -75,10 +81,10 @@ type Batcher struct {
 	ID               uint16
 	Quorum           int
 	Logger           Logger
-	Ledger           Ledger
+	Ledger           BatchLedger
 	Seq              uint64
 	ConfirmedSeq     uint64
-	Replicator       Replicator
+	Replicator       BatchReplicator
 	Sign             func(uint64, []byte) []byte
 	Send             func(uint16, []byte)
 	memPool          *request.Pool
@@ -134,7 +140,7 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 func (b *Batcher) runPrimary() {
 	b.memPool.SetBatching(true)
 
-	var currentBatch Batch
+	var currentBatch BatchedRequests
 	for {
 		var serializedBatch []byte
 		for len(serializedBatch) == 0 {
@@ -155,7 +161,7 @@ func (b *Batcher) runPrimary() {
 	}
 }
 
-func (b *Batcher) removeRequests(batch Batch) {
+func (b *Batcher) removeRequests(batch BatchedRequests) {
 
 	workerNum := runtime.NumCPU()
 
@@ -213,9 +219,10 @@ func (b *Batcher) send(to uint16, seq uint64, msg []byte) {
 func (b *Batcher) runSecondary() {
 	out := b.Replicator.Replicate(b.Primary, b.Seq)
 	for {
-		batch := <-out
+		batchedRequests := <-out
+		batch := batchedRequests.Requests().ToBytes()
 		b.Ledger.Append(b.Primary, b.Seq, batch)
-		b.removeRequests(BatchFromRaw(batch))
+		b.removeRequests(batchedRequests.Requests())
 		σ := b.Sign(b.Seq, batch)
 		b.send(b.Primary, b.Seq, σ)
 		b.Seq++
