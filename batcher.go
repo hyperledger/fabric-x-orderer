@@ -215,6 +215,7 @@ func (b *Batcher) runSecondary() {
 	for {
 		batch := <-out
 		b.Ledger.Append(b.Primary, b.Seq, batch)
+		b.removeRequests(BatchFromRaw(batch))
 		σ := b.Sign(b.Seq, batch)
 		b.send(b.Primary, b.Seq, σ)
 		b.Seq++

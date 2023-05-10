@@ -136,7 +136,9 @@ func TestBatcherNetwork(t *testing.T) {
 					binary.BigEndian.PutUint64(req, uint64(i))
 					i++
 					binary.BigEndian.PutUint64(req[500:], worker)
-					batchers[0].Submit(req)
+					for node := 0; node < n; node++ {
+						batchers[node].Submit(req)
+					}
 					time.Sleep(time.Millisecond)
 				}
 			}(uint64(worker))

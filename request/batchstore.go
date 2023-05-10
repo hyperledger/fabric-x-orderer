@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 type BatchStore struct {
@@ -80,13 +79,6 @@ func NewBatchStore(maxCapacity int, batchMaxSize int, onDelete func(string)) *Ba
 		batchMaxSize: uint32(batchMaxSize),
 		maxCapacity:  maxCapacity,
 	}
-
-	go func() {
-		for {
-			time.Sleep(time.Second * 1)
-			bs.printSizes()
-		}
-	}()
 
 	return bs
 }

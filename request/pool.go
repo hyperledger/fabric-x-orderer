@@ -304,13 +304,7 @@ func (rp *Pool) NextRequests(ctx context.Context) [][]byte {
 }
 
 func (rp *Pool) RemoveRequests(requests ...types.RequestInfo) error {
-	t1 := time.Now()
-
 	if atomic.LoadUint32(&rp.batchingEnabled) == 0 {
-
-		defer func() {
-			fmt.Println("Follower removed", len(requests), "in", time.Since(t1))
-		}()
 
 		workerNum := runtime.NumCPU()
 
@@ -339,10 +333,6 @@ func (rp *Pool) RemoveRequests(requests ...types.RequestInfo) error {
 
 		return nil
 	}
-
-	defer func() {
-		//fmt.Println("Leader removed", len(requests), "in", time.Since(t1))
-	}()
 
 	for _, requestInfo := range requests {
 		rp.batchStore.Remove(requestInfo.ID)
