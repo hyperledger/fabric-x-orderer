@@ -7,6 +7,8 @@ import (
 type BatchAttestation interface {
 	VerifyBatch([]byte) error
 	Seq() uint64
+	Party() uint16
+	Shard() uint16
 }
 
 type AssemblerIndex interface {
@@ -24,6 +26,7 @@ type BatchAttestationReplicator interface {
 
 type Assembler struct {
 	ShardCount                 int
+	Ledger                     AssemblerLedger
 	BatchAttestationReplicator BatchAttestationReplicator
 	Replicator                 BatchReplicator
 	Index                      AssemblerIndex
@@ -52,5 +55,26 @@ func (a *Assembler) run() {
 	}
 
 	attestations := a.BatchAttestationReplicator.Replicate(0)
+	go func(attestations <-chan BatchAttestation) {
+		for ba := range attestations {
+			batch := a.processAttestations(ba)
+			a.Ledger.Append(ba.Seq(), batch, ba)
+		}
+	}(attestations)
+
+}
+
+func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for {
+		batch, retrieved := a.Index.Retrieve(ba.Party(), ba.Shard(), ba.Seq())
+		if !retrieved {
+			a.signal.Wait()
+			continue
+		}
+		return batch
+	}
 
 }
