@@ -45,45 +45,45 @@ func (noopLedger) Append(_ uint16, _ uint64, _ []byte) {
 
 }
 
-type replication struct {
+type naiveReplication struct {
 	subscribers []chan Batch
 	i           uint32
 }
 
-func (r *replication) Replicate(_ uint16, _ uint64) <-chan Batch {
+func (r *naiveReplication) Replicate(_ uint16, _ uint64) <-chan Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
 
-func (r *replication) Append(_ uint16, seq uint64, bytes []byte) {
+func (r *naiveReplication) Append(_ uint16, seq uint64, bytes []byte) {
 	t1 := time.Now()
 	for _, s := range r.subscribers {
-		s <- &simpleBatch{
+		s <- &naiveBatch{
 			requests: BatchFromRaw(bytes),
 		}
 	}
 	fmt.Println("Appended request to subscribers in", time.Since(t1))
 }
 
-type simpleBatch struct {
+type naiveBatch struct {
 	node     uint16
 	requests [][]byte
 }
 
-func (s *simpleBatch) Party() uint16 {
-	return s.node
+func (nb *naiveBatch) Party() uint16 {
+	return nb.node
 }
 
-func (s *simpleBatch) Digest() []byte {
+func (nb *naiveBatch) Digest() []byte {
 	h := sha256.New()
-	for _, req := range s.Requests() {
+	for _, req := range nb.Requests() {
 		h.Write(req)
 	}
 	return h.Sum(nil)
 }
 
-func (s *simpleBatch) Requests() BatchedRequests {
-	return s.requests
+func (nb *naiveBatch) Requests() BatchedRequests {
+	return nb.requests
 }
 
 func TestBatcherNetwork(t *testing.T) {
@@ -93,10 +93,7 @@ func TestBatcherNetwork(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 
-		logConfig := zap.NewDevelopmentConfig()
-		logger, _ := logConfig.Build()
-		logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
-		sugaredLogger := logger.Sugar()
+		sugaredLogger := createLogger(t, i)
 
 		requestInspector := &reqInspector{}
 		pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
@@ -123,7 +120,7 @@ func TestBatcherNetwork(t *testing.T) {
 		batchers = append(batchers, b)
 	}
 
-	r := &replication{}
+	r := &naiveReplication{}
 
 	for i := 1; i < n; i++ {
 		r.subscribers = append(r.subscribers, make(chan Batch, 100))
@@ -190,4 +187,12 @@ func TestBatcherNetwork(t *testing.T) {
 			}
 		}
 	}
+}
+
+func createLogger(t *testing.T, i int) *zap.SugaredLogger {
+	logConfig := zap.NewDevelopmentConfig()
+	logger, _ := logConfig.Build()
+	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
+	sugaredLogger := logger.Sugar()
+	return sugaredLogger
 }

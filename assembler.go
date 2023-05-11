@@ -9,6 +9,7 @@ type BatchAttestation interface {
 	Seq() uint64
 	Party() uint16
 	Shard() uint16
+	Digest() []byte
 }
 
 type AssemblerIndex interface {
@@ -27,31 +28,35 @@ type BatchAttestationReplicator interface {
 type Assembler struct {
 	ShardCount                 int
 	Ledger                     AssemblerLedger
+	Logger                     Logger
 	BatchAttestationReplicator BatchAttestationReplicator
 	Replicator                 BatchReplicator
 	Index                      AssemblerIndex
-	batchesFromShard           []chan []byte
 	signal                     sync.Cond
-	lock                       sync.Mutex
+	lock                       sync.RWMutex
 }
 
 func (a *Assembler) run() {
-	for shardID := 0; shardID < a.ShardCount; shardID++ {
-		c := make(chan []byte, 20)
-		a.batchesFromShard = append(a.batchesFromShard, c)
-		go func(shardID uint16, c <-chan []byte) {
-			var seq uint64
-			batches := a.Replicator.Replicate(shardID, seq)
+	var replicationSources []<-chan Batch
 
+	for shardID := 0; shardID < a.ShardCount; shardID++ {
+		batches := a.Replicator.Replicate(uint16(shardID), 0)
+		replicationSources = append(replicationSources, batches)
+	}
+
+	for shardID := 0; shardID < a.ShardCount; shardID++ {
+		go func(shardID uint16) {
+			var seq uint64
+			batches := replicationSources[int(shardID)]
 			for batch := range batches {
-				a.lock.Lock()
+				a.lock.RLock()
 				a.Index.Index(batch.Party(), shardID, seq, batch)
 				a.signal.Signal()
-				a.lock.Unlock()
+				a.lock.RUnlock()
 				seq++
 			}
 
-		}(uint16(shardID), c)
+		}(uint16(shardID))
 	}
 
 	attestations := a.BatchAttestationReplicator.Replicate(0)
