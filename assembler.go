@@ -14,7 +14,7 @@ type BatchAttestation interface {
 
 type AssemblerIndex interface {
 	Index(party uint16, shard uint16, sequence uint64, batch Batch)
-	Retrieve(party uint16, shard uint16, sequence uint64) (Batch, bool)
+	Retrieve(party uint16, shard uint16, sequence uint64, digest []byte) (Batch, bool)
 }
 
 type AssemblerLedger interface {
@@ -74,7 +74,7 @@ func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
 	defer a.lock.Unlock()
 
 	for {
-		batch, retrieved := a.Index.Retrieve(ba.Party(), ba.Shard(), ba.Seq())
+		batch, retrieved := a.Index.Retrieve(ba.Party(), ba.Shard(), ba.Seq(), ba.Digest())
 		if !retrieved {
 			a.signal.Wait()
 			continue

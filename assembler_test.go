@@ -2,13 +2,14 @@ package arma
 
 import (
 	"encoding/binary"
+	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-type naiveBatchAttestationReplicator <-chan BatchAttestation
+type naiveBatchAttestationReplicator chan BatchAttestation
 
 func (n naiveBatchAttestationReplicator) Replicate(u uint64) <-chan BatchAttestation {
 	return n
@@ -22,16 +23,8 @@ func (n *naiveIndex) Index(_ uint16, _ uint16, _ uint64, batch Batch) {
 	n.Store(string(batch.Digest()), batch)
 }
 
-func (n *naiveIndex) Retrieve(_ uint16, _ uint16, _ uint64) (Batch, bool) {
-	val, exists := n.Load(struct {
-		party    uint16
-		shard    uint16
-		sequence uint64
-	}{
-		party:    party,
-		sequence: sequence,
-		shard:    shard,
-	})
+func (n *naiveIndex) Retrieve(_ uint16, _ uint16, _ uint64, digest []byte) (Batch, bool) {
+	val, exists := n.Load(string(digest))
 
 	if !exists {
 		return nil, false
@@ -67,7 +60,7 @@ func (nba *naiveBatchAttestation) Digest() []byte {
 	return nba.digest
 }
 
-type naiveAssemblerLedger chan<- BatchAttestation
+type naiveAssemblerLedger chan BatchAttestation
 
 func (n naiveAssemblerLedger) Append(_ uint64, _ Batch, attestation BatchAttestation) {
 	n <- attestation
@@ -76,6 +69,8 @@ func (n naiveAssemblerLedger) Append(_ uint64, _ Batch, attestation BatchAttesta
 func TestAssembler(t *testing.T) {
 	shardCount := 10
 	batchNum := 100
+
+	digests := make(map[string]struct{})
 
 	var batches [][]Batch
 	for shardID := 0; shardID < shardCount; shardID++ {
@@ -87,6 +82,7 @@ func TestAssembler(t *testing.T) {
 			batch := &naiveBatch{
 				requests: [][]byte{buff},
 			}
+			digests[string(batch.Digest())] = struct{}{}
 			batchesForShard = append(batchesForShard, batch)
 		}
 		batches = append(batches, batchesForShard)
@@ -121,12 +117,35 @@ func TestAssembler(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
+	totalOrder := make(chan *naiveBatchAttestation)
+
 	for shardID := 0; shardID < shardCount; shardID++ {
 		go func(shard int) {
 			for _, batch := range batches[shard] {
 				r.subscribers[shard] <- batch
+				totalOrder <- &naiveBatchAttestation{
+					digest: batch.Digest(),
+				}
 			}
 		}(shardID)
 	}
+
+	go func() {
+		var seq uint64
+
+		for nba := range totalOrder {
+			nba.seq = seq
+			seq++
+			nbar <- nba
+		}
+	}()
+
+	for i := 0; i < 1000; i++ {
+		block := <-ledger
+		assert.Equal(t, uint64(i), block.Seq())
+		delete(digests, string(block.Digest()))
+	}
+
+	assert.Len(t, digests, 0)
 
 }
