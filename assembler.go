@@ -5,11 +5,12 @@ import (
 )
 
 type BatchAttestation interface {
-	VerifyBatch([]byte) error
 	Seq() uint64
 	Party() uint16
 	Shard() uint16
 	Digest() []byte
+	Serialize() []byte
+	Deserialize([]byte)
 }
 
 type AssemblerIndex interface {

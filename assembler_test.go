@@ -2,6 +2,9 @@ package arma
 
 import (
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
@@ -40,10 +43,6 @@ type naiveBatchAttestation struct {
 	digest []byte
 }
 
-func (nba *naiveBatchAttestation) VerifyBatch(bytes []byte) error {
-	return nil
-}
-
 func (nba *naiveBatchAttestation) Seq() uint64 {
 	return nba.seq
 }
@@ -60,10 +59,46 @@ func (nba *naiveBatchAttestation) Digest() []byte {
 	return nba.digest
 }
 
+func (nba *naiveBatchAttestation) Serialize() []byte {
+	m := make(map[string]interface{})
+	m["seq"] = nba.seq
+	m["node"] = nba.node
+	m["shard"] = nba.shard
+	m["digest"] = hex.EncodeToString(nba.digest)
+
+	bytes, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+
+	return bytes
+}
+
+func (nba *naiveBatchAttestation) Deserialize(bytes []byte) {
+	m := make(map[string]interface{})
+	if err := json.Unmarshal(bytes, &m); err != nil {
+		panic(err)
+	}
+
+	seq := m["seq"]
+	nba.seq = uint64(seq.(float64))
+}
+
 type naiveAssemblerLedger chan BatchAttestation
 
 func (n naiveAssemblerLedger) Append(_ uint64, _ Batch, attestation BatchAttestation) {
 	n <- attestation
+}
+
+func TestNaive(t *testing.T) {
+	nba := &naiveBatchAttestation{}
+	nba.seq = 100
+	nba.node = 1
+	nba.digest = []byte{1, 2, 3}
+
+	nba2 := &naiveBatchAttestation{}
+	nba.Deserialize(nba.Serialize())
+	fmt.Println(nba2)
 }
 
 func TestAssembler(t *testing.T) {
@@ -88,27 +123,7 @@ func TestAssembler(t *testing.T) {
 		batches = append(batches, batchesForShard)
 	}
 
-	index := &naiveIndex{}
-
-	r := &naiveReplication{}
-
-	for i := 0; i < shardCount; i++ {
-		r.subscribers = append(r.subscribers, make(chan Batch, 100))
-	}
-
-	ledger := make(naiveAssemblerLedger, 10)
-
-	nbar := make(naiveBatchAttestationReplicator)
-
-	assembler := &Assembler{
-		Logger:                     createLogger(t, 0),
-		Replicator:                 r,
-		Ledger:                     ledger,
-		ShardCount:                 shardCount,
-		BatchAttestationReplicator: nbar,
-		Index:                      index,
-	}
-	assembler.signal = sync.Cond{L: &assembler.lock}
+	r, ledger, nbar, assembler := createAssembler(t, shardCount)
 
 	assembler.run()
 
@@ -148,4 +163,29 @@ func TestAssembler(t *testing.T) {
 
 	assert.Len(t, digests, 0)
 
+}
+
+func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveBatchAttestationReplicator, *Assembler) {
+	index := &naiveIndex{}
+
+	r := &naiveReplication{}
+
+	for i := 0; i < shardCount; i++ {
+		r.subscribers = append(r.subscribers, make(chan Batch, 100))
+	}
+
+	ledger := make(naiveAssemblerLedger, 10)
+
+	nbar := make(naiveBatchAttestationReplicator)
+
+	assembler := &Assembler{
+		Logger:                     createLogger(t, 0),
+		Replicator:                 r,
+		Ledger:                     ledger,
+		ShardCount:                 shardCount,
+		BatchAttestationReplicator: nbar,
+		Index:                      index,
+	}
+	assembler.signal = sync.Cond{L: &assembler.lock}
+	return r, ledger, nbar, assembler
 }

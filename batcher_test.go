@@ -56,13 +56,11 @@ func (r *naiveReplication) Replicate(_ uint16, _ uint64) <-chan Batch {
 }
 
 func (r *naiveReplication) Append(_ uint16, seq uint64, bytes []byte) {
-	t1 := time.Now()
 	for _, s := range r.subscribers {
 		s <- &naiveBatch{
 			requests: BatchFromRaw(bytes),
 		}
 	}
-	fmt.Println("Appended request to subscribers in", time.Since(t1))
 }
 
 type naiveBatch struct {
@@ -92,31 +90,7 @@ func TestBatcherNetwork(t *testing.T) {
 	var batchers []*Batcher
 
 	for i := 0; i < n; i++ {
-
-		sugaredLogger := createLogger(t, i)
-
-		requestInspector := &reqInspector{}
-		pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
-			BatchMaxSize:      10000,
-			MaxSize:           1000 * 100,
-			AutoRemoveTimeout: time.Minute / 2,
-			SubmitTimeout:     time.Second * 10,
-		})
-
-		b := &Batcher{
-			RequestInspector: requestInspector,
-			Logger:           sugaredLogger,
-			memPool:          pool,
-			ID:               uint16(i),
-			Quorum:           2,
-			Sign: func(uint64, []byte) []byte {
-				return nil
-			},
-			confirmedSequences: make(map[uint64]map[uint16][]byte),
-		}
-
-		b.signal = sync.Cond{L: &b.lock}
-
+		b := createBatcher(t, i)
 		batchers = append(batchers, b)
 	}
 
@@ -131,7 +105,6 @@ func TestBatcherNetwork(t *testing.T) {
 
 	batchers[0].Ledger = r
 	for i := 1; i < n; i++ {
-		batchers[i].Ledger = &noopLedger{}
 		batchers[i].Replicator = r
 	}
 
@@ -187,6 +160,44 @@ func TestBatcherNetwork(t *testing.T) {
 			}
 		}
 	}
+}
+
+func createBatcher(t *testing.T, i int) *Batcher {
+	sugaredLogger := createLogger(t, i)
+
+	requestInspector := &reqInspector{}
+	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
+		BatchMaxSize:      10000,
+		MaxSize:           1000 * 100,
+		AutoRemoveTimeout: time.Minute / 2,
+		SubmitTimeout:     time.Second * 10,
+	})
+
+	b := &Batcher{
+		Digest: func(data [][]byte) []byte {
+			h := sha256.New()
+			for _, d := range data {
+				h.Write(d)
+			}
+			return h.Sum(nil)
+		},
+		OnCollectAttestations: func(uint642 uint64, _ []byte, m map[uint16][]byte) {},
+		RequestInspector:      requestInspector,
+		Logger:                sugaredLogger,
+		memPool:               pool,
+		ID:                    uint16(i),
+		Quorum:                2,
+		Sign: func(uint64, []byte) []byte {
+			return nil
+		},
+		confirmedSequences: make(map[uint64]map[uint16][]byte),
+		seq2digest:         make(map[uint64][]byte),
+	}
+
+	b.Ledger = &noopLedger{}
+
+	b.signal = sync.Cond{L: &b.lock}
+	return b
 }
 
 func createLogger(t *testing.T, i int) *zap.SugaredLogger {

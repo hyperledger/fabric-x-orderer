@@ -76,22 +76,25 @@ type BatchLedger interface {
 }
 
 type Batcher struct {
-	RequestInspector api.RequestInspector
-	Primary          uint16
-	ID               uint16
-	Quorum           int
-	Logger           Logger
-	Ledger           BatchLedger
-	Seq              uint64
-	ConfirmedSeq     uint64
-	Replicator       BatchReplicator
-	Sign             func(uint64, []byte) []byte
-	Send             func(uint16, []byte)
-	memPool          *request.Pool
+	Digest                func([][]byte) []byte
+	OnCollectAttestations func(uint642 uint64, digest []byte, m map[uint16][]byte)
+	RequestInspector      api.RequestInspector
+	Primary               uint16
+	ID                    uint16
+	Quorum                int
+	Logger                Logger
+	Ledger                BatchLedger
+	Seq                   uint64
+	ConfirmedSeq          uint64
+	Replicator            BatchReplicator
+	Sign                  func(uint64, []byte) []byte
+	Send                  func(uint16, []byte)
+	memPool               *request.Pool
 
 	lock               sync.Mutex
 	signal             sync.Cond
 	confirmedSequences map[uint64]map[uint16][]byte
+	seq2digest         map[uint64][]byte
 }
 
 func (b *Batcher) run() {
@@ -128,6 +131,8 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 
 	if len(b.confirmedSequences[seq]) >= b.Quorum && seq == b.ConfirmedSeq+1 {
 		b.ConfirmedSeq++
+		b.notifyBatchAttestation(seq, b.seq2digest[seq], b.confirmedSequences[seq])
+		delete(b.confirmedSequences, seq)
 	}
 
 	b.signal.Broadcast()
@@ -137,20 +142,32 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 	return b.Seq-b.ConfirmedSeq < 10
 }
 
+func (b *Batcher) notifyBatchAttestation(seq uint64, digest []byte, m map[uint16][]byte) {
+	b.Logger.Infof("Collected %d signatures on %d", len(m), seq)
+	b.OnCollectAttestations(seq, digest, m)
+}
+
 func (b *Batcher) runPrimary() {
 	b.memPool.SetBatching(true)
 
 	var currentBatch BatchedRequests
+	var digest []byte
 	for {
 		var serializedBatch []byte
 		for len(serializedBatch) == 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 			currentBatch = b.memPool.NextRequests(ctx)
+			digest = b.Digest(currentBatch)
 			serializedBatch = currentBatch.ToBytes()
 			cancel()
 		}
 
-		σ := b.Sign(b.Seq, serializedBatch)
+		σ := b.Sign(b.Seq, digest)
+
+		b.lock.Lock()
+		b.seq2digest[b.Seq] = digest
+		b.lock.Unlock()
+
 		b.send(b.Primary, b.Seq, σ)
 
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
