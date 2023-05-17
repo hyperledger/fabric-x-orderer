@@ -4,10 +4,12 @@ import (
 	"arma/request"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"github.com/SmartBFT-Go/consensus/pkg/api"
 	"github.com/SmartBFT-Go/consensus/pkg/types"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -114,6 +116,12 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	seq := binary.BigEndian.Uint64(msg[0:8])
 	signature := msg[8:]
 
+	confirmedSequences := atomic.LoadUint64(&b.ConfirmedSeq)
+
+	if confirmedSequences != seq {
+		return
+	}
+
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -129,17 +137,19 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 
 	b.confirmedSequences[seq][from] = signature
 
-	if len(b.confirmedSequences[seq]) >= b.Quorum && seq == b.ConfirmedSeq+1 {
-		b.ConfirmedSeq++
+	fmt.Println(len(b.confirmedSequences[seq]), b.Quorum, seq, b.ConfirmedSeq)
+	if len(b.confirmedSequences[seq]) >= b.Quorum {
+		atomic.AddUint64(&b.ConfirmedSeq, 1)
 		b.notifyBatchAttestation(seq, b.seq2digest[seq], b.confirmedSequences[seq])
 		delete(b.confirmedSequences, seq)
+		b.signal.Broadcast()
 	}
 
-	b.signal.Broadcast()
 }
 
 func (b *Batcher) secondariesKeepUpWithMe() bool {
-	return b.Seq-b.ConfirmedSeq < 10
+	confirmedSeq := atomic.LoadUint64(&b.ConfirmedSeq)
+	return b.Seq-confirmedSeq < 10
 }
 
 func (b *Batcher) notifyBatchAttestation(seq uint64, digest []byte, m map[uint16][]byte) {

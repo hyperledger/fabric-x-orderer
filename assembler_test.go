@@ -81,7 +81,10 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) {
 	}
 
 	seq := m["seq"]
+	dig := m["digest"]
+
 	nba.seq = uint64(seq.(float64))
+	nba.digest, _ = hex.DecodeString(dig.(string))
 }
 
 type naiveAssemblerLedger chan BatchAttestation
@@ -94,7 +97,7 @@ func TestNaive(t *testing.T) {
 	nba := &naiveBatchAttestation{}
 	nba.seq = 100
 	nba.node = 1
-	nba.digest = []byte{1, 2, 3}
+	nba.digest = []byte{1, 2, 3, 4, 5, 6, 7, 8}
 
 	nba2 := &naiveBatchAttestation{}
 	nba.Deserialize(nba.Serialize())

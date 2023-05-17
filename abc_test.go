@@ -1,6 +1,10 @@
 package arma
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+	"time"
+)
 
 type naiveConsensusLedger chan []byte
 
@@ -36,22 +40,26 @@ func (n naiveBlockLedger) Append(seq uint64, batch Batch, attestation BatchAttes
 	}
 }
 
-type shardReplicator struct {
-	subscribers []chan Batch
+type shardCommitter struct {
+	sr      *shardReplicator
+	shardID uint16
 }
 
-func (s *shardReplicator) Append(party uint16, _ uint64, rawBatch []byte) {
+func (s *shardCommitter) Append(party uint16, _ uint64, rawBatch []byte) {
+	fmt.Println("Appended block of", len(rawBatch), "bytes")
 	nb := &naiveBatch{
 		requests: BatchFromRaw(rawBatch),
 		node:     party,
 	}
 
-	for _, sub := range s.subscribers {
-		sub <- nb
-	}
+	s.sr.subscribers[s.shardID] <- nb
 }
 
-func (s *shardReplicator) Replicate(shard uint16, seq uint64) <-chan Batch {
+type shardReplicator struct {
+	subscribers []chan Batch
+}
+
+func (s *shardReplicator) Replicate(shard uint16, _ uint64) <-chan Batch {
 	return s.subscribers[shard]
 }
 
@@ -66,8 +74,11 @@ func TestBatcherAssembler(t *testing.T) {
 	for i := 0; i < shardCount; i++ {
 		replicator.subscribers = append(replicator.subscribers, make(chan Batch))
 	}
+	assembler.Replicator = replicator
 
 	consenterLedger := make(naiveConsensusLedger)
+
+	totalOrder := make(naiveTotalOrder, 1)
 
 	consenter := &Consenter{
 		BatchAttestationFromBytes: func(bytes []byte) BatchAttestation {
@@ -77,13 +88,15 @@ func TestBatcherAssembler(t *testing.T) {
 		},
 		ConsensusLedger: consenterLedger,
 		Logger:          createLogger(t, 0),
-		TotalOrder:      make(naiveTotalOrder),
+		TotalOrder:      totalOrder,
 	}
 
 	go func() {
 		for rawBytes := range consenterLedger {
+			fmt.Println("Got attestation from consenter ledger of size", len(rawBytes), "bytes")
 			ba := &naiveBatchAttestation{}
 			ba.Deserialize(rawBytes)
+			fmt.Println(">>>", ba.digest)
 			baReplicator <- ba
 		}
 	}()
@@ -104,8 +117,22 @@ func TestBatcherAssembler(t *testing.T) {
 	}
 
 	for i := 0; i < shardCount; i++ {
-		batchers[i].Ledger = replicator
+		sc := &shardCommitter{
+			shardID: uint16(i),
+			sr:      replicator,
+		}
+		batchers[i].Ledger = sc
 		batchers[i].Replicator = nil
+		batchers[i].Primary = uint16(i)
+		batchers[i].run()
 	}
 
+	time.Sleep(time.Second)
+
+	assembler.run()
+	consenter.run()
+
+	batchers[0].Submit([]byte{1, 2, 3})
+
+	<-blockLedger
 }

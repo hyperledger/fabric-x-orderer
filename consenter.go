@@ -18,13 +18,15 @@ type Consenter struct {
 }
 
 func (c *Consenter) run() {
-	for {
-		batch := c.TotalOrder.Deliver()
-		for _, header := range batch {
-			c.ConsensusLedger.Append(c.Seq, header)
-			c.Seq++
+	go func() {
+		for {
+			batch := c.TotalOrder.Deliver()
+			for _, header := range batch {
+				c.ConsensusLedger.Append(c.Seq, header)
+				c.Seq++
+			}
 		}
-	}
+	}()
 }
 
 func (c *Consenter) Submit(ba BatchAttestation) {

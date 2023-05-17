@@ -1,6 +1,7 @@
 package arma
 
 import (
+	"encoding/hex"
 	"sync"
 )
 
@@ -50,6 +51,7 @@ func (a *Assembler) run() {
 			var seq uint64
 			batches := replicationSources[int(shardID)]
 			for batch := range batches {
+				a.Logger.Infof("Got batch of %d requests for shard %d", len(batch.Requests()), shardID)
 				a.lock.RLock()
 				a.Index.Index(batch.Party(), shardID, seq, batch)
 				a.signal.Signal()
@@ -63,6 +65,7 @@ func (a *Assembler) run() {
 	attestations := a.BatchAttestationReplicator.Replicate(0)
 	go func(attestations <-chan BatchAttestation) {
 		for ba := range attestations {
+			a.Logger.Infof("Received attestation with digest %s", hex.EncodeToString(ba.Digest()[:8]))
 			batch := a.processAttestations(ba)
 			a.Ledger.Append(ba.Seq(), batch, ba)
 		}
@@ -80,6 +83,7 @@ func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
 			a.signal.Wait()
 			continue
 		}
+		a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index", len(batch.Requests()), hex.EncodeToString(ba.Digest()[:8]))
 		return batch
 	}
 
