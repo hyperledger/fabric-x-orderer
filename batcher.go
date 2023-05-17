@@ -4,7 +4,6 @@ import (
 	"arma/request"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"github.com/SmartBFT-Go/consensus/pkg/api"
 	"github.com/SmartBFT-Go/consensus/pkg/types"
 	"runtime"
@@ -137,7 +136,6 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 
 	b.confirmedSequences[seq][from] = signature
 
-	fmt.Println(len(b.confirmedSequences[seq]), b.Quorum, seq, b.ConfirmedSeq)
 	if len(b.confirmedSequences[seq]) >= b.Quorum {
 		atomic.AddUint64(&b.ConfirmedSeq, 1)
 		b.notifyBatchAttestation(seq, b.seq2digest[seq], b.confirmedSequences[seq])

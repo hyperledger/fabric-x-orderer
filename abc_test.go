@@ -1,7 +1,7 @@
 package arma
 
 import (
-	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
@@ -46,7 +46,6 @@ type shardCommitter struct {
 }
 
 func (s *shardCommitter) Append(party uint16, _ uint64, rawBatch []byte) {
-	fmt.Println("Appended block of", len(rawBatch), "bytes")
 	nb := &naiveBatch{
 		requests: BatchFromRaw(rawBatch),
 		node:     party,
@@ -93,10 +92,8 @@ func TestBatcherAssembler(t *testing.T) {
 
 	go func() {
 		for rawBytes := range consenterLedger {
-			fmt.Println("Got attestation from consenter ledger of size", len(rawBytes), "bytes")
 			ba := &naiveBatchAttestation{}
 			ba.Deserialize(rawBytes)
-			fmt.Println(">>>", ba.digest)
 			baReplicator <- ba
 		}
 	}()
@@ -134,5 +131,6 @@ func TestBatcherAssembler(t *testing.T) {
 
 	batchers[0].Submit([]byte{1, 2, 3})
 
-	<-blockLedger
+	block := <-blockLedger
+	assert.Equal(t, []byte{1, 2, 3}, block.batch.Requests()[0])
 }
