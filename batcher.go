@@ -4,8 +4,6 @@ import (
 	"arma/request"
 	"context"
 	"encoding/binary"
-	"github.com/SmartBFT-Go/consensus/pkg/api"
-	"github.com/SmartBFT-Go/consensus/pkg/types"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -18,6 +16,14 @@ type Logger interface {
 	Errorf(template string, args ...interface{})
 	Warnf(template string, args ...interface{})
 	Panicf(template string, args ...interface{})
+}
+
+type RequestInspector interface {
+	RequestID(req []byte) string
+}
+
+type MemPool interface {
+	RemoveRequests(requests ...string)
 }
 
 type Batch interface {
@@ -79,7 +85,7 @@ type BatchLedger interface {
 type Batcher struct {
 	Digest                func([][]byte) []byte
 	OnCollectAttestations func(uint642 uint64, digest []byte, m map[uint16][]byte)
-	RequestInspector      api.RequestInspector
+	RequestInspector      RequestInspector
 	Primary               uint16
 	ID                    uint16
 	Quorum                int
@@ -196,7 +202,7 @@ func (b *Batcher) removeRequests(batch BatchedRequests) {
 	for workerID := 0; workerID < workerNum; workerID++ {
 		go func(workerID int) {
 			defer wg.Done()
-			reqInfos := make([]types.RequestInfo, 0, len(batch))
+			reqInfos := make([]string, 0, len(batch))
 			for i, req := range batch {
 				if i%workerNum != workerID {
 					continue

@@ -62,7 +62,7 @@ func (s *shardReplicator) Replicate(shard uint16, _ uint64) <-chan Batch {
 	return s.subscribers[shard]
 }
 
-func TestBatcherAssembler(t *testing.T) {
+func TestAssemblerBatcherConsenter(t *testing.T) {
 	shardCount := 10
 
 	_, _, baReplicator, assembler := createAssembler(t, shardCount)

@@ -33,6 +33,9 @@ func (n *naiveIndex) Retrieve(_ uint16, _ uint16, _ uint64, digest []byte) (Batc
 		return nil, false
 	}
 
+	defer func() {
+		n.Delete(string(digest))
+	}()
 	return val.(Batch), true
 }
 

@@ -6,8 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
-	"github.com/SmartBFT-Go/consensus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"sync"
@@ -31,11 +29,9 @@ func TestBatchBytes(t *testing.T) {
 type reqInspector struct {
 }
 
-func (ri *reqInspector) RequestID(req []byte) types.RequestInfo {
+func (ri *reqInspector) RequestID(req []byte) string {
 	digest := sha256.Sum256(req)
-	return types.RequestInfo{
-		ID: hex.EncodeToString(digest[:]),
-	}
+	return hex.EncodeToString(digest[:])
 }
 
 type noopLedger struct {
@@ -139,17 +135,22 @@ func TestBatcherNetwork(t *testing.T) {
 
 	var committedRequestCount uint32
 
+	var fastBatchesCommitted uint64
+
 	go func() {
 		for {
 			time.Sleep(time.Second * 5)
-			fmt.Println(">>>>>>>>>>>", atomic.LoadUint32(&committedRequestCount)/5)
+			tps := atomic.LoadUint32(&committedRequestCount) / 5
+			if tps > 60*1000 {
+				atomic.AddUint64(&fastBatchesCommitted, 1)
+			}
 			atomic.StoreUint32(&committedRequestCount, 0)
 		}
 	}()
 
 	var committedRequests sync.Map
 
-	for {
+	for atomic.LoadUint64(&fastBatchesCommitted) < 4 {
 		batch := <-commit
 		requests := batch.Requests()
 		atomic.AddUint32(&committedRequestCount, uint32(len(requests)))

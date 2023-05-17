@@ -8,8 +8,6 @@ package request
 import (
 	"context"
 	"fmt"
-	"github.com/SmartBFT-Go/consensus/pkg/api"
-	"github.com/SmartBFT-Go/consensus/pkg/types"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
 	"runtime"
@@ -32,6 +30,19 @@ var (
 	ErrSubmitTimeout       = fmt.Errorf("timeout submitting to request pool")
 )
 
+type Logger interface {
+	Debugf(template string, args ...interface{})
+	Infof(template string, args ...interface{})
+	Errorf(template string, args ...interface{})
+	Warnf(template string, args ...interface{})
+	Panicf(template string, args ...interface{})
+}
+
+type RequestInspector interface {
+	// RequestID returns info about the given request.
+	RequestID(req []byte) string
+}
+
 // Pool implements requests pool, maintains pool of given size provided during
 // construction. In case there are more incoming request than given size it will
 // block during submit until there will be place to submit new ones.
@@ -41,8 +52,8 @@ type Pool struct {
 	lock            sync.Mutex
 	timestamp       uint64
 	pending         sync.Map
-	logger          api.Logger
-	inspector       api.RequestInspector
+	logger          Logger
+	inspector       RequestInspector
 	options         PoolOptions
 	batchStore      *BatchStore
 	cancel          context.CancelFunc
@@ -106,7 +117,7 @@ type PoolOptions struct {
 }
 
 // NewPool constructs new requests pool
-func NewPool(log api.Logger, inspector api.RequestInspector, options PoolOptions) *Pool {
+func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool {
 	if options.SubmitTimeout == 0 {
 		options.SubmitTimeout = defaultRequestTimeout
 	}
@@ -207,7 +218,7 @@ func (rp *Pool) Clear() {
 
 type pendingRequest struct {
 	request      []byte
-	ri           types.RequestInfo
+	ri           string
 	arriveTime   uint64
 	next         *pendingRequest
 	forwarded    bool
@@ -225,13 +236,13 @@ func (pr *pendingRequest) reset(now uint64) {
 
 // Submit a request into the pool, returns an error when request is already in the pool
 func (rp *Pool) Submit(request []byte) error {
-	reqInfo := rp.inspector.RequestID(request)
+	reqID := rp.inspector.RequestID(request)
 	if rp.isClosed() {
-		return errors.Errorf("pool closed, request rejected: %s", reqInfo)
+		return errors.Errorf("pool closed, request rejected: %s", reqID)
 	}
 
-	if rp.processed.Exists(reqInfo.ID) {
-		rp.logger.Debugf("request %s already processed", reqInfo)
+	if rp.processed.Exists(reqID) {
+		rp.logger.Debugf("request %s already processed", reqID)
 		return nil
 	}
 
@@ -240,22 +251,22 @@ func (rp *Pool) Submit(request []byte) error {
 		defer cancel()
 
 		if err := rp.semaphore.Acquire(ctx, 1); err != nil {
-			rp.logger.Warnf("Timed out enqueuing request %s to pool", reqInfo.ID)
+			rp.logger.Warnf("Timed out enqueuing request %s to pool", reqID)
 			return nil
 		}
 
-		_, existed := rp.pending.LoadOrStore(reqInfo.ID, &pendingRequest{
+		_, existed := rp.pending.LoadOrStore(reqID, &pendingRequest{
 			request:    request,
 			arriveTime: atomic.LoadUint64(&rp.timestamp),
-			ri:         reqInfo,
+			ri:         reqID,
 		})
 		if existed {
 			rp.semaphore.Release(1)
-			rp.logger.Debugf("request %s has been already added to the pool", reqInfo)
+			rp.logger.Debugf("request %s has been already added to the pool", reqID)
 			return ErrReqAlreadyExists
 		}
 
-		rp.processed.Store(reqInfo.ID, atomic.LoadUint64(&rp.timestamp))
+		rp.processed.Store(reqID, atomic.LoadUint64(&rp.timestamp))
 
 		return nil
 	}
@@ -264,7 +275,7 @@ func (rp *Pool) Submit(request []byte) error {
 	defer cancel()
 
 	if err := rp.semaphore.Acquire(ctx, 1); err != nil {
-		rp.logger.Warnf("Timed out enqueuing request %s to pool", reqInfo.ID)
+		rp.logger.Warnf("Timed out enqueuing request %s to pool", reqID)
 		return nil
 	}
 
@@ -275,16 +286,16 @@ func (rp *Pool) Submit(request []byte) error {
 		request: reqCopy,
 	}
 
-	inserted := rp.batchStore.Insert(reqInfo.ID, reqItem)
+	inserted := rp.batchStore.Insert(reqID, reqItem)
 	if !inserted {
 		rp.semaphore.Release(1)
-		rp.logger.Debugf("request %s has been already added to the pool", reqInfo)
+		rp.logger.Debugf("request %s has been already added to the pool", reqID)
 		return ErrReqAlreadyExists
 	}
 
-	rp.processed.Store(reqInfo.ID, atomic.LoadUint64(&rp.timestamp))
+	rp.processed.Store(reqID, atomic.LoadUint64(&rp.timestamp))
 
-	//rp.logger.Debugf("Request %s submitted", reqInfo.ID[:8])
+	//rp.logger.Debugf("Request %s submitted", reqID.ID[:8])
 
 	return nil
 }
@@ -303,7 +314,7 @@ func (rp *Pool) NextRequests(ctx context.Context) [][]byte {
 	return rawRequests
 }
 
-func (rp *Pool) RemoveRequests(requests ...types.RequestInfo) error {
+func (rp *Pool) RemoveRequests(requests ...string) error {
 	if atomic.LoadUint32(&rp.batchingEnabled) == 0 {
 
 		workerNum := runtime.NumCPU()
@@ -315,12 +326,12 @@ func (rp *Pool) RemoveRequests(requests ...types.RequestInfo) error {
 			go func(workerID int) {
 				defer wg.Done()
 
-				for i, requestInfo := range requests {
+				for i, requestID := range requests {
 					if i%workerNum != workerID {
 						continue
 					}
-					rp.processed.Store(requestInfo.ID, atomic.LoadUint64(&rp.timestamp))
-					_, existed := rp.pending.LoadAndDelete(requestInfo.ID)
+					rp.processed.Store(requestID, atomic.LoadUint64(&rp.timestamp))
+					_, existed := rp.pending.LoadAndDelete(requestID)
 					if !existed {
 						continue
 					}
@@ -334,8 +345,8 @@ func (rp *Pool) RemoveRequests(requests ...types.RequestInfo) error {
 		return nil
 	}
 
-	for _, requestInfo := range requests {
-		rp.batchStore.Remove(requestInfo.ID)
+	for _, requestID := range requests {
+		rp.batchStore.Remove(requestID)
 	}
 	return nil
 }
