@@ -35,34 +35,64 @@ func TestRequestPool(t *testing.T) {
 		SubmitTimeout:     time.Second * 10,
 	})
 
+	pool.SetBatching(true)
+
 	var submittedCount uint32
 	var committedReqCount int
 
 	workerNum := runtime.NumCPU()
 	workerPerWorker := 100000
 
-	var wg sync.WaitGroup
-	wg.Add(workerNum)
-
 	for worker := 0; worker < workerNum; worker++ {
 		go func(worker int) {
-			defer wg.Done()
 
 			for i := 0; i < workerPerWorker; i++ {
-				req := make([]byte, 4)
-				binary.BigEndian.PutUint16(req, uint16(worker))
-				binary.BigEndian.PutUint16(req[2:], uint16(i))
+				req := make([]byte, 8)
+				binary.BigEndian.PutUint32(req, uint32(worker))
+				binary.BigEndian.PutUint32(req[4:], uint32(i))
 				atomic.AddUint32(&submittedCount, 1)
-				pool.Submit(req)
+				if err := pool.Submit(req); err != nil {
+					panic(err)
+				}
 			}
 		}(worker)
 	}
 
 	for {
-		batch := pool.NextRequests(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		batch := pool.NextRequests(ctx)
+		cancel()
 		committedReqCount += len(batch)
 		fmt.Println(committedReqCount, workerPerWorker*workerNum)
+
+		workerNum := runtime.NumCPU()
+
+		removeRequests(workerNum, batch, requestInspector, pool)
+
 	}
+}
+
+func removeRequests(workerNum int, batch [][]byte, requestInspector *reqInspector, pool *Pool) {
+	var wg sync.WaitGroup
+	wg.Add(workerNum)
+
+	for workerID := 0; workerID < workerNum; workerID++ {
+		go func(workerID int) {
+			defer wg.Done()
+			reqInfos := make([]string, 0, len(batch))
+			for i, req := range batch {
+				if i%workerNum != workerID {
+					continue
+				}
+				reqInfos = append(reqInfos, requestInspector.RequestID(req))
+			}
+
+			pool.RemoveRequests(reqInfos...)
+
+		}(workerID)
+	}
+
+	wg.Wait()
 }
 
 func createLogger(t *testing.T, i int) *zap.SugaredLogger {

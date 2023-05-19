@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type BatchStore struct {
-	batchReady      chan struct{}
 	batchingEnabled uint32
 	currentBatch    *batch
 	readyBatches    []*batch
@@ -18,6 +18,7 @@ type BatchStore struct {
 	maxCapacity     int
 	keys2Batches    sync.Map
 	lock            sync.RWMutex
+	signal          sync.Cond
 }
 
 type batch struct {
@@ -73,12 +74,21 @@ func NewBatchStore(maxCapacity int, batchMaxSize int, onDelete func(string)) *Ba
 	}
 
 	bs := &BatchStore{
-		batchReady:   make(chan struct{}),
 		currentBatch: &batch{},
 		onDelete:     onDelete,
 		batchMaxSize: uint32(batchMaxSize),
 		maxCapacity:  maxCapacity,
 	}
+	bs.signal = sync.Cond{L: &bs.lock}
+
+	go func() {
+		for {
+			time.Sleep(time.Second * 5)
+			bs.lock.RLock()
+			fmt.Println(len(bs.readyBatches), "ready batches and", atomic.LoadUint32(&bs.currentBatch.size), "requests in current batch")
+			bs.lock.RUnlock()
+		}
+	}()
 
 	return bs
 }
@@ -114,16 +124,19 @@ func (bs *BatchStore) Insert(key string, value interface{}) bool {
 		bs.lock.RLock()
 		full := atomic.AddUint32(&bs.currentBatch.size, 1) > bs.batchMaxSize
 		currBatch := bs.currentBatch
-		bs.lock.RUnlock()
 
 		if !full {
 			_, exists := bs.keys2Batches.LoadOrStore(key, currBatch)
 			if exists {
+				bs.lock.RUnlock()
 				return false
 			}
 			currBatch.Store(key, value)
+			bs.lock.RUnlock()
 			return true
 		}
+
+		bs.lock.RUnlock()
 
 		// Else, current batch is full.
 		// So markEnqueued it and then create a new batch to use.
@@ -140,14 +153,7 @@ func (bs *BatchStore) Insert(key string, value interface{}) bool {
 		// Create an empty batch to be used
 		bs.currentBatch = &batch{}
 		// If we have a waiting fetch, notify it
-		if bs.batchReady != nil {
-			select {
-			case <-bs.batchReady:
-				// Already closed
-			default:
-				close(bs.batchReady)
-			}
-		}
+		bs.signal.Signal()
 		bs.lock.Unlock()
 	}
 }
@@ -189,64 +195,58 @@ func (bs *BatchStore) Remove(key string) {
 }
 
 func (bs *BatchStore) Fetch(ctx context.Context) []interface{} {
-	defer func() {
-		bs.lock.Lock()
-		defer bs.lock.Unlock()
-		bs.batchReady = nil
-	}()
-
 	// Do we have a batch ready for us?
 	bs.lock.Lock()
-	if len(bs.readyBatches) > 0 {
-		result := bs.prepareBatch(bs.readyBatches[0])
-		batches := bs.readyBatches[1:]
-		bs.readyBatches = make([]*batch, len(bs.readyBatches)-1)
-		copy(bs.readyBatches, batches)
-		bs.lock.Unlock()
-		return result
-	}
-	bs.lock.Unlock()
+	defer bs.lock.Unlock()
 
-	// Else, either wait for the timeout
-	// or for a new batch to be enqueued.
+	finished := make(chan struct{})
 
-	select {
-	case <-bs.batchReady:
-		// We have a batch ready,
-		// dequeue it and return it.
-		return bs.dequeueBatch()
-	case <-ctx.Done():
-		// Timeout expired, check if we have a batch ready.
-		bs.lock.Lock()
-		if len(bs.readyBatches) > 1 {
-			bs.lock.Unlock()
-			// We have a batch ready, so dequeue it and return it.
+	defer func() {
+		close(finished)
+	}()
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			bs.signal.Signal()
+			return
+		case <-finished:
+			return
+		}
+	}()
+
+	for {
+		if len(bs.readyBatches) > 0 {
 			return bs.dequeueBatch()
 		}
-		defer bs.lock.Unlock()
-		// Else, we don't have a batch ready.
-		// If the current batch is empty, return an empty batch.
-		if atomic.LoadUint32(&bs.currentBatch.size) == 0 {
+
+		// Else, either wait for the timeout
+		// or for a new batch to be enqueued.
+		bs.signal.Wait()
+
+		// Prefer a ready and full batch over a non-empty one
+		if len(bs.readyBatches) > 0 {
+			return bs.dequeueBatch()
+		}
+
+		// But if no full batch can be found, use the non-empty one
+		returnedBatch := bs.currentBatch
+		// If no request is found, return nil
+		if atomic.LoadUint32(&returnedBatch.size) == 0 {
 			return nil
 		}
-		// Otherwise, return what we have in the batch at the moment.
-		returnedBatch := bs.currentBatch
-		// Make a new batch to be the current batch
+		// Mark the current batch as empty, since we are returning its content
+		// to the caller.
 		bs.currentBatch = &batch{}
 		return bs.prepareBatch(returnedBatch)
 	}
 }
 
 func (bs *BatchStore) dequeueBatch() []interface{} {
-	bs.lock.Lock()
-	defer bs.lock.Unlock()
-
 	result := bs.prepareBatch(bs.readyBatches[0])
-	tmp := bs.readyBatches[1:]
-
+	batches := bs.readyBatches[1:]
 	bs.readyBatches = make([]*batch, len(bs.readyBatches)-1)
-	copy(bs.readyBatches, tmp)
-
+	copy(bs.readyBatches, batches)
 	return result
 }
 

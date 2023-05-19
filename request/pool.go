@@ -137,11 +137,11 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 	}
 
 	rp.batchStore = NewBatchStore(options.MaxSize, options.BatchMaxSize, func(key string) {
-		rp.processed.Store(key, atomic.LoadUint64(&rp.timestamp))
+		//rp.processed.Store(key, atomic.LoadUint64(&rp.timestamp))
 		rp.semaphore.Release(1)
 	})
 
-	go rp.manageTimestamps()
+	//go rp.manageTimestamps()
 
 	return rp
 }
@@ -252,7 +252,7 @@ func (rp *Pool) Submit(request []byte) error {
 
 		if err := rp.semaphore.Acquire(ctx, 1); err != nil {
 			rp.logger.Warnf("Timed out enqueuing request %s to pool", reqID)
-			return nil
+			return fmt.Errorf("timed out")
 		}
 
 		_, existed := rp.pending.LoadOrStore(reqID, &pendingRequest{
@@ -276,7 +276,7 @@ func (rp *Pool) Submit(request []byte) error {
 
 	if err := rp.semaphore.Acquire(ctx, 1); err != nil {
 		rp.logger.Warnf("Timed out enqueuing request %s to pool", reqID)
-		return nil
+		return fmt.Errorf("timed out")
 	}
 
 	reqCopy := make([]byte, len(request))
