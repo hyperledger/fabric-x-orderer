@@ -1,7 +1,12 @@
 package arma
 
 import (
+	"encoding/binary"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -63,21 +68,23 @@ func (s *shardReplicator) Replicate(shard uint16, _ uint64) <-chan Batch {
 }
 
 func TestAssemblerBatcherConsenter(t *testing.T) {
+	logger := createLogger(t, 0)
 	shardCount := 10
 
 	_, _, baReplicator, assembler := createAssembler(t, shardCount)
-	blockLedger := make(naiveBlockLedger)
+	blockLedger := make(naiveBlockLedger, 1000)
 	assembler.Ledger = blockLedger
 
 	replicator := &shardReplicator{}
 	for i := 0; i < shardCount; i++ {
-		replicator.subscribers = append(replicator.subscribers, make(chan Batch))
+		replicator.subscribers = append(replicator.subscribers, make(chan Batch, 1000))
 	}
 	assembler.Replicator = replicator
+	assembler.Logger = logger
 
 	consenterLedger := make(naiveConsensusLedger)
 
-	totalOrder := make(naiveTotalOrder, 1)
+	totalOrder := make(naiveTotalOrder, 1000)
 
 	consenter := &Consenter{
 		BatchAttestationFromBytes: func(bytes []byte) BatchAttestation {
@@ -86,7 +93,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			return nba
 		},
 		ConsensusLedger: consenterLedger,
-		Logger:          createLogger(t, 0),
+		Logger:          logger,
 		TotalOrder:      totalOrder,
 	}
 
@@ -102,6 +109,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	for i := 0; i < shardCount; i++ {
 		batcher := createBatcher(t, i)
+		batcher.Logger = logger
 		batcher.OnCollectAttestations = func(seq uint64, digest []byte, m map[uint16][]byte) {
 			ba := &naiveBatchAttestation{
 				digest: digest,
@@ -129,8 +137,64 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	assembler.run()
 	consenter.run()
 
-	batchers[0].Submit([]byte{1, 2, 3})
+	router := &Router{
+		Logger:         logger,
+		RequestToShard: CRC32RequestToShard(uint16(shardCount)),
+		ShardCount:     uint16(shardCount),
+		Forward: func(shard uint16, request []byte) (BackendError, error) {
+			err := batchers[shard].Submit(request)
+			if err != nil {
+				return fmt.Errorf("%s", err.Error()), nil
+			}
+			return nil, nil
+		},
+	}
 
-	block := <-blockLedger
-	assert.Equal(t, []byte{1, 2, 3}, block.batch.Requests()[0])
+	var submittedRequests sync.Map
+	var submittedCount uint32
+	var committedReqCount int
+
+	workerNum := runtime.NumCPU()
+	workerPerWorker := 100000
+
+	var wg sync.WaitGroup
+	wg.Add(workerNum)
+
+	t1 := time.Now()
+
+	for worker := 0; worker < workerNum; worker++ {
+		go func(worker int) {
+			defer wg.Done()
+
+			for i := 0; i < workerPerWorker; i++ {
+				req := make([]byte, 8)
+				binary.BigEndian.PutUint32(req, uint32(worker))
+				binary.BigEndian.PutUint32(req[4:], uint32(i))
+				submittedRequests.Store(binary.BigEndian.Uint32(req), struct{}{})
+				atomic.AddUint32(&submittedCount, 1)
+				router.Submit(req)
+			}
+		}(worker)
+	}
+
+	for committedReqCount < workerNum*workerPerWorker {
+		block := <-blockLedger
+		requests := block.batch.Requests()
+		committedReqCount += len(requests)
+		for _, req := range requests {
+			submittedRequests.Delete(binary.BigEndian.Uint32(req))
+		}
+		fmt.Println("committed:", committedReqCount, "submitted:", atomic.LoadUint32(&submittedCount))
+	}
+
+	wg.Wait()
+
+	var remainingRequests int
+	submittedRequests.Range(func(_, _ interface{}) bool {
+		remainingRequests++
+		return true
+	})
+
+	assert.Equal(t, 0, remainingRequests)
+	fmt.Println(committedReqCount, time.Since(t1))
 }

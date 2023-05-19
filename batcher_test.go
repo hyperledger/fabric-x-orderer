@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -203,6 +204,7 @@ func createBatcher(t *testing.T, i int) *Batcher {
 
 func createLogger(t *testing.T, i int) *zap.SugaredLogger {
 	logConfig := zap.NewDevelopmentConfig()
+	logConfig.Level.SetLevel(zapcore.WarnLevel)
 	logger, _ := logConfig.Build()
 	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
 	sugaredLogger := logger.Sugar()

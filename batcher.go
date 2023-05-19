@@ -4,6 +4,7 @@ import (
 	"arma/request"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -161,6 +162,8 @@ func (b *Batcher) notifyBatchAttestation(seq uint64, digest []byte, m map[uint16
 	b.OnCollectAttestations(seq, digest, m)
 }
 
+var totalRequestsOrdered uint32
+
 func (b *Batcher) runPrimary() {
 	b.memPool.SetBatching(true)
 
@@ -169,8 +172,10 @@ func (b *Batcher) runPrimary() {
 	for {
 		var serializedBatch []byte
 		for len(serializedBatch) == 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			currentBatch = b.memPool.NextRequests(ctx)
+			totReqOrdered := atomic.AddUint32(&totalRequestsOrdered, uint32(len(currentBatch)))
+			fmt.Println("Batchers ordered a total of", totReqOrdered, "requests")
 			digest = b.Digest(currentBatch)
 			serializedBatch = currentBatch.ToBytes()
 			cancel()
