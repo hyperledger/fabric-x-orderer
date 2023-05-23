@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/sync/semaphore"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/sync/semaphore"
 )
 
 func TestPending(t *testing.T) {
