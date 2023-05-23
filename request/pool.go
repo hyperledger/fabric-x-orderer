@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,11 +46,9 @@ type RequestInspector interface {
 // construction. In case there are more incoming request than given size it will
 // block during submit until there will be place to submit new ones.
 type Pool struct {
-	//semCtx          context.Context
-	//unlockSem       func()
 	lock            sync.Mutex
 	timestamp       uint64
-	pending         sync.Map
+	pending         *PendingStore
 	logger          Logger
 	inspector       RequestInspector
 	options         PoolOptions
@@ -60,7 +57,6 @@ type Pool struct {
 	semaphore       *semaphore.Weighted
 	closed          uint32
 	stopped         uint32
-	processed       *delMap
 	batchingEnabled uint32
 }
 
@@ -128,20 +124,33 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 		options.MaxSize = 10000
 	}
 
+	ps := &PendingStore{
+		ReqIDGCInterval:       options.AutoRemoveTimeout / 4,
+		ReqIDLifetime:         options.AutoRemoveTimeout,
+		Time:                  time.NewTicker(time.Second).C,
+		StartTime:             time.Now(),
+		Logger:                log,
+		SecondStrikeThreshold: time.Minute / 2, // TODO: move this to pool options
+		FirstStrikeThreshold:  time.Second * 3,
+		Semaphore:             semaphore.NewWeighted(int64(options.MaxSize)),
+		Epoch:                 time.Second,
+		FirstStrikeCallback: func([]byte) {
+
+		},
+		SecondStrikeCallback: func() {},
+	}
+
 	rp := &Pool{
+		pending:   ps,
 		logger:    log,
 		inspector: inspector,
 		semaphore: semaphore.NewWeighted(int64(options.MaxSize)),
 		options:   options,
-		processed: new(delMap),
 	}
 
 	rp.batchStore = NewBatchStore(options.MaxSize, options.BatchMaxSize, func(key string) {
-		//rp.processed.Store(key, atomic.LoadUint64(&rp.timestamp))
 		rp.semaphore.Release(1)
 	})
-
-	//go rp.manageTimestamps()
 
 	return rp
 }
@@ -150,62 +159,9 @@ func (rp *Pool) SetBatching(enabled bool) {
 	rp.batchStore.SetBatching(enabled)
 	if enabled {
 		atomic.StoreUint32(&rp.batchingEnabled, 1)
-		// Pour all requests into ourselves as we're the leader now
-		rp.pending.Range(func(k any, v any) bool {
-			req := v.(*pendingRequest)
-			rp.Submit(req.request)
-			rp.pending.Delete(k)
-			return true
-		})
 	} else {
 		atomic.StoreUint32(&rp.batchingEnabled, 0)
 	}
-}
-
-func (rp *Pool) manageTimestamps() {
-	t := time.NewTicker(defaultTimestampIncrementDuration)
-	gcCycle := uint64(time.Minute * 2 / defaultTimestampIncrementDuration)
-	for {
-		<-t.C
-		currentTime := atomic.AddUint64(&rp.timestamp, 1)
-		if currentTime%gcCycle == gcCycle/2 {
-			rp.processed.GC(currentTime - gcCycle/2)
-		}
-		// Make sure we don't get a timer restart in between the scans
-		rp.lock.Lock()
-
-		rp.GCPending(currentTime)
-
-		// Make sure we don't get a timer restart in between the scans
-		rp.lock.Unlock()
-	}
-}
-
-func (rp *Pool) GCPending(currentTime uint64) {
-	tickLimit := rp.options.AutoRemoveTimeout / defaultTimestampIncrementDuration
-
-	if currentTime%uint64(tickLimit) != 0 {
-		return
-	}
-
-	var count int
-	var removed int
-
-	t1 := time.Now()
-
-	rp.pending.Range(func(k any, v any) bool {
-		count++
-		req := v.(*pendingRequest)
-		if req.arriveTime+uint64(tickLimit) < currentTime {
-			if _, loaded := rp.pending.LoadAndDelete(k); loaded {
-				rp.semaphore.Release(1)
-				removed++
-			}
-		}
-		return true
-	})
-
-	fmt.Println("Garbage collected", removed, "out of", count, "pending requests in", time.Since(t1))
 }
 
 func (rp *Pool) isClosed() bool {
@@ -241,34 +197,11 @@ func (rp *Pool) Submit(request []byte) error {
 		return errors.Errorf("pool closed, request rejected: %s", reqID)
 	}
 
-	if rp.processed.Exists(reqID) {
-		rp.logger.Debugf("request %s already processed", reqID)
-		return nil
-	}
-
 	if atomic.LoadUint32(&rp.batchingEnabled) == 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), rp.options.SubmitTimeout)
 		defer cancel()
 
-		if err := rp.semaphore.Acquire(ctx, 1); err != nil {
-			rp.logger.Warnf("Timed out enqueuing request %s to pool", reqID)
-			return fmt.Errorf("timed out")
-		}
-
-		_, existed := rp.pending.LoadOrStore(reqID, &pendingRequest{
-			request:    request,
-			arriveTime: atomic.LoadUint64(&rp.timestamp),
-			ri:         reqID,
-		})
-		if existed {
-			rp.semaphore.Release(1)
-			rp.logger.Debugf("request %s has been already added to the pool", reqID)
-			return ErrReqAlreadyExists
-		}
-
-		rp.processed.Store(reqID, atomic.LoadUint64(&rp.timestamp))
-
-		return nil
+		return rp.pending.Submit(request, ctx)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), rp.options.SubmitTimeout)
@@ -293,10 +226,6 @@ func (rp *Pool) Submit(request []byte) error {
 		return ErrReqAlreadyExists
 	}
 
-	rp.processed.Store(reqID, atomic.LoadUint64(&rp.timestamp))
-
-	//rp.logger.Debugf("Request %s submitted", reqID.ID[:8])
-
 	return nil
 }
 
@@ -316,32 +245,7 @@ func (rp *Pool) NextRequests(ctx context.Context) [][]byte {
 
 func (rp *Pool) RemoveRequests(requests ...string) error {
 	if atomic.LoadUint32(&rp.batchingEnabled) == 0 {
-
-		workerNum := runtime.NumCPU()
-
-		var wg sync.WaitGroup
-		wg.Add(workerNum)
-
-		for workerID := 0; workerID < workerNum; workerID++ {
-			go func(workerID int) {
-				defer wg.Done()
-
-				for i, requestID := range requests {
-					if i%workerNum != workerID {
-						continue
-					}
-					rp.processed.Store(requestID, atomic.LoadUint64(&rp.timestamp))
-					_, existed := rp.pending.LoadAndDelete(requestID)
-					if !existed {
-						continue
-					}
-					rp.semaphore.Release(1)
-				}
-			}(workerID)
-		}
-
-		wg.Wait()
-
+		rp.pending.RemoveRequests(requests...)
 		return nil
 	}
 
@@ -372,11 +276,6 @@ func (rp *Pool) RestartTimers() {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
 
-	rp.pending.Range(func(k any, v any) bool {
-		req := v.(*pendingRequest)
-		now := atomic.LoadUint64(&rp.timestamp)
-		req.reset(now)
-		return true
-	})
+	// TODO
 	rp.logger.Debugf("Restarted all timers")
 }

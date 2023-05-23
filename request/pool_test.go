@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"runtime"
@@ -58,12 +57,11 @@ func TestRequestPool(t *testing.T) {
 		}(worker)
 	}
 
-	for {
+	for committedReqCount < workerPerWorker*workerNum {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		batch := pool.NextRequests(ctx)
 		cancel()
 		committedReqCount += len(batch)
-		fmt.Println(committedReqCount, workerPerWorker*workerNum)
 
 		workerNum := runtime.NumCPU()
 
