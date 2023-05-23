@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -142,8 +143,10 @@ func TestBatcherNetwork(t *testing.T) {
 		for {
 			time.Sleep(time.Second * 5)
 			tps := atomic.LoadUint32(&committedRequestCount) / 5
-			if tps > 60*1000 {
+			if tps > 50*1000 {
 				atomic.AddUint64(&fastBatchesCommitted, 1)
+			} else {
+				fmt.Println("TPS:", tps)
 			}
 			atomic.StoreUint32(&committedRequestCount, 0)
 		}

@@ -125,6 +125,7 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 	}
 
 	ps := &PendingStore{
+		Inspector:             inspector,
 		ReqIDGCInterval:       options.AutoRemoveTimeout / 4,
 		ReqIDLifetime:         options.AutoRemoveTimeout,
 		Time:                  time.NewTicker(time.Second).C,
@@ -139,6 +140,9 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 		},
 		SecondStrikeCallback: func() {},
 	}
+
+	ps.Init()
+	ps.Restart()
 
 	rp := &Pool{
 		pending:   ps,
