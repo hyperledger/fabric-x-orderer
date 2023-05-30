@@ -17,7 +17,7 @@ type Consenter struct {
 	BatchAttestationFromBytes func([]byte) BatchAttestation
 }
 
-func (c *Consenter) run() {
+func (c *Consenter) Run() {
 	go func() {
 		for {
 			batch := c.TotalOrder.Deliver()

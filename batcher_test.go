@@ -114,7 +114,7 @@ func TestBatcherNetwork(t *testing.T) {
 	}
 
 	for i := 0; i < n; i++ {
-		batchers[i].run()
+		batchers[i].Run()
 	}
 
 	go func() {
@@ -189,7 +189,7 @@ func createBatcher(t *testing.T, i int) *Batcher {
 		OnCollectAttestations: func(uint642 uint64, _ []byte, m map[uint16][]byte) {},
 		RequestInspector:      requestInspector,
 		Logger:                sugaredLogger,
-		memPool:               pool,
+		MemPool:               pool,
 		ID:                    uint16(i),
 		Quorum:                2,
 		Sign: func(uint64, []byte) []byte {

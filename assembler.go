@@ -38,7 +38,7 @@ type Assembler struct {
 	lock                       sync.RWMutex
 }
 
-func (a *Assembler) run() {
+func (a *Assembler) Run() {
 	var replicationSources []<-chan Batch
 
 	for shardID := 0; shardID < a.ShardCount; shardID++ {

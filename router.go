@@ -6,7 +6,6 @@ import (
 )
 
 type Router struct {
-	ShardCount     uint16
 	Logger         Logger
 	RequestToShard func([]byte) (uint32, uint16)
 	Forward        func(shard uint16, request []byte) (BackendError, error)

@@ -97,7 +97,7 @@ type Batcher struct {
 	Replicator            BatchReplicator
 	Sign                  func(uint64, []byte) []byte
 	Send                  func(uint16, []byte)
-	memPool               *request.Pool
+	MemPool               *request.Pool
 
 	lock               sync.Mutex
 	signal             sync.Cond
@@ -105,7 +105,9 @@ type Batcher struct {
 	seq2digest         map[uint64][]byte
 }
 
-func (b *Batcher) run() {
+func (b *Batcher) Run() {
+	b.seq2digest = make(map[uint64][]byte)
+	b.confirmedSequences = make(map[uint64]map[uint16][]byte)
 	if b.Primary == b.ID {
 		go b.runPrimary()
 		return
@@ -115,7 +117,7 @@ func (b *Batcher) run() {
 }
 
 func (b *Batcher) Submit(request []byte) error {
-	return b.memPool.Submit(request)
+	return b.MemPool.Submit(request)
 }
 
 func (b *Batcher) HandleMessage(msg []byte, from uint16) {
@@ -146,6 +148,7 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	if len(b.confirmedSequences[seq]) >= b.Quorum {
 		atomic.AddUint64(&b.ConfirmedSeq, 1)
 		b.notifyBatchAttestation(seq, b.seq2digest[seq], b.confirmedSequences[seq])
+		delete(b.seq2digest, seq)
 		delete(b.confirmedSequences, seq)
 		b.signal.Broadcast()
 	}
@@ -165,7 +168,8 @@ func (b *Batcher) notifyBatchAttestation(seq uint64, digest []byte, m map[uint16
 var totalRequestsOrdered uint32
 
 func (b *Batcher) runPrimary() {
-	b.memPool.SetBatching(true)
+	b.Logger.Infof("Acting as primary")
+	b.MemPool.SetBatching(true)
 
 	var currentBatch BatchedRequests
 	var digest []byte
@@ -173,7 +177,7 @@ func (b *Batcher) runPrimary() {
 		var serializedBatch []byte
 		for len(serializedBatch) == 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
-			currentBatch = b.memPool.NextRequests(ctx)
+			currentBatch = b.MemPool.NextRequests(ctx)
 			totReqOrdered := atomic.AddUint32(&totalRequestsOrdered, uint32(len(currentBatch)))
 			fmt.Println("Batchers ordered a total of", totReqOrdered, "requests")
 			digest = b.Digest(currentBatch)
@@ -215,7 +219,7 @@ func (b *Batcher) removeRequests(batch BatchedRequests) {
 				reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
 			}
 
-			b.memPool.RemoveRequests(reqInfos...)
+			b.MemPool.RemoveRequests(reqInfos...)
 
 		}(workerID)
 	}
@@ -253,6 +257,7 @@ func (b *Batcher) send(to uint16, seq uint64, msg []byte) {
 }
 
 func (b *Batcher) runSecondary() {
+	b.Logger.Infof("Acting as secondary")
 	out := b.Replicator.Replicate(b.Primary, b.Seq)
 	for {
 		batchedRequests := <-out

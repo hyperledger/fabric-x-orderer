@@ -129,18 +129,17 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		batchers[i].Ledger = sc
 		batchers[i].Replicator = nil
 		batchers[i].Primary = uint16(i)
-		batchers[i].run()
+		batchers[i].Run()
 	}
 
 	time.Sleep(time.Second)
 
-	assembler.run()
-	consenter.run()
+	assembler.Run()
+	consenter.Run()
 
 	router := &Router{
 		Logger:         logger,
 		RequestToShard: CRC32RequestToShard(uint16(shardCount)),
-		ShardCount:     uint16(shardCount),
 		Forward: func(shard uint16, request []byte) (BackendError, error) {
 			err := batchers[shard].Submit(request)
 			if err != nil {

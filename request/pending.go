@@ -147,6 +147,10 @@ func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 func (ps *PendingStore) rotateBuckets(now time.Time) {
 	currentBucket := ps.currentBucket.Load().(*bucket)
 
+	if currentBucket.getSize() == 0 {
+		return
+	}
+
 	if !ps.currentBucket.CompareAndSwap(currentBucket, currentBucket.seal(now)) {
 		panic("programming error: swap should not have failed")
 	}

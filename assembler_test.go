@@ -131,7 +131,7 @@ func TestAssembler(t *testing.T) {
 
 	r, ledger, nbar, assembler := createAssembler(t, shardCount)
 
-	assembler.run()
+	assembler.Run()
 
 	// Wait for all subscribers of all shards to be connected
 	for atomic.LoadUint32(&r.i) < uint32(shardCount) {
