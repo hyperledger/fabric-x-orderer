@@ -1,6 +1,7 @@
 package arma
 
 import (
+	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 )
@@ -37,5 +38,29 @@ func CRC32RequestToShard(shardCount uint16) func([]byte) (uint32, uint16) {
 	return func(request []byte) (uint32, uint16) {
 		reqID := crc32.Checksum(request, crc32.IEEETable)
 		return reqID, uint16(reqID) % shardCount
+	}
+}
+
+func SumBasedRequestToShard(shardCount uint16) func([]byte) (uint32, uint16) {
+	return func(request []byte) (uint32, uint16) {
+		var i int
+		var requestID uint32
+		var shardID uint16
+
+		for i = 0; i+4 < len(request); i += 4 {
+			requestID += binary.BigEndian.Uint32(request[i:])
+			shardID += binary.BigEndian.Uint16(request[i:])
+		}
+
+		// If i = |request| we stop.
+		//Otherwise, i+j = |request| for some 0<j<4.
+		if i != len(request) {
+			buff := make([]byte, 4)
+			copy(buff, request[i:])
+			requestID += binary.BigEndian.Uint32(buff)
+			shardID += binary.BigEndian.Uint16(buff)
+		}
+
+		return requestID, shardID % shardCount
 	}
 }

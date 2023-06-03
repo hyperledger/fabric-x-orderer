@@ -2,11 +2,11 @@ package arma
 
 type TotalOrder interface {
 	SubmitRequest(req []byte) error
-	Deliver() [][]byte
+	Deliver() []byte
 }
 
 type ConsensusLedger interface {
-	Append(seq uint64, blockHeader []byte)
+	Append(seq uint64, blockHeaders []byte)
 }
 
 type Consenter struct {
@@ -21,10 +21,8 @@ func (c *Consenter) Run() {
 	go func() {
 		for {
 			batch := c.TotalOrder.Deliver()
-			for _, header := range batch {
-				c.ConsensusLedger.Append(c.Seq, header)
-				c.Seq++
-			}
+			c.ConsensusLedger.Append(c.Seq, batch)
+			c.Seq++
 		}
 	}()
 }

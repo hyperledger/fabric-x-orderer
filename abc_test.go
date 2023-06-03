@@ -13,8 +13,8 @@ import (
 
 type naiveConsensusLedger chan []byte
 
-func (n naiveConsensusLedger) Append(_ uint64, blockHeader []byte) {
-	n <- blockHeader
+func (n naiveConsensusLedger) Append(_ uint64, blockHeaders []byte) {
+	n <- blockHeaders
 }
 
 type naiveTotalOrder chan [][]byte
@@ -24,9 +24,10 @@ func (n naiveTotalOrder) SubmitRequest(req []byte) error {
 	return nil
 }
 
-func (n naiveTotalOrder) Deliver() [][]byte {
+func (n naiveTotalOrder) Deliver() []byte {
 	batch := <-n
-	return batch
+	br := BatchedRequests(batch)
+	return br.ToBytes()
 }
 
 type naiveblock struct {
@@ -99,9 +100,11 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	go func() {
 		for rawBytes := range consenterLedger {
-			ba := &naiveBatchAttestation{}
-			ba.Deserialize(rawBytes)
-			baReplicator <- ba
+			for _, rawBA := range BatchFromRaw(rawBytes) {
+				ba := &naiveBatchAttestation{}
+				ba.Deserialize(rawBA)
+				baReplicator <- ba
+			}
 		}
 	}()
 

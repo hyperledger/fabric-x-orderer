@@ -39,6 +39,8 @@ type Assembler struct {
 }
 
 func (a *Assembler) Run() {
+	a.signal = sync.Cond{L: &a.lock}
+
 	var replicationSources []<-chan Batch
 
 	for shardID := 0; shardID < a.ShardCount; shardID++ {

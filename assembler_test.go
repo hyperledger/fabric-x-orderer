@@ -192,6 +192,5 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 		BatchAttestationReplicator: nbar,
 		Index:                      index,
 	}
-	assembler.signal = sync.Cond{L: &assembler.lock}
 	return r, ledger, nbar, assembler
 }
