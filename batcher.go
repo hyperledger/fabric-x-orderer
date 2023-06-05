@@ -2,6 +2,7 @@ package arma
 
 import (
 	"arma/request"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -122,16 +123,17 @@ func (b *Batcher) Submit(request []byte) error {
 
 func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	seq := binary.BigEndian.Uint64(msg[0:8])
-	signature := msg[8:]
+	digest := msg[8 : 8+32]
+	signature := msg[8+32:]
+
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	confirmedSequences := atomic.LoadUint64(&b.ConfirmedSeq)
 
 	if confirmedSequences != seq {
 		return
 	}
-
-	b.lock.Lock()
-	defer b.lock.Unlock()
 
 	_, exists := b.confirmedSequences[seq]
 	if !exists {
@@ -145,9 +147,16 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 
 	b.confirmedSequences[seq][from] = signature
 
+	if storedDigest, exists := b.seq2digest[seq]; !exists {
+		panic(fmt.Sprintf("no digest found for sequence %d, current sequence is %d", seq, b.Seq))
+	} else if !bytes.Equal(storedDigest, digest) {
+		panic(fmt.Sprintf("stored digest %v but received digest %v for batch %d", storedDigest, digest, seq))
+	}
+
 	if len(b.confirmedSequences[seq]) >= b.Quorum {
 		atomic.AddUint64(&b.ConfirmedSeq, 1)
 		b.notifyBatchAttestation(seq, b.seq2digest[seq], b.confirmedSequences[seq])
+		fmt.Println(">>>> Removing", seq, "from seq2digest")
 		delete(b.seq2digest, seq)
 		delete(b.confirmedSequences, seq)
 		b.signal.Broadcast()
@@ -165,8 +174,6 @@ func (b *Batcher) notifyBatchAttestation(seq uint64, digest []byte, m map[uint16
 	b.OnCollectAttestations(seq, digest, m)
 }
 
-var totalRequestsOrdered uint32
-
 func (b *Batcher) runPrimary() {
 	b.Logger.Infof("Acting as primary")
 	b.MemPool.SetBatching(true)
@@ -175,14 +182,17 @@ func (b *Batcher) runPrimary() {
 	var digest []byte
 	for {
 		var serializedBatch []byte
-		for len(serializedBatch) == 0 {
+		for {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			currentBatch = b.MemPool.NextRequests(ctx)
-			totReqOrdered := atomic.AddUint32(&totalRequestsOrdered, uint32(len(currentBatch)))
-			fmt.Println("Batchers ordered a total of", totReqOrdered, "requests")
+			if len(currentBatch) == 0 {
+				continue
+			}
+			fmt.Println("Batchers ordered a total of", len(currentBatch), "requests for sequence", b.Seq)
 			digest = b.Digest(currentBatch)
 			serializedBatch = currentBatch.ToBytes()
 			cancel()
+			break
 		}
 
 		σ := b.Sign(b.Seq, digest)
@@ -191,7 +201,7 @@ func (b *Batcher) runPrimary() {
 		b.seq2digest[b.Seq] = digest
 		b.lock.Unlock()
 
-		b.send(b.Primary, b.Seq, σ)
+		b.send(b.Primary, b.Seq, σ, digest)
 
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 		b.Seq++
@@ -239,10 +249,16 @@ func (b *Batcher) waitForSecondaries() {
 	b.lock.Unlock()
 }
 
-func (b *Batcher) send(to uint16, seq uint64, msg []byte) {
-	rawMsg := make([]byte, 8+len(msg))
+func (b *Batcher) send(to uint16, seq uint64, msg []byte, digest []byte) {
+	if len(digest) != 32 {
+		panic(fmt.Sprintf("programming error: tried to send digest of size %d", len(digest)))
+	}
+	rawMsg := make([]byte, 8+len(msg)+len(digest))
 	binary.BigEndian.PutUint64(rawMsg[0:8], seq)
-	copy(rawMsg[8:], msg)
+	copy(rawMsg[8:], digest)
+	copy(rawMsg[8+32:], msg)
+
+	b.Logger.Infof("Sending to %d signature on %d with digest %v", to, seq, digest)
 
 	if to != b.ID {
 		b.Send(to, rawMsg)
@@ -261,11 +277,15 @@ func (b *Batcher) runSecondary() {
 	out := b.Replicator.Replicate(b.Primary, b.Seq)
 	for {
 		batchedRequests := <-out
-		batch := batchedRequests.Requests().ToBytes()
+		requests := batchedRequests.Requests()
+		if len(requests) == 0 {
+			panic("programming error: replicated an empty batch")
+		}
+		batch := requests.ToBytes()
 		b.Ledger.Append(b.Primary, b.Seq, batch)
-		b.removeRequests(batchedRequests.Requests())
+		b.removeRequests(requests)
 		σ := b.Sign(b.Seq, batch)
-		b.send(b.Primary, b.Seq, σ)
+		b.send(b.Primary, b.Seq, σ, b.Digest(requests))
 		b.Seq++
 	}
 }
