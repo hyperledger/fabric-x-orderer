@@ -107,6 +107,7 @@ type Batcher struct {
 }
 
 func (b *Batcher) Run() {
+	b.signal = sync.Cond{L: &b.lock}
 	b.seq2digest = make(map[uint64][]byte)
 	b.confirmedSequences = make(map[uint64]map[uint16][]byte)
 	if b.Primary == b.ID {

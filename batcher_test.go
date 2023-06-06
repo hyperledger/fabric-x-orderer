@@ -201,7 +201,6 @@ func createBatcher(t *testing.T, i int) *Batcher {
 
 	b.Ledger = &noopLedger{}
 
-	b.signal = sync.Cond{L: &b.lock}
 	return b
 }
 
