@@ -129,9 +129,15 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	confirmedSequences := atomic.LoadUint64(&b.ConfirmedSeq)
+	confirmedSequence := atomic.LoadUint64(&b.ConfirmedSeq)
 
-	if confirmedSequences != seq {
+	if seq < confirmedSequence {
+		b.Logger.Warnf("Received message on sequence %d but we expect sequence %d to %d", seq, confirmedSequence, confirmedSequence+10)
+		return
+	}
+
+	if seq-confirmedSequence > 10 {
+		b.Logger.Warnf("Received message on sequence %d but our confirmed sequence is only at %d", seq, confirmedSequence)
 		return
 	}
 
@@ -153,13 +159,16 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 		panic(fmt.Sprintf("stored digest %v but received digest %v for batch %d", storedDigest, digest, seq))
 	}
 
-	if len(b.confirmedSequences[seq]) >= b.Quorum {
+	signatureCollectCount := len(b.confirmedSequences[seq])
+	if signatureCollectCount >= b.Quorum {
 		atomic.AddUint64(&b.ConfirmedSeq, 1)
 		b.notifyBatchAttestation(seq, b.seq2digest[seq], b.confirmedSequences[seq])
-		fmt.Println(">>>> Removing", seq, "from seq2digest")
+		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) signatures", seq, signatureCollectCount)
 		delete(b.seq2digest, seq)
 		delete(b.confirmedSequences, seq)
 		b.signal.Broadcast()
+	} else {
+		b.Logger.Infof("Collected %d out of %d signatures on sequence %d", signatureCollectCount, b.Quorum, seq)
 	}
 
 }
