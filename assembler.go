@@ -3,6 +3,7 @@ package arma
 import (
 	"encoding/hex"
 	"sync"
+	"time"
 )
 
 type BatchAttestation interface {
@@ -68,7 +69,9 @@ func (a *Assembler) Run() {
 	go func(attestations <-chan BatchAttestation) {
 		for ba := range attestations {
 			a.Logger.Infof("Received attestation with digest %s", hex.EncodeToString(ba.Digest()[:8]))
+			t1 := time.Now()
 			batch := a.processAttestations(ba)
+			a.Logger.Infof("Located batch for digest %s within %v", hex.EncodeToString(ba.Digest()[:8]), time.Since(t1))
 			a.Ledger.Append(ba.Seq(), batch, ba)
 		}
 	}(attestations)
@@ -80,12 +83,13 @@ func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
 	defer a.lock.Unlock()
 
 	for {
+		t1 := time.Now()
 		batch, retrieved := a.Index.Retrieve(ba.Party(), ba.Shard(), ba.Seq(), ba.Digest())
 		if !retrieved {
 			a.signal.Wait()
 			continue
 		}
-		a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index", len(batch.Requests()), hex.EncodeToString(ba.Digest()[:8]))
+		a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), hex.EncodeToString(ba.Digest()[:8]), time.Since(t1))
 		return batch
 	}
 

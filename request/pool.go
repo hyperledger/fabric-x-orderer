@@ -106,11 +106,13 @@ type requestItem struct {
 
 // PoolOptions is the pool configuration
 type PoolOptions struct {
-	MaxSize              int
-	BatchMaxSize         int
-	SubmitTimeout        time.Duration
-	AutoRemoveTimeout    time.Duration
-	OnFirstStrikeTimeout func([]byte)
+	MaxSize               int
+	BatchMaxSize          int
+	SubmitTimeout         time.Duration
+	AutoRemoveTimeout     time.Duration
+	OnFirstStrikeTimeout  func([]byte)
+	FirstStrikeThreshold  time.Duration
+	SecondStrikeThreshold time.Duration
 }
 
 // NewPool constructs new requests pool
@@ -132,8 +134,8 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 		Time:                  time.NewTicker(time.Second).C,
 		StartTime:             time.Now(),
 		Logger:                log,
-		SecondStrikeThreshold: time.Minute / 2, // TODO: move this to pool options
-		FirstStrikeThreshold:  time.Second * 3,
+		SecondStrikeThreshold: options.SecondStrikeThreshold,
+		FirstStrikeThreshold:  options.FirstStrikeThreshold,
 		Semaphore:             semaphore.NewWeighted(int64(options.MaxSize)),
 		Epoch:                 time.Second,
 		FirstStrikeCallback:   func([]byte) {},

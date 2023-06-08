@@ -172,10 +172,12 @@ func createBatcher(t *testing.T, i int) *Batcher {
 
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
-		BatchMaxSize:      10000,
-		MaxSize:           1000 * 100,
-		AutoRemoveTimeout: time.Minute / 2,
-		SubmitTimeout:     time.Second * 10,
+		FirstStrikeThreshold:  time.Second * 3,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          10000,
+		MaxSize:               1000 * 100,
+		AutoRemoveTimeout:     time.Minute / 2,
+		SubmitTimeout:         time.Second * 10,
 	})
 
 	b := &Batcher{

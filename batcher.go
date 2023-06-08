@@ -198,7 +198,7 @@ func (b *Batcher) runPrimary() {
 			if len(currentBatch) == 0 {
 				continue
 			}
-			fmt.Println("Batchers ordered a total of", len(currentBatch), "requests for sequence", b.Seq)
+			b.Logger.Infof("Batcher ordered a total of %d requests for sequence %d", len(currentBatch), b.Seq)
 			digest = b.Digest(currentBatch)
 			serializedBatch = currentBatch.ToBytes()
 			cancel()
@@ -250,7 +250,7 @@ func (b *Batcher) removeRequests(batch BatchedRequests) {
 func (b *Batcher) waitForSecondaries() {
 	t1 := time.Now()
 	defer func() {
-		b.Logger.Debugf("Waiting for secondaries to keep up with me took %v", time.Since(t1))
+		b.Logger.Infof("Waiting for secondaries to keep up with me took %v", time.Since(t1))
 	}()
 	b.lock.Lock()
 	for !b.secondariesKeepUpWithMe() {

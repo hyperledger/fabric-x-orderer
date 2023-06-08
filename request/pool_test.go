@@ -28,10 +28,12 @@ func TestRequestPool(t *testing.T) {
 	requestInspector := &reqInspector{}
 
 	pool := NewPool(sugaredLogger, requestInspector, PoolOptions{
-		BatchMaxSize:      10000,
-		MaxSize:           1000 * 100,
-		AutoRemoveTimeout: time.Minute / 2,
-		SubmitTimeout:     time.Second * 10,
+		FirstStrikeThreshold:  time.Second * 3,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          10000,
+		MaxSize:               1000 * 100,
+		AutoRemoveTimeout:     time.Minute / 2,
+		SubmitTimeout:         time.Second * 10,
 	})
 
 	pool.SetBatching(true)
