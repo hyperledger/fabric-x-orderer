@@ -85,6 +85,7 @@ type BatchLedger interface {
 }
 
 type Batcher struct {
+	BatchTimeout          time.Duration
 	Digest                func([][]byte) []byte
 	OnCollectAttestations func(uint642 uint64, digest []byte, m map[uint16][]byte)
 	RequestInspector      RequestInspector
@@ -176,6 +177,7 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 
 func (b *Batcher) secondariesKeepUpWithMe() bool {
 	confirmedSeq := atomic.LoadUint64(&b.ConfirmedSeq)
+	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.Seq, confirmedSeq)
 	return b.Seq-confirmedSeq < 10
 }
 
@@ -188,12 +190,16 @@ func (b *Batcher) runPrimary() {
 	b.Logger.Infof("Acting as primary")
 	b.MemPool.SetBatching(true)
 
+	if b.BatchTimeout == 0 {
+		b.BatchTimeout = time.Millisecond * 500
+	}
+
 	var currentBatch BatchedRequests
 	var digest []byte
 	for {
 		var serializedBatch []byte
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+			ctx, cancel := context.WithTimeout(context.Background(), b.BatchTimeout)
 			currentBatch = b.MemPool.NextRequests(ctx)
 			if len(currentBatch) == 0 {
 				continue
@@ -216,8 +222,8 @@ func (b *Batcher) runPrimary() {
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 		b.Seq++
 
-		b.waitForSecondaries()
 		b.removeRequests(currentBatch)
+		b.waitForSecondaries()
 	}
 }
 
@@ -268,7 +274,7 @@ func (b *Batcher) send(to uint16, seq uint64, msg []byte, digest []byte) {
 	copy(rawMsg[8:], digest)
 	copy(rawMsg[8+32:], msg)
 
-	b.Logger.Infof("Sending to %d signature on %d with digest %v", to, seq, digest)
+	b.Logger.Infof("Sending to %d signature on %d with digest %x", to, seq, digest)
 
 	if to != b.ID {
 		b.Send(to, rawMsg)
