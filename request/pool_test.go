@@ -27,16 +27,28 @@ func TestRequestPool(t *testing.T) {
 
 	requestInspector := &reqInspector{}
 
-	pool := NewPool(sugaredLogger, requestInspector, PoolOptions{
-		FirstStrikeThreshold:  time.Second * 3,
+	primaryPool := NewPool(sugaredLogger, requestInspector, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          10000,
 		MaxSize:               1000 * 100,
-		AutoRemoveTimeout:     time.Minute / 2,
+		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	})
 
-	pool.SetBatching(true)
+	secondaryPool := NewPool(sugaredLogger, requestInspector, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          10000,
+		MaxSize:               1000 * 100,
+		AutoRemoveTimeout:     time.Second * 10,
+		SubmitTimeout:         time.Second * 10,
+		OnFirstStrikeTimeout: func(_ []byte) {
+			panic("timed out on request")
+		},
+	})
+
+	primaryPool.SetBatching(true)
 
 	var submittedCount uint32
 	var committedReqCount int
@@ -52,7 +64,12 @@ func TestRequestPool(t *testing.T) {
 				binary.BigEndian.PutUint32(req, uint32(worker))
 				binary.BigEndian.PutUint32(req[4:], uint32(i))
 				atomic.AddUint32(&submittedCount, 1)
-				if err := pool.Submit(req); err != nil {
+
+				if err := secondaryPool.Submit(req); err != nil {
+					panic(err)
+				}
+
+				if err := primaryPool.Submit(req); err != nil {
 					panic(err)
 				}
 			}
@@ -61,13 +78,14 @@ func TestRequestPool(t *testing.T) {
 
 	for committedReqCount < workerPerWorker*workerNum {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		batch := pool.NextRequests(ctx)
+		batch := primaryPool.NextRequests(ctx)
 		cancel()
 		committedReqCount += len(batch)
 
 		workerNum := runtime.NumCPU()
 
-		removeRequests(workerNum, batch, requestInspector, pool)
+		removeRequests(workerNum, batch, requestInspector, primaryPool)
+		removeRequests(workerNum, batch, requestInspector, secondaryPool)
 
 	}
 }

@@ -210,6 +210,7 @@ func (rp *Pool) Submit(request []byte) error {
 		ctx, cancel := context.WithTimeout(context.Background(), rp.options.SubmitTimeout)
 		defer cancel()
 
+		rp.logger.Debugf("Submitted request %s to pending store", reqID)
 		return rp.pending.Submit(request, ctx)
 	}
 
@@ -232,8 +233,10 @@ func (rp *Pool) Submit(request []byte) error {
 	if !inserted {
 		rp.semaphore.Release(1)
 		rp.logger.Debugf("request %s has been already added to the pool", reqID)
-		return ErrReqAlreadyExists
+		return nil
 	}
+
+	rp.logger.Debugf("Submitted request %s to batch store", reqID)
 
 	return nil
 }
