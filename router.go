@@ -26,7 +26,7 @@ func (r *Router) Submit(request []byte) error {
 	if backendErr != nil {
 		bckErrStr := backendErr.Error()
 		if bckErrStr != "" {
-			r.Logger.Warnf("Backend of shard %s could not enqueue request: %v", shardID, bckErrStr)
+			r.Logger.Warnf("Backend of shard %d could not enqueue request: %v", shardID, bckErrStr)
 			return fmt.Errorf("%s", backendErr)
 		}
 	}
