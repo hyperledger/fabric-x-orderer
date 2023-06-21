@@ -128,6 +128,8 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	digest := msg[8 : 8+32]
 	signature := msg[8+32:]
 
+	b.Logger.Infof("Received signature on sequence %d and digest %x from %d", seq, digest, from)
+
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
