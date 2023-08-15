@@ -7,13 +7,14 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestBatchBytes(t *testing.T) {
@@ -88,7 +89,7 @@ func TestBatcherNetwork(t *testing.T) {
 	var batchers []*Batcher
 
 	for i := 0; i < n; i++ {
-		b := createBatcher(t, i)
+		b := createBatcher(t, 0, i)
 		batchers = append(batchers, b)
 	}
 
@@ -108,8 +109,10 @@ func TestBatcherNetwork(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		from := i
-		batchers[i].Send = func(to uint16, msg []byte) {
-			batchers[to].HandleMessage(msg, uint16(from))
+		batchers[i].Send = func(msg []byte) {
+			for i := 0; i < n; i++ {
+				batchers[i].HandleMessage(msg, uint16(from))
+			}
 		}
 	}
 
@@ -167,8 +170,8 @@ func TestBatcherNetwork(t *testing.T) {
 	}
 }
 
-func createBatcher(t *testing.T, i int) *Batcher {
-	sugaredLogger := createLogger(t, i)
+func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
+	sugaredLogger := createLogger(t, nodeID)
 
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
@@ -181,6 +184,21 @@ func createBatcher(t *testing.T, i int) *Batcher {
 	})
 
 	b := &Batcher{
+		Shard: uint16(shardID),
+		AttestationFromBytes: func(bytes []byte) (BatchAttestationFragment, error) {
+			baf := &SimpleBatchAttestationFragment{}
+			err := baf.Deserialize(bytes)
+			return baf, err
+		},
+		AttestBatch: func(seq uint64, primary uint16, shard uint16, digest []byte) BatchAttestationFragment {
+			return &SimpleBatchAttestationFragment{
+				Dig: digest,
+				Sh:  shardID,
+				Si:  nodeID,
+				P:   int(primary),
+				Se:  int(seq),
+			}
+		},
 		Digest: func(data [][]byte) []byte {
 			h := sha256.New()
 			for _, d := range data {
@@ -188,17 +206,14 @@ func createBatcher(t *testing.T, i int) *Batcher {
 			}
 			return h.Sum(nil)
 		},
-		OnCollectAttestations: func(uint642 uint64, _ []byte, m map[uint16][]byte) {},
-		RequestInspector:      requestInspector,
-		Logger:                sugaredLogger,
-		MemPool:               pool,
-		ID:                    uint16(i),
-		Quorum:                2,
-		Sign: func(uint64, []byte) []byte {
-			return nil
-		},
-		confirmedSequences: make(map[uint64]map[uint16][]byte),
-		seq2digest:         make(map[uint64][]byte),
+		OnCollectedAttestation: func(BatchAttestationFragment) {},
+		RequestInspector:       requestInspector,
+		Logger:                 sugaredLogger,
+		MemPool:                pool,
+		ID:                     uint16(nodeID),
+		Quorum:                 2,
+		confirmedSequences:     make(map[uint64]map[uint16]struct{}),
+		seq2digest:             make(map[uint64][]byte),
 	}
 
 	b.Ledger = &noopLedger{}

@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type naiveBatchAttestationReplicator chan BatchAttestation
@@ -40,10 +41,15 @@ func (n *naiveIndex) Retrieve(_ uint16, _ uint16, _ uint64, digest []byte) (Batc
 }
 
 type naiveBatchAttestation struct {
-	seq    uint64
-	node   uint16
-	shard  uint16
-	digest []byte
+	primary uint16
+	seq     uint64
+	node    uint16
+	shard   uint16
+	digest  []byte
+}
+
+func (nba *naiveBatchAttestation) Primary() uint16 {
+	return nba.primary
 }
 
 func (nba *naiveBatchAttestation) Seq() uint64 {
@@ -62,6 +68,10 @@ func (nba *naiveBatchAttestation) Digest() []byte {
 	return nba.digest
 }
 
+func (nba *naiveBatchAttestation) Fragments() []BatchAttestationFragment {
+	return nil
+}
+
 func (nba *naiveBatchAttestation) Serialize() []byte {
 	m := make(map[string]interface{})
 	m["seq"] = nba.seq
@@ -77,7 +87,7 @@ func (nba *naiveBatchAttestation) Serialize() []byte {
 	return bytes
 }
 
-func (nba *naiveBatchAttestation) Deserialize(bytes []byte) {
+func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 	m := make(map[string]interface{})
 	if err := json.Unmarshal(bytes, &m); err != nil {
 		panic(err)
@@ -88,6 +98,7 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) {
 
 	nba.seq = uint64(seq.(float64))
 	nba.digest, _ = hex.DecodeString(dig.(string))
+	return nil
 }
 
 type naiveAssemblerLedger chan BatchAttestation

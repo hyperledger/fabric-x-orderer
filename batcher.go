@@ -85,32 +85,34 @@ type BatchLedger interface {
 }
 
 type Batcher struct {
-	BatchTimeout          time.Duration
-	Digest                func([][]byte) []byte
-	OnCollectAttestations func(uint642 uint64, digest []byte, m map[uint16][]byte)
-	RequestInspector      RequestInspector
-	Primary               uint16
-	ID                    uint16
-	Quorum                int
-	Logger                Logger
-	Ledger                BatchLedger
-	Seq                   uint64
-	ConfirmedSeq          uint64
-	Replicator            BatchReplicator
-	Sign                  func(uint64, []byte) []byte
-	Send                  func(uint16, []byte)
-	MemPool               *request.Pool
+	BatchTimeout           time.Duration
+	Digest                 func([][]byte) []byte
+	OnCollectedAttestation func(BatchAttestationFragment)
+	RequestInspector       RequestInspector
+	Primary                uint16
+	ID                     uint16
+	Shard                  uint16
+	Quorum                 int
+	Logger                 Logger
+	Ledger                 BatchLedger
+	Seq                    uint64
+	ConfirmedSeq           uint64
+	Replicator             BatchReplicator
+	AttestBatch            func(seq uint64, primary uint16, shard uint16, digest []byte) BatchAttestationFragment
+	AttestationFromBytes   func([]byte) (BatchAttestationFragment, error)
+	Send                   func([]byte)
+	MemPool                *request.Pool
 
 	lock               sync.Mutex
 	signal             sync.Cond
-	confirmedSequences map[uint64]map[uint16][]byte
+	confirmedSequences map[uint64]map[uint16]struct{}
 	seq2digest         map[uint64][]byte
 }
 
 func (b *Batcher) Run() {
 	b.signal = sync.Cond{L: &b.lock}
 	b.seq2digest = make(map[uint64][]byte)
-	b.confirmedSequences = make(map[uint64]map[uint16][]byte)
+	b.confirmedSequences = make(map[uint64]map[uint16]struct{})
 	if b.Primary == b.ID {
 		go b.runPrimary()
 		return
@@ -124,11 +126,24 @@ func (b *Batcher) Submit(request []byte) error {
 }
 
 func (b *Batcher) HandleMessage(msg []byte, from uint16) {
-	seq := binary.BigEndian.Uint64(msg[0:8])
-	digest := msg[8 : 8+32]
-	signature := msg[8+32:]
+	baf, err := b.AttestationFromBytes(msg)
+	if err != nil {
+		b.Logger.Warnf("Received badly formatted message from %d: %v", from, err)
+		return
+	}
+
+	seq := baf.Seq()
+	digest := baf.Digest()
 
 	b.Logger.Infof("Received signature on sequence %d and digest %x from %d", seq, digest, from)
+
+	// TODO: deduplicate BAFs of senders
+	b.OnCollectedAttestation(baf)
+
+	// Only the primary performs the remaining code
+	if b.Primary != b.ID {
+		return
+	}
 
 	b.lock.Lock()
 	defer b.lock.Unlock()
@@ -136,7 +151,7 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	confirmedSequence := atomic.LoadUint64(&b.ConfirmedSeq)
 
 	if seq < confirmedSequence {
-		b.Logger.Warnf("Received message on sequence %d but we expect sequence %d to %d", seq, confirmedSequence, confirmedSequence+10)
+		b.Logger.Debugf("Received message on sequence %d but we expect sequence %d to %d", seq, confirmedSequence, confirmedSequence+10)
 		return
 	}
 
@@ -147,7 +162,7 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 
 	_, exists := b.confirmedSequences[seq]
 	if !exists {
-		b.confirmedSequences[seq] = make(map[uint16][]byte, 16)
+		b.confirmedSequences[seq] = make(map[uint16]struct{}, 16)
 	}
 
 	if _, exists := b.confirmedSequences[seq][from]; exists {
@@ -155,7 +170,7 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 		return
 	}
 
-	b.confirmedSequences[seq][from] = signature
+	b.confirmedSequences[seq][from] = struct{}{}
 
 	if storedDigest, exists := b.seq2digest[seq]; !exists {
 		panic(fmt.Sprintf("no digest found for sequence %d, current sequence is %d", seq, b.Seq))
@@ -166,7 +181,6 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	signatureCollectCount := len(b.confirmedSequences[seq])
 	if signatureCollectCount >= b.Quorum {
 		atomic.AddUint64(&b.ConfirmedSeq, 1)
-		b.notifyBatchAttestation(seq, b.seq2digest[seq], b.confirmedSequences[seq])
 		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) signatures", seq, signatureCollectCount)
 		delete(b.seq2digest, seq)
 		delete(b.confirmedSequences, seq)
@@ -181,11 +195,6 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 	confirmedSeq := atomic.LoadUint64(&b.ConfirmedSeq)
 	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.Seq, confirmedSeq)
 	return b.Seq-confirmedSeq < 10
-}
-
-func (b *Batcher) notifyBatchAttestation(seq uint64, digest []byte, m map[uint16][]byte) {
-	b.Logger.Infof("Collected %d signatures on %d", len(m), seq)
-	b.OnCollectAttestations(seq, digest, m)
 }
 
 func (b *Batcher) runPrimary() {
@@ -213,13 +222,13 @@ func (b *Batcher) runPrimary() {
 			break
 		}
 
-		σ := b.Sign(b.Seq, digest)
+		baf := b.AttestBatch(b.Seq, b.Primary, b.Shard, digest)
 
 		b.lock.Lock()
 		b.seq2digest[b.Seq] = digest
 		b.lock.Unlock()
 
-		b.send(b.Primary, b.Seq, σ, digest)
+		b.send(b.Seq, baf.Serialize(), digest)
 
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 		b.Seq++
@@ -267,27 +276,14 @@ func (b *Batcher) waitForSecondaries() {
 	b.lock.Unlock()
 }
 
-func (b *Batcher) send(to uint16, seq uint64, msg []byte, digest []byte) {
+func (b *Batcher) send(seq uint64, msg []byte, digest []byte) {
 	if len(digest) != 32 {
 		panic(fmt.Sprintf("programming error: tried to send digest of size %d", len(digest)))
 	}
-	rawMsg := make([]byte, 8+len(msg)+len(digest))
-	binary.BigEndian.PutUint64(rawMsg[0:8], seq)
-	copy(rawMsg[8:], digest)
-	copy(rawMsg[8+32:], msg)
 
-	b.Logger.Infof("Sending to %d signature on %d with digest %x", to, seq, digest)
+	b.Logger.Infof("Sending signature on %d with digest %x", seq, digest)
 
-	if to != b.ID {
-		b.Send(to, rawMsg)
-		return
-	}
-
-	if b.Primary != b.ID {
-		panic("should not send to yourself if you're not a primary")
-	}
-
-	b.HandleMessage(rawMsg, b.ID)
+	b.Send(msg)
 }
 
 func (b *Batcher) runSecondary() {
@@ -302,8 +298,8 @@ func (b *Batcher) runSecondary() {
 		batch := requests.ToBytes()
 		b.Ledger.Append(b.Primary, b.Seq, batch)
 		b.removeRequests(requests)
-		σ := b.Sign(b.Seq, batch)
-		b.send(b.Primary, b.Seq, σ, b.Digest(requests))
+		baf := b.AttestBatch(b.Seq, b.Primary, b.Shard, b.Digest(requests))
+		b.send(b.Seq, baf.Serialize(), b.Digest(requests))
 		b.Seq++
 	}
 }

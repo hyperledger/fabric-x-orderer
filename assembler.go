@@ -7,12 +7,23 @@ import (
 )
 
 type BatchAttestation interface {
+	Fragments() []BatchAttestationFragment
+	Digest() []byte
 	Seq() uint64
-	Party() uint16
+	Primary() uint16
+	Shard() uint16
+	Serialize() []byte
+	Deserialize([]byte) error
+}
+
+type BatchAttestationFragment interface {
+	Seq() uint64
+	Primary() uint16
+	Signer() uint16
 	Shard() uint16
 	Digest() []byte
 	Serialize() []byte
-	Deserialize([]byte)
+	Deserialize([]byte) error
 }
 
 type AssemblerIndex interface {
@@ -84,7 +95,7 @@ func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
 
 	for {
 		t1 := time.Now()
-		batch, retrieved := a.Index.Retrieve(ba.Party(), ba.Shard(), ba.Seq(), ba.Digest())
+		batch, retrieved := a.Index.Retrieve(ba.Primary(), ba.Shard(), ba.Seq(), ba.Digest())
 		if !retrieved {
 			a.signal.Wait()
 			continue

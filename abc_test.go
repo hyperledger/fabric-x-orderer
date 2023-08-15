@@ -3,12 +3,13 @@ package arma
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type naiveConsensusLedger chan []byte
@@ -110,13 +111,13 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	var batchers []*Batcher
 
-	for i := 0; i < shardCount; i++ {
-		batcher := createBatcher(t, i)
+	for shardID := 0; shardID < shardCount; shardID++ {
+		batcher := createBatcher(t, shardID, 0)
 		batcher.Logger = logger
-		batcher.OnCollectAttestations = func(seq uint64, digest []byte, m map[uint16][]byte) {
+		batcher.OnCollectedAttestation = func(baf BatchAttestationFragment) {
 			ba := &naiveBatchAttestation{
-				digest: digest,
-				seq:    seq,
+				digest: baf.Digest(),
+				seq:    baf.Seq(),
 			}
 			consenter.Submit(ba)
 		}
@@ -129,9 +130,15 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			shardID: uint16(i),
 			sr:      replicator,
 		}
+		from := i
+		batcher := batchers[i]
+		batchers[i].Send = func(msg []byte) {
+			batcher.HandleMessage(msg, uint16(from))
+		}
 		batchers[i].Ledger = sc
 		batchers[i].Replicator = nil
 		batchers[i].Primary = uint16(i)
+		batchers[i].ID = uint16(i)
 		batchers[i].Run()
 	}
 
