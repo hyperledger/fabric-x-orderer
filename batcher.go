@@ -102,6 +102,10 @@ type Batcher struct {
 	AttestationFromBytes   func([]byte) (BatchAttestationFragment, error)
 	Send                   func([]byte)
 	MemPool                *request.Pool
+	running                sync.WaitGroup
+	stopChan               chan struct{}
+	stopCtx                context.Context
+	cancelBatch            func()
 
 	lock               sync.Mutex
 	signal             sync.Cond
@@ -110,6 +114,9 @@ type Batcher struct {
 }
 
 func (b *Batcher) Run() {
+	b.running.Add(1)
+	b.stopChan = make(chan struct{})
+	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.signal = sync.Cond{L: &b.lock}
 	b.seq2digest = make(map[uint64][]byte)
 	b.confirmedSequences = make(map[uint64]map[uint16]struct{})
@@ -121,8 +128,19 @@ func (b *Batcher) Run() {
 	go b.runSecondary()
 }
 
+func (b *Batcher) Stop() {
+	close(b.stopChan)
+	b.cancelBatch()
+	b.MemPool.Stop()
+	b.running.Wait()
+}
+
 func (b *Batcher) Submit(request []byte) error {
 	return b.MemPool.Submit(request)
+}
+
+func (b *Batcher) Mem() <-chan []byte {
+	return b.MemPool.Mem()
 }
 
 func (b *Batcher) HandleMessage(msg []byte, from uint16) {
@@ -198,6 +216,7 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 }
 
 func (b *Batcher) runPrimary() {
+	defer b.running.Done()
 	b.Logger.Infof("Acting as primary")
 	b.MemPool.SetBatching(true)
 
@@ -210,8 +229,14 @@ func (b *Batcher) runPrimary() {
 	for {
 		var serializedBatch []byte
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), b.BatchTimeout)
+			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
 			currentBatch = b.MemPool.NextRequests(ctx)
+			select {
+			case <-b.stopChan:
+				return
+			default:
+
+			}
 			if len(currentBatch) == 0 {
 				continue
 			}
@@ -287,10 +312,17 @@ func (b *Batcher) send(seq uint64, msg []byte, digest []byte) {
 }
 
 func (b *Batcher) runSecondary() {
+	defer b.running.Done()
 	b.Logger.Infof("Acting as secondary")
 	out := b.Replicator.Replicate(b.Primary, b.Seq)
 	for {
-		batchedRequests := <-out
+		var batchedRequests Batch
+		select {
+		case batchedRequests = <-out:
+		case <-b.stopChan:
+			return
+		}
+
 		requests := batchedRequests.Requests()
 		if len(requests) == 0 {
 			panic("programming error: replicated an empty batch")

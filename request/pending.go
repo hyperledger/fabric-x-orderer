@@ -32,6 +32,8 @@ type PendingStore struct {
 	processed             sync.Map
 	currentBucket         atomic.Value
 	buckets               []*bucket
+	running               sync.WaitGroup
+	closeChan             chan struct{}
 }
 
 func (ps *PendingStore) Init() {
@@ -40,15 +42,36 @@ func (ps *PendingStore) Init() {
 	ps.lastTick.Store(ps.StartTime)
 }
 
-func (ps *PendingStore) Restart() {
+func (ps *PendingStore) Stop() {
+	select {
+	case <-ps.closeChan:
+		return
+	default:
+		close(ps.closeChan)
+	}
+
+	ps.running.Wait()
+}
+
+func (ps *PendingStore) Start() {
+	ps.closeChan = make(chan struct{})
+	ps.running.Add(1)
 	go ps.changeEpochs()
 }
 
 func (ps *PendingStore) changeEpochs() {
+	defer ps.running.Done()
+
 	lastEpochChange := ps.StartTime
 	lastProcessedGC := ps.StartTime
 	for {
-		now := <-ps.Time
+		var now time.Time
+		select {
+		case now = <-ps.Time:
+		case <-ps.closeChan:
+			return
+		}
+
 		ps.lastTick.Store(now)
 		if now.Sub(lastEpochChange) <= ps.Epoch {
 			continue

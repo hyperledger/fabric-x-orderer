@@ -89,11 +89,6 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	totalOrder := make(naiveTotalOrder, 1000)
 
 	consenter := &Consenter{
-		BatchAttestationFromBytes: func(bytes []byte) BatchAttestation {
-			nba := &naiveBatchAttestation{}
-			nba.Deserialize(bytes)
-			return nba
-		},
 		ConsensusLedger: consenterLedger,
 		Logger:          logger,
 		TotalOrder:      totalOrder,

@@ -10,11 +10,10 @@ type ConsensusLedger interface {
 }
 
 type Consenter struct {
-	Seq                       uint64
-	ConsensusLedger           ConsensusLedger
-	Logger                    Logger
-	TotalOrder                TotalOrder
-	BatchAttestationFromBytes func([]byte) BatchAttestation
+	Seq             uint64
+	ConsensusLedger ConsensusLedger
+	Logger          Logger
+	TotalOrder      TotalOrder
 }
 
 func (c *Consenter) Run() {

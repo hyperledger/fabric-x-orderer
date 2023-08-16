@@ -111,6 +111,7 @@ type PoolOptions struct {
 	SubmitTimeout         time.Duration
 	AutoRemoveTimeout     time.Duration
 	OnFirstStrikeTimeout  func([]byte)
+	SecondStrikeCallback  func()
 	FirstStrikeThreshold  time.Duration
 	SecondStrikeThreshold time.Duration
 }
@@ -139,7 +140,7 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 		Semaphore:             semaphore.NewWeighted(int64(options.MaxSize)),
 		Epoch:                 time.Second,
 		FirstStrikeCallback:   func([]byte) {},
-		SecondStrikeCallback:  func() {},
+		SecondStrikeCallback:  options.SecondStrikeCallback,
 	}
 
 	if options.OnFirstStrikeTimeout != nil {
@@ -147,7 +148,7 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 	}
 
 	ps.Init()
-	ps.Restart()
+	ps.Start()
 
 	rp := &Pool{
 		pending:   ps,
@@ -164,6 +165,10 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 	return rp
 }
 
+func (rp *Pool) Stop() {
+	rp.pending.Stop()
+}
+
 func (rp *Pool) SetBatching(enabled bool) {
 	rp.batchStore.SetBatching(enabled)
 	if enabled {
@@ -171,6 +176,23 @@ func (rp *Pool) SetBatching(enabled bool) {
 	} else {
 		atomic.StoreUint32(&rp.batchingEnabled, 0)
 	}
+}
+
+func (rp *Pool) Mem() <-chan []byte {
+	requests := make(chan []byte, rp.options.MaxSize)
+
+	if atomic.LoadUint32(&rp.batchingEnabled) == 0 {
+		for i := len(rp.pending.buckets) - 1; i >= 0; i-- {
+			rp.pending.buckets[i].requests.Range(func(_, req interface{}) bool {
+				requests <- req.([]byte)
+				return true
+			})
+		}
+	} else {
+		// TODO: implement primary --> secondary logic. For now, we crash the primary in tests
+	}
+
+	return requests
 }
 
 func (rp *Pool) isClosed() bool {

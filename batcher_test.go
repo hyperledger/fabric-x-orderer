@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -86,39 +87,7 @@ func (nb *naiveBatch) Requests() BatchedRequests {
 func TestBatcherNetwork(t *testing.T) {
 	n := 3
 
-	var batchers []*Batcher
-
-	for i := 0; i < n; i++ {
-		b := createBatcher(t, 0, i)
-		batchers = append(batchers, b)
-	}
-
-	r := &naiveReplication{}
-
-	for i := 1; i < n; i++ {
-		r.subscribers = append(r.subscribers, make(chan Batch, 100))
-	}
-
-	r.subscribers = append(r.subscribers, make(chan Batch, 100))
-	commit := r.Replicate(0, 0)
-
-	batchers[0].Ledger = r
-	for i := 1; i < n; i++ {
-		batchers[i].Replicator = r
-	}
-
-	for i := 0; i < n; i++ {
-		from := i
-		batchers[i].Send = func(msg []byte) {
-			for i := 0; i < n; i++ {
-				batchers[i].HandleMessage(msg, uint16(from))
-			}
-		}
-	}
-
-	for i := 0; i < n; i++ {
-		batchers[i].Run()
-	}
+	batchers, commit := createBatchers(t, n)
 
 	go func() {
 		for worker := 0; worker < 100; worker++ {
@@ -168,6 +137,104 @@ func TestBatcherNetwork(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestBatchersStopSecondaries(t *testing.T) {
+	n := 3
+
+	var stopped sync.WaitGroup
+	stopped.Add(n)
+
+	batchers, _ := createBatchers(t, n)
+	for _, b := range batchers {
+		b := b
+		b.Primary = 99 // No one is primary
+		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
+			FirstStrikeThreshold:  time.Second * 1,
+			SecondStrikeThreshold: time.Second * 5,
+			BatchMaxSize:          10000,
+			MaxSize:               1000 * 100,
+			AutoRemoveTimeout:     time.Minute / 2,
+			SubmitTimeout:         time.Second * 10,
+			OnFirstStrikeTimeout:  func([]byte) {},
+			SecondStrikeCallback: func() {
+				go func() {
+					fmt.Println("Stopping batcher", b.ID)
+					defer stopped.Done()
+					b.Stop()
+				}()
+			},
+		})
+		b.MemPool.Stop()
+		b.MemPool = pool
+	}
+
+	var submits sync.WaitGroup
+	submits.Add(100)
+
+	go func() {
+		for worker := 0; worker < 100; worker++ {
+			go func(worker uint64) {
+				defer submits.Done()
+				var i int
+				for j := 0; j < 100; j++ {
+					req := make([]byte, 512)
+					binary.BigEndian.PutUint64(req, uint64(i))
+					i++
+					binary.BigEndian.PutUint64(req[500:], worker)
+					for node := 0; node < n; node++ {
+						batchers[node].Submit(req)
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}(uint64(worker))
+		}
+	}()
+
+	submits.Wait()
+	stopped.Wait()
+
+	buf := make([]byte, 1024*10)
+	runtime.Stack(buf, true)
+	fmt.Println(string(buf))
+
+}
+
+func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
+	var batchers []*Batcher
+
+	for i := 0; i < n; i++ {
+		b := createBatcher(t, 0, i)
+		batchers = append(batchers, b)
+	}
+
+	r := &naiveReplication{}
+
+	for i := 1; i < n; i++ {
+		r.subscribers = append(r.subscribers, make(chan Batch, 100))
+	}
+
+	r.subscribers = append(r.subscribers, make(chan Batch, 100))
+	commit := r.Replicate(0, 0)
+
+	batchers[0].Ledger = r
+	for i := 1; i < n; i++ {
+		batchers[i].Replicator = r
+	}
+
+	for i := 0; i < n; i++ {
+		from := i
+		batchers[i].Send = func(msg []byte) {
+			for i := 0; i < n; i++ {
+				batchers[i].HandleMessage(msg, uint16(from))
+			}
+		}
+	}
+
+	for i := 0; i < n; i++ {
+		batchers[i].Run()
+	}
+	return batchers, commit
 }
 
 func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
