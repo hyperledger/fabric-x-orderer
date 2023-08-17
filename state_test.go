@@ -22,3 +22,21 @@ func TestStateSerializeDeserialize(t *testing.T) {
 
 	assert.Equal(t, s, s2)
 }
+
+func TestComplaintSerialization(t *testing.T) {
+	c := Complaint{
+		ShardTerm: ShardTerm{
+			Shard: 1,
+			Term:  2,
+		},
+		Signer:    3,
+		Signature: []byte{4},
+	}
+
+	var c2 Complaint
+
+	err := c2.FromBytes(c.Bytes())
+	assert.NoError(t, err)
+
+	assert.Equal(t, c, c2)
+}

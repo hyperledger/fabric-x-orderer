@@ -48,16 +48,16 @@ type naiveBatchAttestation struct {
 	digest  []byte
 }
 
+func (nba *naiveBatchAttestation) Signer() uint16 {
+	return nba.node
+}
+
 func (nba *naiveBatchAttestation) Primary() uint16 {
 	return nba.primary
 }
 
 func (nba *naiveBatchAttestation) Seq() uint64 {
 	return nba.seq
-}
-
-func (nba *naiveBatchAttestation) Party() uint16 {
-	return nba.node
 }
 
 func (nba *naiveBatchAttestation) Shard() uint16 {

@@ -10,7 +10,7 @@ import (
 type Rule func(*State, Logger, ...ControlEvent)
 
 var Rules = []Rule{
-	CollectAndDeduplicateBatchAttestations,
+	CollectAndDeduplicateEvents,
 	DetectEquivocation,
 	PrimaryRotateDueToComplaints,
 }
@@ -29,7 +29,14 @@ type State struct {
 	ShardCount uint16
 	Shards     []ShardTerm
 	Pending    []BatchAttestationFragment
-	Aborted    []BatchAttestationFragment
+	Complaints []Complaint
+}
+
+type RawState struct {
+	Config     []byte
+	Shards     []byte
+	Pending    []byte
+	Complaints []byte
 }
 
 func (s *State) Serialize() []byte {
@@ -38,28 +45,55 @@ func (s *State) Serialize() []byte {
 		panic(fmt.Sprintf("shard count is %d but detected %d shards", s.ShardCount, len(s.Shards)))
 	}
 
-	fragmentBuffBytes := fragmentsToBytes(s.Pending)
-	abortedBuffBytes := fragmentsToBytes(s.Aborted)
+	rawState := RawState{
+		Complaints: complaintsToBytes(s.Complaints),
+		Pending:    fragmentsToBytes(s.Pending),
+		Shards:     shardsToBytes(s.Shards),
+		Config:     s.configToBytes(),
+	}
 
-	buff := make([]byte, len(abortedBuffBytes)+len(fragmentBuffBytes)+2+2+2+2+len(s.Shards)*(2+8))
+	buff, err := asn1.Marshal(rawState)
+	if err != nil {
+		panic(err)
+	}
+
+	return buff
+}
+
+func (s *State) configToBytes() []byte {
+	buff := make([]byte, 2*4)
 	binary.BigEndian.PutUint16(buff, s.N)
 	binary.BigEndian.PutUint16(buff[2:], s.Quorum)
 	binary.BigEndian.PutUint16(buff[4:], s.Threshold)
 	binary.BigEndian.PutUint16(buff[6:], s.ShardCount)
-	pos := 8
-	for _, shard := range s.Shards {
+	return buff
+}
+
+func shardsToBytes(shards []ShardTerm) []byte {
+	buff := make([]byte, len(shards)*(2+8))
+
+	var pos int
+	for _, shard := range shards {
 		binary.BigEndian.PutUint16(buff[pos:], shard.Shard)
 		pos += 2
 		binary.BigEndian.PutUint64(buff[pos:], shard.Term)
 		pos += 8
 	}
-
-	copy(buff[pos:], fragmentBuffBytes)
-	pos = len(fragmentBuffBytes)
-
-	copy(buff[pos:], abortedBuffBytes)
-
 	return buff
+}
+
+func complaintsToBytes(complaints []Complaint) []byte {
+	cBuff := bytes.Buffer{}
+	for _, c := range complaints {
+		cBytes := c.Bytes()
+		cByteLenBuff := make([]byte, 4)
+		binary.BigEndian.PutUint32(cByteLenBuff, uint32(len(cBytes)))
+		cBuff.Write(cByteLenBuff)
+		cBuff.Write(cBytes)
+	}
+
+	cBuffBytes := cBuff.Bytes()
+	return cBuffBytes
 }
 
 func fragmentsToBytes(fragments []BatchAttestationFragment) []byte {
@@ -76,44 +110,120 @@ func fragmentsToBytes(fragments []BatchAttestationFragment) []byte {
 	return fragmentBuffBytes
 }
 
-func (s *State) DeSerialize(buff []byte, fragmentFromBytes func([]byte) BatchAttestationFragment) {
+func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) BatchAttestationFragment) error {
 	s.Pending = nil
 	s.Shards = nil
+	s.Complaints = nil
 
-	s.N = binary.BigEndian.Uint16(buff[0:2])
-	s.Quorum = binary.BigEndian.Uint16(buff[2:4])
-	s.Threshold = binary.BigEndian.Uint16(buff[4:6])
-	s.ShardCount = binary.BigEndian.Uint16(buff[6:8])
-
-	pos := 8
-	shards := make([]ShardTerm, int(s.ShardCount))
-	for i := 0; i < int(s.ShardCount); i++ {
-		shards[i] = ShardTerm{
-			Shard: binary.BigEndian.Uint16(buff[pos:]),
-			Term:  binary.BigEndian.Uint64(buff[pos+2:]),
-		}
-		pos += 10
+	var rs RawState
+	if _, err := asn1.Unmarshal(rawBytes, &rs); err != nil {
+		return err
 	}
 
-	s.Shards = shards
+	s.loadConfig(rs.Config)
+	s.loadShards(rs.Shards, int(s.ShardCount))
+	s.loadPending(rs.Pending, fragmentFromBytes)
+	if err := s.loadComplaints(rs.Complaints); err != nil {
+		return fmt.Errorf("failed loading complaints: %v", err)
+	}
 
-	var fragments []BatchAttestationFragment
+	return nil
+}
 
+func (s *State) loadPending(buff []byte, fragmentFromBytes func([]byte) BatchAttestationFragment) {
+	var pending []BatchAttestationFragment
+
+	var pos int
 	for pos < len(buff) {
 		lengthOfBAF := binary.BigEndian.Uint32(buff[pos:])
 		pos += 4
 		bafBytes := make([]byte, lengthOfBAF)
 		copy(bafBytes, buff[pos:])
 		pos += int(lengthOfBAF)
-		fragments = append(fragments, fragmentFromBytes(bafBytes))
+		pending = append(pending, fragmentFromBytes(bafBytes))
 	}
 
-	s.Pending = fragments
+	s.Pending = pending
+}
+
+func (s *State) loadComplaints(buff []byte) error {
+	var complaints []Complaint
+
+	var pos int
+	for pos < len(buff) {
+		lengthOfComplaint := binary.BigEndian.Uint32(buff[pos:])
+		pos += 4
+		rawComplaint := make([]byte, lengthOfComplaint)
+		copy(rawComplaint, buff[pos:])
+		pos += int(lengthOfComplaint)
+
+		var c Complaint
+		if err := c.FromBytes(rawComplaint); err != nil {
+			return err
+		}
+
+		complaints = append(complaints, c)
+	}
+
+	s.Complaints = complaints
+	return nil
+}
+
+func (s *State) loadShards(rawBytes []byte, count int) {
+	var pos int
+	shards := make([]ShardTerm, int(s.ShardCount))
+	for i := 0; i < count; i++ {
+		shards[i] = ShardTerm{
+			Shard: binary.BigEndian.Uint16(rawBytes[pos:]),
+			Term:  binary.BigEndian.Uint64(rawBytes[pos+2:]),
+		}
+		pos += 10
+	}
+
+	s.Shards = shards
+}
+
+func (s *State) loadConfig(buff []byte) {
+	s.N = binary.BigEndian.Uint16(buff[0:2])
+	s.Quorum = binary.BigEndian.Uint16(buff[2:4])
+	s.Threshold = binary.BigEndian.Uint16(buff[4:6])
+	s.ShardCount = binary.BigEndian.Uint16(buff[6:8])
 }
 
 type ShardTerm struct {
 	Shard uint16
 	Term  uint64
+}
+
+type Complaint struct {
+	ShardTerm
+	Signer    uint16
+	Signature []byte
+}
+
+func (c *Complaint) Bytes() []byte {
+	buff := make([]byte, 12+len(c.Signature))
+	var pos int
+	binary.BigEndian.PutUint16(buff, c.Shard)
+	pos += 2
+	binary.BigEndian.PutUint64(buff[pos:], c.Term)
+	pos += 8
+	binary.BigEndian.PutUint16(buff[pos:], c.Signer)
+	pos += 2
+	copy(buff[pos:], c.Signature)
+	return buff
+}
+
+func (c *Complaint) FromBytes(bytes []byte) error {
+	if len(bytes) <= 12 {
+		return fmt.Errorf("input too small (%d < 12)", len(bytes))
+	}
+
+	c.Shard = binary.BigEndian.Uint16(bytes)
+	c.Term = binary.BigEndian.Uint64(bytes[2:])
+	c.Signer = binary.BigEndian.Uint16(bytes[10:])
+	c.Signature = bytes[12:]
+	return nil
 }
 
 type AntiBatchAttestationFragment struct {
@@ -127,7 +237,7 @@ type AntiBatchAttestationFragment struct {
 type ControlEvent struct {
 	BAF       BatchAttestationFragment
 	AntiBAF   *AntiBatchAttestationFragment
-	Complaint *ShardTerm
+	Complaint *Complaint
 }
 
 func (s *State) Process(l Logger, ces ...ControlEvent) ([]byte, []BatchAttestationFragment) {
@@ -155,61 +265,102 @@ func (s *State) Init(rawBytes []byte) error {
 	return nil
 }
 
-func PrimaryRotateDueToComplaints(s *State, l Logger, ces ...ControlEvent) {
-	for _, ce := range ces {
-		if ce.Complaint == nil {
-			return
-		}
+func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
+	complaints := make(map[ShardTerm]int)
 
-		if len(s.Shards) <= int(ce.Complaint.Shard) {
-			l.Errorf("Got complaint for shard %d but only have %d shards, ignoring complaint", ce.Complaint.Shard, len(s.Shards))
+	for _, complaint := range s.Complaints {
+
+		if len(s.Shards) <= int(complaint.Shard) {
+			l.Errorf("Got complaint for shard %d but only have %d shards, ignoring complaint", complaint.Shard, len(s.Shards))
 			continue
 		}
 
-		term := s.Shards[ce.Complaint.Shard].Term
-		if term != ce.Complaint.Term {
-			l.Infof("Got complaint for shard %d in term %d but shard is at term %d", ce.Complaint.Shard, ce.Complaint.Term, term)
+		term := s.Shards[complaint.Shard].Term
+		if term != complaint.Term {
+			l.Infof("Got complaint for shard %d in term %d but shard is at term %d", complaint.Shard, complaint.Term, term)
 			continue
 		}
 
-		oldTerm := s.Shards[ce.Complaint.Shard].Term
-		oldPrimary := uint16(oldTerm % uint64(s.N))
+		complaints[complaint.ShardTerm]++
 
-		s.Shards[ce.Complaint.Shard].Term++
-
-		newTerm := s.Shards[ce.Complaint.Shard].Term
-		newPrimary := uint16(newTerm % uint64(s.N))
-
-		l.Infof("Shard %d advanced from term %d to term %d, and the primary switched from %d to %d",
-			ce.Complaint.Shard, oldTerm, newTerm, oldPrimary, newPrimary)
 	}
+
+	var newComplaints []Complaint
+
+	for _, complaint := range s.Complaints {
+
+		if complaints[complaint.ShardTerm] > int(s.Quorum) {
+
+			oldTerm := s.Shards[complaint.Shard].Term
+			oldPrimary := uint16(oldTerm % uint64(s.N))
+
+			s.Shards[complaint.Shard].Term++
+
+			newTerm := s.Shards[complaint.Shard].Term
+			newPrimary := uint16(newTerm % uint64(s.N))
+
+			l.Infof("Shard %d advanced from term %d to term %d, and the primary switched from %d to %d",
+				complaint.Shard, oldTerm, newTerm, oldPrimary, newPrimary)
+		} else {
+			newComplaints = append(newComplaints, complaint)
+		}
+	}
+
+	s.Complaints = newComplaints
+
 }
 
-func CollectAndDeduplicateBatchAttestations(s *State, l Logger, ces ...ControlEvent) {
+func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
 	shardsAndSequences := make(map[batchAttestationVote]struct{}, len(s.Pending))
+	complaints := make(map[ShardTerm]map[uint16]struct{})
 
 	for _, baf := range s.Pending {
 		shardsAndSequences[batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary(), signer: baf.Signer()}] = struct{}{}
 	}
 
+	for _, complaint := range s.Complaints {
+		if _, exists := complaints[complaint.ShardTerm]; !exists {
+			complaints[complaint.ShardTerm] = make(map[uint16]struct{})
+		}
+		complaints[complaint.ShardTerm][complaint.Signer] = struct{}{}
+	}
+
 	for _, ce := range ces {
-		if ce.BAF == nil {
+		if ce.BAF == nil && ce.Complaint == nil {
 			continue
 		}
 
-		shard := ce.BAF.Shard()
-		if len(s.Shards) <= int(shard) {
-			l.Warnf("Got Batch Attestation Fragment for shard %d but only have %d shards, ignoring it", ce.Complaint.Shard, len(s.Shards))
-			continue
+		if ce.BAF != nil {
+			shard := ce.BAF.Shard()
+			if len(s.Shards) <= int(shard) {
+				l.Warnf("Got Batch Attestation Fragment for shard %d but only have %d shards, ignoring it", ce.BAF.Shard, len(s.Shards))
+				continue
+			}
+
+			if _, exists := shardsAndSequences[batchAttestationVote{seq: ce.BAF.Seq(), shard: ce.BAF.Shard(), primary: ce.BAF.Primary(), signer: ce.BAF.Signer()}]; exists {
+				l.Warnf("Node %d already signed Batch Attestation Fragment for sequence %d from primary %d in shard %d",
+					ce.BAF.Signer(), ce.BAF.Seq(), ce.BAF.Primary(), ce.BAF.Shard())
+				continue
+			}
+
+			s.Pending = append(s.Pending, ce.BAF)
 		}
 
-		if _, exists := shardsAndSequences[batchAttestationVote{seq: ce.BAF.Seq(), shard: ce.BAF.Shard(), primary: ce.BAF.Primary(), signer: ce.BAF.Signer()}]; exists {
-			l.Warnf("Node %d already signed Batch Attestation Fragment for sequence %d from primary %d in shard %d",
-				ce.BAF.Signer(), ce.BAF.Seq(), ce.BAF.Primary(), ce.BAF.Shard())
-			continue
-		}
+		if ce.Complaint != nil {
+			shard := ce.Complaint.Shard
+			if len(s.Shards) <= int(shard) {
+				l.Warnf("Got complaint for shard %d but only have %d shards, ignoring it", ce.Complaint.Shard, len(s.Shards))
+				continue
+			}
 
-		s.Pending = append(s.Pending, ce.BAF)
+			if complainers, exists := complaints[ce.Complaint.ShardTerm]; exists {
+				if _, exists := complainers[ce.Complaint.Signer]; exists {
+					l.Warnf("Node %d already signed complaint for shard %d and term %d", ce.Complaint.Shard, ce.Complaint.Term)
+					continue
+				}
+			}
+			s.Complaints = append(s.Complaints, *ce.Complaint)
+		}
 	}
 }
 
