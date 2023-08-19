@@ -11,8 +11,8 @@ type Rule func(*State, Logger, ...ControlEvent)
 
 var Rules = []Rule{
 	CollectAndDeduplicateEvents,
-	DetectEquivocation,
-	PrimaryRotateDueToComplaints,
+	//DetectEquivocation, // TODO: false positive, lets find out why
+	//PrimaryRotateDueToComplaints, // TODO: too early
 }
 
 type batchAttestationVote struct {
@@ -240,29 +240,66 @@ type ControlEvent struct {
 	Complaint *Complaint
 }
 
-func (s *State) Process(l Logger, ces ...ControlEvent) ([]byte, []BatchAttestationFragment) {
+func (ce *ControlEvent) Bytes() []byte {
+	var bytes []byte
+	switch {
+	case ce.BAF != nil:
+		rawBAF := ce.BAF.Serialize()
+		bytes = make([]byte, len(rawBAF)+1)
+		bytes[0] = 1
+		copy(bytes[1:], rawBAF)
+	case ce.AntiBAF != nil:
+		panic("not supported yet")
+	case ce.Complaint != nil:
+		rawComplaint := ce.Complaint.Bytes()
+		bytes = make([]byte, len(rawComplaint)+1)
+		bytes[0] = 2
+		copy(bytes[1:], rawComplaint)
+	default:
+		panic("empty control event")
+	}
+
+	return bytes
+}
+
+func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (BatchAttestationFragment, error)) error {
+	var err error
+	switch b := bytes[0]; b {
+	case 1:
+		ce.BAF, err = fragmentFromBytes(bytes[1:])
+		return err
+	case 2:
+		ce.Complaint = &Complaint{}
+		return ce.Complaint.FromBytes(bytes[1:])
+	}
+
+	return fmt.Errorf("unknown prefix (%d)", bytes[0])
+}
+
+func (s *State) Process(l Logger, ces ...ControlEvent) (State, []BatchAttestationFragment) {
+
+	s2 := s.Clone()
 
 	for _, rule := range Rules {
-		rule(s, l, ces...)
+		rule(&s2, l, ces...)
 	}
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
-	extracted := ExtractBatchAttestationsFromPending(s, l)
+	extracted := ExtractBatchAttestationsFromPending(&s2, l)
 
-	return s.Serialize(), extracted
+	return s2, extracted
 }
 
-func (s *State) Init(rawBytes []byte) error {
-	rest, err := asn1.Unmarshal(rawBytes, s)
-	if len(rest) == 0 {
-		return fmt.Errorf("found trailing bytes (%x)", rest)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed parsing raw state (%x): %v", rawBytes, err)
-	}
-
-	return nil
+func (s *State) Clone() State {
+	var s2 State
+	s2 = *s
+	s2.Shards = make([]ShardTerm, len(s.Shards))
+	s2.Pending = make([]BatchAttestationFragment, len(s.Pending))
+	s2.Complaints = make([]Complaint, len(s.Complaints))
+	copy(s2.Shards, s.Shards)
+	copy(s2.Pending, s.Pending)
+	copy(s2.Complaints, s.Complaints)
+	return s2
 }
 
 func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
@@ -270,7 +307,7 @@ func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
 
 	for _, complaint := range s.Complaints {
 
-		if len(s.Shards) <= int(complaint.Shard) {
+		if len(s.Shards) < int(complaint.Shard) {
 			l.Errorf("Got complaint for shard %d but only have %d shards, ignoring complaint", complaint.Shard, len(s.Shards))
 			continue
 		}
@@ -332,8 +369,8 @@ func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
 
 		if ce.BAF != nil {
 			shard := ce.BAF.Shard()
-			if len(s.Shards) <= int(shard) {
-				l.Warnf("Got Batch Attestation Fragment for shard %d but only have %d shards, ignoring it", ce.BAF.Shard, len(s.Shards))
+			if len(s.Shards) < int(shard) {
+				l.Warnf("Got Batch Attestation Fragment for shard %d but only have %d shards, ignoring it", ce.BAF.Shard(), len(s.Shards))
 				continue
 			}
 
@@ -432,13 +469,12 @@ func ExtractBatchAttestationsFromPending(s *State, l Logger) []BatchAttestationF
 	for batchAttestation, digest2signers := range m {
 		var foundThreshold bool
 
-		var totalSigners int
+		l.Debugf("A total of %d digests where found for seq %d in shard %d with primary %d", len(digest2signers), batchAttestation.seq, batchAttestation.shard, batchAttestation.primary)
 
 		for _, signers := range digest2signers {
-			totalSigners += len(signers)
 			if len(signers) >= int(s.Threshold) {
 				foundThreshold = true
-				l.Infof("Found threshold (%d > %d) of batch attestation fragments for shard %d, seq %d", len(signers), s.Threshold, batchAttestation.shard, batchAttestation.seq)
+				l.Infof("Found threshold (%d > %d) of batch attestation fragments for shard %d, seq %d", len(signers), s.Threshold-1, batchAttestation.shard, batchAttestation.seq)
 				break
 			}
 		}

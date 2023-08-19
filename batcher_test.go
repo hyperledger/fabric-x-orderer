@@ -278,7 +278,7 @@ func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
 		Logger:                 sugaredLogger,
 		MemPool:                pool,
 		ID:                     uint16(nodeID),
-		Quorum:                 2,
+		Threshold:              2,
 		confirmedSequences:     make(map[uint64]map[uint16]struct{}),
 		seq2digest:             make(map[uint64][]byte),
 	}

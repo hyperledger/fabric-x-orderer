@@ -89,7 +89,7 @@ func (b *SimpleBatchAttestation) Serialize() []byte {
 		panic("empty batch attestation")
 	}
 
-	bytes, err := asn1.Marshal(b)
+	bytes, err := asn1.Marshal(*b)
 	if err != nil {
 		panic(err)
 	}

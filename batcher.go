@@ -92,7 +92,7 @@ type Batcher struct {
 	Primary                uint16
 	ID                     uint16
 	Shard                  uint16
-	Quorum                 int
+	Threshold              int
 	Logger                 Logger
 	Ledger                 BatchLedger
 	Seq                    uint64
@@ -197,14 +197,14 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	}
 
 	signatureCollectCount := len(b.confirmedSequences[seq])
-	if signatureCollectCount >= b.Quorum {
+	if signatureCollectCount >= b.Threshold {
 		atomic.AddUint64(&b.ConfirmedSeq, 1)
 		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) signatures", seq, signatureCollectCount)
 		delete(b.seq2digest, seq)
 		delete(b.confirmedSequences, seq)
 		b.signal.Broadcast()
 	} else {
-		b.Logger.Infof("Collected %d out of %d signatures on sequence %d", signatureCollectCount, b.Quorum, seq)
+		b.Logger.Infof("Collected %d out of %d signatures on sequence %d", signatureCollectCount, b.Threshold, seq)
 	}
 
 }

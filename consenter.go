@@ -26,8 +26,8 @@ func (c *Consenter) Run() {
 	}()
 }
 
-func (c *Consenter) Submit(ba BatchAttestationFragment) {
-	if err := c.TotalOrder.SubmitRequest(ba.Serialize()); err != nil {
+func (c *Consenter) Submit(rawControlEvent []byte) {
+	if err := c.TotalOrder.SubmitRequest(rawControlEvent); err != nil {
 		c.Logger.Warnf("Failed submitting request:", err)
 		return
 	}

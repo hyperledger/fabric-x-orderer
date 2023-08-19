@@ -114,9 +114,9 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 				digest: baf.Digest(),
 				seq:    baf.Seq(),
 			}
-			consenter.Submit(ba)
+			consenter.Submit(ba.Serialize())
 		}
-		batcher.Quorum = 1
+		batcher.Threshold = 1
 		batchers = append(batchers, batcher)
 	}
 
