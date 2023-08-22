@@ -12,7 +12,7 @@ type Rule func(*State, Logger, ...ControlEvent)
 var Rules = []Rule{
 	CollectAndDeduplicateEvents,
 	//DetectEquivocation, // TODO: false positive, lets find out why
-	//PrimaryRotateDueToComplaints, // TODO: too early
+	PrimaryRotateDueToComplaints,
 }
 
 type batchAttestationVote struct {
@@ -201,6 +201,10 @@ type Complaint struct {
 	Signature []byte
 }
 
+func (c *Complaint) String() string {
+	return fmt.Sprintf("{Shard: %d, Term: %d}", c.Shard, c.Term)
+}
+
 func (c *Complaint) Bytes() []byte {
 	buff := make([]byte, 12+len(c.Signature))
 	var pos int
@@ -302,8 +306,20 @@ func (s *State) Clone() State {
 	return s2
 }
 
+func CleanupOldEComplaints(s *State, l Logger, _ ...ControlEvent) {
+	var newComplaints []Complaint
+	for _, c := range s.Complaints {
+		term := s.Shards[int(c.Shard-1)].Term
+		if c.Term < term {
+			l.Infof("Cleaning complaint of shard %d for term %d as the current term is %d", c.Shard, c.Term, term)
+			continue
+		}
+		newComplaints = append(newComplaints, c)
+	}
+}
+
 func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
-	complaints := make(map[ShardTerm]int)
+	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
 
@@ -318,7 +334,7 @@ func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
 			continue
 		}
 
-		complaints[complaint.ShardTerm]++
+		complaintsToNum[complaint.ShardTerm]++
 
 	}
 
@@ -326,18 +342,25 @@ func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
 
 	for _, complaint := range s.Complaints {
 
-		if complaints[complaint.ShardTerm] > int(s.Quorum) {
+		if complaintsToNum[complaint.ShardTerm] >= int(s.Quorum) {
 
-			oldTerm := s.Shards[complaint.Shard].Term
-			oldPrimary := uint16(oldTerm % uint64(s.N))
+			term := s.Shards[int(complaint.Shard-1)].Term
+			if term != complaint.Term {
+				l.Infof("Got complaint for shard %d in term %d but shard is at term %d", complaint.Shard, complaint.Term, term)
+				continue
+			}
 
-			s.Shards[complaint.Shard].Term++
+			complaintNum := complaintsToNum[complaint.ShardTerm]
+			oldTerm := s.Shards[complaint.Shard-1].Term
+			oldPrimary := uint16((oldTerm + uint64(complaint.Shard)) % uint64(s.N))
 
-			newTerm := s.Shards[complaint.Shard].Term
-			newPrimary := uint16(newTerm % uint64(s.N))
+			s.Shards[complaint.Shard-1].Term++
 
-			l.Infof("Shard %d advanced from term %d to term %d, and the primary switched from %d to %d",
-				complaint.Shard, oldTerm, newTerm, oldPrimary, newPrimary)
+			newTerm := s.Shards[complaint.Shard-1].Term
+			newPrimary := uint16((newTerm + uint64(complaint.Shard)) % uint64(s.N))
+
+			l.Infof("Shard %d advanced from term %d to term %d due to %d complaintsToNum (quorum is %d), and the primary switched from %d to %d",
+				complaint.Shard, oldTerm, newTerm, complaintNum, s.Quorum, oldPrimary, newPrimary)
 		} else {
 			newComplaints = append(newComplaints, complaint)
 		}

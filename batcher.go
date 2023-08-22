@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"runtime"
 	"sync"
@@ -193,7 +194,7 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 	if storedDigest, exists := b.seq2digest[seq]; !exists {
 		panic(fmt.Sprintf("no digest found for sequence %d, current sequence is %d", seq, b.Seq))
 	} else if !bytes.Equal(storedDigest, digest) {
-		panic(fmt.Sprintf("stored digest %v but received digest %v for batch %d", storedDigest, digest, seq))
+		panic(fmt.Sprintf("stored digest %v but received digest %v for batch %d", hex.EncodeToString(storedDigest), hex.EncodeToString(digest), seq))
 	}
 
 	signatureCollectCount := len(b.confirmedSequences[seq])
@@ -251,11 +252,13 @@ func (b *Batcher) runPrimary() {
 
 		b.lock.Lock()
 		b.seq2digest[b.Seq] = digest
+		b.Logger.Infof("%d <-- %s", b.Seq, hex.EncodeToString(digest))
 		b.lock.Unlock()
+
+		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 
 		b.send(b.Seq, baf.Serialize(), digest)
 
-		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 		b.Seq++
 
 		b.removeRequests(currentBatch)

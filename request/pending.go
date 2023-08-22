@@ -110,9 +110,10 @@ func (ps *PendingStore) garbageCollectEmptyBuckets() {
 	var newBuckets []*bucket
 
 	for _, bucket := range ps.buckets {
-		if bucket.getSize() > 0 {
+		bucketSize := bucket.getSize()
+		if bucketSize > 0 {
 			newBuckets = append(newBuckets, bucket)
-			ps.Logger.Debugf("Bucket %d has %d items, sealed at %v", bucket.id)
+			ps.Logger.Debugf("Bucket %d has %d items, sealed at %v", bucket.id, bucketSize, bucket.sealedTime())
 		} else {
 			ps.Logger.Debugf("Garbage collected bucket %d", bucket.id)
 		}
@@ -122,6 +123,13 @@ func (ps *PendingStore) garbageCollectEmptyBuckets() {
 }
 
 func (ps *PendingStore) checkFirstStrike(now time.Time) {
+
+	select {
+	case <-ps.closeChan:
+		return
+	default:
+
+	}
 
 	var buckets []*bucket
 
@@ -149,6 +157,13 @@ func (ps *PendingStore) checkFirstStrike(now time.Time) {
 }
 
 func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
+
+	select {
+	case <-ps.closeChan:
+		return false
+	default:
+
+	}
 
 	var secondStrike bool
 
@@ -302,6 +317,13 @@ func (b *bucket) seal(now time.Time) *bucket {
 	b.lastTimestamp = now
 
 	return newBucket(b.reqID2Bucket, b.id+1)
+}
+
+func (b *bucket) sealedTime() time.Time {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	return b.lastTimestamp
 }
 
 func (b *bucket) TryInsert(reqID string, request []byte) bool {

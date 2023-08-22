@@ -182,12 +182,18 @@ func (rp *Pool) Mem() <-chan []byte {
 	requests := make(chan []byte, rp.options.MaxSize)
 
 	if atomic.LoadUint32(&rp.batchingEnabled) == 0 {
-		for i := len(rp.pending.buckets) - 1; i >= 0; i-- {
-			rp.pending.buckets[i].requests.Range(func(_, req interface{}) bool {
-				requests <- req.([]byte)
-				return true
-			})
-		}
+		go func() {
+			for i := len(rp.pending.buckets) - 1; i >= 0; i-- {
+				rp.pending.buckets[i].requests.Range(func(_, req interface{}) bool {
+					requests <- req.([]byte)
+					return true
+				})
+			}
+
+			close(requests)
+
+		}()
+
 	} else {
 		// TODO: implement primary --> secondary logic. For now, we crash the primary in tests
 	}
