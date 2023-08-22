@@ -9,6 +9,7 @@ type SimpleBatchAttestationFragment struct {
 	P, Si, Sh int
 	Dig       []byte
 	Sig       []byte
+	Gc        [][]byte
 }
 
 func (s *SimpleBatchAttestationFragment) Seq() uint64 {
@@ -42,6 +43,10 @@ func (s *SimpleBatchAttestationFragment) Serialize() []byte {
 func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
 	_, err := asn1.Unmarshal(bytes, s)
 	return err
+}
+
+func (s *SimpleBatchAttestationFragment) GarbageCollect() [][]byte {
+	return s.Gc
 }
 
 type SimpleBatchAttestation struct {

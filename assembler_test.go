@@ -48,6 +48,10 @@ type naiveBatchAttestation struct {
 	digest  []byte
 }
 
+func (nba *naiveBatchAttestation) GarbageCollect() [][]byte {
+	return nil
+}
+
 func (nba *naiveBatchAttestation) Signer() uint16 {
 	return nba.node
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/asn1"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 )
 
@@ -13,6 +14,8 @@ var Rules = []Rule{
 	CollectAndDeduplicateEvents,
 	//DetectEquivocation, // TODO: false positive, lets find out why
 	PrimaryRotateDueToComplaints,
+	CleanupOldComplaints,
+	CleanupOldAttestations,
 }
 
 type batchAttestationVote struct {
@@ -306,8 +309,8 @@ func (s *State) Clone() State {
 	return s2
 }
 
-func CleanupOldEComplaints(s *State, l Logger, _ ...ControlEvent) {
-	var newComplaints []Complaint
+func CleanupOldComplaints(s *State, l Logger, _ ...ControlEvent) {
+	newComplaints := make([]Complaint, 0, len(s.Complaints))
 	for _, c := range s.Complaints {
 		term := s.Shards[int(c.Shard-1)].Term
 		if c.Term < term {
@@ -316,6 +319,32 @@ func CleanupOldEComplaints(s *State, l Logger, _ ...ControlEvent) {
 		}
 		newComplaints = append(newComplaints, c)
 	}
+
+	s.Complaints = newComplaints
+}
+
+func CleanupOldAttestations(s *State, l Logger, _ ...ControlEvent) {
+	// Reverse index all gc attestations by their digests
+	gc := make(map[string]int)
+	for _, p := range s.Pending {
+		for _, x := range p.GarbageCollect() {
+			gc[hex.EncodeToString(x)]++
+		}
+	}
+
+	newPending := make([]BatchAttestationFragment, 0, len(s.Pending))
+	// For each attestation, check if more than a threshold of attestation votes in favor if garbage collecting it
+	for _, p := range s.Pending {
+		voteCount := gc[hex.EncodeToString(p.Digest())]
+		if voteCount >= int(s.Threshold) {
+			l.Infof("Received %d votes (threshold is %d) in favor of garbage collecting attestation fragment of seq %d in shard %d by primary %d signed by %d",
+				voteCount, s.Threshold, p.Seq(), p.Shard(), p.Primary(), p.Signer())
+			continue
+		}
+		newPending = append(newPending, p)
+	}
+
+	s.Pending = newPending
 }
 
 func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
@@ -528,6 +557,10 @@ func ExtractBatchAttestationsFromPending(s *State, l Logger) []BatchAttestationF
 		}
 	}
 
+	oldPendingCount := len(s.Pending)
+	newPendingCount := len(newPending)
+
+	l.Infof("Pending attestations count changed from %d to %d", oldPendingCount, newPendingCount)
 	s.Pending = newPending
 
 	return extracted

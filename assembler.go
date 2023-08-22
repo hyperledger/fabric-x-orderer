@@ -24,6 +24,7 @@ type BatchAttestationFragment interface {
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error
+	GarbageCollect() [][]byte
 }
 
 type AssemblerIndex interface {
