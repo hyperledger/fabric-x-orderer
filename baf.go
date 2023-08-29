@@ -2,9 +2,11 @@ package arma
 
 import (
 	"encoding/asn1"
+	"sort"
 )
 
 type SimpleBatchAttestationFragment struct {
+	Ep        int
 	Se        int
 	P, Si, Sh int
 	Dig       []byte
@@ -30,6 +32,10 @@ func (s *SimpleBatchAttestationFragment) Shard() uint16 {
 
 func (s *SimpleBatchAttestationFragment) Digest() []byte {
 	return s.Dig
+}
+
+func (s *SimpleBatchAttestationFragment) Epoch() uint64 {
+	return uint64(s.Ep)
 }
 
 func (s *SimpleBatchAttestationFragment) Serialize() []byte {
@@ -59,6 +65,17 @@ func (b *SimpleBatchAttestation) Fragments() []BatchAttestationFragment {
 		res[i] = &b.F[i]
 	}
 	return res
+}
+
+func (b *SimpleBatchAttestation) Epoch() uint64 {
+	epochs := make([]int, len(b.F))
+	for i := 0; i < len(b.F); i++ {
+		epochs[i] = int(b.F[i].Epoch())
+	}
+
+	sort.Ints(epochs)
+
+	return uint64(epochs[len(epochs)/2])
 }
 
 func (b *SimpleBatchAttestation) Digest() []byte {

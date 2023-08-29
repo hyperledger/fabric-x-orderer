@@ -48,6 +48,10 @@ type naiveBatchAttestation struct {
 	digest  []byte
 }
 
+func (nba *naiveBatchAttestation) Epoch() uint64 {
+	return 0
+}
+
 func (nba *naiveBatchAttestation) GarbageCollect() [][]byte {
 	return nil
 }
