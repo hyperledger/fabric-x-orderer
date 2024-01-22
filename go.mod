@@ -3,12 +3,15 @@ module arma
 go 1.20
 
 require (
+	github.com/SmartBFT-Go/consensus/v2 v2.3.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.2
 	go.uber.org/zap v1.24.0
 	golang.org/x/sync v0.2.0
 	google.golang.org/grpc v1.55.0
 )
+
+replace github.com/SmartBFT-Go/consensus v0.0.0-20231206083457-f8b15a205b36 => github.com/fabric-research/consensus v0.0.0-20240117130510-a126c0e8ac53
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
