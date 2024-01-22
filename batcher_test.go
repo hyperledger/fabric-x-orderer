@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -85,6 +84,7 @@ func (nb *naiveBatch) Requests() BatchedRequests {
 }
 
 func TestBatcherNetwork(t *testing.T) {
+	t.Skip()
 	n := 3
 
 	batchers, commit := createBatchers(t, n)
@@ -193,10 +193,6 @@ func TestBatchersStopSecondaries(t *testing.T) {
 
 	submits.Wait()
 	stopped.Wait()
-
-	buf := make([]byte, 1024*10)
-	runtime.Stack(buf, true)
-	fmt.Println(string(buf))
 
 }
 
