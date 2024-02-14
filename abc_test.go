@@ -109,7 +109,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	for shardID := 0; shardID < shardCount; shardID++ {
 		batcher := createBatcher(t, shardID, 0)
 		batcher.Logger = logger
-		batcher.OnCollectedAttestation = func(baf BatchAttestationFragment) {
+		batcher.TotalOrderBAF = func(baf BatchAttestationFragment) {
 			ba := &naiveBatchAttestation{
 				digest: baf.Digest(),
 				seq:    baf.Seq(),
@@ -125,10 +125,9 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			shardID: uint16(i),
 			sr:      replicator,
 		}
-		from := i
 		batcher := batchers[i]
-		batchers[i].Send = func(msg []byte) {
-			batcher.HandleMessage(msg, uint16(from))
+		batcher.AckBAF = func(seq uint64, to uint16) {
+			batchers[to].HandleAck(seq, batcher.ID)
 		}
 		batchers[i].Ledger = sc
 		batchers[i].Replicator = nil

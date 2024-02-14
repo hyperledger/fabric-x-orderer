@@ -149,6 +149,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	for _, b := range batchers {
 		b := b
 		b.Primary = 99 // No one is primary
+		b.AckBAF = func(_ uint64, _ uint16) {}
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 5,
@@ -220,10 +221,9 @@ func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 
 	for i := 0; i < n; i++ {
 		from := i
-		batchers[i].Send = func(msg []byte) {
-			for i := 0; i < n; i++ {
-				batchers[i].HandleMessage(msg, uint16(from))
-			}
+		batchers[i].TotalOrderBAF = func(BatchAttestationFragment) {}
+		batchers[i].AckBAF = func(seq uint64, to uint16) {
+			batchers[to].HandleAck(seq, uint16(from))
 		}
 	}
 
@@ -269,14 +269,12 @@ func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
 			}
 			return h.Sum(nil)
 		},
-		OnCollectedAttestation: func(BatchAttestationFragment) {},
-		RequestInspector:       requestInspector,
-		Logger:                 sugaredLogger,
-		MemPool:                pool,
-		ID:                     uint16(nodeID),
-		Threshold:              2,
-		confirmedSequences:     make(map[uint64]map[uint16]struct{}),
-		seq2digest:             make(map[uint64][]byte),
+		RequestInspector:   requestInspector,
+		Logger:             sugaredLogger,
+		MemPool:            pool,
+		ID:                 uint16(nodeID),
+		Threshold:          2,
+		confirmedSequences: make(map[uint64]map[uint16]struct{}),
 	}
 
 	b.Ledger = &noopLedger{}

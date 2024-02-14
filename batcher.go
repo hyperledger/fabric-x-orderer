@@ -1,11 +1,8 @@
 package arma
 
 import (
-	"arma/request"
-	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"runtime"
 	"sync"
@@ -26,7 +23,11 @@ type RequestInspector interface {
 }
 
 type MemPool interface {
+	NextRequests(ctx context.Context) [][]byte
 	RemoveRequests(requests ...string)
+	Submit(request []byte) error
+	SetBatching(bool)
+	Stop()
 }
 
 type Batch interface {
@@ -86,32 +87,31 @@ type BatchLedger interface {
 }
 
 type Batcher struct {
-	BatchTimeout           time.Duration
-	Digest                 func([][]byte) []byte
-	OnCollectedAttestation func(BatchAttestationFragment)
-	RequestInspector       RequestInspector
-	Primary                uint16
-	ID                     uint16
-	Shard                  uint16
-	Threshold              int
-	Logger                 Logger
-	Ledger                 BatchLedger
-	Seq                    uint64
-	ConfirmedSeq           uint64
-	Replicator             BatchReplicator
-	AttestBatch            func(seq uint64, primary uint16, shard uint16, digest []byte) BatchAttestationFragment
-	AttestationFromBytes   func([]byte) (BatchAttestationFragment, error)
-	Send                   func([]byte)
-	MemPool                *request.Pool
-	running                sync.WaitGroup
-	stopChan               chan struct{}
-	stopCtx                context.Context
-	cancelBatch            func()
+	BatchTimeout         time.Duration
+	Digest               func([][]byte) []byte
+	RequestInspector     RequestInspector
+	Primary              uint16
+	ID                   uint16
+	Shard                uint16
+	Threshold            int
+	Logger               Logger
+	Ledger               BatchLedger
+	Seq                  uint64
+	ConfirmedSeq         uint64
+	Replicator           BatchReplicator
+	AttestBatch          func(seq uint64, primary uint16, shard uint16, digest []byte) BatchAttestationFragment
+	AttestationFromBytes func([]byte) (BatchAttestationFragment, error)
+	TotalOrderBAF        func(BatchAttestationFragment)
+	AckBAF               func(seq uint64, to uint16)
+	MemPool              MemPool
+	running              sync.WaitGroup
+	stopChan             chan struct{}
+	stopCtx              context.Context
+	cancelBatch          func()
 
 	lock               sync.Mutex
 	signal             sync.Cond
 	confirmedSequences map[uint64]map[uint16]struct{}
-	seq2digest         map[uint64][]byte
 }
 
 func (b *Batcher) Run() {
@@ -119,7 +119,6 @@ func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.signal = sync.Cond{L: &b.lock}
-	b.seq2digest = make(map[uint64][]byte)
 	b.confirmedSequences = make(map[uint64]map[uint16]struct{})
 	if b.Primary == b.ID {
 		go b.runPrimary()
@@ -140,29 +139,14 @@ func (b *Batcher) Submit(request []byte) error {
 	return b.MemPool.Submit(request)
 }
 
-func (b *Batcher) Mem() <-chan []byte {
-	return b.MemPool.Mem()
-}
-
-func (b *Batcher) HandleMessage(msg []byte, from uint16) {
-	baf, err := b.AttestationFromBytes(msg)
-	if err != nil {
-		b.Logger.Warnf("Received badly formatted message from %d: %v", from, err)
-		return
-	}
-
-	seq := baf.Seq()
-	digest := baf.Digest()
-
-	b.Logger.Infof("Received signature on sequence %d and digest %x from %d", seq, digest, from)
-
-	// TODO: deduplicate BAFs of senders
-	b.OnCollectedAttestation(baf)
-
+func (b *Batcher) HandleAck(seq uint64, from uint16) {
 	// Only the primary performs the remaining code
 	if b.Primary != b.ID {
+		b.Logger.Warnf("Received ack on sequence %d from %d but we are not the primary (%d)", seq, from, b.Primary)
 		return
 	}
+
+	b.Logger.Infof("Received ack on sequence %d from %d", seq, from)
 
 	b.lock.Lock()
 	defer b.lock.Unlock()
@@ -191,17 +175,10 @@ func (b *Batcher) HandleMessage(msg []byte, from uint16) {
 
 	b.confirmedSequences[seq][from] = struct{}{}
 
-	if storedDigest, exists := b.seq2digest[seq]; !exists {
-		panic(fmt.Sprintf("no digest found for sequence %d, current sequence is %d", seq, b.Seq))
-	} else if !bytes.Equal(storedDigest, digest) {
-		panic(fmt.Sprintf("stored digest %v but received digest %v for batch %d", hex.EncodeToString(storedDigest), hex.EncodeToString(digest), seq))
-	}
-
 	signatureCollectCount := len(b.confirmedSequences[seq])
 	if signatureCollectCount >= b.Threshold {
 		atomic.AddUint64(&b.ConfirmedSeq, 1)
 		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) signatures", seq, signatureCollectCount)
-		delete(b.seq2digest, seq)
 		delete(b.confirmedSequences, seq)
 		b.signal.Broadcast()
 	} else {
@@ -250,14 +227,10 @@ func (b *Batcher) runPrimary() {
 
 		baf := b.AttestBatch(b.Seq, b.Primary, b.Shard, digest)
 
-		b.lock.Lock()
-		b.seq2digest[b.Seq] = digest
-		b.Logger.Infof("%d <-- %s", b.Seq, hex.EncodeToString(digest))
-		b.lock.Unlock()
-
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 
-		b.send(b.Seq, baf.Serialize(), digest)
+		b.sendBAF(baf)
+		b.HandleAck(b.Seq, b.ID)
 
 		b.Seq++
 
@@ -304,14 +277,14 @@ func (b *Batcher) waitForSecondaries() {
 	b.lock.Unlock()
 }
 
-func (b *Batcher) send(seq uint64, msg []byte, digest []byte) {
-	if len(digest) != 32 {
-		panic(fmt.Sprintf("programming error: tried to send digest of size %d", len(digest)))
+func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
+	if len(baf.Digest()) != 32 {
+		panic(fmt.Sprintf("programming error: tried to send BAF with digest of size %d", len(baf.Digest())))
 	}
 
-	b.Logger.Infof("Sending signature on %d with digest %x", seq, digest)
+	b.Logger.Infof("Sending batch attestation fragment on %d with digest %x", baf.Seq(), baf.Digest())
 
-	b.Send(msg)
+	b.TotalOrderBAF(baf)
 }
 
 func (b *Batcher) runSecondary() {
@@ -334,7 +307,8 @@ func (b *Batcher) runSecondary() {
 		b.Ledger.Append(b.Primary, b.Seq, batch)
 		b.removeRequests(requests)
 		baf := b.AttestBatch(b.Seq, b.Primary, b.Shard, b.Digest(requests))
-		b.send(b.Seq, baf.Serialize(), b.Digest(requests))
+		b.sendBAF(baf)
+		b.AckBAF(baf.Seq(), b.Primary)
 		b.Seq++
 	}
 }

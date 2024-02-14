@@ -283,16 +283,15 @@ func (rp *Pool) NextRequests(ctx context.Context) [][]byte {
 	return rawRequests
 }
 
-func (rp *Pool) RemoveRequests(requests ...string) error {
+func (rp *Pool) RemoveRequests(requests ...string) {
 	if atomic.LoadUint32(&rp.batchingEnabled) == 0 {
 		rp.pending.RemoveRequests(requests...)
-		return nil
+		return
 	}
 
 	for _, requestID := range requests {
 		rp.batchStore.Remove(requestID)
 	}
-	return nil
 }
 
 // Close removes all the requests, stops all the timeout timers.
