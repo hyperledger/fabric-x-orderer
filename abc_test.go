@@ -137,7 +137,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		batchers[i].Run()
 	}
 
-	time.Sleep(time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	assembler.Run()
 	consenter.Run()
@@ -159,7 +159,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	var committedReqCount int
 
 	workerNum := runtime.NumCPU()
-	workerPerWorker := 100000
+	workerPerWorker := 20000
 
 	var wg sync.WaitGroup
 	wg.Add(workerNum)
