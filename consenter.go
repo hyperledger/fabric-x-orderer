@@ -1,27 +1,43 @@
 package arma
 
+import "sync"
+
 type TotalOrder interface {
 	SubmitRequest(req []byte) error
-	Deliver() []byte
-}
-
-type ConsensusLedger interface {
-	Append(seq uint64, blockHeaders []byte)
+	// Deliver returns a series of control events to be processed by Arma,
+	// and returns a feedback function which receives two parameters:
+	// (1) Batch Attestation Fragments for which a threshold has been collected
+	// (2) The new bytes of the new state of the Consenter, to be persisted in stable storage.
+	// The next time the Consenter is instantiated, these bytes are to be passed as input.
+	Deliver() ([]ControlEvent, func([]BatchAttestationFragment, []byte))
 }
 
 type Consenter struct {
-	Seq             uint64
-	ConsensusLedger ConsensusLedger
-	Logger          Logger
-	TotalOrder      TotalOrder
+	Logger     Logger
+	TotalOrder TotalOrder
+	lock       sync.RWMutex
+	State      State
+}
+
+func (c *Consenter) ReadyBatchAttestations(events []ControlEvent) []BatchAttestationFragment {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	_, fragments := c.State.Process(c.Logger, events...)
+	return fragments
 }
 
 func (c *Consenter) Run() {
 	go func() {
 		for {
-			batch := c.TotalOrder.Deliver()
-			c.ConsensusLedger.Append(c.Seq, batch)
-			c.Seq++
+			events, feedback := c.TotalOrder.Deliver()
+			state, fragments := c.State.Process(c.Logger, events...)
+
+			c.lock.Lock()
+			c.State = state
+			c.lock.Unlock()
+
+			feedback(fragments, state.Serialize())
 		}
 	}()
 }
