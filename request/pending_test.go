@@ -1,9 +1,7 @@
 package request
 
 import (
-	"context"
 	"encoding/binary"
-	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -11,7 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/sync/semaphore"
 )
 
 func TestPending(t *testing.T) {
@@ -36,7 +33,7 @@ func TestPending(t *testing.T) {
 		Epoch:                 time.Millisecond * 200,
 		FirstStrikeThreshold:  time.Second * 10,
 		Inspector:             requestInspector,
-		Semaphore:             semaphore.NewWeighted(10000),
+		OnDelete:              func(key string) {},
 		SecondStrikeThreshold: time.Second,
 	}
 
@@ -67,9 +64,7 @@ func TestPending(t *testing.T) {
 				reqIDsSent <- reqID
 
 				atomic.AddUint32(&submittedCount, 1)
-				if err := ps.Submit(req, context.Background()); err != nil {
-					panic(err)
-				}
+				ps.Submit(req)
 			}
 		}(worker)
 	}
@@ -95,5 +90,49 @@ func TestPending(t *testing.T) {
 	}
 
 	assert.Equal(t, uint32(workerNum*workPerWorker), atomic.LoadUint32(&submittedCount))
-	fmt.Println(len(ps.buckets))
+}
+
+func TestGetAll(t *testing.T) {
+	sugaredLogger := createLogger(t, 0)
+	requestInspector := &reqInspector{}
+
+	start := time.Now()
+	ticker := time.NewTicker(time.Millisecond * 100)
+
+	ps := &PendingStore{
+		ReqIDLifetime:   time.Second * 10,
+		ReqIDGCInterval: time.Second,
+		Logger:          sugaredLogger,
+		SecondStrikeCallback: func() {
+
+		},
+		StartTime: start,
+		Time:      ticker.C,
+		FirstStrikeCallback: func([]byte) {
+
+		},
+		Epoch:                 time.Millisecond * 200,
+		FirstStrikeThreshold:  time.Second * 10,
+		Inspector:             requestInspector,
+		OnDelete:              func(key string) {},
+		SecondStrikeThreshold: time.Second,
+	}
+
+	ps.Init()
+	ps.Start()
+
+	count := 100
+
+	for i := 0; i < count; i++ {
+		req := make([]byte, 8)
+		binary.BigEndian.PutUint64(req, uint64(i))
+		if err := ps.Submit(req); err != nil {
+			panic(err)
+		}
+	}
+
+	ps.Close()
+	all := ps.GetAllRequests(uint64(count))
+	assert.Equal(t, count, len(all))
+
 }

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type Semaphore interface {
@@ -26,80 +28,142 @@ type PendingStore struct {
 	Time                  <-chan time.Time
 	StartTime             time.Time
 	Epoch                 time.Duration
-	Semaphore             Semaphore
+	OnDelete              func(key string)
 	lastTick              atomic.Value
+	lastEpochChange       time.Time
+	lastProcessedGC       time.Time
 	reqID2Bucket          *sync.Map
-	processed             sync.Map
 	currentBucket         atomic.Value
 	buckets               []*bucket
-	running               sync.WaitGroup
+	stopped               uint32
+	closedWG              sync.WaitGroup
+	closeOnce             sync.Once
 	closeChan             chan struct{}
+	resetChan             chan struct{}
+	finishResetChan       chan struct{}
 }
 
 func (ps *PendingStore) Init() {
 	ps.reqID2Bucket = new(sync.Map)
-	ps.currentBucket.Store(newBucket(ps.reqID2Bucket, 0))
+	ps.currentBucket.Store(newBucket(ps.reqID2Bucket, 1))
 	ps.lastTick.Store(ps.StartTime)
-}
-
-func (ps *PendingStore) Stop() {
-	select {
-	case <-ps.closeChan:
-		return
-	default:
-		close(ps.closeChan)
-	}
-
-	ps.running.Wait()
+	ps.closeChan = make(chan struct{})
+	ps.closeOnce = sync.Once{}
+	ps.resetChan = make(chan struct{})
+	ps.finishResetChan = make(chan struct{})
+	ps.lastEpochChange = ps.StartTime
+	ps.lastProcessedGC = ps.StartTime
 }
 
 func (ps *PendingStore) Start() {
-	ps.closeChan = make(chan struct{})
-	ps.running.Add(1)
-	go ps.changeEpochs()
+	ps.closedWG.Add(1)
+	go ps.run()
 }
 
-func (ps *PendingStore) changeEpochs() {
-	defer ps.running.Done()
-
-	lastEpochChange := ps.StartTime
-	lastProcessedGC := ps.StartTime
+func (ps *PendingStore) run() {
+	defer ps.closedWG.Done()
 	for {
-		var now time.Time
 		select {
-		case now = <-ps.Time:
 		case <-ps.closeChan:
 			return
+		case <-ps.resetChan:
+			ps.reset()
+		case now := <-ps.Time:
+			ps.lastTick.Store(now)
+			ps.changeEpochs(now)
 		}
+	}
+}
 
-		ps.lastTick.Store(now)
-		if now.Sub(lastEpochChange) <= ps.Epoch {
-			continue
+func (ps *PendingStore) ResetTimestamps() {
+	select {
+	case <-ps.closeChan:
+		return
+	case ps.resetChan <- struct{}{}:
+	}
+	select {
+	case <-ps.closeChan: // if closed simply return
+		return
+	case <-ps.finishResetChan: // wait for reset to finish
+	}
+}
+
+func (ps *PendingStore) reset() {
+	ps.Stop()
+	defer atomic.StoreUint32(&ps.stopped, 0)
+
+	now := ps.now()
+	for _, bucket := range ps.buckets {
+		bucket.resetTimestamp(now)
+	}
+
+	select {
+	case ps.finishResetChan <- struct{}{}:
+	case <-ps.closeChan:
+	}
+}
+
+func (ps *PendingStore) Stop() {
+	atomic.StoreUint32(&ps.stopped, 1)
+}
+
+func (ps *PendingStore) isStopped() bool {
+	return atomic.LoadUint32(&ps.stopped) == 1
+}
+
+func (ps *PendingStore) Close() {
+	ps.closeOnce.Do(func() {
+		if ps.closeChan == nil {
+			return
 		}
+		ps.Stop()
+		close(ps.closeChan)
+	})
+	ps.closedWG.Wait()
+}
 
-		lastEpochChange = now
+func (ps *PendingStore) isClosed() bool {
+	select {
+	case <-ps.closeChan:
+		return true
+	default:
+		return false
+	}
+}
 
-		ps.rotateBuckets(now)
-		ps.garbageCollectEmptyBuckets()
-		ps.checkFirstStrike(now)
-		if ps.checkSecondStrike(now) {
-			ps.SecondStrikeCallback()
-			break
-		}
+func (ps *PendingStore) changeEpochs(now time.Time) {
+	if ps.isStopped() {
+		return
+	}
 
-		if now.Sub(lastProcessedGC) > ps.ReqIDGCInterval {
-			lastProcessedGC = now
-			ps.garbageCollectProcessed(now)
-		}
+	if now.Sub(ps.lastEpochChange) <= ps.Epoch {
+		return
+	}
+
+	ps.lastEpochChange = now
+
+	ps.rotateBuckets(now)
+	ps.garbageCollectEmptyBuckets()
+	if now.Sub(ps.lastProcessedGC) > ps.ReqIDGCInterval {
+		ps.lastProcessedGC = now
+		ps.garbageCollectProcessed(now)
+	}
+
+	ps.checkFirstStrike(now)
+	if ps.checkSecondStrike(now) {
+		ps.SecondStrikeCallback()
+		return
 	}
 }
 
 func (ps *PendingStore) garbageCollectProcessed(now time.Time) {
-	ps.processed.Range(func(k, v interface{}) bool {
-		entryTime := v.(time.Time)
+	ps.reqID2Bucket.Range(func(k, v interface{}) bool {
+		b := v.(*bucket)
 
-		if now.Sub(entryTime) > ps.ReqIDLifetime {
-			ps.processed.Delete(k)
+		if b.isDummyBucket() {
+			if now.Sub(b.processedTimestamp) > ps.ReqIDLifetime {
+				ps.reqID2Bucket.Delete(k)
+			}
 		}
 
 		return true
@@ -110,10 +174,8 @@ func (ps *PendingStore) garbageCollectEmptyBuckets() {
 	var newBuckets []*bucket
 
 	for _, bucket := range ps.buckets {
-		bucketSize := bucket.getSize()
-		if bucketSize > 0 {
+		if bucket.getSize() > 0 {
 			newBuckets = append(newBuckets, bucket)
-			ps.Logger.Debugf("Bucket %d has %d items, sealed at %v", bucket.id, bucketSize, bucket.sealedTime())
 		} else {
 			ps.Logger.Debugf("Garbage collected bucket %d", bucket.id)
 		}
@@ -123,13 +185,6 @@ func (ps *PendingStore) garbageCollectEmptyBuckets() {
 }
 
 func (ps *PendingStore) checkFirstStrike(now time.Time) {
-
-	select {
-	case <-ps.closeChan:
-		return
-	default:
-
-	}
 
 	var buckets []*bucket
 
@@ -142,7 +197,7 @@ func (ps *PendingStore) checkFirstStrike(now time.Time) {
 			continue
 		}
 
-		bucket.firstStrikeTimestamp = now
+		bucket.setFirstStrikeTimestamp(now)
 		buckets = append(buckets, bucket)
 	}
 
@@ -158,15 +213,6 @@ func (ps *PendingStore) checkFirstStrike(now time.Time) {
 
 func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 
-	select {
-	case <-ps.closeChan:
-		return false
-	default:
-
-	}
-
-	var secondStrike bool
-
 	for _, bucket := range ps.buckets {
 		if bucket.firstStrikeTimestamp.IsZero() {
 			continue
@@ -176,10 +222,10 @@ func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 			continue
 		}
 
-		secondStrike = true
+		return true
 	}
 
-	return secondStrike
+	return false
 }
 
 func (ps *PendingStore) rotateBuckets(now time.Time) {
@@ -197,6 +243,7 @@ func (ps *PendingStore) rotateBuckets(now time.Time) {
 }
 
 func (ps *PendingStore) RemoveRequests(requestIDs ...string) {
+
 	workerNum := runtime.NumCPU()
 
 	var wg sync.WaitGroup
@@ -215,18 +262,12 @@ func (ps *PendingStore) RemoveRequests(requestIDs ...string) {
 }
 
 func (ps *PendingStore) removeRequestsByWorker(workerID int, requestIDs []string, workerNum int, now time.Time) {
-	var ensureSingleDelete sync.Map
-
 	for i, reqID := range requestIDs {
-		if i%workerNum != workerID {
-			continue
+		if ps.isClosed() {
+			return
 		}
 
-		// We can only insert a request once, so we should ensure
-		// we cannot delete it twice.
-		// Deleting it twice will mess up our accounting and will cause an overflow
-		// in the amount of requests in the bucket.
-		if _, duplicateReq := ensureSingleDelete.LoadOrStore(reqID, struct{}{}); duplicateReq {
+		if i%workerNum != workerID {
 			continue
 		}
 
@@ -235,46 +276,41 @@ func (ps *PendingStore) removeRequestsByWorker(workerID int, requestIDs []string
 }
 
 func (ps *PendingStore) removeRequest(reqID string, now time.Time) {
-	_, existed := ps.processed.LoadOrStore(reqID, now)
-
-	// If the request was not processed before, it was not inserted before.
-	// So no point in removing it.
-	if !existed {
+	b, existed := ps.reqID2Bucket.LoadOrStore(reqID, &bucket{id: 0, processedTimestamp: now})
+	bucket := b.(*bucket)
+	if !existed || bucket.isDummyBucket() {
 		return
 	}
 
-	insertPending := existed
+	bucket.Delete(reqID)
 
-	// However, if we were too late to store, then either an insert takes place
-	// concurrently, or happened in the past.
-	// We need to wait for the insert to complete before we continue to deletion,
-	// otherwise we will have a zombie request that will never be deleted.
-
-	for insertPending {
-		b, exists := ps.reqID2Bucket.Load(reqID)
-		if !exists {
-			continue
-		}
-
-		deletionSucceeded := b.(*bucket).Delete(reqID)
-		insertPending = !deletionSucceeded
-	}
-
-	ps.Semaphore.Release(1)
+	ps.OnDelete(reqID)
 }
 
-func (ps *PendingStore) Submit(request []byte, ctx context.Context) error {
-	if err := ps.Semaphore.Acquire(ctx, 1); err != nil {
-		return err
+func (ps *PendingStore) Prune(predicate func([]byte) error) {
+	ps.reqID2Bucket.Range(func(key, value any) bool {
+		reqID := key.(string)
+		b := value.(*bucket)
+		request, exists := b.requests.Load(reqID)
+		if !exists {
+			return true
+		}
+		if predicate(request.([]byte)) == nil {
+			return true
+		}
+		b.Delete(reqID)
+		ps.OnDelete(reqID)
+		return true
+	})
+}
+
+func (ps *PendingStore) Submit(request []byte) error {
+
+	if ps.isClosed() {
+		return errors.Errorf("pending store closed, request rejected")
 	}
 
 	reqID := ps.Inspector.RequestID(request)
-
-	if _, loaded := ps.processed.LoadOrStore(reqID, ps.now()); loaded {
-		ps.Logger.Debugf("request %s already processed", reqID)
-		ps.Semaphore.Release(1)
-		return nil
-	}
 
 	// Insertion may fail if we have a concurrent sealing of the bucket.
 	// In such a case, wait for a new un-sealed bucket to replace the current bucket.
@@ -292,6 +328,31 @@ func (ps *PendingStore) now() time.Time {
 	return ps.lastTick.Load().(time.Time)
 }
 
+// GetAllRequests returns all stored requests in the same order of their arrival, the oldest one will be the first
+func (ps *PendingStore) GetAllRequests(max uint64) [][]byte {
+
+	if !ps.isStopped() {
+		panic("GetAllRequests should be called only when the pending store is stopped")
+	}
+
+	requests := make([][]byte, 0, max*2)
+
+	for _, b := range ps.buckets {
+		b.requests.Range(func(_, v interface{}) bool {
+			requests = append(requests, v.([]byte))
+			return true
+		})
+	}
+
+	currentBucket := ps.currentBucket.Load().(*bucket)
+	currentBucket.requests.Range(func(_, v interface{}) bool {
+		requests = append(requests, v.([]byte))
+		return true
+	})
+
+	return requests
+}
+
 type bucket struct {
 	id                   uint64
 	reqID2Bucket         *sync.Map
@@ -299,11 +360,17 @@ type bucket struct {
 	lock                 sync.RWMutex
 	lastTimestamp        time.Time
 	firstStrikeTimestamp time.Time
+	zeroTime             time.Time
 	requests             sync.Map
+	processedTimestamp   time.Time
 }
 
 func newBucket(reqID2Bucket *sync.Map, id uint64) *bucket {
 	return &bucket{reqID2Bucket: reqID2Bucket, id: id}
+}
+
+func (b *bucket) isDummyBucket() bool {
+	return b.id == 0
 }
 
 func (b *bucket) getSize() uint32 {
@@ -319,11 +386,20 @@ func (b *bucket) seal(now time.Time) *bucket {
 	return newBucket(b.reqID2Bucket, b.id+1)
 }
 
-func (b *bucket) sealedTime() time.Time {
+func (b *bucket) resetTimestamp(t time.Time) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	return b.lastTimestamp
+	b.lastTimestamp = t
+	b.firstStrikeTimestamp = b.zeroTime
+	b.firstStrikeTimestamp = b.zeroTime
+}
+
+func (b *bucket) setFirstStrikeTimestamp(t time.Time) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	b.firstStrikeTimestamp = t
 }
 
 func (b *bucket) TryInsert(reqID string, request []byte) bool {

@@ -1,63 +1,50 @@
 package request
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 )
 
 type BatchStore struct {
-	batchingEnabled uint32
-	currentBatch    *batch
-	readyBatches    []*batch
-	onDelete        func(key string)
-	batchMaxSize    uint32
-	maxCapacity     int
-	keys2Batches    sync.Map
-	lock            sync.RWMutex
-	signal          sync.Cond
-	running         sync.WaitGroup
+	currentBatch      *batch
+	readyBatches      []*batch
+	onDelete          func(key string)
+	batchMaxSize      uint32
+	batchMaxSizeBytes uint32
+	logger            Logger
+	keys2Batches      sync.Map
+	lock              sync.RWMutex
+	signal            sync.Cond
 }
 
+const sizeBytesOffset = 32
+
 type batch struct {
-	lock     sync.RWMutex
-	size     uint32
-	enqueued bool
-	m        sync.Map
+	// use one uint64 var to represent both the size and the size in bytes of a batch
+	// and increment both using one atomic operation.
+	sizeBytes uint64
+	enqueued  uint32
+	m         sync.Map
 }
 
 func (b *batch) Load(key any) (value any, ok bool) {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
-
 	return b.m.Load(key)
 }
 
 func (b *batch) isEnqueued() bool {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
-	return b.enqueued
+	return atomic.LoadUint32(&b.enqueued) == 1
 }
 
 func (b *batch) markEnqueued() {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-	b.enqueued = true
+	atomic.StoreUint32(&b.enqueued, 1)
 }
 
 func (b *batch) Store(key, value any) {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
-
 	b.m.Store(key, value)
 }
 
 func (b *batch) Range(f func(key, value any) bool) {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
-
 	b.m.Range(f)
 }
 
@@ -65,36 +52,27 @@ func (b *batch) Delete(key any) {
 	b.m.Delete(key)
 }
 
-func NewBatchStore(maxCapacity int, batchMaxSize int, onDelete func(string)) *BatchStore {
-	// Ensure the max capacity divides by the batchMaxSize of each batch
-	maxCapacity = maxCapacity - (maxCapacity % batchMaxSize)
-
-	if maxCapacity/batchMaxSize == 0 {
-		panic(fmt.Sprintf("Max capacity (%d) cannot be lower than batch max size (%d)", maxCapacity, batchMaxSize))
+func (b *batch) Prune(f func(key, value any) error) {
+	delFunc := func(key, value any) bool {
+		if f(key, value) != nil {
+			b.m.Delete(key)
+		}
+		return true
 	}
+	b.m.Range(delFunc)
+}
 
+func NewBatchStore(batchMaxSize uint32, batchMaxSizeBytes uint32, onDelete func(string), logger Logger) *BatchStore {
 	bs := &BatchStore{
-		currentBatch: &batch{},
-		onDelete:     onDelete,
-		batchMaxSize: uint32(batchMaxSize),
-		maxCapacity:  maxCapacity,
+		currentBatch:      &batch{},
+		onDelete:          onDelete,
+		batchMaxSize:      batchMaxSize,
+		batchMaxSizeBytes: batchMaxSizeBytes,
+		logger:            logger,
 	}
 	bs.signal = sync.Cond{L: &bs.lock}
 
 	return bs
-}
-
-func (bs *BatchStore) printSizes() {
-	bs.lock.RLock()
-	defer bs.lock.RUnlock()
-	s := bytes.Buffer{}
-	s.WriteString(fmt.Sprintf(">>> Total %d batches\n", len(bs.readyBatches)))
-	s.WriteString(fmt.Sprintf("current batch: %d\n", atomic.LoadUint32(&bs.currentBatch.size)))
-	for i, batch := range bs.readyBatches {
-		s.WriteString(fmt.Sprintf("batch %d: %d\n", i, atomic.LoadUint32(&batch.size)))
-	}
-
-	fmt.Println(s.String())
 }
 
 func (bs *BatchStore) Lookup(key string) (interface{}, bool) {
@@ -108,15 +86,17 @@ func (bs *BatchStore) Lookup(key string) (interface{}, bool) {
 	return batch.Load(key)
 }
 
-func (bs *BatchStore) Insert(key string, value interface{}) bool {
+func (bs *BatchStore) Insert(key string, value interface{}, size uint32) bool {
 	for {
 		// Try to add to the current batch. It doesn't matter if we don't end up using it,
 		// we only care about if it's higher than the limit or not.
 		bs.lock.RLock()
-		full := atomic.AddUint32(&bs.currentBatch.size, 1) > bs.batchMaxSize
+		newSize := atomic.AddUint64(&bs.currentBatch.sizeBytes, uint64(size)+(1<<sizeBytesOffset))
+		full := uint32(newSize>>sizeBytesOffset) > bs.batchMaxSize
+		fullBytes := uint32(newSize) > bs.batchMaxSizeBytes
 		currBatch := bs.currentBatch
 
-		if !full {
+		if !full && !fullBytes {
 			_, exists := bs.keys2Batches.LoadOrStore(key, currBatch)
 			if exists {
 				bs.lock.RUnlock()
@@ -166,12 +146,15 @@ func (bs *BatchStore) ForEach(f func(k, v interface{})) {
 	})
 }
 
-func (bs *BatchStore) SetBatching(enabled bool) {
-	if enabled {
-		atomic.StoreUint32(&bs.batchingEnabled, 1)
-	} else {
-		atomic.StoreUint32(&bs.batchingEnabled, 0)
+func (bs *BatchStore) Prune(f func(k, v interface{}) error) {
+	bs.lock.RLock()
+	defer bs.lock.RUnlock()
+
+	for _, batch := range bs.readyBatches {
+		batch.Prune(f)
 	}
+
+	bs.currentBatch.Prune(f)
 }
 
 func (bs *BatchStore) Remove(key string) {
@@ -206,31 +189,33 @@ func (bs *BatchStore) Fetch(ctx context.Context) []interface{} {
 		}
 	}()
 
-	for {
-		if len(bs.readyBatches) > 0 {
-			return bs.dequeueBatch()
-		}
-
-		// Else, either wait for the timeout
-		// or for a new batch to be enqueued.
-		bs.signal.Wait()
-
-		// Prefer a ready and full batch over a non-empty one
-		if len(bs.readyBatches) > 0 {
-			return bs.dequeueBatch()
-		}
-
-		// But if no full batch can be found, use the non-empty one
-		returnedBatch := bs.currentBatch
-		// If no request is found, return nil
-		if atomic.LoadUint32(&returnedBatch.size) == 0 {
-			return nil
-		}
-		// Mark the current batch as empty, since we are returning its content
-		// to the caller.
-		bs.currentBatch = &batch{}
-		return bs.prepareBatch(returnedBatch)
+	if len(bs.readyBatches) > 0 {
+		return bs.dequeueBatch()
 	}
+
+	// Else, either wait for the timeout
+	// or for a new batch to be enqueued.
+	bs.signal.Wait()
+
+	// Prefer a ready and full batch over a non-empty one
+	for len(bs.readyBatches) > 0 {
+		dequeued := bs.dequeueBatch()
+		if len(dequeued) == 0 { // still might be empty if requests were pruned
+			continue
+		}
+		return dequeued
+	}
+
+	// But if no full batch can be found, use the non-empty one
+	returnedBatch := bs.currentBatch
+	// If no request is found, return nil
+	if atomic.LoadUint64(&returnedBatch.sizeBytes) == 0 {
+		return nil
+	}
+	// Mark the current batch as empty, since we are returning its content
+	// to the caller.
+	bs.currentBatch = &batch{}
+	return bs.prepareBatch(returnedBatch)
 }
 
 func (bs *BatchStore) dequeueBatch() []interface{} {
@@ -242,6 +227,8 @@ func (bs *BatchStore) dequeueBatch() []interface{} {
 }
 
 func (bs *BatchStore) prepareBatch(readyBatch *batch) []interface{} {
+	readyBatch.markEnqueued() // make sure it is marked as enqueued before fetch returns it
+
 	batch := make([]interface{}, 0, bs.batchMaxSize*2)
 
 	readyBatch.Range(func(k, v interface{}) bool {

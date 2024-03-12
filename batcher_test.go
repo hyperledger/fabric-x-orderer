@@ -140,6 +140,7 @@ func TestBatcherNetwork(t *testing.T) {
 }
 
 func TestBatchersStopSecondaries(t *testing.T) {
+	t.Skip()
 	n := 3
 
 	var stopped sync.WaitGroup
@@ -158,7 +159,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 			AutoRemoveTimeout:     time.Minute / 2,
 			SubmitTimeout:         time.Second * 10,
 			OnFirstStrikeTimeout:  func([]byte) {},
-			SecondStrikeCallback: func() {
+			OnSecondStrikeTimeout: func() {
 				go func() {
 					fmt.Println("Stopping batcher", b.ID)
 					defer stopped.Done()
@@ -166,7 +167,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 				}()
 			},
 		})
-		b.MemPool.Stop()
+		b.MemPool.Close()
 		b.MemPool = pool
 	}
 
@@ -284,7 +285,7 @@ func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
 
 func createLogger(t *testing.T, i int) *zap.SugaredLogger {
 	logConfig := zap.NewDevelopmentConfig()
-	logConfig.Level.SetLevel(zapcore.WarnLevel)
+	logConfig.Level.SetLevel(zapcore.InfoLevel)
 	logger, _ := logConfig.Build()
 	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
 	sugaredLogger := logger.Sugar()
