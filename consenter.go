@@ -19,6 +19,17 @@ type Consenter struct {
 	State      State
 }
 
+// Propose proposes events to the following state and returns the new state
+func (c *Consenter) Propose(prevState []byte, fragmentFromBytes func([]byte) BatchAttestationFragment, events ...ControlEvent) []byte {
+	var state State
+	if err := state.DeSerialize(prevState, fragmentFromBytes); err != nil {
+		panic(err)
+	}
+
+	newState, _ := state.Process(c.Logger, events...)
+	return newState.Serialize()
+}
+
 func (c *Consenter) ReadyBatchAttestations(events []ControlEvent) []BatchAttestationFragment {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
