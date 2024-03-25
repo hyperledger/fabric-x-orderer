@@ -12,36 +12,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type naiveConsensusLedger chan BatchAttestation
-
-func (n naiveConsensusLedger) Append(_ uint64, blockHeaders BatchAttestation) {
-	n <- blockHeaders
+type mockBatchAttestationDB struct {
 }
 
-type naiveTotalOrder struct {
-	input    chan [][]byte
-	feedback func([]BatchAttestationFragment, []byte)
+func (m *mockBatchAttestationDB) Exists(digest []byte) bool {
+	return false
 }
 
-func (n *naiveTotalOrder) Deliver() ([]ControlEvent, func([]BatchAttestationFragment, []byte)) {
-	batch := <-n.input
+func (m *mockBatchAttestationDB) Put(digest []byte, epoch uint64) {
 
-	bafs := make([]ControlEvent, 0, len(batch))
-
-	for i := 0; i < len(batch); i++ {
-		ba := &SimpleBatchAttestationFragment{}
-		if err := ba.Deserialize(batch[i]); err != nil {
-			panic(err)
-		}
-
-		bafs = append(bafs, ControlEvent{BAF: ba})
-	}
-
-	return bafs, n.feedback
 }
+
+func (m *mockBatchAttestationDB) Clean(epoch uint64) {
+
+}
+
+type naiveTotalOrder chan []byte
 
 func (n naiveTotalOrder) SubmitRequest(req []byte) error {
-	n.input <- [][]byte{req}
+	n <- req
 	return nil
 }
 
@@ -98,37 +87,55 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	assembler.Replicator = replicator
 	assembler.Logger = logger
 
-	consenterLedger := make(naiveConsensusLedger)
+	totalOrder := make(naiveTotalOrder, 1000)
 
-	var totalOrder naiveTotalOrder
-	totalOrder.input = make(chan [][]byte, 1000)
-	totalOrder.feedback = func(bafs []BatchAttestationFragment, _ []byte) {
-		if len(bafs) == 0 {
-			fmt.Println("Empty fragments")
-			return
-		}
-		ba := SimpleBatchAttestation{F: make([]SimpleBatchAttestationFragment, len(bafs))}
-		for i := 0; i < len(bafs); i++ {
-			ba.F[i] = SimpleBatchAttestationFragment{}
-			ba.F[i].Deserialize(bafs[i].Serialize())
-		}
-		consenterLedger.Append(0, &ba)
+	initialState := &State{
+		Threshold:  1,
+		N:          1,
+		ShardCount: uint16(shardCount),
+	}
+
+	for shardID := uint16(1); shardID <= initialState.ShardCount; shardID++ {
+		initialState.Shards = append(initialState.Shards, ShardTerm{Shard: shardID, Term: 1})
 	}
 
 	consenter := &Consenter{
-		State: State{
-			Threshold:  1,
-			N:          1,
-			ShardCount: 1,
-			Shards:     []ShardTerm{{Shard: 1, Term: 1}},
+		State: initialState.Serialize(),
+		DB:    &mockBatchAttestationDB{},
+		FragmentFromBytes: func(rawBAF []byte) (BatchAttestationFragment, error) {
+			sbaf := &SimpleBatchAttestationFragment{}
+			err := sbaf.Deserialize(rawBAF)
+			return sbaf, err
 		},
 		Logger:     logger,
 		TotalOrder: &totalOrder,
 	}
 
 	go func() {
-		for ba := range consenterLedger {
-			baReplicator <- ba
+		var events [][]byte
+		state := make([]byte, len(consenter.State))
+		copy(state, consenter.State)
+		for {
+			select {
+			case <-time.After(time.Millisecond * 100):
+				if len(events) == 0 {
+					continue
+				}
+				consenter.Commit(events)
+				newState, aggregatedBAFs := consenter.Process(state, events)
+				state = newState
+				for _, bafs := range aggregatedBAFs {
+					ba := &SimpleBatchAttestation{}
+					for _, baf := range bafs {
+						ba.F = append(ba.F, *baf.(*SimpleBatchAttestationFragment))
+					}
+					baReplicator <- ba
+				}
+				events = nil
+
+			case event := <-totalOrder:
+				events = append(events, event)
+			}
 		}
 	}()
 
@@ -141,8 +148,13 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			ba := &SimpleBatchAttestationFragment{
 				Dig: baf.Digest(),
 				Se:  int(baf.Seq()),
+				Sh:  int(baf.Shard()),
+				Si:  int(baf.Signer()),
+				P:   int(baf.Primary()),
 			}
-			consenter.Submit(ba.Serialize())
+			consenter.Submit((&ControlEvent{
+				BAF: ba,
+			}).Bytes())
 		}
 		batcher.Threshold = 1
 		batchers = append(batchers, batcher)
@@ -167,7 +179,6 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	assembler.Run()
-	consenter.Run()
 
 	router := &Router{
 		Logger:         logger,

@@ -3,38 +3,177 @@ package node
 import (
 	"arma"
 	"bytes"
+	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"github.com/SmartBFT-Go/consensus/v2/pkg/api"
 	"github.com/SmartBFT-Go/consensus/v2/pkg/consensus"
 	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
+	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
+	"github.com/golang/protobuf/proto"
+	"sync"
 )
 
 type Storage interface {
 	Append([]byte)
 }
 
-type Proposer interface {
-	Propose([]byte, func([]byte) arma.BatchAttestationFragment, ...arma.ControlEvent) []byte
-}
-
 type Signer interface {
 	Sign(message []byte) ([]byte, error)
 }
 
-type Consensus struct {
-	Signer       Signer
-	Proposer     Proposer
-	ArmaState    []byte
-	CurrentNodes []uint64
-	consensus.Consensus
-	Storage      Storage
-	commitEvents armaCommit
+type SigVerifier interface {
+	VerifySignature(id uint16, msg, sig []byte) error
 }
 
-type block struct {
-	Attestations []arma.SimpleBatchAttestation
-	State        []byte
-	Decision     []byte
+type Arma interface {
+	Process(prevState []byte, events [][]byte) ([]byte, [][]arma.BatchAttestationFragment)
+	Commit(events [][]byte)
+}
+
+type Consensus struct {
+	LastSeq      uint64
+	SigVerifier  SigVerifier
+	Comm         api.Comm
+	Signer       Signer
+	CurrentNodes []uint64
+	consensus.Consensus
+	Storage Storage
+	Arma    Arma
+	lock    sync.RWMutex
+	State   []byte
+}
+
+func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {
+	batch := arma.BatchFromRaw(proposal.Payload)
+	var hdr Header
+	if err := hdr.FromBytes(proposal.Header); err != nil {
+		return nil, err
+	}
+
+	computedState, _ := c.Arma.Process(c.State, batch)
+	if !bytes.Equal(hdr.State, computedState) {
+		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %s", computedState, hdr.State)
+	}
+
+	reqInfos := make([]types.RequestInfo, 0, len(batch))
+	for _, rawReq := range batch {
+		reqID, err := c.VerifyRequest(rawReq)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
+		}
+
+		reqInfos = append(reqInfos, reqID)
+	}
+
+	return reqInfos, nil
+}
+
+func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
+	var ce arma.ControlEvent
+	if err := ce.FromBytes(req, BatchAttestationFromBytes); err != nil {
+		return types.RequestInfo{}, err
+	}
+
+	reqID := c.RequestID(req)
+
+	if ce.Complaint != nil {
+		ce.Complaint.Bytes()
+		err := c.SigVerifier.VerifySignature(ce.Complaint.Signer, ToBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
+		return reqID, err
+	} else if ce.BAF != nil {
+		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ToBeSignedBAF(ce.BAF), ce.BAF.(*arma.SimpleBatchAttestationFragment).Sig)
+		return reqID, err
+	} else {
+		return types.RequestInfo{}, fmt.Errorf("empty Control Event")
+	}
+}
+
+func ToBeSignedComplaint(c *arma.Complaint) []byte {
+	buff := make([]byte, 12)
+	var pos int
+	binary.BigEndian.PutUint16(buff, c.Shard)
+	pos += 2
+	binary.BigEndian.PutUint64(buff[pos:], c.Term)
+	pos += 8
+	binary.BigEndian.PutUint16(buff[pos:], c.Signer)
+
+	return buff
+}
+
+func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
+	buff := make([]byte, 18)
+	var pos int
+	binary.BigEndian.PutUint16(buff, baf.Shard())
+	pos += 2
+	binary.BigEndian.PutUint64(buff[pos:], baf.Seq())
+	pos += 8
+	binary.BigEndian.PutUint16(buff[pos:], baf.Signer())
+	pos += 2
+	copy(buff[pos:], baf.Digest())
+
+	return buff
+}
+
+func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Proposal) ([]byte, error) {
+	var msgs Bytes
+	if _, err := asn1.Unmarshal(signature.Msg, &msgs); err != nil {
+		return nil, err
+	}
+
+	var values Bytes
+	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
+		return nil, err
+	}
+
+	if err := c.VerifySignature(types.Signature{
+		Value: values[len(values)-1],
+		Msg:   []byte(prop.Digest()),
+		ID:    signature.ID,
+	}); err != nil {
+		return nil, err
+	}
+
+	for i, msg := range msgs {
+		if err := c.VerifySignature(types.Signature{
+			Value: values[i],
+			Msg:   msg,
+			ID:    signature.ID,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, nil
+}
+
+func (c *Consensus) VerifySignature(signature types.Signature) error {
+	return c.SigVerifier.VerifySignature(uint16(signature.ID), signature.Msg, signature.Value)
+}
+
+func (c *Consensus) VerificationSequence() uint64 {
+	return 0
+}
+
+func (c *Consensus) RequestsFromProposal(proposal types.Proposal) []types.RequestInfo {
+	batch := arma.BatchFromRaw(proposal.Payload)
+	reqInfos := make([]types.RequestInfo, 0, len(batch))
+	for _, rawReq := range batch {
+		reqID, err := c.VerifyRequest(rawReq)
+		if err != nil {
+			panic(fmt.Errorf("invalid request %s: %v", rawReq, err))
+		}
+
+		reqInfos = append(reqInfos, reqID)
+	}
+
+	return reqInfos
+}
+
+func (c *Consensus) AuxiliaryData(i []byte) []byte {
+	return nil
 }
 
 type toBeSignedBlockHeader struct {
@@ -51,68 +190,45 @@ func (tbsbh toBeSignedBlockHeader) Bytes() []byte {
 	return buff
 }
 
-func (b *block) Bytes() []byte {
-	rawAttestations := bytes.Buffer{}
-	for _, att := range b.Attestations {
-		hdr := make([]byte, 4)
-		data := att.Serialize()
-		binary.BigEndian.PutUint32(hdr, uint32(len(data)))
-		rawAttestations.Write(hdr)
-		rawAttestations.Write(data)
-	}
-
-	buff := bytes.Buffer{}
-
-	attestationsLen := make([]byte, 4)
-	binary.BigEndian.PutUint32(attestationsLen, uint32(rawAttestations.Len()))
-
-	stateLen := make([]byte, 4)
-	binary.BigEndian.PutUint32(stateLen, uint32(len(b.State)))
-
-	buff.Write(attestationsLen)
-	buff.Write(rawAttestations.Bytes())
-	buff.Write(stateLen)
-	buff.Write(b.State)
-	buff.Write(b.Decision)
-
-	return buff.Bytes()
+type Header struct {
+	Num       uint64
+	Sequences []uint64
+	State     []byte
 }
 
-func controlEventsFromData(data []byte) []arma.ControlEvent {
-	var controlEventCount int
-	scanControlEvents(data, func(_ []byte) {
-		controlEventCount++
-	})
+func (h *Header) FromBytes(rawHeader []byte) error {
+	h.Num = binary.BigEndian.Uint64(rawHeader[0:8])
+	sequenceCount := int(binary.BigEndian.Uint64(rawHeader[8:12]))
+	stateLen := int(binary.BigEndian.Uint64(rawHeader[12:16]))
 
-	controlEvents := make([]arma.ControlEvent, 0, controlEventCount)
+	sequences := make([]uint64, 0, sequenceCount)
 
-	scanControlEvents(data, func(rawCE []byte) {
-		var ce arma.ControlEvent
-		if err := ce.FromBytes(rawCE, func([]byte) (arma.BatchAttestationFragment, error) {
-			var sbaf arma.SimpleBatchAttestationFragment
-			err := sbaf.Deserialize(rawCE)
-			return &sbaf, err
-		}); err != nil {
-			panic(err)
-		}
+	for i := 0; i < sequenceCount; i++ {
+		sequences = append(sequences, binary.BigEndian.Uint64(rawHeader[8+4+4+i*8:]))
+	}
 
-		controlEvents = append(controlEvents, ce)
-	})
+	h.Sequences = sequences
 
-	return controlEvents
+	h.State = rawHeader[8+4+4+8*stateLen:]
+
+	return nil
 }
 
-func scanControlEvents(data []byte, f func([]byte)) {
-	var pos int
-	var c int
-	for pos < len(data) {
-		size := binary.BigEndian.Uint32(data[pos:])
-		pos += 4
-		rawCE := data[pos : pos+int(size)]
-		f(rawCE)
-		pos += int(size)
-		c++
+func (h *Header) Bytes() []byte {
+	prefix := make([]byte, 8+4+4)
+	binary.BigEndian.PutUint64(prefix, h.Num)
+	binary.BigEndian.PutUint32(prefix[8:], uint32(len(h.Sequences)*8))
+	binary.BigEndian.PutUint32(prefix[12:], uint32(len(h.State)))
+	sequencesBuff := make([]byte, len(h.Sequences)*8)
+	for i := 0; i < len(h.Sequences); i++ {
+		binary.BigEndian.PutUint64(sequencesBuff[i*8:], h.Sequences[i])
 	}
+
+	buff := make([]byte, len(sequencesBuff)+len(prefix)+len(h.State))
+	copy(buff, prefix)
+	copy(buff[len(prefix):], sequencesBuff)
+	copy(buff[len(prefix)+len(sequencesBuff):], h.State)
+	return buff
 }
 
 type Bytes [][]byte
@@ -126,32 +242,59 @@ func (c *Consensus) Sign(msg []byte) []byte {
 	return sig
 }
 
+func (c *Consensus) RequestID(req []byte) types.RequestInfo {
+	var ce arma.ControlEvent
+	if err := ce.FromBytes(req, BatchAttestationFromBytes); err != nil {
+		return types.RequestInfo{}
+	}
+
+	var clientID string
+	var payloadToHash []byte
+	if ce.Complaint != nil {
+		ce.Complaint.Signature = nil
+		payloadToHash = ce.Complaint.Bytes()
+		clientID = fmt.Sprintf("%d", ce.Complaint.Signer)
+	} else if ce.BAF != nil {
+		clientID = fmt.Sprintf("%d", ce.BAF.Signer())
+		payloadToHash = make([]byte, 26)
+		binary.BigEndian.PutUint64(payloadToHash, ce.BAF.Seq())
+		binary.BigEndian.PutUint64(payloadToHash[8:], ce.BAF.Epoch())
+		binary.BigEndian.PutUint16(payloadToHash[16:], ce.BAF.Signer())
+		binary.BigEndian.PutUint16(payloadToHash[18:], ce.BAF.Primary())
+		binary.BigEndian.PutUint16(payloadToHash[20:], ce.BAF.Shard())
+		copy(payloadToHash[22:], ce.BAF.Digest())
+	} else {
+		c.Logger.Warnf("Empty ControlEvent")
+		return types.RequestInfo{}
+	}
+
+	dig := sha256.Sum256(payloadToHash)
+	return types.RequestInfo{
+		ID:       hex.EncodeToString(dig[:]),
+		ClientID: clientID,
+	}
+}
+
 func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signature {
 	requests := arma.BatchFromRaw(proposal.Payload)
 
-	ces, err := requestsToControlEvents(requests, BatchAttestationFromBytes)
-
-	if err != nil {
-		panic(err)
+	hdr := &Header{}
+	if err := hdr.FromBytes(proposal.Header); err != nil {
+		c.Logger.Panicf("Failed deserializing header: %v", err)
+		return nil
 	}
 
-	bafs := make([]arma.BatchAttestationFragment, 0, len(ces))
-	for _, ce := range ces {
-		if ce.BAF == nil {
-			continue
-		}
-		bafs = append(bafs, ce.BAF)
-	}
+	c.lock.RLock()
+	_, bafs := c.Arma.Process(c.State, requests)
+	c.lock.RUnlock()
 
-	batchAttestations := aggregateFragments(bafs)
+	sigs := make(Bytes, 0, len(bafs)+1)
+	msgs := make(Bytes, 0, len(bafs)+1)
 
-	sigs := make(Bytes, 0, len(batchAttestations)+1)
-	msgs := make(Bytes, 0, len(batchAttestations))
-
-	for _, ba := range batchAttestations {
+	for _, ba := range bafs {
 		var hdr toBeSignedBlockHeader
-		hdr.Digest = ba.Digest()
-		hdr.Sequence = int64(ba.Seq())
+		hdr.Digest = ba[0].Digest()
+		hdr.Sequence = int64(ba[0].Seq())
 		// TODO: prev hash
 		msg := hdr.Bytes()
 		sig, err := c.Signer.Sign(msg)
@@ -189,16 +332,27 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 }
 
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.Proposal {
-	ces, err := requestsToControlEvents(requests, BatchAttestationFromBytes)
+	c.lock.RLock()
+	newRawState, attestations := c.Arma.Process(c.State, requests)
+	c.lock.RUnlock()
 
-	if err != nil {
+	sequences := make([]uint64, 0, len(attestations))
+	for seq := c.LastSeq; seq < c.LastSeq+uint64(len(sequences)); seq++ {
+		sequences = append(sequences, seq)
+	}
+
+	md := &smartbftprotos.ViewMetadata{}
+	if err := proto.Unmarshal(metadata, md); err != nil {
 		panic(err)
 	}
 
-	newRawState := c.Proposer.Propose(c.ArmaState, nil, ces...)
 	return types.Proposal{
-		Header:   metadata,
-		Metadata: newRawState,
+		Header: (&Header{
+			Sequences: sequences,
+			State:     newRawState,
+			Num:       md.LatestSequence,
+		}).Bytes(),
+		Metadata: metadata,
 		Payload:  arma.BatchedRequests(requests).ToBytes(),
 	}
 }
@@ -212,104 +366,34 @@ func BatchAttestationFromBytes(in []byte) (arma.BatchAttestationFragment, error)
 	return &baf, nil
 }
 
-func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (arma.BatchAttestationFragment, error)) ([]arma.ControlEvent, error) {
-	events := make([]arma.ControlEvent, 0, len(requests))
-	for i := 0; i < len(requests); i++ {
-		ce := arma.ControlEvent{}
-		if err := ce.FromBytes(requests[i], fragmentFromBytes); err != nil {
-			return nil, err
-		}
-		events = append(events, ce)
-	}
-
-	return events, nil
-}
-
 func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signature) types.Reconfig {
 	rawDecision := decisionToBytes(proposal, signatures)
-	controlEvents := controlEventsFromData(proposal.Payload)
 
-	signal := make(chan struct{})
-
-	c.commitEvents <- commitEvent{
-		events: controlEvents,
-		f: func(batchAttestationFragments []arma.BatchAttestationFragment, newState []byte) {
-			defer close(signal)
-
-			batchAttestations := aggregateFragments(batchAttestationFragments)
-			b := block{
-				Attestations: batchAttestations,
-				State:        newState,
-				Decision:     rawDecision,
-			}
-			c.Storage.Append(b.Bytes())
-		},
+	hdr := &Header{}
+	if err := hdr.FromBytes(proposal.Header); err != nil {
+		c.Logger.Panicf("Failed deserializing header: %v", err)
+		return types.Reconfig{}
 	}
 
-	// Wait for Arma to process the commit event
-	<-signal
+	controlEvents := arma.BatchFromRaw(proposal.Payload)
+	// Why do we first give Arma the events and then append the decision to storage?
+	// Upon commit, Arma indexes the batch attestations which passed the threshold in its index,
+	// to avoid signing them again in the (near) future.
+	// If we crash after this, we will replicate the block and will overwrite the index again.
+	// However, if we first commit the decision and then index afterwards and crash during or right before
+	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
+	// a batch attestation twice.
+	c.Arma.Commit(controlEvents)
+	c.Storage.Append(rawDecision)
+
+	c.lock.Lock()
+	c.State = hdr.State
+	c.lock.Unlock()
 
 	return types.Reconfig{
 		CurrentNodes:  c.CurrentNodes,
 		CurrentConfig: c.Consensus.Config,
 	}
-}
-
-func aggregateFragments(batchAttestationFragments []arma.BatchAttestationFragment) []arma.SimpleBatchAttestation {
-	index := indexBAFs(batchAttestationFragments)
-
-	var attestations []arma.SimpleBatchAttestation
-
-	added := make(map[struct {
-		seq   uint64
-		shard uint16
-	}]struct{})
-
-	for _, baf := range batchAttestationFragments {
-		key := struct {
-			seq   uint64
-			shard uint16
-		}{seq: baf.Seq(), shard: baf.Shard()}
-
-		if _, added := added[key]; added {
-			continue
-		}
-
-		added[key] = struct{}{}
-
-		fragments := index[key]
-
-		var simpleFragments []arma.SimpleBatchAttestationFragment
-		for _, fragment := range fragments {
-			simpleFragments = append(simpleFragments, *fragment.(*arma.SimpleBatchAttestationFragment))
-		}
-		attestations = append(attestations, arma.SimpleBatchAttestation{
-			F: simpleFragments,
-		})
-	}
-
-	return attestations
-}
-
-func indexBAFs(batchAttestationFragments []arma.BatchAttestationFragment) map[struct {
-	seq   uint64
-	shard uint16
-}][]arma.BatchAttestationFragment {
-	index := make(map[struct {
-		seq   uint64
-		shard uint16
-	}][]arma.BatchAttestationFragment)
-
-	for _, baf := range batchAttestationFragments {
-		key := struct {
-			seq   uint64
-			shard uint16
-		}{seq: baf.Seq(), shard: baf.Shard()}
-		fragments := index[key]
-		fragments = append(fragments, baf)
-		index[key] = fragments
-	}
-	return index
 }
 
 func decisionToBytes(proposal types.Proposal, signatures []types.Signature) []byte {
@@ -334,16 +418,4 @@ func decisionToBytes(proposal types.Proposal, signatures []types.Signature) []by
 	copy(buff[12+len(proposal.Header)+len(proposal.Payload)+len(proposal.Metadata):], sigBuff.Bytes())
 
 	return buff
-}
-
-type commitEvent struct {
-	events []arma.ControlEvent
-	f      func([]arma.BatchAttestationFragment, []byte)
-}
-
-type armaCommit chan commitEvent
-
-func (ac armaCommit) Deliver() ([]arma.ControlEvent, func([]arma.BatchAttestationFragment, []byte)) {
-	commit := <-ac
-	return commit.events, commit.f
 }

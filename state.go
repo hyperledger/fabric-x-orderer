@@ -113,7 +113,7 @@ func fragmentsToBytes(fragments []BatchAttestationFragment) []byte {
 	return fragmentBuffBytes
 }
 
-func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) BatchAttestationFragment) error {
+func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) (BatchAttestationFragment, error)) error {
 	s.Pending = nil
 	s.Shards = nil
 	s.Complaints = nil
@@ -125,7 +125,9 @@ func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) Batc
 
 	s.loadConfig(rs.Config)
 	s.loadShards(rs.Shards, int(s.ShardCount))
-	s.loadPending(rs.Pending, fragmentFromBytes)
+	if err := s.loadPending(rs.Pending, fragmentFromBytes); err != nil {
+		fmt.Errorf("failed loading batch attestation fragments: %v", err)
+	}
 	if err := s.loadComplaints(rs.Complaints); err != nil {
 		return fmt.Errorf("failed loading complaints: %v", err)
 	}
@@ -133,7 +135,7 @@ func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) Batc
 	return nil
 }
 
-func (s *State) loadPending(buff []byte, fragmentFromBytes func([]byte) BatchAttestationFragment) {
+func (s *State) loadPending(buff []byte, fragmentFromBytes func([]byte) (BatchAttestationFragment, error)) error {
 	var pending []BatchAttestationFragment
 
 	var pos int
@@ -143,10 +145,16 @@ func (s *State) loadPending(buff []byte, fragmentFromBytes func([]byte) BatchAtt
 		bafBytes := make([]byte, lengthOfBAF)
 		copy(bafBytes, buff[pos:])
 		pos += int(lengthOfBAF)
-		pending = append(pending, fragmentFromBytes(bafBytes))
+		baf, err := fragmentFromBytes(bafBytes)
+		if err != nil {
+			return err
+		}
+		pending = append(pending, baf)
 	}
 
 	s.Pending = pending
+
+	return nil
 }
 
 func (s *State) loadComplaints(buff []byte) error {
@@ -233,17 +241,8 @@ func (c *Complaint) FromBytes(bytes []byte) error {
 	return nil
 }
 
-type AntiBatchAttestationFragment struct {
-	Seq     uint64
-	Primary uint16
-	Signer  uint16
-	Shard   uint16
-	Digest  string
-}
-
 type ControlEvent struct {
 	BAF       BatchAttestationFragment
-	AntiBAF   *AntiBatchAttestationFragment
 	Complaint *Complaint
 }
 
@@ -255,8 +254,6 @@ func (ce *ControlEvent) Bytes() []byte {
 		bytes = make([]byte, len(rawBAF)+1)
 		bytes[0] = 1
 		copy(bytes[1:], rawBAF)
-	case ce.AntiBAF != nil:
-		panic("not supported yet")
 	case ce.Complaint != nil:
 		rawComplaint := ce.Complaint.Bytes()
 		bytes = make([]byte, len(rawComplaint)+1)

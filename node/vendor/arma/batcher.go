@@ -26,8 +26,8 @@ type MemPool interface {
 	NextRequests(ctx context.Context) [][]byte
 	RemoveRequests(requests ...string)
 	Submit(request []byte) error
-	SetBatching(bool)
-	Stop()
+	Restart(bool)
+	Close()
 }
 
 type Batch interface {
@@ -131,7 +131,7 @@ func (b *Batcher) Run() {
 func (b *Batcher) Stop() {
 	close(b.stopChan)
 	b.cancelBatch()
-	b.MemPool.Stop()
+	b.MemPool.Close()
 	b.running.Wait()
 }
 
@@ -142,7 +142,7 @@ func (b *Batcher) Submit(request []byte) error {
 func (b *Batcher) HandleAck(seq uint64, from uint16) {
 	// Only the primary performs the remaining code
 	if b.Primary != b.ID {
-		b.Logger.Warnf("Received ack on sequence %d from %d but we are not the primary", seq, from)
+		b.Logger.Warnf("Received ack on sequence %d from %d but we are not the primary (%d)", seq, from, b.Primary)
 		return
 	}
 
@@ -196,7 +196,7 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 func (b *Batcher) runPrimary() {
 	defer b.running.Done()
 	b.Logger.Infof("Acting as primary")
-	b.MemPool.SetBatching(true)
+	b.MemPool.Restart(true)
 
 	if b.BatchTimeout == 0 {
 		b.BatchTimeout = time.Millisecond * 500
@@ -230,6 +230,7 @@ func (b *Batcher) runPrimary() {
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 
 		b.sendBAF(baf)
+		b.HandleAck(b.Seq, b.ID)
 
 		b.Seq++
 

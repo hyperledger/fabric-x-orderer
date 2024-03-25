@@ -233,17 +233,8 @@ func (c *Complaint) FromBytes(bytes []byte) error {
 	return nil
 }
 
-type AntiBatchAttestationFragment struct {
-	Seq     uint64
-	Primary uint16
-	Signer  uint16
-	Shard   uint16
-	Digest  string
-}
-
 type ControlEvent struct {
 	BAF       BatchAttestationFragment
-	AntiBAF   *AntiBatchAttestationFragment
 	Complaint *Complaint
 }
 
@@ -255,8 +246,6 @@ func (ce *ControlEvent) Bytes() []byte {
 		bytes = make([]byte, len(rawBAF)+1)
 		bytes[0] = 1
 		copy(bytes[1:], rawBAF)
-	case ce.AntiBAF != nil:
-		panic("not supported yet")
 	case ce.Complaint != nil:
 		rawComplaint := ce.Complaint.Bytes()
 		bytes = make([]byte, len(rawComplaint)+1)
