@@ -1,7 +1,7 @@
 package node
 
 import (
-	"arma"
+	arma "arma/pkg"
 	"bytes"
 	"crypto/sha256"
 	"encoding/asn1"

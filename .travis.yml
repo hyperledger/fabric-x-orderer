@@ -4,4 +4,4 @@ go:
 
 script:
   - go test ./...
-
+  - (cd node; go test ./... )

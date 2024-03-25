@@ -1,7 +1,7 @@
 package node
 
 import (
-	"arma"
+	arma "arma/pkg"
 	"encoding/binary"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
