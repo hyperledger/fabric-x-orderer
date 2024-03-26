@@ -122,7 +122,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 					continue
 				}
 				consenter.Commit(events)
-				newState, aggregatedBAFs := consenter.Process(state, events)
+				newState, aggregatedBAFs := consenter.SimulateStateTransition(state, events)
 				state = newState
 				for _, bafs := range aggregatedBAFs {
 					ba := &SimpleBatchAttestation{}

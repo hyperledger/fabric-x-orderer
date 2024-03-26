@@ -22,7 +22,7 @@ type Consenter struct {
 	State             []byte
 }
 
-func (c *Consenter) Process(prevState []byte, events [][]byte) ([]byte, [][]BatchAttestationFragment) {
+func (c *Consenter) SimulateStateTransition(prevState []byte, events [][]byte) ([]byte, [][]BatchAttestationFragment) {
 
 	controlEvents, err := requestsToControlEvents(events, c.FragmentFromBytes)
 	if err != nil {
@@ -46,13 +46,13 @@ func (c *Consenter) Process(prevState []byte, events [][]byte) ([]byte, [][]Batc
 		filteredFragments = append(filteredFragments, baf)
 	}
 
-	batchAttestations := aggregateFragments(fragments)
+	batchAttestations := aggregateFragments(filteredFragments)
 
 	return newState.Serialize(), batchAttestations
 }
 
 func (c *Consenter) Commit(events [][]byte) {
-	state, batchAttestations := c.Process(c.State, events)
+	state, batchAttestations := c.SimulateStateTransition(c.State, events)
 	c.indexAttestationsInDB(batchAttestations)
 	c.State = state
 }

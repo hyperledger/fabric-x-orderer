@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/api"
 	"github.com/SmartBFT-Go/consensus/v2/pkg/consensus"
 	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
 	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
@@ -29,14 +28,13 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	Process(prevState []byte, events [][]byte) ([]byte, [][]arma.BatchAttestationFragment)
+	SimulateStateTransition(prevState []byte, events [][]byte) ([]byte, [][]arma.BatchAttestationFragment)
 	Commit(events [][]byte)
 }
 
 type Consensus struct {
 	LastSeq      uint64
 	SigVerifier  SigVerifier
-	Comm         api.Comm
 	Signer       Signer
 	CurrentNodes []uint64
 	consensus.Consensus
@@ -53,7 +51,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		return nil, err
 	}
 
-	computedState, _ := c.Arma.Process(c.State, batch)
+	computedState, _ := c.Arma.SimulateStateTransition(c.State, batch)
 	if !bytes.Equal(hdr.State, computedState) {
 		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %s", computedState, hdr.State)
 	}
@@ -285,7 +283,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	}
 
 	c.lock.RLock()
-	_, bafs := c.Arma.Process(c.State, requests)
+	_, bafs := c.Arma.SimulateStateTransition(c.State, requests)
 	c.lock.RUnlock()
 
 	sigs := make(Bytes, 0, len(bafs)+1)
@@ -333,7 +331,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.Proposal {
 	c.lock.RLock()
-	newRawState, attestations := c.Arma.Process(c.State, requests)
+	newRawState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
 	c.lock.RUnlock()
 
 	sequences := make([]uint64, 0, len(attestations))
