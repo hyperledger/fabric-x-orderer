@@ -54,6 +54,11 @@ func (r *naiveReplication) Replicate(_ uint16, _ uint64) <-chan Batch {
 	return r.subscribers[j-1]
 }
 
+func (r *naiveReplication) PullBatches(_ uint16, _ uint64) <-chan Batch {
+	j := atomic.AddUint32(&r.i, 1)
+	return r.subscribers[j-1]
+}
+
 func (r *naiveReplication) Append(_ uint16, seq uint64, bytes []byte) {
 	for _, s := range r.subscribers {
 		s <- &naiveBatch{
@@ -213,11 +218,11 @@ func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 	}
 
 	r.subscribers = append(r.subscribers, make(chan Batch, 100))
-	commit := r.Replicate(0, 0)
+	commit := r.PullBatches(0, 0)
 
 	batchers[0].Ledger = r
 	for i := 1; i < n; i++ {
-		batchers[i].Replicator = r
+		batchers[i].BatchPuller = r
 	}
 
 	for i := 0; i < n; i++ {

@@ -28,6 +28,10 @@ type BatchAttestationFragment interface {
 	Epoch() uint64
 }
 
+type BatchReplicator interface {
+	Replicate(shardID uint16, startSeq uint64) <-chan Batch
+}
+
 type AssemblerIndex interface {
 	Index(party uint16, shard uint16, sequence uint64, batch Batch)
 	Retrieve(party uint16, shard uint16, sequence uint64, digest []byte) (Batch, bool)

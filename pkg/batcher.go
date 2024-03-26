@@ -36,8 +36,8 @@ type Batch interface {
 	Party() uint16
 }
 
-type BatchReplicator interface {
-	Replicate(uint16, uint64) <-chan Batch
+type BatchPuller interface {
+	PullBatches(from uint16, startSeq uint64) <-chan Batch
 }
 
 type BatchedRequests [][]byte
@@ -98,7 +98,7 @@ type Batcher struct {
 	Ledger               BatchLedger
 	Seq                  uint64
 	ConfirmedSeq         uint64
-	Replicator           BatchReplicator
+	BatchPuller          BatchPuller
 	AttestBatch          func(seq uint64, primary uint16, shard uint16, digest []byte) BatchAttestationFragment
 	AttestationFromBytes func([]byte) (BatchAttestationFragment, error)
 	TotalOrderBAF        func(BatchAttestationFragment)
@@ -290,7 +290,7 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 func (b *Batcher) runSecondary() {
 	defer b.running.Done()
 	b.Logger.Infof("Acting as secondary")
-	out := b.Replicator.Replicate(b.Primary, b.Seq)
+	out := b.BatchPuller.PullBatches(b.Primary, b.Seq)
 	for {
 		var batchedRequests Batch
 		select {

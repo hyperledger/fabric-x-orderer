@@ -170,7 +170,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			batchers[to].HandleAck(seq, batcher.ID)
 		}
 		batchers[i].Ledger = sc
-		batchers[i].Replicator = nil
+		batchers[i].BatchPuller = nil
 		batchers[i].Primary = uint16(i)
 		batchers[i].ID = uint16(i)
 		batchers[i].Run()
