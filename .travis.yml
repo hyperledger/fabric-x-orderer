@@ -3,5 +3,5 @@ go:
   - 1.21.0
 
 script:
-  - go test ./...
-  - (cd node; go test ./... )
+  - go test -race ./...
+  - (cd node; go test -race ./... )
