@@ -112,11 +112,11 @@ func (ps *PendingStore) isStopped() bool {
 }
 
 func (ps *PendingStore) Close() {
+	ps.Stop()
 	ps.closeOnce.Do(func() {
 		if ps.closeChan == nil {
 			return
 		}
-		ps.Stop()
 		close(ps.closeChan)
 	})
 	ps.closedWG.Wait()
@@ -332,7 +332,8 @@ func (ps *PendingStore) now() time.Time {
 func (ps *PendingStore) GetAllRequests(max uint64) [][]byte {
 
 	if !ps.isStopped() {
-		panic("GetAllRequests should be called only when the pending store is stopped")
+		ps.Stop()
+		ps.Logger.Warnf("GetAllRequests should be called only when the pending store is stopped")
 	}
 
 	requests := make([][]byte, 0, max*2)
