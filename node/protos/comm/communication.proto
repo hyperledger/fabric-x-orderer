@@ -1,0 +1,21 @@
+
+syntax = "proto3";
+
+option go_package = "node/protos";
+
+package comm;
+
+message SubmitResponse {
+  string error = 1;
+}
+
+message Request {
+  bytes payload = 1;
+  bytes signature = 2;
+  bytes identity = 3;
+  uint32 identity_id = 4;
+}
+
+service Router {
+  rpc Submit(Request) returns (SubmitResponse);
+}
