@@ -158,11 +158,15 @@ var file_protos_comm_communication_proto_rawDesc = []byte{
 	0x20, 0x01, 0x28, 0x0c, 0x52, 0x08, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x12, 0x1f,
 	0x0a, 0x0b, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x5f, 0x69, 0x64, 0x18, 0x04, 0x20,
 	0x01, 0x28, 0x0d, 0x52, 0x0a, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x49, 0x64, 0x32,
-	0x37, 0x0a, 0x06, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x72, 0x12, 0x2d, 0x0a, 0x06, 0x53, 0x75, 0x62,
+	0x70, 0x0a, 0x06, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x72, 0x12, 0x2d, 0x0a, 0x06, 0x53, 0x75, 0x62,
 	0x6d, 0x69, 0x74, 0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65,
 	0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x0d, 0x5a, 0x0b, 0x6e, 0x6f, 0x64, 0x65,
-	0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x37, 0x0a, 0x0c, 0x53, 0x75, 0x62, 0x6d,
+	0x69, 0x74, 0x53, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53,
+	0x75, 0x62, 0x6d, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30,
+	0x01, 0x42, 0x0d, 0x5a, 0x0b, 0x6e, 0x6f, 0x64, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73,
+	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -184,9 +188,11 @@ var file_protos_comm_communication_proto_goTypes = []interface{}{
 }
 var file_protos_comm_communication_proto_depIdxs = []int32{
 	1, // 0: comm.Router.Submit:input_type -> comm.Request
-	0, // 1: comm.Router.Submit:output_type -> comm.SubmitResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
+	1, // 1: comm.Router.SubmitStream:input_type -> comm.Request
+	0, // 2: comm.Router.Submit:output_type -> comm.SubmitResponse
+	0, // 3: comm.Router.SubmitStream:output_type -> comm.SubmitResponse
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -256,6 +262,7 @@ const _ = grpc.SupportPackageIsVersion6
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type RouterClient interface {
 	Submit(ctx context.Context, in *Request, opts ...grpc.CallOption) (*SubmitResponse, error)
+	SubmitStream(ctx context.Context, opts ...grpc.CallOption) (Router_SubmitStreamClient, error)
 }
 
 type routerClient struct {
@@ -275,9 +282,41 @@ func (c *routerClient) Submit(ctx context.Context, in *Request, opts ...grpc.Cal
 	return out, nil
 }
 
+func (c *routerClient) SubmitStream(ctx context.Context, opts ...grpc.CallOption) (Router_SubmitStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Router_serviceDesc.Streams[0], "/comm.Router/SubmitStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &routerSubmitStreamClient{stream}
+	return x, nil
+}
+
+type Router_SubmitStreamClient interface {
+	Send(*Request) error
+	Recv() (*SubmitResponse, error)
+	grpc.ClientStream
+}
+
+type routerSubmitStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *routerSubmitStreamClient) Send(m *Request) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *routerSubmitStreamClient) Recv() (*SubmitResponse, error) {
+	m := new(SubmitResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // RouterServer is the server API for Router service.
 type RouterServer interface {
 	Submit(context.Context, *Request) (*SubmitResponse, error)
+	SubmitStream(Router_SubmitStreamServer) error
 }
 
 // UnimplementedRouterServer can be embedded to have forward compatible implementations.
@@ -286,6 +325,9 @@ type UnimplementedRouterServer struct {
 
 func (*UnimplementedRouterServer) Submit(context.Context, *Request) (*SubmitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Submit not implemented")
+}
+func (*UnimplementedRouterServer) SubmitStream(Router_SubmitStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method SubmitStream not implemented")
 }
 
 func RegisterRouterServer(s *grpc.Server, srv RouterServer) {
@@ -310,6 +352,32 @@ func _Router_Submit_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Router_SubmitStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(RouterServer).SubmitStream(&routerSubmitStreamServer{stream})
+}
+
+type Router_SubmitStreamServer interface {
+	Send(*SubmitResponse) error
+	Recv() (*Request, error)
+	grpc.ServerStream
+}
+
+type routerSubmitStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *routerSubmitStreamServer) Send(m *SubmitResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *routerSubmitStreamServer) Recv() (*Request, error) {
+	m := new(Request)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 var _Router_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "comm.Router",
 	HandlerType: (*RouterServer)(nil),
@@ -319,6 +387,13 @@ var _Router_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Router_Submit_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "SubmitStream",
+			Handler:       _Router_SubmitStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "protos/comm/communication.proto",
 }
