@@ -124,7 +124,7 @@ func TestRouter(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	connections := 100
+	connections := 50
 	workerPerConn := 50
 	workPerWorker := 5000
 

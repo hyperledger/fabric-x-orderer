@@ -27,7 +27,6 @@ func NewRouter(shards []uint16, batcherEndpoints []string, batcherRootCAs [][][]
 	r := &Router{shards: shards, shardRouters: make(map[uint16]*ShardRouter), logger: logger, router: arma.Router{Logger: logger, ShardCount: uint16(len(shards))}}
 	for i, shard := range shards {
 		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i])
-		r.shardRouters[shard].maybeInit()
 	}
 	return r
 }
@@ -39,6 +38,10 @@ type response struct {
 }
 
 func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
+	for _, shard := range r.shards {
+		r.shardRouters[shard].maybeInit()
+	}
+
 	exit := make(chan struct{})
 	defer func() {
 		close(exit)
