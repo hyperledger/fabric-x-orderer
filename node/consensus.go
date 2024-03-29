@@ -3,6 +3,7 @@ package node
 import (
 	arma "arma/pkg"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/binary"
@@ -12,6 +13,7 @@ import (
 	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
 	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
 	"github.com/golang/protobuf/proto"
+	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
 	"sync"
 )
 
@@ -42,6 +44,19 @@ type Consensus struct {
 	Arma    Arma
 	lock    sync.RWMutex
 	State   []byte
+}
+
+func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*protos.EventResponse, error) {
+	var ce arma.ControlEvent
+	if err := ce.FromBytes(event.GetPayload(), BatchAttestationFromBytes); err != nil {
+		return &protos.EventResponse{Error: fmt.Sprintf("malformed control event: %v", err)}, nil
+	}
+
+	if err := c.SubmitRequest(ce.Bytes()); err != nil {
+		return &protos.EventResponse{Error: fmt.Sprintf("failed submitting request: %v", err)}, nil
+	}
+
+	return &protos.EventResponse{}, nil
 }
 
 func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {

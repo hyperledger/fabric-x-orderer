@@ -7,6 +7,8 @@ package comm;
 
 message SubmitResponse {
   string error = 1;
+  bytes reqID = 2;
+  bytes trace_id = 3;
 }
 
 message Request {
@@ -14,9 +16,35 @@ message Request {
   bytes signature = 2;
   bytes identity = 3;
   uint32 identity_id = 4;
+  bytes trace_id = 5;
 }
 
-service Router {
+service RequestTransmit {
   rpc Submit(Request) returns (SubmitResponse);
   rpc SubmitStream(stream Request) returns (stream SubmitResponse);
+}
+
+message EventResponse {
+  string error = 1;
+}
+
+message Event {
+  bytes payload = 1;
+}
+
+service Consensus {
+  rpc NotifyEvent(Event) returns (EventResponse);
+}
+
+message Ack {
+  uint32 shard = 1;
+  uint32 seq = 2;
+}
+
+message AckResponse {
+  string error = 1;
+}
+
+service AckService {
+  rpc NotifyAck(Ack) returns (EventResponse);
 }

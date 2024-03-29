@@ -181,15 +181,8 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	assembler.Run()
 
 	router := &Router{
-		Logger:         logger,
-		RequestToShard: CRC32RequestToShard(uint16(shardCount)),
-		Forward: func(shard uint16, request []byte) (BackendError, error) {
-			err := batchers[shard].Submit(request)
-			if err != nil {
-				return fmt.Errorf("%s", err.Error()), nil
-			}
-			return nil, nil
-		},
+		Logger:     logger,
+		ShardCount: uint16(shardCount),
 	}
 
 	var submittedRequests sync.Map
@@ -214,7 +207,11 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 				binary.BigEndian.PutUint32(req[4:], uint32(i))
 				submittedRequests.Store(binary.BigEndian.Uint32(req), struct{}{})
 				atomic.AddUint32(&submittedCount, 1)
-				router.Submit(req)
+				shardID, _ := router.Map(req)
+				err := batchers[shardID].Submit(req)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}(worker)
 	}

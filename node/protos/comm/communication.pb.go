@@ -29,7 +29,9 @@ type SubmitResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Error string `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	Error   string `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	ReqID   []byte `protobuf:"bytes,2,opt,name=reqID,proto3" json:"reqID,omitempty"`
+	TraceId []byte `protobuf:"bytes,3,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
 }
 
 func (x *SubmitResponse) Reset() {
@@ -71,6 +73,20 @@ func (x *SubmitResponse) GetError() string {
 	return ""
 }
 
+func (x *SubmitResponse) GetReqID() []byte {
+	if x != nil {
+		return x.ReqID
+	}
+	return nil
+}
+
+func (x *SubmitResponse) GetTraceId() []byte {
+	if x != nil {
+		return x.TraceId
+	}
+	return nil
+}
+
 type Request struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -80,6 +96,7 @@ type Request struct {
 	Signature  []byte `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
 	Identity   []byte `protobuf:"bytes,3,opt,name=identity,proto3" json:"identity,omitempty"`
 	IdentityId uint32 `protobuf:"varint,4,opt,name=identity_id,json=identityId,proto3" json:"identity_id,omitempty"`
+	TraceId    []byte `protobuf:"bytes,5,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
 }
 
 func (x *Request) Reset() {
@@ -142,31 +159,257 @@ func (x *Request) GetIdentityId() uint32 {
 	return 0
 }
 
+func (x *Request) GetTraceId() []byte {
+	if x != nil {
+		return x.TraceId
+	}
+	return nil
+}
+
+type EventResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Error string `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+}
+
+func (x *EventResponse) Reset() {
+	*x = EventResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_protos_comm_communication_proto_msgTypes[2]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *EventResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EventResponse) ProtoMessage() {}
+
+func (x *EventResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_protos_comm_communication_proto_msgTypes[2]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EventResponse.ProtoReflect.Descriptor instead.
+func (*EventResponse) Descriptor() ([]byte, []int) {
+	return file_protos_comm_communication_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *EventResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type Event struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Payload []byte `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+}
+
+func (x *Event) Reset() {
+	*x = Event{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_protos_comm_communication_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Event) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Event) ProtoMessage() {}
+
+func (x *Event) ProtoReflect() protoreflect.Message {
+	mi := &file_protos_comm_communication_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Event.ProtoReflect.Descriptor instead.
+func (*Event) Descriptor() ([]byte, []int) {
+	return file_protos_comm_communication_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Event) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+type Ack struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Shard uint32 `protobuf:"varint,1,opt,name=shard,proto3" json:"shard,omitempty"`
+	Seq   uint32 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+}
+
+func (x *Ack) Reset() {
+	*x = Ack{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_protos_comm_communication_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Ack) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Ack) ProtoMessage() {}
+
+func (x *Ack) ProtoReflect() protoreflect.Message {
+	mi := &file_protos_comm_communication_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Ack.ProtoReflect.Descriptor instead.
+func (*Ack) Descriptor() ([]byte, []int) {
+	return file_protos_comm_communication_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Ack) GetShard() uint32 {
+	if x != nil {
+		return x.Shard
+	}
+	return 0
+}
+
+func (x *Ack) GetSeq() uint32 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+type AckResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Error string `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+}
+
+func (x *AckResponse) Reset() {
+	*x = AckResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_protos_comm_communication_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AckResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AckResponse) ProtoMessage() {}
+
+func (x *AckResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_protos_comm_communication_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AckResponse.ProtoReflect.Descriptor instead.
+func (*AckResponse) Descriptor() ([]byte, []int) {
+	return file_protos_comm_communication_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *AckResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_protos_comm_communication_proto protoreflect.FileDescriptor
 
 var file_protos_comm_communication_proto_rawDesc = []byte{
 	0x0a, 0x1f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x6d, 0x6d, 0x2f, 0x63, 0x6f,
 	0x6d, 0x6d, 0x75, 0x6e, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x12, 0x04, 0x63, 0x6f, 0x6d, 0x6d, 0x22, 0x26, 0x0a, 0x0e, 0x53, 0x75, 0x62, 0x6d, 0x69,
+	0x6f, 0x12, 0x04, 0x63, 0x6f, 0x6d, 0x6d, 0x22, 0x57, 0x0a, 0x0e, 0x53, 0x75, 0x62, 0x6d, 0x69,
 	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x65, 0x72, 0x72,
-	0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x22,
-	0x7e, 0x0a, 0x07, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x18, 0x0a, 0x07, 0x70, 0x61,
-	0x79, 0x6c, 0x6f, 0x61, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07, 0x70, 0x61, 0x79,
-	0x6c, 0x6f, 0x61, 0x64, 0x12, 0x1c, 0x0a, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72,
-	0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75,
-	0x72, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x18, 0x03,
-	0x20, 0x01, 0x28, 0x0c, 0x52, 0x08, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x12, 0x1f,
-	0x0a, 0x0b, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x5f, 0x69, 0x64, 0x18, 0x04, 0x20,
-	0x01, 0x28, 0x0d, 0x52, 0x0a, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x49, 0x64, 0x32,
-	0x70, 0x0a, 0x06, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x72, 0x12, 0x2d, 0x0a, 0x06, 0x53, 0x75, 0x62,
-	0x6d, 0x69, 0x74, 0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65,
-	0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x37, 0x0a, 0x0c, 0x53, 0x75, 0x62, 0x6d,
-	0x69, 0x74, 0x53, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53,
-	0x75, 0x62, 0x6d, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30,
-	0x01, 0x42, 0x0d, 0x5a, 0x0b, 0x6e, 0x6f, 0x64, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x12,
+	0x14, 0x0a, 0x05, 0x72, 0x65, 0x71, 0x49, 0x44, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x05,
+	0x72, 0x65, 0x71, 0x49, 0x44, 0x12, 0x19, 0x0a, 0x08, 0x74, 0x72, 0x61, 0x63, 0x65, 0x5f, 0x69,
+	0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07, 0x74, 0x72, 0x61, 0x63, 0x65, 0x49, 0x64,
+	0x22, 0x99, 0x01, 0x0a, 0x07, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x18, 0x0a, 0x07,
+	0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07, 0x70,
+	0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64, 0x12, 0x1c, 0x0a, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x74,
+	0x75, 0x72, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61,
+	0x74, 0x75, 0x72, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79,
+	0x18, 0x03, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x08, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79,
+	0x12, 0x1f, 0x0a, 0x0b, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x5f, 0x69, 0x64, 0x18,
+	0x04, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x0a, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x49,
+	0x64, 0x12, 0x19, 0x0a, 0x08, 0x74, 0x72, 0x61, 0x63, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x05, 0x20,
+	0x01, 0x28, 0x0c, 0x52, 0x07, 0x74, 0x72, 0x61, 0x63, 0x65, 0x49, 0x64, 0x22, 0x25, 0x0a, 0x0d,
+	0x45, 0x76, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14, 0x0a,
+	0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72,
+	0x72, 0x6f, 0x72, 0x22, 0x21, 0x0a, 0x05, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x12, 0x18, 0x0a, 0x07,
+	0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07, 0x70,
+	0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64, 0x22, 0x2d, 0x0a, 0x03, 0x41, 0x63, 0x6b, 0x12, 0x14, 0x0a,
+	0x05, 0x73, 0x68, 0x61, 0x72, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x05, 0x73, 0x68,
+	0x61, 0x72, 0x64, 0x12, 0x10, 0x0a, 0x03, 0x73, 0x65, 0x71, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d,
+	0x52, 0x03, 0x73, 0x65, 0x71, 0x22, 0x23, 0x0a, 0x0b, 0x41, 0x63, 0x6b, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x32, 0x79, 0x0a, 0x0f, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x54, 0x72, 0x61, 0x6e, 0x73, 0x6d, 0x69, 0x74, 0x12, 0x2d, 0x0a,
+	0x06, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53, 0x75,
+	0x62, 0x6d, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x37, 0x0a, 0x0c,
+	0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x53, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x0d, 0x2e, 0x63,
+	0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f,
+	0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x28, 0x01, 0x30, 0x01, 0x32, 0x3c, 0x0a, 0x09, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73,
+	0x75, 0x73, 0x12, 0x2f, 0x0a, 0x0b, 0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x45, 0x76, 0x65, 0x6e,
+	0x74, 0x12, 0x0b, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x1a, 0x13,
+	0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x32, 0x39, 0x0a, 0x0a, 0x41, 0x63, 0x6b, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63,
+	0x65, 0x12, 0x2b, 0x0a, 0x09, 0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x41, 0x63, 0x6b, 0x12, 0x09,
+	0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x41, 0x63, 0x6b, 0x1a, 0x13, 0x2e, 0x63, 0x6f, 0x6d, 0x6d,
+	0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x0d,
+	0x5a, 0x0b, 0x6e, 0x6f, 0x64, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x62, 0x06, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -181,18 +424,26 @@ func file_protos_comm_communication_proto_rawDescGZIP() []byte {
 	return file_protos_comm_communication_proto_rawDescData
 }
 
-var file_protos_comm_communication_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_protos_comm_communication_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_protos_comm_communication_proto_goTypes = []interface{}{
 	(*SubmitResponse)(nil), // 0: comm.SubmitResponse
 	(*Request)(nil),        // 1: comm.Request
+	(*EventResponse)(nil),  // 2: comm.EventResponse
+	(*Event)(nil),          // 3: comm.Event
+	(*Ack)(nil),            // 4: comm.Ack
+	(*AckResponse)(nil),    // 5: comm.AckResponse
 }
 var file_protos_comm_communication_proto_depIdxs = []int32{
-	1, // 0: comm.Router.Submit:input_type -> comm.Request
-	1, // 1: comm.Router.SubmitStream:input_type -> comm.Request
-	0, // 2: comm.Router.Submit:output_type -> comm.SubmitResponse
-	0, // 3: comm.Router.SubmitStream:output_type -> comm.SubmitResponse
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	1, // 0: comm.RequestTransmit.Submit:input_type -> comm.Request
+	1, // 1: comm.RequestTransmit.SubmitStream:input_type -> comm.Request
+	3, // 2: comm.Consensus.NotifyEvent:input_type -> comm.Event
+	4, // 3: comm.AckService.NotifyAck:input_type -> comm.Ack
+	0, // 4: comm.RequestTransmit.Submit:output_type -> comm.SubmitResponse
+	0, // 5: comm.RequestTransmit.SubmitStream:output_type -> comm.SubmitResponse
+	2, // 6: comm.Consensus.NotifyEvent:output_type -> comm.EventResponse
+	2, // 7: comm.AckService.NotifyAck:output_type -> comm.EventResponse
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -228,6 +479,54 @@ func file_protos_comm_communication_proto_init() {
 				return nil
 			}
 		}
+		file_protos_comm_communication_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*EventResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_protos_comm_communication_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Event); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_protos_comm_communication_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Ack); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_protos_comm_communication_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AckResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -235,9 +534,9 @@ func file_protos_comm_communication_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_protos_comm_communication_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   6,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   3,
 		},
 		GoTypes:           file_protos_comm_communication_proto_goTypes,
 		DependencyIndexes: file_protos_comm_communication_proto_depIdxs,
@@ -257,55 +556,55 @@ var _ grpc.ClientConnInterface
 // is compatible with the grpc package it is being compiled against.
 const _ = grpc.SupportPackageIsVersion6
 
-// RouterClient is the client API for Router service.
+// RequestTransmitClient is the client API for RequestTransmit service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
-type RouterClient interface {
+type RequestTransmitClient interface {
 	Submit(ctx context.Context, in *Request, opts ...grpc.CallOption) (*SubmitResponse, error)
-	SubmitStream(ctx context.Context, opts ...grpc.CallOption) (Router_SubmitStreamClient, error)
+	SubmitStream(ctx context.Context, opts ...grpc.CallOption) (RequestTransmit_SubmitStreamClient, error)
 }
 
-type routerClient struct {
+type requestTransmitClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewRouterClient(cc grpc.ClientConnInterface) RouterClient {
-	return &routerClient{cc}
+func NewRequestTransmitClient(cc grpc.ClientConnInterface) RequestTransmitClient {
+	return &requestTransmitClient{cc}
 }
 
-func (c *routerClient) Submit(ctx context.Context, in *Request, opts ...grpc.CallOption) (*SubmitResponse, error) {
+func (c *requestTransmitClient) Submit(ctx context.Context, in *Request, opts ...grpc.CallOption) (*SubmitResponse, error) {
 	out := new(SubmitResponse)
-	err := c.cc.Invoke(ctx, "/comm.Router/Submit", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/comm.RequestTransmit/Submit", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *routerClient) SubmitStream(ctx context.Context, opts ...grpc.CallOption) (Router_SubmitStreamClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_Router_serviceDesc.Streams[0], "/comm.Router/SubmitStream", opts...)
+func (c *requestTransmitClient) SubmitStream(ctx context.Context, opts ...grpc.CallOption) (RequestTransmit_SubmitStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_RequestTransmit_serviceDesc.Streams[0], "/comm.RequestTransmit/SubmitStream", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &routerSubmitStreamClient{stream}
+	x := &requestTransmitSubmitStreamClient{stream}
 	return x, nil
 }
 
-type Router_SubmitStreamClient interface {
+type RequestTransmit_SubmitStreamClient interface {
 	Send(*Request) error
 	Recv() (*SubmitResponse, error)
 	grpc.ClientStream
 }
 
-type routerSubmitStreamClient struct {
+type requestTransmitSubmitStreamClient struct {
 	grpc.ClientStream
 }
 
-func (x *routerSubmitStreamClient) Send(m *Request) error {
+func (x *requestTransmitSubmitStreamClient) Send(m *Request) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *routerSubmitStreamClient) Recv() (*SubmitResponse, error) {
+func (x *requestTransmitSubmitStreamClient) Recv() (*SubmitResponse, error) {
 	m := new(SubmitResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -313,64 +612,64 @@ func (x *routerSubmitStreamClient) Recv() (*SubmitResponse, error) {
 	return m, nil
 }
 
-// RouterServer is the server API for Router service.
-type RouterServer interface {
+// RequestTransmitServer is the server API for RequestTransmit service.
+type RequestTransmitServer interface {
 	Submit(context.Context, *Request) (*SubmitResponse, error)
-	SubmitStream(Router_SubmitStreamServer) error
+	SubmitStream(RequestTransmit_SubmitStreamServer) error
 }
 
-// UnimplementedRouterServer can be embedded to have forward compatible implementations.
-type UnimplementedRouterServer struct {
+// UnimplementedRequestTransmitServer can be embedded to have forward compatible implementations.
+type UnimplementedRequestTransmitServer struct {
 }
 
-func (*UnimplementedRouterServer) Submit(context.Context, *Request) (*SubmitResponse, error) {
+func (*UnimplementedRequestTransmitServer) Submit(context.Context, *Request) (*SubmitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Submit not implemented")
 }
-func (*UnimplementedRouterServer) SubmitStream(Router_SubmitStreamServer) error {
+func (*UnimplementedRequestTransmitServer) SubmitStream(RequestTransmit_SubmitStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method SubmitStream not implemented")
 }
 
-func RegisterRouterServer(s *grpc.Server, srv RouterServer) {
-	s.RegisterService(&_Router_serviceDesc, srv)
+func RegisterRequestTransmitServer(s *grpc.Server, srv RequestTransmitServer) {
+	s.RegisterService(&_RequestTransmit_serviceDesc, srv)
 }
 
-func _Router_Submit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RequestTransmit_Submit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Request)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RouterServer).Submit(ctx, in)
+		return srv.(RequestTransmitServer).Submit(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/comm.Router/Submit",
+		FullMethod: "/comm.RequestTransmit/Submit",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RouterServer).Submit(ctx, req.(*Request))
+		return srv.(RequestTransmitServer).Submit(ctx, req.(*Request))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Router_SubmitStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(RouterServer).SubmitStream(&routerSubmitStreamServer{stream})
+func _RequestTransmit_SubmitStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(RequestTransmitServer).SubmitStream(&requestTransmitSubmitStreamServer{stream})
 }
 
-type Router_SubmitStreamServer interface {
+type RequestTransmit_SubmitStreamServer interface {
 	Send(*SubmitResponse) error
 	Recv() (*Request, error)
 	grpc.ServerStream
 }
 
-type routerSubmitStreamServer struct {
+type requestTransmitSubmitStreamServer struct {
 	grpc.ServerStream
 }
 
-func (x *routerSubmitStreamServer) Send(m *SubmitResponse) error {
+func (x *requestTransmitSubmitStreamServer) Send(m *SubmitResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *routerSubmitStreamServer) Recv() (*Request, error) {
+func (x *requestTransmitSubmitStreamServer) Recv() (*Request, error) {
 	m := new(Request)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -378,22 +677,166 @@ func (x *routerSubmitStreamServer) Recv() (*Request, error) {
 	return m, nil
 }
 
-var _Router_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "comm.Router",
-	HandlerType: (*RouterServer)(nil),
+var _RequestTransmit_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "comm.RequestTransmit",
+	HandlerType: (*RequestTransmitServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Submit",
-			Handler:    _Router_Submit_Handler,
+			Handler:    _RequestTransmit_Submit_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "SubmitStream",
-			Handler:       _Router_SubmitStream_Handler,
+			Handler:       _RequestTransmit_SubmitStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},
+	Metadata: "protos/comm/communication.proto",
+}
+
+// ConsensusClient is the client API for Consensus service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type ConsensusClient interface {
+	NotifyEvent(ctx context.Context, in *Event, opts ...grpc.CallOption) (*EventResponse, error)
+}
+
+type consensusClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewConsensusClient(cc grpc.ClientConnInterface) ConsensusClient {
+	return &consensusClient{cc}
+}
+
+func (c *consensusClient) NotifyEvent(ctx context.Context, in *Event, opts ...grpc.CallOption) (*EventResponse, error) {
+	out := new(EventResponse)
+	err := c.cc.Invoke(ctx, "/comm.Consensus/NotifyEvent", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ConsensusServer is the server API for Consensus service.
+type ConsensusServer interface {
+	NotifyEvent(context.Context, *Event) (*EventResponse, error)
+}
+
+// UnimplementedConsensusServer can be embedded to have forward compatible implementations.
+type UnimplementedConsensusServer struct {
+}
+
+func (*UnimplementedConsensusServer) NotifyEvent(context.Context, *Event) (*EventResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NotifyEvent not implemented")
+}
+
+func RegisterConsensusServer(s *grpc.Server, srv ConsensusServer) {
+	s.RegisterService(&_Consensus_serviceDesc, srv)
+}
+
+func _Consensus_NotifyEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Event)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsensusServer).NotifyEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/comm.Consensus/NotifyEvent",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsensusServer).NotifyEvent(ctx, req.(*Event))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _Consensus_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "comm.Consensus",
+	HandlerType: (*ConsensusServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "NotifyEvent",
+			Handler:    _Consensus_NotifyEvent_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "protos/comm/communication.proto",
+}
+
+// AckServiceClient is the client API for AckService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type AckServiceClient interface {
+	NotifyAck(ctx context.Context, in *Ack, opts ...grpc.CallOption) (*EventResponse, error)
+}
+
+type ackServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAckServiceClient(cc grpc.ClientConnInterface) AckServiceClient {
+	return &ackServiceClient{cc}
+}
+
+func (c *ackServiceClient) NotifyAck(ctx context.Context, in *Ack, opts ...grpc.CallOption) (*EventResponse, error) {
+	out := new(EventResponse)
+	err := c.cc.Invoke(ctx, "/comm.AckService/NotifyAck", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AckServiceServer is the server API for AckService service.
+type AckServiceServer interface {
+	NotifyAck(context.Context, *Ack) (*EventResponse, error)
+}
+
+// UnimplementedAckServiceServer can be embedded to have forward compatible implementations.
+type UnimplementedAckServiceServer struct {
+}
+
+func (*UnimplementedAckServiceServer) NotifyAck(context.Context, *Ack) (*EventResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NotifyAck not implemented")
+}
+
+func RegisterAckServiceServer(s *grpc.Server, srv AckServiceServer) {
+	s.RegisterService(&_AckService_serviceDesc, srv)
+}
+
+func _AckService_NotifyAck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Ack)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AckServiceServer).NotifyAck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/comm.AckService/NotifyAck",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AckServiceServer).NotifyAck(ctx, req.(*Ack))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _AckService_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "comm.AckService",
+	HandlerType: (*AckServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "NotifyAck",
+			Handler:    _AckService_NotifyAck_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "protos/comm/communication.proto",
 }
