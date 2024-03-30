@@ -3,6 +3,7 @@ package node
 import (
 	arma "arma/pkg"
 	"context"
+	rand3 "crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -42,6 +43,14 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		r.shardRouters[shard].maybeInit()
 	}
 
+	seed := make([]byte, 8)
+	if _, err := rand3.Read(seed); err != nil {
+		panic(err)
+	}
+
+	src := rand2.NewSource(int64(binary.BigEndian.Uint64(seed)))
+	rand := rand2.New(src)
+
 	exit := make(chan struct{})
 	defer func() {
 		close(exit)
@@ -59,7 +68,10 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 			return err
 		}
 		reqID, router := r.getRouterAndReqID(req)
-		router.forward(reqID, req.Payload, feedbackChan)
+
+		trace := createTraceID(rand)
+
+		router.forward(reqID, req.Payload, feedbackChan, trace)
 	}
 }
 
@@ -76,8 +88,10 @@ func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	reqID, router := r.getRouterAndReqID(request)
 
+	trace := createTraceID(nil)
+
 	feedbackChan := make(chan response, 1)
-	router.forward(reqID, request.Payload, feedbackChan)
+	router.forward(reqID, request.Payload, feedbackChan, trace)
 	response := <-feedbackChan
 	return prepareResponse(&response), nil
 
@@ -190,7 +204,7 @@ func NewShardRouter(l arma.Logger, batcherEndpoint string, batcherRootCAs [][]by
 	return sr
 }
 
-func (sr *ShardRouter) forward(reqID, request []byte, responses chan response) {
+func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, trace []byte) {
 	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
 	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % router2batcherStreamsPerConn
 
@@ -216,8 +230,6 @@ func (sr *ShardRouter) forward(reqID, request []byte, responses chan response) {
 		return
 	}
 
-	trace := createTraceID()
-
 	stream.registerReply(trace, responses)
 
 	stream.requests <- &protos.Request{
@@ -233,9 +245,15 @@ func (s *stream) registerReply(traceID []byte, responses chan response) {
 	s.m[string(traceID)] = responses
 }
 
-func createTraceID() []byte {
-	n1 := rand2.Int63n(math.MaxInt64)
-	n2 := rand2.Int63n(math.MaxInt64)
+func createTraceID(rand *rand2.Rand) []byte {
+	var n1, n2 int64
+	if rand == nil {
+		n1 = rand2.Int63n(math.MaxInt64)
+		n2 = rand2.Int63n(math.MaxInt64)
+	} else {
+		n1 = rand.Int63n(math.MaxInt64)
+		n2 = rand.Int63n(math.MaxInt64)
+	}
 
 	trace := make([]byte, 16)
 	binary.BigEndian.PutUint64(trace, uint64(n1))
