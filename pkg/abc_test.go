@@ -19,7 +19,7 @@ func (m *mockBatchAttestationDB) Exists(digest []byte) bool {
 	return false
 }
 
-func (m *mockBatchAttestationDB) Put(digest []byte, epoch uint64) {
+func (m *mockBatchAttestationDB) Put(digest [][]byte, epoch []uint64) {
 
 }
 

@@ -10,7 +10,7 @@ type TotalOrder interface {
 
 type BatchAttestationDB interface {
 	Exists(digest []byte) bool
-	Put(digest []byte, epoch uint64)
+	Put(digest [][]byte, epoch []uint64)
 	Clean(epoch uint64)
 }
 
@@ -58,12 +58,16 @@ func (c *Consenter) Commit(events [][]byte) {
 }
 
 func (c *Consenter) indexAttestationsInDB(batchAttestations [][]BatchAttestationFragment) {
+	digests := make([][]byte, 0, len(batchAttestations))
+	epochs := make([]uint64, 0, len(batchAttestations))
 	for _, bafs := range batchAttestations {
 		if len(bafs) == 0 {
 			continue
 		}
-		c.DB.Put(bafs[0].Digest(), epochOfBatchAttestations(bafs))
+		digests = append(digests, bafs[0].Digest())
+		epochs = append(epochs, epochOfBatchAttestations(bafs))
 	}
+	c.DB.Put(digests, epochs)
 }
 
 func (c *Consenter) Submit(rawControlEvent []byte) {
