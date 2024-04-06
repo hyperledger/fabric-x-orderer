@@ -4,12 +4,11 @@ go 1.20
 
 require github.com/SmartBFT-Go/consensus/v2 v2.3.0
 
-replace github.com/SmartBFT-Go/consensus v0.0.0-20231206083457-f8b15a205b36 => github.com/fabric-research/consensus v0.0.0-20240117130510-a126c0e8ac53
-
 replace arma => ../
 
 require (
 	arma v0.0.0-00010101000000-000000000000 // indirect
+	github.com/SmartBFT-Go/consensus v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect

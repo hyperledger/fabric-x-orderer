@@ -29,21 +29,28 @@ type SigVerifier interface {
 	VerifySignature(id uint16, msg, sig []byte) error
 }
 
+type Synchronizer interface {
+	Sync() []byte
+}
+
 type Arma interface {
 	SimulateStateTransition(prevState []byte, events [][]byte) ([]byte, [][]arma.BatchAttestationFragment)
 	Commit(events [][]byte)
 }
 
 type Consensus struct {
+	PrevHash     []byte
 	LastSeq      uint64
 	SigVerifier  SigVerifier
 	Signer       Signer
 	CurrentNodes []uint64
-	consensus.Consensus
-	Storage Storage
-	Arma    Arma
-	lock    sync.RWMutex
-	State   []byte
+	BFT          *consensus.Consensus
+	Storage      Storage
+	Arma         Arma
+	lock         sync.RWMutex
+	State        []byte
+	Synchronizer Synchronizer
+	Logger       arma.Logger
 }
 
 func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*protos.EventResponse, error) {
@@ -52,11 +59,20 @@ func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*prot
 		return &protos.EventResponse{Error: fmt.Sprintf("malformed control event: %v", err)}, nil
 	}
 
-	if err := c.SubmitRequest(ce.Bytes()); err != nil {
+	if err := c.BFT.SubmitRequest(ce.Bytes()); err != nil {
 		return &protos.EventResponse{Error: fmt.Sprintf("failed submitting request: %v", err)}, nil
 	}
 
 	return &protos.EventResponse{}, nil
+}
+
+func (c *Consensus) SubmitRequest(req []byte) error {
+	if _, err := c.VerifyRequest(req); err != nil {
+		c.Logger.Warnf("Received bad request: %v", err)
+		return err
+	}
+
+	return c.BFT.SubmitRequest(req)
 }
 
 func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {
@@ -68,7 +84,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 
 	computedState, _ := c.Arma.SimulateStateTransition(c.State, batch)
 	if !bytes.Equal(hdr.State, computedState) {
-		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %s", computedState, hdr.State)
+		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
 
 	reqInfos := make([]types.RequestInfo, 0, len(batch))
@@ -128,6 +144,21 @@ func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 	copy(buff[pos:], baf.Digest())
 
 	return buff
+}
+
+func createBAF(signer Signer, id uint16, shard uint16, digest []byte, primary uint16, seq uint64) (arma.BatchAttestationFragment, error) {
+	baf := &arma.SimpleBatchAttestationFragment{
+		Sh:  int(shard),
+		Si:  int(id),
+		Se:  int(seq),
+		Dig: digest,
+		P:   int(primary),
+	}
+
+	tbs := ToBeSignedBAF(baf)
+	sig, err := signer.Sign(tbs)
+	baf.Sig = sig
+	return baf, err
 }
 
 func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Proposal) ([]byte, error) {
@@ -211,8 +242,7 @@ type Header struct {
 
 func (h *Header) FromBytes(rawHeader []byte) error {
 	h.Num = binary.BigEndian.Uint64(rawHeader[0:8])
-	sequenceCount := int(binary.BigEndian.Uint64(rawHeader[8:12]))
-	stateLen := int(binary.BigEndian.Uint64(rawHeader[12:16]))
+	sequenceCount := int(binary.BigEndian.Uint32(rawHeader[8:12]))
 
 	sequences := make([]uint64, 0, sequenceCount)
 
@@ -222,7 +252,7 @@ func (h *Header) FromBytes(rawHeader []byte) error {
 
 	h.Sequences = sequences
 
-	h.State = rawHeader[8+4+4+8*stateLen:]
+	h.State = rawHeader[8+4+4+8*sequenceCount:]
 
 	return nil
 }
@@ -230,8 +260,8 @@ func (h *Header) FromBytes(rawHeader []byte) error {
 func (h *Header) Bytes() []byte {
 	prefix := make([]byte, 8+4+4)
 	binary.BigEndian.PutUint64(prefix, h.Num)
-	binary.BigEndian.PutUint32(prefix[8:], uint32(len(h.Sequences)*8))
-	binary.BigEndian.PutUint32(prefix[12:], uint32(len(h.State)))
+	binary.BigEndian.PutUint32(prefix[8:12], uint32(len(h.Sequences)))
+	binary.BigEndian.PutUint32(prefix[12:16], uint32(len(h.State)))
 	sequencesBuff := make([]byte, len(h.Sequences)*8)
 	for i := 0; i < len(h.Sequences); i++ {
 		binary.BigEndian.PutUint64(sequencesBuff[i*8:], h.Sequences[i])
@@ -308,8 +338,10 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 		var hdr toBeSignedBlockHeader
 		hdr.Digest = ba[0].Digest()
 		hdr.Sequence = int64(ba[0].Seq())
-		// TODO: prev hash
+		hdr.PrevHash = c.PrevHash
 		msg := hdr.Bytes()
+		dig := sha256.Sum256(msg)
+		c.PrevHash = dig[:]
 		sig, err := c.Signer.Sign(msg)
 		if err != nil {
 			panic(err)
@@ -339,7 +371,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	return &types.Signature{
 		Msg:   msgsRaw,
 		Value: sigsRaw,
-		ID:    c.Config.SelfID,
+		ID:    c.BFT.Config.SelfID,
 	}
 
 }
@@ -350,7 +382,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 	c.lock.RUnlock()
 
 	sequences := make([]uint64, 0, len(attestations))
-	for seq := c.LastSeq; seq < c.LastSeq+uint64(len(sequences)); seq++ {
+	for seq := c.LastSeq; seq < c.LastSeq+uint64(len(attestations)); seq++ {
 		sequences = append(sequences, seq)
 	}
 
@@ -388,6 +420,8 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 		return types.Reconfig{}
 	}
 
+	c.LastSeq += uint64(len(hdr.Sequences))
+
 	controlEvents := arma.BatchFromRaw(proposal.Payload)
 	// Why do we first give Arma the events and then append the decision to storage?
 	// Upon commit, Arma indexes the batch attestations which passed the threshold in its index,
@@ -405,23 +439,54 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 
 	return types.Reconfig{
 		CurrentNodes:  c.CurrentNodes,
-		CurrentConfig: c.Consensus.Config,
+		CurrentConfig: c.BFT.Config,
 	}
+}
+
+func (c *Consensus) Sync() types.SyncResponse {
+
+	resp := types.SyncResponse{
+		Reconfig: types.ReconfigSync{
+			CurrentConfig: c.BFT.Config,
+			CurrentNodes:  c.CurrentNodes,
+		},
+		Latest: types.Decision{},
+	}
+
+	latestRawDecision := c.Synchronizer.Sync()
+
+	proposal, signatures, err := bytesToDecision(latestRawDecision)
+	if err != nil {
+		return resp
+	}
+
+	resp.Latest.Proposal = proposal
+	resp.Latest.Signatures = signatures
+
+	return resp
+}
+
+type Signature struct {
+	ID    int64
+	Value []byte
+	Msg   []byte
 }
 
 func decisionToBytes(proposal types.Proposal, signatures []types.Signature) []byte {
 	sigBuff := bytes.Buffer{}
 
-	sigBuff.Write([]byte{uint8(len(signatures))})
 	for _, sig := range signatures {
-		rawSig, err := asn1.Marshal(sig)
+		rawSig, err := asn1.Marshal(Signature{Msg: sig.Msg, Value: sig.Value, ID: int64(sig.ID)})
 		if err != nil {
 			panic(err)
 		}
+		rawSigSize := make([]byte, 2)
+		binary.BigEndian.PutUint16(rawSigSize, uint16(len(rawSig)))
+		sigBuff.Write(rawSigSize)
 		sigBuff.Write(rawSig)
 	}
 
-	buff := make([]byte, 0, 4*3+len(proposal.Header)+len(proposal.Payload)+len(proposal.Metadata)+sigBuff.Len())
+	buff := make([]byte, 4*3+len(proposal.Header)+len(proposal.Payload)+len(proposal.Metadata)+sigBuff.Len())
 	binary.BigEndian.PutUint32(buff, uint32(len(proposal.Header)))
 	binary.BigEndian.PutUint32(buff[4:], uint32(len(proposal.Payload)))
 	binary.BigEndian.PutUint32(buff[8:], uint32(len(proposal.Metadata)))
@@ -431,4 +496,69 @@ func decisionToBytes(proposal types.Proposal, signatures []types.Signature) []by
 	copy(buff[12+len(proposal.Header)+len(proposal.Payload)+len(proposal.Metadata):], sigBuff.Bytes())
 
 	return buff
+}
+
+func bytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error) {
+	buff := bytes.NewBuffer(rawBytes)
+	headerSize := make([]byte, 4)
+	if _, err := buff.Read(headerSize); err != nil {
+		return types.Proposal{}, nil, err
+	}
+
+	payloadSize := make([]byte, 4)
+	if _, err := buff.Read(payloadSize); err != nil {
+		return types.Proposal{}, nil, err
+	}
+
+	metadataSize := make([]byte, 4)
+	if _, err := buff.Read(metadataSize); err != nil {
+		return types.Proposal{}, nil, err
+	}
+
+	header := make([]byte, binary.BigEndian.Uint32(headerSize))
+	if _, err := buff.Read(header); err != nil {
+		return types.Proposal{}, nil, err
+	}
+
+	payload := make([]byte, binary.BigEndian.Uint32(payloadSize))
+	if _, err := buff.Read(payload); err != nil {
+		return types.Proposal{}, nil, err
+	}
+
+	metadata := make([]byte, binary.BigEndian.Uint32(metadataSize))
+	if _, err := buff.Read(metadata); err != nil {
+		return types.Proposal{}, nil, err
+	}
+
+	proposalSize := 4*3 + len(header) + len(payload) + len(metadata)
+
+	signatureBuff := make([]byte, len(rawBytes)-proposalSize)
+
+	if _, err := buff.Read(signatureBuff); err != nil {
+		return types.Proposal{}, nil, err
+	}
+
+	var sigs []types.Signature
+
+	var pos int
+	for pos < len(signatureBuff) {
+		sigSize := int(binary.BigEndian.Uint16([]byte{signatureBuff[pos], signatureBuff[pos+1]}))
+		pos += 2
+		sig := Signature{}
+		if _, err := asn1.Unmarshal(signatureBuff[pos:pos+sigSize], &sig); err != nil {
+			return types.Proposal{}, nil, err
+		}
+		pos += sigSize
+		sigs = append(sigs, types.Signature{
+			Msg:   sig.Msg,
+			Value: sig.Value,
+			ID:    uint64(sig.ID),
+		})
+	}
+
+	return types.Proposal{
+		Header:   header,
+		Payload:  payload,
+		Metadata: metadata,
+	}, sigs, nil
 }
