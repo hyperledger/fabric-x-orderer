@@ -4,6 +4,7 @@ import (
 	arma "arma/pkg"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/binary"
@@ -146,7 +147,7 @@ func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 	return buff
 }
 
-func createBAF(signer Signer, id uint16, shard uint16, digest []byte, primary uint16, seq uint64) (arma.BatchAttestationFragment, error) {
+func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64) (arma.BatchAttestationFragment, error) {
 	baf := &arma.SimpleBatchAttestationFragment{
 		Sh:  int(shard),
 		Si:  int(id),
@@ -154,6 +155,8 @@ func createBAF(signer Signer, id uint16, shard uint16, digest []byte, primary ui
 		Dig: digest,
 		P:   int(primary),
 	}
+
+	signer := ECDSASigner(*sk)
 
 	tbs := ToBeSignedBAF(baf)
 	sig, err := signer.Sign(tbs)

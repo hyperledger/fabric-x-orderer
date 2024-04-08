@@ -41,6 +41,7 @@ func (c *Consenter) SimulateStateTransition(prevState []byte, events [][]byte) (
 	// Iterate over all fragments and prune those that already exist in our DB
 	for _, baf := range fragments {
 		if c.DB.Exists(baf.Digest()) {
+			c.Logger.Debugf("Batch attestation for digest %x already exists", baf.Digest())
 			continue
 		}
 		filteredFragments = append(filteredFragments, baf)
@@ -66,6 +67,8 @@ func (c *Consenter) indexAttestationsInDB(batchAttestations [][]BatchAttestation
 		}
 		digests = append(digests, bafs[0].Digest())
 		epochs = append(epochs, epochOfBatchAttestations(bafs))
+
+		c.Logger.Debugf("Indexed batch attestation for digest %x", bafs[0].Digest())
 	}
 	c.DB.Put(digests, epochs)
 }

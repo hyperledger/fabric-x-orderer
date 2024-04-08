@@ -11,6 +11,7 @@ import (
 	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
 	"github.com/stretchr/testify/assert"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,88 +19,178 @@ import (
 
 func TestConsensus(t *testing.T) {
 
-	v := make(ECDSAVerifier)
+	sk1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err)
 
-	initialState := (&arma.State{
-		ShardCount: 2,
-		N:          4,
-		Shards:     []arma.ShardTerm{{Shard: 1}, {Shard: 2}},
-		Threshold:  2,
-		Quorum:     3,
-	}).Serialize()
+	sk2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err)
 
-	nodeIDs := []uint64{1, 2, 3, 4}
+	sk3, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err)
 
-	var cleanups []func()
+	sk4, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err)
 
-	defer func() {
-		for _, cleanup := range cleanups {
-			cleanup()
-		}
-	}()
+	sks := []*ecdsa.PrivateKey{sk1, sk2, sk3, sk4}
 
-	network := make(network)
+	baf1, err := createBAF(sk1, uint16(1), 1, []byte{1, 2, 3}, 1, 1)
+	assert.NoError(t, err)
 
-	for i := uint16(1); i <= 4; i++ {
-		c, cleanup := makeConsensusNode(t, i, network, initialState, nodeIDs, v)
-		network[uint64(i)] = c
-		cleanups = append(cleanups, cleanup)
+	baf2, err := createBAF(sk2, uint16(2), 1, []byte{1, 2, 3}, 1, 1)
+	assert.NoError(t, err)
+
+	baf11, err := createBAF(sk3, uint16(3), 1, []byte{1, 2, 3}, 1, 1)
+	assert.NoError(t, err)
+
+	baf21, err := createBAF(sk4, uint16(4), 1, []byte{1, 2, 3}, 1, 1)
+	assert.NoError(t, err)
+
+	baf3, err := createBAF(sk1, uint16(1), 2, []byte{1, 2, 4}, 2, 1)
+	assert.NoError(t, err)
+
+	baf4, err := createBAF(sk2, uint16(2), 2, []byte{1, 2, 4}, 2, 1)
+	assert.NoError(t, err)
+
+	baf5, err := createBAF(sk1, uint16(1), 1, []byte{1, 2, 5}, 1, 2)
+	assert.NoError(t, err)
+
+	baf6, err := createBAF(sk2, uint16(2), 1, []byte{1, 2, 5}, 1, 2)
+	assert.NoError(t, err)
+
+	for _, tst := range []struct {
+		name                string
+		expectedSequences   [][]uint64
+		expectedDecisionNum []uint64
+		events              []scheduleEvent
+	}{
+		{
+			name:                "two batches single decision",
+			expectedSequences:   [][]uint64{{0, 1}},
+			expectedDecisionNum: []uint64{1},
+			events: []scheduleEvent{
+				{ControlEvent: &arma.ControlEvent{BAF: baf1}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf2}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf3}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf4}},
+			},
+		},
+		{
+			name:                "two batches single decision more than needed batch attestation shares",
+			expectedSequences:   [][]uint64{{0, 1}, {2}},
+			expectedDecisionNum: []uint64{1, 2},
+			events: []scheduleEvent{
+				{ControlEvent: &arma.ControlEvent{BAF: baf1}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf2}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf3}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf4}},
+				{delay: time.Second},
+				{ControlEvent: &arma.ControlEvent{BAF: baf11}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf21}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf5}},
+				{ControlEvent: &arma.ControlEvent{BAF: baf6}},
+			},
+		},
+	} {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			v := make(ECDSAVerifier)
+
+			initialState := (&arma.State{
+				ShardCount: 2,
+				N:          4,
+				Shards:     []arma.ShardTerm{{Shard: 1}, {Shard: 2}},
+				Threshold:  2,
+				Quorum:     3,
+			}).Serialize()
+
+			nodeIDs := []uint64{1, 2, 3, 4}
+
+			var cleanups []func()
+
+			defer func() {
+				for _, cleanup := range cleanups {
+					cleanup()
+				}
+			}()
+
+			network := make(network)
+
+			for i := uint16(1); i <= 4; i++ {
+				c, cleanup := makeConsensusNode(t, sks[i-1], i, network, initialState, nodeIDs, v)
+				network[uint64(i)] = c
+				cleanups = append(cleanups, cleanup)
+			}
+
+			for i := uint16(1); i <= 4; i++ {
+				err := network[uint64(i)].BFT.Start()
+				assert.NoError(t, err)
+			}
+
+			for _, ce := range tst.events {
+				if ce.delay > 0 {
+					time.Sleep(ce.delay)
+					continue
+				}
+
+				for _, node := range network {
+					node.SubmitRequest(ce.Bytes())
+					time.Sleep(time.Millisecond)
+				}
+			}
+
+			var wg sync.WaitGroup
+			wg.Add(4)
+
+			for _, node := range network {
+				go func(node *Consensus) {
+					defer wg.Done()
+
+					tstExpectedSequences := make([][]uint64, len(tst.expectedSequences))
+					tstExpectedDecisionNum := make([]uint64, len(tst.expectedDecisionNum))
+
+					copy(tstExpectedSequences, tst.expectedSequences)
+					copy(tstExpectedDecisionNum, tst.expectedDecisionNum)
+
+					for {
+						rawDecision := <-node.Storage.(mockStorage)
+						decision, _, err := bytesToDecision(rawDecision)
+						assert.NoError(t, err)
+
+						hdr := &Header{}
+						err = hdr.FromBytes(decision.Header)
+						assert.NoError(t, err)
+
+						expectedSequences := tstExpectedSequences[0]
+						tstExpectedSequences = tstExpectedSequences[1:]
+
+						expectedDecisionNum := tstExpectedDecisionNum[0]
+						tstExpectedDecisionNum = tstExpectedDecisionNum[1:]
+
+						assert.Equal(t, expectedSequences, hdr.Sequences)
+						assert.Equal(t, expectedDecisionNum, hdr.Num)
+
+						if len(tstExpectedSequences) == 0 {
+							return
+						}
+					}
+				}(node)
+			}
+			wg.Wait()
+
+		})
 	}
-
-	for i := uint16(1); i <= 4; i++ {
-		err := network[uint64(i)].BFT.Start()
-		assert.NoError(t, err)
-	}
-
-	baf1, err := createBAF(network[1].Signer, uint16(network[1].BFT.Config.SelfID), 1, []byte{1, 2, 3}, 1, 1)
-	assert.NoError(t, err)
-
-	baf2, err := createBAF(network[2].Signer, uint16(network[2].BFT.Config.SelfID), 1, []byte{1, 2, 3}, 1, 1)
-	assert.NoError(t, err)
-
-	baf3, err := createBAF(network[1].Signer, uint16(network[1].BFT.Config.SelfID), 2, []byte{1, 2, 3}, 2, 1)
-	assert.NoError(t, err)
-
-	baf4, err := createBAF(network[2].Signer, uint16(network[2].BFT.Config.SelfID), 2, []byte{1, 2, 3}, 2, 1)
-	assert.NoError(t, err)
-
-	network[uint64(1)].SubmitRequest((&arma.ControlEvent{BAF: baf1}).Bytes())
-	network[uint64(1)].SubmitRequest((&arma.ControlEvent{BAF: baf2}).Bytes())
-
-	network[uint64(1)].SubmitRequest((&arma.ControlEvent{BAF: baf3}).Bytes())
-	network[uint64(1)].SubmitRequest((&arma.ControlEvent{BAF: baf4}).Bytes())
-
-	var wg sync.WaitGroup
-	wg.Add(4)
-
-	for _, node := range network {
-		go func(node *Consensus) {
-			defer wg.Done()
-			rawDecision := <-node.Storage.(mockStorage)
-			decision, _, err := bytesToDecision(rawDecision)
-			assert.NoError(t, err)
-
-			hdr := &Header{}
-			err = hdr.FromBytes(decision.Header)
-			assert.NoError(t, err)
-
-			assert.Equal(t, []uint64{0, 1}, hdr.Sequences)
-			assert.Equal(t, uint64(1), hdr.Num)
-		}(node)
-	}
-
-	wg.Wait()
-
 }
 
-func makeConsensusNode(t *testing.T, partyID uint16, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier) (*Consensus, func()) {
-	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	assert.NoError(t, err)
+type scheduleEvent struct {
+	*arma.ControlEvent
+	delay time.Duration
+}
 
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID uint16, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier) (*Consensus, func()) {
 	signer := ECDSASigner(*sk)
 	verifier[partyID] = signer.PublicKey
 
-	dir, err := os.MkdirTemp("", t.Name())
+	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
 	assert.NoError(t, err)
 
 	l := createLogger(t, int(partyID))
