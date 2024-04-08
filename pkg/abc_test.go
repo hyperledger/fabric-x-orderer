@@ -141,6 +141,11 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	var batchers []*Batcher
 
+	state := State{N: uint16(shardCount)}
+	for shard := 0; shard < shardCount; shard++ {
+		state.Shards = append(state.Shards, ShardTerm{Shard: ShardID(shard)})
+	}
+
 	for shardID := 0; shardID < shardCount; shardID++ {
 		batcher := createBatcher(t, shardID, 0)
 		batcher.Logger = logger
@@ -171,7 +176,8 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		}
 		batchers[i].Ledger = sc
 		batchers[i].BatchPuller = nil
-		batchers[i].Primary = PartyID(i)
+
+		batchers[i].State = state
 		batchers[i].ID = PartyID(i)
 		batchers[i].Run()
 	}

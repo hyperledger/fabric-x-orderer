@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -90,8 +91,8 @@ type Batcher struct {
 	BatchTimeout         time.Duration
 	Digest               func([][]byte) []byte
 	RequestInspector     RequestInspector
-	Primary              PartyID
 	ID                   PartyID
+	State                State
 	Shard                ShardID
 	Threshold            int
 	Logger               Logger
@@ -108,10 +109,10 @@ type Batcher struct {
 	stopChan             chan struct{}
 	stopCtx              context.Context
 	cancelBatch          func()
-
-	lock               sync.Mutex
-	signal             sync.Cond
-	confirmedSequences map[uint64]map[PartyID]struct{}
+	primary              PartyID
+	lock                 sync.Mutex
+	signal               sync.Cond
+	confirmedSequences   map[uint64]map[PartyID]struct{}
 }
 
 func (b *Batcher) Run() {
@@ -120,12 +121,32 @@ func (b *Batcher) Run() {
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.signal = sync.Cond{L: &b.lock}
 	b.confirmedSequences = make(map[uint64]map[PartyID]struct{})
-	if b.Primary == b.ID {
+
+	b.primary = b.getPrimary()
+
+	if b.primary == b.ID {
 		go b.runPrimary()
 		return
 	}
 
 	go b.runSecondary()
+}
+
+func (b *Batcher) getPrimary() PartyID {
+	term := uint64(math.MaxUint64)
+	for _, shard := range b.State.Shards {
+		if shard.Shard == b.Shard {
+			term = shard.Term
+		}
+	}
+
+	if term == math.MaxUint64 {
+		b.Logger.Panicf("Could not find our shard (%d) within the shards: %v", b.Shard, b.State.Shards)
+	}
+
+	primary := PartyID((uint64(b.Shard) + term) % uint64(b.State.N))
+
+	return primary
 }
 
 func (b *Batcher) Stop() {
@@ -141,8 +162,8 @@ func (b *Batcher) Submit(request []byte) error {
 
 func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 	// Only the primary performs the remaining code
-	if b.Primary != b.ID {
-		b.Logger.Warnf("Received ack on sequence %d from %d but we are not the primary (%d)", seq, from, b.Primary)
+	if b.primary != b.ID {
+		b.Logger.Warnf("Received ack on sequence %d from %d but we are not the primary (%d)", seq, from, b.primary)
 		return
 	}
 
@@ -204,6 +225,9 @@ func (b *Batcher) runPrimary() {
 
 	var currentBatch BatchedRequests
 	var digest []byte
+
+	primary := b.primary
+
 	for {
 		var serializedBatch []byte
 		for {
@@ -225,7 +249,7 @@ func (b *Batcher) runPrimary() {
 			break
 		}
 
-		baf := b.AttestBatch(b.Seq, b.Primary, b.Shard, digest)
+		baf := b.AttestBatch(b.Seq, primary, b.Shard, digest)
 
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 
@@ -290,7 +314,8 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 func (b *Batcher) runSecondary() {
 	defer b.running.Done()
 	b.Logger.Infof("Acting as secondary")
-	out := b.BatchPuller.PullBatches(b.Primary)
+	primary := b.primary
+	out := b.BatchPuller.PullBatches(primary)
 	for {
 		var batchedRequests Batch
 		select {
@@ -304,11 +329,11 @@ func (b *Batcher) runSecondary() {
 			panic("programming error: replicated an empty batch")
 		}
 		batch := requests.ToBytes()
-		b.Ledger.Append(b.Primary, b.Seq, batch)
+		b.Ledger.Append(primary, b.Seq, batch)
 		b.removeRequests(requests)
-		baf := b.AttestBatch(b.Seq, b.Primary, b.Shard, b.Digest(requests))
+		baf := b.AttestBatch(b.Seq, primary, b.Shard, b.Digest(requests))
 		b.sendBAF(baf)
-		b.AckBAF(baf.Seq(), b.Primary)
+		b.AckBAF(baf.Seq(), primary)
 		b.Seq++
 	}
 }

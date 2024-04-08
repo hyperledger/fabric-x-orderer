@@ -151,10 +151,14 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	var stopped sync.WaitGroup
 	stopped.Add(n)
 
+	state := State{N: 10}
+	for shard := 0; shard < 1; shard++ {
+		state.Shards = append(state.Shards, ShardTerm{Shard: ShardID(shard), Term: 5})
+	}
+
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
 		b := b
-		b.Primary = 99 // No one is primary
 		b.AckBAF = func(_ uint64, _ PartyID) {}
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
