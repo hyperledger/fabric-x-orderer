@@ -20,9 +20,9 @@ var Rules = []Rule{
 
 type batchAttestationVote struct {
 	seq     uint64
-	shard   uint16
-	primary uint16
-	signer  uint16
+	shard   ShardID
+	primary PartyID
+	signer  PartyID
 }
 
 type State struct {
@@ -77,7 +77,7 @@ func shardsToBytes(shards []ShardTerm) []byte {
 
 	var pos int
 	for _, shard := range shards {
-		binary.BigEndian.PutUint16(buff[pos:], shard.Shard)
+		binary.BigEndian.PutUint16(buff[pos:], uint16(shard.Shard))
 		pos += 2
 		binary.BigEndian.PutUint64(buff[pos:], shard.Term)
 		pos += 8
@@ -185,7 +185,7 @@ func (s *State) loadShards(rawBytes []byte, count int) {
 	shards := make([]ShardTerm, int(s.ShardCount))
 	for i := 0; i < count; i++ {
 		shards[i] = ShardTerm{
-			Shard: binary.BigEndian.Uint16(rawBytes[pos:]),
+			Shard: ShardID(binary.BigEndian.Uint16(rawBytes[pos:])),
 			Term:  binary.BigEndian.Uint64(rawBytes[pos+2:]),
 		}
 		pos += 10
@@ -202,13 +202,13 @@ func (s *State) loadConfig(buff []byte) {
 }
 
 type ShardTerm struct {
-	Shard uint16
+	Shard ShardID
 	Term  uint64
 }
 
 type Complaint struct {
 	ShardTerm
-	Signer    uint16
+	Signer    PartyID
 	Signature []byte
 }
 
@@ -219,11 +219,11 @@ func (c *Complaint) String() string {
 func (c *Complaint) Bytes() []byte {
 	buff := make([]byte, 12+len(c.Signature))
 	var pos int
-	binary.BigEndian.PutUint16(buff, c.Shard)
+	binary.BigEndian.PutUint16(buff, uint16(c.Shard))
 	pos += 2
 	binary.BigEndian.PutUint64(buff[pos:], c.Term)
 	pos += 8
-	binary.BigEndian.PutUint16(buff[pos:], c.Signer)
+	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Signer))
 	pos += 2
 	copy(buff[pos:], c.Signature)
 	return buff
@@ -234,9 +234,9 @@ func (c *Complaint) FromBytes(bytes []byte) error {
 		return fmt.Errorf("input too small (%d < 12)", len(bytes))
 	}
 
-	c.Shard = binary.BigEndian.Uint16(bytes)
+	c.Shard = ShardID(binary.BigEndian.Uint16(bytes))
 	c.Term = binary.BigEndian.Uint64(bytes[2:])
-	c.Signer = binary.BigEndian.Uint16(bytes[10:])
+	c.Signer = PartyID(binary.BigEndian.Uint16(bytes[10:]))
 	c.Signature = bytes[12:]
 	return nil
 }
@@ -398,7 +398,7 @@ func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
 
 func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
 	shardsAndSequences := make(map[batchAttestationVote]struct{}, len(s.Pending))
-	complaints := make(map[ShardTerm]map[uint16]struct{})
+	complaints := make(map[ShardTerm]map[PartyID]struct{})
 
 	for _, baf := range s.Pending {
 		shardsAndSequences[batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary(), signer: baf.Signer()}] = struct{}{}
@@ -406,7 +406,7 @@ func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
 
 	for _, complaint := range s.Complaints {
 		if _, exists := complaints[complaint.ShardTerm]; !exists {
-			complaints[complaint.ShardTerm] = make(map[uint16]struct{})
+			complaints[complaint.ShardTerm] = make(map[PartyID]struct{})
 		}
 		complaints[complaint.ShardTerm][complaint.Signer] = struct{}{}
 	}
@@ -481,7 +481,7 @@ func DetectEquivocation(s *State, l Logger, _ ...ControlEvent) {
 
 			for _, shard := range s.Shards {
 				term := shard.Term
-				currentPrimary := uint16(term % uint64(s.N))
+				currentPrimary := PartyID(term % uint64(s.N))
 				if currentPrimary == batchAttestation.primary {
 					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation for sequence %d in shard %d",
 						batchAttestation.primary, shard.Term, shard.Term+1, shard.Shard, batchAttestation.seq, batchAttestation.shard)
@@ -492,15 +492,15 @@ func DetectEquivocation(s *State, l Logger, _ ...ControlEvent) {
 	} // for all <seq, shard, primary>
 }
 
-func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[string][]uint16 {
-	m := make(map[batchAttestationVote]map[string][]uint16)
+func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[string][]PartyID {
+	m := make(map[batchAttestationVote]map[string][]PartyID)
 
 	for _, baf := range s.Pending {
 		currentVote := batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary()}
 
 		digests2signers, exists := m[currentVote]
 		if !exists {
-			digests2signers = make(map[string][]uint16)
+			digests2signers = make(map[string][]PartyID)
 			m[currentVote] = digests2signers
 		}
 

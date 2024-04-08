@@ -1,15 +1,16 @@
 package node
 
 import (
+	arma "arma/pkg"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 )
 
-type ECDSAVerifier map[uint16]ecdsa.PublicKey
+type ECDSAVerifier map[arma.PartyID]ecdsa.PublicKey
 
-func (v ECDSAVerifier) VerifySignature(id uint16, msg, sig []byte) error {
+func (v ECDSAVerifier) VerifySignature(id arma.PartyID, msg, sig []byte) error {
 	pk, exists := v[id]
 	if !exists {
 		return fmt.Errorf("node %d does not exist", id)

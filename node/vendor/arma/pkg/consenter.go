@@ -87,13 +87,13 @@ func aggregateFragments(batchAttestationFragments []BatchAttestationFragment) []
 
 	added := make(map[struct {
 		seq   uint64
-		shard uint16
+		shard ShardID
 	}]struct{})
 
 	for _, baf := range batchAttestationFragments {
 		key := struct {
 			seq   uint64
-			shard uint16
+			shard ShardID
 		}{seq: baf.Seq(), shard: baf.Shard()}
 
 		if _, added := added[key]; added {
@@ -111,17 +111,17 @@ func aggregateFragments(batchAttestationFragments []BatchAttestationFragment) []
 
 func indexBAFs(batchAttestationFragments []BatchAttestationFragment) map[struct {
 	seq   uint64
-	shard uint16
+	shard ShardID
 }][]BatchAttestationFragment {
 	index := make(map[struct {
 		seq   uint64
-		shard uint16
+		shard ShardID
 	}][]BatchAttestationFragment)
 
 	for _, baf := range batchAttestationFragments {
 		key := struct {
 			seq   uint64
-			shard uint16
+			shard ShardID
 		}{seq: baf.Seq(), shard: baf.Shard()}
 		fragments := index[key]
 		fragments = append(fragments, baf)

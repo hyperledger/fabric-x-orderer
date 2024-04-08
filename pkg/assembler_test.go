@@ -23,11 +23,11 @@ type naiveIndex struct {
 	sync.Map
 }
 
-func (n *naiveIndex) Index(_ uint16, _ uint16, _ uint64, batch Batch) {
+func (n *naiveIndex) Index(_ PartyID, _ ShardID, _ uint64, batch Batch) {
 	n.Store(string(batch.Digest()), batch)
 }
 
-func (n *naiveIndex) Retrieve(_ uint16, _ uint16, _ uint64, digest []byte) (Batch, bool) {
+func (n *naiveIndex) Retrieve(_ PartyID, _ ShardID, _ uint64, digest []byte) (Batch, bool) {
 	val, exists := n.Load(string(digest))
 
 	if !exists {
@@ -41,10 +41,10 @@ func (n *naiveIndex) Retrieve(_ uint16, _ uint16, _ uint64, digest []byte) (Batc
 }
 
 type naiveBatchAttestation struct {
-	primary uint16
+	primary PartyID
 	seq     uint64
-	node    uint16
-	shard   uint16
+	node    PartyID
+	shard   ShardID
 	digest  []byte
 }
 
@@ -56,11 +56,11 @@ func (nba *naiveBatchAttestation) GarbageCollect() [][]byte {
 	return nil
 }
 
-func (nba *naiveBatchAttestation) Signer() uint16 {
+func (nba *naiveBatchAttestation) Signer() PartyID {
 	return nba.node
 }
 
-func (nba *naiveBatchAttestation) Primary() uint16 {
+func (nba *naiveBatchAttestation) Primary() PartyID {
 	return nba.primary
 }
 
@@ -68,7 +68,7 @@ func (nba *naiveBatchAttestation) Seq() uint64 {
 	return nba.seq
 }
 
-func (nba *naiveBatchAttestation) Shard() uint16 {
+func (nba *naiveBatchAttestation) Shard() ShardID {
 	return nba.shard
 }
 

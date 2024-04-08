@@ -18,16 +18,16 @@ func (s *SimpleBatchAttestationFragment) Seq() uint64 {
 	return uint64(s.Se)
 }
 
-func (s *SimpleBatchAttestationFragment) Primary() uint16 {
-	return uint16(s.P)
+func (s *SimpleBatchAttestationFragment) Primary() PartyID {
+	return PartyID(s.P)
 }
 
-func (s *SimpleBatchAttestationFragment) Signer() uint16 {
-	return uint16(s.Si)
+func (s *SimpleBatchAttestationFragment) Signer() PartyID {
+	return PartyID(s.Si)
 }
 
-func (s *SimpleBatchAttestationFragment) Shard() uint16 {
-	return uint16(s.Sh)
+func (s *SimpleBatchAttestationFragment) Shard() ShardID {
+	return ShardID(s.Sh)
 }
 
 func (s *SimpleBatchAttestationFragment) Digest() []byte {
@@ -92,14 +92,14 @@ func (b *SimpleBatchAttestation) Seq() uint64 {
 	return b.F[0].Seq()
 }
 
-func (b *SimpleBatchAttestation) Primary() uint16 {
+func (b *SimpleBatchAttestation) Primary() PartyID {
 	if len(b.F) == 0 {
 		panic("empty batch attestation")
 	}
 	return b.F[0].Primary()
 }
 
-func (b *SimpleBatchAttestation) Shard() uint16 {
+func (b *SimpleBatchAttestation) Shard() ShardID {
 	if len(b.F) == 0 {
 		panic("empty batch attestation")
 	}

@@ -27,7 +27,7 @@ type Signer interface {
 }
 
 type SigVerifier interface {
-	VerifySignature(id uint16, msg, sig []byte) error
+	VerifySignature(id arma.PartyID, msg, sig []byte) error
 }
 
 type Synchronizer interface {
@@ -124,11 +124,11 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 func ToBeSignedComplaint(c *arma.Complaint) []byte {
 	buff := make([]byte, 12)
 	var pos int
-	binary.BigEndian.PutUint16(buff, c.Shard)
+	binary.BigEndian.PutUint16(buff, uint16(c.Shard))
 	pos += 2
 	binary.BigEndian.PutUint64(buff[pos:], c.Term)
 	pos += 8
-	binary.BigEndian.PutUint16(buff[pos:], c.Signer)
+	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Signer))
 
 	return buff
 }
@@ -136,11 +136,11 @@ func ToBeSignedComplaint(c *arma.Complaint) []byte {
 func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 	buff := make([]byte, 18)
 	var pos int
-	binary.BigEndian.PutUint16(buff, baf.Shard())
+	binary.BigEndian.PutUint16(buff, uint16(baf.Shard()))
 	pos += 2
 	binary.BigEndian.PutUint64(buff[pos:], baf.Seq())
 	pos += 8
-	binary.BigEndian.PutUint16(buff[pos:], baf.Signer())
+	binary.BigEndian.PutUint16(buff[pos:], uint16(baf.Signer()))
 	pos += 2
 	copy(buff[pos:], baf.Digest())
 
@@ -197,7 +197,7 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 }
 
 func (c *Consensus) VerifySignature(signature types.Signature) error {
-	return c.SigVerifier.VerifySignature(uint16(signature.ID), signature.Msg, signature.Value)
+	return c.SigVerifier.VerifySignature(arma.PartyID(signature.ID), signature.Msg, signature.Value)
 }
 
 func (c *Consensus) VerificationSequence() uint64 {
@@ -305,9 +305,9 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 		payloadToHash = make([]byte, 26)
 		binary.BigEndian.PutUint64(payloadToHash, ce.BAF.Seq())
 		binary.BigEndian.PutUint64(payloadToHash[8:], ce.BAF.Epoch())
-		binary.BigEndian.PutUint16(payloadToHash[16:], ce.BAF.Signer())
-		binary.BigEndian.PutUint16(payloadToHash[18:], ce.BAF.Primary())
-		binary.BigEndian.PutUint16(payloadToHash[20:], ce.BAF.Shard())
+		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))
+		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))
+		binary.BigEndian.PutUint16(payloadToHash[20:], uint16(ce.BAF.Shard()))
 		copy(payloadToHash[22:], ce.BAF.Digest())
 	} else {
 		c.Logger.Warnf("Empty ControlEvent")

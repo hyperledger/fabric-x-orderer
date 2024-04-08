@@ -116,7 +116,7 @@ func TestConsensus(t *testing.T) {
 			network := make(network)
 
 			for i := uint16(1); i <= 4; i++ {
-				c, cleanup := makeConsensusNode(t, sks[i-1], i, network, initialState, nodeIDs, v)
+				c, cleanup := makeConsensusNode(t, sks[i-1], arma.PartyID(i), network, initialState, nodeIDs, v)
 				network[uint64(i)] = c
 				cleanups = append(cleanups, cleanup)
 			}
@@ -186,7 +186,7 @@ type scheduleEvent struct {
 	delay time.Duration
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID uint16, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier) (*Consensus, func()) {
 	signer := ECDSASigner(*sk)
 	verifier[partyID] = signer.PublicKey
 

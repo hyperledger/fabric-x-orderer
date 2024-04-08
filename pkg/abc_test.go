@@ -55,7 +55,7 @@ type shardCommitter struct {
 	shardID uint16
 }
 
-func (s *shardCommitter) Append(party uint16, _ uint64, rawBatch []byte) {
+func (s *shardCommitter) Append(party PartyID, _ uint64, rawBatch []byte) {
 	nb := &naiveBatch{
 		requests: BatchFromRaw(rawBatch),
 		node:     party,
@@ -68,7 +68,7 @@ type shardReplicator struct {
 	subscribers []chan Batch
 }
 
-func (s *shardReplicator) Replicate(shard uint16, _ uint64) <-chan Batch {
+func (s *shardReplicator) Replicate(shard ShardID) <-chan Batch {
 	return s.subscribers[shard]
 }
 
@@ -96,7 +96,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	}
 
 	for shardID := uint16(1); shardID <= initialState.ShardCount; shardID++ {
-		initialState.Shards = append(initialState.Shards, ShardTerm{Shard: shardID, Term: 1})
+		initialState.Shards = append(initialState.Shards, ShardTerm{Shard: ShardID(shardID), Term: 1})
 	}
 
 	consenter := &Consenter{
@@ -166,13 +166,13 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			sr:      replicator,
 		}
 		batcher := batchers[i]
-		batcher.AckBAF = func(seq uint64, to uint16) {
+		batcher.AckBAF = func(seq uint64, to PartyID) {
 			batchers[to].HandleAck(seq, batcher.ID)
 		}
 		batchers[i].Ledger = sc
 		batchers[i].BatchPuller = nil
-		batchers[i].Primary = uint16(i)
-		batchers[i].ID = uint16(i)
+		batchers[i].Primary = PartyID(i)
+		batchers[i].ID = PartyID(i)
 		batchers[i].Run()
 	}
 

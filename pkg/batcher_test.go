@@ -40,7 +40,7 @@ func (ri *reqInspector) RequestID(req []byte) string {
 type noopLedger struct {
 }
 
-func (noopLedger) Append(_ uint16, _ uint64, _ []byte) {
+func (noopLedger) Append(_ PartyID, _ uint64, _ []byte) {
 
 }
 
@@ -49,17 +49,17 @@ type naiveReplication struct {
 	i           uint32
 }
 
-func (r *naiveReplication) Replicate(_ uint16, _ uint64) <-chan Batch {
+func (r *naiveReplication) Replicate(_ ShardID) <-chan Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
 
-func (r *naiveReplication) PullBatches(_ uint16, _ uint64) <-chan Batch {
+func (r *naiveReplication) PullBatches(_ PartyID) <-chan Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
 
-func (r *naiveReplication) Append(_ uint16, seq uint64, bytes []byte) {
+func (r *naiveReplication) Append(_ PartyID, _ uint64, bytes []byte) {
 	for _, s := range r.subscribers {
 		s <- &naiveBatch{
 			requests: BatchFromRaw(bytes),
@@ -68,11 +68,11 @@ func (r *naiveReplication) Append(_ uint16, seq uint64, bytes []byte) {
 }
 
 type naiveBatch struct {
-	node     uint16
+	node     PartyID
 	requests [][]byte
 }
 
-func (nb *naiveBatch) Party() uint16 {
+func (nb *naiveBatch) Party() PartyID {
 	return nb.node
 }
 
@@ -155,7 +155,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	for _, b := range batchers {
 		b := b
 		b.Primary = 99 // No one is primary
-		b.AckBAF = func(_ uint64, _ uint16) {}
+		b.AckBAF = func(_ uint64, _ PartyID) {}
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 5,
@@ -218,7 +218,7 @@ func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 	}
 
 	r.subscribers = append(r.subscribers, make(chan Batch, 100))
-	commit := r.PullBatches(0, 0)
+	commit := r.PullBatches(0)
 
 	batchers[0].Ledger = r
 	for i := 1; i < n; i++ {
@@ -228,8 +228,8 @@ func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 	for i := 0; i < n; i++ {
 		from := i
 		batchers[i].TotalOrderBAF = func(BatchAttestationFragment) {}
-		batchers[i].AckBAF = func(seq uint64, to uint16) {
-			batchers[to].HandleAck(seq, uint16(from))
+		batchers[i].AckBAF = func(seq uint64, to PartyID) {
+			batchers[to].HandleAck(seq, PartyID(from))
 		}
 	}
 
@@ -253,13 +253,13 @@ func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
 	})
 
 	b := &Batcher{
-		Shard: uint16(shardID),
+		Shard: ShardID(shardID),
 		AttestationFromBytes: func(bytes []byte) (BatchAttestationFragment, error) {
 			baf := &SimpleBatchAttestationFragment{}
 			err := baf.Deserialize(bytes)
 			return baf, err
 		},
-		AttestBatch: func(seq uint64, primary uint16, shard uint16, digest []byte) BatchAttestationFragment {
+		AttestBatch: func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment {
 			return &SimpleBatchAttestationFragment{
 				Dig: digest,
 				Sh:  shardID,
@@ -278,9 +278,9 @@ func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
 		RequestInspector:   requestInspector,
 		Logger:             sugaredLogger,
 		MemPool:            pool,
-		ID:                 uint16(nodeID),
+		ID:                 PartyID(nodeID),
 		Threshold:          2,
-		confirmedSequences: make(map[uint64]map[uint16]struct{}),
+		confirmedSequences: make(map[uint64]map[PartyID]struct{}),
 	}
 
 	b.Ledger = &noopLedger{}

@@ -33,11 +33,11 @@ type MemPool interface {
 type Batch interface {
 	Digest() []byte
 	Requests() BatchedRequests
-	Party() uint16
+	Party() PartyID
 }
 
 type BatchPuller interface {
-	PullBatches(from uint16, startSeq uint64) <-chan Batch
+	PullBatches(from PartyID) <-chan Batch
 }
 
 type BatchedRequests [][]byte
@@ -83,26 +83,26 @@ func BatchFromRaw(raw []byte) BatchedRequests {
 }
 
 type BatchLedger interface {
-	Append(uint16, uint64, []byte)
+	Append(PartyID, uint64, []byte)
 }
 
 type Batcher struct {
 	BatchTimeout         time.Duration
 	Digest               func([][]byte) []byte
 	RequestInspector     RequestInspector
-	Primary              uint16
-	ID                   uint16
-	Shard                uint16
+	Primary              PartyID
+	ID                   PartyID
+	Shard                ShardID
 	Threshold            int
 	Logger               Logger
 	Ledger               BatchLedger
 	Seq                  uint64
 	ConfirmedSeq         uint64
 	BatchPuller          BatchPuller
-	AttestBatch          func(seq uint64, primary uint16, shard uint16, digest []byte) BatchAttestationFragment
+	AttestBatch          func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
 	AttestationFromBytes func([]byte) (BatchAttestationFragment, error)
 	TotalOrderBAF        func(BatchAttestationFragment)
-	AckBAF               func(seq uint64, to uint16)
+	AckBAF               func(seq uint64, to PartyID)
 	MemPool              MemPool
 	running              sync.WaitGroup
 	stopChan             chan struct{}
@@ -111,7 +111,7 @@ type Batcher struct {
 
 	lock               sync.Mutex
 	signal             sync.Cond
-	confirmedSequences map[uint64]map[uint16]struct{}
+	confirmedSequences map[uint64]map[PartyID]struct{}
 }
 
 func (b *Batcher) Run() {
@@ -119,7 +119,7 @@ func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.signal = sync.Cond{L: &b.lock}
-	b.confirmedSequences = make(map[uint64]map[uint16]struct{})
+	b.confirmedSequences = make(map[uint64]map[PartyID]struct{})
 	if b.Primary == b.ID {
 		go b.runPrimary()
 		return
@@ -139,7 +139,7 @@ func (b *Batcher) Submit(request []byte) error {
 	return b.MemPool.Submit(request)
 }
 
-func (b *Batcher) HandleAck(seq uint64, from uint16) {
+func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 	// Only the primary performs the remaining code
 	if b.Primary != b.ID {
 		b.Logger.Warnf("Received ack on sequence %d from %d but we are not the primary (%d)", seq, from, b.Primary)
@@ -165,7 +165,7 @@ func (b *Batcher) HandleAck(seq uint64, from uint16) {
 
 	_, exists := b.confirmedSequences[seq]
 	if !exists {
-		b.confirmedSequences[seq] = make(map[uint16]struct{}, 16)
+		b.confirmedSequences[seq] = make(map[PartyID]struct{}, 16)
 	}
 
 	if _, exists := b.confirmedSequences[seq][from]; exists {
@@ -290,7 +290,7 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 func (b *Batcher) runSecondary() {
 	defer b.running.Done()
 	b.Logger.Infof("Acting as secondary")
-	out := b.BatchPuller.PullBatches(b.Primary, b.Seq)
+	out := b.BatchPuller.PullBatches(b.Primary)
 	for {
 		var batchedRequests Batch
 		select {

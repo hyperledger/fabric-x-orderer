@@ -10,17 +10,17 @@ type BatchAttestation interface {
 	Fragments() []BatchAttestationFragment
 	Digest() []byte
 	Seq() uint64
-	Primary() uint16
-	Shard() uint16
+	Primary() PartyID
+	Shard() ShardID
 	Serialize() []byte
 	Deserialize([]byte) error
 }
 
 type BatchAttestationFragment interface {
 	Seq() uint64
-	Primary() uint16
-	Signer() uint16
-	Shard() uint16
+	Primary() PartyID
+	Shard() ShardID
+	Signer() PartyID
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error
@@ -29,12 +29,12 @@ type BatchAttestationFragment interface {
 }
 
 type BatchReplicator interface {
-	Replicate(shardID uint16, startSeq uint64) <-chan Batch
+	Replicate(shardID ShardID) <-chan Batch
 }
 
 type AssemblerIndex interface {
-	Index(party uint16, shard uint16, sequence uint64, batch Batch)
-	Retrieve(party uint16, shard uint16, sequence uint64, digest []byte) (Batch, bool)
+	Index(party PartyID, shard ShardID, sequence uint64, batch Batch)
+	Retrieve(party PartyID, shard ShardID, sequence uint64, digest []byte) (Batch, bool)
 }
 
 type AssemblerLedger interface {
@@ -62,12 +62,12 @@ func (a *Assembler) Run() {
 	var replicationSources []<-chan Batch
 
 	for shardID := 0; shardID < a.ShardCount; shardID++ {
-		batches := a.Replicator.Replicate(uint16(shardID), 0)
+		batches := a.Replicator.Replicate(ShardID(shardID))
 		replicationSources = append(replicationSources, batches)
 	}
 
 	for shardID := 0; shardID < a.ShardCount; shardID++ {
-		go func(shardID uint16) {
+		go func(shardID ShardID) {
 			var seq uint64
 			batches := replicationSources[int(shardID)]
 			for batch := range batches {
@@ -79,7 +79,7 @@ func (a *Assembler) Run() {
 				seq++
 			}
 
-		}(uint16(shardID))
+		}(ShardID(shardID))
 	}
 
 	attestations := a.BatchAttestationReplicator.Replicate(0)
