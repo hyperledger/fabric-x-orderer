@@ -21,21 +21,23 @@ func (bytes RawBytes) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-type BatcherConfig struct {
-	ShardId    uint16
+type BatcherInfo struct {
+	PartyID    uint16
 	Endpoint   string
 	TLSCACerts []RawBytes
+	PublicKey  RawBytes
 }
 
-type ConsenterConfigInfo struct {
-	Endpoint string
-	TlsCert  []RawBytes
+type ShardInfo struct {
+	ShardId  uint16
+	Batchers []BatcherInfo
 }
 
-type ConsenterConfig struct {
-	ConsenterConfigInfo ConsenterConfigInfo
-	PartyId             uint16
-	PublicKey           RawBytes
+type ConsenterInfo struct {
+	PartyId   uint16
+	Endpoint  string
+	PublicKey RawBytes
+	TlsCACert []RawBytes
 }
 
 type Party struct {
@@ -43,36 +45,37 @@ type Party struct {
 	PublicKey RawBytes
 }
 
-type ShardIdAndParties struct {
-	ShardId uint16
-	Parties []Party
-}
-
 type RouterNodeConfig struct {
-	Batchers                      []BatcherConfig
+	Shards                        []ShardInfo
 	NumOfConnectionsForBatcher    int
 	NumOfgRPCStreamsPerConnection int
 }
 
 type AssemblerNodeConfig struct {
-	PartyId   uint16
-	Batchers  []BatcherConfig
-	Consenter ConsenterConfigInfo
+	// Private config
+	PartyId uint16
+	// Shared config
+	Shards    []ShardInfo
+	Consenter ConsenterInfo
 }
 
 type BatcherNodeConfig struct {
+	// Shared config
+	Shards     []ShardInfo
+	Consenters []ConsenterInfo
+	// Private config
 	PartyId            uint16
-	Batchers           []BatcherConfig
-	Consenters         []ConsenterConfigInfo
 	TlsPrivateKeyFile  RawBytes
 	TlsCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
 }
 
 type ConsenterNodeConfig struct {
+	// Shared config
+	Shards     []ShardInfo
+	Consenters []ConsenterInfo
+	// Private config
 	PartyId            uint16
-	Batchers           []ShardIdAndParties
-	Consenters         []ConsenterConfig
 	TlsPrivateKeyFile  RawBytes
 	TlsCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
