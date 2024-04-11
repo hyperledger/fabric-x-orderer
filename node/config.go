@@ -3,6 +3,7 @@ package node
 import (
 	"encoding/base64"
 	"gopkg.in/yaml.v3"
+	"os"
 )
 
 type RawBytes []byte
@@ -11,13 +12,13 @@ func (bytes RawBytes) MarshalYAML() (interface{}, error) {
 	return base64.StdEncoding.EncodeToString(bytes), nil
 }
 
-func (bytes RawBytes) UnmarshalYAML(node *yaml.Node) error {
+func (bytes *RawBytes) UnmarshalYAML(node *yaml.Node) error {
 	value := node.Value
 	ba, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
 		return err
 	}
-	bytes = ba
+	*bytes = ba
 	return nil
 }
 
@@ -38,11 +39,6 @@ type ConsenterInfo struct {
 	Endpoint  string
 	PublicKey RawBytes
 	TlsCACert []RawBytes
-}
-
-type Party struct {
-	PartyId   string
-	PublicKey RawBytes
 }
 
 type RouterNodeConfig struct {
@@ -79,4 +75,31 @@ type ConsenterNodeConfig struct {
 	TlsPrivateKeyFile  RawBytes
 	TlsCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
+}
+
+func NodeConfigToYAML(config interface{}, path string) error {
+	rnc, err := yaml.Marshal(&config)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(path, rnc, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func NodeConfigFromYAML(config interface{}, path string) error {
+	yamlFile, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	err = yaml.Unmarshal(yamlFile, config)
+	if err != nil {
+		return err
+	}
+	return nil
 }
