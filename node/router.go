@@ -6,6 +6,8 @@ import (
 	rand3 "crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/orderer"
 	"io"
 	"math"
 	rand2 "math/rand"
@@ -22,6 +24,41 @@ type Router struct {
 	shardRouters map[uint16]*ShardRouter
 	logger       arma.Logger
 	shards       []uint16
+}
+
+func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
+	for _, shard := range r.shards {
+		r.shardRouters[shard].maybeInit()
+	}
+
+	rand := r.initRand()
+
+	exit := make(chan struct{})
+	defer func() {
+		close(exit)
+	}()
+
+	feedbackChan := make(chan response, 100)
+	go r.sendFeedbackAtomicBroadcast(stream, exit, feedbackChan)
+
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		reqID, router := r.getRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
+
+		trace := createTraceID(rand)
+
+		router.forward(reqID, req.Payload, feedbackChan, trace)
+	}
+}
+
+func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
+	return fmt.Errorf("not implemented")
 }
 
 func NewRouter(shards []uint16, batcherEndpoints []string, batcherRootCAs [][][]byte, logger arma.Logger) *Router {
@@ -43,13 +80,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		r.shardRouters[shard].maybeInit()
 	}
 
-	seed := make([]byte, 8)
-	if _, err := rand3.Read(seed); err != nil {
-		panic(err)
-	}
-
-	src := rand2.NewSource(int64(binary.BigEndian.Uint64(seed)))
-	rand := rand2.New(src)
+	rand := r.initRand()
 
 	exit := make(chan struct{})
 	defer func() {
@@ -57,7 +88,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 	}()
 
 	feedbackChan := make(chan response, 100)
-	go r.sendFeedback(stream, exit, feedbackChan)
+	go r.sendFeedbackRequestStream(stream, exit, feedbackChan)
 
 	for {
 		req, err := stream.Recv()
@@ -73,6 +104,17 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		router.forward(reqID, req.Payload, feedbackChan, trace)
 	}
+}
+
+func (r *Router) initRand() *rand2.Rand {
+	seed := make([]byte, 8)
+	if _, err := rand3.Read(seed); err != nil {
+		panic(err)
+	}
+
+	src := rand2.NewSource(int64(binary.BigEndian.Uint64(seed)))
+	rand := rand2.New(src)
+	return rand
 }
 
 func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
@@ -93,23 +135,46 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	feedbackChan := make(chan response, 1)
 	router.forward(reqID, request.Payload, feedbackChan, trace)
 	response := <-feedbackChan
-	return prepareResponse(&response), nil
+	return prepareRequestResponse(&response), nil
 
 }
 
-func (r *Router) sendFeedback(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, errors chan response) {
+func (r *Router) sendFeedbackAtomicBroadcast(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, errors chan response) {
 	for {
 		select {
 		case <-exit:
 			return
 		case response := <-errors:
-			resp := prepareResponse(&response)
+			resp := prepareAtomicBroadcastResponse(&response)
 			stream.Send(resp)
 		}
 	}
 }
 
-func prepareResponse(response *response) *protos.SubmitResponse {
+func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, errors chan response) {
+	for {
+		select {
+		case <-exit:
+			return
+		case response := <-errors:
+			resp := prepareRequestResponse(&response)
+			stream.Send(resp)
+		}
+	}
+}
+
+func prepareAtomicBroadcastResponse(response *response) *orderer.BroadcastResponse {
+	resp := &orderer.BroadcastResponse{}
+	if response.SubmitResponse != nil {
+		resp.Status = common.Status_SUCCESS
+	} else { // It's an error
+		resp.Status = common.Status_INTERNAL_SERVER_ERROR
+		resp.Info = response.Error
+	}
+	return resp
+}
+
+func prepareRequestResponse(response *response) *protos.SubmitResponse {
 	resp := &protos.SubmitResponse{
 		ReqID: response.reqID,
 	}
