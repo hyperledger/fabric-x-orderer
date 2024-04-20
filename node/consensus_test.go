@@ -206,14 +206,17 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 	}
 
 	c := &Consensus{
-		Logger:       l,
-		Signer:       signer,
-		SigVerifier:  verifier,
-		State:        initialState,
-		CurrentNodes: nodes,
-		Storage:      make(mockStorage),
-		Arma:         consenter,
+		CurrentConfig: types.DefaultConfig,
+		Logger:        l,
+		Signer:        signer,
+		SigVerifier:   verifier,
+		State:         initialState,
+		CurrentNodes:  nodes,
+		Storage:       make(mockStorage),
+		Arma:          consenter,
 	}
+
+	c.CurrentConfig.SelfID = uint64(partyID)
 
 	wal, err := wal.Create(l, dir, &wal.Options{
 		FileSizeBytes:   wal.FileSizeBytesDefault,
@@ -231,7 +234,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 		WAL:               wal,
-		Config:            types.DefaultConfig,
+		Config:            c.CurrentConfig,
 		Verifier:          c,
 		Comm: &mockComm{
 			nodes: nodes,
@@ -239,8 +242,6 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 			net:   network,
 		},
 	}
-
-	c.BFT.Config.SelfID = uint64(partyID)
 
 	consenter.TotalOrder = c.BFT
 

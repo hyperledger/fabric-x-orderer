@@ -4,13 +4,11 @@ import (
 	arma "arma/pkg"
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/consensus"
 	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
 	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
 	"github.com/golang/protobuf/proto"
@@ -39,19 +37,27 @@ type Arma interface {
 	Commit(events [][]byte)
 }
 
+type BFT interface {
+	SubmitRequest(req []byte) error
+	Start() error
+	HandleMessage(targetID uint64, m *smartbftprotos.Message)
+	HandleRequest(targetID uint64, request []byte)
+}
+
 type Consensus struct {
-	PrevHash     []byte
-	LastSeq      uint64
-	SigVerifier  SigVerifier
-	Signer       Signer
-	CurrentNodes []uint64
-	BFT          *consensus.Consensus
-	Storage      Storage
-	Arma         Arma
-	lock         sync.RWMutex
-	State        []byte
-	Synchronizer Synchronizer
-	Logger       arma.Logger
+	PrevHash      []byte
+	LastSeq       uint64
+	SigVerifier   SigVerifier
+	Signer        Signer
+	CurrentNodes  []uint64
+	CurrentConfig types.Configuration
+	BFT           BFT
+	Storage       Storage
+	Arma          Arma
+	lock          sync.RWMutex
+	State         []byte
+	Synchronizer  Synchronizer
+	Logger        arma.Logger
 }
 
 func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*protos.EventResponse, error) {
@@ -60,7 +66,10 @@ func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*prot
 		return &protos.EventResponse{Error: fmt.Sprintf("malformed control event: %v", err)}, nil
 	}
 
+	c.Logger.Infof("Received event %x", event.Payload)
+
 	if err := c.BFT.SubmitRequest(ce.Bytes()); err != nil {
+		c.Logger.Errorf("Failed submitting request: %v", err)
 		return &protos.EventResponse{Error: fmt.Sprintf("failed submitting request: %v", err)}, nil
 	}
 
@@ -145,23 +154,6 @@ func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 	copy(buff[pos:], baf.Digest())
 
 	return buff
-}
-
-func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64) (arma.BatchAttestationFragment, error) {
-	baf := &arma.SimpleBatchAttestationFragment{
-		Sh:  int(shard),
-		Si:  int(id),
-		Se:  int(seq),
-		Dig: digest,
-		P:   int(primary),
-	}
-
-	signer := ECDSASigner(*sk)
-
-	tbs := ToBeSignedBAF(baf)
-	sig, err := signer.Sign(tbs)
-	baf.Sig = sig
-	return baf, err
 }
 
 func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Proposal) ([]byte, error) {
@@ -374,7 +366,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	return &types.Signature{
 		Msg:   msgsRaw,
 		Value: sigsRaw,
-		ID:    c.BFT.Config.SelfID,
+		ID:    c.CurrentConfig.SelfID,
 	}
 
 }
@@ -442,7 +434,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 
 	return types.Reconfig{
 		CurrentNodes:  c.CurrentNodes,
-		CurrentConfig: c.BFT.Config,
+		CurrentConfig: c.CurrentConfig,
 	}
 }
 
@@ -450,7 +442,7 @@ func (c *Consensus) Sync() types.SyncResponse {
 
 	resp := types.SyncResponse{
 		Reconfig: types.ReconfigSync{
-			CurrentConfig: c.BFT.Config,
+			CurrentConfig: c.CurrentConfig,
 			CurrentNodes:  c.CurrentNodes,
 		},
 		Latest: types.Decision{},

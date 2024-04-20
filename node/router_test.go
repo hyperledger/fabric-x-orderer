@@ -111,7 +111,7 @@ func TestRouter(t *testing.T) {
 
 	l := createLogger(t, 0)
 
-	router := NewRouter([]uint16{1}, []string{testBatcher.address}, [][][]byte{{ca.CertBytes()}}, l)
+	router := NewRouter([]uint16{1}, []string{testBatcher.address}, [][][]byte{{ca.CertBytes()}}, ckp.Cert, ckp.Key, l)
 
 	protos.RegisterRequestTransmitServer(srv.Server(), router)
 

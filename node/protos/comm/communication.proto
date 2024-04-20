@@ -38,7 +38,7 @@ service Consensus {
 
 message Ack {
   uint32 shard = 1;
-  uint32 seq = 2;
+  uint64 seq = 2;
 }
 
 message AckResponse {

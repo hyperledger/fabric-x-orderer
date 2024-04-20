@@ -27,6 +27,7 @@ type BatcherInfo struct {
 	Endpoint   string
 	TLSCACerts []RawBytes
 	PublicKey  RawBytes
+	TLSCert    RawBytes
 }
 
 type ShardInfo struct {
@@ -35,10 +36,10 @@ type ShardInfo struct {
 }
 
 type ConsenterInfo struct {
-	PartyId   uint16
-	Endpoint  string
-	PublicKey RawBytes
-	TlsCACert []RawBytes
+	PartyId    uint16
+	Endpoint   string
+	PublicKey  RawBytes
+	TLSCACerts []RawBytes
 }
 
 type RouterNodeConfig struct {
@@ -61,8 +62,9 @@ type BatcherNodeConfig struct {
 	Consenters []ConsenterInfo
 	// Private config
 	PartyId            uint16
-	TlsPrivateKeyFile  RawBytes
-	TlsCertificateFile RawBytes
+	ShardId            uint16
+	TLSPrivateKeyFile  RawBytes
+	TLSCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
 }
 
@@ -72,8 +74,8 @@ type ConsenterNodeConfig struct {
 	Consenters []ConsenterInfo
 	// Private config
 	PartyId            uint16
-	TlsPrivateKeyFile  RawBytes
-	TlsCertificateFile RawBytes
+	TLSPrivateKeyFile  RawBytes
+	TLSCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
 }
 

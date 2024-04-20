@@ -6,14 +6,14 @@ import (
 	rand3 "crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/orderer"
 	"io"
 	"math"
 	rand2 "math/rand"
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
 	"google.golang.org/grpc"
@@ -22,6 +22,8 @@ import (
 type Router struct {
 	router       arma.Router
 	shardRouters map[uint16]*ShardRouter
+	TLSCert      []byte
+	TLSKey       []byte
 	logger       arma.Logger
 	shards       []uint16
 }
@@ -61,10 +63,10 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func NewRouter(shards []uint16, batcherEndpoints []string, batcherRootCAs [][][]byte, logger arma.Logger) *Router {
+func NewRouter(shards []uint16, batcherEndpoints []string, batcherRootCAs [][][]byte, tlsCert []byte, tlsKey []byte, logger arma.Logger) *Router {
 	r := &Router{shards: shards, shardRouters: make(map[uint16]*ShardRouter), logger: logger, router: arma.Router{Logger: logger, ShardCount: uint16(len(shards))}}
 	for i, shard := range shards {
-		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i])
+		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i], tlsCert, tlsKey)
 	}
 	return r
 }
@@ -128,12 +130,19 @@ func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 }
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	for _, shard := range r.shards {
+		r.shardRouters[shard].maybeInit()
+	}
+
 	reqID, router := r.getRouterAndReqID(request)
 
 	trace := createTraceID(nil)
 
 	feedbackChan := make(chan response, 1)
 	router.forward(reqID, request.Payload, feedbackChan, trace)
+
+	r.logger.Infof("Forwarded request %x", request.Payload)
+
 	response := <-feedbackChan
 	return prepareRequestResponse(&response), nil
 
@@ -194,11 +203,15 @@ type ShardRouter struct {
 	lock            sync.RWMutex
 	connPool        []*grpc.ClientConn
 	streams         [][]*stream
+	tlsCert         []byte
+	tlsKey          []byte
 }
 
 const (
-	router2batcherConnPoolSize   = 100
-	router2batcherStreamsPerConn = 20
+	//router2batcherConnPoolSize   = 100
+	//router2batcherStreamsPerConn = 20
+	router2batcherConnPoolSize   = 1
+	router2batcherStreamsPerConn = 1
 )
 
 type stream struct {
@@ -259,8 +272,10 @@ func (s *stream) faulty() bool {
 	}
 }
 
-func NewShardRouter(l arma.Logger, batcherEndpoint string, batcherRootCAs [][]byte) *ShardRouter {
+func NewShardRouter(l arma.Logger, batcherEndpoint string, batcherRootCAs [][]byte, tlsCert []byte, tlsKey []byte) *ShardRouter {
 	sr := &ShardRouter{
+		tlsCert:         tlsCert,
+		tlsKey:          tlsKey,
 		logger:          l,
 		batcherEndpoint: batcherEndpoint,
 		batcherRootCAs:  batcherRootCAs,
@@ -374,8 +389,11 @@ func (sr *ShardRouter) replenishConnPool() {
 			ClientTimeout:  time.Hour,
 		},
 		SecOpts: comm.SecureOptions{
-			UseTLS:        true,
-			ServerRootCAs: sr.batcherRootCAs,
+			UseTLS:            true,
+			ServerRootCAs:     sr.batcherRootCAs,
+			Key:               sr.tlsKey,
+			Certificate:       sr.tlsCert,
+			RequireClientCert: true,
 		},
 		DialTimeout: time.Second * 5,
 	}

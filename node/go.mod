@@ -5,6 +5,7 @@ go 1.20
 require github.com/SmartBFT-Go/consensus/v2 v2.3.0
 
 replace arma => ../
+replace arma/request => ../request
 
 require (
 	arma v0.0.0-00010101000000-000000000000 // indirect
