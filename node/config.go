@@ -50,7 +50,9 @@ type RouterNodeConfig struct {
 
 type AssemblerNodeConfig struct {
 	// Private config
-	PartyId uint16
+	TLSPrivateKeyFile  RawBytes
+	TLSCertificateFile RawBytes
+	PartyId            uint16
 	// Shared config
 	Shards    []ShardInfo
 	Consenter ConsenterInfo

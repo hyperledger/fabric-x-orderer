@@ -102,9 +102,11 @@ func TestAssemblerNodeConfigToYaml(t *testing.T) {
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 
 	anc := &AssemblerNodeConfig{
-		PartyId:   1,
-		Shards:    shards,
-		Consenter: ConsenterInfo{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}},
+		TLSCertificateFile: RawBytes{4, 5, 6},
+		TLSPrivateKeyFile:  RawBytes{7, 8, 9},
+		PartyId:            1,
+		Shards:             shards,
+		Consenter:          ConsenterInfo{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}},
 	}
 
 	path := path.Join(dir, "assembler_node_config.yaml")

@@ -9,6 +9,7 @@ package protoutil
 import (
 	"bytes"
 	"crypto/sha256"
+	b64 "encoding/base64"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -50,7 +51,7 @@ func GetEnvelopeFromBlock(data []byte) (*common.Envelope, error) {
 	var err error
 	env := &common.Envelope{}
 	if err = proto.Unmarshal(data, env); err != nil {
-		return nil, errors.Wrap(err, "error unmarshaling Envelope")
+		return nil, errors.Wrap(err, "error unmarshalling Envelope")
 	}
 
 	return env, nil
@@ -140,6 +141,10 @@ func CreateSignedTx(
 		return nil, errors.New("at least one proposal response is required")
 	}
 
+	if signer == nil {
+		return nil, errors.New("signer is required when creating a signed transaction")
+	}
+
 	// the original header
 	hdr, err := UnmarshalHeader(proposal.Header)
 	if err != nil {
@@ -153,7 +158,6 @@ func CreateSignedTx(
 	}
 
 	// check that the signer is the same that is referenced in the header
-	// TODO: maybe worth removing?
 	signerBytes, err := signer.Serialize()
 	if err != nil {
 		return nil, err
@@ -181,14 +185,28 @@ func CreateSignedTx(
 		}
 
 		if !bytes.Equal(a1, r.Payload) {
-			return nil, errors.New("ProposalResponsePayloads do not match")
+			return nil, errors.Errorf("ProposalResponsePayloads do not match (base64): '%s' vs '%s'",
+				b64.StdEncoding.EncodeToString(r.Payload), b64.StdEncoding.EncodeToString(a1))
 		}
 	}
 
-	// fill endorsements
-	endorsements := make([]*peer.Endorsement, len(resps))
-	for n, r := range resps {
-		endorsements[n] = r.Endorsement
+	// fill endorsements according to their uniqueness
+	endorsersUsed := make(map[string]struct{})
+	var endorsements []*peer.Endorsement
+	for _, r := range resps {
+		if r.Endorsement == nil {
+			continue
+		}
+		key := string(r.Endorsement.Endorser)
+		if _, used := endorsersUsed[key]; used {
+			continue
+		}
+		endorsements = append(endorsements, r.Endorsement)
+		endorsersUsed[key] = struct{}{}
+	}
+
+	if len(endorsements) == 0 {
+		return nil, errors.Errorf("no endorsements")
 	}
 
 	// create ChaincodeEndorsedAction

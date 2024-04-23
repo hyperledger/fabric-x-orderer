@@ -54,6 +54,7 @@ type Assembler struct {
 	Index                      AssemblerIndex
 	signal                     sync.Cond
 	lock                       sync.RWMutex
+	Shards                     []ShardID
 }
 
 func (a *Assembler) Run() {
@@ -61,15 +62,15 @@ func (a *Assembler) Run() {
 
 	var replicationSources []<-chan Batch
 
-	for shardID := 0; shardID < a.ShardCount; shardID++ {
-		batches := a.Replicator.Replicate(ShardID(shardID))
+	for _, shardID := range a.Shards {
+		batches := a.Replicator.Replicate(shardID)
 		replicationSources = append(replicationSources, batches)
 	}
 
-	for shardID := 0; shardID < a.ShardCount; shardID++ {
-		go func(shardID ShardID) {
+	for i, shardID := range a.Shards {
+		go func(shardID ShardID, i int) {
 			var seq uint64
-			batches := replicationSources[int(shardID)]
+			batches := replicationSources[i]
 			for batch := range batches {
 				a.Logger.Infof("Got batch of %d requests for shard %d", len(batch.Requests()), shardID)
 				a.lock.RLock()
@@ -79,7 +80,7 @@ func (a *Assembler) Run() {
 				seq++
 			}
 
-		}(ShardID(shardID))
+		}(shardID, i)
 	}
 
 	attestations := a.BatchAttestationReplicator.Replicate(0)

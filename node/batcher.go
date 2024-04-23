@@ -39,7 +39,7 @@ var (
 
 type Batcher struct {
 	logger           arma.Logger
-	b                arma.Batcher
+	b                *arma.Batcher
 	batcherCerts2IDs map[string]arma.PartyID
 	primaryEndpoint  string
 	primaryTLSCA     []RawBytes
@@ -55,6 +55,10 @@ type Batcher struct {
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
+
+	traceId := req.TraceId
+	req.TraceId = nil
+
 	rawReq, err := proto.Marshal(req)
 	if err != nil {
 		b.logger.Panicf("Failed marshaling request: %v", err)
@@ -63,7 +67,7 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 	b.logger.Infof("Received request %x", req.Payload)
 
 	var resp protos.SubmitResponse
-	resp.TraceId = req.TraceId
+	resp.TraceId = traceId
 	if err := b.b.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
 	}
@@ -97,14 +101,17 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 			return err
 		}
 
+		traceId := req.TraceId
+		req.TraceId = nil
+
 		rawReq, err := proto.Marshal(req)
 		if err != nil {
 			b.logger.Panicf("Failed marshaling request: %v", err)
 		}
 
 		var resp protos.SubmitResponse
-		resp.TraceId = req.TraceId
-		b.logger.Infof("Submitting request %x", req.TraceId)
+		resp.TraceId = traceId
+		b.logger.Infof("Submitting request %x", traceId)
 
 		if err := b.b.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
@@ -112,7 +119,7 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 
 		responses <- &resp
 
-		b.logger.Infof("Submitted request %x", req.TraceId)
+		b.logger.Infof("Submitted request %x", traceId)
 
 	}
 }
@@ -169,7 +176,7 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 
 	b.indexTLSCerts()
 
-	b.b = arma.Batcher{
+	b.b = &arma.Batcher{
 		BatchPuller:          bp,
 		Threshold:            2,
 		BatchTimeout:         time.Millisecond * 50,
@@ -191,7 +198,7 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 		AckBAF:           b.sendAck,
 	}
 
-	b.setupPrimaryEndpoint(logger, config, &b.b)
+	b.setupPrimaryEndpoint(logger, config, b.b)
 
 	f := (b.b.State.N - 1) / 3
 	b.b.Threshold = int(f + 1)
@@ -201,8 +208,8 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 
 func (b *Batcher) createMemPool() arma.MemPool {
 	opts := opts
-	opts.OnFirstStrikeTimeout = func(_ []byte) {
-		b.logger.Panicf("First strike timeout occurred")
+	opts.OnFirstStrikeTimeout = func(key []byte) {
+		b.logger.Panicf("First strike timeout occurred on request %s", b.b.RequestInspector.RequestID(key))
 	}
 	opts.OnSecondStrikeTimeout = func() {
 		b.logger.Panicf("second strike timeout occurred")
@@ -515,4 +522,9 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 	}
 
 	return certs[0].Raw
+}
+
+type BatchLedger interface {
+	arma.BatchLedger
+	Height() uint64
 }

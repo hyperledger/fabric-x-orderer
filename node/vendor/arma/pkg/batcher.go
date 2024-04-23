@@ -249,6 +249,10 @@ func (b *Batcher) runPrimary() {
 			break
 		}
 
+		if len(currentBatch) == 0 {
+			continue
+		}
+
 		baf := b.AttestBatch(b.Seq, primary, b.Shard, digest)
 
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)

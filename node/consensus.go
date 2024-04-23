@@ -229,44 +229,108 @@ func (tbsbh toBeSignedBlockHeader) Bytes() []byte {
 	return buff
 }
 
+type AvailableBatch struct {
+	primary uint16
+	shard   uint16
+	seq     uint64
+	digest  []byte
+}
+
+func (ab *AvailableBatch) Fragments() []arma.BatchAttestationFragment {
+	panic("should not be called")
+}
+
+func (ab *AvailableBatch) Digest() []byte {
+	return ab.digest
+}
+
+func (ab *AvailableBatch) Seq() uint64 {
+	return ab.seq
+}
+
+func (ab *AvailableBatch) Primary() arma.PartyID {
+	return arma.PartyID(ab.primary)
+}
+
+func (ab *AvailableBatch) Shard() arma.ShardID {
+	return arma.ShardID(ab.shard)
+}
+
+func (ab *AvailableBatch) Serialize() []byte {
+	buff := make([]byte, 32+2*2+8)
+	var pos int
+	binary.BigEndian.PutUint16(buff[pos:], ab.primary)
+	pos += 2
+	binary.BigEndian.PutUint16(buff[pos:], ab.shard)
+	pos += 2
+	binary.BigEndian.PutUint64(buff[pos:], ab.seq)
+	pos += 8
+	copy(buff[pos:], ab.digest)
+
+	return buff
+}
+
+func (ab *AvailableBatch) Deserialize(bytes []byte) error {
+	ab.primary = binary.BigEndian.Uint16(bytes[0:2])
+	ab.shard = binary.BigEndian.Uint16(bytes[2:4])
+	ab.seq = binary.BigEndian.Uint64(bytes[4:12])
+	ab.digest = bytes[12:]
+
+	return nil
+}
+
 type Header struct {
-	Num       uint64
-	Sequences []uint64
-	State     []byte
+	Num              uint64
+	AvailableBatches []AvailableBatch
+	State            []byte
 }
 
 func (h *Header) FromBytes(rawHeader []byte) error {
 	h.Num = binary.BigEndian.Uint64(rawHeader[0:8])
-	sequenceCount := int(binary.BigEndian.Uint32(rawHeader[8:12]))
+	availableBatchCount := int(binary.BigEndian.Uint16(rawHeader[8:10]))
 
-	sequences := make([]uint64, 0, sequenceCount)
+	pos := 10
 
-	for i := 0; i < sequenceCount; i++ {
-		sequences = append(sequences, binary.BigEndian.Uint64(rawHeader[8+4+4+i*8:]))
+	h.AvailableBatches = nil
+	for i := 0; i < availableBatchCount; i++ {
+		abSize := 2 + 2 + 8 + 32
+		var ab AvailableBatch
+		ab.Deserialize(rawHeader[pos : pos+abSize])
+		pos += abSize
+		h.AvailableBatches = append(h.AvailableBatches, ab)
 	}
 
-	h.Sequences = sequences
-
-	h.State = rawHeader[8+4+4+8*sequenceCount:]
+	h.State = rawHeader[pos:]
 
 	return nil
 }
 
 func (h *Header) Bytes() []byte {
-	prefix := make([]byte, 8+4+4)
-	binary.BigEndian.PutUint64(prefix, h.Num)
-	binary.BigEndian.PutUint32(prefix[8:12], uint32(len(h.Sequences)))
-	binary.BigEndian.PutUint32(prefix[12:16], uint32(len(h.State)))
-	sequencesBuff := make([]byte, len(h.Sequences)*8)
-	for i := 0; i < len(h.Sequences); i++ {
-		binary.BigEndian.PutUint64(sequencesBuff[i*8:], h.Sequences[i])
-	}
 
-	buff := make([]byte, len(sequencesBuff)+len(prefix)+len(h.State))
+	prefix := make([]byte, 8+2)
+	binary.BigEndian.PutUint64(prefix, h.Num)
+	binary.BigEndian.PutUint16(prefix[8:10], uint16(len(h.AvailableBatches)))
+
+	availableBatchesBytes := availableBatchesToBytes(h.AvailableBatches)
+
+	buff := make([]byte, len(availableBatchesBytes)+len(prefix)+len(h.State))
 	copy(buff, prefix)
-	copy(buff[len(prefix):], sequencesBuff)
-	copy(buff[len(prefix)+len(sequencesBuff):], h.State)
+	copy(buff[len(prefix):], availableBatchesBytes)
+	copy(buff[len(prefix)+len(availableBatchesBytes):], h.State)
+
 	return buff
+}
+
+func availableBatchesToBytes(availableBatches []AvailableBatch) []byte {
+	sequencesBuff := make([]byte, len(availableBatches)*(32+2*2+8))
+
+	var pos int
+	for _, ab := range availableBatches {
+		bytes := ab.Serialize()
+		copy(sequencesBuff[pos:], bytes)
+		pos += len(bytes)
+	}
+	return sequencesBuff
 }
 
 type Bytes [][]byte
@@ -376,9 +440,19 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 	newRawState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
 	c.lock.RUnlock()
 
-	sequences := make([]uint64, 0, len(attestations))
-	for seq := c.LastSeq; seq < c.LastSeq+uint64(len(attestations)); seq++ {
-		sequences = append(sequences, seq)
+	c.Logger.Infof("Created proposal with %d attestations", len(attestations))
+
+	seq := c.LastSeq
+	availableBatches := make([]AvailableBatch, 0, len(attestations))
+	for _, ba := range attestations {
+		availableBatches = append(availableBatches, AvailableBatch{
+			digest:  ba[0].Digest(),
+			shard:   uint16(ba[0].Shard()),
+			seq:     ba[0].Seq(),
+			primary: uint16(ba[0].Primary()),
+		})
+
+		seq++
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
@@ -388,9 +462,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 
 	return types.Proposal{
 		Header: (&Header{
-			Sequences: sequences,
-			State:     newRawState,
-			Num:       md.LatestSequence,
+			AvailableBatches: availableBatches,
+			State:            newRawState,
+			Num:              md.LatestSequence,
 		}).Bytes(),
 		Metadata: metadata,
 		Payload:  arma.BatchedRequests(requests).ToBytes(),
@@ -415,7 +489,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 		return types.Reconfig{}
 	}
 
-	c.LastSeq += uint64(len(hdr.Sequences))
+	c.LastSeq += uint64(len(hdr.AvailableBatches))
 
 	controlEvents := arma.BatchFromRaw(proposal.Payload)
 	// Why do we first give Arma the events and then append the decision to storage?

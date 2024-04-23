@@ -195,8 +195,10 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 
 	r := &naiveReplication{}
 
+	var shards []ShardID
 	for i := 0; i < shardCount; i++ {
 		r.subscribers = append(r.subscribers, make(chan Batch, 100))
+		shards = append(shards, ShardID(i))
 	}
 
 	ledger := make(naiveAssemblerLedger, 10)
@@ -204,6 +206,7 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 	nbar := make(naiveBatchAttestationReplicator)
 
 	assembler := &Assembler{
+		Shards:                     shards,
 		Logger:                     createLogger(t, 0),
 		Replicator:                 r,
 		Ledger:                     ledger,

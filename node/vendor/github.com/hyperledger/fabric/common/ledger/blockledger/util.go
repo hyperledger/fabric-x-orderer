@@ -8,10 +8,13 @@ package blockledger
 
 import (
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 )
+
+var logger = flogging.MustGetLogger("common.ledger.blockledger.util")
 
 var closedChan chan struct{}
 
@@ -40,7 +43,8 @@ func (nfei *NotFoundErrorIterator) Close() {}
 // CreateNextBlock provides a utility way to construct the next block from
 // contents and metadata for a given ledger
 // XXX This will need to be modified to accept marshaled envelopes
-//     to accommodate non-deterministic marshaling
+//
+//	to accommodate non-deterministic marshaling
 func CreateNextBlock(rl Reader, messages []*cb.Envelope) *cb.Block {
 	var nextBlockNumber uint64
 	var previousBlockHash []byte
@@ -72,7 +76,7 @@ func CreateNextBlock(rl Reader, messages []*cb.Envelope) *cb.Block {
 	}
 
 	block := protoutil.NewBlock(nextBlockNumber, previousBlockHash)
-	block.Header.DataHash = protoutil.BlockDataHash(data)
+	block.Header.DataHash = protoutil.ComputeBlockDataHash(data)
 	block.Data = data
 
 	return block
@@ -94,4 +98,9 @@ func GetBlock(rl Reader, index uint64) *cb.Block {
 		return nil
 	}
 	return block
+}
+
+func GetBlockByNumber(rl Reader, blockNum uint64) (*cb.Block, error) {
+	logger.Debugw("Retrieving block", "blockNum", blockNum)
+	return rl.RetrieveBlockByNumber(blockNum)
 }

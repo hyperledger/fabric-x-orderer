@@ -65,7 +65,7 @@ func TestConsensus(t *testing.T) {
 	}{
 		{
 			name:                "two batches single decision",
-			expectedSequences:   [][]uint64{{0, 1}},
+			expectedSequences:   [][]uint64{{1, 1}},
 			expectedDecisionNum: []uint64{1},
 			events: []scheduleEvent{
 				{ControlEvent: &arma.ControlEvent{BAF: baf1}},
@@ -76,7 +76,7 @@ func TestConsensus(t *testing.T) {
 		},
 		{
 			name:                "two batches single decision more than needed batch attestation shares",
-			expectedSequences:   [][]uint64{{0, 1}, {2}},
+			expectedSequences:   [][]uint64{{1, 1}, {2}},
 			expectedDecisionNum: []uint64{1, 2},
 			events: []scheduleEvent{
 				{ControlEvent: &arma.ControlEvent{BAF: baf1}},
@@ -166,7 +166,11 @@ func TestConsensus(t *testing.T) {
 						expectedDecisionNum := tstExpectedDecisionNum[0]
 						tstExpectedDecisionNum = tstExpectedDecisionNum[1:]
 
-						assert.Equal(t, expectedSequences, hdr.Sequences)
+						var actualSequences []uint64
+						for _, ab := range hdr.AvailableBatches {
+							actualSequences = append(actualSequences, ab.seq)
+						}
+						assert.Equal(t, expectedSequences, actualSequences)
 						assert.Equal(t, expectedDecisionNum, hdr.Num)
 
 						if len(tstExpectedSequences) == 0 {
@@ -288,4 +292,33 @@ func TestProposalSerialization(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, proposal, proposal2)
 	assert.Equal(t, signatures, signatures2)
+}
+
+func TestAvailableBatches(t *testing.T) {
+	var ab AvailableBatch
+	ab.digest = make([]byte, 32)
+	ab.primary = 42
+	ab.shard = 666
+	ab.seq = 100
+
+	var ab2 AvailableBatch
+	ab2.Deserialize(ab.Serialize())
+
+	assert.Equal(t, ab, ab2)
+}
+
+func TestHeaderBytes(t *testing.T) {
+	hdr := Header{
+		State: []byte{1, 2, 3},
+		Num:   100,
+		AvailableBatches: []AvailableBatch{
+			{seq: 1, shard: 2, primary: 3, digest: make([]byte, 32)},
+			{seq: 4, shard: 5, primary: 6, digest: make([]byte, 32)},
+		},
+	}
+
+	var hdr2 Header
+	hdr2.FromBytes(hdr.Bytes())
+
+	assert.Equal(t, hdr, hdr2)
 }

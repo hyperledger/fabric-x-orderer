@@ -11,8 +11,8 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/common/ledger/util"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric/internal/fileutil"
 	"github.com/pkg/errors"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
@@ -53,7 +53,8 @@ func CreateDB(conf *Conf) *DB {
 		dbState:         closed,
 		readOpts:        readOpts,
 		writeOptsNoSync: writeOptsNoSync,
-		writeOptsSync:   writeOptsSync}
+		writeOptsSync:   writeOptsSync,
+	}
 }
 
 // Open opens the underlying db
@@ -67,7 +68,7 @@ func (dbInst *DB) Open() {
 	dbPath := dbInst.conf.DBPath
 	var err error
 	var dirEmpty bool
-	if dirEmpty, err = util.CreateDirIfMissing(dbPath); err != nil {
+	if dirEmpty, err = fileutil.CreateDirIfMissing(dbPath); err != nil {
 		panic(fmt.Sprintf("Error creating dir if missing: %s", err))
 	}
 	dbOpts.ErrorIfMissing = !dirEmpty
@@ -79,6 +80,8 @@ func (dbInst *DB) Open() {
 
 // IsEmpty returns whether or not a database is empty
 func (dbInst *DB) IsEmpty() (bool, error) {
+	dbInst.mutex.RLock()
+	defer dbInst.mutex.RUnlock()
 	itr := dbInst.db.NewIterator(&goleveldbutil.Range{}, dbInst.readOpts)
 	defer itr.Release()
 	hasItems := itr.Next()
@@ -198,18 +201,27 @@ func (f *FileLock) Lock() error {
 	dbOpts := &opt.Options{}
 	var err error
 	var dirEmpty bool
-	if dirEmpty, err = util.CreateDirIfMissing(f.filePath); err != nil {
+	if dirEmpty, err = fileutil.CreateDirIfMissing(f.filePath); err != nil {
 		panic(fmt.Sprintf("Error creating dir if missing: %s", err))
 	}
 	dbOpts.ErrorIfMissing = !dirEmpty
-	f.db, err = leveldb.OpenFile(f.filePath, dbOpts)
+	db, err := leveldb.OpenFile(f.filePath, dbOpts)
 	if err != nil && err == syscall.EAGAIN {
 		return errors.Errorf("lock is already acquired on file %s", f.filePath)
 	}
 	if err != nil {
 		panic(fmt.Sprintf("Error acquiring lock on file %s: %s", f.filePath, err))
 	}
+
+	// only mutate the lock db reference AFTER validating that the lock was held.
+	f.db = db
+
 	return nil
+}
+
+// Determine if the lock is currently held open.
+func (f *FileLock) IsLocked() bool {
+	return f.db != nil
 }
 
 // Unlock releases a previously acquired lock. We achieve this by closing

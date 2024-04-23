@@ -50,7 +50,7 @@ func CreateNonce() ([]byte, error) {
 }
 
 // UnmarshalEnvelopeOfType unmarshals an envelope of the specified type,
-// including unmarshaling the payload data
+// including unmarshalling the payload data
 func UnmarshalEnvelopeOfType(envelope *cb.Envelope, headerType cb.HeaderType, message proto.Message) (*cb.ChannelHeader, error) {
 	payload, err := UnmarshalPayload(envelope.Payload)
 	if err != nil {
@@ -71,7 +71,7 @@ func UnmarshalEnvelopeOfType(envelope *cb.Envelope, headerType cb.HeaderType, me
 	}
 
 	err = proto.Unmarshal(payload.Data, message)
-	err = errors.Wrapf(err, "error unmarshaling message for type %s", headerType)
+	err = errors.Wrapf(err, "error unmarshalling message for type %s", headerType)
 	return chdr, err
 }
 
@@ -188,7 +188,24 @@ func SignOrPanic(signer identity.Signer, msg []byte) []byte {
 // IsConfigBlock validates whenever given block contains configuration
 // update transaction
 func IsConfigBlock(block *cb.Block) bool {
-	envelope, err := ExtractEnvelope(block, 0)
+	if block.Data == nil {
+		return false
+	}
+
+	return HasConfigTx(block.Data)
+}
+
+func HasConfigTx(blockdata *cb.BlockData) bool {
+	if blockdata.Data == nil {
+		return false
+	}
+
+	if len(blockdata.Data) != 1 {
+		return false
+	}
+
+	marshaledEnvelope := blockdata.Data[0]
+	envelope, err := GetEnvelopeFromBlock(marshaledEnvelope)
 	if err != nil {
 		return false
 	}
@@ -207,11 +224,15 @@ func IsConfigBlock(block *cb.Block) bool {
 		return false
 	}
 
-	return cb.HeaderType(hdr.Type) == cb.HeaderType_CONFIG || cb.HeaderType(hdr.Type) == cb.HeaderType_ORDERER_TRANSACTION
+	return cb.HeaderType(hdr.Type) == cb.HeaderType_CONFIG
 }
 
 // ChannelHeader returns the *cb.ChannelHeader for a given *cb.Envelope.
 func ChannelHeader(env *cb.Envelope) (*cb.ChannelHeader, error) {
+	if env == nil {
+		return nil, errors.New("Invalid envelope payload. can't be nil")
+	}
+
 	envPayload, err := UnmarshalPayload(env.Payload)
 	if err != nil {
 		return nil, err
@@ -227,7 +248,7 @@ func ChannelHeader(env *cb.Envelope) (*cb.ChannelHeader, error) {
 
 	chdr, err := UnmarshalChannelHeader(envPayload.Header.ChannelHeader)
 	if err != nil {
-		return nil, errors.WithMessage(err, "error unmarshaling channel header")
+		return nil, errors.WithMessage(err, "error unmarshalling channel header")
 	}
 
 	return chdr, nil
@@ -262,4 +283,22 @@ func getRandomNonce() ([]byte, error) {
 		return nil, errors.Wrap(err, "error getting random bytes")
 	}
 	return key, nil
+}
+
+func IsConfigTransaction(envelope *cb.Envelope) bool {
+	payload, err := UnmarshalPayload(envelope.Payload)
+	if err != nil {
+		return false
+	}
+
+	if payload.Header == nil {
+		return false
+	}
+
+	hdr, err := UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	if err != nil {
+		return false
+	}
+
+	return cb.HeaderType(hdr.Type) == cb.HeaderType_CONFIG || cb.HeaderType(hdr.Type) == cb.HeaderType_ORDERER_TRANSACTION
 }

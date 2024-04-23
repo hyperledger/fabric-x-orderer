@@ -17,6 +17,9 @@ type Factory interface {
 	// or creates it if it does not
 	GetOrCreate(channelID string) (ReadWriter, error)
 
+	// Remove removes an existing ledger
+	Remove(channelID string) error
+
 	// ChannelIDs returns the channel IDs the Factory is aware of
 	ChannelIDs() []string
 
@@ -40,6 +43,8 @@ type Reader interface {
 	Iterator(startType *ab.SeekPosition) (Iterator, uint64)
 	// Height returns the number of blocks on the ledger
 	Height() uint64
+	// retrieve blockByNumber
+	RetrieveBlockByNumber(blockNumber uint64) (*cb.Block, error)
 }
 
 // Writer allows the caller to modify the ledger

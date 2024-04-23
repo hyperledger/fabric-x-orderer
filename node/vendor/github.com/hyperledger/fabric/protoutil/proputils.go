@@ -9,13 +9,12 @@ package protoutil
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // CreateChaincodeProposal creates a proposal from given input.
@@ -81,17 +80,12 @@ func CreateChaincodeProposalWithTxIDNonceAndTransient(txid string, typ common.He
 	// get a more appropriate mechanism to handle it in.
 	var epoch uint64
 
-	timestamp, err := ptypes.TimestampProto(time.Now().UTC())
-	if err != nil {
-		return nil, "", errors.Wrap(err, "error validating Timestamp")
-	}
-
 	hdr := &common.Header{
 		ChannelHeader: MarshalOrPanic(
 			&common.ChannelHeader{
 				Type:      int32(typ),
 				TxId:      txid,
-				Timestamp: timestamp,
+				Timestamp: timestamppb.Now(),
 				ChannelId: channelID,
 				Extension: ccHdrExtBytes,
 				Epoch:     epoch,
@@ -183,7 +177,7 @@ func GetBytesSignatureHeader(hdr *common.SignatureHeader) ([]byte, error) {
 // GetBytesTransaction get the bytes of Transaction from the message
 func GetBytesTransaction(tx *peer.Transaction) ([]byte, error) {
 	bytes, err := proto.Marshal(tx)
-	return bytes, errors.Wrap(err, "error unmarshaling Transaction")
+	return bytes, errors.Wrap(err, "error unmarshalling Transaction")
 }
 
 // GetBytesPayload get the bytes of Payload from the message

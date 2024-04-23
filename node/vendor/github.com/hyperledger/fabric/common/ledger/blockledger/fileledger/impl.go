@@ -7,9 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package fileledger
 
 import (
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 )
@@ -28,6 +28,8 @@ type FileLedgerBlockStore interface {
 	AddBlock(block *cb.Block) error
 	GetBlockchainInfo() (*cb.BlockchainInfo, error)
 	RetrieveBlocks(startBlockNumber uint64) (ledger.ResultsIterator, error)
+	Shutdown()
+	RetrieveBlockByNumber(blockNum uint64) (*cb.Block, error)
 }
 
 // NewFileLedger creates a new FileLedger for interaction with the ledger
@@ -74,6 +76,9 @@ func (fl *FileLedger) Iterator(startPosition *ab.SeekPosition) (blockledger.Iter
 			logger.Panic(err)
 		}
 		newestBlockNumber := info.Height - 1
+		if info.BootstrappingSnapshotInfo != nil && newestBlockNumber == info.BootstrappingSnapshotInfo.LastBlockInSnapshot {
+			newestBlockNumber = info.Height
+		}
 		startingBlockNumber = newestBlockNumber
 	case *ab.SeekPosition_Specified:
 		startingBlockNumber = start.Specified.Number
@@ -81,12 +86,15 @@ func (fl *FileLedger) Iterator(startPosition *ab.SeekPosition) (blockledger.Iter
 		if startingBlockNumber > height {
 			return &blockledger.NotFoundErrorIterator{}, 0
 		}
+	case *ab.SeekPosition_NextCommit:
+		startingBlockNumber = fl.Height()
 	default:
 		return &blockledger.NotFoundErrorIterator{}, 0
 	}
 
 	iterator, err := fl.blockStore.RetrieveBlocks(startingBlockNumber)
 	if err != nil {
+		logger.Warnw("Failed to initialize block iterator", "blockNum", startingBlockNumber, "error", err)
 		return &blockledger.NotFoundErrorIterator{}, 0
 	}
 
@@ -110,4 +118,8 @@ func (fl *FileLedger) Append(block *cb.Block) error {
 		fl.signal = make(chan struct{})
 	}
 	return err
+}
+
+func (fl *FileLedger) RetrieveBlockByNumber(blockNumber uint64) (*cb.Block, error) {
+	return fl.blockStore.RetrieveBlockByNumber(blockNumber)
 }
