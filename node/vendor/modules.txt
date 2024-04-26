@@ -82,6 +82,7 @@ github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
+github.com/golang/protobuf/ptypes/empty
 github.com/golang/protobuf/ptypes/timestamp
 # github.com/golang/snappy v0.0.4
 ## explicit
@@ -91,8 +92,13 @@ github.com/golang/snappy
 github.com/grpc-ecosystem/go-grpc-middleware
 # github.com/hyperledger/fabric v1.4.0-rc1.0.20240314152450-c8a6fcc0ffa3
 ## explicit; go 1.20
+github.com/hyperledger/fabric/common/capabilities
+github.com/hyperledger/fabric/common/cauthdsl
+github.com/hyperledger/fabric/common/channelconfig
+github.com/hyperledger/fabric/common/configtx
 github.com/hyperledger/fabric/common/crypto
 github.com/hyperledger/fabric/common/deliver
+github.com/hyperledger/fabric/common/deliverclient
 github.com/hyperledger/fabric/common/ledger
 github.com/hyperledger/fabric/common/ledger/blkstorage
 github.com/hyperledger/fabric/common/ledger/blockledger
@@ -105,9 +111,12 @@ github.com/hyperledger/fabric/common/policies
 github.com/hyperledger/fabric/common/policydsl
 github.com/hyperledger/fabric/common/util
 github.com/hyperledger/fabric/internal/fileutil
+github.com/hyperledger/fabric/internal/pkg/comm
 github.com/hyperledger/fabric/internal/pkg/identity
 github.com/hyperledger/fabric/internal/pkg/txflags
 github.com/hyperledger/fabric/msp
+github.com/hyperledger/fabric/msp/cache
+github.com/hyperledger/fabric/orderer/common/cluster
 github.com/hyperledger/fabric/orderer/common/filerepo
 github.com/hyperledger/fabric/protoutil
 # github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2
@@ -116,6 +125,15 @@ github.com/hyperledger/fabric-amcl/amcl
 github.com/hyperledger/fabric-amcl/amcl/FP256BN
 github.com/hyperledger/fabric-amcl/core
 github.com/hyperledger/fabric-amcl/core/FP256BN
+# github.com/hyperledger/fabric-config v0.2.1
+## explicit; go 1.20
+github.com/hyperledger/fabric-config/protolator
+github.com/hyperledger/fabric-config/protolator/protoext
+github.com/hyperledger/fabric-config/protolator/protoext/commonext
+github.com/hyperledger/fabric-config/protolator/protoext/ledger/rwsetext
+github.com/hyperledger/fabric-config/protolator/protoext/mspext
+github.com/hyperledger/fabric-config/protolator/protoext/ordererext
+github.com/hyperledger/fabric-config/protolator/protoext/peerext
 # github.com/hyperledger/fabric-lib-go v1.1.1
 ## explicit; go 1.20
 github.com/hyperledger/fabric-lib-go/bccsp
@@ -135,6 +153,8 @@ github.com/hyperledger/fabric-protos-go/ledger/rwset
 github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset
 github.com/hyperledger/fabric-protos-go/msp
 github.com/hyperledger/fabric-protos-go/orderer
+github.com/hyperledger/fabric-protos-go/orderer/etcdraft
+github.com/hyperledger/fabric-protos-go/orderer/smartbft
 github.com/hyperledger/fabric-protos-go/peer
 # github.com/kilic/bls12-381 v0.1.0
 ## explicit; go 1.13

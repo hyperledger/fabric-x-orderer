@@ -10,14 +10,16 @@ import (
 )
 
 type AssemblerLedger struct {
-	Ledger blockledger.ReadWriter
+	Ledger   blockledger.ReadWriter
+	PrevHash []byte
 }
 
 func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAttestation) {
 	block := &common.Block{
 		Header: &common.BlockHeader{
-			Number:   ba.Seq(),
-			DataHash: ba.Digest(),
+			Number:       ba.Seq(),
+			DataHash:     ba.Digest(),
+			PreviousHash: l.PrevHash,
 		},
 		Data: &common.BlockData{
 			Data: batch.Requests(),
@@ -26,6 +28,8 @@ func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAtte
 			Metadata: [][]byte{{}, {}, {}, {}, {}},
 		},
 	}
+
+	l.PrevHash = protoutil.BlockHeaderHash(block.Header)
 
 	if err := l.Ledger.Append(block); err != nil {
 		panic(err)
@@ -87,7 +91,7 @@ func (c *ConsensusLedger) Append(bytes []byte) {
 
 	block := &common.Block{
 		Header: &common.BlockHeader{
-			Number:       header.Num,
+			Number:       header.Num - 1,
 			DataHash:     digest[:],
 			PreviousHash: c.PrevHash,
 		},

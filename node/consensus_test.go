@@ -10,6 +10,7 @@ import (
 	"github.com/SmartBFT-Go/consensus/v2/pkg/wal"
 	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
 	"github.com/stretchr/testify/assert"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -192,7 +193,13 @@ type scheduleEvent struct {
 
 func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier) (*Consensus, func()) {
 	signer := ECDSASigner(*sk)
-	verifier[partyID] = signer.PublicKey
+
+	for _, shard := range []arma.ShardID{1, 2, math.MaxUint16} {
+		verifier[struct {
+			party arma.PartyID
+			shard arma.ShardID
+		}{party: partyID, shard: shard}] = signer.PublicKey
+	}
 
 	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
 	assert.NoError(t, err)
@@ -208,6 +215,9 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 		Logger:            l,
 		FragmentFromBytes: BatchAttestationFromBytes,
 	}
+
+	config := types.DefaultConfig
+	config.SelfID = uint64(partyID)
 
 	c := &Consensus{
 		CurrentConfig: types.DefaultConfig,

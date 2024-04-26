@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -88,6 +89,8 @@ type FactoryCreator func(string) blockledger.Factory
 type Index struct {
 	indexes map[arma.ShardID]blockledger.ReadWriter
 	logger  arma.Logger
+	lock    sync.RWMutex
+	cache   map[arma.ShardID]*cache
 }
 
 func NewIndex(config AssemblerNodeConfig, factory blockledger.Factory, logger arma.Logger) *Index {
@@ -104,10 +107,16 @@ func NewIndex(config AssemblerNodeConfig, factory blockledger.Factory, logger ar
 		indexes[arma.ShardID(shardID)] = rw
 	}
 
-	return &Index{logger: logger, indexes: indexes}
+	cache := make(map[arma.ShardID]*cache)
+	for _, shard := range config.Shards {
+		cache[arma.ShardID(shard.ShardId)] = newCache(1024 * 1024 * 200)
+	}
+
+	return &Index{logger: logger, indexes: indexes, cache: cache}
 }
 
 func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, batch arma.Batch) {
+	defer i.logger.Infof("Indexed batch %d for shard %d", sequence, shard)
 	buff := make([]byte, 4)
 	binary.BigEndian.PutUint16(buff, uint16(batch.Party()))
 
@@ -122,18 +131,40 @@ func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, b
 		},
 	}
 
+	var size int
+	for _, req := range batch.Requests() {
+		size += len(req)
+	}
+
+	i.lock.Lock()
+	i.cache[shard].put(block, size)
+	i.lock.Unlock()
+
 	i.indexes[shard].Append(block)
 }
 
 func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64, digest []byte) (arma.Batch, bool) {
+	i.logger.Infof("Retrieving batch %d for shard %d", sequence, shard)
+
+	i.lock.RLock()
+	blockFromCache, exists := i.cache[shard].get(sequence)
+	i.lock.RUnlock()
+
+	if exists {
+		fb := fabricBatch(*blockFromCache)
+		return &fb, true
+	}
+
 	reader := i.indexes[shard]
 	block := GetBlock(reader, sequence)
 
 	if block == nil {
+		i.logger.Infof("Could not find batch %d for shard %d", sequence, shard)
 		return nil, false
 	}
 
 	fb := fabricBatch(*block)
+	i.logger.Infof("Retrieved batch %d for shard %d", sequence, shard)
 	return &fb, true
 }
 
@@ -179,9 +210,10 @@ func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 
 	endpoint := batcherToPullFrom.Endpoint
 
+	shardName := fmt.Sprintf("shard%d", shardID)
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
-		fmt.Sprintf("shard%d", shardID),
+		shardName,
 		nil,
 		nextSeekInfo(seq),
 		int32(0),
@@ -195,7 +227,7 @@ func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 
 	res := make(chan arma.Batch)
 
-	go pull(br.logger, endpoint, requestEnvelope, br.clientConfig(), func(block *common.Block) {
+	go pull(shardName, br.logger, endpoint, requestEnvelope, br.clientConfig(), func(block *common.Block) {
 		fb := fabricBatch(*block)
 		res <- &fb
 	})
@@ -245,10 +277,8 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 
 	res := make(chan arma.BatchAttestation)
 
-	go pull(bar.logger, endpoint, requestEnvelope, bar.clientConfig(), func(block *common.Block) {
+	go pull("consensus", bar.logger, endpoint, requestEnvelope, bar.clientConfig(), func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
-
-		fmt.Println("Received consensus block with", len(header.AvailableBatches), "batch attestations")
 
 		for _, ab := range header.AvailableBatches {
 			bar.logger.Infof("Replicated batch attestation with seq %d and shard %d", ab.Seq(), ab.Shard())
@@ -259,7 +289,7 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 	return res
 }
 
-func pull(logger arma.Logger, endpoint string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
+func pull(channel string, logger arma.Logger, endpoint string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
 	for {
 		time.Sleep(time.Second)
 
@@ -286,15 +316,15 @@ func pull(logger arma.Logger, endpoint string, requestEnvelope *common.Envelope,
 			continue
 		}
 
-		pullBlocks(logger, stream, endpoint, conn, parseBlock)
+		pullBlocks(channel, logger, stream, endpoint, conn, parseBlock)
 	}
 }
 
-func pullBlocks(logger arma.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
+func pullBlocks(channel string, logger arma.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
-			logger.Errorf("Failed receiving block from %s: %v", endpoint, err)
+			logger.Errorf("Failed receiving block for %s from %s: %v", channel, endpoint, err)
 			stream.CloseSend()
 			conn.Close()
 			return

@@ -28,9 +28,10 @@ func (bp *BatchPuller) PullBatches(from arma.PartyID) <-chan arma.Batch {
 
 	endpoint := primary.Endpoint
 
+	shardName := fmt.Sprintf("shard%d", bp.config.ShardId)
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
-		fmt.Sprintf("shard%d", bp.config.ShardId),
+		shardName,
 		nil,
 		nextSeekInfo(seq),
 		int32(0),
@@ -41,7 +42,7 @@ func (bp *BatchPuller) PullBatches(from arma.PartyID) <-chan arma.Batch {
 		bp.logger.Panicf("Failed creating seek envelope: %v", err)
 	}
 
-	go pull(bp.logger, endpoint, requestEnvelope, bp.clientConfig(from), func(block *common.Block) {
+	go pull(shardName, bp.logger, endpoint, requestEnvelope, bp.clientConfig(from), func(block *common.Block) {
 		bp.logger.Infof("Fetched block %d with %d transactions", block.Header.Number, len(block.Data.Data))
 		fb := fabricBatch(*block)
 		res <- &fb

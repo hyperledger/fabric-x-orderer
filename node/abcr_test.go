@@ -10,78 +10,27 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"math"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/SmartBFT-Go/consensus/v2/pkg/consensus"
 	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
-	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
+	"github.com/SmartBFT-Go/consensus/v2/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
 	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
 )
 
-type mockBFT struct {
-	consenters []*Consensus
-	batches    chan []byte
-	once       sync.Once
-}
-
-func (m *mockBFT) SubmitRequest(req []byte) error {
-	m.batches <- req
-	return nil
-}
-
-func (m *mockBFT) Start() error {
-	m.once.Do(func() {
-		m.batches = make(chan []byte, 1000)
-		go m.batchRequestsAndDeliver()
-	})
-	return nil
-}
-
-func (m *mockBFT) batchRequestsAndDeliver() {
-	ticker := time.NewTicker(time.Millisecond * 100)
-	for range ticker.C {
-		var batch [][]byte
-		pendingRequests := true
-		for pendingRequests {
-			select {
-			case req := <-m.batches:
-				batch = append(batch, req)
-			default:
-				pendingRequests = false
-			}
-		}
-		if len(batch) == 0 {
-			continue
-		}
-
-		proposal := m.consenters[0].AssembleProposal(nil, batch)
-		batch = nil
-		for _, c := range m.consenters {
-			c.Deliver(proposal, nil)
-		}
-	}
-}
-
-func (m *mockBFT) HandleMessage(targetID uint64, _ *smartbftprotos.Message) {
-
-}
-
-func (m *mockBFT) HandleRequest(targetID uint64, request []byte) {
-
-}
-
 func TestABCR(t *testing.T) {
 	ca, err := tlsgen.NewCA()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	batcherInfos, consenterInfos, batcherNodes, consenterNodes := createConsentersAndBatchers(t, ca)
 
@@ -89,14 +38,14 @@ func TestABCR(t *testing.T) {
 
 	dss, factories := createBatcherDeliverServers(t)
 
+	consenterDeliverServes, consenterLedgers := createConsenterLedgers(t)
+
+	_, clean := createConsenters(t, consenterNodes, consenterInfos, consenterLedgers, consenterDeliverServes, shards)
+	defer clean()
+
 	batchers := createBatchers(t, batcherNodes, shards, consenterInfos, dss, factories)
 
 	routers := createRouters(t, batcherInfos, ca)
-
-	consenterDeliverServes, consenterLedgers := createConsenterLedgers(t)
-
-	_, clean := createConsenters(t, consenterNodes, consenterInfos, consenterLedgers, consenterDeliverServes)
-	defer clean()
 
 	for _, b := range batchers {
 		go b.b.Run()
@@ -104,13 +53,19 @@ func TestABCR(t *testing.T) {
 
 	_, armaLedger := createAssembler(t, err, ca, shards, consenterInfos)
 
-	for i := 0; i < 4; i++ {
-		routers[i].Submit(context.Background(), &protos.Request{Payload: []byte{1, 2, 3}})
+	for i := 0; i < 10; i++ {
+		txn := make([]byte, 32)
+		rand.Read(txn)
+
+		for i := 0; i < 4; i++ {
+			routers[i].Submit(context.Background(), &protos.Request{Payload: txn})
+		}
+
+		for armaLedger.Height() == uint64(i) {
+			time.Sleep(time.Millisecond * 10)
+		}
 	}
 
-	for armaLedger.Height() == 0 {
-		time.Sleep(time.Second)
-	}
 }
 
 func createConsenterLedgers(t *testing.T) ([]*DeliverService, []Storage) {
@@ -118,14 +73,14 @@ func createConsenterLedgers(t *testing.T) ([]*DeliverService, []Storage) {
 	var consenterLedgers []Storage
 	for i := 0; i < 4; i++ {
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-consenter%d", t.Name(), i))
-		assert.NoError(t, err)
+		dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-consenter%d", t.Name(), i+1))
+		require.NoError(t, err)
 
 		factory, err := fileledger.New(dir, &disabled.Provider{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		consensusLedger, err := factory.GetOrCreate("consensus")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		consenterLedgers = append(consenterLedgers, &ConsensusLedger{ledger: consensusLedger})
 		consenterDeliverServes = append(consenterDeliverServes, &DeliverService{
@@ -140,11 +95,11 @@ func createBatcherDeliverServers(t *testing.T) ([]*DeliverService, []blockledger
 	var dss []*DeliverService
 	for i := 0; i < 4; i++ {
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-batcher%d", t.Name(), i))
-		assert.NoError(t, err)
+		dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-batcher%d", t.Name(), i+1))
+		require.NoError(t, err)
 
 		factory, err := fileledger.New(dir, &disabled.Provider{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		factories = append(factories, factory)
 
@@ -159,16 +114,16 @@ func createBatcherDeliverServers(t *testing.T) ([]*DeliverService, []blockledger
 
 func createAssembler(t *testing.T, err error, ca tlsgen.CA, shards []ShardInfo, consenterInfos []ConsenterInfo) (*Assembler, blockledger.ReadWriter) {
 	ckp, err := ca.NewClientCertKeyPair()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-assembler", t.Name()))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	aLogger := createLogger(t, 1)
 
 	factory, err := fileledger.New(dir, &disabled.Provider{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assembler := NewAssembler(aLogger, dir, AssemblerNodeConfig{
-		PartyId:            0,
+		PartyId:            1,
 		TLSPrivateKeyFile:  []byte(base64.StdEncoding.EncodeToString(ckp.Key)),
 		TLSCertificateFile: []byte(base64.StdEncoding.EncodeToString(ckp.Cert)),
 		Shards:             shards,
@@ -188,14 +143,14 @@ func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) []*Ro
 	for i := 0; i < 4; i++ {
 		l := createLogger(t, i)
 		kp, err := ca.NewClientCertKeyPair()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		router := NewRouter([]uint16{1}, []string{batcherInfos[i].Endpoint}, [][][]byte{{ca.CertBytes()}}, kp.Cert, kp.Key, l)
 		routers = append(routers, router)
 	}
 	return routers
 }
 
-func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []ConsenterInfo, ledgers []Storage, dss []*DeliverService) ([]*Consensus, func()) {
+func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []ConsenterInfo, ledgers []Storage, dss []*DeliverService, shardInfo []ShardInfo) ([]*Consensus, func()) {
 	var consensuses []*Consensus
 
 	initialState := (&arma.State{
@@ -206,31 +161,50 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 		Quorum:     3,
 	}).Serialize()
 
-	bft := &mockBFT{}
-
-	defer bft.Start()
-
 	var cleans []func()
 
 	for i := 0; i < 4; i++ {
-		partyID := arma.PartyID(i)
+
+		partyID := arma.PartyID(i + 1)
+
+		config := types.DefaultConfig
+		config.SelfID = uint64(partyID)
+		config.DecisionsPerLeader = 0
+		config.LeaderRotation = false
 
 		l := createLogger(t, int(partyID))
 
 		s := fmt.Sprintf("t.Name()-%s", t.Name())
 		dir, err := os.MkdirTemp("", s)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		cleans = append(cleans, func() {
 			defer os.RemoveAll(dir)
 		})
 
 		db, err := NewBatchAttestationDB(dir, l)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		verifier := buildVerifier(t, consenterInfos)
+		consenterVerifier := buildVerifier(t, consenterInfos, shardInfo)
 
-		consensus := &Consensus{
+		wal, err := wal.Create(l, dir, &wal.Options{
+			FileSizeBytes:   wal.FileSizeBytesDefault,
+			BufferSizeBytes: wal.BufferSizeBytesDefault,
+		})
+		require.NoError(t, err)
+
+		sk, err := x509.MarshalPKCS8PrivateKey(consenterNodes[i].sk)
+		require.NoError(t, err)
+
+		c := &Consensus{
+			Config: ConsenterNodeConfig{
+				TLSPrivateKeyFile:  consenterNodes[i].TLSKey,
+				TLSCertificateFile: consenterNodes[i].TLSCert,
+				PartyId:            uint16(partyID),
+				SigningPrivateKey:  []byte(base64.StdEncoding.EncodeToString(sk)),
+				Consenters:         consenterInfos,
+			},
+			WAL:           wal,
 			CurrentConfig: types.Configuration{SelfID: uint64(partyID)},
 			Arma: &arma.Consenter{
 				State:             initialState,
@@ -242,20 +216,37 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 			State:        initialState,
 			CurrentNodes: []uint64{1, 2, 3, 4},
 			Storage:      ledgers[i],
-			BFT:          bft,
-			SigVerifier:  verifier,
+			SigVerifier:  consenterVerifier,
 			Signer:       ECDSASigner(*consenterNodes[i].sk),
 		}
 
-		consensuses = append(consensuses, consensus)
-		protos.RegisterConsensusServer(consenterNodes[i].Server(), consensus)
+		bft := &consensus.Consensus{
+			Logger:            l,
+			Config:            config,
+			WAL:               wal,
+			RequestInspector:  c,
+			Signer:            c,
+			Assembler:         c,
+			Synchronizer:      c,
+			Scheduler:         time.NewTicker(time.Second).C,
+			ViewChangerTicker: time.NewTicker(time.Second).C,
+			Application:       c,
+			Verifier:          c,
+		}
+		c.BFT = bft
+
+		myIdentity := getOurIdentity(t, consenterInfos, partyID)
+
+		SetupComm(c, consenterNodes[i].Server(), myIdentity)
+
+		consensuses = append(consensuses, c)
+		protos.RegisterConsensusServer(consenterNodes[i].Server(), c)
 		orderer.RegisterAtomicBroadcastServer(consenterNodes[i].Server(), dss[i])
 		go consenterNodes[i].Start()
+		err = bft.Start()
+		require.NoError(t, err)
 		t.Log("Consenter gRPC service listening on", consenterNodes[i].Address())
-
 	}
-
-	bft.consenters = consensuses
 
 	return consensuses, func() {
 		for _, clean := range cleans {
@@ -264,20 +255,57 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 	}
 }
 
-func buildVerifier(t *testing.T, consenterInfos []ConsenterInfo) ECDSAVerifier {
+func getOurIdentity(t *testing.T, consenterInfos []ConsenterInfo, partyID arma.PartyID) []byte {
+	var myIdentity []byte
+	for _, ci := range consenterInfos {
+		pk := ci.PublicKey
+		pk2, err := base64.StdEncoding.DecodeString(string(pk))
+		require.NoError(t, err)
+
+		if ci.PartyID == uint16(partyID) {
+			myIdentity = pk2
+			break
+		}
+	}
+	return myIdentity
+}
+
+func buildVerifier(t *testing.T, consenterInfos []ConsenterInfo, shardInfo []ShardInfo) ECDSAVerifier {
 	verifier := make(ECDSAVerifier)
 	for _, ci := range consenterInfos {
 		pk := ci.PublicKey
 		pk2, err := base64.StdEncoding.DecodeString(string(pk))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		pk3, _ := pem.Decode(pk2)
-		assert.NotNil(t, pk3)
+		require.NotNil(t, pk3)
 
 		pk4, err := x509.ParsePKIXPublicKey(pk3.Bytes)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		verifier[arma.PartyID(ci.PartyId)] = *pk4.(*ecdsa.PublicKey)
+		verifier[struct {
+			party arma.PartyID
+			shard arma.ShardID
+		}{shard: math.MaxUint16, party: arma.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+	}
+
+	for _, shard := range shardInfo {
+		for _, bi := range shard.Batchers {
+			pk := bi.PublicKey
+			pk2, err := base64.StdEncoding.DecodeString(string(pk))
+			require.NoError(t, err)
+
+			pk3, _ := pem.Decode(pk2)
+			require.NotNil(t, pk3)
+
+			pk4, err := x509.ParsePKIXPublicKey(pk3.Bytes)
+			require.NoError(t, err)
+
+			verifier[struct {
+				party arma.PartyID
+				shard arma.ShardID
+			}{shard: arma.ShardID(shard.ShardId), party: arma.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+		}
 	}
 
 	return verifier
@@ -288,9 +316,9 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 
 	for i := 0; i < 4; i++ {
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		partyID := arma.PartyID(i)
+		partyID := arma.PartyID(i) + 1
 		l := createLogger(t, int(partyID))
 		conf := BatcherNodeConfig{
 			Shards:             shards,
@@ -347,7 +375,7 @@ func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]BatcherInfo, []C
 	var batchers []BatcherInfo
 	for i := 0; i < 4; i++ {
 		batchers = append(batchers, BatcherInfo{
-			PartyID:    uint16(i),
+			PartyID:    uint16(i + 1),
 			Endpoint:   batcherNodes[i].Address(),
 			TLSCert:    batcherNodes[i].TLSCert,
 			TLSCACerts: []RawBytes{RawBytes(base64.StdEncoding.EncodeToString(ca.CertBytes()))},
@@ -358,7 +386,7 @@ func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]BatcherInfo, []C
 	var consenters []ConsenterInfo
 	for i := 0; i < 4; i++ {
 		consenters = append(consenters, ConsenterInfo{
-			PartyId:    uint16(i),
+			PartyID:    uint16(i + 1),
 			Endpoint:   consenterNodes[i].Address(),
 			TLSCACerts: []RawBytes{RawBytes(base64.StdEncoding.EncodeToString(ca.CertBytes()))},
 			PublicKey:  consenterNodes[i].pk,
@@ -369,10 +397,10 @@ func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]BatcherInfo, []C
 
 func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	rawPK, err := x509.MarshalPKIXPublicKey(&sk.PublicKey)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	return sk, rawPK
 }
 
@@ -391,7 +419,7 @@ func createNodes(t *testing.T, ca tlsgen.CA) []*node {
 
 	for i := 0; i < 4; i++ {
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		srv, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{
 			SecOpts: comm.SecureOptions{
@@ -403,7 +431,7 @@ func createNodes(t *testing.T, ca tlsgen.CA) []*node {
 				ServerRootCAs:     [][]byte{ca.CertBytes()},
 			},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		tlsCert := []byte(base64.StdEncoding.EncodeToString(kp.Cert))
 		tlsKey := []byte(base64.StdEncoding.EncodeToString(kp.Key))

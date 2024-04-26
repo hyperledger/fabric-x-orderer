@@ -35,8 +35,20 @@ type ShardInfo struct {
 	Batchers []BatcherInfo
 }
 
+type Network struct {
+	Parties []Party
+}
+
+type Party struct {
+	ID        uint16
+	Assembler string
+	Consenter string
+	router    string
+	Batchers  []string
+}
+
 type ConsenterInfo struct {
-	PartyId    uint16
+	PartyID    uint16
 	Endpoint   string
 	PublicKey  RawBytes
 	TLSCACerts []RawBytes

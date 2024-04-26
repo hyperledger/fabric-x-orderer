@@ -410,14 +410,14 @@ func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, cl protos.Consensus
 
 	if err != nil {
 		b.connections[index].Close()
-		b.logger.Errorf("Failed sending batch attestation fragment to %d (%s): %v", b.config.Consenters[index].PartyId, b.config.Consenters[index].Endpoint, err)
+		b.logger.Errorf("Failed sending batch attestation fragment to %d (%s): %v", b.config.Consenters[index].PartyID, b.config.Consenters[index].Endpoint, err)
 		b.connections[index] = nil
 		b.consensusClients[index] = nil
 		return
 	}
 
 	if resp.Error != "" {
-		b.logger.Errorf("Remote consensus node %d failed receiving the batch attestation share: %v", b.config.Consenters[index].PartyId, resp.Error)
+		b.logger.Errorf("Remote consensus node %d failed receiving the batch attestation share: %v", b.config.Consenters[index].PartyID, resp.Error)
 	}
 }
 
@@ -492,8 +492,10 @@ func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, pri
 	signer := ECDSASigner(*sk)
 
 	tbs := ToBeSignedBAF(baf)
+
 	sig, err := signer.Sign(tbs)
 	baf.Sig = sig
+
 	return baf, err
 }
 

@@ -6,14 +6,25 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/pkg/errors"
+	"google.golang.org/grpc"
+	"math"
+	"sync"
+	"time"
+
+	"github.com/SmartBFT-Go/consensus/v2/pkg/api"
+	"github.com/SmartBFT-Go/consensus/v2/pkg/consensus"
 	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
 	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
 	"github.com/golang/protobuf/proto"
+	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
-	"sync"
 )
 
 type Storage interface {
@@ -25,7 +36,7 @@ type Signer interface {
 }
 
 type SigVerifier interface {
-	VerifySignature(id arma.PartyID, msg, sig []byte) error
+	VerifySignature(id arma.PartyID, shardID arma.ShardID, msg, sig []byte) error
 }
 
 type Synchronizer interface {
@@ -45,19 +56,36 @@ type BFT interface {
 }
 
 type Consensus struct {
+	Config        ConsenterNodeConfig
 	PrevHash      []byte
 	LastSeq       uint64
 	SigVerifier   SigVerifier
 	Signer        Signer
 	CurrentNodes  []uint64
 	CurrentConfig types.Configuration
-	BFT           BFT
+	BFT           *consensus.Consensus
 	Storage       Storage
 	Arma          Arma
 	lock          sync.RWMutex
 	State         []byte
 	Synchronizer  Synchronizer
 	Logger        arma.Logger
+	WAL           api.WriteAheadLog
+}
+
+func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
+	msg := &smartbftprotos.Message{}
+	if err := proto.Unmarshal(request.Payload, msg); err != nil {
+		c.Logger.Warnf("Malformed message: %v", err)
+		return errors.Wrap(err, "malformed message")
+	}
+	c.BFT.HandleMessage(sender, msg)
+	return nil
+}
+
+func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
+	c.Logger.Panicf("Should not have been called")
+	return nil
 }
 
 func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*protos.EventResponse, error) {
@@ -68,7 +96,7 @@ func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*prot
 
 	c.Logger.Infof("Received event %x", event.Payload)
 
-	if err := c.BFT.SubmitRequest(ce.Bytes()); err != nil {
+	if err := c.SubmitRequest(event.GetPayload()); err != nil {
 		c.Logger.Errorf("Failed submitting request: %v", err)
 		return &protos.EventResponse{Error: fmt.Sprintf("failed submitting request: %v", err)}, nil
 	}
@@ -76,12 +104,120 @@ func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*prot
 	return &protos.EventResponse{}, nil
 }
 
+func (c *Consensus) clientConfig() comm.ClientConfig {
+	var tlsCAs [][]byte
+
+	for _, ci := range c.Config.Consenters {
+		for _, tlsCACert := range ci.TLSCACerts {
+			cert, err := base64.StdEncoding.DecodeString(string(tlsCACert))
+			if err != nil {
+				c.Logger.Panicf("Failed decoding TLS CA cert: %s", string(tlsCACert))
+			}
+			tlsCAs = append(tlsCAs, cert)
+		}
+	}
+
+	cert, err := base64.StdEncoding.DecodeString(string(c.Config.TLSCertificateFile))
+	if err != nil {
+		c.Logger.Panicf("TLS certificate is not a valid base64 encoded string: %v", err)
+	}
+
+	tlsKey, err := base64.StdEncoding.DecodeString(string(c.Config.TLSPrivateKeyFile))
+	if err != nil {
+		c.Logger.Panicf("TLS private key is not a valid base64 encoded string: %v", err)
+	}
+
+	cc := comm.ClientConfig{
+		AsyncConnect: true,
+		KaOpts: comm.KeepaliveOptions{
+			ClientInterval: time.Hour,
+			ClientTimeout:  time.Hour,
+		},
+		SecOpts: comm.SecureOptions{
+			Key:               tlsKey,
+			Certificate:       cert,
+			RequireClientCert: true,
+			UseTLS:            true,
+			ServerRootCAs:     tlsCAs,
+		},
+		DialTimeout: time.Second * 5,
+	}
+	return cc
+}
+
+func SetupComm(c *Consensus, server *grpc.Server, selfID []byte) {
+	cs := &comm.ClusterService{
+		Logger:                           c.Logger,
+		CertExpWarningThreshold:          time.Hour,
+		NodeIdentity:                     selfID,
+		StepLogger:                       c.Logger,
+		MinimumExpirationWarningInterval: time.Hour,
+		RequestHandler:                   c,
+	}
+
+	var consenterConfigs []*common.Consenter
+	var remotesNodes []comm.RemoteNode
+	for _, node := range c.Config.Consenters {
+		var tlsCAs [][]byte
+		for _, caCert := range node.TLSCACerts {
+			pemCert, err := base64.StdEncoding.DecodeString(string(caCert))
+			if err != nil {
+				panic(err)
+			}
+			tlsCAs = append(tlsCAs, pemCert)
+		}
+
+		identity, err := base64.StdEncoding.DecodeString(string(node.PublicKey))
+		if err != nil {
+			panic(err)
+		}
+
+		remotesNodes = append(remotesNodes, comm.RemoteNode{
+			NodeCerts: comm.NodeCerts{
+				Identity:     identity,
+				ServerRootCA: tlsCAs,
+			},
+			NodeAddress: comm.NodeAddress{
+				ID:       uint64(node.PartyID),
+				Endpoint: node.Endpoint,
+			},
+		})
+		consenterConfigs = append(consenterConfigs, &common.Consenter{
+			Identity: identity,
+			Id:       uint32(node.PartyID),
+		})
+	}
+	cs.ConfigureNodeCerts(consenterConfigs)
+
+	commAuth := &comm.AuthCommMgr{
+		Logger:         c.Logger,
+		Signer:         c.Signer,
+		SendBufferSize: 2000,
+		NodeIdentity:   selfID,
+		Connections:    comm.NewConnectionMgr(c.clientConfig()),
+	}
+
+	commAuth.Configure(remotesNodes)
+
+	c.BFT.Comm = &comm.Egress{
+		NodeList: c.CurrentNodes,
+		Logger:   c.Logger,
+		RPC: &comm.RPC{
+			StreamsByType: comm.NewStreamsByType(),
+			Timeout:       time.Minute,
+			Logger:        c.Logger,
+			Comm:          commAuth,
+		},
+	}
+
+	orderer.RegisterClusterNodeServiceServer(server, cs)
+}
+
 func (c *Consensus) SubmitRequest(req []byte) error {
 	if _, err := c.VerifyRequest(req); err != nil {
 		c.Logger.Warnf("Received bad request: %v", err)
 		return err
 	}
-
 	return c.BFT.SubmitRequest(req)
 }
 
@@ -120,10 +256,11 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 
 	if ce.Complaint != nil {
 		ce.Complaint.Bytes()
-		err := c.SigVerifier.VerifySignature(ce.Complaint.Signer, ToBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
+		err := c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ToBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
 		return reqID, err
 	} else if ce.BAF != nil {
-		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ToBeSignedBAF(ce.BAF), ce.BAF.(*arma.SimpleBatchAttestationFragment).Sig)
+		msg := ToBeSignedBAF(ce.BAF)
+		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma.SimpleBatchAttestationFragment).Sig)
 		return reqID, err
 	} else {
 		return types.RequestInfo{}, fmt.Errorf("empty Control Event")
@@ -143,7 +280,7 @@ func ToBeSignedComplaint(c *arma.Complaint) []byte {
 }
 
 func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
-	buff := make([]byte, 18)
+	buff := make([]byte, 2+8+2+32)
 	var pos int
 	binary.BigEndian.PutUint16(buff, uint16(baf.Shard()))
 	pos += 2
@@ -189,7 +326,7 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 }
 
 func (c *Consensus) VerifySignature(signature types.Signature) error {
-	return c.SigVerifier.VerifySignature(arma.PartyID(signature.ID), signature.Msg, signature.Value)
+	return c.SigVerifier.VerifySignature(arma.PartyID(signature.ID), arma.ShardID(math.MaxUint16), signature.Msg, signature.Value)
 }
 
 func (c *Consensus) VerificationSequence() uint64 {
