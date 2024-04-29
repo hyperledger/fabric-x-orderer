@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"github.com/hyperledger/fabric/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"math"
 	"path/filepath"
 	"sync"
@@ -22,14 +24,15 @@ import (
 type Assembler struct {
 	assembler arma.Assembler
 	logger    arma.Logger
+	getHeight func() uint64
 }
 
-func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, factory blockledger.Factory) *Assembler {
+func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
 	id := config.PartyId
 	name := fmt.Sprintf("assembler%d", id)
 	dir = filepath.Join(dir, name)
 
-	index := NewIndex(config, factory, logger)
+	index := NewIndex(config, blockStores, logger)
 
 	tlsKey, err := base64.StdEncoding.DecodeString(string(config.TLSPrivateKeyFile))
 	if err != nil {
@@ -41,10 +44,7 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, fa
 		logger.Panicf("Cannot decode TLS certificate as base64 string: %v", err)
 	}
 
-	ledger, err := factory.GetOrCreate("arma")
-	if err != nil {
-		logger.Panicf("Failed creating arma ledger: %v", err)
-	}
+	ledger := fileledger.NewFileLedger(blockStores["arma"])
 
 	baReplicator := &BAReplicator{
 		logger:  logger,
@@ -53,12 +53,14 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, fa
 		tlsCert: tlsCert,
 	}
 
+	heightRetrievers := createHeightRetrievers(logger, config, blockStores)
+
 	br := &BatchReplicator{
-		logger:  logger,
-		config:  config,
-		tlsKey:  tlsKey,
-		tlsCert: tlsCert,
-		index:   index.indexes,
+		heightRetrievers: heightRetrievers,
+		logger:           logger,
+		config:           config,
+		tlsKey:           tlsKey,
+		tlsCert:          tlsCert,
 	}
 
 	var shards []arma.ShardID
@@ -67,6 +69,7 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, fa
 	}
 
 	assembler := &Assembler{
+		getHeight: ledger.Height,
 		assembler: arma.Assembler{
 			Shards:                     shards,
 			BatchAttestationReplicator: baReplicator,
@@ -84,32 +87,48 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, fa
 	return assembler
 }
 
+func createHeightRetrievers(logger arma.Logger, config AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) map[arma.ShardID]func() uint64 {
+	heightRetrievers := make(map[arma.ShardID]func() uint64)
+
+	for _, shard := range config.Shards {
+		heightRetrievers[arma.ShardID(shard.ShardId)] = func() uint64 {
+			bcInfo, err := blockStores[fmt.Sprintf("shard%d", shard.ShardId)].GetBlockchainInfo()
+			if err != nil {
+				logger.Panicf("Failed obtaining blockchain info: %v", err)
+			}
+
+			return bcInfo.Height
+		}
+	}
+	return heightRetrievers
+}
+
 type FactoryCreator func(string) blockledger.Factory
 
 type Index struct {
-	indexes map[arma.ShardID]blockledger.ReadWriter
+	indexes map[arma.ShardID]*blkstorage.BlockStore
 	logger  arma.Logger
 	lock    sync.RWMutex
 	cache   map[arma.ShardID]*cache
 }
 
-func NewIndex(config AssemblerNodeConfig, factory blockledger.Factory, logger arma.Logger) *Index {
-	indexes := make(map[arma.ShardID]blockledger.ReadWriter)
+func NewIndex(config AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore, logger arma.Logger) *Index {
+	indexes := make(map[arma.ShardID]*blkstorage.BlockStore)
 
 	for _, s := range config.Shards {
 		shardID := s.ShardId
 		name := fmt.Sprintf("shard%d", shardID)
-		rw, err := factory.GetOrCreate(name)
-		if err != nil {
-			logger.Panicf("Failed creating ledger %s: %v", name, err)
+		batcherLedger, exists := blockStores[name]
+		if !exists {
+			logger.Panicf("Block store %s does not exist", name)
 		}
 
-		indexes[arma.ShardID(shardID)] = rw
+		indexes[arma.ShardID(shardID)] = batcherLedger
 	}
 
 	cache := make(map[arma.ShardID]*cache)
 	for _, shard := range config.Shards {
-		cache[arma.ShardID(shard.ShardId)] = newCache(1024 * 1024 * 200)
+		cache[arma.ShardID(shard.ShardId)] = newCache(1024 * 1024 * 1024)
 	}
 
 	return &Index{logger: logger, indexes: indexes, cache: cache}
@@ -140,7 +159,7 @@ func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, b
 	i.cache[shard].put(block, size)
 	i.lock.Unlock()
 
-	i.indexes[shard].Append(block)
+	i.indexes[shard].AddBlock(block)
 }
 
 func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64, digest []byte) (arma.Batch, bool) {
@@ -155,12 +174,20 @@ func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64
 		return &fb, true
 	}
 
-	reader := i.indexes[shard]
-	block := GetBlock(reader, sequence)
+	ledger := i.indexes[shard]
 
-	if block == nil {
-		i.logger.Infof("Could not find batch %d for shard %d", sequence, shard)
+	bcInfo, err := ledger.GetBlockchainInfo()
+	if err != nil {
+		i.logger.Panicf("Failed retrieving blockchain info: %v", err)
+	}
+
+	if bcInfo.Height < sequence+1 {
 		return nil, false
+	}
+
+	block, err := ledger.RetrieveBlockByNumber(sequence)
+	if err != nil {
+		i.logger.Panicf("Failed retrieving block: %v", err)
 	}
 
 	fb := fabricBatch(*block)
@@ -169,10 +196,10 @@ func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64
 }
 
 type BatchReplicator struct {
-	index           map[arma.ShardID]blockledger.ReadWriter
-	tlsKey, tlsCert []byte
-	config          AssemblerNodeConfig
-	logger          arma.Logger
+	heightRetrievers map[arma.ShardID]func() uint64
+	tlsKey, tlsCert  []byte
+	config           AssemblerNodeConfig
+	logger           arma.Logger
 }
 
 func (br *BatchReplicator) clientConfig() comm.ClientConfig {
@@ -206,7 +233,7 @@ func (br *BatchReplicator) clientConfig() comm.ClientConfig {
 func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 	batcherToPullFrom := br.findShardID(shardID)
 
-	seq := br.index[shardID].Height()
+	seq := br.heightRetrievers[shardID]()
 
 	endpoint := batcherToPullFrom.Endpoint
 
@@ -413,21 +440,4 @@ func (f *fabricBatch) Requests() arma.BatchedRequests {
 func (f *fabricBatch) Party() arma.PartyID {
 	buff := f.Metadata.Metadata[5]
 	return arma.PartyID(binary.BigEndian.Uint16(buff[:2]))
-}
-
-func GetBlock(reader blockledger.Reader, index uint64) *common.Block {
-	iterator, _ := reader.Iterator(&orderer.SeekPosition{
-		Type: &orderer.SeekPosition_Specified{
-			Specified: &orderer.SeekSpecified{Number: index},
-		},
-	})
-	if iterator == nil {
-		return nil
-	}
-	defer iterator.Close()
-	block, status := iterator.Next()
-	if status != common.Status_SUCCESS {
-		return nil
-	}
-	return block
 }

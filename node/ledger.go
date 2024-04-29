@@ -7,17 +7,20 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/protoutil"
+	"sync/atomic"
 )
 
 type AssemblerLedger struct {
-	Ledger   blockledger.ReadWriter
-	PrevHash []byte
+	Ledger           blockledger.ReadWriter
+	PrevHash         []byte
+	TransactionCount uint64
+	NextSeq          uint64
 }
 
 func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAttestation) {
 	block := &common.Block{
 		Header: &common.BlockHeader{
-			Number:       ba.Seq(),
+			Number:       l.NextSeq,
 			DataHash:     ba.Digest(),
 			PreviousHash: l.PrevHash,
 		},
@@ -28,6 +31,12 @@ func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAtte
 			Metadata: [][]byte{{}, {}, {}, {}, {}},
 		},
 	}
+
+	l.NextSeq++
+
+	defer func() {
+		atomic.AddUint64(&l.TransactionCount, uint64(len(batch.Requests())))
+	}()
 
 	l.PrevHash = protoutil.BlockHeaderHash(block.Header)
 

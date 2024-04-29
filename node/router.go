@@ -208,10 +208,8 @@ type ShardRouter struct {
 }
 
 const (
-	//router2batcherConnPoolSize   = 100
-	//router2batcherStreamsPerConn = 20
-	router2batcherConnPoolSize   = 1
-	router2batcherStreamsPerConn = 1
+	router2batcherConnPoolSize   = 20
+	router2batcherStreamsPerConn = 20
 )
 
 type stream struct {

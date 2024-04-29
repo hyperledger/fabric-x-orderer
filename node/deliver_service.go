@@ -14,17 +14,15 @@ import (
 	"time"
 )
 
-type DeliverService struct {
-	factory blockledger.Factory
-}
+type DeliverService map[string]blockledger.ReadWriter
 
-func (d *DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
+func (d DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (d *DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+func (d DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	handler := &deliver.Handler{
-		ChainManager:     &chainManager{factory: d.factory},
+		ChainManager:     &chainManager{ledgersPerChain: d},
 		BindingInspector: &noopBindingInspector{},
 		TimeWindow:       time.Hour,
 		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
@@ -68,16 +66,11 @@ func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string)
 }
 
 type chainManager struct {
-	factory blockledger.Factory
+	ledgersPerChain map[string]blockledger.ReadWriter
 }
 
 func (c *chainManager) GetChain(chainID string) deliver.Chain {
-	ledger, err := c.factory.GetOrCreate(chainID)
-	if err != nil {
-		panic(err)
-	}
-
-	return &chain{ledger: ledger}
+	return &chain{ledger: c.ledgersPerChain[chainID]}
 }
 
 type chain struct {

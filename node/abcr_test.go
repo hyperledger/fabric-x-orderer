@@ -8,10 +8,16 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/pem"
 	"fmt"
+	"github.com/IBM/idemix/common/flogging"
+	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"math"
 	"os"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,76 +57,132 @@ func TestABCR(t *testing.T) {
 		go b.b.Run()
 	}
 
-	_, armaLedger := createAssembler(t, err, ca, shards, consenterInfos)
+	assembler := createAssembler(t, err, ca, shards, consenterInfos)
 
-	for i := 0; i < 10; i++ {
-		txn := make([]byte, 32)
-		rand.Read(txn)
+	flogging.ActivateSpec("error")
 
-		for i := 0; i < 4; i++ {
-			routers[i].Submit(context.Background(), &protos.Request{Payload: txn})
-		}
+	sendTxn(runtime.NumCPU()+1, 0, routers)
 
-		for armaLedger.Height() == uint64(i) {
-			time.Sleep(time.Millisecond * 10)
-		}
+	time.Sleep(time.Second)
+
+	var wg sync.WaitGroup
+	wg.Add(runtime.NumCPU())
+
+	workPerWorker := 100
+
+	start := time.Now()
+
+	for workerID := 0; workerID < runtime.NumCPU(); workerID++ {
+		go func(workerID int) {
+			defer wg.Done()
+
+			for txNum := 0; txNum < workPerWorker; txNum++ {
+				sendTxn(workerID, txNum, routers)
+			}
+		}(workerID)
 	}
 
+	wg.Wait()
+
+	txCount := &assembler.assembler.Ledger.(*AssemblerLedger).TransactionCount
+
+	totalTxn := workPerWorker * runtime.NumCPU()
+	for int(atomic.LoadUint64(txCount)) < totalTxn {
+		time.Sleep(time.Millisecond * 100)
+	}
+
+	elapsed := int(time.Since(start).Seconds())
+	if elapsed == 0 {
+		elapsed = 1
+	}
+
+	fmt.Println(totalTxn / elapsed)
 }
 
-func createConsenterLedgers(t *testing.T) ([]*DeliverService, []Storage) {
-	var consenterDeliverServes []*DeliverService
+func sendTxn(workerID int, txnNum int, routers []*Router) {
+	txn := make([]byte, 32)
+	binary.BigEndian.PutUint64(txn, uint64(txnNum))
+	binary.BigEndian.PutUint16(txn[30:], uint16(workerID))
+
+	for routerId := 0; routerId < 4; routerId++ {
+		routers[routerId].Submit(context.Background(), &protos.Request{Payload: txn})
+	}
+}
+
+func createConsenterLedgers(t *testing.T) ([]DeliverService, []Storage) {
+	var consenterDeliverServes []DeliverService
 	var consenterLedgers []Storage
 	for i := 0; i < 4; i++ {
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-consenter%d", t.Name(), i+1))
+		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-consenter%d", t.Name(), i+1))
 		require.NoError(t, err)
 
-		factory, err := fileledger.New(dir, &disabled.Provider{})
+		provider, err := blkstorage.NewProvider(
+			blkstorage.NewConf(dir, -1),
+			&blkstorage.IndexConfig{
+				AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+			}, &disabled.Provider{})
 		require.NoError(t, err)
 
-		consensusLedger, err := factory.GetOrCreate("consensus")
+		consensusLedger, err := provider.Open("consensus")
 		require.NoError(t, err)
 
-		consenterLedgers = append(consenterLedgers, &ConsensusLedger{ledger: consensusLedger})
-		consenterDeliverServes = append(consenterDeliverServes, &DeliverService{
-			factory: factory,
-		})
+		fl := fileledger.NewFileLedger(consensusLedger)
+
+		consenterLedgers = append(consenterLedgers, &ConsensusLedger{ledger: fl})
+		consenterDeliverServes = append(consenterDeliverServes, map[string]blockledger.ReadWriter{"consensus": fl})
 	}
 	return consenterDeliverServes, consenterLedgers
 }
 
-func createBatcherDeliverServers(t *testing.T) ([]*DeliverService, []blockledger.Factory) {
-	var factories []blockledger.Factory
-	var dss []*DeliverService
+func createBatcherDeliverServers(t *testing.T) ([]DeliverService, []blockledger.ReadWriter) {
+	var ledgers []blockledger.ReadWriter
+	var dss []DeliverService
 	for i := 0; i < 4; i++ {
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-batcher%d", t.Name(), i+1))
+		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-batcher%d", t.Name(), i+1))
 		require.NoError(t, err)
 
-		factory, err := fileledger.New(dir, &disabled.Provider{})
+		provider, err := blkstorage.NewProvider(
+			blkstorage.NewConf(dir, -1),
+			&blkstorage.IndexConfig{
+				AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+			}, &disabled.Provider{})
 		require.NoError(t, err)
 
-		factories = append(factories, factory)
+		ledger, err := provider.Open("shard1")
+		require.NoError(t, err)
 
-		ds := &DeliverService{
-			factory: factory,
-		}
+		fl := fileledger.NewFileLedger(ledger)
 
+		ledgers = append(ledgers, fl)
+
+		ds := map[string]blockledger.ReadWriter{"shard1": fl}
 		dss = append(dss, ds)
 	}
-	return dss, factories
+	return dss, ledgers
 }
 
-func createAssembler(t *testing.T, err error, ca tlsgen.CA, shards []ShardInfo, consenterInfos []ConsenterInfo) (*Assembler, blockledger.ReadWriter) {
+func createAssembler(t *testing.T, err error, ca tlsgen.CA, shards []ShardInfo, consenterInfos []ConsenterInfo) *Assembler {
 	ckp, err := ca.NewClientCertKeyPair()
 	require.NoError(t, err)
-	dir, err := os.MkdirTemp("", fmt.Sprintf("t.Name()-%s-assembler", t.Name()))
+	dir, err := os.MkdirTemp("", fmt.Sprintf("%s-assembler", t.Name()))
 	require.NoError(t, err)
-	aLogger := createLogger(t, 1)
 
-	factory, err := fileledger.New(dir, &disabled.Provider{})
+	provider, err := blkstorage.NewProvider(
+		blkstorage.NewConf(dir, -1),
+		&blkstorage.IndexConfig{
+			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+		}, &disabled.Provider{})
 	require.NoError(t, err)
+
+	batcherLedger, err := provider.Open("shard1")
+	require.NoError(t, err)
+
+	armaLedger, err := provider.Open("arma")
+	require.NoError(t, err)
+
+	aLogger := createLogger(t, 1)
 
 	assembler := NewAssembler(aLogger, dir, AssemblerNodeConfig{
 		PartyId:            1,
@@ -128,14 +190,12 @@ func createAssembler(t *testing.T, err error, ca tlsgen.CA, shards []ShardInfo, 
 		TLSCertificateFile: []byte(base64.StdEncoding.EncodeToString(ckp.Cert)),
 		Shards:             shards,
 		Consenter:          consenterInfos[0],
-	}, factory)
+	}, map[string]*blkstorage.BlockStore{
+		"arma":   armaLedger,
+		"shard1": batcherLedger,
+	})
 
-	ledger, err := factory.GetOrCreate("arma")
-	if err != nil {
-		aLogger.Panicf("Failed creating arma ledger: %v", err)
-	}
-
-	return assembler, ledger
+	return assembler
 }
 
 func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) []*Router {
@@ -150,7 +210,7 @@ func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) []*Ro
 	return routers
 }
 
-func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []ConsenterInfo, ledgers []Storage, dss []*DeliverService, shardInfo []ShardInfo) ([]*Consensus, func()) {
+func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []ConsenterInfo, ledgers []Storage, dss []DeliverService, shardInfo []ShardInfo) ([]*Consensus, func()) {
 	var consensuses []*Consensus
 
 	initialState := (&arma.State{
@@ -174,7 +234,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 
 		l := createLogger(t, int(partyID))
 
-		s := fmt.Sprintf("t.Name()-%s", t.Name())
+		s := fmt.Sprintf("%s-batchDB-%d", t.Name(), i+1)
 		dir, err := os.MkdirTemp("", s)
 		require.NoError(t, err)
 
@@ -311,7 +371,7 @@ func buildVerifier(t *testing.T, consenterInfos []ConsenterInfo, shardInfo []Sha
 	return verifier
 }
 
-func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, consenterInfos []ConsenterInfo, ds []*DeliverService, factories []blockledger.Factory) []*Batcher {
+func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, consenterInfos []ConsenterInfo, ds []DeliverService, ledgers []blockledger.ReadWriter) []*Batcher {
 	var batchers []*Batcher
 
 	for i := 0; i < 4; i++ {
@@ -330,11 +390,6 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 			SigningPrivateKey:  RawBytes(base64.StdEncoding.EncodeToString(pem.EncodeToMemory(&pem.Block{Bytes: key}))),
 		}
 
-		le, err := factories[i].GetOrCreate("shard1")
-		if err != nil {
-			l.Panicf("Failed creating ledger: %v", err)
-		}
-
 		cert, err := base64.StdEncoding.DecodeString(string(conf.TLSCertificateFile))
 		if err != nil {
 			l.Panicf("TLS certificate is not a valid base64 encoded string: %v", err)
@@ -345,7 +400,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 			l.Panicf("TLS private key is not a valid base64 encoded string: %v", err)
 		}
 
-		ledger := &BatcherLedger{Ledger: le, Logger: l}
+		ledger := &BatcherLedger{Ledger: ledgers[i], Logger: l}
 
 		bp := &BatchPuller{
 			getHeight: ledger.Height,
