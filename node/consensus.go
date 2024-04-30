@@ -4,17 +4,25 @@ import (
 	arma "arma/pkg"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/asn1"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
+	"github.com/SmartBFT-Go/consensus/v2/pkg/wal"
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric/common/ledger/blockledger"
+	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/pkg/errors"
-	"google.golang.org/grpc"
 	"math"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -56,6 +64,8 @@ type BFT interface {
 }
 
 type Consensus struct {
+	DeliverService
+	*comm.ClusterService
 	Config        ConsenterNodeConfig
 	PrevHash      []byte
 	LastSeq       uint64
@@ -71,6 +81,10 @@ type Consensus struct {
 	Synchronizer  Synchronizer
 	Logger        arma.Logger
 	WAL           api.WriteAheadLog
+}
+
+func (c *Consensus) Start() error {
+	return c.BFT.Start()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
@@ -109,23 +123,13 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 
 	for _, ci := range c.Config.Consenters {
 		for _, tlsCACert := range ci.TLSCACerts {
-			cert, err := base64.StdEncoding.DecodeString(string(tlsCACert))
-			if err != nil {
-				c.Logger.Panicf("Failed decoding TLS CA cert: %s", string(tlsCACert))
-			}
-			tlsCAs = append(tlsCAs, cert)
+			tlsCAs = append(tlsCAs, tlsCACert)
 		}
 	}
 
-	cert, err := base64.StdEncoding.DecodeString(string(c.Config.TLSCertificateFile))
-	if err != nil {
-		c.Logger.Panicf("TLS certificate is not a valid base64 encoded string: %v", err)
-	}
+	cert := c.Config.TLSCertificateFile
 
-	tlsKey, err := base64.StdEncoding.DecodeString(string(c.Config.TLSPrivateKeyFile))
-	if err != nil {
-		c.Logger.Panicf("TLS private key is not a valid base64 encoded string: %v", err)
-	}
+	tlsKey := c.Config.TLSPrivateKeyFile
 
 	cc := comm.ClientConfig{
 		AsyncConnect: true,
@@ -145,8 +149,8 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 	return cc
 }
 
-func SetupComm(c *Consensus, server *grpc.Server, selfID []byte) {
-	cs := &comm.ClusterService{
+func SetupComm(c *Consensus, selfID []byte) {
+	c.ClusterService = &comm.ClusterService{
 		Logger:                           c.Logger,
 		CertExpWarningThreshold:          time.Hour,
 		NodeIdentity:                     selfID,
@@ -160,17 +164,10 @@ func SetupComm(c *Consensus, server *grpc.Server, selfID []byte) {
 	for _, node := range c.Config.Consenters {
 		var tlsCAs [][]byte
 		for _, caCert := range node.TLSCACerts {
-			pemCert, err := base64.StdEncoding.DecodeString(string(caCert))
-			if err != nil {
-				panic(err)
-			}
-			tlsCAs = append(tlsCAs, pemCert)
+			tlsCAs = append(tlsCAs, caCert)
 		}
 
-		identity, err := base64.StdEncoding.DecodeString(string(node.PublicKey))
-		if err != nil {
-			panic(err)
-		}
+		identity := node.PublicKey
 
 		remotesNodes = append(remotesNodes, comm.RemoteNode{
 			NodeCerts: comm.NodeCerts{
@@ -187,7 +184,7 @@ func SetupComm(c *Consensus, server *grpc.Server, selfID []byte) {
 			Id:       uint32(node.PartyID),
 		})
 	}
-	cs.ConfigureNodeCerts(consenterConfigs)
+	c.ConfigureNodeCerts(consenterConfigs)
 
 	commAuth := &comm.AuthCommMgr{
 		Logger:         c.Logger,
@@ -210,7 +207,6 @@ func SetupComm(c *Consensus, server *grpc.Server, selfID []byte) {
 		},
 	}
 
-	orderer.RegisterClusterNodeServiceServer(server, cs)
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
@@ -767,4 +763,175 @@ func bytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error)
 		Payload:  payload,
 		Metadata: metadata,
 	}, sigs, nil
+}
+
+func initialStateFromConfig(config ConsenterNodeConfig) []byte {
+	var state arma.State
+	state.ShardCount = uint16(len(config.Shards))
+	state.N = uint16(len(config.Consenters))
+	F := (uint16(state.N) - 1) / 3
+	state.Threshold = F + 1
+	state.Quorum = uint16(math.Ceil((float64(state.N) + float64(F) + 1) / 2.0))
+
+	for _, shard := range config.Shards {
+		state.Shards = append(state.Shards, arma.ShardTerm{
+			Shard: arma.ShardID(shard.ShardId),
+			Term:  0,
+		})
+	}
+
+	return state.Serialize()
+}
+
+func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
+	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
+	if privateKey == nil {
+		logger.Panicf("Failed decoding private key PEM")
+	}
+
+	priv, err := x509.ParsePKCS8PrivateKey(privateKey.Bytes)
+	if err != nil {
+		logger.Panicf("Failed parsing private key DER: %v", err)
+	}
+
+	var currentNodes []uint64
+	for _, node := range conf.Consenters {
+		currentNodes = append(currentNodes, uint64(node.PartyID))
+	}
+
+	initialState := initialStateFromConfig(conf)
+
+	config := types.DefaultConfig
+	config.SelfID = uint64(conf.PartyId)
+	config.DecisionsPerLeader = 0
+	config.LeaderRotation = false
+
+	dbDir := filepath.Join(conf.Directory, "batchDB")
+	os.MkdirAll(dbDir, 0755)
+
+	db, err := NewBatchAttestationDB(dbDir, logger)
+	if err != nil {
+		logger.Panicf("Failed creating Batch attestation DB: %v", err)
+	}
+
+	consenterVerifier := buildVerifier(conf.Consenters, conf.Shards, logger)
+
+	wal, err := wal.Create(logger, dbDir, &wal.Options{
+		FileSizeBytes:   wal.FileSizeBytesDefault,
+		BufferSizeBytes: wal.BufferSizeBytesDefault,
+	})
+	if err != nil {
+		logger.Panicf("Failed creating WAL: %v", err)
+	}
+
+	provider, err := blkstorage.NewProvider(
+		blkstorage.NewConf(conf.Directory, -1),
+		&blkstorage.IndexConfig{
+			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+		}, &disabled.Provider{})
+	if err != nil {
+		logger.Panicf("Failed creating block provider: %v", err)
+	}
+
+	consensusLedger, err := provider.Open("consensus")
+	if err != nil {
+		logger.Panicf("Failed creating consensus ledger: %v", err)
+	}
+
+	fl := fileledger.NewFileLedger(consensusLedger)
+
+	c := &Consensus{
+		DeliverService: DeliverService(map[string]blockledger.ReadWriter{"consensus": fl}),
+		Config:         conf,
+		WAL:            wal,
+		CurrentConfig:  types.Configuration{SelfID: uint64(conf.PartyId)},
+		Arma: &arma.Consenter{
+			State:             initialState,
+			DB:                db,
+			Logger:            logger,
+			FragmentFromBytes: BatchAttestationFromBytes,
+		},
+		Logger:       logger,
+		State:        initialState,
+		CurrentNodes: currentNodes,
+		Storage:      &ConsensusLedger{ledger: fl},
+		SigVerifier:  consenterVerifier,
+		Signer:       ECDSASigner(*priv.(*ecdsa.PrivateKey)),
+	}
+
+	bft := &consensus.Consensus{
+		Logger:            logger,
+		Config:            config,
+		WAL:               wal,
+		RequestInspector:  c,
+		Signer:            c,
+		Assembler:         c,
+		Synchronizer:      c,
+		Scheduler:         time.NewTicker(time.Second).C,
+		ViewChangerTicker: time.NewTicker(time.Second).C,
+		Application:       c,
+		Verifier:          c,
+	}
+	c.BFT = bft
+
+	myIdentity := getOurIdentity(conf.Consenters, arma.PartyID(conf.PartyId))
+
+	SetupComm(c, myIdentity)
+	return c
+}
+
+func buildVerifier(consenterInfos []ConsenterInfo, shardInfo []ShardInfo, logger arma.Logger) ECDSAVerifier {
+	verifier := make(ECDSAVerifier)
+	for _, ci := range consenterInfos {
+		pk, _ := pem.Decode(ci.PublicKey)
+		if pk == nil {
+			logger.Panicf("Failed decoding consenter public key")
+		}
+
+		pk4, err := x509.ParsePKIXPublicKey(pk.Bytes)
+		if err != nil {
+			logger.Panicf("Failed parsing consenter public key: %v", err)
+		}
+
+		verifier[struct {
+			party arma.PartyID
+			shard arma.ShardID
+		}{shard: math.MaxUint16, party: arma.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+	}
+
+	for _, shard := range shardInfo {
+		for _, bi := range shard.Batchers {
+			pk := bi.PublicKey
+
+			pk3, _ := pem.Decode(pk)
+			if pk == nil {
+				logger.Panicf("Failed decoding batcher public key")
+			}
+
+			pk4, err := x509.ParsePKIXPublicKey(pk3.Bytes)
+			if err != nil {
+				logger.Panicf("Failed parsing batcher public key: %v", err)
+			}
+
+			verifier[struct {
+				party arma.PartyID
+				shard arma.ShardID
+			}{shard: arma.ShardID(shard.ShardId), party: arma.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+		}
+	}
+
+	return verifier
+}
+
+func getOurIdentity(consenterInfos []ConsenterInfo, partyID arma.PartyID) []byte {
+	var myIdentity []byte
+	for _, ci := range consenterInfos {
+		pk := ci.PublicKey
+
+		if ci.PartyID == uint16(partyID) {
+			myIdentity = pk
+			break
+		}
+	}
+	return myIdentity
 }

@@ -462,3 +462,26 @@ type RoutingError struct {
 func (f RoutingError) Error() string {
 	return fmt.Sprintf(`{"BackendErr": "%s", "TransmitError": "%s", "ReqID": "%s"}`, f.BackendErr, f.TransmitError, f.ReqID)
 }
+
+func CreateRouter(config RouterNodeConfig, logger arma.Logger) *Router {
+	var shards []uint16
+	var endpoints []string
+	var tlsCAs [][][]byte
+	for _, shard := range config.Shards {
+		shards = append(shards, shard.ShardId)
+		for _, batcher := range shard.Batchers {
+			if config.PartyID != batcher.PartyID {
+				continue
+			}
+			endpoints = append(endpoints, batcher.Endpoint)
+			var tlsCAsOfBatcher [][]byte
+			for _, rawTLSCA := range batcher.TLSCACerts {
+				tlsCAsOfBatcher = append(tlsCAsOfBatcher, rawTLSCA)
+			}
+
+			tlsCAs = append(tlsCAs, tlsCAsOfBatcher)
+		}
+	}
+
+	return NewRouter(shards, endpoints, tlsCAs, config.TLSCert, config.TLSKey, logger)
+}

@@ -7,10 +7,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
+	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"io"
 	"math"
 	"sync"
@@ -38,6 +41,7 @@ var (
 )
 
 type Batcher struct {
+	ds               DeliverService
 	logger           arma.Logger
 	b                *arma.Batcher
 	batcherCerts2IDs map[string]arma.PartyID
@@ -52,6 +56,14 @@ type Batcher struct {
 	sk               *ecdsa.PrivateKey
 	tlsKey           []byte
 	tlsCert          []byte
+}
+
+func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	return b.ds.Deliver(stream)
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
@@ -149,23 +161,13 @@ func (b *Batcher) NotifyAck(ctx context.Context, ack *protos.Ack) (*protos.Event
 	return &protos.EventResponse{}, nil
 }
 
-func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller) *Batcher {
+func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds DeliverService) *Batcher {
 
-	cert, err := base64.StdEncoding.DecodeString(string(config.TLSCertificateFile))
-	if err != nil {
-		logger.Panicf("TLS certificate is not a valid base64 encoded string: %v", err)
-	}
-
-	sk, err := base64.StdEncoding.DecodeString(string(config.TLSPrivateKeyFile))
-	if err != nil {
-		logger.Panicf("TLS private key is not a valid base64 encoded string: %v", err)
-	}
-
-	if err != nil {
-		logger.Panicf("Failed creating gRPC server: %v", err)
-	}
+	cert := config.TLSCertificateFile
+	sk := config.TLSPrivateKeyFile
 
 	b := &Batcher{
+		ds:               ds,
 		sk:               createSigner(logger, config),
 		logger:           logger,
 		batcherCerts2IDs: make(map[string]arma.PartyID),
@@ -244,13 +246,10 @@ func getEndpoint(logger arma.Logger, config BatcherNodeConfig) string {
 func (b *Batcher) indexTLSCerts() {
 	batchers := batchersFromConfig(b.logger, b.config)
 	for _, batcher := range batchers {
-		rawTLSCert, err := base64.StdEncoding.DecodeString(string(batcher.TLSCert))
-		if err != nil {
-			b.logger.Panicf("Failed decoding TLS certificate of %d as a base64 string: %v", batcher.PartyID, err)
-		}
+		rawTLSCert := batcher.TLSCert
 		bl, _ := pem.Decode(rawTLSCert)
 		if bl == nil {
-			b.logger.Panicf("Failed decoding TLS certificate of %d from PEM: %v", batcher.PartyID, err)
+			b.logger.Panicf("Failed decoding TLS certificate of %d from PEM", batcher.PartyID)
 		}
 
 		b.batcherCerts2IDs[string(bl.Bytes)] = arma.PartyID(batcher.PartyID)
@@ -258,10 +257,7 @@ func (b *Batcher) indexTLSCerts() {
 }
 
 func createSigner(logger arma.Logger, config BatcherNodeConfig) *ecdsa.PrivateKey {
-	rawKey, err := base64.StdEncoding.DecodeString(string(config.SigningPrivateKey))
-	if err != nil {
-		logger.Panicf("Signing key is not a valid base64 encoded PEM string")
-	}
+	rawKey := config.SigningPrivateKey
 	bl, _ := pem.Decode(rawKey)
 
 	if bl == nil {
@@ -449,11 +445,7 @@ func (b *Batcher) initConsenterConnIfNeeded(index int) {
 
 func (b *Batcher) clientConfig(TlsCACert []RawBytes) comm.ClientConfig {
 	var tlsCAs [][]byte
-	for _, certbase64 := range TlsCACert {
-		cert, err := base64.StdEncoding.DecodeString(string(certbase64))
-		if err != nil {
-			b.logger.Panicf("Failed decoding TLS CA cert: %s", string(certbase64))
-		}
+	for _, cert := range TlsCACert {
 		tlsCAs = append(tlsCAs, cert)
 	}
 
@@ -529,4 +521,47 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 type BatchLedger interface {
 	arma.BatchLedger
 	Height() uint64
+}
+
+func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
+
+	provider, err := blkstorage.NewProvider(
+		blkstorage.NewConf(conf.Directory, -1),
+		&blkstorage.IndexConfig{
+			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+		}, &disabled.Provider{})
+	if err != nil {
+		logger.Panicf("Failed creating block provider: %v", err)
+	}
+
+	ds := make(DeliverService)
+
+	name := fmt.Sprintf("shard%d", conf.ShardId)
+
+	ledger, err := provider.Open(name)
+	if err != nil {
+		logger.Panicf("Failed opening shard %s")
+	}
+
+	fl := fileledger.NewFileLedger(ledger)
+
+	ds[name] = fl
+
+	cert := conf.TLSCertificateFile
+
+	tlsKey := conf.TLSPrivateKeyFile
+
+	batcherLedger := &BatcherLedger{Ledger: fl, Logger: logger}
+
+	bp := &BatchPuller{
+		getHeight: batcherLedger.Height,
+		logger:    logger,
+		config:    conf,
+		ledger:    batcherLedger,
+		tlsCert:   cert,
+		tlsKey:    tlsKey,
+	}
+
+	batcher := NewBatcher(logger, conf, batcherLedger, bp, ds)
+	return batcher
 }

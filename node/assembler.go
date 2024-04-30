@@ -3,9 +3,9 @@ package node
 import (
 	arma "arma/pkg"
 	"context"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"math"
@@ -25,6 +25,15 @@ type Assembler struct {
 	assembler arma.Assembler
 	logger    arma.Logger
 	getHeight func() uint64
+	ds        DeliverService
+}
+
+func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
+	return fmt.Errorf("should not be used")
+}
+
+func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
+	return a.ds.Deliver(server)
 }
 
 func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
@@ -34,15 +43,9 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, bl
 
 	index := NewIndex(config, blockStores, logger)
 
-	tlsKey, err := base64.StdEncoding.DecodeString(string(config.TLSPrivateKeyFile))
-	if err != nil {
-		logger.Panicf("Cannot decode TLS key as base64 string: %v", err)
-	}
+	tlsKey := config.TLSPrivateKeyFile
 
-	tlsCert, err := base64.StdEncoding.DecodeString(string(config.TLSCertificateFile))
-	if err != nil {
-		logger.Panicf("Cannot decode TLS certificate as base64 string: %v", err)
-	}
+	tlsCert := config.TLSCertificateFile
 
 	ledger := fileledger.NewFileLedger(blockStores["arma"])
 
@@ -69,6 +72,7 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, bl
 	}
 
 	assembler := &Assembler{
+		ds:        make(DeliverService),
 		getHeight: ledger.Height,
 		assembler: arma.Assembler{
 			Shards:                     shards,
@@ -81,6 +85,8 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, bl
 		},
 		logger: logger,
 	}
+
+	assembler.ds["arma"] = ledger
 
 	assembler.assembler.Run()
 
@@ -204,11 +210,7 @@ type BatchReplicator struct {
 
 func (br *BatchReplicator) clientConfig() comm.ClientConfig {
 	var tlsCAs [][]byte
-	for _, certbase64 := range br.config.Consenter.TLSCACerts {
-		cert, err := base64.StdEncoding.DecodeString(string(certbase64))
-		if err != nil {
-			br.logger.Panicf("Failed decoding TLS CA cert: %s", string(certbase64))
-		}
+	for _, cert := range br.config.Consenter.TLSCACerts {
 		tlsCAs = append(tlsCAs, cert)
 	}
 
@@ -392,11 +394,7 @@ func extractHeaderFromBlock(block *common.Block, logger arma.Logger) *Header {
 
 func (bar *BAReplicator) clientConfig() comm.ClientConfig {
 	var tlsCAs [][]byte
-	for _, certbase64 := range bar.config.Consenter.TLSCACerts {
-		cert, err := base64.StdEncoding.DecodeString(string(certbase64))
-		if err != nil {
-			bar.logger.Panicf("Failed decoding TLS CA cert: %s", string(certbase64))
-		}
+	for _, cert := range bar.config.Consenter.TLSCACerts {
 		tlsCAs = append(tlsCAs, cert)
 	}
 
@@ -440,4 +438,36 @@ func (f *fabricBatch) Requests() arma.BatchedRequests {
 func (f *fabricBatch) Party() arma.PartyID {
 	buff := f.Metadata.Metadata[5]
 	return arma.PartyID(binary.BigEndian.Uint16(buff[:2]))
+}
+
+func CreateAssembler(config AssemblerNodeConfig, logger arma.Logger) *Assembler {
+	provider, err := blkstorage.NewProvider(
+		blkstorage.NewConf(config.Directory, -1),
+		&blkstorage.IndexConfig{
+			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+		}, &disabled.Provider{})
+	if err != nil {
+		logger.Panicf("Failed creating provider: %v", err)
+	}
+
+	armaLedger, err := provider.Open("arma")
+	if err != nil {
+		logger.Panicf("Failed opening ledger: %v", err)
+	}
+
+	blockStores := make(map[string]*blkstorage.BlockStore)
+	blockStores["arma"] = armaLedger
+
+	for _, shard := range config.Shards {
+		name := fmt.Sprintf("shard%d", shard.ShardId)
+		batcherLedger, err := provider.Open(name)
+		if err != nil {
+			logger.Panicf("Failed opening ledger: %v", err)
+		}
+		blockStores[name] = batcherLedger
+	}
+
+	assembler := NewAssembler(logger, config.Directory, config, blockStores)
+
+	return assembler
 }

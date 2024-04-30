@@ -2,7 +2,6 @@ package node
 
 import (
 	arma "arma/pkg"
-	"encoding/base64"
 	"fmt"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -55,11 +54,7 @@ func (bp *BatchPuller) clientConfig(primary arma.PartyID) comm.ClientConfig {
 	shardInfo := bp.findPrimary(arma.ShardID(bp.config.ShardId), primary)
 
 	var tlsCAs [][]byte
-	for _, certbase64 := range shardInfo.TLSCACerts {
-		cert, err := base64.StdEncoding.DecodeString(string(certbase64))
-		if err != nil {
-			bp.logger.Panicf("Failed decoding TLS CA cert: %s", string(certbase64))
-		}
+	for _, cert := range shardInfo.TLSCACerts {
 		tlsCAs = append(tlsCAs, cert)
 	}
 
