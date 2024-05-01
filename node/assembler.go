@@ -311,7 +311,9 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 
 		for _, ab := range header.AvailableBatches {
 			bar.logger.Infof("Replicated batch attestation with seq %d and shard %d", ab.Seq(), ab.Shard())
-			res <- &ab
+			var ab2 AvailableBatch
+			ab2 = ab
+			res <- &ab2
 		}
 	})
 
