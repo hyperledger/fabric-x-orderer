@@ -56,9 +56,9 @@ type ConsenterInfo struct {
 
 type RouterNodeConfig struct {
 	// Private config
-	PartyID uint16
-	TLSCert RawBytes
-	TLSKey  RawBytes
+	PartyID            uint16
+	TLSCertificateFile RawBytes
+	TLSPrivateKeyFile  RawBytes
 	// Shared config
 	Shards                        []ShardInfo
 	NumOfConnectionsForBatcher    int

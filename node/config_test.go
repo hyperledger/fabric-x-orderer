@@ -19,8 +19,8 @@ func TestRouterNodeConfigToYaml(t *testing.T) {
 
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 	rnc := &RouterNodeConfig{
-		TLSCert:                       []byte("tls cert"),
-		TLSKey:                        []byte("tls key"),
+		TLSCertificateFile:            []byte("tls cert"),
+		TLSPrivateKeyFile:             []byte("tls key"),
 		PartyID:                       1,
 		Shards:                        shards,
 		NumOfConnectionsForBatcher:    1,

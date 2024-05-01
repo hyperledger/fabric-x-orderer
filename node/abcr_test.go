@@ -119,9 +119,9 @@ func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) []*Ro
 		kp, err := ca.NewClientCertKeyPair()
 		require.NoError(t, err)
 		router := CreateRouter(RouterNodeConfig{
-			TLSKey:  kp.Key,
-			TLSCert: kp.Cert,
-			PartyID: uint16(i + 1),
+			TLSPrivateKeyFile:  kp.Key,
+			TLSCertificateFile: kp.Cert,
+			PartyID:            uint16(i + 1),
 			Shards: []ShardInfo{{
 				ShardId:  1,
 				Batchers: batcherInfos,

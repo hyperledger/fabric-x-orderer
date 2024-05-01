@@ -483,5 +483,5 @@ func CreateRouter(config RouterNodeConfig, logger arma.Logger) *Router {
 		}
 	}
 
-	return NewRouter(shards, endpoints, tlsCAs, config.TLSCert, config.TLSKey, logger)
+	return NewRouter(shards, endpoints, tlsCAs, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
 }
