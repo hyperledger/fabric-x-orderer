@@ -12,9 +12,11 @@ import (
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
 	"gopkg.in/yaml.v3"
 	"io"
+	"net"
 	"os"
 	"path"
 	"runtime/debug"
+	"strings"
 )
 
 var defaultConfig = `
@@ -186,7 +188,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 
 		// create crypto material for each party's nodes
 		// crypto for assembler
-		assemblerCertKeyPair, err := ca.NewServerCertKeyPair(party.AssemblerEndpoint)
+		assemblerCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(party.AssemblerEndpoint))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for assembler node", err)
 			os.Exit(2)
@@ -194,7 +196,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 
 		// crypto for consenter
 		// (cert,key) pair for consenter
-		consenterCertKeyPair, err := ca.NewServerCertKeyPair(party.ConsenterEndpoint)
+		consenterCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(party.ConsenterEndpoint))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for consenter node", err)
 			os.Exit(2)
@@ -232,7 +234,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 		}
 
 		// crypto for router
-		routerCertKeyPair, err := ca.NewServerCertKeyPair(party.RouterEndpoint)
+		routerCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(party.RouterEndpoint))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for assembler node", err)
 			os.Exit(2)
@@ -242,7 +244,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 		var batcherEndpointToCertsAndKeys = make(map[string]CertsAndKeys)
 		for _, batcherEndpoint := range party.BatchersEndpoints {
 			// (cert,key) pair for a batcher
-			batcherCertKeyPair, err := ca.NewServerCertKeyPair(party.RouterEndpoint)
+			batcherCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(batcherEndpoint))
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for batcher node %s", err, batcherEndpoint)
 				os.Exit(2)
@@ -502,4 +504,16 @@ func printVersion() {
 	}
 
 	fmt.Printf("Armageddon version is: %+v\n", bi.Main.Version)
+}
+
+func trimPortFromEndpoint(endpoint string) string {
+	if strings.Contains(endpoint, ":") {
+		host, _, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
+		}
+		return host
+	}
+
+	return endpoint
 }
