@@ -19,13 +19,34 @@ import (
 
 var defaultConfig = `
 Parties:
-- ID: <party's identity>
-  AssemblerEndpoint: <the endpoint of the assembler node>
-  ConsenterEndpoint: <the endpoint of the consensus node>
-  RouterEndpoint: <the endpoint of the router node>
-  BatchersEndpoints:
-    - <batcher #1 endpoint>
-    - <batcher #2 endpoint>
+  - ID: 1
+    AssemblerEndpoint: "127.0.0.1:7050"
+    ConsenterEndpoint: "127.0.0.1:7051"
+    RouterEndpoint: "127.0.0.1:7052"
+    BatchersEndpoints:
+      - "127.0.0.1:7053"
+      - "127.0.0.1:7054"
+  - ID: 2
+    AssemblerEndpoint: "127.0.0.1:7055"
+    ConsenterEndpoint: "127.0.0.1:7056"
+    RouterEndpoint: "127.0.0.1:7057"
+    BatchersEndpoints:
+      - "127.0.0.1:7058"
+      - "127.0.0.1:7059"
+  - ID: 3
+    AssemblerEndpoint: "127.0.0.1:7060"
+    ConsenterEndpoint: "127.0.0.1:7061"
+    RouterEndpoint: "127.0.0.1:7062"
+    BatchersEndpoints:
+      - "127.0.0.1:7063"
+      - "127.0.0.1:7064"
+  - ID: 4
+    AssemblerEndpoint: "127.0.0.1:7065"
+    ConsenterEndpoint: "127.0.0.1:7066"
+    RouterEndpoint: "127.0.0.1:7067"
+    BatchersEndpoints:
+      - "127.0.0.1:7068"
+      - "127.0.0.1:7069"
 `
 
 type Network struct {
@@ -339,6 +360,7 @@ func createConfigMaterial(networkConfig *NetworkConfig) {
 // constructRouterNodeConfig construct the Router node configuration which is the same for all parties.
 func constructRouterNodeConfigPerParty(partyID uint16, shards []node.ShardInfo, certKeyPair *tlsgen.CertKeyPair) node.RouterNodeConfig {
 	return node.RouterNodeConfig{
+		ListenAddress:                 "0.0.0.0",
 		PartyID:                       partyID,
 		TLSCertificateFile:            certKeyPair.Cert,
 		TLSPrivateKeyFile:             certKeyPair.Key,
@@ -353,6 +375,7 @@ func constructBatchersNodeConfigPerParty(partyId uint16, batcherEndpoints []stri
 	for i, batcherEndpoint := range batcherEndpoints {
 		batcherCertsAndKeys := batchersCertsAndKeys[batcherEndpoint]
 		batcher := node.BatcherNodeConfig{
+			ListenAddress:      "0.0.0.0",
 			Shards:             sharedConfig.Shards,
 			Consenters:         sharedConfig.Consenters,
 			Directory:          "",
@@ -370,6 +393,7 @@ func constructBatchersNodeConfigPerParty(partyId uint16, batcherEndpoints []stri
 
 func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys) node.ConsenterNodeConfig {
 	return node.ConsenterNodeConfig{
+		ListenAddress:      "0.0.0.0",
 		Shards:             sharedConfig.Shards,
 		Consenters:         sharedConfig.Consenters,
 		Directory:          "",
@@ -387,6 +411,7 @@ func constructAssemblerNodeConfigPerParty(partyId uint16, shards []node.ShardInf
 	}
 
 	return node.AssemblerNodeConfig{
+		ListenAddress:      "0.0.0.0",
 		TLSPrivateKeyFile:  partyCryptoConfig.AssemblerCertKeyPair.Key,
 		TLSCertificateFile: partyCryptoConfig.AssemblerCertKeyPair.Cert,
 		PartyId:            partyId,

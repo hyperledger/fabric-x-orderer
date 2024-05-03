@@ -59,6 +59,7 @@ type RouterNodeConfig struct {
 	PartyID            uint16
 	TLSCertificateFile RawBytes
 	TLSPrivateKeyFile  RawBytes
+	ListenAddress      string
 	// Shared config
 	Shards                        []ShardInfo
 	NumOfConnectionsForBatcher    int
@@ -71,6 +72,7 @@ type AssemblerNodeConfig struct {
 	TLSCertificateFile RawBytes
 	PartyId            uint16
 	Directory          string
+	ListenAddress      string
 	// Shared config
 	Shards    []ShardInfo
 	Consenter ConsenterInfo
@@ -78,9 +80,10 @@ type AssemblerNodeConfig struct {
 
 type BatcherNodeConfig struct {
 	// Shared config
-	Shards     []ShardInfo
-	Consenters []ConsenterInfo
-	Directory  string
+	Shards        []ShardInfo
+	Consenters    []ConsenterInfo
+	Directory     string
+	ListenAddress string
 	// Private config
 	PartyId            uint16
 	ShardId            uint16
@@ -91,9 +94,10 @@ type BatcherNodeConfig struct {
 
 type ConsenterNodeConfig struct {
 	// Shared config
-	Shards     []ShardInfo
-	Consenters []ConsenterInfo
-	Directory  string
+	Shards        []ShardInfo
+	Consenters    []ConsenterInfo
+	Directory     string
+	ListenAddress string
 	// Private config
 	PartyId            uint16
 	TLSPrivateKeyFile  RawBytes

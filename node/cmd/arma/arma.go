@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"io"
+	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/orderer"
@@ -33,11 +35,6 @@ var (
 	}
 
 	logger = flogging.MustGetLogger("arma")
-
-	RouterListenAddr    = fmt.Sprintf("0.0.0.0:%d", RouterListenPort)
-	AssemblerListenAddr = fmt.Sprintf("0.0.0.0:%d", AssemblerListenPort)
-	BatcherListenAddr   = fmt.Sprintf("0.0.0.0:%d", BatcherListenPort)
-	ConsensusListenAddr = fmt.Sprintf("0.0.0.0:%d", ConsensusListenPort)
 )
 
 type CLI struct {
@@ -160,7 +157,7 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 }
 
 func createGRPCRouter(conf node.RouterNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(RouterListenAddr, comm.ServerConfig{
+	srv, err := comm.NewGRPCServer(listenAddressForNode(RouterListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
@@ -179,7 +176,7 @@ func createGRPCRouter(conf node.RouterNodeConfig) *comm.GRPCServer {
 }
 
 func createGRPCAssembler(conf node.AssemblerNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(AssemblerListenAddr, comm.ServerConfig{
+	srv, err := comm.NewGRPCServer(listenAddressForNode(AssemblerListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
@@ -211,7 +208,7 @@ func createGRPCBatcher(conf node.BatcherNodeConfig) *comm.GRPCServer {
 		}
 	}
 
-	srv, err := comm.NewGRPCServer(BatcherListenAddr, comm.ServerConfig{
+	srv, err := comm.NewGRPCServer(listenAddressForNode(BatcherListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
@@ -249,7 +246,7 @@ func createGRPCConsensus(conf node.ConsenterNodeConfig) *comm.GRPCServer {
 		}
 	}
 
-	srv, err := comm.NewGRPCServer(ConsensusListenAddr, comm.ServerConfig{
+	srv, err := comm.NewGRPCServer(listenAddressForNode(ConsensusListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
@@ -338,4 +335,38 @@ func parseConsensusConfig(rawConfig []byte) node.ConsenterNodeConfig {
 	}
 
 	return conf
+}
+
+type ServerEndpointType uint8
+
+const (
+	undefined = iota
+	AssemblerListenType
+	BatcherListenType
+	ConsensusListenType
+	RouterListenType
+)
+
+var (
+	type2port = map[ServerEndpointType]int{
+		AssemblerListenType: AssemblerListenPort,
+		BatcherListenType:   BatcherListenPort,
+		ConsensusListenType: ConsensusListenPort,
+		RouterListenType:    RouterListenPort,
+	}
+)
+
+func listenAddressForNode(endpointType ServerEndpointType, listenAddress string) string {
+	if listenAddress == "" {
+		listenAddress = "0.0.0.0"
+	}
+	if strings.LastIndex(listenAddress, ":") > 0 {
+		return listenAddress
+	}
+
+	port, exists := type2port[endpointType]
+	if !exists {
+		panic(fmt.Sprintf("server listen adress type %d doesn't exist", endpointType))
+	}
+	return net.JoinHostPort(listenAddress, fmt.Sprintf("%d", port))
 }
