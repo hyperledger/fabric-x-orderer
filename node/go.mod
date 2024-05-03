@@ -10,6 +10,7 @@ replace arma/request => ../request
 
 require (
 	arma v0.0.0-00010101000000-000000000000
+	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/golang/protobuf v1.5.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20240314152450-c8a6fcc0ffa3

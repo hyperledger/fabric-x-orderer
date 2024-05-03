@@ -3,11 +3,11 @@ package arma
 import (
 	arma "arma/pkg"
 	"fmt"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"io"
 	"os"
 	"time"
 
-	"github.com/IBM/idemix/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"

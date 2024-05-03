@@ -45,6 +45,9 @@ github.com/SmartBFT-Go/consensus/v2/smartbftprotos
 # github.com/ale-linux/aries-framework-go/component/kmscrypto v0.0.0-20230817163708-4b3de6d91874
 ## explicit; go 1.19
 github.com/ale-linux/aries-framework-go/component/kmscrypto/crypto/primitive/bbs12381g2pub
+# github.com/alecthomas/kingpin v2.2.6+incompatible
+## explicit
+github.com/alecthomas/kingpin
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 ## explicit
 github.com/alecthomas/template

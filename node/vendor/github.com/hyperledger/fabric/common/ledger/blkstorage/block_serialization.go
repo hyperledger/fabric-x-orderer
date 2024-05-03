@@ -34,9 +34,9 @@ func serializeBlock(block *common.Block) ([]byte, *serializedBlockInfo, error) {
 	if err = addHeaderBytes(block.Header, buf); err != nil {
 		return nil, nil, err
 	}
-/*	if info.txOffsets, err = addDataBytesAndConstructTxIndexInfo(block.Data, buf); err != nil {
+	if info.txOffsets, err = addDataBytesAndConstructTxIndexInfo(block.Data, buf); err != nil {
 		return nil, nil, err
-	}*/
+	}
 	if err = addMetadataBytes(block.Metadata, buf); err != nil {
 		return nil, nil, err
 	}
