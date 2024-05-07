@@ -4,4 +4,4 @@ go:
 
 script:
   - go test -race ./...
-  - (cd node; go test -race ./... )
+  - (cd node; PATH=$PATH:orderingservice-experiments/clients/cmd/client/ go test -race ./... )

@@ -3,27 +3,15 @@ package arma
 import (
 	arma "arma/pkg"
 	"fmt"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"io"
-	"net"
 	"os"
-	"strings"
-	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
-
 	"github.ibm.com/Yacov-Manevich/ARMA/node"
+	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
-)
-
-const (
-	RouterListenPort    = 6022
-	AssemblerListenPort = 6023
-	BatcherListenPort   = 6024
-	ConsensusListenPort = 6025
 )
 
 var (
@@ -82,7 +70,7 @@ func launchAssembler(stop chan struct{}, loadConfig func(configFile *os.File) []
 		conf := parseAssemblerConfig(configContent)
 		assembler := node.CreateAssembler(conf, logger)
 
-		srv := createGRPCAssembler(conf)
+		srv := node.CreateGRPCAssembler(conf)
 
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
 
@@ -101,7 +89,7 @@ func launchConsensus(stop chan struct{}, loadConfig func(configFile *os.File) []
 		conf := parseConsensusConfig(configContent)
 		consensus := node.CreateConsensus(conf, logger)
 
-		srv := createGRPCConsensus(conf)
+		srv := node.CreateGRPCConsensus(conf)
 
 		protos.RegisterConsensusServer(srv.Server(), consensus)
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), consensus.DeliverService)
@@ -122,7 +110,7 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 		conf := parseBatcherConfig(configContent)
 		batcher := node.CreateBatcher(conf, logger)
 
-		srv := createGRPCBatcher(conf)
+		srv := node.CreateGRPCBatcher(conf)
 
 		protos.RegisterRequestTransmitServer(srv.Server(), batcher)
 		protos.RegisterAckServiceServer(srv.Server(), batcher)
@@ -143,7 +131,7 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 		conf := parseRouterConfig(configContent)
 		router := node.CreateRouter(conf, logger)
 
-		srv := createGRPCRouter(conf)
+		srv := node.CreateGRPCRouter(conf)
 
 		protos.RegisterRequestTransmitServer(srv.Server(), router)
 
@@ -155,118 +143,6 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 		logger.Infof("Router listening on %s", srv.Address())
 	}
 }
-
-func createGRPCRouter(conf node.RouterNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(listenAddressForNode(RouterListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: conf.TLSCertificateFile,
-			Key:         conf.TLSPrivateKeyFile,
-		},
-	})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
-		os.Exit(1)
-	}
-	return srv
-}
-
-func createGRPCAssembler(conf node.AssemblerNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(listenAddressForNode(AssemblerListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: conf.TLSCertificateFile,
-			Key:         conf.TLSPrivateKeyFile,
-		},
-	})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
-		os.Exit(1)
-	}
-	return srv
-}
-
-func createGRPCBatcher(conf node.BatcherNodeConfig) *comm.GRPCServer {
-	var clientRootCAs [][]byte
-
-	for _, shard := range conf.Shards {
-		if shard.ShardId != conf.ShardId {
-			continue
-		}
-		for _, batchers := range shard.Batchers {
-			for _, tlsCA := range batchers.TLSCACerts {
-				clientRootCAs = append(clientRootCAs, tlsCA)
-			}
-		}
-	}
-
-	srv, err := comm.NewGRPCServer(listenAddressForNode(BatcherListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     clientRootCAs,
-			ServerRootCAs:     clientRootCAs,
-			RequireClientCert: true,
-			UseTLS:            true,
-			Certificate:       conf.TLSCertificateFile,
-			Key:               conf.TLSPrivateKeyFile,
-		},
-	})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
-		os.Exit(1)
-	}
-	return srv
-}
-
-func createGRPCConsensus(conf node.ConsenterNodeConfig) *comm.GRPCServer {
-	var clientRootCAs [][]byte
-
-	for _, shard := range conf.Shards {
-		for _, batchers := range shard.Batchers {
-			for _, tlsCA := range batchers.TLSCACerts {
-				clientRootCAs = append(clientRootCAs, tlsCA)
-			}
-		}
-	}
-
-	for _, consenter := range conf.Consenters {
-		for _, tlsCA := range consenter.TLSCACerts {
-			clientRootCAs = append(clientRootCAs, tlsCA)
-		}
-	}
-
-	srv, err := comm.NewGRPCServer(listenAddressForNode(ConsensusListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     clientRootCAs,
-			ServerRootCAs:     clientRootCAs,
-			RequireClientCert: true,
-			UseTLS:            true,
-			Certificate:       conf.TLSCertificateFile,
-			Key:               conf.TLSPrivateKeyFile,
-		},
-	})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
-		os.Exit(1)
-	}
-	return srv
-}
-
 func (cli *CLI) Run(args []string) <-chan struct{} {
 	configFile := cli.app.Flag("config", "Specifies the config file to load the configuration from").File()
 	command := kingpin.MustParse(cli.app.Parse(args))
@@ -335,38 +211,4 @@ func parseConsensusConfig(rawConfig []byte) node.ConsenterNodeConfig {
 	}
 
 	return conf
-}
-
-type ServerEndpointType uint8
-
-const (
-	undefined = iota
-	AssemblerListenType
-	BatcherListenType
-	ConsensusListenType
-	RouterListenType
-)
-
-var (
-	type2port = map[ServerEndpointType]int{
-		AssemblerListenType: AssemblerListenPort,
-		BatcherListenType:   BatcherListenPort,
-		ConsensusListenType: ConsensusListenPort,
-		RouterListenType:    RouterListenPort,
-	}
-)
-
-func listenAddressForNode(endpointType ServerEndpointType, listenAddress string) string {
-	if listenAddress == "" {
-		listenAddress = "0.0.0.0"
-	}
-	if strings.LastIndex(listenAddress, ":") > 0 {
-		return listenAddress
-	}
-
-	port, exists := type2port[endpointType]
-	if !exists {
-		panic(fmt.Sprintf("server listen adress type %d doesn't exist", endpointType))
-	}
-	return net.JoinHostPort(listenAddress, fmt.Sprintf("%d", port))
 }

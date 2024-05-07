@@ -2,6 +2,7 @@ package node
 
 import (
 	arma "arma/pkg"
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -10,22 +11,31 @@ import (
 	"encoding/binary"
 	"encoding/pem"
 	"fmt"
-	"os"
-	"runtime"
-	"sync"
-	"sync/atomic"
-	"testing"
-	"time"
-
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"
+	_ "github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
 	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"google.golang.org/grpc/grpclog"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
 )
 
 func TestABCR(t *testing.T) {
+	grpclog.SetLoggerV2(&silentLogger{})
+	//clientPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/orderingservice-experiments/clients/cmd/client", []string{"GOPRIVATE=github.ibm.com"}, "-mod=mod")
+	//require.NoError(t, err)
+	//clientPath := "ordererclient"
+
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
@@ -38,19 +48,31 @@ func TestABCR(t *testing.T) {
 	_, clean := createConsenters(t, consenterNodes, consenterInfos, shards)
 	defer clean()
 
-	routers := createRouters(t, batcherInfos, ca)
+	routers, configs := createRouters(t, batcherInfos, ca)
 
 	for _, b := range batchers {
 		go b.b.Run()
 	}
 
-	ckp, err := ca.NewClientCertKeyPair()
+	var routerEndpoints []string
+	for i, rConf := range configs {
+		gRPC := CreateGRPCRouter(rConf)
+		_, port, _ := net.SplitHostPort(gRPC.Address())
+		routerEndpoints = append(routerEndpoints, fmt.Sprintf("127.0.0.1:%s", port))
+		orderer.RegisterAtomicBroadcastServer(gRPC.Server(), routers[i])
+		go func() {
+			gRPC.Start()
+		}()
+	}
+
+	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
 	assemblerDir, err := os.MkdirTemp("", fmt.Sprintf("%s-assembler", t.Name()))
 	require.NoError(t, err)
 
 	assemberConf := AssemblerNodeConfig{
+		ListenAddress:      "0.0.0.0:0",
 		PartyId:            1,
 		TLSPrivateKeyFile:  ckp.Key,
 		TLSCertificateFile: ckp.Cert,
@@ -62,8 +84,21 @@ func TestABCR(t *testing.T) {
 	aLogger := createLogger(t, 1)
 	assembler := CreateAssembler(assemberConf, aLogger)
 
-	flogging.ActivateSpec("error")
+	assemblerGRPC := CreateGRPCAssembler(assemberConf)
+	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 
+	go func() {
+		assemblerGRPC.Start()
+	}()
+
+	//_, assemblerPort, err := net.SplitHostPort(assemblerGRPC.Address())
+	//require.NoError(t, err)
+
+	//runPerf(t, [][]byte{ca.CertBytes()}, [][]byte{ca.CertBytes()}, routerEndpoints, fmt.Sprintf("127.0.0.1:%s", assemblerPort), clientPath)
+	sendTransactions(routers, assembler)
+}
+
+func sendTransactions(routers []*Router, assembler *Assembler) {
 	sendTxn(runtime.NumCPU()+1, 0, routers)
 
 	time.Sleep(time.Second)
@@ -102,6 +137,76 @@ func TestABCR(t *testing.T) {
 	fmt.Println(totalTxn / elapsed)
 }
 
+func runPerf(t *testing.T, routerTLSCA, assemblerTLSCA [][]byte, routerEndpoints []string, assemblerEndpoint string, clientPath string) {
+
+	perfConfigDir, err := os.MkdirTemp("", fmt.Sprintf("%s-perf", t.Name()))
+	require.NoError(t, err)
+
+	configFile := template
+	for i := 0; i < len(routerEndpoints); i++ {
+		configFile = strings.Replace(configFile, fmt.Sprintf("{ORDERER%d}", i+1), routerEndpoints[i], -1)
+	}
+
+	tlsCABuff := bytes.Buffer{}
+	for _, rtca := range routerTLSCA {
+		tlsCABuff.Write(rtca)
+	}
+	for _, atca := range assemblerTLSCA {
+		tlsCABuff.Write(atca)
+	}
+
+	defer os.RemoveAll(perfConfigDir)
+
+	tlsCAFilePath := filepath.Join(perfConfigDir, "tlsCAs.pem")
+	err = os.WriteFile(tlsCAFilePath, tlsCABuff.Bytes(), 0644)
+	require.NoError(t, err)
+
+	configFile = strings.Replace(configFile, "{TLSCACERTS}", tlsCAFilePath, -1)
+	configFile = strings.Replace(configFile, "{ASSEMBLER}", assemblerEndpoint, -1)
+
+	configFilePath := filepath.Join(perfConfigDir, "config.yaml")
+	err = os.WriteFile(configFilePath, []byte(configFile), 0644)
+	require.NoError(t, err)
+
+	cmd := exec.Command(clientPath, "--configs", configFilePath)
+	var processOut safeBuff
+	cmd.Stderr = &processOut
+	cmd.Stdout = &processOut
+
+	go func() {
+		err = cmd.Start()
+		require.NoError(t, err)
+	}()
+
+	for {
+		time.Sleep(time.Second * 1)
+		buffContent := processOut.String()
+		if strings.Contains(buffContent, "Received block 10 from orderer") {
+			break
+		}
+	}
+
+	fmt.Println(processOut.String())
+
+}
+
+type safeBuff struct {
+	lock sync.Mutex
+	bytes.Buffer
+}
+
+func (sb *safeBuff) Write(p []byte) (n int, err error) {
+	sb.lock.Lock()
+	defer sb.lock.Unlock()
+	return sb.Buffer.Write(p)
+}
+
+func (sb *safeBuff) String() string {
+	sb.lock.Lock()
+	defer sb.lock.Unlock()
+	return sb.Buffer.String()
+}
+
 func sendTxn(workerID int, txnNum int, routers []*Router) {
 	txn := make([]byte, 32)
 	binary.BigEndian.PutUint64(txn, uint64(txnNum))
@@ -112,13 +217,15 @@ func sendTxn(workerID int, txnNum int, routers []*Router) {
 	}
 }
 
-func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) []*Router {
+func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) ([]*Router, []RouterNodeConfig) {
+	var configs []RouterNodeConfig
 	var routers []*Router
 	for i := 0; i < 4; i++ {
 		l := createLogger(t, i)
-		kp, err := ca.NewClientCertKeyPair()
+		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
-		router := CreateRouter(RouterNodeConfig{
+		config := RouterNodeConfig{
+			ListenAddress:      "0.0.0.0:0",
 			TLSPrivateKeyFile:  kp.Key,
 			TLSCertificateFile: kp.Cert,
 			PartyID:            uint16(i + 1),
@@ -126,10 +233,12 @@ func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) []*Ro
 				ShardId:  1,
 				Batchers: batcherInfos,
 			}},
-		}, l)
+		}
+		configs = append(configs, config)
+		router := CreateRouter(config, l)
 		routers = append(routers, router)
 	}
-	return routers
+	return routers, configs
 }
 
 func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []ConsenterInfo, shardInfo []ShardInfo) ([]*Consensus, func()) {
@@ -156,6 +265,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 		})
 
 		conf := ConsenterNodeConfig{
+			ListenAddress:      "0.0.0.0:0",
 			Shards:             shardInfo,
 			Consenters:         consenterInfos,
 			PartyId:            uint16(partyID),
@@ -195,6 +305,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 		require.NoError(t, err)
 
 		batcherConf := BatcherNodeConfig{
+			ListenAddress:      "0.0.0.0:0",
 			Shards:             shards,
 			ShardId:            1,
 			PartyId:            uint16(i + 1),
@@ -293,4 +404,72 @@ type node struct {
 	TLSKey  []byte
 	sk      *ecdsa.PrivateKey
 	pk      RawBytes
+}
+
+type silentLogger struct {
+}
+
+func (s *silentLogger) Info(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Infoln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Infof(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Warning(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Warningln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Warningf(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Error(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Errorln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Errorf(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Fatal(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Fatalln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Fatalf(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) V(l int) bool {
+	return false
+
 }
