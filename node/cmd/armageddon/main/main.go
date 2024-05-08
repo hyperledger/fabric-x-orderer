@@ -307,10 +307,10 @@ func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConf
 
 	for _, party := range network.Parties {
 		partyConfig := PartyConfig{
-			RouterConfig:    constructRouterNodeConfigPerParty(party.ID, sharedConfig.Shards, networkCryptoConfig.PartyToCryptoConfig[party.ID].RouterCertKeyPair),
+			RouterConfig:    constructRouterNodeConfigPerParty(party.ID, sharedConfig.Shards, networkCryptoConfig.PartyToCryptoConfig[party.ID].RouterCertKeyPair, trimHostFromEndpoint(party.RouterEndpoint)),
 			BatchersConfig:  constructBatchersNodeConfigPerParty(party.ID, party.BatchersEndpoints, sharedConfig, networkCryptoConfig.PartyToCryptoConfig[party.ID].BatchersCertsAndKeys),
-			ConsenterConfig: constructConsenterNodeConfigPerParty(party.ID, sharedConfig, networkCryptoConfig.PartyToCryptoConfig[party.ID].ConsenterCertsAndKeys),
-			AssemblerConfig: constructAssemblerNodeConfigPerParty(party.ID, sharedConfig.Shards, party.ConsenterEndpoint, networkCryptoConfig),
+			ConsenterConfig: constructConsenterNodeConfigPerParty(party.ID, sharedConfig, networkCryptoConfig.PartyToCryptoConfig[party.ID].ConsenterCertsAndKeys, trimHostFromEndpoint(party.ConsenterEndpoint)),
+			AssemblerConfig: constructAssemblerNodeConfigPerParty(party.ID, sharedConfig.Shards, party.ConsenterEndpoint, networkCryptoConfig, trimHostFromEndpoint(party.AssemblerEndpoint)),
 		}
 		partiesConfig = append(partiesConfig, partyConfig)
 	}
@@ -360,9 +360,9 @@ func createConfigMaterial(networkConfig *NetworkConfig) {
 }
 
 // constructRouterNodeConfig construct the Router node configuration which is the same for all parties.
-func constructRouterNodeConfigPerParty(partyID uint16, shards []node.ShardInfo, certKeyPair *tlsgen.CertKeyPair) node.RouterNodeConfig {
+func constructRouterNodeConfigPerParty(partyID uint16, shards []node.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string) node.RouterNodeConfig {
 	return node.RouterNodeConfig{
-		ListenAddress:                 "0.0.0.0",
+		ListenAddress:                 "0.0.0.0:" + port,
 		PartyID:                       partyID,
 		TLSCertificateFile:            certKeyPair.Cert,
 		TLSPrivateKeyFile:             certKeyPair.Key,
@@ -377,7 +377,7 @@ func constructBatchersNodeConfigPerParty(partyId uint16, batcherEndpoints []stri
 	for i, batcherEndpoint := range batcherEndpoints {
 		batcherCertsAndKeys := batchersCertsAndKeys[batcherEndpoint]
 		batcher := node.BatcherNodeConfig{
-			ListenAddress:      "0.0.0.0",
+			ListenAddress:      "0.0.0.0:" + trimHostFromEndpoint(batcherEndpoint),
 			Shards:             sharedConfig.Shards,
 			Consenters:         sharedConfig.Consenters,
 			Directory:          "",
@@ -393,9 +393,9 @@ func constructBatchersNodeConfigPerParty(partyId uint16, batcherEndpoints []stri
 	return batchers
 }
 
-func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys) node.ConsenterNodeConfig {
+func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) node.ConsenterNodeConfig {
 	return node.ConsenterNodeConfig{
-		ListenAddress:      "0.0.0.0",
+		ListenAddress:      "0.0.0.0:" + port,
 		Shards:             sharedConfig.Shards,
 		Consenters:         sharedConfig.Consenters,
 		Directory:          "",
@@ -405,7 +405,7 @@ func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedCon
 		SigningPrivateKey:  consenterCertsAndKeys.PrivateKey,
 	}
 }
-func constructAssemblerNodeConfigPerParty(partyId uint16, shards []node.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig) node.AssemblerNodeConfig {
+func constructAssemblerNodeConfigPerParty(partyId uint16, shards []node.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string) node.AssemblerNodeConfig {
 	partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[partyId]
 	var tlsCACertsCollection []node.RawBytes
 	for _, ca := range partyCryptoConfig.CAs {
@@ -413,7 +413,7 @@ func constructAssemblerNodeConfigPerParty(partyId uint16, shards []node.ShardInf
 	}
 
 	return node.AssemblerNodeConfig{
-		ListenAddress:      "0.0.0.0",
+		ListenAddress:      "0.0.0.0:" + port,
 		TLSPrivateKeyFile:  partyCryptoConfig.AssemblerCertKeyPair.Key,
 		TLSCertificateFile: partyCryptoConfig.AssemblerCertKeyPair.Cert,
 		PartyId:            partyId,
@@ -513,6 +513,18 @@ func trimPortFromEndpoint(endpoint string) string {
 			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
 		}
 		return host
+	}
+
+	return endpoint
+}
+
+func trimHostFromEndpoint(endpoint string) string {
+	if strings.Contains(endpoint, ":") {
+		_, port, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
+		}
+		return port
 	}
 
 	return endpoint
