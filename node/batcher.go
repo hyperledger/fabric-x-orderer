@@ -33,9 +33,9 @@ var (
 		BatchMaxSize:          1000 * 2,
 		BatchMaxSizeBytes:     1024 * 1024 * 10,
 		MaxSize:               1000 * 1000,
-		FirstStrikeThreshold:  time.Second * 3,
-		SecondStrikeThreshold: time.Second * 3,
-		SubmitTimeout:         time.Second * 5,
+		FirstStrikeThreshold:  time.Second * 10,
+		SecondStrikeThreshold: time.Second * 10,
+		SubmitTimeout:         time.Second * 10,
 		RequestMaxBytes:       1024 * 1024,
 	}
 )
@@ -127,7 +127,6 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 
 		var resp protos.SubmitResponse
 		resp.TraceId = traceId
-		b.logger.Debugf("Submitting request %x", traceId)
 
 		if err := b.b.Submit(rawReq); err != nil {
 			resp.Error = err.Error()

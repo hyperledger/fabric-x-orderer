@@ -8,7 +8,6 @@ package comm
 
 import (
 	protos "github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
-	"github.com/golang/protobuf/proto"
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
@@ -47,13 +46,8 @@ func (e *Egress) SendConsensus(targetID uint64, m *protos.Message) {
 
 // SendTransaction sends the transaction to the cluster
 func (e *Egress) SendTransaction(targetID uint64, request []byte) {
-	env := &cb.Envelope{}
-	err := proto.Unmarshal(request, env)
-	if err != nil {
-		e.Logger.Panicf("Failed unmarshaling request %v to envelope: %v", request, err)
-	}
 	msg := &ab.SubmitRequest{
-		Payload: env,
+		Payload: &cb.Envelope{Payload: request},
 	}
 
 	report := func(err error) {

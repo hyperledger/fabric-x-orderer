@@ -29,6 +29,9 @@ type Router struct {
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
+	clientHost := ExtractCertificateFromContext(stream.Context())
+	r.logger.Debugf("Client %s connected", clientHost)
+
 	for _, shard := range r.shards {
 		r.shardRouters[shard].maybeInit()
 	}

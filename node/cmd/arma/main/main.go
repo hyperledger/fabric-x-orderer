@@ -2,12 +2,11 @@ package main
 
 import (
 	"github.ibm.com/Yacov-Manevich/ARMA/node/cmd/arma"
-	"google.golang.org/grpc/grpclog"
 	"os"
 )
 
 func main() {
-	grpclog.SetLoggerV2(&silentLogger{})
+	//grpclog.SetLoggerV2(&silentLogger{})
 	cli := arma.NewCLI()
 	<-cli.Run(os.Args[1:])
 }

@@ -88,6 +88,7 @@ func launchConsensus(stop chan struct{}, loadConfig func(configFile *os.File) []
 		configContent := loadConfig(configFile)
 		conf := parseConsensusConfig(configContent)
 		consensus := node.CreateConsensus(conf, logger)
+		defer consensus.Start()
 
 		srv := node.CreateGRPCConsensus(conf)
 
@@ -135,6 +136,7 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 		srv := node.CreateGRPCRouter(conf)
 
 		protos.RegisterRequestTransmitServer(srv.Server(), router)
+		orderer.RegisterAtomicBroadcastServer(srv.Server(), router)
 
 		go func() {
 			srv.Start()

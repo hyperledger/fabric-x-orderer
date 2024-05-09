@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/pem"
@@ -98,7 +99,12 @@ func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.
 }
 
 func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
-	c.Logger.Panicf("Should not have been called")
+	rawCE := req.Payload.Payload
+	var ce arma.ControlEvent
+	if err := ce.FromBytes(rawCE, BatchAttestationFromBytes); err != nil {
+		c.Logger.Errorf("Failed unmarshaling control event %s: %v", base64.StdEncoding.EncodeToString(rawCE), err)
+		return nil
+	}
 	return nil
 }
 
@@ -802,6 +808,8 @@ func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
 	initialState := initialStateFromConfig(conf)
 
 	config := types.DefaultConfig
+	config.RequestBatchMaxInterval = time.Millisecond * 500
+	config.RequestForwardTimeout = time.Second * 10
 	config.SelfID = uint64(conf.PartyId)
 	config.DecisionsPerLeader = 0
 	config.LeaderRotation = false
