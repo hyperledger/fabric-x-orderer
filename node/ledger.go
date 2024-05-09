@@ -85,6 +85,7 @@ func (b *BatcherLedger) Append(partyID arma.PartyID, seq uint64, batchBytes []by
 type ConsensusLedger struct {
 	PrevHash []byte
 	ledger   blockledger.ReadWriter
+	onCommit func(block *common.Block)
 }
 
 func (c *ConsensusLedger) Append(bytes []byte) {
@@ -109,6 +110,8 @@ func (c *ConsensusLedger) Append(bytes []byte) {
 		},
 		Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}}},
 	}
+
+	c.onCommit(block)
 
 	defer func() {
 		c.PrevHash = protoutil.BlockHeaderHash(block.Header)

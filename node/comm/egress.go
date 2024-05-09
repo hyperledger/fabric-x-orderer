@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package comm
 
 import (
-	protos "github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
+	protos "github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"

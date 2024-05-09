@@ -237,7 +237,9 @@ func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 
 	seq := br.heightRetrievers[shardID]()
 
-	endpoint := batcherToPullFrom.Endpoint
+	endpoint := func() string {
+		return batcherToPullFrom.Endpoint
+	}
 
 	shardName := fmt.Sprintf("shard%d", shardID)
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
@@ -256,7 +258,7 @@ func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 
 	res := make(chan arma.Batch)
 
-	go pull(shardName, br.logger, endpoint, requestEnvelope, br.clientConfig(), func(block *common.Block) {
+	go pull(context.Background(), shardName, br.logger, endpoint, requestEnvelope, br.clientConfig(), func(block *common.Block) {
 		fb := fabricBatch(*block)
 		res <- &fb
 	})
@@ -288,7 +290,9 @@ type BAReplicator struct {
 }
 
 func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
-	endpoint := bar.config.Consenter.Endpoint
+	endpoint := func() string {
+		return bar.config.Consenter.Endpoint
+	}
 
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
@@ -306,7 +310,7 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 
 	res := make(chan arma.BatchAttestation)
 
-	go pull("consensus", bar.logger, endpoint, requestEnvelope, bar.clientConfig(), func(block *common.Block) {
+	go pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.clientConfig(), func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
 
 		for _, ab := range header.AvailableBatches {
@@ -320,34 +324,41 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 	return res
 }
 
-func pull(channel string, logger arma.Logger, endpoint string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
+func pull(context context.Context, channel string, logger arma.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
 	for {
 		time.Sleep(time.Second)
 
-		conn, err := cc.Dial(endpoint)
+		endpointToPullFrom := endpoint()
+
+		if endpointToPullFrom == "" {
+			logger.Infof("No one to pull from, waiting...")
+			continue
+		}
+
+		conn, err := cc.Dial(endpointToPullFrom)
 		if err != nil {
-			logger.Errorf("Failed connecting to %s: %v", endpoint, err)
+			logger.Errorf("Failed connecting to %s: %v", endpointToPullFrom, err)
 			continue
 		}
 
 		abc := orderer.NewAtomicBroadcastClient(conn)
 
-		stream, err := abc.Deliver(context.Background())
+		stream, err := abc.Deliver(context)
 		if err != nil {
-			logger.Errorf("Failed creating Deliver stream to %s: %v", endpoint, err)
+			logger.Errorf("Failed creating Deliver stream to %s: %v", endpointToPullFrom, err)
 			conn.Close()
 			continue
 		}
 
 		err = stream.Send(requestEnvelope)
 		if err != nil {
-			logger.Errorf("Failed sending request envelope to %s: %v", endpoint, err)
+			logger.Errorf("Failed sending request envelope to %s: %v", endpointToPullFrom, err)
 			stream.CloseSend()
 			conn.Close()
 			continue
 		}
 
-		pullBlocks(channel, logger, stream, endpoint, conn, parseBlock)
+		pullBlocks(channel, logger, stream, endpointToPullFrom, conn, parseBlock)
 	}
 }
 

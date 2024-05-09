@@ -2,6 +2,7 @@ package node
 
 import (
 	arma "arma/pkg"
+	"context"
 	"fmt"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -25,7 +26,9 @@ func (bp *BatchPuller) PullBatches(from arma.PartyID) <-chan arma.Batch {
 
 	primary := bp.findPrimary(arma.ShardID(bp.config.ShardId), from)
 
-	endpoint := primary.Endpoint
+	endpoint := func() string {
+		return primary.Endpoint
+	}
 
 	shardName := fmt.Sprintf("shard%d", bp.config.ShardId)
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
@@ -41,7 +44,7 @@ func (bp *BatchPuller) PullBatches(from arma.PartyID) <-chan arma.Batch {
 		bp.logger.Panicf("Failed creating seek envelope: %v", err)
 	}
 
-	go pull(shardName, bp.logger, endpoint, requestEnvelope, bp.clientConfig(from), func(block *common.Block) {
+	go pull(context.Background(), shardName, bp.logger, endpoint, requestEnvelope, bp.clientConfig(from), func(block *common.Block) {
 		bp.logger.Infof("Fetched block %d with %d transactions", block.Header.Number, len(block.Data.Data))
 		fb := fabricBatch(*block)
 		res <- &fb

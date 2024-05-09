@@ -2,8 +2,6 @@ module github.ibm.com/Yacov-Manevich/ARMA/node
 
 go 1.22.2
 
-require github.com/SmartBFT-Go/consensus/v2 v2.3.0
-
 replace arma => ../
 
 replace arma/request => ../request
@@ -13,10 +11,12 @@ require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/golang/protobuf v1.5.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
+	github.com/hyperledger-labs/SmartBFT v0.0.0-20240314102917-584daefbad5b
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20240314152450-c8a6fcc0ffa3
 	github.com/hyperledger/fabric-config v0.2.1
 	github.com/hyperledger/fabric-lib-go v1.1.1
 	github.com/hyperledger/fabric-protos-go v0.3.3
+	github.com/onsi/gomega v1.33.1
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.9.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954
@@ -51,14 +51,15 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
-	github.com/onsi/gomega v1.33.1 // indirect
+	github.com/pelletier/go-toml/v2 v2.2.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/spf13/viper v1.18.2 // indirect
 	github.com/sykesm/zap-logfmt v0.0.4 // indirect
-	github.ibm.com/decentralized-trust-research/orderingservice-experiments v0.0.0-20240507205036-84942e15c48f // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.22.0 // indirect
+	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f // indirect
 	golang.org/x/net v0.24.0 // indirect
-	golang.org/x/sync v0.6.0 // indirect
+	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.19.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240429193739-8cf5692501f6 // indirect

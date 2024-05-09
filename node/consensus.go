@@ -13,27 +13,27 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/wal"
+	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger-labs/SmartBFT/pkg/api"
+	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
+	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
+	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
 	"math"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
-
-	"github.com/SmartBFT-Go/consensus/v2/pkg/api"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/consensus"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
-	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
-	"github.com/golang/protobuf/proto"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
 )
 
 type Storage interface {
@@ -46,10 +46,6 @@ type Signer interface {
 
 type SigVerifier interface {
 	VerifySignature(id arma.PartyID, shardID arma.ShardID, msg, sig []byte) error
-}
-
-type Synchronizer interface {
-	Sync() []byte
 }
 
 type Arma interface {
@@ -79,9 +75,9 @@ type Consensus struct {
 	Arma          Arma
 	lock          sync.RWMutex
 	State         []byte
-	Synchronizer  Synchronizer
 	Logger        arma.Logger
 	WAL           api.WriteAheadLog
+	sync          *synchronizer
 }
 
 func (c *Consensus) Start() error {
@@ -651,29 +647,6 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	}
 }
 
-func (c *Consensus) Sync() types.SyncResponse {
-
-	resp := types.SyncResponse{
-		Reconfig: types.ReconfigSync{
-			CurrentConfig: c.CurrentConfig,
-			CurrentNodes:  c.CurrentNodes,
-		},
-		Latest: types.Decision{},
-	}
-
-	latestRawDecision := c.Synchronizer.Sync()
-
-	proposal, signatures, err := bytesToDecision(latestRawDecision)
-	if err != nil {
-		return resp
-	}
-
-	resp.Latest.Proposal = proposal
-	resp.Latest.Signatures = signatures
-
-	return resp
-}
-
 type Signature struct {
 	ID    int64
 	Value []byte
@@ -848,6 +821,7 @@ func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
 
 	fl := fileledger.NewFileLedger(consensusLedger)
 
+	consLedger := &ConsensusLedger{ledger: fl}
 	c := &Consensus{
 		DeliverService: DeliverService(map[string]blockledger.ReadWriter{"consensus": fl}),
 		Config:         conf,
@@ -862,29 +836,83 @@ func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
 		Logger:       logger,
 		State:        initialState,
 		CurrentNodes: currentNodes,
-		Storage:      &ConsensusLedger{ledger: fl},
+		Storage:      consLedger,
 		SigVerifier:  consenterVerifier,
 		Signer:       ECDSASigner(*priv.(*ecdsa.PrivateKey)),
 	}
 
 	bft := &consensus.Consensus{
+		Metadata:          &smartbftprotos.ViewMetadata{},
 		Logger:            logger,
 		Config:            config,
 		WAL:               wal,
 		RequestInspector:  c,
 		Signer:            c,
 		Assembler:         c,
-		Synchronizer:      c,
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 		Application:       c,
 		Verifier:          c,
 	}
+
+	c.sync = &synchronizer{
+		deliver: func(proposal types.Proposal, signatures []types.Signature) {
+			c.Deliver(proposal, signatures)
+		},
+		getHeight: func() uint64 {
+			bci, err := consensusLedger.GetBlockchainInfo()
+			if err != nil {
+				panic(err)
+			}
+			return bci.Height
+		},
+		getBlock: func(seq uint64) *common.Block {
+			block, err := consensusLedger.RetrieveBlockByNumber(seq)
+			if err != nil {
+				panic(err)
+			}
+			return block
+		},
+		pruneRequestsFromMemPool: func(req []byte) {
+			bft.Pool.RemoveRequest(c.RequestID(req))
+		},
+		memStore: make(map[uint64]*common.Block),
+		cc:       c.clientConfig(),
+		logger:   c.Logger,
+		endpoint: func() string {
+			leader := c.BFT.GetLeaderID()
+			for i, node := range c.BFT.Comm.Nodes() {
+				if node == leader {
+					return c.Config.Consenters[i].Endpoint
+				}
+			}
+			return ""
+		},
+		nextSeq: func() uint64 {
+			bci, err := consensusLedger.GetBlockchainInfo()
+			if err != nil {
+				c.Logger.Panicf("Failed obtaining blockchain info: %v", err)
+			}
+			return bci.Height
+		},
+		CurrentConfig: c.CurrentConfig,
+		CurrentNodes:  c.CurrentNodes,
+	}
+
+	consLedger.onCommit = c.sync.onCommit
+
+	defer func() {
+		go c.sync.run()
+	}()
+
+	bft.Synchronizer = c.sync
+
 	c.BFT = bft
 
 	myIdentity := getOurIdentity(conf.Consenters, arma.PartyID(conf.PartyId))
 
 	SetupComm(c, myIdentity)
+
 	return c
 }
 
@@ -942,4 +970,123 @@ func getOurIdentity(consenterInfos []ConsenterInfo, partyID arma.PartyID) []byte
 		}
 	}
 	return myIdentity
+}
+
+type synchronizer struct {
+	deliver                  func(proposal types.Proposal, signatures []types.Signature)
+	pruneRequestsFromMemPool func([]byte)
+	getBlock                 func(seq uint64) *common.Block
+	getHeight                func() uint64
+	CurrentNodes             []uint64
+	CurrentConfig            types.Configuration
+	logger                   arma.Logger
+	endpoint                 func() string
+	cc                       comm.ClientConfig
+	nextSeq                  func() uint64
+	lock                     sync.Mutex
+	memStore                 map[uint64]*common.Block
+	latestCommittedBlock     uint64
+}
+
+func (s *synchronizer) onCommit(block *common.Block) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.latestCommittedBlock = block.Header.Number
+
+	delete(s.memStore, block.Header.Number)
+}
+
+func (s *synchronizer) run() {
+	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		"consensus",
+		nil,
+		nextSeekInfo(s.nextSeq()),
+		int32(0),
+		uint64(0),
+		nil,
+	)
+	if err != nil {
+		s.logger.Panicf("Failed creating signed envelope: %v", err)
+	}
+
+	go pull(context.Background(), "consensus", s.logger, s.endpoint, requestEnvelope, s.cc, func(block *common.Block) {
+		for s.memStoreTooBig() {
+			time.Sleep(time.Second)
+			s.logger.Infof("Mem store is too big, waiting for BFT to catch up")
+		}
+
+		s.lock.Lock()
+		defer s.lock.Unlock()
+
+		if s.latestCommittedBlock >= block.Header.Number {
+			return
+		}
+
+		s.memStore[block.Header.Number] = block
+	})
+}
+
+func (s *synchronizer) memStoreTooBig() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return len(s.memStore) > 100
+}
+
+func (s *synchronizer) Sync() types.SyncResponse {
+	height := s.currentHeight()
+
+	lastSeqInLedger := height - 1
+	latestBlock := s.getBlock(lastSeqInLedger)
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	// Iterate over blocks retrieved from pulling asynchronously from the leader,
+	// and commit them.
+
+	nextSeqToCommit := lastSeqInLedger + 1
+	for {
+		retrievedBlock, exists := s.memStore[nextSeqToCommit]
+		if !exists {
+			break
+		}
+
+		latestBlock = retrievedBlock
+		nextSeqToCommit++
+
+		proposal, signatures, err := bytesToDecision(latestBlock.Data.Data[0])
+		if err != nil {
+			s.logger.Panicf("Failed parsing block we pulled: %v", err)
+		}
+
+		for _, req := range arma.BatchFromRaw(proposal.Payload) {
+			s.pruneRequestsFromMemPool(req)
+		}
+
+		s.deliver(proposal, signatures)
+	}
+
+	proposal, signatures, err := bytesToDecision(latestBlock.Data.Data[0])
+	if err != nil {
+		s.logger.Panicf("Failed parsing block we pulled: %v", err)
+	}
+
+	return types.SyncResponse{
+		Reconfig: types.ReconfigSync{
+			CurrentConfig: s.CurrentConfig,
+			CurrentNodes:  s.CurrentNodes,
+		},
+		Latest: types.Decision{Proposal: proposal, Signatures: signatures},
+	}
+}
+
+func (s *synchronizer) currentHeight() uint64 {
+	height := s.getHeight()
+	for height == 0 {
+		time.Sleep(time.Second)
+		height = s.getHeight()
+	}
+	return height
 }

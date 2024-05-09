@@ -5,10 +5,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/consensus"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/types"
-	"github.com/SmartBFT-Go/consensus/v2/pkg/wal"
-	"github.com/SmartBFT-Go/consensus/v2/smartbftprotos"
+	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
+	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/stretchr/testify/assert"
 	"math"
 	"os"
@@ -239,11 +239,11 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 	assert.NoError(t, err)
 
 	c.BFT = &consensus.Consensus{
+		Metadata:          &smartbftprotos.ViewMetadata{},
 		Logger:            l,
 		Signer:            c,
 		Application:       c,
 		RequestInspector:  c,
-		Synchronizer:      c,
 		Assembler:         c,
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
