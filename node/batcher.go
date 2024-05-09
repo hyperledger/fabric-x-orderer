@@ -58,6 +58,10 @@ type Batcher struct {
 	tlsCert          []byte
 }
 
+func (b *Batcher) Run() {
+	b.b.Run()
+}
+
 func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
 }
@@ -283,22 +287,23 @@ func (b *Batcher) attestBatch(seq uint64, primary arma.PartyID, shard arma.Shard
 
 func (b *Batcher) setupPrimaryEndpoint(logger arma.Logger, config BatcherNodeConfig, batcher *arma.Batcher) {
 	batchers := batchersFromConfig(logger, config)
+	logger.Infof("Batchers: %v", batchers)
 
-	primary := b.getPrimary(batcher, config)
+	primaryIndex := b.getPrimaryIndex(batcher, config)
 
 	for _, batcher := range batchers {
-		if arma.PartyID(batcher.PartyID) == primary {
+		if arma.PartyID(batcher.PartyID) == arma.PartyID(batchers[primaryIndex].PartyID) {
 			b.primaryEndpoint = batcher.Endpoint
 			b.primaryTLSCA = batcher.TLSCACerts
+			logger.Infof("Primary for shard %d: %d %s", config.ShardId, arma.PartyID(batchers[primaryIndex].PartyID), b.primaryEndpoint)
 			return
-
 		}
 	}
 
-	logger.Panicf("Could not find primary of shard %d within %v", config.ShardId, batchers)
+	logger.Panicf("Could not find primaryIndex of shard %d within %v", config.ShardId, batchers)
 }
 
-func (b *Batcher) getPrimary(batcher *arma.Batcher, config BatcherNodeConfig) arma.PartyID {
+func (b *Batcher) getPrimaryIndex(batcher *arma.Batcher, config BatcherNodeConfig) arma.PartyID {
 	term := uint64(math.MaxUint64)
 	for _, shard := range batcher.State.Shards {
 		if shard.Shard == batcher.Shard {

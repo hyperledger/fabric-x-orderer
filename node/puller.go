@@ -83,6 +83,7 @@ func (bp *BatchPuller) findPrimary(shardID arma.ShardID, primary arma.PartyID) B
 				if b.PartyID == uint16(primary) {
 					return b
 				}
+				bp.logger.Infof("primary: %d, shardID: %d, current partyID: %d, currentShard: %d", primary, shardID, b.PartyID, shard.ShardId)
 			}
 
 			bp.logger.Panicf("Failed finding primary for shard %d %d within %v", shardID, bp.config.PartyId, shard.Batchers)

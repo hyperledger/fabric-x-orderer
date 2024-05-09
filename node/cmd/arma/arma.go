@@ -109,6 +109,7 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 		configContent := loadConfig(configFile)
 		conf := parseBatcherConfig(configContent)
 		batcher := node.CreateBatcher(conf, logger)
+		defer batcher.Run()
 
 		srv := node.CreateGRPCBatcher(conf)
 
