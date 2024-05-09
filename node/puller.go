@@ -80,7 +80,8 @@ func (bp *BatchPuller) findPrimary(shardID arma.ShardID, primary arma.PartyID) B
 	for _, shard := range bp.config.Shards {
 		if shard.ShardId == uint16(shardID) {
 			for _, b := range shard.Batchers {
-				if b.PartyID == uint16(primary) {
+				bp.logger.Infof("Primary: %d, primaryID: %d, b.PartyID: %d", primary, primary, b.PartyID)
+				if arma.PartyID(b.PartyID) == primary {
 					return b
 				}
 				bp.logger.Infof("primary: %d, shardID: %d, current partyID: %d, currentShard: %d", primary, shardID, b.PartyID, shard.ShardId)

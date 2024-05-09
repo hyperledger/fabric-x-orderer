@@ -141,7 +141,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	feedbackChan := make(chan response, 1)
 	router.forward(reqID, request.Payload, feedbackChan, trace)
 
-	r.logger.Infof("Forwarded request %x", request.Payload)
+	r.logger.Debugf("Forwarded request %x", request.Payload)
 
 	response := <-feedbackChan
 	return prepareRequestResponse(&response), nil

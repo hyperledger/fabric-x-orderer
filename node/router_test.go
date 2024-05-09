@@ -200,7 +200,7 @@ func invokeStream(wg *sync.WaitGroup, conn *grpc.ClientConn, workPerWorker int) 
 
 func createLogger(t *testing.T, i int) *zap.SugaredLogger {
 	logConfig := zap.NewDevelopmentConfig()
-	logConfig.Level.SetLevel(zapcore.FatalLevel)
+	logConfig.Level.SetLevel(zapcore.InfoLevel)
 	logger, _ := logConfig.Build()
 	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
 	sugaredLogger := logger.Sugar()

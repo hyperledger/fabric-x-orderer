@@ -146,8 +146,13 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		state.Shards = append(state.Shards, ShardTerm{Shard: ShardID(shard)})
 	}
 
+	var parties []PartyID
 	for shardID := 0; shardID < shardCount; shardID++ {
-		batcher := createBatcher(t, shardID, 0)
+		parties = append(parties, PartyID(shardID))
+	}
+
+	for shardID := 0; shardID < shardCount; shardID++ {
+		batcher := createBatcher(t, shardID, shardID, parties)
 		batcher.Logger = logger
 		batcher.TotalOrderBAF = func(baf BatchAttestationFragment) {
 			ba := &SimpleBatchAttestationFragment{

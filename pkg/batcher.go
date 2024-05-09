@@ -88,6 +88,7 @@ type BatchLedger interface {
 }
 
 type Batcher struct {
+	Batchers             []PartyID
 	BatchTimeout         time.Duration
 	Digest               func([][]byte) []byte
 	RequestInspector     RequestInspector
@@ -122,7 +123,11 @@ func (b *Batcher) Run() {
 	b.signal = sync.Cond{L: &b.lock}
 	b.confirmedSequences = make(map[uint64]map[PartyID]struct{})
 
-	b.primary = b.getPrimary()
+	primaryIndex := b.getPrimaryIndex()
+
+	b.Logger.Infof("ID: %d, batcher for our shard: %v, primary index: %d", b.ID, b.Batchers, primaryIndex)
+
+	b.primary = b.Batchers[primaryIndex]
 
 	if b.primary == b.ID {
 		go b.runPrimary()
@@ -132,7 +137,7 @@ func (b *Batcher) Run() {
 	go b.runSecondary()
 }
 
-func (b *Batcher) getPrimary() PartyID {
+func (b *Batcher) getPrimaryIndex() PartyID {
 	term := uint64(math.MaxUint64)
 	for _, shard := range b.State.Shards {
 		if shard.Shard == b.Shard {
@@ -144,9 +149,9 @@ func (b *Batcher) getPrimary() PartyID {
 		b.Logger.Panicf("Could not find our shard (%d) within the shards: %v", b.Shard, b.State.Shards)
 	}
 
-	primary := PartyID((uint64(b.Shard) + term) % uint64(b.State.N))
+	primaryIndex := PartyID((uint64(b.Shard) + term) % uint64(b.State.N))
 
-	return primary
+	return primaryIndex
 }
 
 func (b *Batcher) Stop() {
@@ -216,7 +221,7 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 
 func (b *Batcher) runPrimary() {
 	defer b.running.Done()
-	b.Logger.Infof("Acting as primary")
+	b.Logger.Infof("%d Acting as primary (shard %d)", b.ID, b.Shard)
 	b.MemPool.Restart(true)
 
 	if b.BatchTimeout == 0 {
@@ -317,7 +322,7 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 
 func (b *Batcher) runSecondary() {
 	defer b.running.Done()
-	b.Logger.Infof("Acting as secondary")
+	b.Logger.Infof("%d Acting as secondary (shard %d)", b.ID, b.Shard)
 	primary := b.primary
 	out := b.BatchPuller.PullBatches(primary)
 	for {

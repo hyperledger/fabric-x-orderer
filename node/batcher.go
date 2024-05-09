@@ -127,7 +127,7 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 
 		var resp protos.SubmitResponse
 		resp.TraceId = traceId
-		b.logger.Infof("Submitting request %x", traceId)
+		b.logger.Debugf("Submitting request %x", traceId)
 
 		if err := b.b.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
@@ -135,7 +135,7 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 
 		responses <- &resp
 
-		b.logger.Infof("Submitted request %x", traceId)
+		b.logger.Debugf("Submitted request %x", traceId)
 
 	}
 }
@@ -144,11 +144,11 @@ func (b *Batcher) sendResponses(stream protos.RequestTransmit_SubmitStreamServer
 	for {
 		select {
 		case resp := <-responses:
-			b.logger.Infof("Sending response %x", resp.TraceId)
+			b.logger.Debugf("Sending response %x", resp.TraceId)
 			stream.Send(resp)
-			b.logger.Infof("Sent response %x", resp.TraceId)
+			b.logger.Debugf("Sent response %x", resp.TraceId)
 		case <-stop:
-			b.logger.Infof("Stopped sending responses")
+			b.logger.Debugf("Stopped sending responses")
 			return
 		}
 	}
@@ -182,7 +182,10 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 
 	b.indexTLSCerts()
 
+	parties := batcherIDs(logger, config)
+
 	b.b = &arma.Batcher{
+		Batchers:             parties,
 		BatchPuller:          bp,
 		Threshold:            2,
 		BatchTimeout:         time.Millisecond * 50,
@@ -210,6 +213,15 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 	b.b.Threshold = int(f + 1)
 
 	return b
+}
+
+func batcherIDs(logger arma.Logger, config BatcherNodeConfig) []arma.PartyID {
+	batchers := batchersFromConfig(logger, config)
+	var parties []arma.PartyID
+	for _, batcher := range batchers {
+		parties = append(parties, arma.PartyID(batcher.PartyID))
+	}
+	return parties
 }
 
 func (b *Batcher) createMemPool() arma.MemPool {

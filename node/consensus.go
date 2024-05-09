@@ -816,7 +816,7 @@ func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
 
 	consenterVerifier := buildVerifier(conf.Consenters, conf.Shards, logger)
 
-	wal, err := wal.Create(logger, dbDir, &wal.Options{
+	wal, err := wal.Create(logger, filepath.Join(conf.Directory, "wal"), &wal.Options{
 		FileSizeBytes:   wal.FileSizeBytesDefault,
 		BufferSizeBytes: wal.BufferSizeBytesDefault,
 	})

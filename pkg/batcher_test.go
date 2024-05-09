@@ -210,8 +210,13 @@ func TestBatchersStopSecondaries(t *testing.T) {
 func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 	var batchers []*Batcher
 
+	var batcherConf []PartyID
 	for i := 0; i < n; i++ {
-		b := createBatcher(t, 0, i)
+		batchers[i].Batchers = batcherConf
+	}
+
+	for i := 0; i < n; i++ {
+		b := createBatcher(t, 0, i, batcherConf)
 		batchers = append(batchers, b)
 	}
 
@@ -243,7 +248,7 @@ func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 	return batchers, commit
 }
 
-func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
+func createBatcher(t *testing.T, shardID int, nodeID int, batchers []PartyID) *Batcher {
 	sugaredLogger := createLogger(t, nodeID)
 
 	requestInspector := &reqInspector{}
@@ -257,7 +262,8 @@ func createBatcher(t *testing.T, shardID int, nodeID int) *Batcher {
 	})
 
 	b := &Batcher{
-		Shard: ShardID(shardID),
+		Batchers: batchers,
+		Shard:    ShardID(shardID),
 		AttestationFromBytes: func(bytes []byte) (BatchAttestationFragment, error) {
 			baf := &SimpleBatchAttestationFragment{}
 			err := baf.Deserialize(bytes)
