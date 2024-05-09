@@ -187,7 +187,7 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 		Batchers:             parties,
 		BatchPuller:          bp,
 		Threshold:            2,
-		BatchTimeout:         time.Millisecond * 50,
+		BatchTimeout:         time.Millisecond * 500,
 		Ledger:               ledger,
 		AttestationFromBytes: BatchAttestationFromBytes,
 		MemPool:              b.createMemPool(),

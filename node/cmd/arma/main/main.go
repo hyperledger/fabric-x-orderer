@@ -6,7 +6,6 @@ import (
 )
 
 func main() {
-	//grpclog.SetLoggerV2(&silentLogger{})
 	cli := arma.NewCLI()
 	<-cli.Run(os.Args[1:])
 }

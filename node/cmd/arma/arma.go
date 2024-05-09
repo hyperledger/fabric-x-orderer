@@ -3,6 +3,7 @@ package arma
 import (
 	arma "arma/pkg"
 	"fmt"
+	"google.golang.org/grpc/grpclog"
 	"io"
 	"os"
 
@@ -13,6 +14,10 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
 )
+
+func init() {
+	grpclog.SetLoggerV2(&silentLogger{})
+}
 
 var (
 	help = map[string]string{
@@ -159,7 +164,6 @@ func (cli *CLI) Run(args []string) <-chan struct{} {
 		fmt.Fprintf(os.Stderr, "config parameter missing")
 		os.Exit(2)
 	}
-
 	f(*configFile)
 
 	return cli.stop
@@ -214,4 +218,72 @@ func parseConsensusConfig(rawConfig []byte) node.ConsenterNodeConfig {
 	}
 
 	return conf
+}
+
+type silentLogger struct {
+}
+
+func (s *silentLogger) Info(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Infoln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Infof(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Warning(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Warningln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Warningf(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Error(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Errorln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Errorf(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Fatal(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Fatalln(args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) Fatalf(format string, args ...any) {
+	//TODO implement me
+
+}
+
+func (s *silentLogger) V(l int) bool {
+	return false
+
 }
