@@ -33,7 +33,7 @@ message Event {
 }
 
 service Consensus {
-  rpc NotifyEvent(Event) returns (EventResponse);
+  rpc NotifyEvent(stream Event) returns (stream EventResponse);
 }
 
 message Ack {
@@ -46,5 +46,5 @@ message AckResponse {
 }
 
 service AckService {
-  rpc NotifyAck(Ack) returns (EventResponse);
+  rpc NotifyAck(stream Ack) returns (stream EventResponse);
 }

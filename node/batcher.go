@@ -30,7 +30,7 @@ import (
 var (
 	opts = request.PoolOptions{
 		AutoRemoveTimeout:     time.Second * 10,
-		BatchMaxSize:          1000 * 2,
+		BatchMaxSize:          1000 * 10,
 		BatchMaxSizeBytes:     1024 * 1024 * 10,
 		MaxSize:               1000 * 1000,
 		FirstStrikeThreshold:  time.Second * 10,
@@ -48,14 +48,15 @@ type Batcher struct {
 	primaryEndpoint  string
 	primaryTLSCA     []RawBytes
 	request.Pool
-	consensusClients []protos.ConsensusClient
-	primaryClient    protos.AckServiceClient
-	primaryConn      *grpc.ClientConn
-	connections      []*grpc.ClientConn
-	config           BatcherNodeConfig
-	sk               *ecdsa.PrivateKey
-	tlsKey           []byte
-	tlsCert          []byte
+	consensusStreams    []protos.Consensus_NotifyEventClient
+	primaryClient       protos.AckServiceClient
+	primaryClientStream protos.AckService_NotifyAckClient
+	primaryConn         *grpc.ClientConn
+	connections         []*grpc.ClientConn
+	config              BatcherNodeConfig
+	sk                  *ecdsa.PrivateKey
+	tlsKey              []byte
+	tlsCert             []byte
 }
 
 func (b *Batcher) Run() {
@@ -153,15 +154,24 @@ func (b *Batcher) sendResponses(stream protos.RequestTransmit_SubmitStreamServer
 	}
 }
 
-func (b *Batcher) NotifyAck(ctx context.Context, ack *protos.Ack) (*protos.EventResponse, error) {
-	cert := ExtractCertificateFromContext(ctx)
+func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
+	cert := ExtractCertificateFromContext(stream.Context())
+
 	from, exists := b.batcherCerts2IDs[string(cert)]
 	if !exists {
-		return nil, fmt.Errorf("access denied")
+		return fmt.Errorf("access denied")
 	}
 
-	b.b.HandleAck(ack.Seq, from)
-	return &protos.EventResponse{}, nil
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		b.b.HandleAck(msg.Seq, from)
+	}
 }
 
 func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds DeliverService) *Batcher {
@@ -226,10 +236,10 @@ func batcherIDs(logger arma.Logger, config BatcherNodeConfig) []arma.PartyID {
 func (b *Batcher) createMemPool() arma.MemPool {
 	opts := opts
 	opts.OnFirstStrikeTimeout = func(key []byte) {
-		b.logger.Panicf("First strike timeout occurred on request %s", b.b.RequestInspector.RequestID(key))
+		b.logger.Errorf("First strike timeout occurred on request %s", b.b.RequestInspector.RequestID(key))
 	}
 	opts.OnSecondStrikeTimeout = func() {
-		b.logger.Panicf("second strike timeout occurred")
+		b.logger.Errorf("second strike timeout occurred")
 	}
 
 	return request.NewPool(b.logger, b, opts)
@@ -370,53 +380,51 @@ func (b *Batcher) sendAck(seq uint64, to arma.PartyID) {
 
 		b.primaryConn = conn
 		b.primaryClient = protos.NewAckServiceClient(conn)
+		b.primaryClientStream, err = b.primaryClient.NotifyAck(context.Background())
+		if err != nil {
+			b.logger.Panicf("Failed creating ack stream: %v", err)
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	_, err := b.primaryClient.NotifyAck(ctx, &protos.Ack{Shard: uint32(b.config.ShardId), Seq: seq})
+	err := b.primaryClientStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: seq})
 	if err != nil {
 		b.logger.Errorf("Failed sending ack to %s", b.primaryEndpoint)
 		b.primaryConn.Close()
 		b.primaryConn = nil
 		b.primaryClient = nil
+		b.primaryClientStream = nil
 	}
-
 }
 
 func (b *Batcher) broadcastEvent(baf arma.BatchAttestationFragment) {
 	b.initClients()
 
 	var wg sync.WaitGroup
-	wg.Add(len(b.consensusClients))
+	wg.Add(len(b.consensusStreams))
 
-	for index := range b.consensusClients {
+	for index := range b.consensusStreams {
 		b.initConsenterConnIfNeeded(index)
 	}
 
-	for index, cl := range b.consensusClients {
-		go func(baf arma.BatchAttestationFragment, cl protos.ConsensusClient, index int) {
+	for index, cl := range b.consensusStreams {
+		go func(baf arma.BatchAttestationFragment, stream protos.Consensus_NotifyEventClient, index int) {
 			defer wg.Done()
-			b.sendBAF(baf, cl, index)
+			b.sendBAF(baf, stream, index)
 		}(baf, cl, index)
 	}
 
 	wg.Wait()
 }
 
-func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, cl protos.ConsensusClient, index int) {
+func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, stream protos.Consensus_NotifyEventClient, index int) {
 	if b.connections[index] == nil {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
 	var ce arma.ControlEvent
 	ce.BAF = baf
 
-	resp, err := cl.NotifyEvent(ctx, &protos.Event{
+	err := stream.Send(&protos.Event{
 		Payload: ce.Bytes(),
 	})
 
@@ -424,19 +432,15 @@ func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, cl protos.Consensus
 		b.connections[index].Close()
 		b.logger.Errorf("Failed sending batch attestation fragment to %d (%s): %v", b.config.Consenters[index].PartyID, b.config.Consenters[index].Endpoint, err)
 		b.connections[index] = nil
-		b.consensusClients[index] = nil
+		b.consensusStreams[index] = nil
 		return
-	}
-
-	if resp.Error != "" {
-		b.logger.Errorf("Remote consensus node %d failed receiving the batch attestation share: %v", b.config.Consenters[index].PartyID, resp.Error)
 	}
 }
 
 func (b *Batcher) initClients() {
 	if len(b.connections) == 0 {
 		b.connections = make([]*grpc.ClientConn, len(b.config.Consenters))
-		b.consensusClients = make([]protos.ConsensusClient, len(b.config.Consenters))
+		b.consensusStreams = make([]protos.Consensus_NotifyEventClient, len(b.config.Consenters))
 	}
 }
 
@@ -456,7 +460,11 @@ func (b *Batcher) initConsenterConnIfNeeded(index int) {
 	}
 
 	b.connections[index] = conn
-	b.consensusClients[index] = protos.NewConsensusClient(conn)
+	cl := protos.NewConsensusClient(conn)
+	b.consensusStreams[index], err = cl.NotifyEvent(context.Background())
+	if err != nil {
+		b.logger.Panicf("Failed creating stream: %v", err)
+	}
 }
 
 func (b *Batcher) clientConfig(TlsCACert []RawBytes) comm.ClientConfig {
@@ -490,6 +498,7 @@ func (b *Batcher) RequestID(req []byte) string {
 
 func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64) (arma.BatchAttestationFragment, error) {
 	baf := &arma.SimpleBatchAttestationFragment{
+		Ep:  int(time.Now().Unix()) / 30,
 		Sh:  int(shard),
 		Si:  int(id),
 		Se:  int(seq),

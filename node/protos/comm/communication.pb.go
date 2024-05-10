@@ -400,16 +400,16 @@ var file_protos_comm_communication_proto_rawDesc = []byte{
 	0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x53, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x0d, 0x2e, 0x63,
 	0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f,
 	0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x28, 0x01, 0x30, 0x01, 0x32, 0x3c, 0x0a, 0x09, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73,
-	0x75, 0x73, 0x12, 0x2f, 0x0a, 0x0b, 0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x45, 0x76, 0x65, 0x6e,
+	0x65, 0x28, 0x01, 0x30, 0x01, 0x32, 0x40, 0x0a, 0x09, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73,
+	0x75, 0x73, 0x12, 0x33, 0x0a, 0x0b, 0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x45, 0x76, 0x65, 0x6e,
 	0x74, 0x12, 0x0b, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x1a, 0x13,
 	0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f,
-	0x6e, 0x73, 0x65, 0x32, 0x39, 0x0a, 0x0a, 0x41, 0x63, 0x6b, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63,
-	0x65, 0x12, 0x2b, 0x0a, 0x09, 0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x41, 0x63, 0x6b, 0x12, 0x09,
-	0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x41, 0x63, 0x6b, 0x1a, 0x13, 0x2e, 0x63, 0x6f, 0x6d, 0x6d,
-	0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x0d,
-	0x5a, 0x0b, 0x6e, 0x6f, 0x64, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x62, 0x06, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x32, 0x3d, 0x0a, 0x0a, 0x41, 0x63, 0x6b, 0x53, 0x65,
+	0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x2f, 0x0a, 0x09, 0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x41,
+	0x63, 0x6b, 0x12, 0x09, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x41, 0x63, 0x6b, 0x1a, 0x13, 0x2e,
+	0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x42, 0x0d, 0x5a, 0x0b, 0x6e, 0x6f, 0x64, 0x65, 0x2f, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -701,7 +701,7 @@ var _RequestTransmit_serviceDesc = grpc.ServiceDesc{
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type ConsensusClient interface {
-	NotifyEvent(ctx context.Context, in *Event, opts ...grpc.CallOption) (*EventResponse, error)
+	NotifyEvent(ctx context.Context, opts ...grpc.CallOption) (Consensus_NotifyEventClient, error)
 }
 
 type consensusClient struct {
@@ -712,60 +712,92 @@ func NewConsensusClient(cc grpc.ClientConnInterface) ConsensusClient {
 	return &consensusClient{cc}
 }
 
-func (c *consensusClient) NotifyEvent(ctx context.Context, in *Event, opts ...grpc.CallOption) (*EventResponse, error) {
-	out := new(EventResponse)
-	err := c.cc.Invoke(ctx, "/comm.Consensus/NotifyEvent", in, out, opts...)
+func (c *consensusClient) NotifyEvent(ctx context.Context, opts ...grpc.CallOption) (Consensus_NotifyEventClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Consensus_serviceDesc.Streams[0], "/comm.Consensus/NotifyEvent", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &consensusNotifyEventClient{stream}
+	return x, nil
+}
+
+type Consensus_NotifyEventClient interface {
+	Send(*Event) error
+	Recv() (*EventResponse, error)
+	grpc.ClientStream
+}
+
+type consensusNotifyEventClient struct {
+	grpc.ClientStream
+}
+
+func (x *consensusNotifyEventClient) Send(m *Event) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *consensusNotifyEventClient) Recv() (*EventResponse, error) {
+	m := new(EventResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // ConsensusServer is the server API for Consensus service.
 type ConsensusServer interface {
-	NotifyEvent(context.Context, *Event) (*EventResponse, error)
+	NotifyEvent(Consensus_NotifyEventServer) error
 }
 
 // UnimplementedConsensusServer can be embedded to have forward compatible implementations.
 type UnimplementedConsensusServer struct {
 }
 
-func (*UnimplementedConsensusServer) NotifyEvent(context.Context, *Event) (*EventResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method NotifyEvent not implemented")
+func (*UnimplementedConsensusServer) NotifyEvent(Consensus_NotifyEventServer) error {
+	return status.Errorf(codes.Unimplemented, "method NotifyEvent not implemented")
 }
 
 func RegisterConsensusServer(s *grpc.Server, srv ConsensusServer) {
 	s.RegisterService(&_Consensus_serviceDesc, srv)
 }
 
-func _Consensus_NotifyEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Event)
-	if err := dec(in); err != nil {
+func _Consensus_NotifyEvent_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ConsensusServer).NotifyEvent(&consensusNotifyEventServer{stream})
+}
+
+type Consensus_NotifyEventServer interface {
+	Send(*EventResponse) error
+	Recv() (*Event, error)
+	grpc.ServerStream
+}
+
+type consensusNotifyEventServer struct {
+	grpc.ServerStream
+}
+
+func (x *consensusNotifyEventServer) Send(m *EventResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *consensusNotifyEventServer) Recv() (*Event, error) {
+	m := new(Event)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
-	if interceptor == nil {
-		return srv.(ConsensusServer).NotifyEvent(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/comm.Consensus/NotifyEvent",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ConsensusServer).NotifyEvent(ctx, req.(*Event))
-	}
-	return interceptor(ctx, in, info, handler)
+	return m, nil
 }
 
 var _Consensus_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "comm.Consensus",
 	HandlerType: (*ConsensusServer)(nil),
-	Methods: []grpc.MethodDesc{
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "NotifyEvent",
-			Handler:    _Consensus_NotifyEvent_Handler,
+			StreamName:    "NotifyEvent",
+			Handler:       _Consensus_NotifyEvent_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "protos/comm/communication.proto",
 }
 
@@ -773,7 +805,7 @@ var _Consensus_serviceDesc = grpc.ServiceDesc{
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type AckServiceClient interface {
-	NotifyAck(ctx context.Context, in *Ack, opts ...grpc.CallOption) (*EventResponse, error)
+	NotifyAck(ctx context.Context, opts ...grpc.CallOption) (AckService_NotifyAckClient, error)
 }
 
 type ackServiceClient struct {
@@ -784,59 +816,91 @@ func NewAckServiceClient(cc grpc.ClientConnInterface) AckServiceClient {
 	return &ackServiceClient{cc}
 }
 
-func (c *ackServiceClient) NotifyAck(ctx context.Context, in *Ack, opts ...grpc.CallOption) (*EventResponse, error) {
-	out := new(EventResponse)
-	err := c.cc.Invoke(ctx, "/comm.AckService/NotifyAck", in, out, opts...)
+func (c *ackServiceClient) NotifyAck(ctx context.Context, opts ...grpc.CallOption) (AckService_NotifyAckClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_AckService_serviceDesc.Streams[0], "/comm.AckService/NotifyAck", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &ackServiceNotifyAckClient{stream}
+	return x, nil
+}
+
+type AckService_NotifyAckClient interface {
+	Send(*Ack) error
+	Recv() (*EventResponse, error)
+	grpc.ClientStream
+}
+
+type ackServiceNotifyAckClient struct {
+	grpc.ClientStream
+}
+
+func (x *ackServiceNotifyAckClient) Send(m *Ack) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *ackServiceNotifyAckClient) Recv() (*EventResponse, error) {
+	m := new(EventResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // AckServiceServer is the server API for AckService service.
 type AckServiceServer interface {
-	NotifyAck(context.Context, *Ack) (*EventResponse, error)
+	NotifyAck(AckService_NotifyAckServer) error
 }
 
 // UnimplementedAckServiceServer can be embedded to have forward compatible implementations.
 type UnimplementedAckServiceServer struct {
 }
 
-func (*UnimplementedAckServiceServer) NotifyAck(context.Context, *Ack) (*EventResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method NotifyAck not implemented")
+func (*UnimplementedAckServiceServer) NotifyAck(AckService_NotifyAckServer) error {
+	return status.Errorf(codes.Unimplemented, "method NotifyAck not implemented")
 }
 
 func RegisterAckServiceServer(s *grpc.Server, srv AckServiceServer) {
 	s.RegisterService(&_AckService_serviceDesc, srv)
 }
 
-func _AckService_NotifyAck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Ack)
-	if err := dec(in); err != nil {
+func _AckService_NotifyAck_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AckServiceServer).NotifyAck(&ackServiceNotifyAckServer{stream})
+}
+
+type AckService_NotifyAckServer interface {
+	Send(*EventResponse) error
+	Recv() (*Ack, error)
+	grpc.ServerStream
+}
+
+type ackServiceNotifyAckServer struct {
+	grpc.ServerStream
+}
+
+func (x *ackServiceNotifyAckServer) Send(m *EventResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *ackServiceNotifyAckServer) Recv() (*Ack, error) {
+	m := new(Ack)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
-	if interceptor == nil {
-		return srv.(AckServiceServer).NotifyAck(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/comm.AckService/NotifyAck",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AckServiceServer).NotifyAck(ctx, req.(*Ack))
-	}
-	return interceptor(ctx, in, info, handler)
+	return m, nil
 }
 
 var _AckService_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "comm.AckService",
 	HandlerType: (*AckServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "NotifyAck",
-			Handler:    _AckService_NotifyAck_Handler,
+			StreamName:    "NotifyAck",
+			Handler:       _AckService_NotifyAck_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "protos/comm/communication.proto",
 }

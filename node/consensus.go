@@ -29,6 +29,7 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -104,20 +105,30 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 	return nil
 }
 
-func (c *Consensus) NotifyEvent(ctx context.Context, event *protos.Event) (*protos.EventResponse, error) {
-	var ce arma.ControlEvent
-	if err := ce.FromBytes(event.GetPayload(), BatchAttestationFromBytes); err != nil {
-		return &protos.EventResponse{Error: fmt.Sprintf("malformed control event: %v", err)}, nil
+func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
+
+	for {
+		event, err := stream.Recv()
+
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		var ce arma.ControlEvent
+		if err := ce.FromBytes(event.GetPayload(), BatchAttestationFromBytes); err != nil {
+			return fmt.Errorf("malformed control event: %v", err)
+		}
+
+		c.Logger.Infof("Received event %x", event.Payload)
+
+		if err := c.SubmitRequest(event.GetPayload()); err != nil {
+			c.Logger.Warnf("Failed submitting request: %v", err)
+		}
 	}
-
-	c.Logger.Infof("Received event %x", event.Payload)
-
-	if err := c.SubmitRequest(event.GetPayload()); err != nil {
-		c.Logger.Errorf("Failed submitting request: %v", err)
-		return &protos.EventResponse{Error: fmt.Sprintf("failed submitting request: %v", err)}, nil
-	}
-
-	return &protos.EventResponse{}, nil
 }
 
 func (c *Consensus) clientConfig() comm.ClientConfig {
