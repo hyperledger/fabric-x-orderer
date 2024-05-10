@@ -50,10 +50,11 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, bl
 	ledger := fileledger.NewFileLedger(blockStores["arma"])
 
 	baReplicator := &BAReplicator{
-		logger:  logger,
-		config:  config,
-		tlsKey:  tlsKey,
-		tlsCert: tlsCert,
+		cc:       clientConfig(config.Consenter.TLSCACerts, tlsKey, tlsCert),
+		endpoint: config.Consenter.Endpoint,
+		logger:   logger,
+		tlsKey:   tlsKey,
+		tlsCert:  tlsCert,
 	}
 
 	heightRetrievers := createHeightRetrievers(logger, config, blockStores)
@@ -256,7 +257,7 @@ func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 		br.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
-	res := make(chan arma.Batch)
+	res := make(chan arma.Batch, 100)
 
 	go pull(context.Background(), shardName, br.logger, endpoint, requestEnvelope, br.clientConfig(), func(block *common.Block) {
 		fb := fabricBatch(*block)
@@ -285,13 +286,14 @@ func (br *BatchReplicator) findShardID(shardID arma.ShardID) BatcherInfo {
 
 type BAReplicator struct {
 	tlsKey, tlsCert []byte
-	config          AssemblerNodeConfig
+	endpoint        string
+	cc              comm.ClientConfig
 	logger          arma.Logger
 }
 
 func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 	endpoint := func() string {
-		return bar.config.Consenter.Endpoint
+		return bar.endpoint
 	}
 
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
@@ -308,9 +310,9 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 		bar.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
-	res := make(chan arma.BatchAttestation)
+	res := make(chan arma.BatchAttestation, 100)
 
-	go pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.clientConfig(), func(block *common.Block) {
+	go pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
 
 		for _, ab := range header.AvailableBatches {
@@ -319,6 +321,42 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 			ab2 = ab
 			res <- &ab2
 		}
+	})
+
+	return res
+}
+
+func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
+	endpoint := func() string {
+		return bar.endpoint
+	}
+
+	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		"consensus",
+		nil,
+		nextSeekInfo(seq),
+		int32(0),
+		uint64(0),
+		nil,
+	)
+
+	if err != nil {
+		bar.logger.Panicf("Failed creating signed envelope: %v", err)
+	}
+
+	res := make(chan *arma.State, 100)
+
+	go pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
+		header := extractHeaderFromBlock(block, bar.logger)
+
+		var state arma.State
+		if err := state.DeSerialize(header.State, BatchAttestationFromBytes); err != nil {
+			bar.logger.Panicf("Failed deserializing state: %v", err)
+		}
+
+		res <- &state
+
 	})
 
 	return res
@@ -405,9 +443,9 @@ func extractHeaderFromBlock(block *common.Block, logger arma.Logger) *Header {
 	return header
 }
 
-func (bar *BAReplicator) clientConfig() comm.ClientConfig {
+func clientConfig(TLSCACerts []RawBytes, tlsKey, tlsCert []byte) comm.ClientConfig {
 	var tlsCAs [][]byte
-	for _, cert := range bar.config.Consenter.TLSCACerts {
+	for _, cert := range TLSCACerts {
 		tlsCAs = append(tlsCAs, cert)
 	}
 
@@ -418,8 +456,8 @@ func (bar *BAReplicator) clientConfig() comm.ClientConfig {
 			ClientTimeout:  time.Hour,
 		},
 		SecOpts: comm.SecureOptions{
-			Key:               bar.tlsKey,
-			Certificate:       bar.tlsCert,
+			Key:               tlsKey,
+			Certificate:       tlsCert,
 			RequireClientCert: true,
 			UseTLS:            true,
 			ServerRootCAs:     tlsCAs,

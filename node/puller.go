@@ -20,7 +20,7 @@ type BatchPuller struct {
 }
 
 func (bp *BatchPuller) PullBatches(from arma.PartyID) <-chan arma.Batch {
-	res := make(chan arma.Batch)
+	res := make(chan arma.Batch, 100)
 
 	seq := bp.getHeight()
 

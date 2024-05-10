@@ -16,6 +16,7 @@ import (
 )
 
 func init() {
+	//flogging.ActivateSpec("error")
 	grpclog.SetLoggerV2(&silentLogger{})
 }
 

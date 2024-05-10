@@ -17,6 +17,7 @@ import (
 	"io"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -57,10 +58,39 @@ type Batcher struct {
 	sk                  *ecdsa.PrivateKey
 	tlsKey              []byte
 	tlsCert             []byte
+	stateRef            atomic.Value
 }
 
 func (b *Batcher) Run() {
 	b.b.Run()
+
+	var endpoint string
+	var tlsCAs []RawBytes
+	for i := 0; i < len(b.config.Consenters); i++ {
+		consenter := b.config.Consenters[i]
+		if consenter.PartyID == b.config.PartyId {
+			endpoint = consenter.Endpoint
+			tlsCAs = consenter.TLSCACerts
+		}
+	}
+
+	if endpoint == "" || len(tlsCAs) == 0 {
+		b.logger.Panicf("Failed finding endpoint and TLS CAs for party %d", b.config.PartyId)
+	}
+
+	bar := &BAReplicator{
+		logger:   b.logger,
+		endpoint: endpoint,
+		tlsKey:   b.tlsKey,
+		tlsCert:  b.tlsCert,
+		cc:       clientConfig(tlsCAs, b.tlsKey, b.tlsCert),
+	}
+
+	go func() {
+		for state := range bar.ReplicateState(0) {
+			b.stateRef.Store(state)
+		}
+	}()
 }
 
 func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -298,7 +328,13 @@ func createSigner(logger arma.Logger, config BatcherNodeConfig) *ecdsa.PrivateKe
 }
 
 func (b *Batcher) attestBatch(seq uint64, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
-	baf, err := createBAF(b.sk, b.config.PartyId, uint16(shard), digest, uint16(primary), seq)
+	var pending []arma.BatchAttestationFragment
+	ref := b.stateRef.Load()
+	if ref != nil {
+		state := ref.(*arma.State)
+		pending = state.Pending
+	}
+	baf, err := createBAF(b.sk, b.config.PartyId, uint16(shard), digest, uint16(primary), seq, pending...)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -496,9 +532,19 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64) (arma.BatchAttestationFragment, error) {
+func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64, pending ...arma.BatchAttestationFragment) (arma.BatchAttestationFragment, error) {
+	epoch := int(time.Now().Unix()) / 10
+
+	gc := make([][]byte, 0, len(pending))
+	for _, baf := range pending {
+		if int(baf.Epoch())+3 < epoch {
+			gc = append(gc, baf.Digest())
+		}
+	}
+
 	baf := &arma.SimpleBatchAttestationFragment{
-		Ep:  int(time.Now().Unix()) / 30,
+		Gc:  gc,
+		Ep:  epoch,
 		Sh:  int(shard),
 		Si:  int(id),
 		Se:  int(seq),

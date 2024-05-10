@@ -133,7 +133,7 @@ func TestBatcher(t *testing.T) {
 		TLSPrivateKeyFile:  ckp.Key,
 		TLSCertificateFile: ckp.Cert,
 		Consenters: []node.ConsenterInfo{
-			{PartyID: 1}, {PartyID: 2},
+			{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"}, {PartyID: 2, TLSCACerts: []node.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"},
 		},
 		Shards: []node.ShardInfo{
 			{ShardId: 1, Batchers: []node.BatcherInfo{
