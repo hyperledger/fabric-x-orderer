@@ -8,16 +8,31 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"sync/atomic"
+	"time"
 )
 
 type AssemblerLedger struct {
+	Logger           arma.Logger
 	Ledger           blockledger.ReadWriter
 	PrevHash         []byte
 	TransactionCount uint64
 	NextSeq          uint64
 }
 
+func (l *AssemblerLedger) trackThroughput() {
+	for {
+		commitCountSinceLastProbe := atomic.LoadUint64(&l.TransactionCount)
+		atomic.StoreUint64(&l.TransactionCount, 0)
+		l.Logger.Infof("Commit throughput: %d", commitCountSinceLastProbe/10)
+		time.Sleep(time.Second * 10)
+	}
+}
+
 func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAttestation) {
+	t1 := time.Now()
+	defer func() {
+		l.Logger.Infof("Appended block of %d requests to ledger in %v", len(batch.Requests()), time.Since(t1))
+	}()
 	block := &common.Block{
 		Header: &common.BlockHeader{
 			Number:       l.NextSeq,

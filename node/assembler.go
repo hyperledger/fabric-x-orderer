@@ -72,6 +72,8 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, bl
 		shards = append(shards, arma.ShardID(shard.ShardId))
 	}
 
+	al := &AssemblerLedger{Ledger: ledger, Logger: logger}
+	go al.trackThroughput()
 	assembler := &Assembler{
 		ds:        make(DeliverService),
 		getHeight: ledger.Height,
@@ -81,7 +83,7 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, bl
 			Replicator:                 br,
 			Index:                      index,
 			Logger:                     logger,
-			Ledger:                     &AssemblerLedger{Ledger: ledger},
+			Ledger:                     al,
 			ShardCount:                 len(config.Shards),
 		},
 		logger: logger,
@@ -142,7 +144,10 @@ func NewIndex(config AssemblerNodeConfig, blockStores map[string]*blkstorage.Blo
 }
 
 func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, batch arma.Batch) {
-	defer i.logger.Infof("Indexed batch %d for shard %d", sequence, shard)
+	t1 := time.Now()
+	defer func() {
+		i.logger.Infof("Indexed batch %d for shard %d in %v", sequence, shard, time.Since(t1))
+	}()
 	buff := make([]byte, 4)
 	binary.BigEndian.PutUint16(buff, uint16(batch.Party()))
 
@@ -170,7 +175,11 @@ func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, b
 }
 
 func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64, digest []byte) (arma.Batch, bool) {
-	i.logger.Infof("Retrieving batch %d for shard %d", sequence, shard)
+	t1 := time.Now()
+
+	defer func() {
+		i.logger.Infof("Retrieved batch %d for shard %d in %v", sequence, shard, time.Since(t1))
+	}()
 
 	i.lock.RLock()
 	blockFromCache, exists := i.cache[shard].get(sequence)
@@ -198,7 +207,6 @@ func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64
 	}
 
 	fb := fabricBatch(*block)
-	i.logger.Infof("Retrieved batch %d for shard %d", sequence, shard)
 	return &fb, true
 }
 
@@ -211,8 +219,12 @@ type BatchReplicator struct {
 
 func (br *BatchReplicator) clientConfig() comm.ClientConfig {
 	var tlsCAs [][]byte
-	for _, cert := range br.config.Consenter.TLSCACerts {
-		tlsCAs = append(tlsCAs, cert)
+	for _, shard := range br.config.Shards {
+		for _, batcher := range shard.Batchers {
+			for _, tlsCA := range batcher.TLSCACerts {
+				tlsCAs = append(tlsCAs, tlsCA)
+			}
+		}
 	}
 
 	cc := comm.ClientConfig{

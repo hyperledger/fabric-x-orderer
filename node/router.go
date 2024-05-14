@@ -10,6 +10,7 @@ import (
 	"math"
 	rand2 "math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -26,6 +27,7 @@ type Router struct {
 	TLSKey       []byte
 	logger       arma.Logger
 	shards       []uint16
+	incoming     uint64
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
@@ -36,15 +38,23 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		r.shardRouters[shard].maybeInit()
 	}
 
-	rand := r.initRand()
-
 	exit := make(chan struct{})
 	defer func() {
 		close(exit)
 	}()
 
-	feedbackChan := make(chan response, 100)
-	go r.sendFeedbackAtomicBroadcast(stream, exit, feedbackChan)
+	feedbackChan := make(chan *orderer.BroadcastResponse, 1000)
+
+	go func() {
+		for {
+			select {
+			case <-exit:
+				return
+			case response := <-feedbackChan:
+				stream.Send(response)
+			}
+		}
+	}()
 
 	for {
 		req, err := stream.Recv()
@@ -54,11 +64,13 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		if err != nil {
 			return err
 		}
+
+		atomic.AddUint64(&r.incoming, 1)
+
 		reqID, router := r.getRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
 
-		trace := createTraceID(rand)
-
-		router.forward(reqID, req.Payload, feedbackChan, trace)
+		router.forwardNoFeedback(reqID, req.Payload)
+		feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_SUCCESS}
 	}
 }
 
@@ -71,6 +83,16 @@ func NewRouter(shards []uint16, batcherEndpoints []string, batcherRootCAs [][][]
 	for i, shard := range shards {
 		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i], tlsCert, tlsKey)
 	}
+
+	go func() {
+		for {
+			time.Sleep(time.Second * 10)
+			tps := atomic.LoadUint64(&r.incoming)
+			r.logger.Infof("Received %d transactions", tps/10)
+			atomic.StoreUint64(&r.incoming, 0)
+		}
+	}()
+
 	return r
 }
 
@@ -285,6 +307,33 @@ func NewShardRouter(l arma.Logger, batcherEndpoint string, batcherRootCAs [][]by
 	return sr
 }
 
+func (sr *ShardRouter) forwardNoFeedback(reqID, request []byte) {
+	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
+	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % router2batcherStreamsPerConn
+
+	sr.lock.RLock()
+	stream := sr.streams[connIndex][streamInConnIndex]
+	sr.lock.RUnlock()
+
+	if stream == nil || stream.faulty() {
+		sr.lock.Lock()
+		sr.initStream(connIndex, streamInConnIndex)
+		sr.lock.Unlock()
+
+		sr.lock.RLock()
+		stream = sr.streams[connIndex][streamInConnIndex]
+		sr.lock.RUnlock()
+	}
+
+	if stream == nil || stream.faulty() {
+		return
+	}
+
+	stream.requests <- &protos.Request{
+		Payload: request,
+	}
+}
+
 func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, trace []byte) {
 	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
 	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % router2batcherStreamsPerConn
@@ -429,7 +478,7 @@ func (sr *ShardRouter) initStream(i int, j int) {
 	if err == nil {
 		s := &stream{
 			m:                                  make(map[string]chan response),
-			requests:                           make(chan *protos.Request, 100),
+			requests:                           make(chan *protos.Request, 1000),
 			RequestTransmit_SubmitStreamClient: newStream,
 			cancelThisStream:                   cancel,
 			ctx:                                ctx,

@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"io"
 	"math"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -163,7 +162,9 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 			resp.Error = err.Error()
 		}
 
-		responses <- &resp
+		if len(traceId) > 0 {
+			responses <- &resp
+		}
 
 		b.logger.Debugf("Submitted request %x", traceId)
 
@@ -435,24 +436,22 @@ func (b *Batcher) sendAck(seq uint64, to arma.PartyID) {
 func (b *Batcher) broadcastEvent(baf arma.BatchAttestationFragment) {
 	b.initClients()
 
-	var wg sync.WaitGroup
-	wg.Add(len(b.consensusStreams))
-
 	for index := range b.consensusStreams {
 		b.initConsenterConnIfNeeded(index)
 	}
 
-	for index, cl := range b.consensusStreams {
-		go func(baf arma.BatchAttestationFragment, stream protos.Consensus_NotifyEventClient, index int) {
-			defer wg.Done()
-			b.sendBAF(baf, stream, index)
-		}(baf, cl, index)
+	for index, stream := range b.consensusStreams {
+		b.sendBAF(baf, stream, index)
 	}
-
-	wg.Wait()
 }
 
 func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, stream protos.Consensus_NotifyEventClient, index int) {
+	t1 := time.Now()
+
+	defer func() {
+		b.logger.Infof("Sending BAF took %v", time.Since(t1))
+	}()
+
 	if b.connections[index] == nil {
 		return
 	}
