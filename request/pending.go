@@ -213,19 +213,27 @@ func (ps *PendingStore) checkFirstStrike(now time.Time) {
 
 func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 
+	var detectedCensorship bool
+
+	newBuckets := make([]*bucket, 0, len(ps.buckets))
+
 	for _, bucket := range ps.buckets {
 		if bucket.firstStrikeTimestamp.IsZero() {
+			newBuckets = append(newBuckets, bucket)
 			continue
 		}
 
 		if now.Sub(bucket.firstStrikeTimestamp) <= ps.SecondStrikeThreshold {
+			newBuckets = append(newBuckets, bucket)
 			continue
 		}
 
-		return true
+		detectedCensorship = true
 	}
 
-	return false
+	ps.buckets = newBuckets
+
+	return detectedCensorship
 }
 
 func (ps *PendingStore) rotateBuckets(now time.Time) {
