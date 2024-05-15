@@ -21,6 +21,14 @@ func init() {
 }
 
 var (
+	DirOverride = os.Getenv(DirOverrideEnvName)
+)
+
+const (
+	DirOverrideEnvName = "DIRECTORY"
+)
+
+var (
 	help = map[string]string{
 		"router":    "run a router node",
 		"assembler": "run an assembler node",
@@ -196,6 +204,10 @@ func parseAssemblerConfig(rawConfig []byte) node.AssemblerNodeConfig {
 		os.Exit(2)
 	}
 
+	if DirOverride != "" {
+		conf.Directory = DirOverride
+	}
+
 	return conf
 }
 
@@ -207,6 +219,10 @@ func parseBatcherConfig(rawConfig []byte) node.BatcherNodeConfig {
 		os.Exit(2)
 	}
 
+	if DirOverride != "" {
+		conf.Directory = DirOverride
+	}
+
 	return conf
 }
 
@@ -216,6 +232,10 @@ func parseConsensusConfig(rawConfig []byte) node.ConsenterNodeConfig {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing consensus config: %v", err)
 		os.Exit(2)
+	}
+
+	if DirOverride != "" {
+		conf.Directory = DirOverride
 	}
 
 	return conf
