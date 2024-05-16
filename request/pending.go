@@ -228,6 +228,16 @@ func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 			continue
 		}
 
+		requestsWeGaveUpOn := make([]string, 0, int(bucket.getSize()))
+
+		bucket.requests.Range(func(k, v interface{}) bool {
+			reqID := k.(string)
+			requestsWeGaveUpOn = append(requestsWeGaveUpOn, reqID)
+			return true
+		})
+
+		ps.RemoveRequests(requestsWeGaveUpOn...)
+
 		detectedCensorship = true
 	}
 
