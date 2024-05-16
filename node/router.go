@@ -238,6 +238,8 @@ const (
 )
 
 type stream struct {
+	endpoint  string
+	logger    arma.Logger
 	activated bool
 	protos.RequestTransmit_SubmitStreamClient
 	ctx              context.Context
@@ -273,7 +275,7 @@ func (s *stream) sendRequests() {
 		msg := <-s.requests
 		err := s.Send(msg)
 		if err != nil {
-			panic(err)
+			s.logger.Errorf("Failed sending to %s", s.endpoint)
 		}
 	}
 }
@@ -477,6 +479,8 @@ func (sr *ShardRouter) initStream(i int, j int) {
 	newStream, err := client.SubmitStream(context.Background())
 	if err == nil {
 		s := &stream{
+			endpoint:                           sr.batcherEndpoint,
+			logger:                             sr.logger,
 			m:                                  make(map[string]chan response),
 			requests:                           make(chan *protos.Request, 1000),
 			RequestTransmit_SubmitStreamClient: newStream,
