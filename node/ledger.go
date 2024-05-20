@@ -66,7 +66,7 @@ func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAtte
 		for _, tx := range block.Data.Data {
 			var env common.Envelope
 			proto.Unmarshal(tx, &env)
-			sendTime := binary.BigEndian.Uint64(env.Payload[8:16])
+			sendTime := binary.LittleEndian.Uint64(env.Payload[8:16])
 			latencies = append(latencies, now-sendTime)
 		}
 
