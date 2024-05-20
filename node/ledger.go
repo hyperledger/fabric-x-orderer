@@ -4,9 +4,11 @@ import (
 	arma "arma/pkg"
 	"crypto/sha256"
 	"encoding/binary"
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/protoutil"
+	"slices"
 	"sync/atomic"
 	"time"
 )
@@ -51,6 +53,28 @@ func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAtte
 
 	defer func() {
 		atomic.AddUint64(&l.TransactionCount, uint64(len(batch.Requests())))
+	}()
+
+	defer func() {
+		if len(block.Data.Data) < 200 {
+			return
+		}
+
+		latencies := make([]uint64, 0, len(block.Data.Data))
+		for _, tx := range block.Data.Data {
+			var env common.Envelope
+			proto.Unmarshal(tx, &env)
+			sendTime := binary.BigEndian.Uint64(env.Payload[8:16])
+			latencies = append(latencies, sendTime)
+		}
+
+		slices.Sort(latencies)
+		nnPercentileIndex := int(0.99 * float64(len(latencies)))
+		if nnPercentileIndex >= len(latencies) {
+			nnPercentileIndex = len(latencies) - 1
+		}
+
+		l.Logger.Infof("99% latency: %d ms", latencies[nnPercentileIndex])
 	}()
 
 	l.PrevHash = protoutil.BlockHeaderHash(block.Header)
