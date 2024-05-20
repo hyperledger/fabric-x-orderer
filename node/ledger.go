@@ -60,12 +60,14 @@ func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAtte
 			return
 		}
 
+		now := uint64(time.Now().UnixMilli())
+
 		latencies := make([]uint64, 0, len(block.Data.Data))
 		for _, tx := range block.Data.Data {
 			var env common.Envelope
 			proto.Unmarshal(tx, &env)
 			sendTime := binary.BigEndian.Uint64(env.Payload[8:16])
-			latencies = append(latencies, sendTime)
+			latencies = append(latencies, now-sendTime)
 		}
 
 		slices.Sort(latencies)
@@ -74,7 +76,7 @@ func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAtte
 			nnPercentileIndex = len(latencies) - 1
 		}
 
-		l.Logger.Infof("99% latency: %d ms", latencies[nnPercentileIndex])
+		l.Logger.Infof("99 percentile latency: %d ms", latencies[nnPercentileIndex])
 	}()
 
 	l.PrevHash = protoutil.BlockHeaderHash(block.Header)
