@@ -4,12 +4,9 @@ import (
 	arma "arma/pkg"
 	"crypto/sha256"
 	"encoding/binary"
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/protoutil"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
-	"slices"
 	"sync/atomic"
 	"time"
 )
@@ -54,36 +51,6 @@ func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAtte
 
 	defer func() {
 		atomic.AddUint64(&l.TransactionCount, uint64(len(batch.Requests())))
-	}()
-
-	defer func() {
-		if len(block.Data.Data) < 200 {
-			return
-		}
-
-		now := uint64(time.Now().UnixMilli())
-
-		latencies := make([]uint64, 0, len(block.Data.Data))
-		for _, tx := range block.Data.Data {
-			var req protos.Request
-			if err := proto.Unmarshal(tx, &req); err != nil {
-				l.Logger.Panicf("Failed unmarshaling request: %v", err)
-			}
-			var payload common.Payload
-			if err := proto.Unmarshal(req.Payload, &payload); err != nil {
-				l.Logger.Panicf("Failed unmarshaling payload: %v", err)
-			}
-			sendTime := binary.LittleEndian.Uint64(payload.Data[8:16])
-			latencies = append(latencies, now-sendTime)
-		}
-
-		slices.Sort(latencies)
-		nnPercentileIndex := int(0.99 * float64(len(latencies)))
-		if nnPercentileIndex >= len(latencies) {
-			nnPercentileIndex = len(latencies) - 1
-		}
-
-		l.Logger.Infof("99 percentile latency: %d ms", latencies[nnPercentileIndex])
 	}()
 
 	l.PrevHash = protoutil.BlockHeaderHash(block.Header)
