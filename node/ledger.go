@@ -4,11 +4,12 @@ import (
 	arma "arma/pkg"
 	"crypto/sha256"
 	"encoding/binary"
+	"sync/atomic"
+	"time"
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/protoutil"
-	"sync/atomic"
-	"time"
 )
 
 type AssemblerLedger struct {

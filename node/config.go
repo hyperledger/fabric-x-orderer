@@ -2,8 +2,9 @@ package node
 
 import (
 	"encoding/base64"
-	"gopkg.in/yaml.v3"
 	"os"
+
+	"gopkg.in/yaml.v3"
 )
 
 type RawBytes []byte

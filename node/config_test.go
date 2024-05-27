@@ -1,10 +1,11 @@
 package node
 
 import (
-	"github.com/stretchr/testify/require"
 	"os"
 	"path"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRouterNodeConfigToYaml(t *testing.T) {

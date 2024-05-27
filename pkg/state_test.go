@@ -1,8 +1,9 @@
 package arma
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStateSerializeDeserialize(t *testing.T) {

@@ -3,9 +3,10 @@ package arma
 import (
 	arma "arma/pkg"
 	"fmt"
-	"google.golang.org/grpc/grpclog"
 	"io"
 	"os"
+
+	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"

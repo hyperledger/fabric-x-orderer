@@ -4,10 +4,11 @@ import (
 	arma "arma/pkg"
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	"time"
 )
 
 type BatchPuller struct {

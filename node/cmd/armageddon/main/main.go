@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.ibm.com/Yacov-Manevich/ARMA/node/cmd/armageddon"
 	"os"
+
+	"github.ibm.com/Yacov-Manevich/ARMA/node/cmd/armageddon"
 )
 
 func main() {

@@ -3,6 +3,8 @@ package node
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -11,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/protoutil"
-	"time"
 )
 
 type DeliverService map[string]blockledger.ReadWriter

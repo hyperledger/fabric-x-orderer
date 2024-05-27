@@ -2,11 +2,12 @@ package node
 
 import (
 	"fmt"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	"net"
 	"os"
 	"strings"
 	"time"
+
+	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 )
 
 const (

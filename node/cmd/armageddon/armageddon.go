@@ -7,16 +7,17 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"github.com/alecthomas/kingpin"
-	"github.ibm.com/Yacov-Manevich/ARMA/node"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
-	"gopkg.in/yaml.v3"
 	"io"
 	"net"
 	"os"
 	"path"
 	"runtime/debug"
 	"strings"
+
+	"github.com/alecthomas/kingpin"
+	"github.ibm.com/Yacov-Manevich/ARMA/node"
+	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
+	"gopkg.in/yaml.v3"
 )
 
 var defaultConfig = `Parties:

@@ -10,8 +10,9 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"google.golang.org/grpc/credentials"
 	"time"
+
+	"google.golang.org/grpc/credentials"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"

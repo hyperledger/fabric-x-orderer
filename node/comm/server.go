@@ -11,11 +11,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"google.golang.org/grpc/credentials"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"google.golang.org/grpc/credentials"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"

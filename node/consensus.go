@@ -13,6 +13,13 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"io"
+	"math"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger-labs/SmartBFT/pkg/api"
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
@@ -29,12 +36,6 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
-	"io"
-	"math"
-	"os"
-	"path/filepath"
-	"sync"
-	"time"
 )
 
 type Storage interface {
