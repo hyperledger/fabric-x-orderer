@@ -52,7 +52,7 @@ func (db *BatchAttestationDB) Put(digest [][]byte, epoch []uint64) {
 		binary.BigEndian.PutUint64(epochBuff, epoch[i])
 
 		batch.Put(makeDigestKey(digest[i]), epochBuff)
-		batch.Put(makeEpochKey(epochBuff), digest[i])
+		batch.Put(makeEpochKey(digest[i], epochBuff), []byte{0})
 	}
 
 	if err := db.db.Write(batch, nil); err != nil {
@@ -69,12 +69,13 @@ func (db *BatchAttestationDB) Clean(epochToDelete uint64) {
 	for iter.Next() {
 		epochKey := iter.Key()
 		epochBuff := epochKey[1:]
-		epoch := binary.BigEndian.Uint64(epochBuff)
+		epoch := binary.BigEndian.Uint64(epochBuff[:8])
+		digest := epochBuff[8:]
 		if epoch >= epochToDelete {
 			continue
 		}
 
-		batch.Delete(makeDigestKey(iter.Value()))
+		batch.Delete(makeDigestKey(digest))
 		batch.Delete(epochKey)
 	}
 
@@ -87,9 +88,10 @@ func makeDigestKey(digest []byte) []byte {
 	return buff
 }
 
-func makeEpochKey(digest []byte) []byte {
-	buff := make([]byte, len(digest)+1)
+func makeEpochKey(digest []byte, epoch []byte) []byte {
+	buff := make([]byte, len(digest)+len(epoch)+1)
 	buff[0] = 1
-	copy(buff[1:], digest)
+	copy(buff[1:], epoch)
+	copy(buff[len(epoch)+1:], digest)
 	return buff
 }
