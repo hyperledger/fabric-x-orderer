@@ -52,14 +52,18 @@ func ListenAddressForNode(endpointType ServerEndpointType, listenAddress string)
 }
 
 func CreateGRPCRouter(conf RouterNodeConfig) *comm.GRPCServer {
+	tlsCAs := TLSCAcertsFromShards(conf.Shards)
+
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(RouterListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
 		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: conf.TLSCertificateFile,
-			Key:         conf.TLSPrivateKeyFile,
+			ClientRootCAs:     tlsCAs,
+			UseTLS:            true,
+			RequireClientCert: true,
+			Certificate:       conf.TLSCertificateFile,
+			Key:               conf.TLSPrivateKeyFile,
 		},
 	})
 
@@ -109,14 +113,18 @@ func CreateGRPCConsensus(conf ConsenterNodeConfig) *comm.GRPCServer {
 }
 
 func CreateGRPCAssembler(conf AssemblerNodeConfig) *comm.GRPCServer {
+	tlsCAs := TLSCAcertsFromShards(conf.Shards)
+
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(AssemblerListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
 		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: conf.TLSCertificateFile,
-			Key:         conf.TLSPrivateKeyFile,
+			ClientRootCAs:     tlsCAs,
+			UseTLS:            true,
+			RequireClientCert: true,
+			Certificate:       conf.TLSCertificateFile,
+			Key:               conf.TLSPrivateKeyFile,
 		},
 	})
 
@@ -125,6 +133,18 @@ func CreateGRPCAssembler(conf AssemblerNodeConfig) *comm.GRPCServer {
 		os.Exit(1)
 	}
 	return srv
+}
+
+func TLSCAcertsFromShards(shards []ShardInfo) [][]byte {
+	var tlsCAs [][]byte
+	for _, shard := range shards {
+		for _, batcher := range shard.Batchers {
+			for _, certBundle := range batcher.TLSCACerts {
+				tlsCAs = append(tlsCAs, certBundle)
+			}
+		}
+	}
+	return tlsCAs
 }
 
 func CreateGRPCBatcher(conf BatcherNodeConfig) *comm.GRPCServer {

@@ -248,7 +248,6 @@ func sendTxToRouter(t *testing.T, dir string, wg *sync.WaitGroup, routerNum int)
 
 	// create a gRPC connection to the router
 	gRPCRouterClient := comm.ClientConfig{
-		AsyncConnect: true,
 		KaOpts: comm.KeepaliveOptions{
 			ClientInterval: time.Hour,
 			ClientTimeout:  time.Hour,
@@ -304,7 +303,6 @@ func receiveResponseFromAssemblers(t *testing.T, dir string) {
 
 		// create a gRPC connection to the assembler
 		gRPCAssemblerClient := comm.ClientConfig{
-			AsyncConnect: true,
 			KaOpts: comm.KeepaliveOptions{
 				ClientInterval: time.Hour,
 				ClientTimeout:  time.Hour,

@@ -1,0 +1,6 @@
+?   	github.ibm.com/Yacov-Manevich/ARMA/node/cmd/arma/main	[no test files]
+?   	github.ibm.com/Yacov-Manevich/ARMA/node/cmd/armageddon/main	[no test files]
+?   	github.ibm.com/Yacov-Manevich/ARMA/node/comm/testpb	[no test files]
+?   	github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm	[no test files]
+ok  	github.ibm.com/Yacov-Manevich/ARMA/node	8.850s
+ok  	github.ibm.com/Yacov-Manevich/ARMA/node/cmd/arma	1.318s
