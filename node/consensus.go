@@ -271,7 +271,6 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 	} else if ce.BAF != nil {
 		msg := ToBeSignedBAF(ce.BAF)
 		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma.SimpleBatchAttestationFragment).Sig)
-		err = nil // TODO: properly implement ToBeSignedBAF!!!
 		return reqID, err
 	} else {
 		return types.RequestInfo{}, fmt.Errorf("empty Control Event")
