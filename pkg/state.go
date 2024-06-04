@@ -126,7 +126,7 @@ func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) (Bat
 	s.loadConfig(rs.Config)
 	s.loadShards(rs.Shards, int(s.ShardCount))
 	if err := s.loadPending(rs.Pending, fragmentFromBytes); err != nil {
-		fmt.Errorf("failed loading batch attestation fragments: %v", err)
+		return fmt.Errorf("failed loading batch attestation fragments: %v", err)
 	}
 	if err := s.loadComplaints(rs.Complaints); err != nil {
 		return fmt.Errorf("failed loading complaints: %v", err)
