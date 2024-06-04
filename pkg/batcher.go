@@ -77,6 +77,8 @@ type BatchLedger interface {
 	Append(PartyID, uint64, []byte)
 }
 
+var gap = uint64(10)
+
 type Batcher struct {
 	Batchers             []PartyID
 	BatchTimeout         time.Duration
@@ -167,8 +169,6 @@ func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	gap := uint64(10)
-
 	if seq < b.confirmedSeq {
 		b.Logger.Debugf("Received message on sequence %d but we expect sequence %d to %d", seq, b.confirmedSeq, b.confirmedSeq+gap)
 		return
@@ -205,7 +205,7 @@ func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 
 func (b *Batcher) secondariesKeepUpWithMe() bool {
 	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.Seq, b.confirmedSeq)
-	return b.Seq-b.confirmedSeq < 10
+	return b.Seq-b.confirmedSeq < gap
 }
 
 func (b *Batcher) runPrimary() {
