@@ -83,16 +83,17 @@ func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		"assembler": []string{"assembler_node_config.yaml"},
 	}
 
-	for i := 0; i < 4; i++ {
-		partyDir := path.Join(dir, fmt.Sprintf("Party%d", i+1))
-		for name, files := range nodes {
-			for j := 0; j < len(files); j++ {
-				nodeConfigPath := path.Join(partyDir, files[j])
-				editDirectoryInNodeConfigYAML(t, name, nodeConfigPath)
-				go runNode(t, name, armaBinaryPath, nodeConfigPath, readyChan)
+	for _, nodeType := range []string{"consensus", "batcher", "router", "assembler"} {
+		for i := 0; i < 4; i++ {
+			partyDir := path.Join(dir, fmt.Sprintf("Party%d", i+1))
+			for j := 0; j < len(nodes[nodeType]); j++ {
+				nodeConfigPath := path.Join(partyDir, nodes[nodeType][j])
+				editDirectoryInNodeConfigYAML(t, nodeType, nodeConfigPath)
+				runNode(t, nodeType, armaBinaryPath, nodeConfigPath, readyChan)
 			}
 		}
 	}
+
 }
 
 func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}) {
@@ -348,67 +349,34 @@ func receiveResponseFromAssemblers(t *testing.T, dir string) {
 		var gRPCAssemblerClientConn *grpc.ClientConn
 		endpointToPullFrom := "127.0.0.1:" + trimHostFromEndpoint(assemblerConfig.ListenAddress)
 
-		// create a delivery stream and ask for pulling blocks, try again in case of an error
-		// do it until the overall timeout of 10 seconds is reached
-		deliveryTimeout := time.After(10 * time.Second)
-	ForLoop:
-		for {
-			select {
-			case <-deliveryTimeout:
-				require.Fail(t, fmt.Sprintf("timeout has occurred, assembler %v failed to send block in time", i+1))
-			default:
-				gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
-				if err != nil {
-					t.Logf("failed connecting to %s: %v, try again", endpointToPullFrom, err)
-					time.Sleep(2 * time.Second)
-					continue
-				}
+		gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
+		require.NoError(t, err)
 
-				abc := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn)
+		abc := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn)
 
-				stream, err = abc.Deliver(context.TODO())
-				if err != nil {
-					t.Logf("failed creating Deliver stream to %s: %v, try again", endpointToPullFrom, err)
-					gRPCAssemblerClientConn.Close()
-					time.Sleep(2 * time.Second)
-					continue
-				}
+		stream, err = abc.Deliver(context.TODO())
+		require.NoError(t, err)
 
-				err = stream.Send(requestEnvelope)
-				if err != nil {
-					t.Logf("failed sending request envelope to %s: %v, try again", endpointToPullFrom, err)
-					stream.CloseSend()
-					gRPCAssemblerClientConn.Close()
-					time.Sleep(2 * time.Second)
-					continue
-				}
+		err = stream.Send(requestEnvelope)
+		require.NoError(t, err)
 
-				t.Logf("request envelope was sent to assembler %v", i+1)
+		t.Logf("request envelope was sent to assembler %v", i+1)
 
-				block, err := pullBlock(stream, endpointToPullFrom, gRPCAssemblerClientConn)
-				if err != nil {
-					t.Logf("err: %v, send request envelope to assembler %v again", err, i+1)
-					time.Sleep(2 * time.Second)
-					continue
-				}
-				require.NotNil(t, block)
-				env, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[0])
-				require.NoError(t, err)
-				require.Equal(t, env.Payload, []byte("data transaction"))
-				t.Logf("block was pulled successfully from assembler %v", i+1)
-				break ForLoop
-			}
-		}
+		block, err := pullBlock(t, stream, endpointToPullFrom, gRPCAssemblerClientConn)
+		require.NoError(t, err)
+		require.NotNil(t, block)
+
+		env, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[0])
+		require.NoError(t, err)
+		require.Equal(t, env.Payload, []byte("data transaction"))
+		t.Logf("block was pulled successfully from assembler %v", i+1)
+
 	}
 }
 
-func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
+func pullBlock(t *testing.T, stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
 	resp, err := stream.Recv()
-	if err != nil {
-		stream.CloseSend()
-		gRPCAssemblerClientConn.Close()
-		return nil, fmt.Errorf("failed receiving block for %s from %s: %v", "arma", endpointToPullFrom, err)
-	}
+	require.NoError(t, err)
 
 	block := resp.GetBlock()
 
