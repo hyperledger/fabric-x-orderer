@@ -87,11 +87,22 @@ func (c *chain) PolicyManager() policies.Manager {
 }
 
 func (c *chain) Reader() blockledger.Reader {
-	return c.ledger
+	return &delayedReader{Reader: c.ledger}
 }
 
 func (c *chain) Errored() <-chan struct{} {
 	return make(chan struct{})
+}
+
+type delayedReader struct {
+	blockledger.Reader
+}
+
+func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.Iterator, uint64) {
+	for d.Height() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	return d.Reader.Iterator(startType)
 }
 
 type noopBindingInspector struct {

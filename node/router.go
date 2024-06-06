@@ -34,9 +34,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 	clientHost := ExtractCertificateFromContext(stream.Context())
 	r.logger.Debugf("Client %s connected", clientHost)
 
-	for _, shard := range r.shards {
-		r.shardRouters[shard].maybeInit()
-	}
+	r.init()
 
 	exit := make(chan struct{})
 	defer func() {
@@ -74,6 +72,12 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 	}
 }
 
+func (r *Router) init() {
+	for _, shard := range r.shards {
+		r.shardRouters[shard].maybeInit()
+	}
+}
+
 func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
@@ -103,9 +107,7 @@ type response struct {
 }
 
 func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
-	for _, shard := range r.shards {
-		r.shardRouters[shard].maybeInit()
-	}
+	r.init()
 
 	rand := r.initRand()
 
@@ -410,14 +412,11 @@ func (sr *ShardRouter) maybeInit() {
 }
 
 func (sr *ShardRouter) maybeConnect() {
-	for {
-
-		if !sr.replenishNeeded() {
-			return
-		}
-
-		sr.replenishConnPool()
+	if !sr.replenishNeeded() {
+		return
 	}
+
+	sr.replenishConnPool()
 }
 
 func (sr *ShardRouter) replenishNeeded() bool {
@@ -539,5 +538,7 @@ func CreateRouter(config RouterNodeConfig, logger arma.Logger) *Router {
 		}
 	}
 
-	return NewRouter(shards, endpoints, tlsCAs, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
+	r := NewRouter(shards, endpoints, tlsCAs, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
+	r.init()
+	return r
 }

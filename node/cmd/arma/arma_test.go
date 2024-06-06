@@ -38,7 +38,7 @@ func TestRouter(t *testing.T) {
 		TLSPrivateKeyFile:  ckp.Key,
 		TLSCertificateFile: ckp.Cert,
 		PartyID:            1,
-		Shards:             []node.ShardInfo{{ShardId: 1, Batchers: []node.BatcherInfo{{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}}}}},
+		Shards:             []node.ShardInfo{{ShardId: 1, Batchers: []node.BatcherInfo{{Endpoint: "127.0.0.1:80", PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}}}}},
 	}, configPath)
 	require.NoError(t, err)
 
@@ -137,8 +137,8 @@ func TestBatcher(t *testing.T) {
 		},
 		Shards: []node.ShardInfo{
 			{ShardId: 1, Batchers: []node.BatcherInfo{
-				{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert},
-				{PartyID: 2, TLSCACerts: []node.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert},
+				{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
+				{PartyID: 2, TLSCACerts: []node.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
 			}}},
 	}, configPath)
 	require.NoError(t, err)

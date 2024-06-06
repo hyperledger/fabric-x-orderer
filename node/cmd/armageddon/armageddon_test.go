@@ -99,7 +99,7 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
 	require.NotNil(t, cmd)
 
-	sess, err := gexec.Start(cmd, nil, nil)
+	sess, err := gexec.Start(cmd, os.Stdout, os.Stderr)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {

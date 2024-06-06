@@ -277,29 +277,6 @@ func (b *Batcher) createMemPool() arma.MemPool {
 	return request.NewPool(b.logger, b, opts)
 }
 
-func getEndpoint(logger arma.Logger, config BatcherNodeConfig) string {
-	var endpoint string
-	for _, shard := range config.Shards {
-		if shard.ShardId != config.ShardId {
-			continue
-		}
-
-		for _, batcher := range shard.Batchers {
-			if batcher.PartyID != config.PartyId {
-				continue
-			}
-
-			endpoint = batcher.Endpoint
-		}
-	}
-
-	if endpoint == "" {
-		logger.Panicf("Could not find our endpoint in shard definition %v", config.Shards)
-	}
-
-	return endpoint
-}
-
 func (b *Batcher) indexTLSCerts() {
 	batchers := batchersFromConfig(b.logger, b.config)
 	for _, batcher := range batchers {
@@ -407,42 +384,56 @@ func batchersFromConfig(logger arma.Logger, config BatcherNodeConfig) []BatcherI
 }
 
 func (b *Batcher) sendAck(seq uint64, to arma.PartyID) {
-	for b.primaryConn == nil {
-		cc := b.clientConfig(b.primaryTLSCA)
+	b.connectToPrimaryIfNeeded()
 
-		conn, err := cc.Dial(b.primaryEndpoint)
-		if err != nil {
-			b.logger.Errorf("Failed connecting to %s: %v", b.primaryEndpoint, err)
-			continue
-		}
-
-		b.primaryConn = conn
-		b.primaryClient = protos.NewAckServiceClient(conn)
-		b.primaryClientStream, err = b.primaryClient.NotifyAck(context.Background())
-		if err != nil {
-			b.logger.Panicf("Failed creating ack stream: %v", err)
-		}
+	if b.primaryClientStream == nil {
+		return
 	}
 
 	err := b.primaryClientStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: seq})
 	if err != nil {
 		b.logger.Errorf("Failed sending ack to %s", b.primaryEndpoint)
-		b.primaryConn.Close()
-		b.primaryConn = nil
-		b.primaryClient = nil
 		b.primaryClientStream = nil
 	}
 }
 
-func (b *Batcher) broadcastEvent(baf arma.BatchAttestationFragment) {
-	b.initClients()
+func (b *Batcher) connectToPrimaryIfNeeded() {
+	if b.primaryConn == nil {
+		cc := b.clientConfig(b.primaryTLSCA)
 
-	for index := range b.consensusStreams {
-		b.initConsenterConnIfNeeded(index)
+		conn, err := cc.Dial(b.primaryEndpoint)
+		if err != nil {
+			b.logger.Errorf("Failed connecting to %s: %v", b.primaryEndpoint, err)
+			return
+		}
+
+		b.primaryConn = conn
+		b.primaryClient = protos.NewAckServiceClient(conn)
 	}
+
+	if b.primaryClientStream == nil {
+		stream, err := b.primaryClient.NotifyAck(context.Background())
+		if err != nil {
+			b.logger.Errorf("Failed creating ack stream: %v", err)
+			return
+		}
+		b.primaryClientStream = stream
+	}
+}
+
+func (b *Batcher) broadcastEvent(baf arma.BatchAttestationFragment) {
+	b.initConsensusConnections()
 
 	for index, stream := range b.consensusStreams {
 		b.sendBAF(baf, stream, index)
+	}
+}
+
+func (b *Batcher) initConsensusConnections() {
+	b.initStreamsToConsensus()
+
+	for index := range b.consensusStreams {
+		b.connectToConsensusNodeIfNeeded(index)
 	}
 }
 
@@ -453,7 +444,7 @@ func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, stream protos.Conse
 		b.logger.Infof("Sending BAF took %v", time.Since(t1))
 	}()
 
-	if b.connections[index] == nil {
+	if b.consensusStreams[index] == nil {
 		return
 	}
 
@@ -465,23 +456,24 @@ func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, stream protos.Conse
 	})
 
 	if err != nil {
-		b.connections[index].Close()
 		b.logger.Errorf("Failed sending batch attestation fragment to %d (%s): %v", b.config.Consenters[index].PartyID, b.config.Consenters[index].Endpoint, err)
-		b.connections[index] = nil
 		b.consensusStreams[index] = nil
 		return
 	}
 }
 
-func (b *Batcher) initClients() {
+func (b *Batcher) initStreamsToConsensus() {
 	if len(b.connections) == 0 {
 		b.connections = make([]*grpc.ClientConn, len(b.config.Consenters))
 		b.consensusStreams = make([]protos.Consensus_NotifyEventClient, len(b.config.Consenters))
 	}
 }
 
-func (b *Batcher) initConsenterConnIfNeeded(index int) {
+func (b *Batcher) connectToConsensusNodeIfNeeded(index int) {
 	if b.connections[index] != nil {
+		if b.consensusStreams[index] == nil {
+			b.createStream(index)
+		}
 		return
 	}
 
@@ -496,10 +488,16 @@ func (b *Batcher) initConsenterConnIfNeeded(index int) {
 	}
 
 	b.connections[index] = conn
-	cl := protos.NewConsensusClient(conn)
+	b.createStream(index)
+}
+
+func (b *Batcher) createStream(index int) {
+	cl := protos.NewConsensusClient(b.connections[index])
+
+	var err error
 	b.consensusStreams[index], err = cl.NotifyEvent(context.Background())
 	if err != nil {
-		b.logger.Panicf("Failed creating stream: %v", err)
+		b.logger.Errorf("Failed creating stream: %v", err)
 	}
 }
 
@@ -634,5 +632,9 @@ func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
 	}
 
 	batcher := NewBatcher(logger, conf, batcherLedger, bp, ds)
+
+	batcher.initConsensusConnections()
+	batcher.connectToPrimaryIfNeeded()
+
 	return batcher
 }

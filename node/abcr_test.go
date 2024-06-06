@@ -33,9 +33,6 @@ import (
 
 func TestABCR(t *testing.T) {
 	grpclog.SetLoggerV2(&silentLogger{})
-	//clientPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/orderingservice-experiments/clients/cmd/client", []string{"GOPRIVATE=github.ibm.com"}, "-mod=mod")
-	//require.NoError(t, err)
-	//clientPath := "ordererclient"
 
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -44,10 +41,10 @@ func TestABCR(t *testing.T) {
 
 	shards := []ShardInfo{{ShardId: 1, Batchers: batcherInfos}}
 
-	batchers := createBatchers(t, batcherNodes, shards, consenterInfos)
-
 	_, clean := createConsenters(t, consenterNodes, consenterInfos, shards)
 	defer clean()
+
+	batchers := createBatchers(t, batcherNodes, shards, consenterInfos)
 
 	routers, configs := createRouters(t, batcherInfos, ca)
 
@@ -297,6 +294,9 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 
 func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, consenterInfos []ConsenterInfo) []*Batcher {
 	var batchers []*Batcher
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(4)
 
 	for i := 0; i < 4; i++ {
 		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-batcher%d", t.Name(), i+1))
@@ -317,14 +317,22 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 			Directory:          dir,
 		}
 
-		batcher := CreateBatcher(batcherConf, createLogger(t, i+1))
-		batchers = append(batchers, batcher)
-		protos.RegisterRequestTransmitServer(batcherNodes[i].Server(), batcher)
-		protos.RegisterAckServiceServer(batcherNodes[i].Server(), batcher)
-		orderer.RegisterAtomicBroadcastServer(batcherNodes[i].Server(), batcher)
-		go batcherNodes[i].Start()
-		t.Log("Batcher gRPC service listening on", batcherNodes[i].Address())
+		go func() {
+			defer wg.Done()
+
+			batcher := CreateBatcher(batcherConf, createLogger(t, i+1))
+			lock.Lock()
+			batchers = append(batchers, batcher)
+			lock.Unlock()
+			protos.RegisterRequestTransmitServer(batcherNodes[i].Server(), batcher)
+			protos.RegisterAckServiceServer(batcherNodes[i].Server(), batcher)
+			orderer.RegisterAtomicBroadcastServer(batcherNodes[i].Server(), batcher)
+			go batcherNodes[i].Start()
+			t.Log("Batcher gRPC service listening on", batcherNodes[i].Address())
+		}()
 	}
+
+	wg.Wait()
 
 	return batchers
 }
