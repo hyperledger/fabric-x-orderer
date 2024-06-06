@@ -75,6 +75,17 @@ type CryptoConfigPerParty struct {
 	RouterCertKeyPair     *tlsgen.CertKeyPair
 	// map from batcher's endpoint to its (cert,key) Pair
 	BatchersCertsAndKeys map[string]CertsAndKeys
+	UserInfo             UserInfo
+}
+
+// UserInfo holds the user information needed for connection to routers and assemblers
+// Note: a user will be created for each party. One of the users will be chosen as a grpc client that sends tx to all router and receives blocks from the assemblers.
+type UserInfo struct {
+	TLSPrivateKeyFile  node.RawBytes
+	TLSCertificateFile node.RawBytes
+	RouterEndpoints    []string
+	AssemblerEndpoints []string
+	TLSCACerts         []node.RawBytes
 }
 
 type CertsAndKeys struct {
@@ -167,7 +178,7 @@ func generate(genConfigFile **os.File, outputDir *string) {
 	networkConfig := parseNetworkConfig(networkConfigFileContent, networkCryptoConfig)
 
 	// create config material for each party in a folder structure
-	createConfigMaterial(networkConfig, outputDir)
+	createConfigMaterial(networkConfig, networkCryptoConfig, outputDir)
 }
 
 func getConfigFileContent(genConfigFile **os.File) (*Network, error) {
@@ -193,16 +204,37 @@ func getConfigFileContent(genConfigFile **os.File) (*Network, error) {
 }
 
 func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
-	var partyToCryptoConfig = make(map[uint16]CryptoConfigPerParty)
+	// collect router and assembler endpoints, required for defining a user for each party
+	var routerEndpoints []string
+	var assemblerEndpoints []string
+	for _, party := range network.Parties {
+		routerEndpoints = append(routerEndpoints, party.RouterEndpoint)
+		assemblerEndpoints = append(assemblerEndpoints, party.AssemblerEndpoint)
+	}
 
+	// create CA for each party
+	var partiesCAs = make(map[uint16][]tlsgen.CA)
+	var tlsCACertsBytesPartiesCollection []node.RawBytes
 	for _, party := range network.Parties {
 		// create CA for the party
+		// NOTE: a party can have several CA's, meanwhile armageddon creates only one CA for each party.
 		ca, err := tlsgen.NewCA()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "err: %s, failed creating CA for party %d", err, party.ID)
 			os.Exit(2)
 		}
-		listOfCAs := []tlsgen.CA{ca}
+		partiesCAs[party.ID] = []tlsgen.CA{ca}
+		// user will be able to connect to each of the routers only if it receives for each router the CA that signed the certificate of that router.
+		// therefore, the CA created per party must be collected for each party, to which the router is associated.
+		tlsCACertsBytesPartiesCollection = append(tlsCACertsBytesPartiesCollection, ca.CertBytes())
+	}
+
+	var partyToCryptoConfig = make(map[uint16]CryptoConfigPerParty)
+
+	for _, party := range network.Parties {
+		// ca's of the party
+		listOfCAs := partiesCAs[party.ID]
+		ca := listOfCAs[0]
 
 		// create crypto material for each party's nodes
 		// crypto for assembler
@@ -300,12 +332,29 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 			}
 		}
 
+		// crypto for user
+		// (cert, key) pair for user
+		userTlsCertKayPair, err := ca.NewClientCertKeyPair()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for the user of party %d", err, party.ID)
+			os.Exit(2)
+		}
+
+		userInfo := UserInfo{
+			TLSPrivateKeyFile:  userTlsCertKayPair.Key,
+			TLSCertificateFile: userTlsCertKayPair.Cert,
+			RouterEndpoints:    routerEndpoints,
+			AssemblerEndpoints: assemblerEndpoints,
+			TLSCACerts:         tlsCACertsBytesPartiesCollection,
+		}
+
 		partyCryptoConfig := CryptoConfigPerParty{
 			CAs:                   listOfCAs,
 			AssemblerCertKeyPair:  assemblerCertKeyPair,
 			ConsenterCertsAndKeys: consenterCertsAndKeys,
 			RouterCertKeyPair:     routerCertKeyPair,
 			BatchersCertsAndKeys:  batcherEndpointToCertsAndKeys,
+			UserInfo:              userInfo,
 		}
 		partyToCryptoConfig[party.ID] = partyCryptoConfig
 	}
@@ -477,7 +526,7 @@ func constructSharedConfig(network *Network, networkCryptoConfig *NetworkCryptoC
 	}
 }
 
-func createConfigMaterial(networkConfig *NetworkConfig, outputDir *string) {
+func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *NetworkCryptoConfig, outputDir *string) {
 	for i, partyConfig := range networkConfig.PartiesConfig {
 		rootDir := path.Join(*outputDir, fmt.Sprintf("Party%d", i+1))
 		os.MkdirAll(rootDir, 0755)
@@ -509,6 +558,20 @@ func createConfigMaterial(networkConfig *NetworkConfig, outputDir *string) {
 		err = node.NodeConfigToYAML(partyConfig.AssemblerConfig, configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating assembler node config yaml file, err: %v", err)
+			os.Exit(1)
+		}
+
+		userInfo := networkCryptoConfig.PartyToCryptoConfig[uint16(i+1)].UserInfo
+		configPath = path.Join(rootDir, "user_config.yaml")
+		uca, err := yaml.Marshal(&userInfo)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error marshaling user config yaml file, err: %v", err)
+			os.Exit(1)
+		}
+
+		err = os.WriteFile(configPath, uca, 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error writing user config yaml file, err: %v", err)
 			os.Exit(1)
 		}
 	}

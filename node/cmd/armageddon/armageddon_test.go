@@ -207,6 +207,15 @@ func readBatcherNodeConfigFromYaml(t *testing.T, path string) *node.BatcherNodeC
 	return &batcherConfig
 }
 
+func readUserConfigFromYaml(t *testing.T, path string) *UserInfo {
+	configBytes, err := os.ReadFile(path)
+	require.NoError(t, err)
+	userConfig := UserInfo{}
+	err = yaml.Unmarshal(configBytes, &userConfig)
+	require.NoError(t, err)
+	return &userConfig
+}
+
 // editDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
 func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
 	dir, err := os.MkdirTemp("", "Directory_"+fmt.Sprintf(name))
@@ -240,8 +249,11 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 func sendTxToRouter(t *testing.T, dir string, wg *sync.WaitGroup, routerNum int) {
 	// read router config
 	routerConfig := readRouterNodeConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", routerNum+1), "router_node_config.yaml"))
+
+	// read user config, arbitrary selection of user1 (of party1), any other user could be selected
+	userConfig := readUserConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml"))
 	var serverRootCAs [][]byte
-	for _, rawBytes := range routerConfig.Shards[0].Batchers[routerNum].TLSCACerts {
+	for _, rawBytes := range userConfig.TLSCACerts {
 		byteSlice := []byte(rawBytes)
 		serverRootCAs = append(serverRootCAs, byteSlice)
 	}
@@ -253,8 +265,8 @@ func sendTxToRouter(t *testing.T, dir string, wg *sync.WaitGroup, routerNum int)
 			ClientTimeout:  time.Hour,
 		},
 		SecOpts: comm.SecureOptions{
-			Key:               routerConfig.TLSPrivateKeyFile,
-			Certificate:       routerConfig.TLSCertificateFile,
+			Key:               userConfig.TLSPrivateKeyFile,
+			Certificate:       userConfig.TLSCertificateFile,
 			RequireClientCert: true,
 			UseTLS:            true,
 			ServerRootCAs:     serverRootCAs,
@@ -295,8 +307,11 @@ func receiveResponseFromAssemblers(t *testing.T, dir string) {
 	for i := 0; i < 4; i++ {
 		// read assembler config
 		assemblerConfig := readAssemblerNodeConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", i+1), "assembler_node_config.yaml"))
+
+		// read user config of party1 since user1 it has been selected
+		userConfig := readUserConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml"))
 		var serverRootCAs [][]byte
-		for _, rawBytes := range assemblerConfig.Shards[0].Batchers[i].TLSCACerts {
+		for _, rawBytes := range userConfig.TLSCACerts {
 			byteSlice := []byte(rawBytes)
 			serverRootCAs = append(serverRootCAs, byteSlice)
 		}
@@ -308,8 +323,8 @@ func receiveResponseFromAssemblers(t *testing.T, dir string) {
 				ClientTimeout:  time.Hour,
 			},
 			SecOpts: comm.SecureOptions{
-				Key:               assemblerConfig.TLSPrivateKeyFile,
-				Certificate:       assemblerConfig.TLSCertificateFile,
+				Key:               userConfig.TLSPrivateKeyFile,
+				Certificate:       userConfig.TLSCertificateFile,
 				RequireClientCert: true,
 				UseTLS:            true,
 				ServerRootCAs:     serverRootCAs,
