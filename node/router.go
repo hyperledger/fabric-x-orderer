@@ -67,8 +67,11 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		reqID, router := r.getRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
 
-		router.forwardNoFeedback(reqID, req.Payload)
-		feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_SUCCESS}
+		if err := router.forwardBestEffort(reqID, req.Payload); err != nil {
+			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_INTERNAL_SERVER_ERROR, Info: err.Error()}
+		} else {
+			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_SUCCESS}
+		}
 	}
 }
 
@@ -240,9 +243,8 @@ const (
 )
 
 type stream struct {
-	endpoint  string
-	logger    arma.Logger
-	activated bool
+	endpoint string
+	logger   arma.Logger
 	protos.RequestTransmit_SubmitStreamClient
 	ctx              context.Context
 	once             sync.Once
@@ -287,10 +289,6 @@ func (s *stream) cancel() {
 }
 
 func (s *stream) faulty() bool {
-	if !s.activated {
-		return true
-	}
-
 	select {
 	case <-s.ctx.Done():
 		return true
@@ -311,7 +309,7 @@ func NewShardRouter(l arma.Logger, batcherEndpoint string, batcherRootCAs [][]by
 	return sr
 }
 
-func (sr *ShardRouter) forwardNoFeedback(reqID, request []byte) {
+func (sr *ShardRouter) forwardBestEffort(reqID, request []byte) error {
 	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
 	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % router2batcherStreamsPerConn
 
@@ -320,22 +318,17 @@ func (sr *ShardRouter) forwardNoFeedback(reqID, request []byte) {
 	sr.lock.RUnlock()
 
 	if stream == nil || stream.faulty() {
-		sr.lock.Lock()
-		sr.initStream(connIndex, streamInConnIndex)
-		sr.lock.Unlock()
-
-		sr.lock.RLock()
-		stream = sr.streams[connIndex][streamInConnIndex]
-		sr.lock.RUnlock()
+		stream = sr.maybeInitStream(stream, connIndex, streamInConnIndex)
 	}
 
 	if stream == nil || stream.faulty() {
-		return
+		return fmt.Errorf("could not establish stream to %s", sr.batcherEndpoint)
 	}
 
 	stream.requests <- &protos.Request{
 		Payload: request,
 	}
+	return nil
 }
 
 func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, trace []byte) {
@@ -347,13 +340,7 @@ func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, t
 	sr.lock.RUnlock()
 
 	if stream == nil || stream.faulty() {
-		sr.lock.Lock()
-		sr.initStream(connIndex, streamInConnIndex)
-		sr.lock.Unlock()
-
-		sr.lock.RLock()
-		stream = sr.streams[connIndex][streamInConnIndex]
-		sr.lock.RUnlock()
+		stream = sr.maybeInitStream(stream, connIndex, streamInConnIndex)
 	}
 
 	if stream == nil || stream.faulty() {
@@ -370,6 +357,19 @@ func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, t
 		TraceId: trace,
 		Payload: request,
 	}
+}
+
+func (sr *ShardRouter) maybeInitStream(stream *stream, connIndex int, streamInConnIndex int) *stream {
+	sr.lock.Lock()
+	defer sr.lock.Unlock()
+
+	stream = sr.streams[connIndex][streamInConnIndex]
+	if stream == nil || stream.faulty() {
+		sr.initStream(connIndex, streamInConnIndex)
+	}
+	stream = sr.streams[connIndex][streamInConnIndex]
+
+	return stream
 }
 
 func (s *stream) registerReply(traceID []byte, responses chan response) {
@@ -417,6 +417,7 @@ func (sr *ShardRouter) maybeConnect() {
 	}
 
 	sr.replenishConnPool()
+	sr.initStreams()
 }
 
 func (sr *ShardRouter) replenishNeeded() bool {
@@ -456,9 +457,17 @@ func (sr *ShardRouter) replenishConnPool() {
 				sr.logger.Errorf("Failed connecting to %s: %v", sr.batcherEndpoint, err)
 			} else {
 				sr.connPool[i] = conn
-				sr.initStreamsForConn(i)
 			}
 		}
+	}
+}
+
+func (sr *ShardRouter) initStreams() {
+	sr.lock.Lock()
+	defer sr.lock.Unlock()
+
+	for i := range sr.connPool {
+		sr.initStreamsForConn(i)
 	}
 }
 
@@ -485,7 +494,6 @@ func (sr *ShardRouter) initStream(i int, j int) {
 			RequestTransmit_SubmitStreamClient: newStream,
 			cancelThisStream:                   cancel,
 			ctx:                                ctx,
-			activated:                          true,
 		}
 		go s.sendRequests()
 		go s.readResponses()
