@@ -121,6 +121,8 @@ func (b *Batcher) Run() {
 
 	b.primary = b.Batchers[primaryIndex]
 
+	b.confirmedSeq = b.Seq
+
 	if b.primary == b.ID {
 		go b.runPrimary()
 		return
@@ -191,11 +193,11 @@ func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 
 	b.confirmedSequences[seq][from] = struct{}{}
 
-	signatureCollectCount := len(b.confirmedSequences[seq])
+	signatureCollectCount := len(b.confirmedSequences[b.confirmedSeq])
 	if signatureCollectCount >= b.Threshold {
+		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) conformations", b.confirmedSeq, signatureCollectCount)
+		delete(b.confirmedSequences, b.confirmedSeq)
 		b.confirmedSeq++
-		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) conformations", seq, signatureCollectCount)
-		delete(b.confirmedSequences, seq)
 		b.signal.Broadcast()
 	} else {
 		b.Logger.Infof("Collected %d out of %d conformations on sequence %d", signatureCollectCount, b.Threshold, seq)
