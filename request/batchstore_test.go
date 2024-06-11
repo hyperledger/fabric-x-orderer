@@ -61,7 +61,8 @@ func TestBatchStore(t *testing.T) {
 	assert.Equal(t, workerNum*workPerWorker, int(inserted))
 
 	for i := 0; i < 10; i++ {
-		ctx, _ = context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 		fetched = bs.Fetch(ctx)
 		assert.Len(t, fetched, int(max))
 	}
@@ -85,11 +86,9 @@ func TestBatchStore(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, workerNum*workPerWorker, int(removed))
-
 }
 
 func TestBatch(t *testing.T) {
-
 	requestInspector := &reqInspector{}
 
 	workerNum := runtime.NumCPU()

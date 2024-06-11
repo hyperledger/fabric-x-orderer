@@ -56,4 +56,5 @@ func TestCheapLedger(t *testing.T) {
 	for seq, expectedData := range seq2data {
 		assert.Equal(t, expectedData, cl.Load(seq).Data)
 	}
+	cancel()
 }

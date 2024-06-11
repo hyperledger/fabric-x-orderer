@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package net
 
 import (
-	"arma/testutil/tlsgen"
 	"bytes"
 	"crypto/rand"
 	"crypto/x509"
@@ -18,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"arma/testutil/tlsgen"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"

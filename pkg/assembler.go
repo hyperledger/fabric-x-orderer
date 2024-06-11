@@ -79,7 +79,6 @@ func (a *Assembler) Run() {
 				a.lock.RUnlock()
 				seq++
 			}
-
 		}(shardID, i)
 	}
 
@@ -93,7 +92,6 @@ func (a *Assembler) Run() {
 			a.Ledger.Append(ba.Seq(), batch, ba)
 		}
 	}(attestations)
-
 }
 
 func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
@@ -110,5 +108,4 @@ func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
 		a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), hex.EncodeToString(ba.Digest()[:8]), time.Since(t1))
 		return batch
 	}
-
 }

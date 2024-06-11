@@ -185,7 +185,6 @@ func (ps *PendingStore) garbageCollectEmptyBuckets() {
 }
 
 func (ps *PendingStore) checkFirstStrike(now time.Time) {
-
 	var buckets []*bucket
 
 	for _, bucket := range ps.buckets {
@@ -212,7 +211,6 @@ func (ps *PendingStore) checkFirstStrike(now time.Time) {
 }
 
 func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
-
 	var detectedCensorship bool
 
 	newBuckets := make([]*bucket, 0, len(ps.buckets))
@@ -261,7 +259,6 @@ func (ps *PendingStore) rotateBuckets(now time.Time) {
 }
 
 func (ps *PendingStore) RemoveRequests(requestIDs ...string) {
-
 	workerNum := runtime.NumCPU()
 
 	var wg sync.WaitGroup
@@ -323,7 +320,6 @@ func (ps *PendingStore) Prune(predicate func([]byte) error) {
 }
 
 func (ps *PendingStore) Submit(request []byte) error {
-
 	if ps.isClosed() {
 		return errors.Errorf("pending store closed, request rejected")
 	}
@@ -339,7 +335,6 @@ func (ps *PendingStore) Submit(request []byte) error {
 		}
 		return nil
 	}
-
 }
 
 func (ps *PendingStore) now() time.Time {
@@ -348,7 +343,6 @@ func (ps *PendingStore) now() time.Time {
 
 // GetAllRequests returns all stored requests in the same order of their arrival, the oldest one will be the first
 func (ps *PendingStore) GetAllRequests(max uint64) [][]byte {
-
 	if !ps.isStopped() {
 		ps.Stop()
 		ps.Logger.Warnf("GetAllRequests should be called only when the pending store is stopped")

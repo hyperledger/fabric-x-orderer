@@ -23,12 +23,10 @@ func TestPending(t *testing.T) {
 		ReqIDGCInterval: time.Second,
 		Logger:          sugaredLogger,
 		SecondStrikeCallback: func() {
-
 		},
 		StartTime: start,
 		Time:      ticker.C,
 		FirstStrikeCallback: func([]byte) {
-
 		},
 		Epoch:                 time.Millisecond * 200,
 		FirstStrikeThreshold:  time.Second * 10,
@@ -104,12 +102,10 @@ func TestGetAll(t *testing.T) {
 		ReqIDGCInterval: time.Second,
 		Logger:          sugaredLogger,
 		SecondStrikeCallback: func() {
-
 		},
 		StartTime: start,
 		Time:      ticker.C,
 		FirstStrikeCallback: func([]byte) {
-
 		},
 		Epoch:                 time.Millisecond * 200,
 		FirstStrikeThreshold:  time.Second * 10,
@@ -134,5 +130,4 @@ func TestGetAll(t *testing.T) {
 	ps.Close()
 	all := ps.GetAllRequests(uint64(count))
 	assert.Equal(t, count, len(all))
-
 }

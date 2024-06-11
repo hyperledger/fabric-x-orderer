@@ -202,7 +202,6 @@ func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 	} else {
 		b.Logger.Infof("Collected %d out of %d conformations on sequence %d", signatureCollectCount, b.Threshold, seq)
 	}
-
 }
 
 func (b *Batcher) secondariesKeepUpWithMe() bool {

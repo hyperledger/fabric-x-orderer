@@ -18,8 +18,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type reqInspector struct {
-}
+type reqInspector struct{}
 
 func (ri *reqInspector) RequestID(req []byte) string {
 	digest := sha256.Sum256(req)
@@ -65,7 +64,6 @@ func TestRequestPool(t *testing.T) {
 
 	for worker := 0; worker < workerNum; worker++ {
 		go func(worker int) {
-
 			for i := 0; i < workerPerWorker; i++ {
 				req := make([]byte, 8)
 				binary.BigEndian.PutUint32(req, uint32(worker))
@@ -113,7 +111,6 @@ func removeRequests(workerNum int, batch [][]byte, requestInspector *reqInspecto
 			}
 
 			pool.RemoveRequests(reqInfos...)
-
 		}(workerID)
 	}
 
@@ -193,7 +190,6 @@ func TestRestartPool(t *testing.T) {
 }
 
 func TestBasicBatching(t *testing.T) {
-
 	sugaredLogger := createLogger(t, 0)
 
 	byteReq1 := makeTestRequest("1", "foo")
@@ -424,7 +420,6 @@ func TestBasicPrune(t *testing.T) {
 
 	res = pool.NextRequests(ctx)
 	assert.Len(t, res, 2)
-
 }
 
 func makeTestRequest(txID, data string) []byte {

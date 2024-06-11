@@ -1,7 +1,6 @@
 package arma
 
 import (
-	"arma/request"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -11,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"arma/request"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -29,19 +30,16 @@ func TestBatchBytes(t *testing.T) {
 	assert.Equal(t, b, b2)
 }
 
-type reqInspector struct {
-}
+type reqInspector struct{}
 
 func (ri *reqInspector) RequestID(req []byte) string {
 	digest := sha256.Sum256(req)
 	return hex.EncodeToString(digest[:])
 }
 
-type noopLedger struct {
-}
+type noopLedger struct{}
 
 func (noopLedger) Append(_ PartyID, _ uint64, _ []byte) {
-
 }
 
 type naiveReplication struct {
@@ -204,7 +202,6 @@ func TestBatchersStopSecondaries(t *testing.T) {
 
 	submits.Wait()
 	stopped.Wait()
-
 }
 
 func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {

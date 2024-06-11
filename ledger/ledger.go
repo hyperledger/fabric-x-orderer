@@ -9,9 +9,7 @@ import (
 	"sync/atomic"
 )
 
-var (
-	Ledgers []*CheapLedger
-)
+var Ledgers []*CheapLedger
 
 type CheapLedger struct {
 	file     *os.File
@@ -33,7 +31,7 @@ func NewCheapLedger(filePath string) *CheapLedger {
 	cl := &CheapLedger{
 		filePath: filePath,
 	}
-	write, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	write, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o666)
 	if err != nil {
 		panic(err)
 	}

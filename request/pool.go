@@ -67,7 +67,6 @@ type PoolOptions struct {
 
 // NewPool constructs a new requests pool
 func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool {
-
 	// TODO check pool options
 
 	if options.SubmitTimeout == 0 {
@@ -234,7 +233,6 @@ func (rp *Pool) RemoveRequests(requestsIDs ...string) {
 	for _, requestID := range requestsIDs {
 		rp.batchStore.Remove(requestID)
 	}
-	return
 }
 
 func (rp *Pool) Prune(predicate func([]byte) error) {
@@ -311,8 +309,6 @@ func (rp *Pool) Restart(batching bool) {
 
 	// batching was not enabled but now it is
 	rp.moveToBatchStore()
-	return
-
 }
 
 func (rp *Pool) setBatching(enabled bool) {

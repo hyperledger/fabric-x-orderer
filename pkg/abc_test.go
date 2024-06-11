@@ -12,19 +12,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type mockBatchAttestationDB struct {
-}
+type mockBatchAttestationDB struct{}
 
 func (m *mockBatchAttestationDB) Exists(digest []byte) bool {
 	return false
 }
 
 func (m *mockBatchAttestationDB) Put(digest [][]byte, epoch []uint64) {
-
 }
 
 func (m *mockBatchAttestationDB) Clean(epoch uint64) {
-
 }
 
 type naiveTotalOrder chan []byte

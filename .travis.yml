@@ -1,7 +1,13 @@
 language: go
 go:
   - 1.21.0
-
+before_script:
+- go install golang.org/x/tools/cmd/goimports@latest
+- go install honnef.co/go/tools/cmd/staticcheck@latest
+- go install mvdan.cc/gofumpt@latest
 script:
-  - go test -race ./...
-  - (cd node; PATH=$PATH:orderingservice-experiments/clients/cmd/client/ go test -race ./... )
+- set -e
+- make linter
+- make check-deps
+- go test -race ./...
+- (cd node; PATH=$PATH:orderingservice-experiments/clients/cmd/client/ go test -race ./... )

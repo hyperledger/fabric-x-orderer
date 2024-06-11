@@ -187,7 +187,6 @@ func TestAssembler(t *testing.T) {
 	}
 
 	assert.Len(t, digests, 0)
-
 }
 
 func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveBatchAttestationReplicator, *Assembler) {

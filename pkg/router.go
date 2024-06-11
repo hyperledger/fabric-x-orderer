@@ -16,9 +16,7 @@ func (r *Router) Map(request []byte) (shard uint16, reqID []byte) {
 	return shardID, reqID
 }
 
-var (
-	table = crc64.MakeTable(crc64.ECMA)
-)
+var table = crc64.MakeTable(crc64.ECMA)
 
 func CRC64RequestToShard(shardCount uint16) func([]byte) ([]byte, uint16) {
 	return func(request []byte) ([]byte, uint16) {
