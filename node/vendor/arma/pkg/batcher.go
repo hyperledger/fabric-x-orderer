@@ -5,19 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 )
-
-type Logger interface {
-	Debugf(template string, args ...interface{})
-	Infof(template string, args ...interface{})
-	Errorf(template string, args ...interface{})
-	Warnf(template string, args ...interface{})
-	Panicf(template string, args ...interface{})
-}
 
 type RequestInspector interface {
 	RequestID(req []byte) string
@@ -87,6 +77,8 @@ type BatchLedger interface {
 	Append(PartyID, uint64, []byte)
 }
 
+var gap = uint64(10)
+
 type Batcher struct {
 	Batchers             []PartyID
 	BatchTimeout         time.Duration
@@ -96,16 +88,16 @@ type Batcher struct {
 	State                State
 	Shard                ShardID
 	Threshold            int
+	Seq                  uint64
 	Logger               Logger
 	Ledger               BatchLedger
-	Seq                  uint64
-	ConfirmedSeq         uint64
 	BatchPuller          BatchPuller
 	AttestBatch          func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
 	AttestationFromBytes func([]byte) (BatchAttestationFragment, error)
 	TotalOrderBAF        func(BatchAttestationFragment)
 	AckBAF               func(seq uint64, to PartyID)
 	MemPool              MemPool
+	confirmedSeq         uint64
 	running              sync.WaitGroup
 	stopChan             chan struct{}
 	stopCtx              context.Context
@@ -128,6 +120,8 @@ func (b *Batcher) Run() {
 	b.Logger.Infof("ID: %d, batcher for our shard: %v, primary index: %d", b.ID, b.Batchers, primaryIndex)
 
 	b.primary = b.Batchers[primaryIndex]
+
+	b.confirmedSeq = b.Seq
 
 	if b.primary == b.ID {
 		go b.runPrimary()
@@ -168,55 +162,51 @@ func (b *Batcher) Submit(request []byte) error {
 func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 	// Only the primary performs the remaining code
 	if b.primary != b.ID {
-		b.Logger.Warnf("Received ack on sequence %d from %d but we are not the primary (%d)", seq, from, b.primary)
+		b.Logger.Warnf("Batcher %d called handle ack on sequence %d from %d but it is not the primary (%d)", b.ID, seq, from, b.primary)
 		return
 	}
 
-	b.Logger.Infof("Received ack on sequence %d from %d", seq, from)
+	b.Logger.Infof("Called handle ack on sequence %d from %d", seq, from)
 
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	confirmedSequence := atomic.LoadUint64(&b.ConfirmedSeq)
-
-	if seq < confirmedSequence {
-		b.Logger.Debugf("Received message on sequence %d but we expect sequence %d to %d", seq, confirmedSequence, confirmedSequence+10)
+	if seq < b.confirmedSeq {
+		b.Logger.Debugf("Received message on sequence %d but we expect sequence %d to %d", seq, b.confirmedSeq, b.confirmedSeq+gap)
 		return
 	}
 
-	if seq-confirmedSequence > 10 {
-		b.Logger.Warnf("Received message on sequence %d but our confirmed sequence is only at %d", seq, confirmedSequence)
+	if seq-b.confirmedSeq > gap {
+		b.Logger.Warnf("Received message on sequence %d but our confirmed sequence is only at %d", seq, b.confirmedSeq)
 		return
 	}
 
 	_, exists := b.confirmedSequences[seq]
 	if !exists {
-		b.confirmedSequences[seq] = make(map[PartyID]struct{}, 16)
+		b.confirmedSequences[seq] = make(map[PartyID]struct{}, len(b.Batchers))
 	}
 
 	if _, exists := b.confirmedSequences[seq][from]; exists {
-		b.Logger.Warnf("Already received signature on %d from %d", seq, from)
+		b.Logger.Warnf("Already received conformation on %d from %d", seq, from)
 		return
 	}
 
 	b.confirmedSequences[seq][from] = struct{}{}
 
-	signatureCollectCount := len(b.confirmedSequences[seq])
+	signatureCollectCount := len(b.confirmedSequences[b.confirmedSeq])
 	if signatureCollectCount >= b.Threshold {
-		atomic.AddUint64(&b.ConfirmedSeq, 1)
-		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) signatures", seq, signatureCollectCount)
-		delete(b.confirmedSequences, seq)
+		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) conformations", b.confirmedSeq, signatureCollectCount)
+		delete(b.confirmedSequences, b.confirmedSeq)
+		b.confirmedSeq++
 		b.signal.Broadcast()
 	} else {
-		b.Logger.Infof("Collected %d out of %d signatures on sequence %d", signatureCollectCount, b.Threshold, seq)
+		b.Logger.Infof("Collected %d out of %d conformations on sequence %d", signatureCollectCount, b.Threshold, seq)
 	}
-
 }
 
 func (b *Batcher) secondariesKeepUpWithMe() bool {
-	confirmedSeq := atomic.LoadUint64(&b.ConfirmedSeq)
-	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.Seq, confirmedSeq)
-	return b.Seq-confirmedSeq < 10
+	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.Seq, b.confirmedSeq)
+	return b.Seq-b.confirmedSeq < gap
 }
 
 func (b *Batcher) runPrimary() {
@@ -231,8 +221,6 @@ func (b *Batcher) runPrimary() {
 	var currentBatch BatchedRequests
 	var digest []byte
 
-	primary := b.primary
-
 	for {
 		var serializedBatch []byte
 		for {
@@ -240,25 +228,21 @@ func (b *Batcher) runPrimary() {
 			currentBatch = b.MemPool.NextRequests(ctx)
 			select {
 			case <-b.stopChan:
+				cancel()
 				return
 			default:
-
 			}
 			if len(currentBatch) == 0 {
 				continue
 			}
-			b.Logger.Infof("Batcher ordered a total of %d requests for sequence %d", len(currentBatch), b.Seq)
+			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.Seq)
 			digest = b.Digest(currentBatch)
 			serializedBatch = currentBatch.ToBytes()
 			cancel()
 			break
 		}
 
-		if len(currentBatch) == 0 {
-			continue
-		}
-
-		baf := b.AttestBatch(b.Seq, primary, b.Shard, digest)
+		baf := b.AttestBatch(b.Seq, b.ID, b.Shard, digest)
 
 		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
 
@@ -273,29 +257,11 @@ func (b *Batcher) runPrimary() {
 }
 
 func (b *Batcher) removeRequests(batch BatchedRequests) {
-
-	workerNum := runtime.NumCPU()
-
-	var wg sync.WaitGroup
-	wg.Add(workerNum)
-
-	for workerID := 0; workerID < workerNum; workerID++ {
-		go func(workerID int) {
-			defer wg.Done()
-			reqInfos := make([]string, 0, len(batch))
-			for i, req := range batch {
-				if i%workerNum != workerID {
-					continue
-				}
-				reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
-			}
-
-			b.MemPool.RemoveRequests(reqInfos...)
-
-		}(workerID)
+	reqInfos := make([]string, 0, len(batch))
+	for _, req := range batch {
+		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
 	}
-
-	wg.Wait()
+	b.MemPool.RemoveRequests(reqInfos...)
 }
 
 func (b *Batcher) waitForSecondaries() {
@@ -315,14 +281,14 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 		panic(fmt.Sprintf("programming error: tried to send BAF with digest of size %d", len(baf.Digest())))
 	}
 
-	b.Logger.Infof("Sending batch attestation fragment on %d with digest %x", baf.Seq(), baf.Digest())
+	b.Logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
 
 	b.TotalOrderBAF(baf)
 }
 
 func (b *Batcher) runSecondary() {
 	defer b.running.Done()
-	b.Logger.Infof("%d Acting as secondary (shard %d)", b.ID, b.Shard)
+	b.Logger.Infof("Batcher %d acting as secondary (shard %d)", b.ID, b.Shard)
 	primary := b.primary
 	out := b.BatchPuller.PullBatches(primary)
 	for {

@@ -23,7 +23,6 @@ type Consenter struct {
 }
 
 func (c *Consenter) SimulateStateTransition(prevState []byte, events [][]byte) ([]byte, [][]BatchAttestationFragment) {
-
 	controlEvents, err := requestsToControlEvents(events, c.FragmentFromBytes)
 	if err != nil {
 		panic(err)

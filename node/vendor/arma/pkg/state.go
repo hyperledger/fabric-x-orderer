@@ -12,7 +12,7 @@ type Rule func(*State, Logger, ...ControlEvent)
 
 var Rules = []Rule{
 	CollectAndDeduplicateEvents,
-	//DetectEquivocation, // TODO: false positive, lets find out why
+	// DetectEquivocation, // TODO: false positive, lets find out why
 	PrimaryRotateDueToComplaints,
 	CleanupOldComplaints,
 	CleanupOldAttestations,
@@ -43,7 +43,6 @@ type RawState struct {
 }
 
 func (s *State) Serialize() []byte {
-
 	if s.ShardCount != uint16(len(s.Shards)) {
 		panic(fmt.Sprintf("shard count is %d but detected %d shards", s.ShardCount, len(s.Shards)))
 	}
@@ -126,7 +125,7 @@ func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) (Bat
 	s.loadConfig(rs.Config)
 	s.loadShards(rs.Shards, int(s.ShardCount))
 	if err := s.loadPending(rs.Pending, fragmentFromBytes); err != nil {
-		fmt.Errorf("failed loading batch attestation fragments: %v", err)
+		return fmt.Errorf("failed loading batch attestation fragments: %v", err)
 	}
 	if err := s.loadComplaints(rs.Complaints); err != nil {
 		return fmt.Errorf("failed loading complaints: %v", err)
@@ -281,7 +280,6 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 }
 
 func (s *State) Process(l Logger, ces ...ControlEvent) (State, []BatchAttestationFragment) {
-
 	s2 := s.Clone()
 
 	for _, rule := range Rules {
@@ -295,8 +293,7 @@ func (s *State) Process(l Logger, ces ...ControlEvent) (State, []BatchAttestatio
 }
 
 func (s *State) Clone() State {
-	var s2 State
-	s2 = *s
+	s2 := *s
 	s2.Shards = make([]ShardTerm, len(s.Shards))
 	s2.Pending = make([]BatchAttestationFragment, len(s.Pending))
 	s2.Complaints = make([]Complaint, len(s.Complaints))
@@ -367,7 +364,6 @@ func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
 	var newComplaints []Complaint
 
 	for _, complaint := range s.Complaints {
-
 		if complaintsToNum[complaint.ShardTerm] >= int(s.Quorum) {
 
 			term := s.Shards[int(complaint.Shard-1)].Term
@@ -393,7 +389,6 @@ func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
 	}
 
 	s.Complaints = newComplaints
-
 }
 
 func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
