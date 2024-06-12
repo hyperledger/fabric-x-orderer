@@ -71,7 +71,11 @@ type chainManager struct {
 }
 
 func (c *chainManager) GetChain(chainID string) deliver.Chain {
-	return &chain{ledger: c.ledgersPerChain[chainID]}
+	if ledger, exists := c.ledgersPerChain[chainID]; !exists {
+		return nil
+	} else {
+		return &chain{ledger: ledger}
+	}
 }
 
 type chain struct {
