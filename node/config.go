@@ -3,6 +3,7 @@ package node
 import (
 	"encoding/base64"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -91,6 +92,11 @@ type BatcherNodeConfig struct {
 	TLSPrivateKeyFile  RawBytes
 	TLSCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
+	MemPoolMaxSize     uint64
+	BatchMaxSize       uint32
+	BatchMaxBytes      uint32
+	RequestMaxBytes    uint64
+	BatchTimeout       time.Duration
 }
 
 type ConsenterNodeConfig struct {
@@ -104,6 +110,7 @@ type ConsenterNodeConfig struct {
 	TLSPrivateKeyFile  RawBytes
 	TLSCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
+	BatchTimeout       time.Duration
 }
 
 func NodeConfigToYAML(config interface{}, path string) error {

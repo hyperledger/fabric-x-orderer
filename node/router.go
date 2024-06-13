@@ -85,10 +85,26 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func NewRouter(shards []uint16, batcherEndpoints []string, batcherRootCAs [][][]byte, tlsCert []byte, tlsKey []byte, logger arma.Logger) *Router {
+func NewRouter(shards []uint16,
+	batcherEndpoints []string,
+	batcherRootCAs [][][]byte,
+	tlsCert []byte,
+	tlsKey []byte,
+	logger arma.Logger,
+	numOfConnectionsForBatcher int,
+	numOfgRPCStreamsPerConnection int,
+) *Router {
+	if numOfConnectionsForBatcher == 0 {
+		numOfConnectionsForBatcher = defauultRouter2batcherConnPoolSize
+	}
+
+	if numOfgRPCStreamsPerConnection == 0 {
+		numOfgRPCStreamsPerConnection = defaultRouter2batcherStreamsPerConn
+	}
+
 	r := &Router{shards: shards, shardRouters: make(map[uint16]*ShardRouter), logger: logger, router: arma.Router{Logger: logger, ShardCount: uint16(len(shards))}}
 	for i, shard := range shards {
-		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i], tlsCert, tlsKey)
+		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i], tlsCert, tlsKey, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection)
 	}
 
 	go func() {
@@ -175,7 +191,6 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 
 	response := <-feedbackChan
 	return prepareRequestResponse(&response), nil
-
 }
 
 func (r *Router) sendFeedbackAtomicBroadcast(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, errors chan response) {
@@ -226,20 +241,22 @@ func prepareRequestResponse(response *response) *protos.SubmitResponse {
 }
 
 type ShardRouter struct {
-	logger          arma.Logger
-	batcherEndpoint string
-	batcherRootCAs  [][]byte
-	once            sync.Once
-	lock            sync.RWMutex
-	connPool        []*grpc.ClientConn
-	streams         [][]*stream
-	tlsCert         []byte
-	tlsKey          []byte
+	router2batcherConnPoolSize   int
+	router2batcherStreamsPerConn int
+	logger                       arma.Logger
+	batcherEndpoint              string
+	batcherRootCAs               [][]byte
+	once                         sync.Once
+	lock                         sync.RWMutex
+	connPool                     []*grpc.ClientConn
+	streams                      [][]*stream
+	tlsCert                      []byte
+	tlsKey                       []byte
 }
 
 const (
-	router2batcherConnPoolSize   = 10
-	router2batcherStreamsPerConn = 20
+	defauultRouter2batcherConnPoolSize  = 10
+	defaultRouter2batcherStreamsPerConn = 20
 )
 
 type stream struct {
@@ -297,13 +314,22 @@ func (s *stream) faulty() bool {
 	}
 }
 
-func NewShardRouter(l arma.Logger, batcherEndpoint string, batcherRootCAs [][]byte, tlsCert []byte, tlsKey []byte) *ShardRouter {
+func NewShardRouter(l arma.Logger,
+	batcherEndpoint string,
+	batcherRootCAs [][]byte,
+	tlsCert []byte,
+	tlsKey []byte,
+	numOfConnectionsForBatcher int,
+	numOfgRPCStreamsPerConnection int,
+) *ShardRouter {
 	sr := &ShardRouter{
-		tlsCert:         tlsCert,
-		tlsKey:          tlsKey,
-		logger:          l,
-		batcherEndpoint: batcherEndpoint,
-		batcherRootCAs:  batcherRootCAs,
+		tlsCert:                      tlsCert,
+		tlsKey:                       tlsKey,
+		logger:                       l,
+		batcherEndpoint:              batcherEndpoint,
+		batcherRootCAs:               batcherRootCAs,
+		router2batcherStreamsPerConn: numOfConnectionsForBatcher,
+		router2batcherConnPoolSize:   numOfgRPCStreamsPerConnection,
 	}
 
 	return sr
@@ -311,7 +337,7 @@ func NewShardRouter(l arma.Logger, batcherEndpoint string, batcherRootCAs [][]by
 
 func (sr *ShardRouter) forwardBestEffort(reqID, request []byte) error {
 	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
-	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % router2batcherStreamsPerConn
+	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % sr.router2batcherStreamsPerConn
 
 	sr.lock.RLock()
 	stream := sr.streams[connIndex][streamInConnIndex]
@@ -333,7 +359,7 @@ func (sr *ShardRouter) forwardBestEffort(reqID, request []byte) error {
 
 func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, trace []byte) {
 	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
-	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % router2batcherStreamsPerConn
+	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % sr.router2batcherStreamsPerConn
 
 	sr.lock.RLock()
 	stream := sr.streams[connIndex][streamInConnIndex]
@@ -500,16 +526,16 @@ func (sr *ShardRouter) initStream(i int, j int) {
 		sr.streams[i][j] = s
 
 	} else {
-		sr.logger.Errorf("Failed establishing stream %d to %s: %v", i*router2batcherStreamsPerConn+j, sr.batcherEndpoint, err)
+		sr.logger.Errorf("Failed establishing stream %d to %s: %v", i*sr.router2batcherStreamsPerConn+j, sr.batcherEndpoint, err)
 	}
 }
 
 func (sr *ShardRouter) initConnPoolAndStreamsOnce() {
 	sr.once.Do(func() {
-		sr.connPool = make([]*grpc.ClientConn, router2batcherConnPoolSize)
-		sr.streams = make([][]*stream, router2batcherConnPoolSize)
+		sr.connPool = make([]*grpc.ClientConn, sr.router2batcherConnPoolSize)
+		sr.streams = make([][]*stream, sr.router2batcherConnPoolSize)
 		for i := 0; i < len(sr.connPool); i++ {
-			sr.streams[i] = make([]*stream, router2batcherStreamsPerConn)
+			sr.streams[i] = make([]*stream, sr.router2batcherStreamsPerConn)
 		}
 	})
 }
@@ -545,8 +571,7 @@ func CreateRouter(config RouterNodeConfig, logger arma.Logger) *Router {
 			tlsCAs = append(tlsCAs, tlsCAsOfBatcher)
 		}
 	}
-
-	r := NewRouter(shards, endpoints, tlsCAs, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
+	r := NewRouter(shards, endpoints, tlsCAs, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.NumOfConnectionsForBatcher, config.NumOfgRPCStreamsPerConnection)
 	r.init()
 	return r
 }

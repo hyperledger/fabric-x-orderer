@@ -29,7 +29,7 @@ import (
 )
 
 var (
-	opts = request.PoolOptions{
+	defaultBatcherMemPoolOpts = request.PoolOptions{
 		AutoRemoveTimeout:     time.Second * 10,
 		BatchMaxSize:          1000 * 10,
 		BatchMaxSizeBytes:     1024 * 1024 * 10,
@@ -232,7 +232,7 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 		BatchTimeout:         time.Millisecond * 500,
 		Ledger:               ledger,
 		AttestationFromBytes: BatchAttestationFromBytes,
-		MemPool:              b.createMemPool(),
+		MemPool:              b.createMemPool(config),
 		AttestBatch:          b.attestBatch,
 		State:                computeZeroState(config),
 		ID:                   arma.PartyID(config.PartyId),
@@ -265,8 +265,14 @@ func batcherIDs(logger arma.Logger, config BatcherNodeConfig) []arma.PartyID {
 	return parties
 }
 
-func (b *Batcher) createMemPool() arma.MemPool {
-	opts := opts
+func (b *Batcher) createMemPool(config BatcherNodeConfig) arma.MemPool {
+	opts := defaultBatcherMemPoolOpts
+	opts.BatchMaxSizeBytes = config.BatchMaxBytes
+	opts.MaxSize = config.MemPoolMaxSize
+	opts.BatchMaxSize = config.BatchMaxSize
+	opts.RequestMaxBytes = config.RequestMaxBytes
+	opts.SubmitTimeout = config.BatchTimeout
+
 	opts.OnFirstStrikeTimeout = func(key []byte) {
 		b.logger.Errorf("First strike timeout occurred on request %s", b.b.RequestInspector.RequestID(key))
 	}
@@ -594,6 +600,8 @@ type BatchLedger interface {
 
 func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
 
+	conf = maybeSetDefaultConfig(conf)
+
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(conf.Directory, -1),
 		&blkstorage.IndexConfig{
@@ -637,4 +645,23 @@ func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
 	batcher.connectToPrimaryIfNeeded()
 
 	return batcher
+}
+
+func maybeSetDefaultConfig(conf BatcherNodeConfig) BatcherNodeConfig {
+	for {
+		switch {
+		case conf.BatchMaxSize == 0:
+			conf.BatchMaxSize = defaultBatcherMemPoolOpts.BatchMaxSize
+		case conf.BatchTimeout == 0:
+			conf.BatchTimeout = defaultBatcherMemPoolOpts.SubmitTimeout
+		case conf.RequestMaxBytes == 0:
+			conf.RequestMaxBytes = defaultBatcherMemPoolOpts.RequestMaxBytes
+		case conf.BatchMaxBytes == 0:
+			conf.BatchMaxBytes = defaultBatcherMemPoolOpts.BatchMaxSizeBytes
+		case conf.MemPoolMaxSize == 0:
+			conf.MemPoolMaxSize = defaultBatcherMemPoolOpts.MaxSize
+		default:
+			return conf
+		}
+	}
 }

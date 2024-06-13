@@ -803,6 +803,9 @@ func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
 
 	config := types.DefaultConfig
 	config.RequestBatchMaxInterval = time.Millisecond * 500
+	if conf.BatchTimeout != 0 {
+		config.RequestBatchMaxInterval = conf.BatchTimeout
+	}
 	config.RequestForwardTimeout = time.Second * 10
 	config.SelfID = uint64(conf.PartyId)
 	config.DecisionsPerLeader = 0

@@ -111,7 +111,7 @@ func TestRouter(t *testing.T) {
 
 	l := createLogger(t, 0)
 
-	router := NewRouter([]uint16{1}, []string{testBatcher.address}, [][][]byte{{ca.CertBytes()}}, ckp.Cert, ckp.Key, l)
+	router := NewRouter([]uint16{1}, []string{testBatcher.address}, [][][]byte{{ca.CertBytes()}}, ckp.Cert, ckp.Key, l, 0, 0)
 
 	protos.RegisterRequestTransmitServer(srv.Server(), router)
 
@@ -135,7 +135,6 @@ func TestRouter(t *testing.T) {
 	for i := 0; i < connections; i++ {
 		i := i
 		go func() {
-
 			cc := comm.ClientConfig{
 				SecOpts: comm.SecureOptions{
 					UseTLS:        true,
