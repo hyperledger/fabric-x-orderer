@@ -1,18 +1,27 @@
 package armageddon
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric/protoutil"
+	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
+	"google.golang.org/grpc"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path"
 	"runtime/debug"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/alecthomas/kingpin"
 	"github.ibm.com/Yacov-Manevich/ARMA/node"
@@ -114,8 +123,9 @@ type CLI struct {
 	app      *kingpin.Application
 	commands map[string]*kingpin.CmdClause
 	// generate command flags
-	outputDir     *string
-	genConfigFile **os.File
+	outputDir      *string
+	genConfigFile  **os.File
+	userConfigFile **os.File
 }
 
 func NewCLI() *CLI {
@@ -139,6 +149,10 @@ func (cli *CLI) configureCommands() {
 	version := cli.app.Command("version", "Show version information")
 	commands["version"] = version
 
+	submit := cli.app.Command("submit", "submit txs to routers and verify the submission")
+	cli.userConfigFile = submit.Flag("user_config", "The user configuration needed to connection with routers and assemblers").File()
+	commands["submit"] = submit
+
 	cli.commands = commands
 }
 
@@ -156,6 +170,10 @@ func (cli *CLI) Run(args []string) {
 	// "version" command
 	case cli.commands["version"].FullCommand():
 		printVersion()
+
+	// "submit" command
+	case cli.commands["submit"].FullCommand():
+		submit(cli.userConfigFile)
 	}
 }
 
@@ -434,6 +452,7 @@ func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedCon
 		SigningPrivateKey:  consenterCertsAndKeys.PrivateKey,
 	}
 }
+
 func constructAssemblerNodeConfigPerParty(partyId uint16, shards []node.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string) node.AssemblerNodeConfig {
 	partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[partyId]
 	var tlsCACertsCollection []node.RawBytes
@@ -591,6 +610,51 @@ func printVersion() {
 	fmt.Printf("Armageddon version is: %+v\n", bi.Main.Version)
 }
 
+func getUserConfigFileContent(userConfigFile **os.File) (*UserInfo, error) {
+	var configFileContent string
+	if *userConfigFile != nil {
+		data, err := io.ReadAll(*userConfigFile)
+		if err != nil {
+			return nil, fmt.Errorf("error reading configuration template: %s", err)
+		}
+		configFileContent = string(data)
+	} else {
+		// no configuration template has been provided
+		fmt.Fprintf(os.Stderr, "user config yaml file is missing")
+		os.Exit(1)
+	}
+
+	userConfig := UserInfo{}
+	err := yaml.Unmarshal([]byte(configFileContent), &userConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error Unmarshalling YAML: %s", err)
+	}
+
+	return &userConfig, nil
+}
+
+// submit command makes 1000 txs and sends them to all routers (assuming there are 4 routers)
+// it also asks for blocks from some assembler (no matter who it is) to validate the txs appear in some block
+func submit(userConfigFile **os.File) {
+	// get user config file content given as argument
+	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
+		os.Exit(-1)
+	}
+
+	// send txs to the routers
+	numOfTxs := 1000
+	var txsMap = make(map[string]struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go sendTxToRouters(&wg, userConfigFileContent, numOfTxs, txsMap)
+	wg.Wait()
+
+	// receive blocks from some assembler
+	receiveResponseFromAssembler(userConfigFileContent, txsMap)
+}
+
 func trimPortFromEndpoint(endpoint string) string {
 	if strings.Contains(endpoint, ":") {
 		host, _, err := net.SplitHostPort(endpoint)
@@ -613,4 +677,229 @@ func trimHostFromEndpoint(endpoint string) string {
 	}
 
 	return endpoint
+}
+
+func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
+	return &ab.SeekInfo{
+		Start:         &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: startSeq}}},
+		Stop:          &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: math.MaxUint64}}},
+		Behavior:      ab.SeekInfo_BLOCK_UNTIL_READY,
+		ErrorResponse: ab.SeekInfo_BEST_EFFORT,
+	}
+}
+
+// sendTxToRouters assumes there are 4 routers
+func sendTxToRouters(wg *sync.WaitGroup, userConfigFileContent *UserInfo, numOfTxs int, txsMap map[string]struct{}) {
+	defer wg.Done()
+
+	var serverRootCAs [][]byte
+	for _, rawBytes := range userConfigFileContent.TLSCACerts {
+		byteSlice := []byte(rawBytes)
+		serverRootCAs = append(serverRootCAs, byteSlice)
+	}
+
+	var gRPCRouterClientsConn []*grpc.ClientConn
+	var streams []ab.AtomicBroadcast_BroadcastClient
+
+	// create gRPC clients and streams to the routers
+	for i := 0; i < 4; i++ {
+		// create a gRPC connection to the router
+		gRPCRouterClient := comm.ClientConfig{
+			KaOpts: comm.KeepaliveOptions{
+				ClientInterval: time.Hour,
+				ClientTimeout:  time.Hour,
+			},
+			SecOpts: comm.SecureOptions{
+				Key:               userConfigFileContent.TLSPrivateKeyFile,
+				Certificate:       userConfigFileContent.TLSCertificateFile,
+				RequireClientCert: true,
+				UseTLS:            true,
+				ServerRootCAs:     serverRootCAs,
+			},
+			DialTimeout: time.Second * 5,
+		}
+
+		gRPCRouterClientConn, err := gRPCRouterClient.Dial("127.0.0.1:" + trimHostFromEndpoint(userConfigFileContent.RouterEndpoints[i]))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to router %d: %v", i+1, err)
+			os.Exit(3)
+		}
+
+		gRPCRouterClientsConn = append(gRPCRouterClientsConn, gRPCRouterClientConn)
+
+		// open a broadcast stream
+		stream, err := ab.NewAtomicBroadcastClient(gRPCRouterClientConn).Broadcast(context.TODO())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to open a broadcast stream to router %d: %v", i+1, err)
+			os.Exit(3)
+		}
+
+		streams = append(streams, stream)
+	}
+
+	// send txs to all routers
+	// update a map to manage txs
+	for i := 0; i < numOfTxs; i++ {
+		payload := []byte(fmt.Sprintf("data transaction%d", i))
+		txsMap[string(payload)] = struct{}{}
+		for j := 0; j < 4; j++ {
+			err := streams[j].Send(&common.Envelope{Payload: payload})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
+				os.Exit(3)
+			}
+		}
+	}
+
+	// close the send direction of the streams
+	for i, stream := range streams {
+		if err := stream.CloseSend(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close send direction of stream %d: %v", i+1, err)
+			os.Exit(3)
+		}
+	}
+
+	// check for acknowledgment
+	var wgRecv sync.WaitGroup
+	for n, s := range streams {
+		wgRecv.Add(1)
+		go func(stream ab.AtomicBroadcast_BroadcastClient) {
+			defer wgRecv.Done()
+			for {
+				ack, err := stream.Recv()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+				}
+				if ack.Status.String() != "SUCCESS" {
+					fmt.Fprintf(os.Stderr, "failed to receive acknowledgment from router %d: %v", n+1, err)
+					os.Exit(3)
+				}
+			}
+		}(s)
+	}
+	wgRecv.Wait()
+
+	// close gRPC connections
+	for i, conn := range gRPCRouterClientsConn {
+		if err := conn.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close gRPC connection to router %d: %v", i+1, err)
+			os.Exit(3)
+		}
+	}
+}
+
+func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap map[string]struct{}) {
+	// choose randomly the first assembler
+	i := 0
+	var serverRootCAs [][]byte
+	for _, rawBytes := range userConfigFileContent.TLSCACerts {
+		byteSlice := []byte(rawBytes)
+		serverRootCAs = append(serverRootCAs, byteSlice)
+	}
+
+	// create a gRPC connection to the assembler
+	gRPCAssemblerClient := comm.ClientConfig{
+		KaOpts: comm.KeepaliveOptions{
+			ClientInterval: time.Hour,
+			ClientTimeout:  time.Hour,
+		},
+		SecOpts: comm.SecureOptions{
+			Key:               userConfigFileContent.TLSPrivateKeyFile,
+			Certificate:       userConfigFileContent.TLSCertificateFile,
+			RequireClientCert: true,
+			UseTLS:            true,
+			ServerRootCAs:     serverRootCAs,
+		},
+		DialTimeout: time.Second * 5,
+	}
+
+	// prepare request envelope
+	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		"arma",
+		nil,
+		nextSeekInfo(0),
+		int32(0),
+		uint64(0),
+		nil,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed create a request envelope")
+		os.Exit(3)
+	}
+
+	var stream ab.AtomicBroadcast_DeliverClient
+	var gRPCAssemblerClientConn *grpc.ClientConn
+	endpointToPullFrom := "127.0.0.1:" + trimHostFromEndpoint(userConfigFileContent.AssemblerEndpoints[i])
+
+	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", i+1, err)
+		os.Exit(3)
+	}
+
+	abc := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn)
+
+	// create a deliver stream
+	stream, err = abc.Deliver(context.TODO())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create a deliver stream to assembler %d: %v", i+1, err)
+		os.Exit(3)
+	}
+
+	// send request envelope
+	err = stream.Send(requestEnvelope)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to send a request envelope to assembler %d: %v", i+1, err)
+		os.Exit(3)
+	}
+
+	// pull blocks from assembler
+	for {
+		block, err := pullBlock(stream, endpointToPullFrom, gRPCAssemblerClientConn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
+			os.Exit(3)
+		}
+
+		// iterate over txs in block
+		for j := 0; j < len(block.Data.Data); j++ {
+			env, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[j])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to get envelope from block: %v", err)
+				os.Exit(3)
+			}
+			delete(txsMap, string(env.Payload))
+		}
+
+		// if the map is empty it means we received all txs, then we stop asking for blocks from the assembler
+		if len(txsMap) == 0 {
+			break
+		}
+	}
+}
+
+func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
+	resp, err := stream.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("failed to receive a deliver response from %s", endpointToPullFrom)
+	}
+
+	block := resp.GetBlock()
+
+	if block == nil {
+		stream.CloseSend()
+		gRPCAssemblerClientConn.Close()
+		return nil, fmt.Errorf("received a non block message from %s: %v", endpointToPullFrom, resp)
+	}
+
+	if block.Data == nil || len(block.Data.Data) == 0 {
+		stream.CloseSend()
+		gRPCAssemblerClientConn.Close()
+		return nil, fmt.Errorf("received empty block from %s", endpointToPullFrom)
+	}
+
+	return block, nil
 }

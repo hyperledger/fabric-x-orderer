@@ -1,35 +1,27 @@
 package armageddon
 
 import (
-	"context"
 	"fmt"
-	"math"
 	"net"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/Yacov-Manevich/ARMA/node"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 )
 
 // Scenario:
 // 1. Create a config YAML file to be an input to armageddon
-// 2. Run armageddon to create config files in a folder structure
+// 2. Run armageddon generate command to create config files in a folder structure
 // 3. Run arma with the generated config files to run each of the nodes for all parties
-// 4. Make a tx, send to all the routers and pull block from assemblers to observe the block have been committed
+// 4. Run armageddon submit command to make 1000 tx, send to all the routers and pull blocks from some assembler to observe that txs appear in some block
 func TestArmageddon(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -63,16 +55,8 @@ func TestArmageddon(t *testing.T) {
 	}
 
 	// 4.
-	//send a tx to the routers
-	var wg sync.WaitGroup
-	wg.Add(4)
-	go func() {
-		sendTxToRouters(t, dir, &wg)
-	}()
-	wg.Wait()
-
-	// receive block from the assembler
-	receiveResponseFromAssemblers(t, dir)
+	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	armageddon.Run([]string{"submit", "--user_config", userConfigPath})
 }
 
 func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) {
@@ -93,7 +77,6 @@ func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 			}
 		}
 	}
-
 }
 
 func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}) {
@@ -208,15 +191,6 @@ func readBatcherNodeConfigFromYaml(t *testing.T, path string) *node.BatcherNodeC
 	return &batcherConfig
 }
 
-func readUserConfigFromYaml(t *testing.T, path string) *UserInfo {
-	configBytes, err := os.ReadFile(path)
-	require.NoError(t, err)
-	userConfig := UserInfo{}
-	err = yaml.Unmarshal(configBytes, &userConfig)
-	require.NoError(t, err)
-	return &userConfig
-}
-
 // editDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
 func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
 	dir, err := os.MkdirTemp("", "Directory_"+fmt.Sprintf(name))
@@ -236,161 +210,4 @@ func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
 		assemblerConfig.Directory = dir
 		node.NodeConfigToYAML(assemblerConfig, path)
 	}
-}
-
-func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
-	return &ab.SeekInfo{
-		Start:         &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: startSeq}}},
-		Stop:          &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: math.MaxUint64}}},
-		Behavior:      ab.SeekInfo_BLOCK_UNTIL_READY,
-		ErrorResponse: ab.SeekInfo_BEST_EFFORT,
-	}
-}
-
-func sendTxToRouter(t *testing.T, dir string, wg *sync.WaitGroup, routerNum int) {
-	// read router config
-	routerConfig := readRouterNodeConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", routerNum+1), "router_node_config.yaml"))
-
-	// read user config, arbitrary selection of user1 (of party1), any other user could be selected
-	userConfig := readUserConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml"))
-	var serverRootCAs [][]byte
-	for _, rawBytes := range userConfig.TLSCACerts {
-		byteSlice := []byte(rawBytes)
-		serverRootCAs = append(serverRootCAs, byteSlice)
-	}
-
-	// create a gRPC connection to the router
-	gRPCRouterClient := comm.ClientConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ClientInterval: time.Hour,
-			ClientTimeout:  time.Hour,
-		},
-		SecOpts: comm.SecureOptions{
-			Key:               userConfig.TLSPrivateKeyFile,
-			Certificate:       userConfig.TLSCertificateFile,
-			RequireClientCert: true,
-			UseTLS:            true,
-			ServerRootCAs:     serverRootCAs,
-		},
-		DialTimeout: time.Second * 5,
-	}
-	gRPCRouterClientConn, err := gRPCRouterClient.Dial("127.0.0.1:" + trimHostFromEndpoint(routerConfig.ListenAddress))
-	require.NoError(t, err)
-
-	// open a broadcast stream
-	var stream ab.AtomicBroadcast_BroadcastClient
-	stream, err = ab.NewAtomicBroadcastClient(gRPCRouterClientConn).Broadcast(context.TODO())
-	require.NoError(t, err)
-
-	// send tx
-	err = stream.Send(&common.Envelope{
-		Payload: []byte("data transaction")})
-	require.NoError(t, err)
-	t.Logf("tx was sent to router: %v", routerNum+1)
-
-	// check for acknowledgment
-	ack, err := stream.Recv()
-	require.Equal(t, ack.Status.String(), "SUCCESS")
-	t.Logf("tx was received, router: %v sent ack: %v", routerNum+1, ack)
-
-	wg.Done()
-	gRPCRouterClientConn.Close()
-	stream.CloseSend()
-}
-
-func sendTxToRouters(t *testing.T, dir string, wg *sync.WaitGroup) {
-	for i := 0; i < 4; i++ {
-		sendTxToRouter(t, dir, wg, i)
-	}
-}
-
-func receiveResponseFromAssemblers(t *testing.T, dir string) {
-	for i := 0; i < 4; i++ {
-		// read assembler config
-		assemblerConfig := readAssemblerNodeConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", i+1), "assembler_node_config.yaml"))
-
-		// read user config of party1 since user1 it has been selected
-		userConfig := readUserConfigFromYaml(t, path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml"))
-		var serverRootCAs [][]byte
-		for _, rawBytes := range userConfig.TLSCACerts {
-			byteSlice := []byte(rawBytes)
-			serverRootCAs = append(serverRootCAs, byteSlice)
-		}
-
-		// create a gRPC connection to the assembler
-		gRPCAssemblerClient := comm.ClientConfig{
-			KaOpts: comm.KeepaliveOptions{
-				ClientInterval: time.Hour,
-				ClientTimeout:  time.Hour,
-			},
-			SecOpts: comm.SecureOptions{
-				Key:               userConfig.TLSPrivateKeyFile,
-				Certificate:       userConfig.TLSCertificateFile,
-				RequireClientCert: true,
-				UseTLS:            true,
-				ServerRootCAs:     serverRootCAs,
-			},
-			DialTimeout: time.Second * 5,
-		}
-
-		// prepare request envelope
-		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-			common.HeaderType_DELIVER_SEEK_INFO,
-			"arma",
-			nil,
-			nextSeekInfo(0),
-			int32(0),
-			uint64(0),
-			nil,
-		)
-		require.NoError(t, err)
-
-		var stream ab.AtomicBroadcast_DeliverClient
-		var gRPCAssemblerClientConn *grpc.ClientConn
-		endpointToPullFrom := "127.0.0.1:" + trimHostFromEndpoint(assemblerConfig.ListenAddress)
-
-		gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
-		require.NoError(t, err)
-
-		abc := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn)
-
-		stream, err = abc.Deliver(context.TODO())
-		require.NoError(t, err)
-
-		err = stream.Send(requestEnvelope)
-		require.NoError(t, err)
-
-		t.Logf("request envelope was sent to assembler %v", i+1)
-
-		block, err := pullBlock(t, stream, endpointToPullFrom, gRPCAssemblerClientConn)
-		require.NoError(t, err)
-		require.NotNil(t, block)
-
-		env, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[0])
-		require.NoError(t, err)
-		require.Equal(t, env.Payload, []byte("data transaction"))
-		t.Logf("block was pulled successfully from assembler %v", i+1)
-
-	}
-}
-
-func pullBlock(t *testing.T, stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
-	resp, err := stream.Recv()
-	require.NoError(t, err)
-
-	block := resp.GetBlock()
-
-	if block == nil {
-		stream.CloseSend()
-		gRPCAssemblerClientConn.Close()
-		return nil, fmt.Errorf("received a non block message from %s: %v", endpointToPullFrom, resp)
-	}
-
-	if block.Data == nil || len(block.Data.Data) == 0 {
-		stream.CloseSend()
-		gRPCAssemblerClientConn.Close()
-		return nil, fmt.Errorf("received empty block from %s", endpointToPullFrom)
-	}
-
-	return block, nil
 }
