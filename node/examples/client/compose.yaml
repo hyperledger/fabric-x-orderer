@@ -1,0 +1,16 @@
+services:
+  oclient:
+    image: oclient
+    command: --configs /config.yaml
+    volumes:
+      - ../configs/client-config/config-orderer-client.yml:/config.yaml
+      - ../configs/arma-config/Party1/tlscas.pem:/tlscas.pem
+      - ../configs/arma-config/Party1/tlscert.pem:/tlscert.pem
+      - ../configs/arma-config/Party1/tlskey.pem:/tlskey.pem
+    networks:
+      - examples_network
+
+networks:
+  examples_network:
+    name: examples_default
+    external: true

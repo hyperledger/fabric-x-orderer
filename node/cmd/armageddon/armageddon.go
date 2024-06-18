@@ -719,7 +719,7 @@ func sendTxToRouters(wg *sync.WaitGroup, userConfigFileContent *UserInfo, numOfT
 			DialTimeout: time.Second * 5,
 		}
 
-		gRPCRouterClientConn, err := gRPCRouterClient.Dial("127.0.0.1:" + trimHostFromEndpoint(userConfigFileContent.RouterEndpoints[i]))
+		gRPCRouterClientConn, err := gRPCRouterClient.Dial(userConfigFileContent.RouterEndpoints[i])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to router %d: %v", i+1, err)
 			os.Exit(3)
@@ -832,7 +832,7 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap map[st
 
 	var stream ab.AtomicBroadcast_DeliverClient
 	var gRPCAssemblerClientConn *grpc.ClientConn
-	endpointToPullFrom := "127.0.0.1:" + trimHostFromEndpoint(userConfigFileContent.AssemblerEndpoints[i])
+	endpointToPullFrom := userConfigFileContent.AssemblerEndpoints[i]
 
 	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
 	if err != nil {
