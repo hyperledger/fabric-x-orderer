@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/grpclog"
 	"io"
 	"math"
 	"net"
@@ -59,6 +60,11 @@ var defaultConfig = `Parties:
       - "127.0.0.1:7068"
       - "127.0.0.1:7069"
 `
+
+func init() {
+	// set the gRPC logger to a logger that discards the log output.
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, io.Discard))
+}
 
 type Network struct {
 	Parties []Party `yaml:"Parties"`
