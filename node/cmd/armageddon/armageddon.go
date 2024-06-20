@@ -156,7 +156,7 @@ func (cli *CLI) configureCommands() {
 	commands["version"] = version
 
 	submit := cli.app.Command("submit", "submit txs to routers and verify the submission")
-	cli.userConfigFile = submit.Flag("user_config", "The user configuration needed to connection with routers and assemblers").File()
+	cli.userConfigFile = submit.Flag("config", "The user configuration needed to connection with routers and assemblers").File()
 	commands["submit"] = submit
 
 	cli.commands = commands
@@ -652,10 +652,7 @@ func submit(userConfigFile **os.File) {
 	// send txs to the routers
 	numOfTxs := 1000
 	var txsMap = make(map[string]struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go sendTxToRouters(&wg, userConfigFileContent, numOfTxs, txsMap)
-	wg.Wait()
+	sendTxToRouters(userConfigFileContent, numOfTxs, txsMap)
 
 	// receive blocks from some assembler
 	receiveResponseFromAssembler(userConfigFileContent, txsMap)
@@ -695,9 +692,7 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 }
 
 // sendTxToRouters assumes there are 4 routers
-func sendTxToRouters(wg *sync.WaitGroup, userConfigFileContent *UserInfo, numOfTxs int, txsMap map[string]struct{}) {
-	defer wg.Done()
-
+func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, txsMap map[string]struct{}) {
 	var serverRootCAs [][]byte
 	for _, rawBytes := range userConfigFileContent.TLSCACerts {
 		byteSlice := []byte(rawBytes)
@@ -743,6 +738,31 @@ func sendTxToRouters(wg *sync.WaitGroup, userConfigFileContent *UserInfo, numOfT
 		streams = append(streams, stream)
 	}
 
+	// open a go routine to check for acknowledgment
+	var wgRecv sync.WaitGroup
+	for n, s := range streams {
+		wgRecv.Add(1)
+		go func(stream ab.AtomicBroadcast_BroadcastClient) {
+			defer wgRecv.Done()
+			numOfAcks := 0
+			for {
+				ack, err := stream.Recv()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to receive acknowledgment from router %d: %v", n+1, err)
+					os.Exit(3)
+				}
+				if ack.Status.String() != "SUCCESS" {
+					fmt.Fprintf(os.Stderr, "failed to receive ack with success status from router %d: %v", n+1, err)
+					os.Exit(3)
+				}
+				numOfAcks = numOfAcks + 1
+				if numOfAcks == numOfTxs {
+					break
+				}
+			}
+		}(s)
+	}
+
 	// send txs to all routers
 	// update a map to manage txs
 	for i := 0; i < numOfTxs; i++ {
@@ -756,35 +776,7 @@ func sendTxToRouters(wg *sync.WaitGroup, userConfigFileContent *UserInfo, numOfT
 			}
 		}
 	}
-
-	// close the send direction of the streams
-	for i, stream := range streams {
-		if err := stream.CloseSend(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close send direction of stream %d: %v", i+1, err)
-			os.Exit(3)
-		}
-	}
-
-	// check for acknowledgment
-	var wgRecv sync.WaitGroup
-	for n, s := range streams {
-		wgRecv.Add(1)
-		go func(stream ab.AtomicBroadcast_BroadcastClient) {
-			defer wgRecv.Done()
-			for {
-				ack, err := stream.Recv()
-				if err != nil {
-					if err == io.EOF {
-						break
-					}
-				}
-				if ack.Status.String() != "SUCCESS" {
-					fmt.Fprintf(os.Stderr, "failed to receive acknowledgment from router %d: %v", n+1, err)
-					os.Exit(3)
-				}
-			}
-		}(s)
-	}
+	
 	wgRecv.Wait()
 
 	// close gRPC connections

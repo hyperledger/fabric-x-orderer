@@ -56,7 +56,7 @@ func TestArmageddon(t *testing.T) {
 
 	// 4.
 	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
-	armageddon.Run([]string{"submit", "--user_config", userConfigPath})
+	armageddon.Run([]string{"submit", "--config", userConfigPath})
 }
 
 func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) {
