@@ -213,7 +213,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 				req := make([]byte, 8)
 				binary.BigEndian.PutUint32(req, uint32(worker))
 				binary.BigEndian.PutUint32(req[4:], uint32(i))
-				submittedRequests.Store(binary.BigEndian.Uint32(req), struct{}{})
+				submittedRequests.Store(binary.BigEndian.Uint64(req), struct{}{})
 				atomic.AddUint32(&submittedCount, 1)
 				shardID, _ := router.Map(req)
 				err := batchers[shardID].Submit(req)
@@ -229,7 +229,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		requests := block.batch.Requests()
 		committedReqCount += len(requests)
 		for _, req := range requests {
-			submittedRequests.Delete(binary.BigEndian.Uint32(req))
+			submittedRequests.Delete(binary.BigEndian.Uint64(req))
 		}
 		fmt.Println("committed:", committedReqCount, "submitted:", atomic.LoadUint32(&submittedCount))
 	}
