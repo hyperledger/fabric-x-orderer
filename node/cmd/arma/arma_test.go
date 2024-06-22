@@ -14,8 +14,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/Yacov-Manevich/ARMA/node"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
+	"node"
+	"node/comm/tlsgen"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

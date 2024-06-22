@@ -21,8 +21,8 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 
 	"github.com/golang/protobuf/proto"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"node/comm"
+	protos "node/protos/comm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"

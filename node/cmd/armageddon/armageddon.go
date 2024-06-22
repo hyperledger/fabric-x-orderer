@@ -11,7 +11,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
+	"node/comm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 	"io"
@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin"
-	"github.ibm.com/Yacov-Manevich/ARMA/node"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
+	"node"
+	"node/comm/tlsgen"
 	"gopkg.in/yaml.v3"
 )
 

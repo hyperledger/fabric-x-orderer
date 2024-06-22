@@ -25,9 +25,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	_ "github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"node/comm"
+	"node/comm/tlsgen"
+	protos "node/protos/comm"
 	"google.golang.org/grpc/grpclog"
 )
 

@@ -23,9 +23,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/testpb"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
+	"node/comm"
+	"node/comm/testpb"
+	"node/comm/tlsgen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"

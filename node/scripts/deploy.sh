@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-ARMA_EXEC="/home/yacovm/gopath/src/github.ibm.com/Yacov-Manevich/ARMA/node/cmd/arma/main/arma"
+ARMA_EXEC="/home/yacovm/gopath/src/node/cmd/arma/main/arma"
 CLIENT_EXEC="/home/yacovm/gopath/src/github.ibm.com/decentralized-trust-research/orderingservice-experiments/clients/cmd/client"
 
 	hosts=("arma1.sl.cloud9.ibm.com"

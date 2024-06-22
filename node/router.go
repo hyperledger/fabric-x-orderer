@@ -15,8 +15,8 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"node/comm"
+	protos "node/protos/comm"
 	"google.golang.org/grpc"
 )
 

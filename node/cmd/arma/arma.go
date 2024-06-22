@@ -10,8 +10,8 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"github.ibm.com/Yacov-Manevich/ARMA/node"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"node"
+	protos "node/protos/comm"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
 )

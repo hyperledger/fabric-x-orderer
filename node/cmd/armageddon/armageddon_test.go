@@ -13,7 +13,7 @@ import (
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/Yacov-Manevich/ARMA/node"
+	"node"
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,7 +37,7 @@ func TestArmageddon(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/Yacov-Manevich/ARMA/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 

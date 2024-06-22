@@ -1,4 +1,4 @@
-module github.ibm.com/Yacov-Manevich/ARMA/node
+module node
 
 go 1.22.2
 

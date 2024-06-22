@@ -34,8 +34,8 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"node/comm"
+	protos "node/protos/comm"
 )
 
 type Storage interface {

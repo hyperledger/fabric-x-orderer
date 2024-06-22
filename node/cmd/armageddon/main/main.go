@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.ibm.com/Yacov-Manevich/ARMA/node/cmd/armageddon"
+	"node/cmd/armageddon"
 )
 
 func main() {

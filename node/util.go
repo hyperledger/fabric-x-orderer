@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
+	"node/comm"
 )
 
 const (

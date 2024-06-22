@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm"
-	"github.ibm.com/Yacov-Manevich/ARMA/node/comm/tlsgen"
-	protos "github.ibm.com/Yacov-Manevich/ARMA/node/protos/comm"
+	"node/comm"
+	"node/comm/tlsgen"
+	protos "node/protos/comm"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
