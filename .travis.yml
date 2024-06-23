@@ -8,11 +8,18 @@ before_script:
 - go install golang.org/x/tools/cmd/goimports@latest
 - go install honnef.co/go/tools/cmd/staticcheck@latest
 - go install mvdan.cc/gofumpt@latest
-script:
-- (cd node/examples; bash ./scripts/build_docker.sh)
-- (cd node/examples; bash ./scripts/run_sample.sh)
-- set -e
-- make linter
-- make check-deps
-- go test -race ./...
-- (cd node; PATH=$PATH:orderingservice-experiments/clients/cmd/client/ go test -race ./... )
+
+jobs:
+  include:
+    - name: "Build Docker & Run Armageddon Test"
+      script:
+        - set -e
+        - (cd node/examples; bash ./scripts/build_docker.sh)
+        - (cd node/examples; bash ./scripts/run_sample.sh)
+    - name: "Lint & Test"
+      script:
+        - set -e
+        - make linter
+        - make check-deps
+        - go test -race ./...
+        - (cd node; PATH=$PATH:orderingservice-experiments/clients/cmd/client/ go test -race ./... )
