@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"math"
+	"math/big"
 	"os"
 	"strings"
 	"sync"
@@ -64,6 +65,7 @@ func TestConsensus(t *testing.T) {
 		expectedSequences   [][]uint64
 		expectedDecisionNum []uint64
 		events              []scheduleEvent
+		commitEvent         *sync.WaitGroup
 	}{
 		{
 			name:                "two batches single decision",
@@ -80,12 +82,14 @@ func TestConsensus(t *testing.T) {
 			name:                "two batches single decision more than needed batch attestation shares",
 			expectedSequences:   [][]uint64{{1, 1}, {2}},
 			expectedDecisionNum: []uint64{1, 2},
+			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
+				{expectCommits: big.NewInt(4)},
 				{ControlEvent: &arma.ControlEvent{BAF: baf1}},
 				{ControlEvent: &arma.ControlEvent{BAF: baf2}},
 				{ControlEvent: &arma.ControlEvent{BAF: baf3}},
 				{ControlEvent: &arma.ControlEvent{BAF: baf4}},
-				{delay: time.Second},
+				{waitForCommit: &struct{}{}},
 				{ControlEvent: &arma.ControlEvent{BAF: baf11}},
 				{ControlEvent: &arma.ControlEvent{BAF: baf21}},
 				{ControlEvent: &arma.ControlEvent{BAF: baf5}},
@@ -114,11 +118,20 @@ func TestConsensus(t *testing.T) {
 					cleanup()
 				}
 			}()
-
 			network := make(network)
 
+			for _, event := range tst.events {
+				if event.expectCommits != nil {
+					tst.commitEvent.Add(int(event.expectCommits.Uint64()))
+				}
+			}
+
 			for i := uint16(1); i <= 4; i++ {
-				c, cleanup := makeConsensusNode(t, sks[i-1], arma.PartyID(i), network, initialState, nodeIDs, v)
+				var once sync.Once
+				onCommit := func() {
+					once.Do(tst.commitEvent.Done)
+				}
+				c, cleanup := makeConsensusNode(t, sks[i-1], arma.PartyID(i), network, initialState, nodeIDs, v, onCommit)
 				network[uint64(i)] = c
 				cleanups = append(cleanups, cleanup)
 			}
@@ -129,8 +142,12 @@ func TestConsensus(t *testing.T) {
 			}
 
 			for _, ce := range tst.events {
-				if ce.delay > 0 {
-					time.Sleep(ce.delay)
+				if ce.waitForCommit != nil {
+					tst.commitEvent.Wait()
+					continue
+				}
+
+				if ce.expectCommits != nil {
 					continue
 				}
 
@@ -154,7 +171,7 @@ func TestConsensus(t *testing.T) {
 					copy(tstExpectedDecisionNum, tst.expectedDecisionNum)
 
 					for {
-						rawDecision := <-node.Storage.(mockStorage)
+						rawDecision := <-node.Storage.(*commitInterceptor).Storage.(mockStorage)
 						decision, _, err := bytesToDecision(rawDecision)
 						assert.NoError(t, err)
 
@@ -189,10 +206,11 @@ func TestConsensus(t *testing.T) {
 
 type scheduleEvent struct {
 	*arma.ControlEvent
-	delay time.Duration
+	expectCommits *big.Int
+	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier, onCommit func()) (*Consensus, func()) {
 	signer := ECDSASigner(*sk)
 
 	for _, shard := range []arma.ShardID{1, 2, math.MaxUint16} {
@@ -227,7 +245,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 		SigVerifier:   verifier,
 		State:         initialState,
 		CurrentNodes:  nodes,
-		Storage:       make(mockStorage),
+		Storage:       &commitInterceptor{Storage: make(mockStorage, 1), f: onCommit},
 		Arma:          consenter,
 	}
 
@@ -332,4 +350,14 @@ func TestHeaderBytes(t *testing.T) {
 	hdr2.FromBytes(hdr.Bytes())
 
 	assert.Equal(t, hdr, hdr2)
+}
+
+type commitInterceptor struct {
+	Storage
+	f func()
+}
+
+func (c *commitInterceptor) Append(bytes []byte) {
+	defer c.f()
+	c.Storage.Append(bytes)
 }
