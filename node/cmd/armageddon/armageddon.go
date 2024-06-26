@@ -129,9 +129,12 @@ type CLI struct {
 	app      *kingpin.Application
 	commands map[string]*kingpin.CmdClause
 	// generate command flags
-	outputDir      *string
-	genConfigFile  **os.File
+	outputDir     *string
+	genConfigFile **os.File
+	// submit command flags
 	userConfigFile **os.File
+	transactions   *int // transactions is the number of txs to be sent
+	rate           *int // rate is the number of transaction per second to be sent
 }
 
 func NewCLI() *CLI {
@@ -157,6 +160,8 @@ func (cli *CLI) configureCommands() {
 
 	submit := cli.app.Command("submit", "submit txs to routers and verify the submission")
 	cli.userConfigFile = submit.Flag("config", "The user configuration needed to connection with routers and assemblers").File()
+	cli.transactions = submit.Flag("transactions", "The number of transactions to be sent").Int()
+	cli.rate = submit.Flag("rate", "The rate specify the number of transactions per second to be sent").Int()
 	commands["submit"] = submit
 
 	cli.commands = commands
@@ -179,7 +184,7 @@ func (cli *CLI) Run(args []string) {
 
 	// "submit" command
 	case cli.commands["submit"].FullCommand():
-		submit(cli.userConfigFile)
+		submit(cli.userConfigFile, cli.transactions, cli.rate)
 	}
 }
 
@@ -641,7 +646,7 @@ func getUserConfigFileContent(userConfigFile **os.File) (*UserInfo, error) {
 
 // submit command makes 1000 txs and sends them to all routers (assuming there are 4 routers)
 // it also asks for blocks from some assembler (no matter who it is) to validate the txs appear in some block
-func submit(userConfigFile **os.File) {
+func submit(userConfigFile **os.File, transactions *int, rate *int) {
 	// get user config file content given as argument
 	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
 	if err != nil {
@@ -650,9 +655,8 @@ func submit(userConfigFile **os.File) {
 	}
 
 	// send txs to the routers
-	numOfTxs := 1000
 	var txsMap = make(map[string]struct{})
-	sendTxToRouters(userConfigFileContent, numOfTxs, txsMap)
+	sendTxToRouters(userConfigFileContent, *transactions, *rate, txsMap)
 
 	// receive blocks from some assembler
 	receiveResponseFromAssembler(userConfigFileContent, txsMap)
@@ -692,7 +696,7 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 }
 
 // sendTxToRouters assumes there are 4 routers
-func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, txsMap map[string]struct{}) {
+func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, txsMap map[string]struct{}) {
 	var serverRootCAs [][]byte
 	for _, rawBytes := range userConfigFileContent.TLSCACerts {
 		byteSlice := []byte(rawBytes)
@@ -763,20 +767,17 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, txsMap map[s
 		}(s)
 	}
 
-	// send txs to all routers
-	// update a map to manage txs
+	// send txs to all routers, using the rate limiter bucket
+	rl := newSendTxRateLimiterBucket(numOfTxs, rate)
 	for i := 0; i < numOfTxs; i++ {
-		payload := []byte(fmt.Sprintf("data transaction%d", i))
-		txsMap[string(payload)] = struct{}{}
-		for j := 0; j < 4; j++ {
-			err := streams[j].Send(&common.Envelope{Payload: payload})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
-				os.Exit(3)
-			}
+		status := rl.removeFromBucketAndSendTx(sendTx, txsMap, streams, i)
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
 		}
 	}
-	
+	rl.stop()
+
 	wgRecv.Wait()
 
 	// close gRPC connections
@@ -900,4 +901,16 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 	}
 
 	return block, nil
+}
+
+func sendTx(txsMap map[string]struct{}, streams []ab.AtomicBroadcast_BroadcastClient, i int) {
+	payload := []byte(fmt.Sprintf("data transaction%d", i))
+	txsMap[string(payload)] = struct{}{}
+	for j := 0; j < 4; j++ {
+		err := streams[j].Send(&common.Envelope{Payload: payload})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
+			os.Exit(3)
+		}
+	}
 }

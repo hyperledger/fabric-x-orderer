@@ -5,5 +5,5 @@ docker-compose up -d
 
 sleep 10
 
-docker run -it --entrypoint "/usr/local/bin/armageddon" --network examples_default arma submit --config arma-config/Party1/user_config.yaml
+docker run -it --entrypoint "/usr/local/bin/armageddon" --network examples_default arma submit --config arma-config/Party1/user_config.yaml --transactions 1000 --rate 500
 

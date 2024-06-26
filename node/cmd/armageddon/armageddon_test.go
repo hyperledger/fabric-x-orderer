@@ -21,7 +21,7 @@ import (
 // 1. Create a config YAML file to be an input to armageddon
 // 2. Run armageddon generate command to create config files in a folder structure
 // 3. Run arma with the generated config files to run each of the nodes for all parties
-// 4. Run armageddon submit command to make 1000 tx, send to all the routers and pull blocks from some assembler to observe that txs appear in some block
+// 4. Run armageddon submit command to make 1000 txs, send txs to all routers at a specified rate and pull blocks from some assembler to observe that txs appear in some block
 func TestArmageddon(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -56,7 +56,9 @@ func TestArmageddon(t *testing.T) {
 
 	// 4.
 	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
-	armageddon.Run([]string{"submit", "--config", userConfigPath})
+	rate := "500"
+	txs := "1000"
+	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate})
 }
 
 func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) {
