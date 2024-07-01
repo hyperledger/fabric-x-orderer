@@ -13,6 +13,7 @@ import (
 	"io"
 	"math"
 	"node/comm"
+	node_ledger "node/ledger"
 	protos "node/protos/comm"
 	"sync/atomic"
 	"time"
@@ -622,7 +623,7 @@ func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
 
 	tlsKey := conf.TLSPrivateKeyFile
 
-	batcherLedger := &BatcherLedger{Ledger: fl, Logger: logger}
+	batcherLedger := &node_ledger.BatcherLedger{Ledger: fl, Logger: logger}
 
 	bp := &BatchPuller{
 		getHeight: func() uint64 {
