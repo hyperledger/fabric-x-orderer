@@ -67,10 +67,6 @@ type BatcherLedger struct {
 	PrevHash []byte
 }
 
-func (b *BatcherLedger) Height() uint64 {
-	return b.Ledger.Height()
-}
-
 func (b *BatcherLedger) Append(partyID arma.PartyID, seq uint64, batchBytes []byte) {
 	b.Logger.Infof("Appended block with sequence %d of size %d bytes", seq, len(batchBytes))
 	buff := make([]byte, 2)
@@ -96,6 +92,16 @@ func (b *BatcherLedger) Append(partyID arma.PartyID, seq uint64, batchBytes []by
 	if err := b.Ledger.Append(block); err != nil {
 		panic(err)
 	}
+}
+
+func (b *BatcherLedger) Height(partyID arma.PartyID) uint64 {
+	//TODO get the correct ledger part using partyID
+	return b.Ledger.Height()
+}
+
+func (b *BatcherLedger) RetrieveBatchByNumber(partyID arma.PartyID, seq uint64) arma.Batch {
+	//TODO get the correct ledger part using partyID, then retrieve the batch
+	return nil
 }
 
 type ConsensusLedger struct {

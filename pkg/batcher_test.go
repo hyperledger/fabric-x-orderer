@@ -39,7 +39,15 @@ func (ri *reqInspector) RequestID(req []byte) string {
 
 type noopLedger struct{}
 
-func (noopLedger) Append(_ PartyID, _ uint64, _ []byte) {
+func (*noopLedger) Append(_ PartyID, _ uint64, _ []byte) {
+}
+
+func (*noopLedger) Height(partyID PartyID) uint64 {
+	return 0
+}
+
+func (*noopLedger) RetrieveBatchByNumber(partyID PartyID, seq uint64) Batch {
+	return nil
 }
 
 type naiveReplication struct {
@@ -63,6 +71,16 @@ func (r *naiveReplication) Append(_ PartyID, _ uint64, bytes []byte) {
 			requests: BatchFromRaw(bytes),
 		}
 	}
+}
+
+func (r *naiveReplication) Height(partyID PartyID) uint64 {
+	// TODO use in test
+	return 0
+}
+
+func (r *naiveReplication) RetrieveBatchByNumber(partyID PartyID, seq uint64) Batch {
+	// TODO use in test
+	return nil
 }
 
 type naiveBatch struct {

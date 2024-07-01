@@ -12,17 +12,16 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"node/comm"
+	protos "node/protos/comm"
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
-
-	"github.com/golang/protobuf/proto"
-	"node/comm"
-	protos "node/protos/comm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -593,11 +592,6 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 	return certs[0].Raw
 }
 
-type BatchLedger interface {
-	arma.BatchLedger
-	Height() uint64
-}
-
 func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
 
 	conf = maybeSetDefaultConfig(conf)
@@ -631,12 +625,14 @@ func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
 	batcherLedger := &BatcherLedger{Ledger: fl, Logger: logger}
 
 	bp := &BatchPuller{
-		getHeight: batcherLedger.Height,
-		logger:    logger,
-		config:    conf,
-		ledger:    batcherLedger,
-		tlsCert:   cert,
-		tlsKey:    tlsKey,
+		getHeight: func() uint64 {
+			return batcherLedger.Height(arma.PartyID(conf.PartyId))
+		},
+		logger:  logger,
+		config:  conf,
+		ledger:  batcherLedger,
+		tlsCert: cert,
+		tlsKey:  tlsKey,
 	}
 
 	batcher := NewBatcher(logger, conf, batcherLedger, bp, ds)

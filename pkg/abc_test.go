@@ -61,6 +61,14 @@ func (s *shardCommitter) Append(party PartyID, _ uint64, rawBatch []byte) {
 	s.sr.subscribers[s.shardID] <- nb
 }
 
+func (r *shardCommitter) Height(partyID PartyID) uint64 {
+	return 0
+}
+
+func (r *shardCommitter) RetrieveBatchByNumber(partyID PartyID, seq uint64) Batch {
+	return nil
+}
+
 type shardReplicator struct {
 	subscribers []chan Batch
 }

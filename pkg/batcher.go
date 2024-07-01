@@ -73,8 +73,18 @@ func BatchFromRaw(raw []byte) BatchedRequests {
 	return batch
 }
 
-type BatchLedger interface {
+type BatchLedgerWriter interface {
 	Append(PartyID, uint64, []byte)
+}
+
+type BatchLedgeReader interface {
+	Height(partyID PartyID) uint64
+	RetrieveBatchByNumber(partyID PartyID, seq uint64) Batch
+}
+
+type BatchLedger interface {
+	BatchLedgerWriter
+	BatchLedgeReader
 }
 
 var gap = uint64(10)
