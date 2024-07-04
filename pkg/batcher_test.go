@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,11 +31,94 @@ func TestBatchBytes(t *testing.T) {
 	assert.Equal(t, b, b2)
 }
 
+func TestSecondaryBatcherSimple(t *testing.T) {
+	N := uint16(4)
+	batchers := []PartyID{1, 2, 3, 4}
+	batcherID := 2
+	shardID := 0
+
+	logger := createLogger(t, batcherID)
+
+	actingWG := sync.WaitGroup{}
+	actingWG.Add(1)
+	specialLogger := logger.Desugar()
+	sugaredLogger := specialLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+		if strings.Contains(entry.Message, "acting as secondary") {
+			actingWG.Done()
+		}
+		return nil
+	})).Sugar()
+
+	digestFunc := func(data [][]byte) []byte {
+		h := sha256.New()
+		for _, d := range data {
+			h.Write(d)
+		}
+		return h.Sum(nil)
+	}
+
+	requestInspector := &reqInspector{}
+	pool := request.NewPool(logger, requestInspector, request.PoolOptions{})
+
+	batcher := &Batcher{
+		Batchers:         batchers,
+		BatchTimeout:     0,
+		Digest:           digestFunc,
+		RequestInspector: requestInspector,
+		ID:               PartyID(batcherID),
+		Shard:            ShardID(shardID),
+		Threshold:        1,
+		N:                N,
+		Seq:              0,
+		Logger:           sugaredLogger,
+		Ledger:           &noopLedger{},
+		BatchPuller:      &noopPuller{},
+		StateProvider:    &simpleStateProvider{},
+		AttestBatch: func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment {
+			return &SimpleBatchAttestationFragment{
+				Dig: digest,
+				Sh:  shardID,
+				Si:  batcherID,
+				P:   int(primary),
+				Se:  int(seq),
+			}
+		},
+		TotalOrderBAF: func(BatchAttestationFragment) {},
+		AckBAF:        func(seq uint64, to PartyID) {},
+		MemPool:       pool,
+	}
+
+	batcher.Start()
+	actingWG.Wait()
+	batcher.Stop()
+}
+
 type reqInspector struct{}
 
 func (ri *reqInspector) RequestID(req []byte) string {
 	digest := sha256.Sum256(req)
 	return hex.EncodeToString(digest[:])
+}
+
+type simpleStateProvider struct {
+	term uint64
+}
+
+func (s *simpleStateProvider) GetLatestStateChan() <-chan *State {
+	stateChan := make(chan *State, 1)
+	stateChan <- &State{
+		Shards: []ShardTerm{{
+			Shard: 0,
+			Term:  s.term,
+		}},
+	}
+	return stateChan
+}
+
+type noopPuller struct{}
+
+func (*noopPuller) PullBatches(_ PartyID) <-chan Batch {
+	return make(chan Batch)
 }
 
 type noopLedger struct{}
@@ -258,7 +342,7 @@ func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 	}
 
 	for i := 0; i < n; i++ {
-		batchers[i].Run()
+		batchers[i].Start()
 	}
 	return batchers, commit
 }
@@ -279,11 +363,6 @@ func createBatcher(t *testing.T, shardID int, nodeID int, batchers []PartyID) *B
 	b := &Batcher{
 		Batchers: batchers,
 		Shard:    ShardID(shardID),
-		AttestationFromBytes: func(bytes []byte) (BatchAttestationFragment, error) {
-			baf := &SimpleBatchAttestationFragment{}
-			err := baf.Deserialize(bytes)
-			return baf, err
-		},
 		AttestBatch: func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment {
 			return &SimpleBatchAttestationFragment{
 				Dig: digest,
@@ -300,12 +379,11 @@ func createBatcher(t *testing.T, shardID int, nodeID int, batchers []PartyID) *B
 			}
 			return h.Sum(nil)
 		},
-		RequestInspector:   requestInspector,
-		Logger:             sugaredLogger,
-		MemPool:            pool,
-		ID:                 PartyID(nodeID),
-		Threshold:          2,
-		confirmedSequences: make(map[uint64]map[PartyID]struct{}),
+		RequestInspector: requestInspector,
+		Logger:           sugaredLogger,
+		MemPool:          pool,
+		ID:               PartyID(nodeID),
+		Threshold:        2,
 	}
 
 	b.Ledger = &noopLedger{}

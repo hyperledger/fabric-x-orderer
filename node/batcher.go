@@ -12,34 +12,35 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"node/comm"
 	node_ledger "node/ledger"
 	protos "node/protos/comm"
-	"sync/atomic"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 )
 
-var (
-	defaultBatcherMemPoolOpts = request.PoolOptions{
-		AutoRemoveTimeout:     time.Second * 10,
-		BatchMaxSize:          1000 * 10,
-		BatchMaxSizeBytes:     1024 * 1024 * 10,
-		MaxSize:               1000 * 1000,
-		FirstStrikeThreshold:  time.Second * 10,
-		SecondStrikeThreshold: time.Second * 10,
-		SubmitTimeout:         time.Second * 10,
-		RequestMaxBytes:       1024 * 1024,
-	}
-)
+var defaultBatcherMemPoolOpts = request.PoolOptions{
+	AutoRemoveTimeout:     time.Second * 10,
+	BatchMaxSize:          1000 * 10,
+	BatchMaxSizeBytes:     1024 * 1024 * 10,
+	MaxSize:               1000 * 1000,
+	FirstStrikeThreshold:  time.Second * 10,
+	SecondStrikeThreshold: time.Second * 10,
+	SubmitTimeout:         time.Second * 10,
+	RequestMaxBytes:       1024 * 1024,
+}
 
 type Batcher struct {
 	ds               DeliverService
@@ -59,11 +60,32 @@ type Batcher struct {
 	tlsKey              []byte
 	tlsCert             []byte
 	stateRef            atomic.Value
+	stateChan           chan *arma.State
+	running             sync.WaitGroup
+	stopChan            chan struct{}
 }
 
 func (b *Batcher) Run() {
-	b.b.Run()
+	b.running.Add(1)
+	b.stopChan = make(chan struct{})
 
+	b.stateChan = make(chan *arma.State)
+
+	bar := b.createBAR()
+
+	go b.replicateState(0, bar) // TODO use correct seq
+
+	b.logger.Infof("Starting batcher")
+	b.b.Start()
+}
+
+func (b *Batcher) Stop() {
+	b.b.Stop()
+	close(b.stopChan)
+	b.running.Wait()
+}
+
+func (b *Batcher) createBAR() *BAReplicator {
 	var endpoint string
 	var tlsCAs []RawBytes
 	for i := 0; i < len(b.config.Consenters); i++ {
@@ -86,11 +108,24 @@ func (b *Batcher) Run() {
 		cc:       clientConfig(tlsCAs, b.tlsKey, b.tlsCert),
 	}
 
-	go func() {
-		for state := range bar.ReplicateState(0) {
+	return bar
+}
+
+func (b *Batcher) replicateState(seq uint64, bar *BAReplicator) {
+	defer b.running.Done()
+	for {
+		select {
+		case state := <-bar.ReplicateState(seq):
 			b.stateRef.Store(state)
+			b.stateChan <- state
+		case <-b.stopChan:
+			return
 		}
-	}()
+	}
+}
+
+func (b *Batcher) GetLatestStateChan() <-chan *arma.State {
+	return b.stateChan
 }
 
 func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -102,7 +137,6 @@ func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
-
 	traceId := req.TraceId
 	req.TraceId = nil
 
@@ -207,7 +241,6 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 }
 
 func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds DeliverService) *Batcher {
-
 	cert := config.TLSCertificateFile
 	sk := config.TLSPrivateKeyFile
 
@@ -221,23 +254,28 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 		tlsCert:          cert,
 	}
 
+	initState := computeZeroState(config)
+	b.stateRef.Store(&initState)
+
 	b.indexTLSCerts()
 
 	parties := batcherIDs(logger, config)
 
+	f := (initState.N - 1) / 3
+
 	b.b = &arma.Batcher{
-		Batchers:             parties,
-		BatchPuller:          bp,
-		Threshold:            2,
-		BatchTimeout:         time.Millisecond * 500,
-		Ledger:               ledger,
-		AttestationFromBytes: BatchAttestationFromBytes,
-		MemPool:              b.createMemPool(config),
-		AttestBatch:          b.attestBatch,
-		State:                computeZeroState(config),
-		ID:                   arma.PartyID(config.PartyId),
-		Shard:                arma.ShardID(config.ShardId),
-		Logger:               logger,
+		Batchers:      parties,
+		BatchPuller:   bp,
+		Threshold:     int(f + 1),
+		N:             initState.N,
+		BatchTimeout:  time.Millisecond * 500,
+		Ledger:        ledger,
+		MemPool:       b.createMemPool(config),
+		AttestBatch:   b.attestBatch,
+		StateProvider: b,
+		ID:            arma.PartyID(config.PartyId),
+		Shard:         arma.ShardID(config.ShardId),
+		Logger:        logger,
 		Digest: func(data [][]byte) []byte {
 			batch := arma.BatchedRequests(data)
 			digest := sha256.Sum256(batch.ToBytes())
@@ -248,10 +286,7 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 		AckBAF:           b.sendAck,
 	}
 
-	b.setupPrimaryEndpoint(logger, config, b.b)
-
-	f := (b.b.State.N - 1) / 3
-	b.b.Threshold = int(f + 1)
+	b.setupPrimaryEndpoint()
 
 	return b
 }
@@ -327,39 +362,44 @@ func (b *Batcher) attestBatch(seq uint64, primary arma.PartyID, shard arma.Shard
 	return baf
 }
 
-func (b *Batcher) setupPrimaryEndpoint(logger arma.Logger, config BatcherNodeConfig, batcher *arma.Batcher) {
-	batchers := batchersFromConfig(logger, config)
-	logger.Infof("Batchers: %v", batchers)
+func (b *Batcher) setupPrimaryEndpoint() {
+	batchers := batchersFromConfig(b.logger, b.config)
+	b.logger.Infof("Batchers: %v", batchers)
 
-	primaryIndex := b.getPrimaryIndex(batcher, config)
+	primaryID := b.getPrimaryID()
 
 	for _, batcher := range batchers {
-		if arma.PartyID(batcher.PartyID) == arma.PartyID(batchers[primaryIndex].PartyID) {
+		if arma.PartyID(batcher.PartyID) == primaryID {
 			b.primaryEndpoint = batcher.Endpoint
 			b.primaryTLSCA = batcher.TLSCACerts
-			logger.Infof("Primary for shard %d: %d %s", config.ShardId, arma.PartyID(batchers[primaryIndex].PartyID), b.primaryEndpoint)
+			b.logger.Infof("Primary for shard %d: %d %s", b.config.ShardId, primaryID, b.primaryEndpoint)
 			return
 		}
 	}
 
-	logger.Panicf("Could not find primaryIndex of shard %d within %v", config.ShardId, batchers)
+	b.logger.Panicf("Could not find primaryID %d of shard %d within %v", primaryID, b.config.ShardId, batchers)
 }
 
-func (b *Batcher) getPrimaryIndex(batcher *arma.Batcher, config BatcherNodeConfig) arma.PartyID {
+func (b *Batcher) getPrimaryID() arma.PartyID {
+	state := b.stateRef.Load().(*arma.State)
 	term := uint64(math.MaxUint64)
-	for _, shard := range batcher.State.Shards {
-		if shard.Shard == batcher.Shard {
+	for _, shard := range state.Shards {
+		if shard.Shard == arma.ShardID(b.config.ShardId) {
 			term = shard.Term
 		}
 	}
 
 	if term == math.MaxUint64 {
-		b.logger.Panicf("Could not find our shard (%d) within the shards: %v", batcher.Shard, batcher.State.Shards)
+		b.logger.Panicf("Could not find our shard (%d) within the shards: %v", b.config.ShardId, state.Shards)
 	}
 
-	primary := arma.PartyID((uint64(config.ShardId) + term) % uint64(batcher.State.N))
+	primaryIndex := arma.PartyID((uint64(b.config.ShardId) + term) % uint64(state.N))
 
-	return primary
+	batchers := batchersFromConfig(b.logger, b.config)
+
+	primaryID := arma.PartyID(batchers[primaryIndex].PartyID)
+
+	return primaryID
 }
 
 func computeZeroState(config BatcherNodeConfig) arma.State {
@@ -386,6 +426,7 @@ func batchersFromConfig(logger arma.Logger, config BatcherNodeConfig) []BatcherI
 	if len(batchers) == 0 {
 		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", config.ShardId, config.Shards)
 	}
+	// TODO make sure this is sorted
 	return batchers
 }
 
@@ -460,7 +501,6 @@ func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, stream protos.Conse
 	err := stream.Send(&protos.Event{
 		Payload: ce.Bytes(),
 	})
-
 	if err != nil {
 		b.logger.Errorf("Failed sending batch attestation fragment to %d (%s): %v", b.config.Consenters[index].PartyID, b.config.Consenters[index].Endpoint, err)
 		b.consensusStreams[index] = nil
@@ -594,7 +634,6 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 }
 
 func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
-
 	conf = maybeSetDefaultConfig(conf)
 
 	provider, err := blkstorage.NewProvider(

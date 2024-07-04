@@ -77,6 +77,16 @@ func (s *shardReplicator) Replicate(shard ShardID) <-chan Batch {
 	return s.subscribers[shard]
 }
 
+type stateProvider struct {
+	s *State
+}
+
+func (s *stateProvider) GetLatestStateChan() <-chan *State {
+	stateChan := make(chan *State, 1)
+	stateChan <- s.s
+	return stateChan
+}
+
 func TestAssemblerBatcherConsenter(t *testing.T) {
 	logger := createLogger(t, 0)
 	shardCount := 10
@@ -175,6 +185,8 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		batchers = append(batchers, batcher)
 	}
 
+	sp := &stateProvider{s: &state}
+
 	for i := 0; i < shardCount; i++ {
 		sc := &shardCommitter{
 			shardID: uint16(i),
@@ -186,10 +198,11 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		}
 		batchers[i].Ledger = sc
 		batchers[i].BatchPuller = nil
-
-		batchers[i].State = state
+		batchers[i].N = state.N
+		batchers[i].StateProvider = sp
 		batchers[i].ID = PartyID(i)
-		batchers[i].Run()
+		batchers[i].Start()
+		defer batchers[i].Stop()
 	}
 
 	time.Sleep(100 * time.Millisecond)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,6 +30,10 @@ type Batch interface {
 
 type BatchPuller interface {
 	PullBatches(from PartyID) <-chan Batch
+}
+
+type StateProvider interface {
+	GetLatestStateChan() <-chan *State
 }
 
 type BatchedRequests [][]byte
@@ -90,70 +95,77 @@ type BatchLedger interface {
 var gap = uint64(10)
 
 type Batcher struct {
-	Batchers             []PartyID
-	BatchTimeout         time.Duration
-	Digest               func([][]byte) []byte
-	RequestInspector     RequestInspector
-	ID                   PartyID
-	State                State
-	Shard                ShardID
-	Threshold            int
-	Seq                  uint64
-	Logger               Logger
-	Ledger               BatchLedger
-	BatchPuller          BatchPuller
-	AttestBatch          func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
-	AttestationFromBytes func([]byte) (BatchAttestationFragment, error)
-	TotalOrderBAF        func(BatchAttestationFragment)
-	AckBAF               func(seq uint64, to PartyID)
-	MemPool              MemPool
-	confirmedSeq         uint64
-	running              sync.WaitGroup
-	stopChan             chan struct{}
-	stopCtx              context.Context
-	cancelBatch          func()
-	primary              PartyID
-	lock                 sync.Mutex
-	signal               sync.Cond
-	confirmedSequences   map[uint64]map[PartyID]struct{}
+	Batchers           []PartyID
+	BatchTimeout       time.Duration
+	Digest             func([][]byte) []byte
+	RequestInspector   RequestInspector
+	ID                 PartyID
+	Shard              ShardID
+	Threshold          int
+	N                  uint16
+	Seq                uint64
+	Logger             Logger
+	Ledger             BatchLedger
+	BatchPuller        BatchPuller
+	StateProvider      StateProvider
+	AttestBatch        func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
+	TotalOrderBAF      func(BatchAttestationFragment)
+	AckBAF             func(seq uint64, to PartyID)
+	MemPool            MemPool
+	confirmedSeq       uint64
+	running            sync.WaitGroup
+	stopChan           chan struct{}
+	stopCtx            context.Context
+	cancelBatch        func()
+	primary            PartyID
+	term               uint64
+	termChan           chan uint64
+	lock               sync.Mutex
+	signal             sync.Cond
+	confirmedSequences map[uint64]map[PartyID]struct{}
 }
 
-func (b *Batcher) Run() {
-	b.running.Add(1)
+func (b *Batcher) Start() {
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.signal = sync.Cond{L: &b.lock}
 	b.confirmedSequences = make(map[uint64]map[PartyID]struct{})
+	b.termChan = make(chan uint64)
 
-	primaryIndex := b.getPrimaryIndex()
-
-	b.Logger.Infof("ID: %d, batcher for our shard: %v, primary index: %d", b.ID, b.Batchers, primaryIndex)
-
-	b.primary = b.Batchers[primaryIndex]
-
-	b.confirmedSeq = b.Seq
-
-	if b.primary == b.ID {
-		go b.runPrimary()
-		return
-	}
-
-	go b.runSecondary()
+	go b.getTermAndNotifyChange()
+	go b.run()
 }
 
-func (b *Batcher) getPrimaryIndex() PartyID {
-	term := uint64(math.MaxUint64)
-	for _, shard := range b.State.Shards {
-		if shard.Shard == b.Shard {
-			term = shard.Term
+func (b *Batcher) run() {
+	b.running.Add(1)
+	defer b.running.Done()
+	for {
+		select {
+		case <-b.stopChan:
+			return
+		default:
+		}
+
+		term := atomic.LoadUint64(&b.term)
+		b.primary = b.getPrimaryID(term)
+		b.confirmedSeq = b.Seq
+		b.Logger.Infof("ID: %d, shard: %d, primary id: %d, term: %d, seq: %d", b.ID, b.Shard, b.primary, term, b.Seq)
+
+		if b.primary == b.ID {
+			b.runPrimary()
+		} else {
+			b.runSecondary()
 		}
 	}
+}
 
-	if term == math.MaxUint64 {
-		b.Logger.Panicf("Could not find our shard (%d) within the shards: %v", b.Shard, b.State.Shards)
-	}
+func (b *Batcher) getPrimaryID(term uint64) PartyID {
+	primaryIndex := b.getPrimaryIndex(term)
+	return b.Batchers[primaryIndex]
+}
 
-	primaryIndex := PartyID((uint64(b.Shard) + term) % uint64(b.State.N))
+func (b *Batcher) getPrimaryIndex(term uint64) PartyID {
+	primaryIndex := PartyID((uint64(b.Shard) + term) % uint64(b.N))
 
 	return primaryIndex
 }
@@ -163,6 +175,38 @@ func (b *Batcher) Stop() {
 	b.cancelBatch()
 	b.MemPool.Close()
 	b.running.Wait()
+}
+
+func (b *Batcher) getTerm(state *State) uint64 {
+	term := uint64(math.MaxUint64)
+	for _, shard := range state.Shards {
+		if shard.Shard == b.Shard {
+			term = shard.Term
+		}
+	}
+	if term == math.MaxUint64 {
+		b.Logger.Panicf("Could not find our shard (%d) within the shards: %v", b.Shard, state.Shards)
+	}
+	return term
+}
+
+func (b *Batcher) getTermAndNotifyChange() {
+	b.running.Add(1)
+	defer b.running.Done()
+	stateChan := b.StateProvider.GetLatestStateChan()
+	for {
+		select {
+		case <-b.stopChan:
+			return
+		case state := <-stateChan:
+			newTerm := b.getTerm(state)
+			currentTerm := atomic.LoadUint64(&b.term)
+			if currentTerm != newTerm {
+				atomic.StoreUint64(&b.term, newTerm)
+				b.termChan <- newTerm
+			}
+		}
+	}
 }
 
 func (b *Batcher) Submit(request []byte) error {
@@ -220,7 +264,6 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 }
 
 func (b *Batcher) runPrimary() {
-	defer b.running.Done()
 	b.Logger.Infof("%d Acting as primary (shard %d)", b.ID, b.Shard)
 	b.MemPool.Restart(true)
 
@@ -237,6 +280,10 @@ func (b *Batcher) runPrimary() {
 			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
 			currentBatch = b.MemPool.NextRequests(ctx)
 			select {
+			case newTerm := <-b.termChan:
+				b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+				cancel()
+				return
 			case <-b.stopChan:
 				cancel()
 				return
@@ -297,7 +344,6 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 }
 
 func (b *Batcher) runSecondary() {
-	defer b.running.Done()
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d)", b.ID, b.Shard)
 	primary := b.primary
 	out := b.BatchPuller.PullBatches(primary)
@@ -305,6 +351,9 @@ func (b *Batcher) runSecondary() {
 		var batchedRequests Batch
 		select {
 		case batchedRequests = <-out:
+		case newTerm := <-b.termChan:
+			b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+			return
 		case <-b.stopChan:
 			return
 		}

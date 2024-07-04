@@ -22,12 +22,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go/orderer"
-	_ "github.com/onsi/gomega/gexec"
-	"github.com/stretchr/testify/require"
 	"node/comm"
 	"node/comm/tlsgen"
 	protos "node/protos/comm"
+
+	"github.com/hyperledger/fabric-protos-go/orderer"
+	_ "github.com/onsi/gomega/gexec"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"
 )
 
@@ -49,7 +50,8 @@ func TestABCR(t *testing.T) {
 	routers, configs := createRouters(t, batcherInfos, ca)
 
 	for _, b := range batchers {
-		go b.b.Run()
+		b.Run()
+		defer b.Stop()
 	}
 
 	var routerEndpoints []string
