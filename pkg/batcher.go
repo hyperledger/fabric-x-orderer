@@ -10,10 +10,12 @@ import (
 	"time"
 )
 
+//go:generate counterfeiter -o mocks/request_inspector.go . RequestInspector
 type RequestInspector interface {
 	RequestID(req []byte) string
 }
 
+//go:generate counterfeiter -o mocks/mem_pool.go . MemPool
 type MemPool interface {
 	NextRequests(ctx context.Context) [][]byte
 	RemoveRequests(requests ...string)
@@ -22,16 +24,19 @@ type MemPool interface {
 	Close()
 }
 
+//go:generate counterfeiter -o mocks/batch.go . Batch
 type Batch interface {
 	Digest() []byte
 	Requests() BatchedRequests
 	Party() PartyID
 }
 
+//go:generate counterfeiter -o mocks/batch_puller.go . BatchPuller
 type BatchPuller interface {
 	PullBatches(from PartyID) <-chan Batch
 }
 
+//go:generate counterfeiter -o mocks/state_provider.go . StateProvider
 type StateProvider interface {
 	GetLatestStateChan() <-chan *State
 }
@@ -87,6 +92,7 @@ type BatchLedgeReader interface {
 	RetrieveBatchByNumber(partyID PartyID, seq uint64) Batch
 }
 
+//go:generate counterfeiter -o mocks/batch_ledger.go . BatchLedger
 type BatchLedger interface {
 	BatchLedgerWriter
 	BatchLedgeReader
@@ -132,12 +138,12 @@ func (b *Batcher) Start() {
 	b.confirmedSequences = make(map[uint64]map[PartyID]struct{})
 	b.termChan = make(chan uint64)
 
+	b.running.Add(2)
 	go b.getTermAndNotifyChange()
 	go b.run()
 }
 
 func (b *Batcher) run() {
-	b.running.Add(1)
 	defer b.running.Done()
 	for {
 		select {
@@ -191,7 +197,6 @@ func (b *Batcher) getTerm(state *State) uint64 {
 }
 
 func (b *Batcher) getTermAndNotifyChange() {
-	b.running.Add(1)
 	defer b.running.Done()
 	stateChan := b.StateProvider.GetLatestStateChan()
 	for {
@@ -264,7 +269,7 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 }
 
 func (b *Batcher) runPrimary() {
-	b.Logger.Infof("%d Acting as primary (shard %d)", b.ID, b.Shard)
+	b.Logger.Infof("Batcher %d acting as primary (shard %d)", b.ID, b.Shard)
 	b.MemPool.Restart(true)
 
 	if b.BatchTimeout == 0 {
