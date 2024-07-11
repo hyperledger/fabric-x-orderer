@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"io"
+	"node/config"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,10 +15,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"node"
-	"node/comm/tlsgen"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"node/comm/tlsgen"
 )
 
 func TestRouter(t *testing.T) {
@@ -34,11 +34,11 @@ func TestRouter(t *testing.T) {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
-	err = node.NodeConfigToYAML(node.RouterNodeConfig{
+	err = config.NodeConfigToYAML(config.RouterNodeConfig{
 		TLSPrivateKeyFile:  ckp.Key,
 		TLSCertificateFile: ckp.Cert,
 		PartyID:            1,
-		Shards:             []node.ShardInfo{{ShardId: 1, Batchers: []node.BatcherInfo{{Endpoint: "127.0.0.1:80", PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}}}}},
+		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{Endpoint: "127.0.0.1:80", PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}},
 	}, configPath)
 	require.NoError(t, err)
 
@@ -76,12 +76,12 @@ func TestAssembler(t *testing.T) {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
-	err = node.NodeConfigToYAML(node.AssemblerNodeConfig{
+	err = config.NodeConfigToYAML(config.AssemblerNodeConfig{
 		PartyId:            1,
 		Directory:          dir,
 		TLSPrivateKeyFile:  ckp.Key,
 		TLSCertificateFile: ckp.Cert,
-		Shards:             []node.ShardInfo{{ShardId: 1, Batchers: []node.BatcherInfo{{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}}}}},
+		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}},
 	}, configPath)
 	require.NoError(t, err)
 
@@ -125,20 +125,20 @@ func TestBatcher(t *testing.T) {
 	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
 	require.NoError(t, err)
 
-	err = node.NodeConfigToYAML(node.BatcherNodeConfig{
+	err = config.NodeConfigToYAML(config.BatcherNodeConfig{
 		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: keyBytes}),
 		ShardId:            1,
 		PartyId:            1,
 		Directory:          dir,
 		TLSPrivateKeyFile:  ckp.Key,
 		TLSCertificateFile: ckp.Cert,
-		Consenters: []node.ConsenterInfo{
-			{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"}, {PartyID: 2, TLSCACerts: []node.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"},
+		Consenters: []config.ConsenterInfo{
+			{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"}, {PartyID: 2, TLSCACerts: []config.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"},
 		},
-		Shards: []node.ShardInfo{
-			{ShardId: 1, Batchers: []node.BatcherInfo{
-				{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
-				{PartyID: 2, TLSCACerts: []node.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
+		Shards: []config.ShardInfo{
+			{ShardId: 1, Batchers: []config.BatcherInfo{
+				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
+				{PartyID: 2, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
 			}}},
 	}, configPath)
 	require.NoError(t, err)
@@ -186,18 +186,18 @@ func TestConsensus(t *testing.T) {
 	pkBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	require.NoError(t, err)
 
-	err = node.NodeConfigToYAML(node.ConsenterNodeConfig{
+	err = config.NodeConfigToYAML(config.ConsenterNodeConfig{
 		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: keyBytes}),
 		PartyId:            1,
 		Directory:          dir,
 		TLSPrivateKeyFile:  ckp.Key,
 		TLSCertificateFile: ckp.Cert,
-		Consenters: []node.ConsenterInfo{
+		Consenters: []config.ConsenterInfo{
 			{PartyID: 1, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
 		},
-		Shards: []node.ShardInfo{
-			{ShardId: 1, Batchers: []node.BatcherInfo{
-				{PartyID: 1, TLSCACerts: []node.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
+		Shards: []config.ShardInfo{
+			{ShardId: 1, Batchers: []config.BatcherInfo{
+				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
 			}}},
 	}, configPath)
 	require.NoError(t, err)

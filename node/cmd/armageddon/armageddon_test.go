@@ -3,6 +3,7 @@ package armageddon
 import (
 	"fmt"
 	"net"
+	"node/config"
 	"os"
 	"os/exec"
 	"path"
@@ -13,7 +14,6 @@ import (
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
-	"node"
 	"gopkg.in/yaml.v3"
 )
 
@@ -157,37 +157,37 @@ func writeToYAML(config interface{}, path string) error {
 	return nil
 }
 
-func readRouterNodeConfigFromYaml(t *testing.T, path string) *node.RouterNodeConfig {
+func readRouterNodeConfigFromYaml(t *testing.T, path string) *config.RouterNodeConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
-	routerConfig := node.RouterNodeConfig{}
+	routerConfig := config.RouterNodeConfig{}
 	err = yaml.Unmarshal(configBytes, &routerConfig)
 	require.NoError(t, err)
 	return &routerConfig
 }
 
-func readAssemblerNodeConfigFromYaml(t *testing.T, path string) *node.AssemblerNodeConfig {
+func readAssemblerNodeConfigFromYaml(t *testing.T, path string) *config.AssemblerNodeConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assemblerConfig := node.AssemblerNodeConfig{}
+	assemblerConfig := config.AssemblerNodeConfig{}
 	err = yaml.Unmarshal(configBytes, &assemblerConfig)
 	require.NoError(t, err)
 	return &assemblerConfig
 }
 
-func readConsenterNodeConfigFromYaml(t *testing.T, path string) *node.ConsenterNodeConfig {
+func readConsenterNodeConfigFromYaml(t *testing.T, path string) *config.ConsenterNodeConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
-	consenterConfig := node.ConsenterNodeConfig{}
+	consenterConfig := config.ConsenterNodeConfig{}
 	err = yaml.Unmarshal(configBytes, &consenterConfig)
 	require.NoError(t, err)
 	return &consenterConfig
 }
 
-func readBatcherNodeConfigFromYaml(t *testing.T, path string) *node.BatcherNodeConfig {
+func readBatcherNodeConfigFromYaml(t *testing.T, path string) *config.BatcherNodeConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
-	batcherConfig := node.BatcherNodeConfig{}
+	batcherConfig := config.BatcherNodeConfig{}
 	err = yaml.Unmarshal(configBytes, &batcherConfig)
 	require.NoError(t, err)
 	return &batcherConfig
@@ -202,14 +202,14 @@ func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
 	case "batcher":
 		batcherConfig := readBatcherNodeConfigFromYaml(t, path)
 		batcherConfig.Directory = dir
-		node.NodeConfigToYAML(batcherConfig, path)
+		config.NodeConfigToYAML(batcherConfig, path)
 	case "consensus":
 		consenterConfig := readConsenterNodeConfigFromYaml(t, path)
 		consenterConfig.Directory = dir
-		node.NodeConfigToYAML(consenterConfig, path)
+		config.NodeConfigToYAML(consenterConfig, path)
 	case "assembler":
 		assemblerConfig := readAssemblerNodeConfigFromYaml(t, path)
 		assemblerConfig.Directory = dir
-		node.NodeConfigToYAML(assemblerConfig, path)
+		config.NodeConfigToYAML(assemblerConfig, path)
 	}
 }

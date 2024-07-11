@@ -12,20 +12,19 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"node/comm"
+	node_config "node/config"
+	node_ledger "node/ledger"
+	protos "node/protos/comm"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"node/comm"
-	node_ledger "node/ledger"
-	protos "node/protos/comm"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -48,14 +47,14 @@ type Batcher struct {
 	b                *arma.Batcher
 	batcherCerts2IDs map[string]arma.PartyID
 	primaryEndpoint  string
-	primaryTLSCA     []RawBytes
+	primaryTLSCA     []node_config.RawBytes
 	request.Pool
 	consensusStreams    []protos.Consensus_NotifyEventClient
 	primaryClient       protos.AckServiceClient
 	primaryClientStream protos.AckService_NotifyAckClient
 	primaryConn         *grpc.ClientConn
 	connections         []*grpc.ClientConn
-	config              BatcherNodeConfig
+	config              node_config.BatcherNodeConfig
 	sk                  *ecdsa.PrivateKey
 	tlsKey              []byte
 	tlsCert             []byte
@@ -87,7 +86,7 @@ func (b *Batcher) Stop() {
 
 func (b *Batcher) createBAR() *BAReplicator {
 	var endpoint string
-	var tlsCAs []RawBytes
+	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(b.config.Consenters); i++ {
 		consenter := b.config.Consenters[i]
 		if consenter.PartyID == b.config.PartyId {
@@ -240,7 +239,7 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 	}
 }
 
-func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds DeliverService) *Batcher {
+func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds DeliverService) *Batcher {
 	cert := config.TLSCertificateFile
 	sk := config.TLSPrivateKeyFile
 
@@ -291,7 +290,7 @@ func NewBatcher(logger arma.Logger, config BatcherNodeConfig, ledger arma.BatchL
 	return b
 }
 
-func batcherIDs(logger arma.Logger, config BatcherNodeConfig) []arma.PartyID {
+func batcherIDs(logger arma.Logger, config node_config.BatcherNodeConfig) []arma.PartyID {
 	batchers := batchersFromConfig(logger, config)
 	var parties []arma.PartyID
 	for _, batcher := range batchers {
@@ -300,7 +299,7 @@ func batcherIDs(logger arma.Logger, config BatcherNodeConfig) []arma.PartyID {
 	return parties
 }
 
-func (b *Batcher) createMemPool(config BatcherNodeConfig) arma.MemPool {
+func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) arma.MemPool {
 	opts := defaultBatcherMemPoolOpts
 	opts.BatchMaxSizeBytes = config.BatchMaxBytes
 	opts.MaxSize = config.MemPoolMaxSize
@@ -331,7 +330,7 @@ func (b *Batcher) indexTLSCerts() {
 	}
 }
 
-func createSigner(logger arma.Logger, config BatcherNodeConfig) *ecdsa.PrivateKey {
+func createSigner(logger arma.Logger, config node_config.BatcherNodeConfig) *ecdsa.PrivateKey {
 	rawKey := config.SigningPrivateKey
 	bl, _ := pem.Decode(rawKey)
 
@@ -402,7 +401,7 @@ func (b *Batcher) getPrimaryID() arma.PartyID {
 	return primaryID
 }
 
-func computeZeroState(config BatcherNodeConfig) arma.State {
+func computeZeroState(config node_config.BatcherNodeConfig) arma.State {
 	var state arma.State
 	for _, shard := range config.Shards {
 		state.Shards = append(state.Shards, arma.ShardTerm{
@@ -415,8 +414,8 @@ func computeZeroState(config BatcherNodeConfig) arma.State {
 	return state
 }
 
-func batchersFromConfig(logger arma.Logger, config BatcherNodeConfig) []BatcherInfo {
-	var batchers []BatcherInfo
+func batchersFromConfig(logger arma.Logger, config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
+	var batchers []node_config.BatcherInfo
 	for _, shard := range config.Shards {
 		if shard.ShardId == config.ShardId {
 			batchers = shard.Batchers
@@ -547,7 +546,7 @@ func (b *Batcher) createStream(index int) {
 	}
 }
 
-func (b *Batcher) clientConfig(TlsCACert []RawBytes) comm.ClientConfig {
+func (b *Batcher) clientConfig(TlsCACert []node_config.RawBytes) comm.ClientConfig {
 	var tlsCAs [][]byte
 	for _, cert := range TlsCACert {
 		tlsCAs = append(tlsCAs, cert)
@@ -633,7 +632,7 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 	return certs[0].Raw
 }
 
-func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
+func CreateBatcher(conf node_config.BatcherNodeConfig, logger arma.Logger) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
 	provider, err := blkstorage.NewProvider(
@@ -683,7 +682,7 @@ func CreateBatcher(conf BatcherNodeConfig, logger arma.Logger) *Batcher {
 	return batcher
 }
 
-func maybeSetDefaultConfig(conf BatcherNodeConfig) BatcherNodeConfig {
+func maybeSetDefaultConfig(conf node_config.BatcherNodeConfig) node_config.BatcherNodeConfig {
 	for {
 		switch {
 		case conf.BatchMaxSize == 0:

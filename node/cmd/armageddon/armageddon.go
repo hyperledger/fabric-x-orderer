@@ -11,12 +11,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"node/comm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 	"io"
 	"math"
 	"net"
+	"node/comm"
+	"node/config"
 	"os"
 	"path"
 	"runtime/debug"
@@ -25,9 +26,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin"
-	"node"
-	"node/comm/tlsgen"
 	"gopkg.in/yaml.v3"
+	"node/comm/tlsgen"
 )
 
 var defaultConfig = `Parties:
@@ -96,11 +96,11 @@ type CryptoConfigPerParty struct {
 // UserInfo holds the user information needed for connection to routers and assemblers
 // Note: a user will be created for each party. One of the users will be chosen as a grpc client that sends tx to all router and receives blocks from the assemblers.
 type UserInfo struct {
-	TLSPrivateKeyFile  node.RawBytes
-	TLSCertificateFile node.RawBytes
+	TLSPrivateKeyFile  config.RawBytes
+	TLSCertificateFile config.RawBytes
 	RouterEndpoints    []string
 	AssemblerEndpoints []string
-	TLSCACerts         []node.RawBytes
+	TLSCACerts         []config.RawBytes
 }
 
 type CertsAndKeys struct {
@@ -114,15 +114,15 @@ type NetworkConfig struct {
 }
 
 type PartyConfig struct {
-	RouterConfig    node.RouterNodeConfig
-	BatchersConfig  []node.BatcherNodeConfig
-	ConsenterConfig node.ConsenterNodeConfig
-	AssemblerConfig node.AssemblerNodeConfig
+	RouterConfig    config.RouterNodeConfig
+	BatchersConfig  []config.BatcherNodeConfig
+	ConsenterConfig config.ConsenterNodeConfig
+	AssemblerConfig config.AssemblerNodeConfig
 }
 
 type SharedConfig struct {
-	Shards     []node.ShardInfo
-	Consenters []node.ConsenterInfo
+	Shards     []config.ShardInfo
+	Consenters []config.ConsenterInfo
 }
 
 type CLI struct {
@@ -243,7 +243,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 
 	// create CA for each party
 	var partiesCAs = make(map[uint16][]tlsgen.CA)
-	var tlsCACertsBytesPartiesCollection []node.RawBytes
+	var tlsCACertsBytesPartiesCollection []config.RawBytes
 	for _, party := range network.Parties {
 		// create CA for the party
 		// NOTE: a party can have several CA's, meanwhile armageddon creates only one CA for each party.
@@ -418,8 +418,8 @@ func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConf
 	return networkConfig
 }
 
-func constructRouterNodeConfigPerParty(partyID uint16, shards []node.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string) node.RouterNodeConfig {
-	return node.RouterNodeConfig{
+func constructRouterNodeConfigPerParty(partyID uint16, shards []config.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string) config.RouterNodeConfig {
+	return config.RouterNodeConfig{
 		ListenAddress:                 "0.0.0.0:" + port,
 		PartyID:                       partyID,
 		TLSCertificateFile:            certKeyPair.Cert,
@@ -430,11 +430,11 @@ func constructRouterNodeConfigPerParty(partyID uint16, shards []node.ShardInfo, 
 	}
 }
 
-func constructBatchersNodeConfigPerParty(partyId uint16, batcherEndpoints []string, sharedConfig SharedConfig, batchersCertsAndKeys map[string]CertsAndKeys) []node.BatcherNodeConfig {
-	var batchers []node.BatcherNodeConfig
+func constructBatchersNodeConfigPerParty(partyId uint16, batcherEndpoints []string, sharedConfig SharedConfig, batchersCertsAndKeys map[string]CertsAndKeys) []config.BatcherNodeConfig {
+	var batchers []config.BatcherNodeConfig
 	for i, batcherEndpoint := range batcherEndpoints {
 		batcherCertsAndKeys := batchersCertsAndKeys[batcherEndpoint]
-		batcher := node.BatcherNodeConfig{
+		batcher := config.BatcherNodeConfig{
 			ListenAddress:      "0.0.0.0:" + trimHostFromEndpoint(batcherEndpoint),
 			Shards:             sharedConfig.Shards,
 			Consenters:         sharedConfig.Consenters,
@@ -451,8 +451,8 @@ func constructBatchersNodeConfigPerParty(partyId uint16, batcherEndpoints []stri
 	return batchers
 }
 
-func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) node.ConsenterNodeConfig {
-	return node.ConsenterNodeConfig{
+func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) config.ConsenterNodeConfig {
+	return config.ConsenterNodeConfig{
 		ListenAddress:      "0.0.0.0:" + port,
 		Shards:             sharedConfig.Shards,
 		Consenters:         sharedConfig.Consenters,
@@ -464,21 +464,21 @@ func constructConsenterNodeConfigPerParty(partyId uint16, sharedConfig SharedCon
 	}
 }
 
-func constructAssemblerNodeConfigPerParty(partyId uint16, shards []node.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string) node.AssemblerNodeConfig {
+func constructAssemblerNodeConfigPerParty(partyId uint16, shards []config.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string) config.AssemblerNodeConfig {
 	partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[partyId]
-	var tlsCACertsCollection []node.RawBytes
+	var tlsCACertsCollection []config.RawBytes
 	for _, ca := range partyCryptoConfig.CAs {
 		tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
 	}
 
-	return node.AssemblerNodeConfig{
+	return config.AssemblerNodeConfig{
 		ListenAddress:      "0.0.0.0:" + port,
 		TLSPrivateKeyFile:  partyCryptoConfig.AssemblerCertKeyPair.Key,
 		TLSCertificateFile: partyCryptoConfig.AssemblerCertKeyPair.Cert,
 		PartyId:            partyId,
 		Directory:          "",
 		Shards:             shards,
-		Consenter: node.ConsenterInfo{
+		Consenter: config.ConsenterInfo{
 			PartyID:    partyId,
 			Endpoint:   consenterEndpoint,
 			PublicKey:  partyCryptoConfig.ConsenterCertsAndKeys.PublicKey,
@@ -487,21 +487,21 @@ func constructAssemblerNodeConfigPerParty(partyId uint16, shards []node.ShardInf
 	}
 }
 
-func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig) []node.ShardInfo {
+func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig) []config.ShardInfo {
 	// construct a map that maps between shardId and batchers
-	var shardToBatchers = make(map[uint16][]node.BatcherInfo)
+	var shardToBatchers = make(map[uint16][]config.BatcherInfo)
 	for _, party := range network.Parties {
 		for idx, batcherEndpoint := range party.BatchersEndpoints {
 			shardId := uint16(idx + 1)
 
 			partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[party.ID]
-			var tlsCACertsCollection []node.RawBytes
+			var tlsCACertsCollection []config.RawBytes
 			for _, ca := range partyCryptoConfig.CAs {
 				tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
 			}
 			batcherCertsAndKeys := partyCryptoConfig.BatchersCertsAndKeys[batcherEndpoint]
 
-			batcher := node.BatcherInfo{
+			batcher := config.BatcherInfo{
 				PartyID:    party.ID,
 				Endpoint:   batcherEndpoint,
 				TLSCACerts: tlsCACertsCollection,
@@ -513,9 +513,9 @@ func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig)
 	}
 
 	// build Shards from the map
-	var shards []node.ShardInfo
+	var shards []config.ShardInfo
 	for shardId, batchers := range shardToBatchers {
-		shardInfo := node.ShardInfo{
+		shardInfo := config.ShardInfo{
 			ShardId:  shardId,
 			Batchers: batchers,
 		}
@@ -525,17 +525,17 @@ func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig)
 	return shards
 }
 
-func constructConsenters(network *Network, networkCryptoConfig *NetworkCryptoConfig) []node.ConsenterInfo {
-	var consenters []node.ConsenterInfo
+func constructConsenters(network *Network, networkCryptoConfig *NetworkCryptoConfig) []config.ConsenterInfo {
+	var consenters []config.ConsenterInfo
 	for _, party := range network.Parties {
 		partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[party.ID]
-		var tlsCACertsCollection []node.RawBytes
+		var tlsCACertsCollection []config.RawBytes
 		for _, ca := range partyCryptoConfig.CAs {
 			tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
 		}
 		consenterCertsAndKeys := partyCryptoConfig.ConsenterCertsAndKeys
 
-		consenterInfo := node.ConsenterInfo{
+		consenterInfo := config.ConsenterInfo{
 			PartyID:    party.ID,
 			Endpoint:   party.ConsenterEndpoint,
 			PublicKey:  consenterCertsAndKeys.PublicKey,
@@ -562,7 +562,7 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 		os.MkdirAll(rootDir, 0755)
 
 		configPath := path.Join(rootDir, "router_node_config.yaml")
-		err := node.NodeConfigToYAML(partyConfig.RouterConfig, configPath)
+		err := config.NodeConfigToYAML(partyConfig.RouterConfig, configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating router node config yaml file, err: %v", err)
 			os.Exit(1)
@@ -570,7 +570,7 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 
 		for j, batcherConfig := range partyConfig.BatchersConfig {
 			configPath = path.Join(rootDir, fmt.Sprintf("batcher_node_%d_config.yaml", j+1))
-			err = node.NodeConfigToYAML(batcherConfig, configPath)
+			err = config.NodeConfigToYAML(batcherConfig, configPath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error creating batcher node %d config yaml file, err: %v", j, err)
 				os.Exit(1)
@@ -578,14 +578,14 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 		}
 
 		configPath = path.Join(rootDir, "consenter_node_config.yaml")
-		err = node.NodeConfigToYAML(partyConfig.ConsenterConfig, configPath)
+		err = config.NodeConfigToYAML(partyConfig.ConsenterConfig, configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating consenter node config yaml file, err: %v", err)
 			os.Exit(1)
 		}
 
 		configPath = path.Join(rootDir, "assembler_node_config.yaml")
-		err = node.NodeConfigToYAML(partyConfig.AssemblerConfig, configPath)
+		err = config.NodeConfigToYAML(partyConfig.AssemblerConfig, configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating assembler node config yaml file, err: %v", err)
 			os.Exit(1)

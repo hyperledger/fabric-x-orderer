@@ -6,19 +6,19 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"node/comm"
+	"node/config"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
+	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
-	"node/comm"
 	"google.golang.org/grpc"
 )
 
@@ -37,7 +37,7 @@ func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error 
 	return a.ds.Deliver(server)
 }
 
-func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
+func NewAssembler(logger arma.Logger, dir string, config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
 	id := config.PartyId
 	name := fmt.Sprintf("assembler%d", id)
 	dir = filepath.Join(dir, name)
@@ -97,7 +97,7 @@ func NewAssembler(logger arma.Logger, dir string, config AssemblerNodeConfig, bl
 	return assembler
 }
 
-func createHeightRetrievers(logger arma.Logger, config AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) map[arma.ShardID]func() uint64 {
+func createHeightRetrievers(logger arma.Logger, config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) map[arma.ShardID]func() uint64 {
 	heightRetrievers := make(map[arma.ShardID]func() uint64)
 
 	for _, shard := range config.Shards {
@@ -122,7 +122,7 @@ type Index struct {
 	cache   map[arma.ShardID]*cache
 }
 
-func NewIndex(config AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore, logger arma.Logger) *Index {
+func NewIndex(config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore, logger arma.Logger) *Index {
 	indexes := make(map[arma.ShardID]*blkstorage.BlockStore)
 
 	for _, s := range config.Shards {
@@ -214,7 +214,7 @@ func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64
 type BatchReplicator struct {
 	heightRetrievers map[arma.ShardID]func() uint64
 	tlsKey, tlsCert  []byte
-	config           AssemblerNodeConfig
+	config           config.AssemblerNodeConfig
 	logger           arma.Logger
 }
 
@@ -280,7 +280,7 @@ func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 	return res
 }
 
-func (br *BatchReplicator) findShardID(shardID arma.ShardID) BatcherInfo {
+func (br *BatchReplicator) findShardID(shardID arma.ShardID) config.BatcherInfo {
 	for _, shard := range br.config.Shards {
 		if shard.ShardId == uint16(shardID) {
 			for _, b := range shard.Batchers {
@@ -294,7 +294,7 @@ func (br *BatchReplicator) findShardID(shardID arma.ShardID) BatcherInfo {
 	}
 
 	br.logger.Panicf("Failed finding shard ID %d within %v", shardID, br.config.Shards)
-	return BatcherInfo{}
+	return config.BatcherInfo{}
 }
 
 type BAReplicator struct {
@@ -456,7 +456,7 @@ func extractHeaderFromBlock(block *common.Block, logger arma.Logger) *Header {
 	return header
 }
 
-func clientConfig(TLSCACerts []RawBytes, tlsKey, tlsCert []byte) comm.ClientConfig {
+func clientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.ClientConfig {
 	var tlsCAs [][]byte
 	for _, cert := range TLSCACerts {
 		tlsCAs = append(tlsCAs, cert)
@@ -504,7 +504,7 @@ func (f *fabricBatch) Party() arma.PartyID {
 	return arma.PartyID(binary.BigEndian.Uint16(buff[:2]))
 }
 
-func CreateAssembler(config AssemblerNodeConfig, logger arma.Logger) *Assembler {
+func CreateAssembler(config config.AssemblerNodeConfig, logger arma.Logger) *Assembler {
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(config.Directory, -1),
 		&blkstorage.IndexConfig{

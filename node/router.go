@@ -9,14 +9,15 @@ import (
 	"io"
 	"math"
 	rand2 "math/rand"
+	"node/comm"
+	"node/config"
+	protos "node/protos/comm"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"node/comm"
-	protos "node/protos/comm"
 	"google.golang.org/grpc"
 )
 
@@ -552,7 +553,7 @@ func (f RoutingError) Error() string {
 	return fmt.Sprintf(`{"BackendErr": "%s", "TransmitError": "%s", "ReqID": "%s"}`, f.BackendErr, f.TransmitError, f.ReqID)
 }
 
-func CreateRouter(config RouterNodeConfig, logger arma.Logger) *Router {
+func CreateRouter(config config.RouterNodeConfig, logger arma.Logger) *Router {
 	var shards []uint16
 	var endpoints []string
 	var tlsCAs [][][]byte

@@ -3,11 +3,11 @@ package node
 import (
 	"fmt"
 	"net"
+	"node/comm"
+	"node/config"
 	"os"
 	"strings"
 	"time"
-
-	"node/comm"
 )
 
 const (
@@ -51,7 +51,7 @@ func ListenAddressForNode(endpointType ServerEndpointType, listenAddress string)
 	return net.JoinHostPort(listenAddress, fmt.Sprintf("%d", port))
 }
 
-func CreateGRPCRouter(conf RouterNodeConfig) *comm.GRPCServer {
+func CreateGRPCRouter(conf config.RouterNodeConfig) *comm.GRPCServer {
 	tlsCAs := TLSCAcertsFromShards(conf.Shards)
 
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(RouterListenType, conf.ListenAddress), comm.ServerConfig{
@@ -74,7 +74,7 @@ func CreateGRPCRouter(conf RouterNodeConfig) *comm.GRPCServer {
 	return srv
 }
 
-func CreateGRPCConsensus(conf ConsenterNodeConfig) *comm.GRPCServer {
+func CreateGRPCConsensus(conf config.ConsenterNodeConfig) *comm.GRPCServer {
 	var clientRootCAs [][]byte
 
 	for _, shard := range conf.Shards {
@@ -112,7 +112,7 @@ func CreateGRPCConsensus(conf ConsenterNodeConfig) *comm.GRPCServer {
 	return srv
 }
 
-func CreateGRPCAssembler(conf AssemblerNodeConfig) *comm.GRPCServer {
+func CreateGRPCAssembler(conf config.AssemblerNodeConfig) *comm.GRPCServer {
 	tlsCAs := TLSCAcertsFromShards(conf.Shards)
 
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(AssemblerListenType, conf.ListenAddress), comm.ServerConfig{
@@ -135,7 +135,7 @@ func CreateGRPCAssembler(conf AssemblerNodeConfig) *comm.GRPCServer {
 	return srv
 }
 
-func TLSCAcertsFromShards(shards []ShardInfo) [][]byte {
+func TLSCAcertsFromShards(shards []config.ShardInfo) [][]byte {
 	var tlsCAs [][]byte
 	for _, shard := range shards {
 		for _, batcher := range shard.Batchers {
@@ -147,7 +147,7 @@ func TLSCAcertsFromShards(shards []ShardInfo) [][]byte {
 	return tlsCAs
 }
 
-func CreateGRPCBatcher(conf BatcherNodeConfig) *comm.GRPCServer {
+func CreateGRPCBatcher(conf config.BatcherNodeConfig) *comm.GRPCServer {
 	var clientRootCAs [][]byte
 
 	for _, shard := range conf.Shards {

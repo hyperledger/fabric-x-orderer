@@ -15,6 +15,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"node/comm"
+	"node/config"
+	protos "node/protos/comm"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,8 +37,6 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"node/comm"
-	protos "node/protos/comm"
 )
 
 type Storage interface {
@@ -65,7 +66,7 @@ type BFT interface {
 type Consensus struct {
 	DeliverService
 	*comm.ClusterService
-	Config        ConsenterNodeConfig
+	Config        config.ConsenterNodeConfig
 	PrevHash      []byte
 	LastSeq       uint64
 	SigVerifier   SigVerifier
@@ -765,7 +766,7 @@ func bytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error)
 	}, sigs, nil
 }
 
-func initialStateFromConfig(config ConsenterNodeConfig) []byte {
+func initialStateFromConfig(config config.ConsenterNodeConfig) []byte {
 	var state arma.State
 	state.ShardCount = uint16(len(config.Shards))
 	state.N = uint16(len(config.Consenters))
@@ -783,7 +784,7 @@ func initialStateFromConfig(config ConsenterNodeConfig) []byte {
 	return state.Serialize()
 }
 
-func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
+func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Consensus {
 	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
 	if privateKey == nil {
 		logger.Panicf("Failed decoding private key PEM")
@@ -940,7 +941,7 @@ func CreateConsensus(conf ConsenterNodeConfig, logger arma.Logger) *Consensus {
 	return c
 }
 
-func buildVerifier(consenterInfos []ConsenterInfo, shardInfo []ShardInfo, logger arma.Logger) ECDSAVerifier {
+func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger arma.Logger) ECDSAVerifier {
 	verifier := make(ECDSAVerifier)
 	for _, ci := range consenterInfos {
 		pk, _ := pem.Decode(ci.PublicKey)
@@ -983,7 +984,7 @@ func buildVerifier(consenterInfos []ConsenterInfo, shardInfo []ShardInfo, logger
 	return verifier
 }
 
-func getOurIdentity(consenterInfos []ConsenterInfo, partyID arma.PartyID) []byte {
+func getOurIdentity(consenterInfos []config.ConsenterInfo, partyID arma.PartyID) []byte {
 	var myIdentity []byte
 	for _, ci := range consenterInfos {
 		pk := ci.PublicKey

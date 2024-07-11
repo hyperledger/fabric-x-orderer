@@ -12,6 +12,10 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net"
+	"node/comm"
+	"node/comm/tlsgen"
+	"node/config"
+	protos "node/protos/comm"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,10 +25,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"node/comm"
-	"node/comm/tlsgen"
-	protos "node/protos/comm"
 
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	_ "github.com/onsi/gomega/gexec"
@@ -40,7 +40,7 @@ func TestABCR(t *testing.T) {
 
 	batcherInfos, consenterInfos, batcherNodes, consenterNodes := createConsentersAndBatchers(t, ca)
 
-	shards := []ShardInfo{{ShardId: 1, Batchers: batcherInfos}}
+	shards := []config.ShardInfo{{ShardId: 1, Batchers: batcherInfos}}
 
 	_, clean := createConsenters(t, consenterNodes, consenterInfos, shards)
 	defer clean()
@@ -71,7 +71,7 @@ func TestABCR(t *testing.T) {
 	assemblerDir, err := os.MkdirTemp("", fmt.Sprintf("%s-assembler", t.Name()))
 	require.NoError(t, err)
 
-	assemberConf := AssemblerNodeConfig{
+	assemberConf := config.AssemblerNodeConfig{
 		ListenAddress:      "0.0.0.0:0",
 		PartyId:            1,
 		TLSPrivateKeyFile:  ckp.Key,
@@ -217,19 +217,19 @@ func sendTxn(workerID int, txnNum int, routers []*Router) {
 	}
 }
 
-func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) ([]*Router, []RouterNodeConfig) {
-	var configs []RouterNodeConfig
+func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA) ([]*Router, []config.RouterNodeConfig) {
+	var configs []config.RouterNodeConfig
 	var routers []*Router
 	for i := 0; i < 4; i++ {
 		l := createLogger(t, i)
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
-		config := RouterNodeConfig{
+		config := config.RouterNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			TLSPrivateKeyFile:  kp.Key,
 			TLSCertificateFile: kp.Cert,
 			PartyID:            uint16(i + 1),
-			Shards: []ShardInfo{{
+			Shards: []config.ShardInfo{{
 				ShardId:  1,
 				Batchers: batcherInfos,
 			}},
@@ -241,7 +241,7 @@ func createRouters(t *testing.T, batcherInfos []BatcherInfo, ca tlsgen.CA) ([]*R
 	return routers, configs
 }
 
-func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []ConsenterInfo, shardInfo []ShardInfo) ([]*Consensus, func()) {
+func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo) ([]*Consensus, func()) {
 	var consensuses []*Consensus
 
 	var cleans []func()
@@ -264,7 +264,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 			defer os.RemoveAll(dir)
 		})
 
-		conf := ConsenterNodeConfig{
+		conf := config.ConsenterNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shardInfo,
 			Consenters:         consenterInfos,
@@ -294,7 +294,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []Con
 	}
 }
 
-func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, consenterInfos []ConsenterInfo) []*Batcher {
+func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInfo, consenterInfos []config.ConsenterInfo) []*Batcher {
 	var batchers []*Batcher
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -307,7 +307,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
 
-		batcherConf := BatcherNodeConfig{
+		batcherConf := config.BatcherNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shards,
 			ShardId:            1,
@@ -315,7 +315,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 			Consenters:         consenterInfos,
 			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
 			TLSCertificateFile: batcherNodes[i].TLSCert,
-			SigningPrivateKey:  RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
+			SigningPrivateKey:  config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
 			Directory:          dir,
 		}
 
@@ -339,27 +339,27 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []ShardInfo, cons
 	return batchers
 }
 
-func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]BatcherInfo, []ConsenterInfo, []*node, []*node) {
+func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]config.BatcherInfo, []config.ConsenterInfo, []*node, []*node) {
 	batcherNodes := createNodes(t, ca)
 	consenterNodes := createNodes(t, ca)
 
-	var batchers []BatcherInfo
+	var batchers []config.BatcherInfo
 	for i := 0; i < 4; i++ {
-		batchers = append(batchers, BatcherInfo{
+		batchers = append(batchers, config.BatcherInfo{
 			PartyID:    uint16(i + 1),
 			Endpoint:   batcherNodes[i].Address(),
 			TLSCert:    batcherNodes[i].TLSCert,
-			TLSCACerts: []RawBytes{ca.CertBytes()},
+			TLSCACerts: []config.RawBytes{ca.CertBytes()},
 			PublicKey:  batcherNodes[i].pk,
 		})
 	}
 
-	var consenters []ConsenterInfo
+	var consenters []config.ConsenterInfo
 	for i := 0; i < 4; i++ {
-		consenters = append(consenters, ConsenterInfo{
+		consenters = append(consenters, config.ConsenterInfo{
 			PartyID:    uint16(i + 1),
 			Endpoint:   consenterNodes[i].Address(),
-			TLSCACerts: []RawBytes{ca.CertBytes()},
+			TLSCACerts: []config.RawBytes{ca.CertBytes()},
 			PublicKey:  consenterNodes[i].pk,
 		})
 	}
@@ -379,7 +379,7 @@ func createNodes(t *testing.T, ca tlsgen.CA) []*node {
 	var result []*node
 
 	var sks []*ecdsa.PrivateKey
-	var pks []RawBytes
+	var pks []config.RawBytes
 
 	for i := 0; i < 4; i++ {
 		sk, rawPK := keygen(t)
@@ -414,7 +414,7 @@ type node struct {
 	TLSCert []byte
 	TLSKey  []byte
 	sk      *ecdsa.PrivateKey
-	pk      RawBytes
+	pk      config.RawBytes
 }
 
 type silentLogger struct {

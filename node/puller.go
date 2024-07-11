@@ -4,18 +4,19 @@ import (
 	arma "arma/pkg"
 	"context"
 	"fmt"
+	"node/comm"
+	"node/config"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
-	"node/comm"
 )
 
 type BatchPuller struct {
 	getHeight func() uint64
 	ledger    arma.BatchLedger
 	logger    arma.Logger
-	config    BatcherNodeConfig
+	config    config.BatcherNodeConfig
 	tlsKey    []byte
 	tlsCert   []byte
 }
@@ -80,7 +81,7 @@ func (bp *BatchPuller) clientConfig(primary arma.PartyID) comm.ClientConfig {
 	return cc
 }
 
-func (bp *BatchPuller) findPrimary(shardID arma.ShardID, primary arma.PartyID) BatcherInfo {
+func (bp *BatchPuller) findPrimary(shardID arma.ShardID, primary arma.PartyID) config.BatcherInfo {
 	for _, shard := range bp.config.Shards {
 		if shard.ShardId == uint16(shardID) {
 			for _, b := range shard.Batchers {
@@ -96,5 +97,5 @@ func (bp *BatchPuller) findPrimary(shardID arma.ShardID, primary arma.PartyID) B
 	}
 
 	bp.logger.Panicf("Failed finding shard ID %d within %v", shardID, bp.config.Shards)
-	return BatcherInfo{}
+	return config.BatcherInfo{}
 }

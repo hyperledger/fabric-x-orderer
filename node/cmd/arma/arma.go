@@ -4,16 +4,17 @@ import (
 	arma "arma/pkg"
 	"fmt"
 	"io"
+	"node/config"
 	"os"
 
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"node"
-	protos "node/protos/comm"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
+	"node"
+	protos "node/protos/comm"
 )
 
 func init() {
@@ -186,8 +187,8 @@ func NewCLI() *CLI {
 	return cli
 }
 
-func parseRouterConfig(rawConfig []byte) node.RouterNodeConfig {
-	var conf node.RouterNodeConfig
+func parseRouterConfig(rawConfig []byte) config.RouterNodeConfig {
+	var conf config.RouterNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing router config: %v", err)
@@ -197,8 +198,8 @@ func parseRouterConfig(rawConfig []byte) node.RouterNodeConfig {
 	return conf
 }
 
-func parseAssemblerConfig(rawConfig []byte) node.AssemblerNodeConfig {
-	var conf node.AssemblerNodeConfig
+func parseAssemblerConfig(rawConfig []byte) config.AssemblerNodeConfig {
+	var conf config.AssemblerNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing assembler config: %v", err)
@@ -212,8 +213,8 @@ func parseAssemblerConfig(rawConfig []byte) node.AssemblerNodeConfig {
 	return conf
 }
 
-func parseBatcherConfig(rawConfig []byte) node.BatcherNodeConfig {
-	var conf node.BatcherNodeConfig
+func parseBatcherConfig(rawConfig []byte) config.BatcherNodeConfig {
+	var conf config.BatcherNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing batcher config: %v", err)
@@ -227,8 +228,8 @@ func parseBatcherConfig(rawConfig []byte) node.BatcherNodeConfig {
 	return conf
 }
 
-func parseConsensusConfig(rawConfig []byte) node.ConsenterNodeConfig {
-	var conf node.ConsenterNodeConfig
+func parseConsensusConfig(rawConfig []byte) config.ConsenterNodeConfig {
+	var conf config.ConsenterNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing consensus config: %v", err)
