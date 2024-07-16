@@ -95,10 +95,10 @@ func TestABCR(t *testing.T) {
 	//require.NoError(t, err)
 
 	//runPerf(t, [][]byte{ca.CertBytes()}, [][]byte{ca.CertBytes()}, routerEndpoints, fmt.Sprintf("127.0.0.1:%s", assemblerPort), clientPath)
-	sendTransactions(routers, assembler)
+	sendTransactions(t, routers, assembler)
 }
 
-func sendTransactions(routers []*Router, assembler *Assembler) {
+func sendTransactions(t *testing.T, routers []*Router, assembler *Assembler) {
 	sendTxn(runtime.NumCPU()+1, 0, routers)
 
 	time.Sleep(time.Second)
@@ -125,9 +125,11 @@ func sendTransactions(routers []*Router, assembler *Assembler) {
 	txCount := &assembler.assembler.Ledger.(*AssemblerLedger).TransactionCount
 
 	totalTxn := workPerWorker * runtime.NumCPU()
-	for int(atomic.LoadUint64(txCount)) < totalTxn {
-		time.Sleep(time.Millisecond * 100)
-	}
+	require.Eventually(t, func() bool {
+		n := atomic.LoadUint64(txCount)
+		t.Logf("#txs: %d", n)
+		return int(n) >= totalTxn
+	}, 30*time.Second, 1000*time.Millisecond)
 
 	elapsed := int(time.Since(start).Seconds())
 	if elapsed == 0 {

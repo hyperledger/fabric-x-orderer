@@ -28,7 +28,7 @@ func NewBatchLedgerArray(shardID arma.ShardID, partyID arma.PartyID, parties []a
 		return nil, errors.Errorf("partyID %d not in parties %v", partyID, parties)
 	}
 
-	logger.Infof("Creating batch ledger rray for shard=%d, party=%d, parties=%v, dir=%s", shardID, partyID, parties, batchLedgerDir)
+	logger.Infof("Creating batch ledger array for shard=%d, party=%d, parties=%v, dir=%s", shardID, partyID, parties, batchLedgerDir)
 
 	ledgerPartsMap := make(map[arma.PartyID]*BatchLedgerPart)
 
@@ -62,6 +62,10 @@ func NewBatchLedgerArray(shardID arma.ShardID, partyID arma.PartyID, parties []a
 		provider:    provider,
 		logger:      logger,
 	}, nil
+}
+
+func (bla *BatchLedgerArray) ShardID() arma.ShardID {
+	return bla.shardID
 }
 
 func (bla *BatchLedgerArray) Height(partyID arma.PartyID) uint64 {

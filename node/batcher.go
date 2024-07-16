@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	node_batcher "node/batcher"
 	"node/comm"
 	node_config "node/config"
 	node_ledger "node/ledger"
@@ -21,10 +22,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -42,7 +40,7 @@ var defaultBatcherMemPoolOpts = request.PoolOptions{
 }
 
 type Batcher struct {
-	ds               DeliverService
+	ds               *node_batcher.BatcherDeliverService
 	logger           arma.Logger
 	b                *arma.Batcher
 	batcherCerts2IDs map[string]arma.PartyID
@@ -239,7 +237,7 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 	}
 }
 
-func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds DeliverService) *Batcher {
+func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds *node_batcher.BatcherDeliverService) *Batcher {
 	cert := config.TLSCertificateFile
 	sk := config.TLSPrivateKeyFile
 
@@ -460,10 +458,11 @@ func (b *Batcher) connectToPrimaryIfNeeded() {
 	if b.primaryClientStream == nil {
 		stream, err := b.primaryClient.NotifyAck(context.Background())
 		if err != nil {
-			b.logger.Errorf("Failed creating ack stream: %v", err)
+			b.logger.Errorf("Failed creating ack stream: %d %d, err: %v", b.config.ShardId, b.config.PartyId, err)
 			return
 		}
 		b.primaryClientStream = stream
+		b.logger.Infof("Created ack stream: %d %d ", b.config.ShardId, b.config.PartyId)
 	}
 }
 
@@ -635,46 +634,31 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 func CreateBatcher(conf node_config.BatcherNodeConfig, logger arma.Logger) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(conf.Directory, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
+	var parties []arma.PartyID
+	for shIdx, sh := range conf.Shards {
+		if sh.ShardId != conf.ShardId {
+			continue
+		}
+
+		for _, b := range conf.Shards[shIdx].Batchers {
+			parties = append(parties, arma.PartyID(b.PartyID))
+		}
+		break
+	}
+
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(arma.ShardID(conf.ShardId), arma.PartyID(conf.PartyId), parties, conf.Directory, logger)
 	if err != nil {
-		logger.Panicf("Failed creating block provider: %v", err)
+		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
 
-	ds := make(DeliverService)
-
-	name := fmt.Sprintf("shard%d", conf.ShardId)
-
-	ledger, err := provider.Open(name)
-	if err != nil {
-		logger.Panicf("Failed opening shard %s")
+	deliveryService := &node_batcher.BatcherDeliverService{
+		LedgerArray: ledgerArray,
+		Logger:      logger,
 	}
 
-	fl := fileledger.NewFileLedger(ledger)
+	bp := node_batcher.NewBatchPuller(conf, ledgerArray, logger)
 
-	ds[name] = fl
-
-	cert := conf.TLSCertificateFile
-
-	tlsKey := conf.TLSPrivateKeyFile
-
-	batcherLedger := &node_ledger.BatcherLedger{Ledger: fl, Logger: logger}
-
-	bp := &BatchPuller{
-		getHeight: func() uint64 {
-			return batcherLedger.Height(arma.PartyID(conf.PartyId))
-		},
-		logger:  logger,
-		config:  conf,
-		ledger:  batcherLedger,
-		tlsCert: cert,
-		tlsKey:  tlsKey,
-	}
-
-	batcher := NewBatcher(logger, conf, batcherLedger, bp, ds)
+	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService)
 
 	batcher.initConsensusConnections()
 	batcher.connectToPrimaryIfNeeded()
