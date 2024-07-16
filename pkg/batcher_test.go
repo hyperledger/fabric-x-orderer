@@ -50,9 +50,30 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 
 	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, sugaredLogger)
 
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(arma.BatchedRequests, 0, 1)
+	reqs = append(reqs, req)
+
+	pool.NextRequestsReturnsOnCall(1, reqs)
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
 	batcher.Start()
+
 	actingWG.Wait()
+
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
 	batcher.Stop()
+
+	require.True(t, pool.RestartArgsForCall(0))
 }
 
 func TestSecondaryBatcherSimple(t *testing.T) {
@@ -93,7 +114,11 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
 	batcher.Start()
+
 	actingWG.Wait()
 
 	batchChan <- batch
@@ -101,7 +126,15 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
 	batcher.Stop()
+
+	require.False(t, pool.RestartArgsForCall(0))
+	require.Equal(t, 2, pool.RemoveRequestsCallCount())
 }
 
 func createBatcher(batcherID arma.PartyID, shardID arma.ShardID, batchers []arma.PartyID, N uint16, logger arma.Logger) *arma.Batcher {

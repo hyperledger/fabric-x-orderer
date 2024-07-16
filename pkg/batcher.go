@@ -349,8 +349,9 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 }
 
 func (b *Batcher) runSecondary() {
-	b.Logger.Infof("Batcher %d acting as secondary (shard %d)", b.ID, b.Shard)
 	primary := b.primary
+	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, primary)
+	b.MemPool.Restart(false)
 	out := b.BatchPuller.PullBatches(primary)
 	for {
 		var batchedRequests Batch
