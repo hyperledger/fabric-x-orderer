@@ -45,7 +45,7 @@ type Party struct {
 	ID        uint16
 	Assembler string
 	Consenter string
-	router    string
+	Router    string
 	Batchers  []string
 }
 
@@ -119,7 +119,7 @@ func NodeConfigToYAML(config interface{}, path string) error {
 		return err
 	}
 
-	err = os.WriteFile(path, rnc, 0644)
+	err = os.WriteFile(path, rnc, 0o644)
 	if err != nil {
 		return err
 	}

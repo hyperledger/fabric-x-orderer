@@ -126,13 +126,13 @@ func (s *RPC) SendSubmit(destination uint64, request *orderer.SubmitRequest, rep
 	return err
 }
 
-func (s *RPC) submitSent(start time.Time, to uint64, msg *orderer.SubmitRequest) {
-	s.Logger.Debugf("Sending msg of %d bytes to %d on channel %s took %v", submitMsgLength(msg), to, s.Channel, time.Since(start))
-}
+// func (s *RPC) submitSent(start time.Time, to uint64, msg *orderer.SubmitRequest) {
+// 	s.Logger.Debugf("Sending msg of %d bytes to %d on channel %s took %v", submitMsgLength(msg), to, s.Channel, time.Since(start))
+// }
 
-func (s *RPC) consensusSent(start time.Time, to uint64, msg *orderer.ConsensusRequest) {
-	s.Logger.Debugf("Sending msg of %d bytes to %d on channel %s took %v", len(msg.Payload), to, s.Channel, time.Since(start))
-}
+// func (s *RPC) consensusSent(start time.Time, to uint64, msg *orderer.ConsensusRequest) {
+// 	s.Logger.Debugf("Sending msg of %d bytes to %d on channel %s took %v", len(msg.Payload), to, s.Channel, time.Since(start))
+// }
 
 // getOrCreateStream obtains a Submit stream for the given destination node
 func (s *RPC) getOrCreateStream(destination uint64, operationType OperationType) (*Stream, error) {
@@ -193,9 +193,9 @@ func (s *RPC) cleanCanceledStreams(operationType OperationType) {
 	}
 }
 
-func submitMsgLength(request *orderer.SubmitRequest) int {
-	if request.Payload == nil {
-		return 0
-	}
-	return len(request.Payload.Payload)
-}
+// func submitMsgLength(request *orderer.SubmitRequest) int {
+// 	if request.Payload == nil {
+// 		return 0
+// 	}
+// 	return len(request.Payload.Payload)
+// }

@@ -3,13 +3,14 @@ package armageddon
 import (
 	"fmt"
 	"net"
-	"node/config"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"arma/node/config"
 
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
@@ -37,7 +38,7 @@ func TestArmageddon(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -63,10 +64,10 @@ func TestArmageddon(t *testing.T) {
 
 func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) {
 	nodes := map[string][]string{
-		"router":    []string{"router_node_config.yaml"},
-		"batcher":   []string{"batcher_node_1_config.yaml", "batcher_node_2_config.yaml"},
-		"consensus": []string{"consenter_node_config.yaml"},
-		"assembler": []string{"assembler_node_config.yaml"},
+		"router":    {"router_node_config.yaml"},
+		"batcher":   {"batcher_node_1_config.yaml", "batcher_node_2_config.yaml"},
+		"consensus": {"consenter_node_config.yaml"},
+		"assembler": {"assembler_node_config.yaml"},
 	}
 
 	for _, nodeType := range []string{"consensus", "batcher", "router", "assembler"} {
@@ -95,7 +96,6 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	}, 10*time.Second, 10*time.Millisecond)
 
 	readyChan <- struct{}{}
-	return
 }
 
 // generateInputConfigFileForArmageddon create a config.yaml file which is the input to armageddon generate command.
@@ -149,7 +149,7 @@ func writeToYAML(config interface{}, path string) error {
 		return err
 	}
 
-	err = os.WriteFile(path, rnc, 0644)
+	err = os.WriteFile(path, rnc, 0o644)
 	if err != nil {
 		return err
 	}
@@ -157,14 +157,14 @@ func writeToYAML(config interface{}, path string) error {
 	return nil
 }
 
-func readRouterNodeConfigFromYaml(t *testing.T, path string) *config.RouterNodeConfig {
-	configBytes, err := os.ReadFile(path)
-	require.NoError(t, err)
-	routerConfig := config.RouterNodeConfig{}
-	err = yaml.Unmarshal(configBytes, &routerConfig)
-	require.NoError(t, err)
-	return &routerConfig
-}
+// func readRouterNodeConfigFromYaml(t *testing.T, path string) *config.RouterNodeConfig {
+// 	configBytes, err := os.ReadFile(path)
+// 	require.NoError(t, err)
+// 	routerConfig := config.RouterNodeConfig{}
+// 	err = yaml.Unmarshal(configBytes, &routerConfig)
+// 	require.NoError(t, err)
+// 	return &routerConfig
+// }
 
 func readAssemblerNodeConfigFromYaml(t *testing.T, path string) *config.AssemblerNodeConfig {
 	configBytes, err := os.ReadFile(path)
@@ -195,7 +195,7 @@ func readBatcherNodeConfigFromYaml(t *testing.T, path string) *config.BatcherNod
 
 // editDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
 func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
-	dir, err := os.MkdirTemp("", "Directory_"+fmt.Sprintf(name))
+	dir, err := os.MkdirTemp("", "Directory_"+fmt.Sprint(name))
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 	switch name {

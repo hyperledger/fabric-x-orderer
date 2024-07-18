@@ -1,11 +1,12 @@
 package node
 
 import (
-	arma "arma/pkg"
 	"crypto/sha256"
 	"encoding/binary"
 	"sync/atomic"
 	"time"
+
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"

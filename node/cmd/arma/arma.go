@@ -1,30 +1,28 @@
 package arma
 
 import (
-	arma "arma/pkg"
 	"fmt"
 	"io"
-	"node/config"
 	"os"
 
-	"google.golang.org/grpc/grpclog"
+	"arma/node"
+	"arma/node/config"
+	protos "arma/node/protos/comm"
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"
+	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
-	"node"
-	protos "node/protos/comm"
 )
 
 func init() {
-	//flogging.ActivateSpec("error")
+	// flogging.ActivateSpec("error")
 	grpclog.SetLoggerV2(&silentLogger{})
 }
 
-var (
-	DirOverride = os.Getenv(DirOverrideEnvName)
-)
+var DirOverride = os.Getenv(DirOverrideEnvName)
 
 const (
 	DirOverrideEnvName = "DIRECTORY"
@@ -162,6 +160,7 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 		logger.Infof("Router listening on %s", srv.Address())
 	}
 }
+
 func (cli *CLI) Run(args []string) <-chan struct{} {
 	configFile := cli.app.Flag("config", "Specifies the config file to load the configuration from").File()
 	command := kingpin.MustParse(cli.app.Parse(args))
@@ -243,70 +242,56 @@ func parseConsensusConfig(rawConfig []byte) config.ConsenterNodeConfig {
 	return conf
 }
 
-type silentLogger struct {
-}
+type silentLogger struct{}
 
 func (s *silentLogger) Info(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Infoln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Infof(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Warning(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Warningln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Warningf(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Error(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Errorln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Errorf(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Fatal(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Fatalln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Fatalf(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) V(l int) bool {
 	return false
-
 }

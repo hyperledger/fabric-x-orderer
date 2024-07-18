@@ -9,7 +9,7 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 RUN pwd
 RUN ls
-RUN go build -o /arma cmd/arma/main/main.go
+RUN go build -o ./node/arma cmd/arma/main/main.go
 
 FROM ${BASE_IMAGE} as arma
 

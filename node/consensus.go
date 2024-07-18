@@ -1,7 +1,6 @@
 package node
 
 import (
-	arma "arma/pkg"
 	"bytes"
 	"context"
 	"crypto/ecdsa"
@@ -15,15 +14,16 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"node/comm"
-	"node/config"
-	protos "node/protos/comm"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"arma/node/comm"
+	"arma/node/config"
+	protos "arma/node/protos/comm"
+	arma "arma/pkg"
+
 	"github.com/hyperledger-labs/SmartBFT/pkg/api"
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -37,6 +37,7 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
 type Storage interface {
@@ -108,7 +109,6 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 }
 
 func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
-
 	for {
 		event, err := stream.Recv()
 
@@ -221,7 +221,6 @@ func SetupComm(c *Consensus, selfID []byte) {
 			Comm:          commAuth,
 		},
 	}
-
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
@@ -463,7 +462,6 @@ func (h *Header) FromBytes(rawHeader []byte) error {
 }
 
 func (h *Header) Bytes() []byte {
-
 	prefix := make([]byte, 8+2)
 	binary.BigEndian.PutUint64(prefix, h.Num)
 	binary.BigEndian.PutUint16(prefix[8:10], uint16(len(h.AvailableBatches)))
@@ -589,7 +587,6 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 		Value: sigsRaw,
 		ID:    c.CurrentConfig.SelfID,
 	}
-
 }
 
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.Proposal {
@@ -786,7 +783,7 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) []byte {
 
 func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Consensus {
 	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
-	if privateKey == nil {
+	if privateKey == nil || privateKey.Bytes == nil {
 		logger.Panicf("Failed decoding private key PEM")
 	}
 
@@ -813,7 +810,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 	config.LeaderRotation = false
 
 	dbDir := filepath.Join(conf.Directory, "batchDB")
-	os.MkdirAll(dbDir, 0755)
+	os.MkdirAll(dbDir, 0o755)
 
 	db, err := NewBatchAttestationDB(dbDir, logger)
 	if err != nil {
@@ -945,7 +942,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	verifier := make(ECDSAVerifier)
 	for _, ci := range consenterInfos {
 		pk, _ := pem.Decode(ci.PublicKey)
-		if pk == nil {
+		if pk == nil || pk.Bytes == nil {
 			logger.Panicf("Failed decoding consenter public key")
 		}
 

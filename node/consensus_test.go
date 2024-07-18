@@ -1,7 +1,6 @@
 package node
 
 import (
-	arma "arma/pkg"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -13,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	arma "arma/pkg"
+
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
@@ -21,7 +22,6 @@ import (
 )
 
 func TestConsensus(t *testing.T) {
-
 	sk1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	assert.NoError(t, err)
 
@@ -199,7 +199,6 @@ func TestConsensus(t *testing.T) {
 				}(node)
 			}
 			wg.Wait()
-
 		})
 	}
 }

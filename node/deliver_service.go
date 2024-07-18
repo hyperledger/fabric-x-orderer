@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	//lint:ignore SA1019 since we are reusing Fabric's delivery service, we must use the old proto package
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -59,8 +60,7 @@ func (r *responseSender) DataType() string {
 	return "block"
 }
 
-type policyChecker struct {
-}
+type policyChecker struct{}
 
 func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string) error {
 	return nil
@@ -109,9 +109,8 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 	return d.Reader.Iterator(startType)
 }
 
-type noopBindingInspector struct {
-}
+type noopBindingInspector struct{}
 
-func (nbi noopBindingInspector) Inspect(context.Context, proto.Message) error {
+func (nbi *noopBindingInspector) Inspect(context.Context, proto.Message) error {
 	return nil
 }

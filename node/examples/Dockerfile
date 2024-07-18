@@ -8,8 +8,8 @@ COPY . .
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 
-RUN go build -o /arma cmd/arma/main/main.go
-RUN go build -o /armageddon cmd/armageddon/main/main.go
+RUN go build -o /arma ./node/cmd/arma/main/main.go
+RUN go build -o /armageddon ./node/cmd/armageddon/main/main.go
 
 FROM ${BASE_IMAGE} as arma
 

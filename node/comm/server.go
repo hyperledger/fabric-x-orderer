@@ -333,7 +333,8 @@ type serverCreds struct {
 }
 
 func NewServerTransportCredentials(
-	serverConfig *TLSConfig) credentials.TransportCredentials {
+	serverConfig *TLSConfig,
+) credentials.TransportCredentials {
 	// NOTE: unlike the default grpc/credentials implementation, we do not
 	// clone the tls.Config which allows us to update it dynamically
 	serverConfig.config.NextProtos = alpnProtoStr

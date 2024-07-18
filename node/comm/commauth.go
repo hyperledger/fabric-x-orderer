@@ -261,7 +261,6 @@ func (cs *NodeClientStream) Auth() error {
 		ToId:           strconv.FormatUint(payload.ToId, 10),
 		SessionBinding: payload.SessionBinding,
 	})
-
 	if err != nil {
 		panic(err)
 	}

@@ -1,11 +1,12 @@
 package node
 
 import (
-	arma "arma/pkg"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+
+	arma "arma/pkg"
 )
 
 type ECDSAVerifier map[struct {

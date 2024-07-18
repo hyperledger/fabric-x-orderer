@@ -1,12 +1,13 @@
 package ledger
 
 import (
-	arma "arma/pkg"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
+
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/pkg/errors"

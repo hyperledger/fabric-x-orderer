@@ -1,12 +1,14 @@
 package batcher
 
 import (
-	arma "arma/pkg"
 	"context"
 	"fmt"
-	"node/ledger"
 	"time"
 
+	"arma/node/ledger"
+	arma "arma/pkg"
+
+	//lint:ignore SA1019 since we are reusing Fabric's delivery service, we must use the old proto package
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -17,7 +19,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-//TODO The deliver service and client (puller) were copied almost as is from Fabric.
+// TODO The deliver service and client (puller) were copied almost as is from Fabric.
 // Both the server and side and client side will need to go a revision.
 
 type BatcherDeliverService struct {
@@ -67,8 +69,7 @@ func (r *responseSender) DataType() string {
 	return "block"
 }
 
-type policyChecker struct {
-}
+type policyChecker struct{}
 
 func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string) error {
 	return nil
@@ -89,7 +90,7 @@ func (c *chainManager) GetChain(chainID string) deliver.Chain {
 		c.logger.Errorf("Requested shard does not match this shard: requested=%d, this=%d", shardID, c.ledgerArray.ShardID())
 		return nil
 	}
-	//TODO ledger should NOT panic if the party is not found
+	// TODO ledger should NOT panic if the party is not found
 	if ledger := c.ledgerArray.Part(partyID); ledger == nil {
 		return nil
 	} else {
@@ -128,8 +129,7 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 	return d.Reader.Iterator(startType)
 }
 
-type noopBindingInspector struct {
-}
+type noopBindingInspector struct{}
 
 func (nbi noopBindingInspector) Inspect(context.Context, proto.Message) error {
 	return nil

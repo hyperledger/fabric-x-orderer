@@ -3,11 +3,12 @@ package node
 import (
 	"fmt"
 	"net"
-	"node/comm"
-	"node/config"
 	"os"
 	"strings"
 	"time"
+
+	"arma/node/comm"
+	"arma/node/config"
 )
 
 const (
@@ -27,14 +28,12 @@ const (
 	RouterListenType
 )
 
-var (
-	type2port = map[ServerEndpointType]int{
-		AssemblerListenType: AssemblerListenPort,
-		BatcherListenType:   BatcherListenPort,
-		ConsensusListenType: ConsensusListenPort,
-		RouterListenType:    RouterListenPort,
-	}
-)
+var type2port = map[ServerEndpointType]int{
+	AssemblerListenType: AssemblerListenPort,
+	BatcherListenType:   BatcherListenPort,
+	ConsensusListenType: ConsensusListenPort,
+	RouterListenType:    RouterListenPort,
+}
 
 func ListenAddressForNode(endpointType ServerEndpointType, listenAddress string) string {
 	if listenAddress == "" {
@@ -66,7 +65,6 @@ func CreateGRPCRouter(conf config.RouterNodeConfig) *comm.GRPCServer {
 			Key:               conf.TLSPrivateKeyFile,
 		},
 	})
-
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
 		os.Exit(1)
@@ -104,7 +102,6 @@ func CreateGRPCConsensus(conf config.ConsenterNodeConfig) *comm.GRPCServer {
 			Key:               conf.TLSPrivateKeyFile,
 		},
 	})
-
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
 		os.Exit(1)
@@ -127,7 +124,6 @@ func CreateGRPCAssembler(conf config.AssemblerNodeConfig) *comm.GRPCServer {
 			Key:               conf.TLSPrivateKeyFile,
 		},
 	})
-
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
 		os.Exit(1)
@@ -174,7 +170,6 @@ func CreateGRPCBatcher(conf config.BatcherNodeConfig) *comm.GRPCServer {
 			Key:               conf.TLSPrivateKeyFile,
 		},
 	})
-
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
 		os.Exit(1)

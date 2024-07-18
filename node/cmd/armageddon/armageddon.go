@@ -8,16 +8,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/protoutil"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
 	"io"
 	"math"
 	"net"
-	"node/comm"
-	"node/config"
 	"os"
 	"path"
 	"runtime/debug"
@@ -25,9 +18,19 @@ import (
 	"sync"
 	"time"
 
+	"arma/node/comm"
+	"arma/node/config"
+
+	"github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric/protoutil"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/grpclog"
+
+	"arma/node/comm/tlsgen"
+
 	"github.com/alecthomas/kingpin"
 	"gopkg.in/yaml.v3"
-	"node/comm/tlsgen"
 )
 
 var defaultConfig = `Parties:
@@ -242,7 +245,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 	}
 
 	// create CA for each party
-	var partiesCAs = make(map[uint16][]tlsgen.CA)
+	partiesCAs := make(map[uint16][]tlsgen.CA)
 	var tlsCACertsBytesPartiesCollection []config.RawBytes
 	for _, party := range network.Parties {
 		// create CA for the party
@@ -258,7 +261,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 		tlsCACertsBytesPartiesCollection = append(tlsCACertsBytesPartiesCollection, ca.CertBytes())
 	}
 
-	var partyToCryptoConfig = make(map[uint16]CryptoConfigPerParty)
+	partyToCryptoConfig := make(map[uint16]CryptoConfigPerParty)
 
 	for _, party := range network.Parties {
 		// ca's of the party
@@ -320,7 +323,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 		}
 
 		// crypto for batchers
-		var batcherEndpointToCertsAndKeys = make(map[string]CertsAndKeys)
+		batcherEndpointToCertsAndKeys := make(map[string]CertsAndKeys)
 		for _, batcherEndpoint := range party.BatchersEndpoints {
 			// (cert,key) pair for a batcher
 			batcherCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(batcherEndpoint))
@@ -489,7 +492,7 @@ func constructAssemblerNodeConfigPerParty(partyId uint16, shards []config.ShardI
 
 func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig) []config.ShardInfo {
 	// construct a map that maps between shardId and batchers
-	var shardToBatchers = make(map[uint16][]config.BatcherInfo)
+	shardToBatchers := make(map[uint16][]config.BatcherInfo)
 	for _, party := range network.Parties {
 		for idx, batcherEndpoint := range party.BatchersEndpoints {
 			shardId := uint16(idx + 1)
@@ -559,7 +562,7 @@ func constructSharedConfig(network *Network, networkCryptoConfig *NetworkCryptoC
 func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *NetworkCryptoConfig, outputDir *string) {
 	for i, partyConfig := range networkConfig.PartiesConfig {
 		rootDir := path.Join(*outputDir, fmt.Sprintf("Party%d", i+1))
-		os.MkdirAll(rootDir, 0755)
+		os.MkdirAll(rootDir, 0o755)
 
 		configPath := path.Join(rootDir, "router_node_config.yaml")
 		err := config.NodeConfigToYAML(partyConfig.RouterConfig, configPath)
@@ -599,7 +602,7 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 			os.Exit(1)
 		}
 
-		err = os.WriteFile(configPath, uca, 0644)
+		err = os.WriteFile(configPath, uca, 0o644)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error writing user config yaml file, err: %v", err)
 			os.Exit(1)
@@ -615,7 +618,7 @@ func showtemplate() {
 func printVersion() {
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
-		fmt.Errorf("failed to read build info")
+		fmt.Println(fmt.Errorf("failed to read build info"))
 	}
 
 	fmt.Printf("Armageddon version is: %+v\n", bi.Main.Version)
@@ -655,7 +658,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int) {
 	}
 
 	// send txs to the routers
-	var txsMap = make(map[string]struct{})
+	txsMap := make(map[string]struct{})
 	sendTxToRouters(userConfigFileContent, *transactions, *rate, txsMap)
 
 	// receive blocks from some assembler
@@ -746,7 +749,7 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 	var wgRecv sync.WaitGroup
 	for n, s := range streams {
 		wgRecv.Add(1)
-		go func(stream ab.AtomicBroadcast_BroadcastClient) {
+		go func(n int, stream ab.AtomicBroadcast_BroadcastClient) {
 			defer wgRecv.Done()
 			numOfAcks := 0
 			for {
@@ -764,7 +767,7 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 					break
 				}
 			}
-		}(s)
+		}(n, s)
 	}
 
 	// send txs to all routers, using the rate limiter bucket

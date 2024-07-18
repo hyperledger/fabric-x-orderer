@@ -12,10 +12,11 @@ import (
 
 	"google.golang.org/grpc"
 
+	"arma/node/comm"
+	"arma/node/comm/tlsgen"
+	protos "arma/node/protos/comm"
+
 	"github.com/stretchr/testify/require"
-	"node/comm"
-	"node/comm/tlsgen"
-	protos "node/protos/comm"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -36,6 +37,9 @@ func newTestBatcher(ca tlsgen.CA, t *testing.T) *testBatcher {
 			Key:         ckp.Key,
 		},
 	})
+	if err != nil {
+		panic(err)
+	}
 
 	tb := &testBatcher{address: srv.Address()}
 
@@ -162,13 +166,13 @@ func TestRouter(t *testing.T) {
 	fmt.Println("total seconds:", elapsed, "total operations:", opsPerformed, "TPS:", opsPerformed/int(elapsed.Seconds()))
 }
 
-func invokeRPC(wg *sync.WaitGroup, conn *grpc.ClientConn, workPerWorker int, txn []byte) {
-	defer wg.Done()
-	cl := protos.NewRequestTransmitClient(conn)
-	for j := 0; j < workPerWorker; j++ {
-		cl.Submit(context.Background(), &protos.Request{Payload: txn})
-	}
-}
+// func invokeRPC(wg *sync.WaitGroup, conn *grpc.ClientConn, workPerWorker int, txn []byte) {
+// 	defer wg.Done()
+// 	cl := protos.NewRequestTransmitClient(conn)
+// 	for j := 0; j < workPerWorker; j++ {
+// 		cl.Submit(context.Background(), &protos.Request{Payload: txn})
+// 	}
+// }
 
 func invokeStream(wg *sync.WaitGroup, conn *grpc.ClientConn, workPerWorker int) {
 	defer wg.Done()

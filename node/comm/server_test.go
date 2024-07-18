@@ -21,11 +21,12 @@ import (
 	"testing"
 	"time"
 
+	"arma/node/comm"
+	"arma/node/comm/testpb"
+	"arma/node/comm/tlsgen"
+
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"node/comm"
-	"node/comm/testpb"
-	"node/comm/tlsgen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -641,6 +642,7 @@ func TestNewSecureGRPCServer(t *testing.T) {
 
 	// Test TLS versions which should be invalid
 	tlsVersions = map[string]uint16{
+		//lint:ignore SA1019 we are testing these versions produce an error
 		"SSL30": tls.VersionSSL30,
 		"TLS10": tls.VersionTLS10,
 		"TLS11": tls.VersionTLS11,

@@ -15,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"arma/node/comm"
+	"arma/node/comm/testpb"
+
+	//lint:ignore SA1019 since we are reusing Fabric's comm service, we must use the old proto package for now
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"node/comm"
-	"node/comm/testpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -29,7 +31,8 @@ const testTimeout = 1 * time.Second // conservative
 type echoServer struct{}
 
 func (es *echoServer) EchoCall(ctx context.Context,
-	echo *testpb.Echo) (*testpb.Echo, error) {
+	echo *testpb.Echo,
+) (*testpb.Echo, error) {
 	return echo, nil
 }
 

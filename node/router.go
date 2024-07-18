@@ -1,7 +1,6 @@
 package node
 
 import (
-	arma "arma/pkg"
 	"context"
 	rand3 "crypto/rand"
 	"encoding/binary"
@@ -9,12 +8,14 @@ import (
 	"io"
 	"math"
 	rand2 "math/rand"
-	"node/comm"
-	"node/config"
-	protos "node/protos/comm"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"arma/node/comm"
+	"arma/node/config"
+	protos "arma/node/protos/comm"
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
@@ -171,7 +172,7 @@ func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 	shard := r.shards[shardIndex]
 	router, exists := r.shardRouters[shard]
 	if !exists {
-		r.logger.Panicf("Mapped request %s to a non existent shard", shard)
+		r.logger.Panicf("Mapped request %d to a non existent shard", shard)
 	}
 	return reqID, router
 }
@@ -194,17 +195,17 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	return prepareRequestResponse(&response), nil
 }
 
-func (r *Router) sendFeedbackAtomicBroadcast(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, errors chan response) {
-	for {
-		select {
-		case <-exit:
-			return
-		case response := <-errors:
-			resp := prepareAtomicBroadcastResponse(&response)
-			stream.Send(resp)
-		}
-	}
-}
+// func (r *Router) sendFeedbackAtomicBroadcast(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, errors chan response) {
+// 	for {
+// 		select {
+// 		case <-exit:
+// 			return
+// 		case response := <-errors:
+// 			resp := prepareAtomicBroadcastResponse(&response)
+// 			stream.Send(resp)
+// 		}
+// 	}
+// }
 
 func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, errors chan response) {
 	for {
@@ -218,16 +219,16 @@ func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitS
 	}
 }
 
-func prepareAtomicBroadcastResponse(response *response) *orderer.BroadcastResponse {
-	resp := &orderer.BroadcastResponse{}
-	if response.SubmitResponse != nil {
-		resp.Status = common.Status_SUCCESS
-	} else { // It's an error
-		resp.Status = common.Status_INTERNAL_SERVER_ERROR
-		resp.Info = response.Error
-	}
-	return resp
-}
+// func prepareAtomicBroadcastResponse(response *response) *orderer.BroadcastResponse {
+// 	resp := &orderer.BroadcastResponse{}
+// 	if response.SubmitResponse != nil {
+// 		resp.Status = common.Status_SUCCESS
+// 	} else { // It's an error
+// 		resp.Status = common.Status_INTERNAL_SERVER_ERROR
+// 		resp.Info = response.Error
+// 	}
+// 	return resp
+// }
 
 func prepareRequestResponse(response *response) *protos.SubmitResponse {
 	resp := &protos.SubmitResponse{
@@ -345,7 +346,7 @@ func (sr *ShardRouter) forwardBestEffort(reqID, request []byte) error {
 	sr.lock.RUnlock()
 
 	if stream == nil || stream.faulty() {
-		stream = sr.maybeInitStream(stream, connIndex, streamInConnIndex)
+		stream = sr.maybeInitStream(connIndex, streamInConnIndex)
 	}
 
 	if stream == nil || stream.faulty() {
@@ -367,7 +368,7 @@ func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, t
 	sr.lock.RUnlock()
 
 	if stream == nil || stream.faulty() {
-		stream = sr.maybeInitStream(stream, connIndex, streamInConnIndex)
+		stream = sr.maybeInitStream(connIndex, streamInConnIndex)
 	}
 
 	if stream == nil || stream.faulty() {
@@ -386,11 +387,11 @@ func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, t
 	}
 }
 
-func (sr *ShardRouter) maybeInitStream(stream *stream, connIndex int, streamInConnIndex int) *stream {
+func (sr *ShardRouter) maybeInitStream(connIndex int, streamInConnIndex int) *stream {
 	sr.lock.Lock()
 	defer sr.lock.Unlock()
 
-	stream = sr.streams[connIndex][streamInConnIndex]
+	stream := sr.streams[connIndex][streamInConnIndex]
 	if stream == nil || stream.faulty() {
 		sr.initStream(connIndex, streamInConnIndex)
 	}
@@ -422,16 +423,16 @@ func createTraceID(rand *rand2.Rand) []byte {
 	return trace
 }
 
-func (sr *ShardRouter) getConnByIndex(connIndex int) *grpc.ClientConn {
-	sr.lock.RLock()
-	defer sr.lock.RUnlock()
+// func (sr *ShardRouter) getConnByIndex(connIndex int) *grpc.ClientConn {
+// 	sr.lock.RLock()
+// 	defer sr.lock.RUnlock()
 
-	conn := sr.connPool[connIndex]
-	if conn == nil {
-		return nil
-	}
-	return conn
-}
+// 	conn := sr.connPool[connIndex]
+// 	if conn == nil {
+// 		return nil
+// 	}
+// 	return conn
+// }
 
 func (sr *ShardRouter) maybeInit() {
 	sr.initConnPoolAndStreamsOnce()
@@ -528,6 +529,7 @@ func (sr *ShardRouter) initStream(i int, j int) {
 
 	} else {
 		sr.logger.Errorf("Failed establishing stream %d to %s: %v", i*sr.router2batcherStreamsPerConn+j, sr.batcherEndpoint, err)
+		cancel()
 	}
 }
 

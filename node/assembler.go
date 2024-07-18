@@ -1,18 +1,18 @@
 package node
 
 import (
-	arma "arma/pkg"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math"
-	"node/comm"
-	"node/config"
-	node_ledger "node/ledger"
-	"path/filepath"
 	"sync"
 	"time"
+
+	"arma/node/comm"
+	"arma/node/config"
+	node_ledger "arma/node/ledger"
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -39,11 +39,7 @@ func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error 
 	return a.ds.Deliver(server)
 }
 
-func NewAssembler(logger arma.Logger, dir string, config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
-	id := config.PartyId
-	name := fmt.Sprintf("assembler%d", id)
-	dir = filepath.Join(dir, name)
-
+func NewAssembler(logger arma.Logger, config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
 	index := NewIndex(config, blockStores, logger)
 
 	tlsKey := config.TLSPrivateKeyFile
@@ -264,8 +260,8 @@ func (br *BatchReplicator) clientConfig() comm.ClientConfig {
 func (br *BatchReplicator) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 	br.logger.Infof("Assembler %d Replicate from shard %d", br.config.PartyId, shardID)
 
-	//Find the batcher from my party in this shard.
-	//TODO we need retry mechanisms with timeouts and be able to connect to another party on that shard.
+	// Find the batcher from my party in this shard.
+	// TODO we need retry mechanisms with timeouts and be able to connect to another party on that shard.
 	batcherToPullFrom := br.findShardID(shardID)
 
 	br.logger.Infof("Assembler %d Replicate from shard %d batcher info %+v", br.config.PartyId, shardID, batcherToPullFrom)
@@ -298,7 +294,6 @@ func (br *BatchReplicator) pullFromParty(shardID arma.ShardID, batcherToPullFrom
 		uint64(0),
 		nil,
 	)
-
 	if err != nil {
 		br.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
@@ -356,7 +351,6 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 		uint64(0),
 		nil,
 	)
-
 	if err != nil {
 		bar.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
@@ -368,8 +362,7 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 
 		for _, ab := range header.AvailableBatches {
 			bar.logger.Infof("Replicated batch attestation with seq %d and shard %d", ab.Seq(), ab.Shard())
-			var ab2 AvailableBatch
-			ab2 = ab
+			ab2 := ab
 			res <- &ab2
 		}
 	})
@@ -391,7 +384,6 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
 		uint64(0),
 		nil,
 	)
-
 	if err != nil {
 		bar.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
@@ -407,7 +399,6 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
 		}
 
 		res <- &state
-
 	})
 
 	return res
@@ -548,7 +539,7 @@ func CreateAssembler(config config.AssemblerNodeConfig, logger arma.Logger) *Ass
 
 	blockStores := make(map[string]*blkstorage.BlockStore)
 
-	//This is the store where final blocks are stored
+	// This is the store where final blocks are stored
 	blockStores["arma"] = armaLedger
 
 	parties := partiesFromAssemblerConfig(config)
@@ -566,7 +557,7 @@ func CreateAssembler(config config.AssemblerNodeConfig, logger arma.Logger) *Ass
 
 	logger.Infof("Assembler %d opened block stores: %+v", config.PartyId, blockStores)
 
-	assembler := NewAssembler(logger, config.Directory, config, blockStores)
+	assembler := NewAssembler(logger, config, blockStores)
 
 	return assembler
 }

@@ -1,9 +1,10 @@
 package ledger
 
 import (
-	arma "arma/pkg"
 	"fmt"
 	"testing"
+
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/stretchr/testify/require"
@@ -40,7 +41,8 @@ func TestBatchLedgerArray(t *testing.T) {
 	for _, pID := range parties {
 		for seq := uint64(0); seq < numBatches; seq++ {
 			batchedRequests = arma.BatchedRequests{
-				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq))}
+				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
+			}
 			a.Append(pID, seq, batchedRequests.ToBytes())
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
@@ -69,7 +71,8 @@ func TestBatchLedgerArray(t *testing.T) {
 	for _, pID := range parties {
 		for seq := numBatches; seq < 2*numBatches; seq++ {
 			batchedRequests = arma.BatchedRequests{
-				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq))}
+				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
+			}
 			a.Append(pID, seq, batchedRequests.ToBytes())
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)

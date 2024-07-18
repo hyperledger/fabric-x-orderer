@@ -1,10 +1,11 @@
 package ledger
 
 import (
-	arma "arma/pkg"
 	"crypto/sha256"
 	"encoding/binary"
 	"slices"
+
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -32,7 +33,7 @@ func NewBatchLedgerArray(shardID arma.ShardID, partyID arma.PartyID, parties []a
 
 	ledgerPartsMap := make(map[arma.PartyID]*BatchLedgerPart)
 
-	//TODO We are using the Fabric block storage for now even though it is not ideal.
+	// TODO We are using the Fabric block storage for now even though it is not ideal.
 	// (1) We don't need the hash chain, and
 	// (2) we don't need to index TXs.
 	// In addition, in the future we may want to (3) prune batches that had already been received by a quorum of
@@ -108,7 +109,7 @@ func (bla *BatchLedgerArray) Close() {
 	bla.provider.Close()
 }
 
-//TODO deprecate it.
+// TODO deprecate it.
 // This implementation will be removed from use once we implement some prerequisites for the integration of the new
 // implementation above, such as augmenting the delivery service.
 // This is currently being used in the batcher and assembler.
@@ -129,7 +130,8 @@ func (b *BatcherLedger) Append(partyID arma.PartyID, seq uint64, batchBytes []by
 	block := &common.Block{
 		Header: &common.BlockHeader{
 			Number:   seq,
-			DataHash: digest[:]},
+			DataHash: digest[:],
+		},
 		Data: &common.BlockData{
 			Data: arma.BatchFromRaw(batchBytes),
 		},
@@ -149,11 +151,11 @@ func (b *BatcherLedger) Append(partyID arma.PartyID, seq uint64, batchBytes []by
 }
 
 func (b *BatcherLedger) Height(partyID arma.PartyID) uint64 {
-	//TODO get the correct ledger part using partyID
+	// TODO get the correct ledger part using partyID
 	return b.Ledger.Height()
 }
 
 func (b *BatcherLedger) RetrieveBatchByNumber(partyID arma.PartyID, seq uint64) arma.Batch {
-	//TODO get the correct ledger part using partyID, then retrieve the batch
+	// TODO get the correct ledger part using partyID, then retrieve the batch
 	return nil
 }

@@ -1,10 +1,11 @@
 package armageddon
 
 import (
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSendTxRateLimiterBucket(t *testing.T) {
@@ -17,7 +18,6 @@ func TestSendTxRateLimiterBucket(t *testing.T) {
 	rl := newSendTxRateLimiterBucket(capacity, fillRate)
 
 	sendFunc := func(txsMap map[string]struct{}, streams []ab.AtomicBroadcast_BroadcastClient, i int) {
-		return
 	}
 
 	start := time.Now()

@@ -1,8 +1,9 @@
 package node
 
 import (
-	arma "arma/pkg"
 	"encoding/binary"
+
+	arma "arma/pkg"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"

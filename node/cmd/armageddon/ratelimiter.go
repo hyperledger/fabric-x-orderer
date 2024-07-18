@@ -1,9 +1,10 @@
 package armageddon
 
 import (
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"sync"
 	"time"
+
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
 )
 
 // sendTxRateLimiter controls the rate of txs sent to the routers.

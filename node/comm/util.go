@@ -26,6 +26,7 @@ import (
 
 	"github.com/hyperledger/fabric/orderer/common/cluster"
 
+	//lint:ignore SA1019 since we are reusing Fabric's comm package, we must use the old proto package
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/hyperledger/fabric-config/protolator"
@@ -129,18 +130,18 @@ func (mp MemberMapping) ServerCertificates() StringSet {
 type StringSet map[string]struct{}
 
 // union adds the elements of the given set to the StringSet
-func (ss StringSet) union(set StringSet) {
-	for k := range set {
-		ss[k] = struct{}{}
-	}
-}
+// func (ss StringSet) union(set StringSet) {
+// 	for k := range set {
+// 		ss[k] = struct{}{}
+// 	}
+// }
 
 // subtract removes all elements in the given set from the StringSet
-func (ss StringSet) subtract(set StringSet) {
-	for k := range set {
-		delete(ss, k)
-	}
-}
+// func (ss StringSet) subtract(set StringSet) {
+// 	for k := range set {
+// 		delete(ss, k)
+// 	}
+// }
 
 // PredicateDialer creates gRPC connections
 // that are only established if the given predicate

@@ -3,4 +3,4 @@ set -eux
 
 DOCKER_CMD=${DOCKER_CMD:-docker}
 
-$DOCKER_CMD build --target=arma --tag=arma -f Dockerfile ../.
+$DOCKER_CMD build --target=arma --tag=arma -f ./Dockerfile ../../

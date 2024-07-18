@@ -1,21 +1,23 @@
 package batcher
 
 import (
-	arma "arma/pkg"
 	"context"
+	"math"
+	"time"
+
+	"arma/node/comm"
+	"arma/node/config"
+	node_ledger "arma/node/ledger"
+	arma "arma/pkg"
+
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"google.golang.org/grpc"
-	"math"
-	"node/comm"
-	"node/config"
-	node_ledger "node/ledger"
-	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-//TODO The deliver service and client (puller) were copied almost as is from Fabric.
+// TODO The deliver service and client (puller) were copied almost as is from Fabric.
 // Both the server and side and client side will need to go a revision.
 
 type BatchPuller struct {

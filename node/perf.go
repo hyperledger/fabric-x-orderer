@@ -1,5 +1,6 @@
 package node
 
+/*
 const template = `orderer-client:
   broadcast: ["{ORDERER1}", "{ORDERER2}", "{ORDERER3}", "{ORDERER4}"]
   deliver: ["{ASSEMBLER}"]
@@ -34,3 +35,4 @@ monitoring:
 rate-limit:
   endpoint: :6997
   initial-limit: 10`
+*/

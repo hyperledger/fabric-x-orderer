@@ -1,9 +1,10 @@
 package ledger_test
 
 import (
-	arma "arma/pkg"
-	"node/ledger"
 	"testing"
+
+	"arma/node/ledger"
+	arma "arma/pkg"
 
 	"github.com/stretchr/testify/require"
 )

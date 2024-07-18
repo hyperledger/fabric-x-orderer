@@ -14,8 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"arma/node/comm/tlsgen"
+
 	"github.com/stretchr/testify/require"
-	"node/comm/tlsgen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 )

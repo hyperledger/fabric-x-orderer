@@ -43,8 +43,10 @@ func TestBatcherNodeConfigToYaml(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	batchers := []BatcherInfo{{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-1"), RawBytes("TLS CERT")},
-		{2, "127.0.0.1:7051", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-2"), RawBytes("TLS CERT")}}
+	batchers := []BatcherInfo{
+		{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-1"), RawBytes("TLS CERT")},
+		{2, "127.0.0.1:7051", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-2"), RawBytes("TLS CERT")},
+	}
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 	consenters := []ConsenterInfo{{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}}}
 
@@ -72,8 +74,10 @@ func TestConsenterNodeConfigToYaml(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	batchers := []BatcherInfo{{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-1"), RawBytes("TLS CERT")},
-		{2, "127.0.0.1:7051", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-2"), RawBytes("TLS CERT")}}
+	batchers := []BatcherInfo{
+		{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-1"), RawBytes("TLS CERT")},
+		{2, "127.0.0.1:7051", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-2"), RawBytes("TLS CERT")},
+	}
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 	consenters := []ConsenterInfo{{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}}}
 
@@ -101,8 +105,10 @@ func TestAssemblerNodeConfigToYaml(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	batchers := []BatcherInfo{{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-1"), RawBytes("TLS CERT")},
-		{2, "127.0.0.1:7051", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-2"), RawBytes("TLS CERT")}}
+	batchers := []BatcherInfo{
+		{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-1"), RawBytes("TLS CERT")},
+		{2, "127.0.0.1:7051", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-2"), RawBytes("TLS CERT")},
+	}
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 
 	anc := &AssemblerNodeConfig{

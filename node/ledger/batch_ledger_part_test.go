@@ -1,9 +1,10 @@
 package ledger
 
 import (
-	arma "arma/pkg"
 	"fmt"
 	"testing"
+
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"

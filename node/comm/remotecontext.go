@@ -23,7 +23,6 @@ import (
 // RemoteContext interacts with remote cluster
 // nodes. Every call can be aborted via call to Abort()
 type RemoteContext struct {
-	expiresAt                        time.Time
 	minimumExpirationWarningInterval time.Duration
 	certExpWarningThreshold          time.Duration
 	Channel                          string

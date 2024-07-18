@@ -7,17 +7,19 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"io"
-	"node/config"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 
+	"arma/node/config"
+
+	"arma/node/comm/tlsgen"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"node/comm/tlsgen"
 )
 
 func TestRouter(t *testing.T) {
@@ -139,7 +141,8 @@ func TestBatcher(t *testing.T) {
 			{ShardId: 1, Batchers: []config.BatcherInfo{
 				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
 				{PartyID: 2, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
-			}}},
+			}},
+		},
 	}, configPath)
 	require.NoError(t, err)
 
@@ -198,7 +201,8 @@ func TestConsensus(t *testing.T) {
 		Shards: []config.ShardInfo{
 			{ShardId: 1, Batchers: []config.BatcherInfo{
 				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
-			}}},
+			}},
+		},
 	}, configPath)
 	require.NoError(t, err)
 
@@ -230,7 +234,7 @@ func TestCLI(t *testing.T) {
 
 	fPath := filepath.Join(dir, "cli-test")
 
-	err = os.WriteFile(fPath, []byte("the little fox jumped over the lazy dog"), 0600)
+	err = os.WriteFile(fPath, []byte("the little fox jumped over the lazy dog"), 0o600)
 	require.NoError(t, err)
 
 	cli := NewCLI()

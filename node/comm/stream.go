@@ -70,7 +70,6 @@ func (stream *Stream) SendWithReport(request *orderer.StepRequest, report func(e
 // sendOrDrop sends the given request to the remote cluster member, or drops it
 // if it is a consensus request and the queue is full.
 func (stream *Stream) sendOrDrop(request *orderer.StepRequest, allowDrop bool, report func(error)) error {
-
 	if allowDrop && len(stream.sendBuff) == cap(stream.sendBuff) {
 		stream.Cancel(errOverflow)
 		return errOverflow

@@ -1,8 +1,9 @@
 package ledger
 
 import (
-	arma "arma/pkg"
 	"fmt"
+
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"

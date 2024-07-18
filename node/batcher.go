@@ -1,8 +1,6 @@
 package node
 
 import (
-	arma "arma/pkg"
-	"arma/request"
 	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
@@ -12,20 +10,23 @@ import (
 	"fmt"
 	"io"
 	"math"
-	node_batcher "node/batcher"
-	"node/comm"
-	node_config "node/config"
-	node_ledger "node/ledger"
-	protos "node/protos/comm"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	node_batcher "arma/node/batcher"
+	"arma/node/comm"
+	node_config "arma/node/config"
+	node_ledger "arma/node/ledger"
+	protos "arma/node/protos/comm"
+	arma "arma/pkg"
+	"arma/request"
+
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/protobuf/proto"
 )
 
 var defaultBatcherMemPoolOpts = request.PoolOptions{
@@ -320,7 +321,7 @@ func (b *Batcher) indexTLSCerts() {
 	for _, batcher := range batchers {
 		rawTLSCert := batcher.TLSCert
 		bl, _ := pem.Decode(rawTLSCert)
-		if bl == nil {
+		if bl == nil || bl.Bytes == nil {
 			b.logger.Panicf("Failed decoding TLS certificate of %d from PEM", batcher.PartyID)
 		}
 
@@ -332,7 +333,7 @@ func createSigner(logger arma.Logger, config node_config.BatcherNodeConfig) *ecd
 	rawKey := config.SigningPrivateKey
 	bl, _ := pem.Decode(rawKey)
 
-	if bl == nil {
+	if bl == nil || bl.Bytes == nil {
 		logger.Panicf("Signing key is not a valid PEM")
 	}
 

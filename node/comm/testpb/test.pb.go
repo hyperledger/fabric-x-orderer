@@ -12,6 +12,8 @@ import (
 	grpc "google.golang.org/grpc"
 )
 
+//lint:file-ignore SA1019 this was copied from Fabric, we should solve this
+
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf

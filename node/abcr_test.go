@@ -1,8 +1,6 @@
 package node
 
 import (
-	arma "arma/pkg"
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -11,20 +9,18 @@ import (
 	"encoding/binary"
 	"encoding/pem"
 	"fmt"
-	"net"
-	"node/comm"
-	"node/comm/tlsgen"
-	"node/config"
-	protos "node/protos/comm"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"arma/node/comm"
+	"arma/node/comm/tlsgen"
+	"arma/node/config"
+	protos "arma/node/protos/comm"
+	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	_ "github.com/onsi/gomega/gexec"
@@ -54,11 +50,8 @@ func TestABCR(t *testing.T) {
 		defer b.Stop()
 	}
 
-	var routerEndpoints []string
 	for i, rConf := range configs {
 		gRPC := CreateGRPCRouter(rConf)
-		_, port, _ := net.SplitHostPort(gRPC.Address())
-		routerEndpoints = append(routerEndpoints, fmt.Sprintf("127.0.0.1:%s", port))
 		orderer.RegisterAtomicBroadcastServer(gRPC.Server(), routers[i])
 		go func() {
 			gRPC.Start()
@@ -94,7 +87,7 @@ func TestABCR(t *testing.T) {
 	//_, assemblerPort, err := net.SplitHostPort(assemblerGRPC.Address())
 	//require.NoError(t, err)
 
-	//runPerf(t, [][]byte{ca.CertBytes()}, [][]byte{ca.CertBytes()}, routerEndpoints, fmt.Sprintf("127.0.0.1:%s", assemblerPort), clientPath)
+	// runPerf(t, [][]byte{ca.CertBytes()}, [][]byte{ca.CertBytes()}, routerEndpoints, fmt.Sprintf("127.0.0.1:%s", assemblerPort), clientPath)
 	sendTransactions(t, routers, assembler)
 }
 
@@ -139,75 +132,73 @@ func sendTransactions(t *testing.T, routers []*Router, assembler *Assembler) {
 	fmt.Println(totalTxn / elapsed)
 }
 
-func runPerf(t *testing.T, routerTLSCA, assemblerTLSCA [][]byte, routerEndpoints []string, assemblerEndpoint string, clientPath string) {
+// func runPerf(t *testing.T, routerTLSCA, assemblerTLSCA [][]byte, routerEndpoints []string, assemblerEndpoint string, clientPath string) {
+// 	perfConfigDir, err := os.MkdirTemp("", fmt.Sprintf("%s-perf", t.Name()))
+// 	require.NoError(t, err)
 
-	perfConfigDir, err := os.MkdirTemp("", fmt.Sprintf("%s-perf", t.Name()))
-	require.NoError(t, err)
+// 	configFile := template
+// 	for i := 0; i < len(routerEndpoints); i++ {
+// 		configFile = strings.Replace(configFile, fmt.Sprintf("{ORDERER%d}", i+1), routerEndpoints[i], -1)
+// 	}
 
-	configFile := template
-	for i := 0; i < len(routerEndpoints); i++ {
-		configFile = strings.Replace(configFile, fmt.Sprintf("{ORDERER%d}", i+1), routerEndpoints[i], -1)
-	}
+// 	tlsCABuff := bytes.Buffer{}
+// 	for _, rtca := range routerTLSCA {
+// 		tlsCABuff.Write(rtca)
+// 	}
+// 	for _, atca := range assemblerTLSCA {
+// 		tlsCABuff.Write(atca)
+// 	}
 
-	tlsCABuff := bytes.Buffer{}
-	for _, rtca := range routerTLSCA {
-		tlsCABuff.Write(rtca)
-	}
-	for _, atca := range assemblerTLSCA {
-		tlsCABuff.Write(atca)
-	}
+// 	defer os.RemoveAll(perfConfigDir)
 
-	defer os.RemoveAll(perfConfigDir)
+// 	tlsCAFilePath := filepath.Join(perfConfigDir, "tlsCAs.pem")
+// 	err = os.WriteFile(tlsCAFilePath, tlsCABuff.Bytes(), 0o644)
+// 	require.NoError(t, err)
 
-	tlsCAFilePath := filepath.Join(perfConfigDir, "tlsCAs.pem")
-	err = os.WriteFile(tlsCAFilePath, tlsCABuff.Bytes(), 0644)
-	require.NoError(t, err)
+// 	configFile = strings.Replace(configFile, "{TLSCACERTS}", tlsCAFilePath, -1)
+// 	configFile = strings.Replace(configFile, "{ASSEMBLER}", assemblerEndpoint, -1)
 
-	configFile = strings.Replace(configFile, "{TLSCACERTS}", tlsCAFilePath, -1)
-	configFile = strings.Replace(configFile, "{ASSEMBLER}", assemblerEndpoint, -1)
+// 	configFilePath := filepath.Join(perfConfigDir, "config.yaml")
+// 	err = os.WriteFile(configFilePath, []byte(configFile), 0o644)
+// 	require.NoError(t, err)
 
-	configFilePath := filepath.Join(perfConfigDir, "config.yaml")
-	err = os.WriteFile(configFilePath, []byte(configFile), 0644)
-	require.NoError(t, err)
+// 	cmd := exec.Command(clientPath, "--configs", configFilePath)
+// 	var processOut safeBuff
+// 	cmd.Stderr = &processOut
+// 	cmd.Stdout = &processOut
 
-	cmd := exec.Command(clientPath, "--configs", configFilePath)
-	var processOut safeBuff
-	cmd.Stderr = &processOut
-	cmd.Stdout = &processOut
+// 	go func() {
+// 		err = cmd.Start()
+// 		require.NoError(t, err)
+// 	}()
 
-	go func() {
-		err = cmd.Start()
-		require.NoError(t, err)
-	}()
+// 	for {
+// 		time.Sleep(time.Second * 1)
+// 		buffContent := processOut.String()
+// 		if strings.Contains(buffContent, "Received block 10 from orderer") {
+// 			break
+// 		}
+// 	}
 
-	for {
-		time.Sleep(time.Second * 1)
-		buffContent := processOut.String()
-		if strings.Contains(buffContent, "Received block 10 from orderer") {
-			break
-		}
-	}
+// 	fmt.Println(processOut.String())
+// }
 
-	fmt.Println(processOut.String())
+// type safeBuff struct {
+// 	lock sync.Mutex
+// 	bytes.Buffer
+// }
 
-}
+// func (sb *safeBuff) Write(p []byte) (n int, err error) {
+// 	sb.lock.Lock()
+// 	defer sb.lock.Unlock()
+// 	return sb.Buffer.Write(p)
+// }
 
-type safeBuff struct {
-	lock sync.Mutex
-	bytes.Buffer
-}
-
-func (sb *safeBuff) Write(p []byte) (n int, err error) {
-	sb.lock.Lock()
-	defer sb.lock.Unlock()
-	return sb.Buffer.Write(p)
-}
-
-func (sb *safeBuff) String() string {
-	sb.lock.Lock()
-	defer sb.lock.Unlock()
-	return sb.Buffer.String()
-}
+// func (sb *safeBuff) String() string {
+// 	sb.lock.Lock()
+// 	defer sb.lock.Unlock()
+// 	return sb.Buffer.String()
+// }
 
 func sendTxn(workerID int, txnNum int, routers []*Router) {
 	txn := make([]byte, 32)
@@ -321,7 +312,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 			Directory:          dir,
 		}
 
-		go func() {
+		go func(i int) {
 			defer wg.Done()
 
 			batcher := CreateBatcher(batcherConf, createLogger(t, i+1))
@@ -333,7 +324,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 			orderer.RegisterAtomicBroadcastServer(batcherNodes[i].Server(), batcher)
 			go batcherNodes[i].Start()
 			t.Log("Batcher gRPC service listening on", batcherNodes[i].Address())
-		}()
+		}(i)
 	}
 
 	wg.Wait()
@@ -419,70 +410,56 @@ type node struct {
 	pk      config.RawBytes
 }
 
-type silentLogger struct {
-}
+type silentLogger struct{}
 
 func (s *silentLogger) Info(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Infoln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Infof(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Warning(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Warningln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Warningf(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Error(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Errorln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Errorf(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Fatal(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Fatalln(args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) Fatalf(format string, args ...any) {
-	//TODO implement me
-
+	// TODO implement me
 }
 
 func (s *silentLogger) V(l int) bool {
 	return false
-
 }
