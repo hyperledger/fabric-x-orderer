@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -38,17 +36,7 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 
 	logger := createLogger(t, batcherID)
 
-	actingWG := sync.WaitGroup{}
-	actingWG.Add(1)
-	specialLogger := logger.Desugar()
-	sugaredLogger := specialLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if strings.Contains(entry.Message, "acting as primary") {
-			actingWG.Done()
-		}
-		return nil
-	})).Sugar()
-
-	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, sugaredLogger)
+	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -63,9 +51,14 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	stateProvider := &mocks.FakeStateProvider{}
+	batcher.StateProvider = stateProvider
+
 	batcher.Start()
 
-	actingWG.Wait()
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 1
@@ -74,6 +67,7 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 	batcher.Stop()
 
 	require.True(t, pool.RestartArgsForCall(0))
+	require.NotZero(t, pool.NextRequestsCallCount())
 }
 
 func TestSecondaryBatcherSimple(t *testing.T) {
@@ -84,17 +78,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 
 	logger := createLogger(t, batcherID)
 
-	actingWG := sync.WaitGroup{}
-	actingWG.Add(1)
-	specialLogger := logger.Desugar()
-	sugaredLogger := specialLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if strings.Contains(entry.Message, "acting as secondary") {
-			actingWG.Done()
-		}
-		return nil
-	})).Sugar()
-
-	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, sugaredLogger)
+	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
@@ -108,7 +92,6 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan arma.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
-
 	batcher.BatchPuller = batchPuller
 
 	ledger := &mocks.FakeBatchLedger{}
@@ -117,9 +100,14 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
+	stateProvider := &mocks.FakeStateProvider{}
+	batcher.StateProvider = stateProvider
+
 	batcher.Start()
 
-	actingWG.Wait()
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
 
 	batchChan <- batch
 	require.Eventually(t, func() bool {
@@ -135,6 +123,322 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 
 	require.False(t, pool.RestartArgsForCall(0))
 	require.Equal(t, 2, pool.RemoveRequestsCallCount())
+	require.Zero(t, pool.NextRequestsCallCount())
+}
+
+func TestPrimaryChangeToSecondary(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma.PartyID{1, 2, 3, 4}
+	batcherID := 1
+	shardID := 0
+
+	logger := createLogger(t, batcherID)
+
+	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(arma.BatchedRequests, 0, 1)
+	reqs = append(reqs, req)
+
+	pool.NextRequestsReturnsOnCall(1, reqs)
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	stateProvider := &mocks.FakeStateProvider{}
+	stateChan := make(chan *arma.State)
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	batcher.StateProvider = stateProvider
+
+	batch := &mocks.FakeBatch{}
+	batch.PartyReturns(1)
+	batch.RequestsReturns(reqs)
+
+	batchPuller := &mocks.FakeBatchPuller{}
+	batchChan := make(chan arma.Batch)
+	batchPuller.PullBatchesReturns(batchChan)
+	batcher.BatchPuller = batchPuller
+
+	batcher.Start()
+
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  0,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.NotZero(t, pool.NextRequestsCallCount())
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  1,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return pool.RestartArgsForCall(1) == false
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batcher.Stop()
+
+	require.True(t, pool.RestartArgsForCall(0))
+	require.False(t, pool.RestartArgsForCall(1))
+}
+
+func TestSecondaryChangeToPrimary(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma.PartyID{1, 2, 3, 4}
+	batcherID := 2
+	shardID := 0
+
+	logger := createLogger(t, batcherID)
+
+	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(arma.BatchedRequests, 0, 1)
+	reqs = append(reqs, req)
+
+	pool.NextRequestsReturnsOnCall(1, reqs)
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	stateProvider := &mocks.FakeStateProvider{}
+	stateChan := make(chan *arma.State)
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	batcher.StateProvider = stateProvider
+
+	batch := &mocks.FakeBatch{}
+	batch.PartyReturns(1)
+	batch.RequestsReturns(reqs)
+
+	batchPuller := &mocks.FakeBatchPuller{}
+	batchChan := make(chan arma.Batch)
+	batchPuller.PullBatchesReturns(batchChan)
+	batcher.BatchPuller = batchPuller
+
+	batcher.Start()
+
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  0,
+			},
+		},
+	}
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Zero(t, pool.NextRequestsCallCount())
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  1,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return pool.RestartArgsForCall(1) == true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.NotZero(t, pool.NextRequestsCallCount())
+
+	batcher.Stop()
+
+	require.False(t, pool.RestartArgsForCall(0))
+	require.True(t, pool.RestartArgsForCall(1))
+}
+
+func TestSecondaryChangeToSecondary(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma.PartyID{1, 2, 3, 4}
+	batcherID := 3
+	shardID := 0
+
+	logger := createLogger(t, batcherID)
+
+	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(arma.BatchedRequests, 1)
+	reqs = append(reqs, req)
+
+	batch := &mocks.FakeBatch{}
+	batch.PartyReturns(1)
+	batch.RequestsReturns(reqs)
+
+	batchPuller := &mocks.FakeBatchPuller{}
+	batchChan := make(chan arma.Batch)
+	batchPuller.PullBatchesReturns(batchChan)
+	batcher.BatchPuller = batchPuller
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	stateProvider := &mocks.FakeStateProvider{}
+	stateChan := make(chan *arma.State)
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	batcher.StateProvider = stateProvider
+
+	batcher.Start()
+
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  0,
+			},
+		},
+	}
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  1,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return pool.RestartArgsForCall(1) == false
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batcher.Stop()
+
+	require.False(t, pool.RestartArgsForCall(0))
+	require.False(t, pool.RestartArgsForCall(1))
+	require.Equal(t, 2, pool.RemoveRequestsCallCount())
+	require.Zero(t, pool.NextRequestsCallCount())
+}
+
+func TestPrimaryChangeToPrimary(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma.PartyID{1, 2, 3, 4}
+	batcherID := 1
+	shardID := 0
+
+	logger := createLogger(t, batcherID)
+
+	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(arma.BatchedRequests, 0, 1)
+	reqs = append(reqs, req)
+
+	pool.NextRequestsReturnsOnCall(1, reqs)
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	stateProvider := &mocks.FakeStateProvider{}
+	stateChan := make(chan *arma.State)
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	batcher.StateProvider = stateProvider
+
+	batcher.Start()
+
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  0,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.NotZero(t, pool.NextRequestsCallCount())
+
+	stateChan <- &arma.State{
+		Shards: []arma.ShardTerm{
+			{
+				Shard: 0,
+				Term:  4,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return pool.RestartArgsForCall(1) == true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batcher.Stop()
+
+	require.True(t, pool.RestartArgsForCall(0))
+	require.True(t, pool.RestartArgsForCall(1))
 }
 
 func createBatcher(batcherID arma.PartyID, shardID arma.ShardID, batchers []arma.PartyID, N uint16, logger arma.Logger) *arma.Batcher {
