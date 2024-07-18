@@ -14,12 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	arma "arma/core"
 	node_batcher "arma/node/batcher"
 	"arma/node/comm"
 	node_config "arma/node/config"
 	node_ledger "arma/node/ledger"
 	protos "arma/node/protos/comm"
-	arma "arma/pkg"
 	"arma/request"
 
 	"github.com/hyperledger/fabric-protos-go/orderer"

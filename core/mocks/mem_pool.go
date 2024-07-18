@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	arma "arma/pkg"
+	arma "arma/core"
 	"context"
 	"sync"
 )

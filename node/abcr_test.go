@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
+	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	"arma/node/config"
 	protos "arma/node/protos/comm"
-	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	_ "github.com/onsi/gomega/gexec"

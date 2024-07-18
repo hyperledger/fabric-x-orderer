@@ -5,10 +5,10 @@ import (
 	"math"
 	"time"
 
+	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	node_ledger "arma/node/ledger"
-	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"google.golang.org/grpc"

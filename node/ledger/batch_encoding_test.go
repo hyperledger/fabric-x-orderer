@@ -3,8 +3,8 @@ package ledger_test
 import (
 	"testing"
 
+	arma "arma/core"
 	"arma/node/ledger"
-	arma "arma/pkg"
 
 	"github.com/stretchr/testify/require"
 )

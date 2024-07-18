@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	arma "arma/pkg"
-	"arma/pkg/mocks"
+	arma "arma/core"
+	"arma/core/mocks"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

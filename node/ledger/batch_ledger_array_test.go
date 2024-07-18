@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	arma "arma/pkg"
+	arma "arma/core"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/stretchr/testify/require"

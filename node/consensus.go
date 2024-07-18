@@ -19,10 +19,10 @@ import (
 	"sync"
 	"time"
 
+	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	protos "arma/node/protos/comm"
-	arma "arma/pkg"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/api"
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"

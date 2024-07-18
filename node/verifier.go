@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	arma "arma/pkg"
+	arma "arma/core"
 )
 
 type ECDSAVerifier map[struct {

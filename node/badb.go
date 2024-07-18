@@ -3,7 +3,7 @@ package node
 import (
 	"encoding/binary"
 
-	arma "arma/pkg"
+	arma "arma/core"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"

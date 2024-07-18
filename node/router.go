@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	protos "arma/node/protos/comm"
-	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"

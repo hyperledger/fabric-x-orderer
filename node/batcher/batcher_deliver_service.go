@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	arma "arma/core"
 	"arma/node/ledger"
-	arma "arma/pkg"
 
 	//lint:ignore SA1019 since we are reusing Fabric's delivery service, we must use the old proto package
 	"github.com/golang/protobuf/proto"

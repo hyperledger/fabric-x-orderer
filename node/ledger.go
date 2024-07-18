@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	arma "arma/pkg"
+	arma "arma/core"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"

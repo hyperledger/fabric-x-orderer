@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"slices"
 
-	arma "arma/pkg"
+	arma "arma/core"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"

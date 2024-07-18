@@ -5,10 +5,10 @@ import (
 	"io"
 	"os"
 
+	arma "arma/core"
 	"arma/node"
 	"arma/node/config"
 	protos "arma/node/protos/comm"
-	arma "arma/pkg"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"

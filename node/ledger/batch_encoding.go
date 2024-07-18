@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	arma "arma/pkg"
+	arma "arma/core"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/pkg/errors"

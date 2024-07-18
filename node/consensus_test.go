@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	arma "arma/pkg"
+	arma "arma/core"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
