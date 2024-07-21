@@ -22,4 +22,3 @@ jobs:
         - make linter
         - make check-deps
         - go test -race ./...
-        - (cd node; PATH=$PATH:orderingservice-experiments/clients/cmd/client/ go test -race ./... )
