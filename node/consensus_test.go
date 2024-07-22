@@ -234,9 +234,6 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 		FragmentFromBytes: BatchAttestationFromBytes,
 	}
 
-	config := types.DefaultConfig
-	config.SelfID = uint64(partyID)
-
 	c := &Consensus{
 		CurrentConfig: types.DefaultConfig,
 		Logger:        l,
