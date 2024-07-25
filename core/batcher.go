@@ -25,7 +25,7 @@ type MemPool interface {
 }
 
 //go:generate counterfeiter -o mocks/batch.go . Batch
-type Batch interface {
+type Batch interface { // TODO add Seq() to batch interface
 	Digest() []byte
 	Requests() BatchedRequests
 	Party() PartyID
@@ -109,7 +109,6 @@ type Batcher struct {
 	Shard              ShardID
 	Threshold          int
 	N                  uint16
-	Seq                uint64
 	Logger             Logger
 	Ledger             BatchLedger
 	BatchPuller        BatchPuller
@@ -124,6 +123,7 @@ type Batcher struct {
 	stopCtx            context.Context
 	cancelBatch        func()
 	primary            PartyID
+	seq                uint64
 	term               uint64
 	termChan           chan uint64
 	lock               sync.Mutex
@@ -154,8 +154,9 @@ func (b *Batcher) run() {
 
 		term := atomic.LoadUint64(&b.term)
 		b.primary = b.getPrimaryID(term)
-		b.confirmedSeq = b.Seq
-		b.Logger.Infof("ID: %d, shard: %d, primary id: %d, term: %d, seq: %d", b.ID, b.Shard, b.primary, term, b.Seq)
+		b.seq = b.Ledger.Height(b.primary)
+		b.confirmedSeq = b.seq
+		b.Logger.Infof("ID: %d, shard: %d, primary id: %d, term: %d, seq: %d", b.ID, b.Shard, b.primary, term, b.seq)
 
 		if b.primary == b.ID {
 			b.runPrimary()
@@ -264,8 +265,8 @@ func (b *Batcher) HandleAck(seq uint64, from PartyID) {
 }
 
 func (b *Batcher) secondariesKeepUpWithMe() bool {
-	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.Seq, b.confirmedSeq)
-	return b.Seq-b.confirmedSeq < gap
+	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.seq, b.confirmedSeq)
+	return b.seq-b.confirmedSeq < gap
 }
 
 func (b *Batcher) runPrimary() {
@@ -297,24 +298,26 @@ func (b *Batcher) runPrimary() {
 			if len(currentBatch) == 0 {
 				continue
 			}
-			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.Seq)
+			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
 			digest = b.Digest(currentBatch)
 			serializedBatch = currentBatch.ToBytes()
 			cancel()
 			break
 		}
 
-		baf := b.AttestBatch(b.Seq, b.ID, b.Shard, digest)
+		baf := b.AttestBatch(b.seq, b.ID, b.Shard, digest)
 
-		b.Ledger.Append(b.ID, b.Seq, serializedBatch)
+		b.Ledger.Append(b.ID, b.seq, serializedBatch)
 
 		b.sendBAF(baf)
-		b.HandleAck(b.Seq, b.ID)
+		b.HandleAck(b.seq, b.ID)
 
-		b.Seq++
+		b.seq++
 
 		b.removeRequests(currentBatch)
 		b.waitForSecondaries()
+
+		// TODO find out from the state if old batches need to be resubmitted (not enough BAFs collected)
 	}
 }
 
@@ -369,11 +372,12 @@ func (b *Batcher) runSecondary() {
 			panic("programming error: replicated an empty batch")
 		}
 		batch := requests.ToBytes()
-		b.Ledger.Append(primary, b.Seq, batch)
+		// TODO verify batch
+		b.Ledger.Append(primary, b.seq, batch) // TODO should we use the sequence of the batch?
 		b.removeRequests(requests)
-		baf := b.AttestBatch(b.Seq, primary, b.Shard, b.Digest(requests))
+		baf := b.AttestBatch(b.seq, primary, b.Shard, b.Digest(requests))
 		b.sendBAF(baf)
 		b.AckBAF(baf.Seq(), primary)
-		b.Seq++
+		b.seq++
 	}
 }

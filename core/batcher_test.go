@@ -290,6 +290,9 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	require.False(t, pool.RestartArgsForCall(0))
 	require.True(t, pool.RestartArgsForCall(1))
+
+	require.Equal(t, arma.PartyID(1), ledger.HeightArgsForCall(0))
+	require.Equal(t, arma.PartyID(2), ledger.HeightArgsForCall(1))
 }
 
 func TestSecondaryChangeToSecondary(t *testing.T) {
@@ -459,7 +462,6 @@ func createBatcher(batcherID arma.PartyID, shardID arma.ShardID, batchers []arma
 		Shard:            arma.ShardID(shardID),
 		Threshold:        1,
 		N:                N,
-		Seq:              0,
 		Logger:           logger,
 		Ledger:           &mocks.FakeBatchLedger{},
 		BatchPuller:      &mocks.FakeBatchPuller{},
