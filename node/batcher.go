@@ -41,13 +41,12 @@ var defaultBatcherMemPoolOpts = request.PoolOptions{
 }
 
 type Batcher struct {
-	ds               *node_batcher.BatcherDeliverService
-	logger           arma.Logger
-	b                *arma.Batcher
-	batcherCerts2IDs map[string]arma.PartyID
-	primaryEndpoint  string
-	primaryTLSCA     []node_config.RawBytes
-	request.Pool
+	ds                  *node_batcher.BatcherDeliverService
+	logger              arma.Logger
+	b                   *arma.Batcher
+	batcherCerts2IDs    map[string]arma.PartyID
+	primaryEndpoint     string
+	primaryTLSCA        []node_config.RawBytes
 	consensusStreams    []protos.Consensus_NotifyEventClient
 	primaryClient       protos.AckServiceClient
 	primaryClientStream protos.AckService_NotifyAckClient
@@ -307,10 +306,12 @@ func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) arma.MemPo
 	opts.SubmitTimeout = config.BatchTimeout
 
 	opts.OnFirstStrikeTimeout = func(key []byte) {
-		b.logger.Errorf("First strike timeout occurred on request %s", b.b.RequestInspector.RequestID(key))
+		// TODO send tx to primary
+		b.logger.Warnf("First strike timeout occurred on request %s", b.RequestID(key))
 	}
 	opts.OnSecondStrikeTimeout = func() {
-		b.logger.Errorf("second strike timeout occurred")
+		// TODO complain
+		b.logger.Warnf("second strike timeout occurred")
 	}
 
 	return request.NewPool(b.logger, b, opts)
