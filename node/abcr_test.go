@@ -15,9 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"arma/node/assembler"
-
 	arma "arma/core"
+	"arma/node/assembler"
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	"arma/node/config"
@@ -76,7 +75,7 @@ func TestABCR(t *testing.T) {
 	}
 
 	aLogger := createLogger(t, 1)
-	assembler := assembler.CreateAssembler(assemberConf, aLogger)
+	assembler := assembler.NewAssembler(assemberConf, aLogger)
 
 	assemblerGRPC := CreateGRPCAssembler(assemberConf)
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)

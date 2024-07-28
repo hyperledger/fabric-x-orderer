@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	estimatedBlockSize = 512 * 1024
+	estimatedBlockSize       = 512 * 1024
+	defaultMaxCacheSizeBytes = 1024 * 1024 * 1024
 )
 
 type cache struct {

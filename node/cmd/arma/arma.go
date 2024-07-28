@@ -84,7 +84,7 @@ func launchAssembler(stop chan struct{}, loadConfig func(configFile *os.File) []
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseAssemblerConfig(configContent)
-		assembler := assembler.CreateAssembler(conf, logger)
+		assembler := assembler.NewAssembler(conf, logger)
 
 		srv := node.CreateGRPCAssembler(conf)
 
