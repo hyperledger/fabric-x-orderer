@@ -771,15 +771,23 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 	}
 
 	// send txs to all routers, using the rate limiter bucket
-	rl := newSendTxRateLimiterBucket(numOfTxs, rate)
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	capacity := rate / fillFrequency
+	rl, err := NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
 	for i := 0; i < numOfTxs; i++ {
-		status := rl.removeFromBucketAndSendTx(sendTx, txsMap, streams, i)
+		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
+		sendTx(txsMap, streams, i)
 	}
-	rl.stop()
+	rl.Stop()
 
 	wgRecv.Wait()
 
