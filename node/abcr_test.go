@@ -12,9 +12,10 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
+
+	"arma/node/assembler"
 
 	arma "arma/core"
 	"arma/node/comm"
@@ -75,7 +76,7 @@ func TestABCR(t *testing.T) {
 	}
 
 	aLogger := createLogger(t, 1)
-	assembler := CreateAssembler(assemberConf, aLogger)
+	assembler := assembler.CreateAssembler(assemberConf, aLogger)
 
 	assemblerGRPC := CreateGRPCAssembler(assemberConf)
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
@@ -91,7 +92,7 @@ func TestABCR(t *testing.T) {
 	sendTransactions(t, routers, assembler)
 }
 
-func sendTransactions(t *testing.T, routers []*Router, assembler *Assembler) {
+func sendTransactions(t *testing.T, routers []*Router, assembler *assembler.Assembler) {
 	sendTxn(runtime.NumCPU()+1, 0, routers)
 
 	time.Sleep(time.Second)
@@ -115,11 +116,9 @@ func sendTransactions(t *testing.T, routers []*Router, assembler *Assembler) {
 
 	wg.Wait()
 
-	txCount := &assembler.assembler.Ledger.(*AssemblerLedger).TransactionCount
-
 	totalTxn := workPerWorker * runtime.NumCPU()
 	require.Eventually(t, func() bool {
-		n := atomic.LoadUint64(txCount)
+		n := assembler.GetTxCount()
 		t.Logf("#txs: %d", n)
 		return int(n) >= totalTxn
 	}, 30*time.Second, 1000*time.Millisecond)

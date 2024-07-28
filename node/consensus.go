@@ -19,6 +19,9 @@ import (
 	"sync"
 	"time"
 
+	"arma/node/consensus/state"
+	"arma/node/delivery"
+
 	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
@@ -65,7 +68,7 @@ type BFT interface {
 }
 
 type Consensus struct {
-	DeliverService
+	delivery.DeliverService
 	*comm.ClusterService
 	Config        config.ConsenterNodeConfig
 	PrevHash      []byte
@@ -101,7 +104,7 @@ func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.
 func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
 	rawCE := req.Payload.Payload
 	var ce arma.ControlEvent
-	if err := ce.FromBytes(rawCE, BatchAttestationFromBytes); err != nil {
+	if err := ce.FromBytes(rawCE, state.BatchAttestationFromBytes); err != nil {
 		c.Logger.Errorf("Failed unmarshaling control event %s: %v", base64.StdEncoding.EncodeToString(rawCE), err)
 		return nil
 	}
@@ -121,7 +124,7 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 		}
 
 		var ce arma.ControlEvent
-		if err := ce.FromBytes(event.GetPayload(), BatchAttestationFromBytes); err != nil {
+		if err := ce.FromBytes(event.GetPayload(), state.BatchAttestationFromBytes); err != nil {
 			return fmt.Errorf("malformed control event: %v", err)
 		}
 
@@ -233,7 +236,7 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 
 func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {
 	batch := arma.BatchFromRaw(proposal.Payload)
-	var hdr Header
+	var hdr state.Header
 	if err := hdr.FromBytes(proposal.Header); err != nil {
 		return nil, err
 	}
@@ -258,7 +261,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 
 func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 	var ce arma.ControlEvent
-	if err := ce.FromBytes(req, BatchAttestationFromBytes); err != nil {
+	if err := ce.FromBytes(req, state.BatchAttestationFromBytes); err != nil {
 		return types.RequestInfo{}, err
 	}
 
@@ -385,109 +388,6 @@ func (tbsbh toBeSignedBlockHeader) Bytes() []byte {
 	return buff
 }
 
-type AvailableBatch struct {
-	primary uint16
-	shard   uint16
-	seq     uint64
-	digest  []byte
-}
-
-func (ab *AvailableBatch) Fragments() []arma.BatchAttestationFragment {
-	panic("should not be called")
-}
-
-func (ab *AvailableBatch) Digest() []byte {
-	return ab.digest
-}
-
-func (ab *AvailableBatch) Seq() uint64 {
-	return ab.seq
-}
-
-func (ab *AvailableBatch) Primary() arma.PartyID {
-	return arma.PartyID(ab.primary)
-}
-
-func (ab *AvailableBatch) Shard() arma.ShardID {
-	return arma.ShardID(ab.shard)
-}
-
-func (ab *AvailableBatch) Serialize() []byte {
-	buff := make([]byte, 32+2*2+8)
-	var pos int
-	binary.BigEndian.PutUint16(buff[pos:], ab.primary)
-	pos += 2
-	binary.BigEndian.PutUint16(buff[pos:], ab.shard)
-	pos += 2
-	binary.BigEndian.PutUint64(buff[pos:], ab.seq)
-	pos += 8
-	copy(buff[pos:], ab.digest)
-
-	return buff
-}
-
-func (ab *AvailableBatch) Deserialize(bytes []byte) error {
-	ab.primary = binary.BigEndian.Uint16(bytes[0:2])
-	ab.shard = binary.BigEndian.Uint16(bytes[2:4])
-	ab.seq = binary.BigEndian.Uint64(bytes[4:12])
-	ab.digest = bytes[12:]
-
-	return nil
-}
-
-type Header struct {
-	Num              uint64
-	AvailableBatches []AvailableBatch
-	State            []byte
-}
-
-func (h *Header) FromBytes(rawHeader []byte) error {
-	h.Num = binary.BigEndian.Uint64(rawHeader[0:8])
-	availableBatchCount := int(binary.BigEndian.Uint16(rawHeader[8:10]))
-
-	pos := 10
-
-	h.AvailableBatches = nil
-	for i := 0; i < availableBatchCount; i++ {
-		abSize := 2 + 2 + 8 + 32
-		var ab AvailableBatch
-		ab.Deserialize(rawHeader[pos : pos+abSize])
-		pos += abSize
-		h.AvailableBatches = append(h.AvailableBatches, ab)
-	}
-
-	h.State = rawHeader[pos:]
-
-	return nil
-}
-
-func (h *Header) Bytes() []byte {
-	prefix := make([]byte, 8+2)
-	binary.BigEndian.PutUint64(prefix, h.Num)
-	binary.BigEndian.PutUint16(prefix[8:10], uint16(len(h.AvailableBatches)))
-
-	availableBatchesBytes := availableBatchesToBytes(h.AvailableBatches)
-
-	buff := make([]byte, len(availableBatchesBytes)+len(prefix)+len(h.State))
-	copy(buff, prefix)
-	copy(buff[len(prefix):], availableBatchesBytes)
-	copy(buff[len(prefix)+len(availableBatchesBytes):], h.State)
-
-	return buff
-}
-
-func availableBatchesToBytes(availableBatches []AvailableBatch) []byte {
-	sequencesBuff := make([]byte, len(availableBatches)*(32+2*2+8))
-
-	var pos int
-	for _, ab := range availableBatches {
-		bytes := ab.Serialize()
-		copy(sequencesBuff[pos:], bytes)
-		pos += len(bytes)
-	}
-	return sequencesBuff
-}
-
 type Bytes [][]byte
 
 func (c *Consensus) Sign(msg []byte) []byte {
@@ -501,7 +401,7 @@ func (c *Consensus) Sign(msg []byte) []byte {
 
 func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 	var ce arma.ControlEvent
-	if err := ce.FromBytes(req, BatchAttestationFromBytes); err != nil {
+	if err := ce.FromBytes(req, state.BatchAttestationFromBytes); err != nil {
 		return types.RequestInfo{}
 	}
 
@@ -535,7 +435,7 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signature {
 	requests := arma.BatchFromRaw(proposal.Payload)
 
-	hdr := &Header{}
+	hdr := &state.Header{}
 	if err := hdr.FromBytes(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing header: %v", err)
 		return nil
@@ -597,14 +497,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 	c.Logger.Infof("Created proposal with %d attestations", len(attestations))
 
 	seq := c.LastSeq
-	availableBatches := make([]AvailableBatch, 0, len(attestations))
+	availableBatches := make([]state.AvailableBatch, 0, len(attestations))
 	for _, ba := range attestations {
-		availableBatches = append(availableBatches, AvailableBatch{
-			digest:  ba[0].Digest(),
-			shard:   uint16(ba[0].Shard()),
-			seq:     ba[0].Seq(),
-			primary: uint16(ba[0].Primary()),
-		})
+		availableBatches = append(availableBatches, state.NewAvailableBatch(uint16(ba[0].Primary()), uint16(ba[0].Shard()), ba[0].Seq(), ba[0].Digest()))
 
 		seq++
 	}
@@ -615,7 +510,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 	}
 
 	return types.Proposal{
-		Header: (&Header{
+		Header: (&state.Header{
 			AvailableBatches: availableBatches,
 			State:            newRawState,
 			Num:              md.LatestSequence,
@@ -625,19 +520,10 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 	}
 }
 
-func BatchAttestationFromBytes(in []byte) (arma.BatchAttestationFragment, error) {
-	var baf arma.SimpleBatchAttestationFragment
-	if err := baf.Deserialize(in); err != nil {
-		return nil, err
-	}
-
-	return &baf, nil
-}
-
 func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signature) types.Reconfig {
 	rawDecision := decisionToBytes(proposal, signatures)
 
-	hdr := &Header{}
+	hdr := &state.Header{}
 	if err := hdr.FromBytes(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing header: %v", err)
 		return types.Reconfig{}
@@ -845,7 +731,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 
 	consLedger := &ConsensusLedger{ledger: fl}
 	c := &Consensus{
-		DeliverService: DeliverService(map[string]blockledger.ReadWriter{"consensus": fl}),
+		DeliverService: delivery.DeliverService(map[string]blockledger.ReadWriter{"consensus": fl}),
 		Config:         conf,
 		WAL:            wal,
 		CurrentConfig:  types.Configuration{SelfID: uint64(conf.PartyId)},
@@ -853,7 +739,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 			State:             initialState,
 			DB:                db,
 			Logger:            logger,
-			FragmentFromBytes: BatchAttestationFromBytes,
+			FragmentFromBytes: state.BatchAttestationFromBytes,
 		},
 		Logger:       logger,
 		State:        initialState,
@@ -1024,7 +910,7 @@ func (s *synchronizer) run() {
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"consensus",
 		nil,
-		nextSeekInfo(s.nextSeq()),
+		delivery.NextSeekInfo(s.nextSeq()),
 		int32(0),
 		uint64(0),
 		nil,
@@ -1033,7 +919,7 @@ func (s *synchronizer) run() {
 		s.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
-	go pull(context.Background(), "consensus", s.logger, s.endpoint, requestEnvelope, s.cc, func(block *common.Block) {
+	go delivery.Pull(context.Background(), "consensus", s.logger, s.endpoint, requestEnvelope, s.cc, func(block *common.Block) {
 		for s.memStoreTooBig() {
 			time.Sleep(time.Second)
 			s.logger.Infof("Mem store is too big, waiting for BFT to catch up")

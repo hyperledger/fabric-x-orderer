@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"arma/node/delivery"
+
 	arma "arma/core"
 	node_batcher "arma/node/batcher"
 	"arma/node/comm"
@@ -82,7 +84,7 @@ func (b *Batcher) Stop() {
 	b.running.Wait()
 }
 
-func (b *Batcher) createBAR() *BAReplicator {
+func (b *Batcher) createBAR() *delivery.BAReplicator {
 	var endpoint string
 	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(b.config.Consenters); i++ {
@@ -97,18 +99,12 @@ func (b *Batcher) createBAR() *BAReplicator {
 		b.logger.Panicf("Failed finding endpoint and TLS CAs for party %d", b.config.PartyId)
 	}
 
-	bar := &BAReplicator{
-		logger:   b.logger,
-		endpoint: endpoint,
-		tlsKey:   b.tlsKey,
-		tlsCert:  b.tlsCert,
-		cc:       clientConfig(tlsCAs, b.tlsKey, b.tlsCert),
-	}
+	bar := delivery.NewBAReplicator(tlsCAs, b.tlsKey, b.tlsCert, endpoint, b.logger)
 
 	return bar
 }
 
-func (b *Batcher) replicateState(seq uint64, bar *BAReplicator) {
+func (b *Batcher) replicateState(seq uint64, bar *delivery.BAReplicator) {
 	defer b.running.Done()
 	for {
 		select {

@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 
+	"arma/node/assembler"
+
 	arma "arma/core"
 	"arma/node"
 	"arma/node/config"
@@ -82,7 +84,7 @@ func launchAssembler(stop chan struct{}, loadConfig func(configFile *os.File) []
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseAssemblerConfig(configContent)
-		assembler := node.CreateAssembler(conf, logger)
+		assembler := assembler.CreateAssembler(conf, logger)
 
 		srv := node.CreateGRPCAssembler(conf)
 

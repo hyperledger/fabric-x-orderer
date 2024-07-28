@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"arma/node/consensus/state"
+
 	arma "arma/core"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
@@ -175,7 +177,7 @@ func TestConsensus(t *testing.T) {
 						decision, _, err := bytesToDecision(rawDecision)
 						assert.NoError(t, err)
 
-						hdr := &Header{}
+						hdr := &state.Header{}
 						err = hdr.FromBytes(decision.Header)
 						assert.NoError(t, err)
 
@@ -187,7 +189,7 @@ func TestConsensus(t *testing.T) {
 
 						var actualSequences []uint64
 						for _, ab := range hdr.AvailableBatches {
-							actualSequences = append(actualSequences, ab.seq)
+							actualSequences = append(actualSequences, ab.Seq())
 						}
 						assert.Equal(t, expectedSequences, actualSequences)
 						assert.Equal(t, expectedDecisionNum, hdr.Num)
@@ -231,7 +233,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 		State:             initialState,
 		DB:                db,
 		Logger:            l,
-		FragmentFromBytes: BatchAttestationFromBytes,
+		FragmentFromBytes: state.BatchAttestationFromBytes,
 	}
 
 	c := &Consensus{
@@ -319,30 +321,17 @@ func TestProposalSerialization(t *testing.T) {
 	assert.Equal(t, signatures, signatures2)
 }
 
-func TestAvailableBatches(t *testing.T) {
-	var ab AvailableBatch
-	ab.digest = make([]byte, 32)
-	ab.primary = 42
-	ab.shard = 666
-	ab.seq = 100
-
-	var ab2 AvailableBatch
-	ab2.Deserialize(ab.Serialize())
-
-	assert.Equal(t, ab, ab2)
-}
-
 func TestHeaderBytes(t *testing.T) {
-	hdr := Header{
+	hdr := state.Header{
 		State: []byte{1, 2, 3},
 		Num:   100,
-		AvailableBatches: []AvailableBatch{
-			{seq: 1, shard: 2, primary: 3, digest: make([]byte, 32)},
-			{seq: 4, shard: 5, primary: 6, digest: make([]byte, 32)},
+		AvailableBatches: []state.AvailableBatch{
+			state.NewAvailableBatch(3, 2, 1, make([]byte, 32)),
+			state.NewAvailableBatch(6, 5, 4, make([]byte, 32)),
 		},
 	}
 
-	var hdr2 Header
+	var hdr2 state.Header
 	hdr2.FromBytes(hdr.Bytes())
 
 	assert.Equal(t, hdr, hdr2)
