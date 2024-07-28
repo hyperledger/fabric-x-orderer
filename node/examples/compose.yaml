@@ -1,4 +1,3 @@
-
 x-base: &base
   image: "arma"
 
@@ -27,7 +26,6 @@ x-router: &router
     assembler_stage:
       condition: service_completed_successfully
 
-
 services:
 
   ## consenters ....
@@ -36,21 +34,29 @@ services:
     <<: *consenter
     command: consensus --config=arma-config/Party1/consenter_node_config.yaml
     hostname: consensus.p1
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
 
   consenter.p2:
     <<: *consenter
     command: consensus --config=arma-config/Party2/consenter_node_config.yaml
     hostname: consensus.p2
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
 
   consenter.p3:
     <<: *consenter
     command: consensus --config=arma-config/Party3/consenter_node_config.yaml
     hostname: consensus.p3
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
 
   consenter.p4:
     <<: *consenter
     command: consensus --config=arma-config/Party4/consenter_node_config.yaml
     hostname: consensus.p4
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
 
   consenter_stage:
     <<: *stage
@@ -66,41 +72,57 @@ services:
     <<: *batcher
     command: batcher --config=arma-config/Party1/batcher_node_1_config.yaml
     hostname: batcher1.p1
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
 
   batcher2.p1:
     <<: *batcher
     command: batcher --config=arma-config/Party1/batcher_node_2_config.yaml
     hostname: batcher2.p1
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
 
   batcher1.p2:
     <<: *batcher
     command: batcher --config=arma-config/Party2/batcher_node_1_config.yaml
     hostname: batcher1.p2
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
 
   batcher2.p2:
     <<: *batcher
     command: batcher --config=arma-config/Party2/batcher_node_2_config.yaml
     hostname: batcher2.p2
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
 
   batcher1.p3:
     <<: *batcher
     command: batcher --config=arma-config/Party3/batcher_node_1_config.yaml
     hostname: batcher1.p3
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
 
   batcher2.p3:
     <<: *batcher
     command: batcher --config=arma-config/Party3/batcher_node_2_config.yaml
     hostname: batcher2.p3
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
 
   batcher1.p4:
     <<: *batcher
     command: batcher --config=arma-config/Party4/batcher_node_1_config.yaml
     hostname: batcher1.p4
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
 
   batcher2.p4:
     <<: *batcher
     command: batcher --config=arma-config/Party4/batcher_node_2_config.yaml
     hostname: batcher2.p4
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
 
   batcher_stage:
     <<: *stage
@@ -119,18 +141,26 @@ services:
   assembler.p1:
     <<: *assembler
     command: assembler --config=arma-config/Party1/assembler_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
 
   assembler.p2:
     <<: *assembler
     command: assembler --config=arma-config/Party2/assembler_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
 
   assembler.p3:
     <<: *assembler
     command: assembler --config=arma-config/Party3/assembler_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
 
   assembler.p4:
     <<: *assembler
     command: assembler --config=arma-config/Party4/assembler_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
 
   assembler_stage:
     <<: *stage
@@ -145,15 +175,25 @@ services:
   router.p1:
     <<: *router
     command: router --config=arma-config/Party1/router_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
 
   router.p2:
     <<: *router
     command: router --config=arma-config/Party2/router_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
 
   router.p3:
     <<: *router
     command: router --config=arma-config/Party3/router_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
 
   router.p4:
     <<: *router
     command: router --config=arma-config/Party4/router_node_config.yaml
+    volumes:
+      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
+
+
