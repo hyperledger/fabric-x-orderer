@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 
+	"arma/node/batcher"
+
 	"arma/node/assembler"
 
 	arma "arma/core"
@@ -125,7 +127,7 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseBatcherConfig(configContent)
-		batcher := node.CreateBatcher(conf, logger)
+		batcher := batcher.CreateBatcher(conf, logger)
 		defer batcher.Run()
 
 		srv := node.CreateGRPCBatcher(conf)

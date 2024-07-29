@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"arma/node/batcher"
+
 	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
@@ -33,7 +35,7 @@ type Router struct {
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
-	clientHost := ExtractCertificateFromContext(stream.Context())
+	clientHost := batcher.ExtractCertificateFromContext(stream.Context())
 	r.logger.Debugf("Client %s connected", clientHost)
 
 	r.init()

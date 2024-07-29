@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"arma/node/batcher"
+
+	"arma/node/crypto"
+
 	"arma/node/consensus/state"
 
 	arma "arma/core"
@@ -38,28 +42,28 @@ func TestConsensus(t *testing.T) {
 
 	sks := []*ecdsa.PrivateKey{sk1, sk2, sk3, sk4}
 
-	baf1, err := createBAF(sk1, uint16(1), 1, []byte{1, 2, 3}, 1, 1)
+	baf1, err := batcher.CreateBAF(sk1, uint16(1), 1, []byte{1, 2, 3}, 1, 1)
 	assert.NoError(t, err)
 
-	baf2, err := createBAF(sk2, uint16(2), 1, []byte{1, 2, 3}, 1, 1)
+	baf2, err := batcher.CreateBAF(sk2, uint16(2), 1, []byte{1, 2, 3}, 1, 1)
 	assert.NoError(t, err)
 
-	baf11, err := createBAF(sk3, uint16(3), 1, []byte{1, 2, 3}, 1, 1)
+	baf11, err := batcher.CreateBAF(sk3, uint16(3), 1, []byte{1, 2, 3}, 1, 1)
 	assert.NoError(t, err)
 
-	baf21, err := createBAF(sk4, uint16(4), 1, []byte{1, 2, 3}, 1, 1)
+	baf21, err := batcher.CreateBAF(sk4, uint16(4), 1, []byte{1, 2, 3}, 1, 1)
 	assert.NoError(t, err)
 
-	baf3, err := createBAF(sk1, uint16(1), 2, []byte{1, 2, 4}, 2, 1)
+	baf3, err := batcher.CreateBAF(sk1, uint16(1), 2, []byte{1, 2, 4}, 2, 1)
 	assert.NoError(t, err)
 
-	baf4, err := createBAF(sk2, uint16(2), 2, []byte{1, 2, 4}, 2, 1)
+	baf4, err := batcher.CreateBAF(sk2, uint16(2), 2, []byte{1, 2, 4}, 2, 1)
 	assert.NoError(t, err)
 
-	baf5, err := createBAF(sk1, uint16(1), 1, []byte{1, 2, 5}, 1, 2)
+	baf5, err := batcher.CreateBAF(sk1, uint16(1), 1, []byte{1, 2, 5}, 1, 2)
 	assert.NoError(t, err)
 
-	baf6, err := createBAF(sk2, uint16(2), 1, []byte{1, 2, 5}, 1, 2)
+	baf6, err := batcher.CreateBAF(sk2, uint16(2), 1, []byte{1, 2, 5}, 1, 2)
 	assert.NoError(t, err)
 
 	for _, tst := range []struct {
@@ -101,7 +105,7 @@ func TestConsensus(t *testing.T) {
 	} {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
-			v := make(ECDSAVerifier)
+			v := make(crypto.ECDSAVerifier)
 
 			initialState := (&arma.State{
 				ShardCount: 2,
@@ -211,14 +215,11 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState []byte, nodes []uint64, verifier ECDSAVerifier, onCommit func()) (*Consensus, func()) {
-	signer := ECDSASigner(*sk)
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState []byte, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
+	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma.ShardID{1, 2, math.MaxUint16} {
-		verifier[struct {
-			party arma.PartyID
-			shard arma.ShardID
-		}{party: partyID, shard: shard}] = signer.PublicKey
+		verifier[crypto.ShardPartyKey{Party: partyID, Shard: shard}] = signer.PublicKey
 	}
 
 	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))

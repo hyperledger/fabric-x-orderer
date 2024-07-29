@@ -1,4 +1,4 @@
-package node
+package batcher
 
 import (
 	"context"
@@ -14,10 +14,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"arma/node/consensus/state"
+
+	"arma/node/crypto"
+
 	"arma/node/delivery"
 
 	arma "arma/core"
-	node_batcher "arma/node/batcher"
 	"arma/node/comm"
 	node_config "arma/node/config"
 	node_ledger "arma/node/ledger"
@@ -43,7 +46,7 @@ var defaultBatcherMemPoolOpts = request.PoolOptions{
 }
 
 type Batcher struct {
-	ds                  *node_batcher.BatcherDeliverService
+	ds                  *BatcherDeliverService
 	logger              arma.Logger
 	b                   *arma.Batcher
 	batcherCerts2IDs    map[string]arma.PartyID
@@ -233,7 +236,7 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 	}
 }
 
-func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds *node_batcher.BatcherDeliverService) *Batcher {
+func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds *BatcherDeliverService) *Batcher {
 	cert := config.TLSCertificateFile
 	sk := config.TLSPrivateKeyFile
 
@@ -349,7 +352,7 @@ func (b *Batcher) attestBatch(seq uint64, primary arma.PartyID, shard arma.Shard
 		state := ref.(*arma.State)
 		pending = state.Pending
 	}
-	baf, err := createBAF(b.sk, b.config.PartyId, uint16(shard), digest, uint16(primary), seq, pending...)
+	baf, err := CreateBAF(b.sk, b.config.PartyId, uint16(shard), digest, uint16(primary), seq, pending...)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -572,7 +575,7 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64, pending ...arma.BatchAttestationFragment) (arma.BatchAttestationFragment, error) {
+func CreateBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64, pending ...arma.BatchAttestationFragment) (arma.BatchAttestationFragment, error) {
 	epoch := int(time.Now().Unix()) / 10
 
 	gc := make([][]byte, 0, len(pending))
@@ -592,9 +595,9 @@ func createBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, pri
 		P:   int(primary),
 	}
 
-	signer := ECDSASigner(*sk)
+	signer := crypto.ECDSASigner(*sk)
 
-	tbs := ToBeSignedBAF(baf)
+	tbs := state.ToBeSignedBAF(baf)
 
 	sig, err := signer.Sign(tbs)
 	baf.Sig = sig
@@ -649,12 +652,12 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger arma.Logger) *Batc
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
 
-	deliveryService := &node_batcher.BatcherDeliverService{
+	deliveryService := &BatcherDeliverService{
 		LedgerArray: ledgerArray,
 		Logger:      logger,
 	}
 
-	bp := node_batcher.NewBatchPuller(conf, ledgerArray, logger)
+	bp := NewBatchPuller(conf, ledgerArray, logger)
 
 	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService)
 

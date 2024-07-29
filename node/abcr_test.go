@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"arma/node/batcher"
+
 	arma "arma/core"
 	"arma/node/assembler"
 	"arma/node/comm"
@@ -285,8 +287,8 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 	}
 }
 
-func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInfo, consenterInfos []config.ConsenterInfo) []*Batcher {
-	var batchers []*Batcher
+func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInfo, consenterInfos []config.ConsenterInfo) []*batcher.Batcher {
+	var batchers []*batcher.Batcher
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(4)
@@ -313,7 +315,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 		go func(i int) {
 			defer wg.Done()
 
-			batcher := CreateBatcher(batcherConf, createLogger(t, i+1))
+			batcher := batcher.CreateBatcher(batcherConf, createLogger(t, i+1))
 			lock.Lock()
 			batchers = append(batchers, batcher)
 			lock.Unlock()

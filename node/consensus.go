@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"arma/node/crypto"
+
 	"arma/node/consensus/state"
 	"arma/node/delivery"
 
@@ -272,7 +274,7 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 		err := c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ToBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
 		return reqID, err
 	} else if ce.BAF != nil {
-		msg := ToBeSignedBAF(ce.BAF)
+		msg := state.ToBeSignedBAF(ce.BAF)
 		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma.SimpleBatchAttestationFragment).Sig)
 		return reqID, err
 	} else {
@@ -288,29 +290,6 @@ func ToBeSignedComplaint(c *arma.Complaint) []byte {
 	binary.BigEndian.PutUint64(buff[pos:], c.Term)
 	pos += 8
 	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Signer))
-
-	return buff
-}
-
-func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
-	buff := make([]byte, 2+8+2+8+2+32+len(baf.GarbageCollect())*32)
-	var pos int
-	binary.BigEndian.PutUint16(buff, uint16(baf.Shard()))
-	pos += 2
-	binary.BigEndian.PutUint64(buff[pos:], baf.Seq())
-	pos += 8
-	binary.BigEndian.PutUint16(buff[pos:], uint16(baf.Signer()))
-	pos += 2
-	binary.BigEndian.PutUint64(buff[pos:], baf.Epoch())
-	pos += 8
-	binary.BigEndian.PutUint16(buff[pos:], uint16(baf.Primary()))
-	pos += 2
-	copy(buff[pos:], baf.Digest())
-	pos += 32
-	for _, gc := range baf.GarbageCollect() {
-		copy(buff[pos:], gc)
-		pos += 32
-	}
 
 	return buff
 }
@@ -746,7 +725,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 		CurrentNodes: currentNodes,
 		Storage:      consLedger,
 		SigVerifier:  consenterVerifier,
-		Signer:       ECDSASigner(*priv.(*ecdsa.PrivateKey)),
+		Signer:       crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey)),
 	}
 
 	bft := &consensus.Consensus{
@@ -824,8 +803,8 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 	return c
 }
 
-func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger arma.Logger) ECDSAVerifier {
-	verifier := make(ECDSAVerifier)
+func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger arma.Logger) crypto.ECDSAVerifier {
+	verifier := make(crypto.ECDSAVerifier)
 	for _, ci := range consenterInfos {
 		pk, _ := pem.Decode(ci.PublicKey)
 		if pk == nil || pk.Bytes == nil {
@@ -837,10 +816,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 			logger.Panicf("Failed parsing consenter public key: %v", err)
 		}
 
-		verifier[struct {
-			party arma.PartyID
-			shard arma.ShardID
-		}{shard: math.MaxUint16, party: arma.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+		verifier[crypto.ShardPartyKey{Shard: crypto.CONSENSUS_CLUSTER_SHARD, Party: arma.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
 	}
 
 	for _, shard := range shardInfo {
@@ -857,10 +833,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 				logger.Panicf("Failed parsing batcher public key: %v", err)
 			}
 
-			verifier[struct {
-				party arma.PartyID
-				shard arma.ShardID
-			}{shard: arma.ShardID(shard.ShardId), party: arma.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+			verifier[crypto.ShardPartyKey{Shard: arma.ShardID(shard.ShardId), Party: arma.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
 		}
 	}
 
