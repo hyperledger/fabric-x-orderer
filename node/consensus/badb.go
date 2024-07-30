@@ -1,4 +1,4 @@
-package node
+package consensus
 
 import (
 	"encoding/binary"

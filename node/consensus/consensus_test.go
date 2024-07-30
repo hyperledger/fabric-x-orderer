@@ -1,4 +1,4 @@
-package node
+package consensus
 
 import (
 	"crypto/ecdsa"
@@ -12,14 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"arma/node/batcher"
-	"arma/testutil"
-
-	"arma/node/crypto"
-
-	"arma/node/consensus/state"
-
 	arma "arma/core"
+	"arma/node/batcher"
+	"arma/node/consensus/state"
+	"arma/node/crypto"
+	"arma/testutil"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"

@@ -10,15 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"arma/testutil"
-
-	"google.golang.org/grpc"
-
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	protos "arma/node/protos/comm"
+	"arma/testutil"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 type testBatcher struct {

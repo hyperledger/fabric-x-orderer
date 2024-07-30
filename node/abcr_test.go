@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"arma/node/consensus"
 	"arma/testutil"
 
 	"arma/node/batcher"
@@ -236,8 +237,8 @@ func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA
 	return routers, configs
 }
 
-func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo) ([]*Consensus, func()) {
-	var consensuses []*Consensus
+func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo) ([]*consensus.Consensus, func()) {
+	var consensuses []*consensus.Consensus
 
 	var cleans []func()
 
@@ -270,7 +271,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 			Directory:          dir,
 		}
 
-		c := CreateConsensus(conf, logger)
+		c := consensus.CreateConsensus(conf, logger)
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)

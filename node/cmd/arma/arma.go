@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 
+	"arma/node/consensus"
+
 	"arma/node/batcher"
 
 	"arma/node/assembler"
@@ -105,7 +107,7 @@ func launchConsensus(stop chan struct{}, loadConfig func(configFile *os.File) []
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseConsensusConfig(configContent)
-		consensus := node.CreateConsensus(conf, logger)
+		consensus := consensus.CreateConsensus(conf, logger)
 		defer consensus.Start()
 
 		srv := node.CreateGRPCConsensus(conf)
