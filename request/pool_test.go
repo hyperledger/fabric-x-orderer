@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type reqInspector struct{}
@@ -26,7 +26,7 @@ func (ri *reqInspector) RequestID(req []byte) string {
 }
 
 func TestRequestPool(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 
 	requestInspector := &reqInspector{}
 
@@ -117,17 +117,8 @@ func removeRequests(workerNum int, batch [][]byte, requestInspector *reqInspecto
 	wg.Wait()
 }
 
-func createLogger(t *testing.T, i int) *zap.SugaredLogger {
-	logConfig := zap.NewDevelopmentConfig()
-	logConfig.Level.SetLevel(zapcore.WarnLevel)
-	logger, _ := logConfig.Build()
-	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
-	sugaredLogger := logger.Sugar()
-	return sugaredLogger
-}
-
 func TestRestartPool(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 
 	requestInspector := &reqInspector{}
 
@@ -190,7 +181,7 @@ func TestRestartPool(t *testing.T) {
 }
 
 func TestBasicBatching(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 
 	byteReq1 := makeTestRequest("1", "foo")
 	byteReq2 := makeTestRequest("2", "foo-bar")
@@ -283,7 +274,7 @@ func TestBasicBatching(t *testing.T) {
 }
 
 func TestBasicBatchingWhileSubmitting(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 
 	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
@@ -334,7 +325,7 @@ func TestBasicBatchingWhileSubmitting(t *testing.T) {
 }
 
 func TestBasicBatchingTimeout(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 
 	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
@@ -364,7 +355,7 @@ func TestBasicBatchingTimeout(t *testing.T) {
 }
 
 func TestBasicPrune(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 	insp := &testRequestInspector{}
 	pool := NewPool(sugaredLogger, insp, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,

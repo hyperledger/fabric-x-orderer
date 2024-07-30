@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"arma/testutil"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,7 +15,7 @@ func TestBatchAttestationDB(t *testing.T) {
 
 	defer os.RemoveAll(dir)
 
-	l := createLogger(t, 0)
+	l := testutil.CreateLogger(t, 0)
 	db, err := NewBatchAttestationDB(dir, l)
 	assert.NoError(t, err)
 

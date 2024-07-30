@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"arma/request"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 func TestBatchBytes(t *testing.T) {
@@ -264,7 +264,7 @@ func createBatchers(t *testing.T, n int) ([]*Batcher, <-chan Batch) {
 }
 
 func createBatcher(t *testing.T, shardID int, nodeID int, batchers []PartyID) *Batcher {
-	sugaredLogger := createLogger(t, nodeID)
+	sugaredLogger := testutil.CreateLogger(t, nodeID)
 
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
@@ -305,13 +305,4 @@ func createBatcher(t *testing.T, shardID int, nodeID int, batchers []PartyID) *B
 	b.Ledger = &noopLedger{}
 
 	return b
-}
-
-func createLogger(t *testing.T, i int) *zap.SugaredLogger {
-	logConfig := zap.NewDevelopmentConfig()
-	logConfig.Level.SetLevel(zapcore.InfoLevel)
-	logger, _ := logConfig.Build()
-	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
-	sugaredLogger := logger.Sugar()
-	return sugaredLogger
 }

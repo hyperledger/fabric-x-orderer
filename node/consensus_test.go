@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"arma/node/batcher"
+	"arma/testutil"
 
 	"arma/node/crypto"
 
@@ -225,7 +226,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
 	assert.NoError(t, err)
 
-	l := createLogger(t, int(partyID))
+	l := testutil.CreateLogger(t, int(partyID))
 
 	db, err := NewBatchAttestationDB(dir, l)
 	assert.NoError(t, err)

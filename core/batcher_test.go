@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	arma "arma/core"
 	"arma/core/mocks"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 func TestBatchBytes(t *testing.T) {
@@ -34,7 +34,7 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 	batcherID := 1
 	shardID := 0
 
-	logger := createLogger(t, batcherID)
+	logger := testutil.CreateLogger(t, batcherID)
 
 	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
@@ -76,7 +76,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	batcherID := 2
 	shardID := 0
 
-	logger := createLogger(t, batcherID)
+	logger := testutil.CreateLogger(t, batcherID)
 
 	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
@@ -132,7 +132,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	batcherID := 1
 	shardID := 0
 
-	logger := createLogger(t, batcherID)
+	logger := testutil.CreateLogger(t, batcherID)
 
 	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
@@ -214,7 +214,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	batcherID := 2
 	shardID := 0
 
-	logger := createLogger(t, batcherID)
+	logger := testutil.CreateLogger(t, batcherID)
 
 	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
@@ -301,7 +301,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	batcherID := 3
 	shardID := 0
 
-	logger := createLogger(t, batcherID)
+	logger := testutil.CreateLogger(t, batcherID)
 
 	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
@@ -382,7 +382,7 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 	batcherID := 1
 	shardID := 0
 
-	logger := createLogger(t, batcherID)
+	logger := testutil.CreateLogger(t, batcherID)
 
 	batcher := createBatcher(arma.PartyID(batcherID), arma.ShardID(shardID), batchers, N, logger)
 
@@ -481,13 +481,4 @@ func createBatcher(batcherID arma.PartyID, shardID arma.ShardID, batchers []arma
 	}
 
 	return batcher
-}
-
-func createLogger(t *testing.T, i int) *zap.SugaredLogger {
-	logConfig := zap.NewDevelopmentConfig()
-	logConfig.Level.SetLevel(zapcore.InfoLevel)
-	logger, _ := logConfig.Build()
-	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
-	sugaredLogger := logger.Sugar()
-	return sugaredLogger
 }

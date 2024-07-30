@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -206,7 +208,7 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 
 	assembler := &Assembler{
 		Shards:                     shards,
-		Logger:                     createLogger(t, 0),
+		Logger:                     testutil.CreateLogger(t, 0),
 		Replicator:                 r,
 		Ledger:                     ledger,
 		ShardCount:                 shardCount,

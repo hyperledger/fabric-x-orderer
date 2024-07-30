@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -88,7 +90,7 @@ func (s *stateProvider) GetLatestStateChan() <-chan *State {
 }
 
 func TestAssemblerBatcherConsenter(t *testing.T) {
-	logger := createLogger(t, 0)
+	logger := testutil.CreateLogger(t, 0)
 	shardCount := 10
 
 	_, _, baReplicator, assembler := createAssembler(t, shardCount)

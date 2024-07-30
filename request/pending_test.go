@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"github.com/stretchr/testify/assert"
 )
 
 func TestPending(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 	requestInspector := &reqInspector{}
 
 	start := time.Now()
@@ -91,7 +93,7 @@ func TestPending(t *testing.T) {
 }
 
 func TestGetAll(t *testing.T) {
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 	requestInspector := &reqInspector{}
 
 	start := time.Now()

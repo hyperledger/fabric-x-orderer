@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"google.golang.org/grpc"
 
 	"arma/node/comm"
@@ -17,8 +19,6 @@ import (
 	protos "arma/node/protos/comm"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type testBatcher struct {
@@ -113,7 +113,7 @@ func TestRouter(t *testing.T) {
 		},
 	})
 
-	l := createLogger(t, 0)
+	l := testutil.CreateLogger(t, 0)
 
 	router := NewRouter([]uint16{1}, []string{testBatcher.address}, [][][]byte{{ca.CertBytes()}}, ckp.Cert, ckp.Key, l, 0, 0)
 
@@ -199,13 +199,4 @@ func invokeStream(wg *sync.WaitGroup, conn *grpc.ClientConn, workPerWorker int) 
 			panic(resp.Error)
 		}
 	}
-}
-
-func createLogger(t *testing.T, i int) *zap.SugaredLogger {
-	logConfig := zap.NewDevelopmentConfig()
-	logConfig.Level.SetLevel(zapcore.InfoLevel)
-	logger, _ := logConfig.Build()
-	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
-	sugaredLogger := logger.Sugar()
-	return sugaredLogger
 }

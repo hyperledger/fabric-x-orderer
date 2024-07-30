@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"arma/node/batcher"
 
 	arma "arma/core"
@@ -76,7 +78,7 @@ func TestABCR(t *testing.T) {
 		Directory:          assemblerDir,
 	}
 
-	aLogger := createLogger(t, 1)
+	aLogger := testutil.CreateLogger(t, 1)
 	assembler := assembler.NewAssembler(assemberConf, aLogger)
 
 	assemblerGRPC := CreateGRPCAssembler(assemberConf)
@@ -214,7 +216,7 @@ func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA
 	var configs []config.RouterNodeConfig
 	var routers []*Router
 	for i := 0; i < 4; i++ {
-		l := createLogger(t, i)
+		l := testutil.CreateLogger(t, i)
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
 		config := config.RouterNodeConfig{
@@ -245,7 +247,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 
 		partyID := arma.PartyID(i + 1)
 
-		logger := createLogger(t, int(partyID))
+		logger := testutil.CreateLogger(t, int(partyID))
 
 		sk, err := x509.MarshalPKCS8PrivateKey(consenterNodes[i].sk)
 		require.NoError(t, err)
@@ -315,7 +317,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 		go func(i int) {
 			defer wg.Done()
 
-			batcher := batcher.CreateBatcher(batcherConf, createLogger(t, i+1))
+			batcher := batcher.CreateBatcher(batcherConf, testutil.CreateLogger(t, i+1))
 			lock.Lock()
 			batchers = append(batchers, batcher)
 			lock.Unlock()

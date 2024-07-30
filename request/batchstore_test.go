@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"arma/testutil"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,7 +18,7 @@ func TestBatchStore(t *testing.T) {
 	max := uint32(100)
 	lenByte := uint32(8)
 	var removed uint32
-	sugaredLogger := createLogger(t, 0)
+	sugaredLogger := testutil.CreateLogger(t, 0)
 	bs := NewBatchStore(max, max*lenByte, func(string) {
 		atomic.AddUint32(&removed, 1)
 	}, sugaredLogger)
