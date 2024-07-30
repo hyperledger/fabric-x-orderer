@@ -74,7 +74,6 @@ type Consensus struct {
 	*comm.ClusterService
 	Config        config.ConsenterNodeConfig
 	PrevHash      []byte
-	LastSeq       uint64
 	SigVerifier   SigVerifier
 	Signer        Signer
 	CurrentNodes  []uint64
@@ -82,7 +81,7 @@ type Consensus struct {
 	BFT           *consensus.Consensus
 	Storage       Storage
 	Arma          Arma
-	lock          sync.RWMutex
+	stateLock     sync.Mutex
 	State         []byte
 	Logger        arma.Logger
 	WAL           api.WriteAheadLog
@@ -243,7 +242,9 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		return nil, err
 	}
 
+	c.stateLock.Lock()
 	computedState, _ := c.Arma.SimulateStateTransition(c.State, batch)
+	c.stateLock.Unlock()
 	if !bytes.Equal(hdr.State, computedState) {
 		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
@@ -353,20 +354,6 @@ func (c *Consensus) AuxiliaryData(i []byte) []byte {
 	return nil
 }
 
-type toBeSignedBlockHeader struct {
-	Sequence int64
-	Digest   []byte
-	PrevHash []byte
-}
-
-func (tbsbh toBeSignedBlockHeader) Bytes() []byte {
-	buff := make([]byte, 8+64)
-	binary.BigEndian.PutUint64(buff, uint64(tbsbh.Sequence))
-	copy(buff[8:], tbsbh.Digest)
-	copy(buff[40:], tbsbh.PrevHash)
-	return buff
-}
-
 type Bytes [][]byte
 
 func (c *Consensus) Sign(msg []byte) []byte {
@@ -414,27 +401,20 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signature {
 	requests := arma.BatchFromRaw(proposal.Payload)
 
-	hdr := &state.Header{}
-	if err := hdr.FromBytes(proposal.Header); err != nil {
-		c.Logger.Panicf("Failed deserializing header: %v", err)
-		return nil
-	}
-
-	c.lock.RLock()
+	c.stateLock.Lock()
 	_, bafs := c.Arma.SimulateStateTransition(c.State, requests)
-	c.lock.RUnlock()
+	c.stateLock.Unlock()
 
 	sigs := make(Bytes, 0, len(bafs)+1)
 	msgs := make(Bytes, 0, len(bafs)+1)
 
 	for _, ba := range bafs {
-		var hdr toBeSignedBlockHeader
+		var hdr state.BAHeader
 		hdr.Digest = ba[0].Digest()
-		hdr.Sequence = int64(ba[0].Seq())
+		hdr.Sequence = ba[0].Seq()
 		hdr.PrevHash = c.PrevHash
-		msg := hdr.Bytes()
-		dig := sha256.Sum256(msg)
-		c.PrevHash = dig[:]
+		c.PrevHash = hdr.Hash()
+		msg := hdr.Serialize()
 		sig, err := c.Signer.Sign(msg)
 		if err != nil {
 			panic(err)
@@ -469,18 +449,15 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 }
 
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.Proposal {
-	c.lock.RLock()
+	c.stateLock.Lock()
 	newRawState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
-	c.lock.RUnlock()
+	c.stateLock.Unlock()
 
 	c.Logger.Infof("Created proposal with %d attestations", len(attestations))
 
-	seq := c.LastSeq
 	availableBatches := make([]state.AvailableBatch, 0, len(attestations))
 	for _, ba := range attestations {
 		availableBatches = append(availableBatches, state.NewAvailableBatch(uint16(ba[0].Primary()), uint16(ba[0].Shard()), ba[0].Seq(), ba[0].Digest()))
-
-		seq++
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
@@ -508,8 +485,6 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 		return types.Reconfig{}
 	}
 
-	c.LastSeq += uint64(len(hdr.AvailableBatches))
-
 	controlEvents := arma.BatchFromRaw(proposal.Payload)
 	// Why do we first give Arma the events and then append the decision to storage?
 	// Upon commit, Arma indexes the batch attestations which passed the threshold in its index,
@@ -521,9 +496,9 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	c.Arma.Commit(controlEvents)
 	c.Storage.Append(rawDecision)
 
-	c.lock.Lock()
+	c.stateLock.Lock()
 	c.State = hdr.State
-	c.lock.Unlock()
+	c.stateLock.Unlock()
 
 	return types.Reconfig{
 		CurrentNodes:  c.CurrentNodes,

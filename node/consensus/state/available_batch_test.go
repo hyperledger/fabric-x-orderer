@@ -3,7 +3,7 @@ package state
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAvailableBatches(t *testing.T) {
@@ -16,5 +16,5 @@ func TestAvailableBatches(t *testing.T) {
 	var ab2 AvailableBatch
 	ab2.Deserialize(ab.Serialize())
 
-	assert.Equal(t, ab, ab2)
+	require.Equal(t, ab, ab2)
 }
