@@ -15,17 +15,16 @@ import (
 	"testing"
 	"time"
 
-	"arma/node/consensus"
-	"arma/testutil"
-
-	"arma/node/batcher"
-
 	arma "arma/core"
 	"arma/node/assembler"
+	"arma/node/batcher"
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	"arma/node/config"
+	"arma/node/consensus"
 	protos "arma/node/protos/comm"
+	"arma/node/router"
+	"arma/testutil"
 
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	_ "github.com/onsi/gomega/gexec"
@@ -96,7 +95,7 @@ func TestABCR(t *testing.T) {
 	sendTransactions(t, routers, assembler)
 }
 
-func sendTransactions(t *testing.T, routers []*Router, assembler *assembler.Assembler) {
+func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembler.Assembler) {
 	sendTxn(runtime.NumCPU()+1, 0, routers)
 
 	time.Sleep(time.Second)
@@ -203,7 +202,7 @@ func sendTransactions(t *testing.T, routers []*Router, assembler *assembler.Asse
 // 	return sb.Buffer.String()
 // }
 
-func sendTxn(workerID int, txnNum int, routers []*Router) {
+func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	txn := make([]byte, 32)
 	binary.BigEndian.PutUint64(txn, uint64(txnNum))
 	binary.BigEndian.PutUint16(txn[30:], uint16(workerID))
@@ -213,9 +212,9 @@ func sendTxn(workerID int, txnNum int, routers []*Router) {
 	}
 }
 
-func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA) ([]*Router, []config.RouterNodeConfig) {
+func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA) ([]*router.Router, []config.RouterNodeConfig) {
 	var configs []config.RouterNodeConfig
-	var routers []*Router
+	var routers []*router.Router
 	for i := 0; i < 4; i++ {
 		l := testutil.CreateLogger(t, i)
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -231,7 +230,7 @@ func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA
 			}},
 		}
 		configs = append(configs, config)
-		router := CreateRouter(config, l)
+		router := router.CreateRouter(config, l)
 		routers = append(routers, router)
 	}
 	return routers, configs

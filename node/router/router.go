@@ -1,4 +1,4 @@
-package node
+package router
 
 import (
 	"context"
@@ -12,9 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arma/node/batcher"
-
 	arma "arma/core"
+	"arma/node/batcher"
 	"arma/node/comm"
 	"arma/node/config"
 	protos "arma/node/protos/comm"

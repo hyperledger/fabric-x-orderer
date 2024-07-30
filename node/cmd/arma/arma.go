@@ -5,16 +5,14 @@ import (
 	"io"
 	"os"
 
-	"arma/node/consensus"
-
-	"arma/node/batcher"
-
-	"arma/node/assembler"
-
 	arma "arma/core"
 	"arma/node"
+	"arma/node/assembler"
+	"arma/node/batcher"
 	"arma/node/config"
+	"arma/node/consensus"
 	protos "arma/node/protos/comm"
+	"arma/node/router"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go/orderer"
@@ -151,7 +149,7 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseRouterConfig(configContent)
-		router := node.CreateRouter(conf, logger)
+		router := router.CreateRouter(conf, logger)
 
 		srv := node.CreateGRPCRouter(conf)
 
