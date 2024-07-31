@@ -90,31 +90,31 @@ func (c *chainManager) GetChain(chainID string) deliver.Chain {
 		c.logger.Errorf("Requested shard does not match this shard: requested=%d, this=%d", shardID, c.ledgerArray.ShardID())
 		return nil
 	}
-	// TODO ledger should NOT panic if the party is not found
+	// TODO ledger array should NOT panic if the party is not found
 	if ledger := c.ledgerArray.Part(partyID); ledger == nil {
 		return nil
 	} else {
-		return &chain{ledger: ledger.Ledger()}
+		return &chainReader{ledger: ledger.Ledger()}
 	}
 }
 
-type chain struct {
-	ledger blockledger.ReadWriter
+type chainReader struct {
+	ledger blockledger.Reader
 }
 
-func (c *chain) Sequence() uint64 {
+func (c *chainReader) Sequence() uint64 {
 	return 0
 }
 
-func (c *chain) PolicyManager() policies.Manager {
+func (c *chainReader) PolicyManager() policies.Manager {
 	panic("implement me")
 }
 
-func (c *chain) Reader() blockledger.Reader {
+func (c *chainReader) Reader() blockledger.Reader {
 	return &delayedReader{Reader: c.ledger}
 }
 
-func (c *chain) Errored() <-chan struct{} {
+func (c *chainReader) Errored() <-chan struct{} {
 	return make(chan struct{})
 }
 

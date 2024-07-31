@@ -18,14 +18,14 @@ import (
 	"sync"
 	"time"
 
-	"arma/node/crypto"
-
-	"arma/node/consensus/state"
-	"arma/node/delivery"
+	"arma/node/ledger"
 
 	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
+	"arma/node/consensus/state"
+	"arma/node/crypto"
+	"arma/node/delivery"
 	protos "arma/node/protos/comm"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/api"
@@ -33,12 +33,9 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -491,6 +488,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	// However, if we first commit the decision and then index afterwards and crash during or right before
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
+	// This is true because a Commit(controlEvents) with the same controlEvents is idempotent.
 	c.Arma.Commit(controlEvents)
 	c.Storage.Append(rawDecision)
 
@@ -665,25 +663,13 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 		logger.Panicf("Failed creating WAL: %v", err)
 	}
 
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(conf.Directory, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
+	consLedger, err := ledger.NewConsensusLedger(conf.Directory)
 	if err != nil {
-		logger.Panicf("Failed creating block provider: %v", err)
+		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	consensusLedger, err := provider.Open("consensus")
-	if err != nil {
-		logger.Panicf("Failed creating consensus ledger: %v", err)
-	}
-
-	fl := fileledger.NewFileLedger(consensusLedger)
-
-	consLedger := &ConsensusLedger{ledger: fl}
 	c := &Consensus{
-		DeliverService: delivery.DeliverService(map[string]blockledger.ReadWriter{"consensus": fl}),
+		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
 		Config:         conf,
 		WAL:            wal,
 		CurrentConfig:  types.Configuration{SelfID: uint64(conf.PartyId)},
@@ -720,14 +706,10 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 			c.Deliver(proposal, signatures)
 		},
 		getHeight: func() uint64 {
-			bci, err := consensusLedger.GetBlockchainInfo()
-			if err != nil {
-				panic(err)
-			}
-			return bci.Height
+			return consLedger.Height()
 		},
 		getBlock: func(seq uint64) *common.Block {
-			block, err := consensusLedger.RetrieveBlockByNumber(seq)
+			block, err := consLedger.RetrieveBlockByNumber(seq)
 			if err != nil {
 				panic(err)
 			}
@@ -749,17 +731,13 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 			return ""
 		},
 		nextSeq: func() uint64 {
-			bci, err := consensusLedger.GetBlockchainInfo()
-			if err != nil {
-				c.Logger.Panicf("Failed obtaining blockchain info: %v", err)
-			}
-			return bci.Height
+			return consLedger.Height()
 		},
 		CurrentConfig: c.CurrentConfig,
 		CurrentNodes:  c.CurrentNodes,
 	}
 
-	consLedger.onCommit = c.sync.onCommit
+	consLedger.RegisterAppendListener(c.sync)
 
 	defer func() {
 		go c.sync.run()

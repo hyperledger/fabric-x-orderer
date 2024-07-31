@@ -30,7 +30,7 @@ type synchronizer struct {
 	latestCommittedBlock     uint64
 }
 
-func (s *synchronizer) onCommit(block *common.Block) {
+func (s *synchronizer) OnAppend(block *common.Block) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 

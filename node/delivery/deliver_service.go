@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-type DeliverService map[string]blockledger.ReadWriter
+type DeliverService map[string]blockledger.Reader
 
 func (d DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
@@ -67,7 +67,7 @@ func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string)
 }
 
 type chainManager struct {
-	ledgersPerChain map[string]blockledger.ReadWriter
+	ledgersPerChain map[string]blockledger.Reader
 }
 
 func (c *chainManager) GetChain(chainID string) deliver.Chain {
@@ -79,7 +79,7 @@ func (c *chainManager) GetChain(chainID string) deliver.Chain {
 }
 
 type chain struct {
-	ledger blockledger.ReadWriter
+	ledger blockledger.Reader
 }
 
 func (c *chain) Sequence() uint64 {

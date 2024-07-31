@@ -51,6 +51,9 @@ func (c *Consenter) SimulateStateTransition(prevState []byte, events [][]byte) (
 	return newState.Serialize(), batchAttestations
 }
 
+// Commit indexes BAs and updates the state.
+// Note that this must hold: Commit(controlEvents) with the same controlEvents is idempotent.
+// TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
 func (c *Consenter) Commit(events [][]byte) {
 	state, batchAttestations := c.SimulateStateTransition(c.State, events)
 	c.indexAttestationsInDB(batchAttestations)
