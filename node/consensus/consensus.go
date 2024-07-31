@@ -18,14 +18,13 @@ import (
 	"sync"
 	"time"
 
-	"arma/node/ledger"
-
 	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	"arma/node/consensus/state"
 	"arma/node/crypto"
 	"arma/node/delivery"
+	"arma/node/ledger"
 	protos "arma/node/protos/comm"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/api"
@@ -100,7 +99,8 @@ func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.
 func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
 	rawCE := req.Payload.Payload
 	var ce arma.ControlEvent
-	if err := ce.FromBytes(rawCE, state.BatchAttestationFromBytes); err != nil {
+	bafd := &state.BAFDeserializer{}
+	if err := ce.FromBytes(rawCE, bafd.Deserialize); err != nil {
 		c.Logger.Errorf("Failed unmarshaling control event %s: %v", base64.StdEncoding.EncodeToString(rawCE), err)
 		return nil
 	}
@@ -120,7 +120,8 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 		}
 
 		var ce arma.ControlEvent
-		if err := ce.FromBytes(event.GetPayload(), state.BatchAttestationFromBytes); err != nil {
+		bafd := &state.BAFDeserializer{}
+		if err := ce.FromBytes(event.GetPayload(), bafd.Deserialize); err != nil {
 			return fmt.Errorf("malformed control event: %v", err)
 		}
 
@@ -259,7 +260,8 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 
 func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 	var ce arma.ControlEvent
-	if err := ce.FromBytes(req, state.BatchAttestationFromBytes); err != nil {
+	bafd := &state.BAFDeserializer{}
+	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
 		return types.RequestInfo{}, err
 	}
 
@@ -362,7 +364,8 @@ func (c *Consensus) Sign(msg []byte) []byte {
 
 func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 	var ce arma.ControlEvent
-	if err := ce.FromBytes(req, state.BatchAttestationFromBytes); err != nil {
+	bafd := &state.BAFDeserializer{}
+	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
 		return types.RequestInfo{}
 	}
 
@@ -674,10 +677,10 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 		WAL:            wal,
 		CurrentConfig:  types.Configuration{SelfID: uint64(conf.PartyId)},
 		Arma: &arma.Consenter{
-			State:             initialState,
-			DB:                db,
-			Logger:            logger,
-			FragmentFromBytes: state.BatchAttestationFromBytes,
+			State:           initialState,
+			DB:              db,
+			Logger:          logger,
+			BAFDeserializer: &state.BAFDeserializer{},
 		},
 		Logger:       logger,
 		State:        initialState,

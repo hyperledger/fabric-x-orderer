@@ -89,6 +89,16 @@ func (s *stateProvider) GetLatestStateChan() <-chan *State {
 	return stateChan
 }
 
+type BAFSimpleDeserializer struct{}
+
+func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (BatchAttestationFragment, error) {
+	var baf SimpleBatchAttestationFragment
+	if err := baf.Deserialize(bytes); err != nil {
+		return nil, err
+	}
+	return &baf, nil
+}
+
 func TestAssemblerBatcherConsenter(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 	shardCount := 10
@@ -117,15 +127,11 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	}
 
 	consenter := &Consenter{
-		State: initialState.Serialize(),
-		DB:    &mockBatchAttestationDB{},
-		FragmentFromBytes: func(rawBAF []byte) (BatchAttestationFragment, error) {
-			sbaf := &SimpleBatchAttestationFragment{}
-			err := sbaf.Deserialize(rawBAF)
-			return sbaf, err
-		},
-		Logger:     logger,
-		TotalOrder: &totalOrder,
+		State:           initialState.Serialize(),
+		DB:              &mockBatchAttestationDB{},
+		BAFDeserializer: &BAFSimpleDeserializer{},
+		Logger:          logger,
+		TotalOrder:      &totalOrder,
 	}
 
 	go func() {

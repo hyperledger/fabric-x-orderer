@@ -194,7 +194,7 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
 		header := extractHeaderFromBlock(block, bar.logger)
 
 		var state arma.State
-		if err := state.DeSerialize(header.State, cstate.BatchAttestationFromBytes); err != nil {
+		if err := state.DeSerialize(header.State, &cstate.BAFDeserializer{}); err != nil {
 			bar.logger.Panicf("Failed deserializing state: %v", err)
 		}
 

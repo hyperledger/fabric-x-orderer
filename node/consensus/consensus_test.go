@@ -229,10 +229,10 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID,
 	assert.NoError(t, err)
 
 	consenter := &arma.Consenter{
-		State:             initialState,
-		DB:                db,
-		Logger:            l,
-		FragmentFromBytes: state.BatchAttestationFromBytes,
+		State:           initialState,
+		DB:              db,
+		Logger:          l,
+		BAFDeserializer: &state.BAFDeserializer{},
 	}
 
 	c := &Consensus{

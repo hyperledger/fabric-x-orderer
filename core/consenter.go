@@ -15,21 +15,21 @@ type BatchAttestationDB interface {
 }
 
 type Consenter struct {
-	Logger            Logger
-	TotalOrder        TotalOrder
-	DB                BatchAttestationDB
-	FragmentFromBytes func([]byte) (BatchAttestationFragment, error)
-	State             []byte
+	Logger          Logger
+	TotalOrder      TotalOrder
+	DB              BatchAttestationDB
+	BAFDeserializer BAFDeserializer
+	State           []byte
 }
 
 func (c *Consenter) SimulateStateTransition(prevState []byte, events [][]byte) ([]byte, [][]BatchAttestationFragment) {
-	controlEvents, err := requestsToControlEvents(events, c.FragmentFromBytes)
+	controlEvents, err := requestsToControlEvents(events, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)
 	}
 
 	var state State
-	if err := state.DeSerialize(prevState, c.FragmentFromBytes); err != nil {
+	if err := state.DeSerialize(prevState, c.BAFDeserializer); err != nil {
 		panic(err)
 	}
 

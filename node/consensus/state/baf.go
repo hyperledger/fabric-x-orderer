@@ -28,3 +28,13 @@ func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 
 	return buff
 }
+
+type BAFDeserializer struct{}
+
+func (bafd *BAFDeserializer) Deserialize(bytes []byte) (arma.BatchAttestationFragment, error) {
+	var baf arma.SimpleBatchAttestationFragment
+	if err := baf.Deserialize(bytes); err != nil {
+		return nil, err
+	}
+	return &baf, nil
+}

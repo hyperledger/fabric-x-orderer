@@ -33,6 +33,7 @@ type State struct {
 	Shards     []ShardTerm
 	Pending    []BatchAttestationFragment
 	Complaints []Complaint
+	AppContext []byte
 }
 
 type RawState struct {
@@ -40,6 +41,7 @@ type RawState struct {
 	Shards     []byte
 	Pending    []byte
 	Complaints []byte
+	AppContext []byte
 }
 
 func (s *State) Serialize() []byte {
@@ -52,6 +54,7 @@ func (s *State) Serialize() []byte {
 		Pending:    fragmentsToBytes(s.Pending),
 		Shards:     shardsToBytes(s.Shards),
 		Config:     s.configToBytes(),
+		AppContext: s.AppContext,
 	}
 
 	buff, err := asn1.Marshal(rawState)
@@ -112,7 +115,11 @@ func fragmentsToBytes(fragments []BatchAttestationFragment) []byte {
 	return fragmentBuffBytes
 }
 
-func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) (BatchAttestationFragment, error)) error {
+type BAFDeserializer interface {
+	Deserialize([]byte) (BatchAttestationFragment, error)
+}
+
+func (s *State) DeSerialize(rawBytes []byte, bafd BAFDeserializer) error {
 	s.Pending = nil
 	s.Shards = nil
 	s.Complaints = nil
@@ -124,17 +131,19 @@ func (s *State) DeSerialize(rawBytes []byte, fragmentFromBytes func([]byte) (Bat
 
 	s.loadConfig(rs.Config)
 	s.loadShards(rs.Shards, int(s.ShardCount))
-	if err := s.loadPending(rs.Pending, fragmentFromBytes); err != nil {
+	if err := s.loadPending(rs.Pending, bafd); err != nil {
 		return fmt.Errorf("failed loading batch attestation fragments: %v", err)
 	}
 	if err := s.loadComplaints(rs.Complaints); err != nil {
 		return fmt.Errorf("failed loading complaints: %v", err)
 	}
 
+	s.AppContext = rs.AppContext
+
 	return nil
 }
 
-func (s *State) loadPending(buff []byte, fragmentFromBytes func([]byte) (BatchAttestationFragment, error)) error {
+func (s *State) loadPending(buff []byte, bafd BAFDeserializer) error {
 	var pending []BatchAttestationFragment
 
 	var pos int
@@ -144,7 +153,7 @@ func (s *State) loadPending(buff []byte, fragmentFromBytes func([]byte) (BatchAt
 		bafBytes := make([]byte, lengthOfBAF)
 		copy(bafBytes, buff[pos:])
 		pos += int(lengthOfBAF)
-		baf, err := fragmentFromBytes(bafBytes)
+		baf, err := bafd.Deserialize(bafBytes)
 		if err != nil {
 			return err
 		}
@@ -300,6 +309,7 @@ func (s *State) Clone() State {
 	copy(s2.Shards, s.Shards)
 	copy(s2.Pending, s.Pending)
 	copy(s2.Complaints, s.Complaints)
+	copy(s2.AppContext, s.AppContext)
 	return s2
 }
 

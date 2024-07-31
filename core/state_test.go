@@ -13,6 +13,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 		Quorum:     3,
 		Shards:     []ShardTerm{{Shard: 1, Term: 1}},
 		ShardCount: 1,
+		AppContext: make([]byte, 64),
 	}
 
 	bytes := s.Serialize()
