@@ -12,8 +12,9 @@ import (
 
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
-	protos "arma/node/protos/comm"
 	"arma/testutil"
+
+	protos "arma/node/protos/comm"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
