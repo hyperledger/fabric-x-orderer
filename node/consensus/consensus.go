@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	arma_types "arma/common/types"
 	arma "arma/core"
 	"arma/node/comm"
 	"arma/node/config"
@@ -273,7 +274,7 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 		return reqID, err
 	} else if ce.BAF != nil {
 		msg := state.ToBeSignedBAF(ce.BAF)
-		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma.SimpleBatchAttestationFragment).Sig)
+		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma_types.SimpleBatchAttestationFragment).Sig)
 		return reqID, err
 	} else {
 		return types.RequestInfo{}, fmt.Errorf("empty Control Event")

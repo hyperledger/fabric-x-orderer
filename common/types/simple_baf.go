@@ -1,0 +1,57 @@
+package node
+
+import (
+	"encoding/asn1"
+
+	arma "arma/core"
+)
+
+type SimpleBatchAttestationFragment struct {
+	Ep        int
+	Se        int
+	P, Si, Sh int
+	Dig       []byte
+	Sig       []byte
+	Gc        [][]byte
+}
+
+func (s *SimpleBatchAttestationFragment) Seq() uint64 {
+	return uint64(s.Se)
+}
+
+func (s *SimpleBatchAttestationFragment) Primary() arma.PartyID {
+	return arma.PartyID(s.P)
+}
+
+func (s *SimpleBatchAttestationFragment) Signer() arma.PartyID {
+	return arma.PartyID(s.Si)
+}
+
+func (s *SimpleBatchAttestationFragment) Shard() arma.ShardID {
+	return arma.ShardID(s.Sh)
+}
+
+func (s *SimpleBatchAttestationFragment) Digest() []byte {
+	return s.Dig
+}
+
+func (s *SimpleBatchAttestationFragment) Epoch() uint64 {
+	return uint64(s.Ep)
+}
+
+func (s *SimpleBatchAttestationFragment) Serialize() []byte {
+	bytes, err := asn1.Marshal(*s)
+	if err != nil {
+		panic(err)
+	}
+	return bytes
+}
+
+func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
+	_, err := asn1.Unmarshal(bytes, s)
+	return err
+}
+
+func (s *SimpleBatchAttestationFragment) GarbageCollect() [][]byte {
+	return s.Gc
+}

@@ -2,6 +2,9 @@ package state
 
 import (
 	"encoding/binary"
+
+	arma_types "arma/common/types"
+	arma "arma/core"
 )
 
 type Header struct {
@@ -55,4 +58,13 @@ func availableBatchesToBytes(availableBatches []AvailableBatch) []byte {
 		pos += len(bytes)
 	}
 	return sequencesBuff
+}
+
+func BatchAttestationFromBytes(in []byte) (arma.BatchAttestationFragment, error) {
+	var baf arma_types.SimpleBatchAttestationFragment
+	if err := baf.Deserialize(in); err != nil {
+		return nil, err
+	}
+
+	return &baf, nil
 }

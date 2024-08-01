@@ -1,24 +1,26 @@
-package arma
+package arma_test
 
 import (
 	"testing"
+
+	arma "arma/core"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestStateSerializeDeserialize(t *testing.T) {
-	s := State{
+	s := arma.State{
 		N:          4,
 		Threshold:  2,
 		Quorum:     3,
-		Shards:     []ShardTerm{{Shard: 1, Term: 1}},
+		Shards:     []arma.ShardTerm{{Shard: 1, Term: 1}},
 		ShardCount: 1,
 		AppContext: make([]byte, 64),
 	}
 
 	bytes := s.Serialize()
 
-	s2 := State{}
+	s2 := arma.State{}
 
 	s2.DeSerialize(bytes, nil)
 
@@ -26,8 +28,8 @@ func TestStateSerializeDeserialize(t *testing.T) {
 }
 
 func TestComplaintSerialization(t *testing.T) {
-	c := Complaint{
-		ShardTerm: ShardTerm{
+	c := arma.Complaint{
+		ShardTerm: arma.ShardTerm{
 			Shard: 1,
 			Term:  2,
 		},
@@ -35,7 +37,7 @@ func TestComplaintSerialization(t *testing.T) {
 		Signature: []byte{4},
 	}
 
-	var c2 Complaint
+	var c2 arma.Complaint
 
 	err := c2.FromBytes(c.Bytes())
 	assert.NoError(t, err)

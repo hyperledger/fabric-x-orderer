@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+//go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation
 type BatchAttestation interface {
 	Fragments() []BatchAttestationFragment
 	Digest() []byte
@@ -16,6 +17,7 @@ type BatchAttestation interface {
 	Deserialize([]byte) error
 }
 
+//go:generate counterfeiter -o mocks/batch_attestation_fragment.go . BatchAttestationFragment
 type BatchAttestationFragment interface {
 	Seq() uint64
 	Primary() PartyID

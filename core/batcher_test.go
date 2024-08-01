@@ -9,6 +9,7 @@ import (
 
 	"arma/testutil"
 
+	arma_types "arma/common/types"
 	arma "arma/core"
 	"arma/core/mocks"
 
@@ -467,7 +468,7 @@ func createBatcher(batcherID arma.PartyID, shardID arma.ShardID, batchers []arma
 		BatchPuller:      &mocks.FakeBatchPuller{},
 		StateProvider:    &mocks.FakeStateProvider{},
 		AttestBatch: func(seq uint64, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
-			return &arma.SimpleBatchAttestationFragment{
+			return &arma_types.SimpleBatchAttestationFragment{
 				Dig: digest,
 				Sh:  int(shardID),
 				Si:  int(batcherID),

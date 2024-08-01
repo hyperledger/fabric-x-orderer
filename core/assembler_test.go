@@ -1,4 +1,4 @@
-package arma
+package arma_test
 
 import (
 	"encoding/binary"
@@ -10,14 +10,15 @@ import (
 	"testing"
 	"time"
 
+	arma "arma/core"
 	"arma/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
 
-type naiveBatchAttestationReplicator chan BatchAttestation
+type naiveBatchAttestationReplicator chan arma.BatchAttestation
 
-func (n naiveBatchAttestationReplicator) Replicate(u uint64) <-chan BatchAttestation {
+func (n naiveBatchAttestationReplicator) Replicate(u uint64) <-chan arma.BatchAttestation {
 	return n
 }
 
@@ -25,11 +26,11 @@ type naiveIndex struct {
 	sync.Map
 }
 
-func (n *naiveIndex) Index(_ PartyID, _ ShardID, _ uint64, batch Batch) {
+func (n *naiveIndex) Index(_ arma.PartyID, _ arma.ShardID, _ uint64, batch arma.Batch) {
 	n.Store(string(batch.Digest()), batch)
 }
 
-func (n *naiveIndex) Retrieve(_ PartyID, _ ShardID, _ uint64, digest []byte) (Batch, bool) {
+func (n *naiveIndex) Retrieve(_ arma.PartyID, _ arma.ShardID, _ uint64, digest []byte) (arma.Batch, bool) {
 	val, exists := n.Load(string(digest))
 
 	if !exists {
@@ -39,14 +40,14 @@ func (n *naiveIndex) Retrieve(_ PartyID, _ ShardID, _ uint64, digest []byte) (Ba
 	defer func() {
 		n.Delete(string(digest))
 	}()
-	return val.(Batch), true
+	return val.(arma.Batch), true
 }
 
 type naiveBatchAttestation struct {
-	primary PartyID
+	primary arma.PartyID
 	seq     uint64
-	node    PartyID
-	shard   ShardID
+	node    arma.PartyID
+	shard   arma.ShardID
 	digest  []byte
 }
 
@@ -58,11 +59,11 @@ func (nba *naiveBatchAttestation) GarbageCollect() [][]byte {
 	return nil
 }
 
-func (nba *naiveBatchAttestation) Signer() PartyID {
+func (nba *naiveBatchAttestation) Signer() arma.PartyID {
 	return nba.node
 }
 
-func (nba *naiveBatchAttestation) Primary() PartyID {
+func (nba *naiveBatchAttestation) Primary() arma.PartyID {
 	return nba.primary
 }
 
@@ -70,7 +71,7 @@ func (nba *naiveBatchAttestation) Seq() uint64 {
 	return nba.seq
 }
 
-func (nba *naiveBatchAttestation) Shard() ShardID {
+func (nba *naiveBatchAttestation) Shard() arma.ShardID {
 	return nba.shard
 }
 
@@ -78,7 +79,7 @@ func (nba *naiveBatchAttestation) Digest() []byte {
 	return nba.digest
 }
 
-func (nba *naiveBatchAttestation) Fragments() []BatchAttestationFragment {
+func (nba *naiveBatchAttestation) Fragments() []arma.BatchAttestationFragment {
 	return nil
 }
 
@@ -111,9 +112,9 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 	return nil
 }
 
-type naiveAssemblerLedger chan BatchAttestation
+type naiveAssemblerLedger chan arma.BatchAttestation
 
-func (n naiveAssemblerLedger) Append(_ uint64, _ Batch, attestation BatchAttestation) {
+func (n naiveAssemblerLedger) Append(_ uint64, _ arma.Batch, attestation arma.BatchAttestation) {
 	n <- attestation
 }
 
@@ -134,9 +135,9 @@ func TestAssembler(t *testing.T) {
 
 	digests := make(map[string]struct{})
 
-	var batches [][]Batch
+	var batches [][]arma.Batch
 	for shardID := 0; shardID < shardCount; shardID++ {
-		var batchesForShard []Batch
+		var batchesForShard []arma.Batch
 		for j := 0; j < batchNum; j++ {
 			buff := make([]byte, 1024)
 			binary.BigEndian.PutUint16(buff, uint16(shardID))
@@ -191,22 +192,22 @@ func TestAssembler(t *testing.T) {
 	assert.Len(t, digests, 0)
 }
 
-func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveBatchAttestationReplicator, *Assembler) {
+func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveBatchAttestationReplicator, *arma.Assembler) {
 	index := &naiveIndex{}
 
 	r := &naiveReplication{}
 
-	var shards []ShardID
+	var shards []arma.ShardID
 	for i := 0; i < shardCount; i++ {
-		r.subscribers = append(r.subscribers, make(chan Batch, 100))
-		shards = append(shards, ShardID(i))
+		r.subscribers = append(r.subscribers, make(chan arma.Batch, 100))
+		shards = append(shards, arma.ShardID(i))
 	}
 
 	ledger := make(naiveAssemblerLedger, 10)
 
 	nbar := make(naiveBatchAttestationReplicator)
 
-	assembler := &Assembler{
+	assembler := &arma.Assembler{
 		Shards:                     shards,
 		Logger:                     testutil.CreateLogger(t, 0),
 		Replicator:                 r,

@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/binary"
 
+	arma_types "arma/common/types"
 	arma "arma/core"
 )
 
@@ -32,7 +33,7 @@ func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 type BAFDeserializer struct{}
 
 func (bafd *BAFDeserializer) Deserialize(bytes []byte) (arma.BatchAttestationFragment, error) {
-	var baf arma.SimpleBatchAttestationFragment
+	var baf arma_types.SimpleBatchAttestationFragment
 	if err := baf.Deserialize(bytes); err != nil {
 		return nil, err
 	}

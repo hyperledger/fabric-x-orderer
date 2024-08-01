@@ -20,6 +20,7 @@ import (
 
 	"arma/node/delivery"
 
+	arma_types "arma/common/types"
 	arma "arma/core"
 	"arma/node/comm"
 	node_config "arma/node/config"
@@ -585,7 +586,7 @@ func CreateBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, pri
 		}
 	}
 
-	baf := &arma.SimpleBatchAttestationFragment{
+	baf := &arma_types.SimpleBatchAttestationFragment{
 		Gc:  gc,
 		Ep:  epoch,
 		Sh:  int(shard),
