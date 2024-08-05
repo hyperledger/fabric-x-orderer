@@ -15,7 +15,7 @@ jobs:
       script:
         - set -e
         - (cd node/examples; bash ./scripts/build_docker.sh)
-        - (cd node/examples; bash ./scripts/run_sample.sh)
+        - (bash ./node/examples/scripts/run_sample.sh)
     - name: "Lint & Test"
       script:
         - set -e

@@ -35,28 +35,28 @@ services:
     command: consensus --config=arma-config/Party1/consenter_node_config.yaml
     hostname: consensus.p1
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
+      - /tmp/arma-sample/arma-config:/arma-config
 
   consenter.p2:
     <<: *consenter
     command: consensus --config=arma-config/Party2/consenter_node_config.yaml
     hostname: consensus.p2
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
+      - /tmp/arma-sample/arma-config:/arma-config
 
   consenter.p3:
     <<: *consenter
     command: consensus --config=arma-config/Party3/consenter_node_config.yaml
     hostname: consensus.p3
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
+      - /tmp/arma-sample/arma-config:/arma-config
 
   consenter.p4:
     <<: *consenter
     command: consensus --config=arma-config/Party4/consenter_node_config.yaml
     hostname: consensus.p4
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
+      - /tmp/arma-sample/arma-config:/arma-config
 
   consenter_stage:
     <<: *stage
@@ -73,56 +73,56 @@ services:
     command: batcher --config=arma-config/Party1/batcher_node_1_config.yaml
     hostname: batcher1.p1
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher2.p1:
     <<: *batcher
     command: batcher --config=arma-config/Party1/batcher_node_2_config.yaml
     hostname: batcher2.p1
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher1.p2:
     <<: *batcher
     command: batcher --config=arma-config/Party2/batcher_node_1_config.yaml
     hostname: batcher1.p2
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher2.p2:
     <<: *batcher
     command: batcher --config=arma-config/Party2/batcher_node_2_config.yaml
     hostname: batcher2.p2
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher1.p3:
     <<: *batcher
     command: batcher --config=arma-config/Party3/batcher_node_1_config.yaml
     hostname: batcher1.p3
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher2.p3:
     <<: *batcher
     command: batcher --config=arma-config/Party3/batcher_node_2_config.yaml
     hostname: batcher2.p3
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher1.p4:
     <<: *batcher
     command: batcher --config=arma-config/Party4/batcher_node_1_config.yaml
     hostname: batcher1.p4
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher2.p4:
     <<: *batcher
     command: batcher --config=arma-config/Party4/batcher_node_2_config.yaml
     hostname: batcher2.p4
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
+      - /tmp/arma-sample/arma-config:/arma-config
 
   batcher_stage:
     <<: *stage
@@ -142,25 +142,25 @@ services:
     <<: *assembler
     command: assembler --config=arma-config/Party1/assembler_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
+      - /tmp/arma-sample/arma-config:/arma-config
 
   assembler.p2:
     <<: *assembler
     command: assembler --config=arma-config/Party2/assembler_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
+      - /tmp/arma-sample/arma-config:/arma-config
 
   assembler.p3:
     <<: *assembler
     command: assembler --config=arma-config/Party3/assembler_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
+      - /tmp/arma-sample/arma-config:/arma-config
 
   assembler.p4:
     <<: *assembler
     command: assembler --config=arma-config/Party4/assembler_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
+      - /tmp/arma-sample/arma-config:/arma-config
 
   assembler_stage:
     <<: *stage
@@ -176,24 +176,22 @@ services:
     <<: *router
     command: router --config=arma-config/Party1/router_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party1:/arma-config/Party1
+      - /tmp/arma-sample/arma-config:/arma-config
 
   router.p2:
     <<: *router
     command: router --config=arma-config/Party2/router_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party2:/arma-config/Party2
+      - /tmp/arma-sample/arma-config:/arma-config
 
   router.p3:
     <<: *router
     command: router --config=arma-config/Party3/router_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party3:/arma-config/Party3
+      - /tmp/arma-sample/arma-config:/arma-config
 
   router.p4:
     <<: *router
     command: router --config=arma-config/Party4/router_node_config.yaml
     volumes:
-      - ../cmd/armageddon/main/arma-config/Party4:/arma-config/Party4
-
-
+      - /tmp/arma-sample/arma-config:/arma-config
