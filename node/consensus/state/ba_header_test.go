@@ -7,15 +7,15 @@ import (
 )
 
 func TestBAHeader(t *testing.T) {
-	var bah BAHeader
-	bah.Sequence = 0
-	bah.PrevHash = make([]byte, 32)
-	bah.Digest = make([]byte, 32)
+	var babh BABlockHeader
+	babh.Number = 0
+	babh.PrevHash = make([]byte, 32)
+	babh.Digest = make([]byte, 32)
 
-	var bah2 BAHeader
-	bah2.Deserialize(bah.Serialize())
+	var babh2 BABlockHeader
+	babh2.Deserialize(babh.Serialize())
 
-	require.Equal(t, bah, bah2)
+	require.Equal(t, babh, babh2)
 
-	require.Equal(t, bah.Hash(), bah2.Hash())
+	require.Equal(t, babh.Hash(), babh2.Hash())
 }

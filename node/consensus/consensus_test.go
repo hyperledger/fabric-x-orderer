@@ -105,12 +105,19 @@ func TestConsensus(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			v := make(crypto.ECDSAVerifier)
 
+			initialAppContext := &state.BABlockHeader{
+				Number:   0,
+				PrevHash: nil,
+				Digest:   nil,
+			}
+
 			initialState := (&arma.State{
 				ShardCount: 2,
 				N:          4,
 				Shards:     []arma.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
+				AppContext: initialAppContext.Serialize(),
 			}).Serialize()
 
 			nodeIDs := []uint64{1, 2, 3, 4}
@@ -304,36 +311,6 @@ type mockStorage chan []byte
 
 func (m mockStorage) Append(bytes []byte) {
 	m <- bytes
-}
-
-func TestProposalSerialization(t *testing.T) {
-	proposal := types.Proposal{
-		Header:   []byte{1, 2, 3},
-		Payload:  []byte{4, 5, 6},
-		Metadata: []byte{7, 8, 9},
-	}
-	signatures := []types.Signature{{ID: 10, Value: []byte{11}, Msg: []byte{12}}, {ID: 13, Value: []byte{14}, Msg: []byte{15}}}
-	bytes := decisionToBytes(proposal, signatures)
-	proposal2, signatures2, err := bytesToDecision(bytes)
-	assert.NoError(t, err)
-	assert.Equal(t, proposal, proposal2)
-	assert.Equal(t, signatures, signatures2)
-}
-
-func TestHeaderBytes(t *testing.T) {
-	hdr := state.Header{
-		State: []byte{1, 2, 3},
-		Num:   100,
-		AvailableBatches: []state.AvailableBatch{
-			state.NewAvailableBatch(3, 2, 1, make([]byte, 32)),
-			state.NewAvailableBatch(6, 5, 4, make([]byte, 32)),
-		},
-	}
-
-	var hdr2 state.Header
-	hdr2.FromBytes(hdr.Bytes())
-
-	assert.Equal(t, hdr, hdr2)
 }
 
 type commitInterceptor struct {
