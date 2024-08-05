@@ -1,4 +1,5 @@
-package node
+// package test contains integration tests.
+package test
 
 import (
 	"context"
@@ -14,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	node2 "arma/node"
 
 	arma "arma/core"
 	"arma/node/assembler"
@@ -39,6 +42,9 @@ func TestABCR(t *testing.T) {
 	require.NoError(t, err)
 
 	batcherInfos, consenterInfos, batcherNodes, consenterNodes := createConsentersAndBatchers(t, ca)
+	for i := 0; i < 4; i++ {
+		t.Logf("batcher: %v, %s", batcherInfos[i], batcherNodes[i].ToString())
+	}
 
 	shards := []config.ShardInfo{{ShardId: 1, Batchers: batcherInfos}}
 
@@ -55,7 +61,7 @@ func TestABCR(t *testing.T) {
 	}
 
 	for i, rConf := range configs {
-		gRPC := CreateGRPCRouter(rConf)
+		gRPC := node2.CreateGRPCRouter(rConf)
 		orderer.RegisterAtomicBroadcastServer(gRPC.Server(), routers[i])
 		go func() {
 			gRPC.Start()
@@ -81,7 +87,7 @@ func TestABCR(t *testing.T) {
 	aLogger := testutil.CreateLogger(t, 1)
 	assembler := assembler.NewAssembler(assemberConf, aLogger)
 
-	assemblerGRPC := CreateGRPCAssembler(assemberConf)
+	assemblerGRPC := node2.CreateGRPCAssembler(assemberConf)
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 
 	go func() {
@@ -410,6 +416,10 @@ type node struct {
 	TLSKey  []byte
 	sk      *ecdsa.PrivateKey
 	pk      config.RawBytes
+}
+
+func (n *node) ToString() string {
+	return fmt.Sprintf("GRPC.Address: %s", n.GRPCServer.Address())
 }
 
 type silentLogger struct{}
