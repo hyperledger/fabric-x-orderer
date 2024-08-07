@@ -53,7 +53,7 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState []byte, events [][]byte) ([]byte, [][]arma.BatchAttestationFragment)
+	SimulateStateTransition(prevState arma.State, events [][]byte) (arma.State, [][]arma.BatchAttestationFragment)
 	Commit(events [][]byte)
 }
 
@@ -76,7 +76,7 @@ type Consensus struct {
 	Storage       Storage
 	Arma          Arma
 	stateLock     sync.Mutex
-	State         []byte
+	State         arma.State
 	Logger        arma.Logger
 	WAL           api.WriteAheadLog
 	sync          *synchronizer
@@ -241,9 +241,11 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 	c.stateLock.Lock()
 	computedState, _ := c.Arma.SimulateStateTransition(c.State, batch)
 	c.stateLock.Unlock()
-	if !bytes.Equal(hdr.State, computedState) {
+	if !bytes.Equal(hdr.State, computedState.Serialize()) {
 		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
+
+	// TODO verify proposal header
 
 	reqInfos := make([]types.RequestInfo, 0, len(batch))
 	for _, rawReq := range batch {
@@ -293,28 +295,28 @@ func ToBeSignedComplaint(c *arma.Complaint) []byte {
 }
 
 func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Proposal) ([]byte, error) {
-	var msgs Bytes
-	if _, err := asn1.Unmarshal(signature.Msg, &msgs); err != nil {
-		return nil, err
-	}
-
 	var values Bytes
 	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
 		return nil, err
 	}
 
 	if err := c.VerifySignature(types.Signature{
-		Value: values[len(values)-1],
+		Value: values[0],
 		Msg:   []byte(prop.Digest()),
 		ID:    signature.ID,
 	}); err != nil {
 		return nil, err
 	}
 
-	for i, msg := range msgs {
+	var hdr state.Header
+	if err := hdr.FromBytes(prop.Header); err != nil {
+		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
+	}
+
+	for i, bh := range hdr.BlockHeaders {
 		if err := c.VerifySignature(types.Signature{
-			Value: values[i],
-			Msg:   msg,
+			Value: values[i+1],
+			Msg:   bh.Bytes(),
 			ID:    signature.ID,
 		}); err != nil {
 			return nil, err
@@ -400,41 +402,10 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	requests := arma.BatchFromRaw(proposal.Payload)
 
 	c.stateLock.Lock()
-	newRawState, bafs := c.Arma.SimulateStateTransition(c.State, requests)
+	_, bafs := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
 
-	var newState arma.State
-	if err := newState.DeSerialize(newRawState, &state.BAFDeserializer{}); err != nil {
-		c.Logger.Panicf("Failed deserializing state: %v", err)
-	}
-
-	var lastBABlockHeader state.BABlockHeader
-	if err := lastBABlockHeader.Deserialize(newState.AppContext); err != nil {
-		c.Logger.Panicf("Failed deserializing app context to BABlockHeader from state: %v", err)
-	}
-
-	lastBlockNumber := lastBABlockHeader.Number
-	prevHash := lastBABlockHeader.Hash()
-
 	sigs := make(Bytes, 0, len(bafs)+1)
-	msgs := make(Bytes, 0, len(bafs))
-
-	for _, ba := range bafs {
-		var hdr state.BABlockHeader
-		hdr.Digest = ba[0].Digest()
-		lastBlockNumber++
-		hdr.Number = lastBlockNumber
-		hdr.PrevHash = prevHash
-		prevHash = hdr.Hash()
-		msg := hdr.Serialize()
-		sig, err := c.Signer.Sign(msg)
-		if err != nil {
-			panic(err)
-		}
-
-		sigs = append(sigs, sig)
-		msgs = append(msgs, msg)
-	}
 
 	proposalSig, err := c.Signer.Sign([]byte(proposal.Digest()))
 	if err != nil {
@@ -443,9 +414,19 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 
 	sigs = append(sigs, proposalSig)
 
-	msgsRaw, err := asn1.Marshal(msgs)
-	if err != nil {
-		panic(err)
+	var hdr state.Header
+	if err := hdr.FromBytes(proposal.Header); err != nil {
+		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
+	}
+
+	for _, bh := range hdr.BlockHeaders {
+		msg := bh.Bytes()
+		sig, err := c.Signer.Sign(msg)
+		if err != nil {
+			panic(err)
+		}
+
+		sigs = append(sigs, sig)
 	}
 
 	sigsRaw, err := asn1.Marshal(sigs)
@@ -454,7 +435,6 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	}
 
 	return &types.Signature{
-		Msg:   msgsRaw,
 		Value: sigsRaw,
 		ID:    c.CurrentConfig.SelfID,
 	}
@@ -462,14 +442,33 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.Proposal {
 	c.stateLock.Lock()
-	newRawState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
+	newState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
 
-	c.Logger.Infof("Created proposal with %d attestations", len(attestations))
+	var lastBlockHeader state.BlockHeader
+	if err := lastBlockHeader.FromBytes(newState.AppContext); err != nil {
+		c.Logger.Panicf("Failed deserializing app context to BlockHeader from state: %v", err)
+	}
 
-	availableBatches := make([]state.AvailableBatch, 0, len(attestations))
-	for _, ba := range attestations {
-		availableBatches = append(availableBatches, state.NewAvailableBatch(uint16(ba[0].Primary()), uint16(ba[0].Shard()), ba[0].Seq(), ba[0].Digest()))
+	lastBlockNumber := lastBlockHeader.Number
+	prevHash := lastBlockHeader.Hash()
+
+	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
+
+	availableBatches := make([]state.AvailableBatch, len(attestations))
+	for i, ba := range attestations {
+		availableBatches[i] = state.NewAvailableBatch(uint16(ba[0].Primary()), uint16(ba[0].Shard()), ba[0].Seq(), ba[0].Digest())
+	}
+
+	blockHeaders := make([]state.BlockHeader, len(attestations))
+	for i, ba := range attestations {
+		var hdr state.BlockHeader
+		hdr.Digest = ba[0].Digest()
+		lastBlockNumber++
+		hdr.Number = lastBlockNumber
+		hdr.PrevHash = prevHash
+		prevHash = hdr.Hash()
+		blockHeaders[i] = hdr
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
@@ -480,7 +479,8 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 	return types.Proposal{
 		Header: (&state.Header{
 			AvailableBatches: availableBatches,
-			State:            newRawState,
+			BlockHeaders:     blockHeaders,
+			State:            newState.Serialize(),
 			Num:              md.LatestSequence,
 		}).Bytes(),
 		Metadata: metadata,
@@ -509,19 +509,15 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	c.Arma.Commit(controlEvents)
 	c.Storage.Append(rawDecision)
 
-	newState := hdr.State
-	numAvailableBatches := len(hdr.AvailableBatches)
-	if numAvailableBatches > 0 {
-		msgs := make(Bytes, 0, numAvailableBatches)
-		if _, err := asn1.Unmarshal(signatures[0].Msg, &msgs); err != nil { // TODO make sure it makes sense to use the first signature without verifying
-			c.Logger.Panicf("Failed deserializing signature msgs: %v", err)
-		}
-		var hdrState arma.State
-		if err := hdrState.DeSerialize(hdr.State, &state.BAFDeserializer{}); err != nil {
-			c.Logger.Panicf("Failed to deserialize state from header: %v", err)
-		}
-		hdrState.AppContext = msgs[numAvailableBatches-1]
-		newState = hdrState.Serialize()
+	var newState arma.State
+	if err := newState.Deserialize(hdr.State, &state.BAFDeserializer{}); err != nil {
+		c.Logger.Panicf("Failed to deserialize state from header: %v", err)
+	}
+
+	numBlockHeaders := len(hdr.BlockHeaders)
+	if numBlockHeaders > 0 {
+		lastBlockHeader := hdr.BlockHeaders[numBlockHeaders-1]
+		newState.AppContext = lastBlockHeader.Bytes()
 	}
 
 	c.stateLock.Lock()
@@ -534,7 +530,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	}
 }
 
-func initialStateFromConfig(config config.ConsenterNodeConfig) []byte {
+func initialStateFromConfig(config config.ConsenterNodeConfig) arma.State {
 	var initState arma.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
@@ -550,14 +546,14 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) []byte {
 	}
 
 	// TODO set right initial app context
-	initialAppContext := &state.BABlockHeader{
+	initialAppContext := &state.BlockHeader{
 		Number:   0,
 		PrevHash: nil,
 		Digest:   nil,
 	}
-	initState.AppContext = initialAppContext.Serialize()
+	initState.AppContext = initialAppContext.Bytes()
 
-	return initState.Serialize()
+	return initState
 }
 
 func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Consensus {

@@ -105,20 +105,20 @@ func TestConsensus(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			v := make(crypto.ECDSAVerifier)
 
-			initialAppContext := &state.BABlockHeader{
+			initialAppContext := &state.BlockHeader{
 				Number:   0,
 				PrevHash: nil,
 				Digest:   nil,
 			}
 
-			initialState := (&arma.State{
+			initialState := arma.State{
 				ShardCount: 2,
 				N:          4,
 				Shards:     []arma.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
-				AppContext: initialAppContext.Serialize(),
-			}).Serialize()
+				AppContext: initialAppContext.Bytes(),
+			}
 
 			nodeIDs := []uint64{1, 2, 3, 4}
 
@@ -220,7 +220,7 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState []byte, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState arma.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma.ShardID{1, 2, math.MaxUint16} {

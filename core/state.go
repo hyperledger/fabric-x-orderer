@@ -119,7 +119,7 @@ type BAFDeserializer interface {
 	Deserialize([]byte) (BatchAttestationFragment, error)
 }
 
-func (s *State) DeSerialize(rawBytes []byte, bafd BAFDeserializer) error {
+func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 	s.Pending = nil
 	s.Shards = nil
 	s.Complaints = nil
@@ -309,7 +309,11 @@ func (s *State) Clone() State {
 	copy(s2.Shards, s.Shards)
 	copy(s2.Pending, s.Pending)
 	copy(s2.Complaints, s.Complaints)
-	copy(s2.AppContext, s.AppContext)
+	s2.AppContext = nil
+	if s.AppContext != nil {
+		s2.AppContext = make([]byte, 0, len(s.AppContext))
+		s2.AppContext = append(s2.AppContext, s.AppContext...)
+	}
 	return s2
 }
 

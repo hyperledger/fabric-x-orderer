@@ -14,6 +14,10 @@ func TestHeaderBytes(t *testing.T) {
 			NewAvailableBatch(3, 2, 1, make([]byte, 32)),
 			NewAvailableBatch(6, 5, 4, make([]byte, 32)),
 		},
+		BlockHeaders: []BlockHeader{
+			{10, make([]byte, 32), make([]byte, 32)},
+			{11, make([]byte, 32), make([]byte, 32)},
+		},
 	}
 
 	var hdr2 Header

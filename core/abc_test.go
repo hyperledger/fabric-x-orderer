@@ -119,7 +119,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	totalOrder := make(naiveTotalOrder, 1000)
 
-	initialState := &arma.State{
+	initialState := arma.State{
 		Threshold:  1,
 		N:          1,
 		ShardCount: uint16(shardCount),
@@ -130,7 +130,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	}
 
 	consenter := &arma.Consenter{
-		State:           initialState.Serialize(),
+		State:           initialState,
 		DB:              &mockBatchAttestationDB{},
 		BAFDeserializer: &BAFSimpleDeserializer{},
 		Logger:          logger,
@@ -139,8 +139,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	go func() {
 		var events [][]byte
-		state := make([]byte, len(consenter.State))
-		copy(state, consenter.State)
+		state := consenter.State.Clone()
 		for {
 			select {
 			case <-time.After(time.Millisecond * 100):

@@ -22,7 +22,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 
 	s2 := arma.State{}
 
-	s2.DeSerialize(bytes, nil)
+	s2.Deserialize(bytes, nil)
 
 	assert.Equal(t, s, s2)
 }

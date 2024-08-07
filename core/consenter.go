@@ -19,21 +19,16 @@ type Consenter struct {
 	TotalOrder      TotalOrder
 	DB              BatchAttestationDB
 	BAFDeserializer BAFDeserializer
-	State           []byte
+	State           State
 }
 
-func (c *Consenter) SimulateStateTransition(prevState []byte, events [][]byte) ([]byte, [][]BatchAttestationFragment) {
-	controlEvents, err := requestsToControlEvents(events, c.BAFDeserializer.Deserialize)
+func (c *Consenter) SimulateStateTransition(prevState State, requests [][]byte) (State, [][]BatchAttestationFragment) {
+	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)
 	}
 
-	var state State
-	if err := state.DeSerialize(prevState, c.BAFDeserializer); err != nil {
-		panic(err)
-	}
-
-	newState, fragments := state.Process(c.Logger, controlEvents...)
+	newState, fragments := prevState.Process(c.Logger, controlEvents...)
 
 	filteredFragments := make([]BatchAttestationFragment, 0, len(fragments))
 
@@ -48,7 +43,7 @@ func (c *Consenter) SimulateStateTransition(prevState []byte, events [][]byte) (
 
 	batchAttestations := aggregateFragments(filteredFragments)
 
-	return newState.Serialize(), batchAttestations
+	return newState, batchAttestations
 }
 
 // Commit indexes BAs and updates the state.

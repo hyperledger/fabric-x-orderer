@@ -7,6 +7,7 @@ import (
 )
 
 type AvailableBatch struct {
+	// TODO change the types in here to PartyID / ShardID, and define a type for the uint64, maybe BatchSequence
 	primary uint16
 	shard   uint16
 	seq     uint64
@@ -27,6 +28,7 @@ func NewAvailableBatch(
 	}
 }
 
+// TODO define a seprate interface for AvailableBatch
 func (ab *AvailableBatch) Fragments() []arma.BatchAttestationFragment {
 	panic("should not be called")
 }
@@ -47,8 +49,10 @@ func (ab *AvailableBatch) Shard() arma.ShardID {
 	return arma.ShardID(ab.shard)
 }
 
+var AvailableBatchSerializedSize = 2 + 2 + 8 + 32 // uint16 + uint16 + uint64 + digest
+
 func (ab *AvailableBatch) Serialize() []byte {
-	buff := make([]byte, 32+2*2+8)
+	buff := make([]byte, AvailableBatchSerializedSize)
 	var pos int
 	binary.BigEndian.PutUint16(buff[pos:], ab.primary)
 	pos += 2
