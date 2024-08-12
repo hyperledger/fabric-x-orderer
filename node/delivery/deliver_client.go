@@ -192,13 +192,7 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
 
 	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
-
-		var state arma.State
-		if err := state.Deserialize(header.State, &cstate.BAFDeserializer{}); err != nil {
-			bar.logger.Panicf("Failed deserializing state: %v", err)
-		}
-
-		res <- &state
+		res <- &header.State
 	})
 
 	return res

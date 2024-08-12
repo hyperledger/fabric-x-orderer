@@ -53,7 +53,7 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState arma.State, events [][]byte) (arma.State, [][]arma.BatchAttestationFragment)
+	SimulateStateTransition(prevState *arma.State, events [][]byte) (*arma.State, [][]arma.BatchAttestationFragment)
 	Commit(events [][]byte)
 }
 
@@ -76,7 +76,7 @@ type Consensus struct {
 	Storage       Storage
 	Arma          Arma
 	stateLock     sync.Mutex
-	State         arma.State
+	State         *arma.State
 	Logger        arma.Logger
 	WAL           api.WriteAheadLog
 	sync          *synchronizer
@@ -238,14 +238,57 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		return nil, err
 	}
 
+	md := &smartbftprotos.ViewMetadata{}
+	if err := proto.Unmarshal(proposal.Metadata, md); err != nil {
+		panic(err)
+	}
+
+	if md.LatestSequence != hdr.Num {
+		return nil, fmt.Errorf("proposed number %d isn't equal to computed number %x", hdr.Num, md.LatestSequence)
+	}
+
 	c.stateLock.Lock()
-	computedState, _ := c.Arma.SimulateStateTransition(c.State, batch)
+	computedState, attestations := c.Arma.SimulateStateTransition(c.State, batch)
 	c.stateLock.Unlock()
-	if !bytes.Equal(hdr.State, computedState.Serialize()) {
+	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
 		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
 
-	// TODO verify proposal header
+	availableBatches := make([]state.AvailableBatch, len(attestations))
+	for i, ba := range attestations {
+		availableBatches[i] = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
+	}
+
+	for i, ab := range hdr.AvailableBatches {
+		if !ab.Equal(&availableBatches[i]) {
+			return nil, fmt.Errorf("proposed available batch %v in index %d isn't equal to computed available batch %v", availableBatches[i], i, ab)
+		}
+	}
+
+	var lastBlockHeader state.BlockHeader
+	if err := lastBlockHeader.FromBytes(computedState.AppContext); err != nil {
+		c.Logger.Panicf("Failed deserializing app context to BlockHeader from state: %v", err)
+	}
+
+	lastBlockNumber := lastBlockHeader.Number
+	prevHash := lastBlockHeader.Hash()
+
+	blockHeaders := make([]state.BlockHeader, len(attestations))
+	for i, ba := range attestations {
+		var hdr state.BlockHeader
+		hdr.Digest = ba[0].Digest()
+		lastBlockNumber++
+		hdr.Number = lastBlockNumber
+		hdr.PrevHash = prevHash
+		prevHash = hdr.Hash()
+		blockHeaders[i] = hdr
+	}
+
+	for i, bh := range hdr.BlockHeaders {
+		if !bh.Equal(&blockHeaders[i]) {
+			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", blockHeaders[i], i, bh)
+		}
+	}
 
 	reqInfos := make([]types.RequestInfo, 0, len(batch))
 	for _, rawReq := range batch {
@@ -457,7 +500,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 
 	availableBatches := make([]state.AvailableBatch, len(attestations))
 	for i, ba := range attestations {
-		availableBatches[i] = state.NewAvailableBatch(uint16(ba[0].Primary()), uint16(ba[0].Shard()), ba[0].Seq(), ba[0].Digest())
+		availableBatches[i] = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
 	}
 
 	blockHeaders := make([]state.BlockHeader, len(attestations))
@@ -480,7 +523,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		Header: (&state.Header{
 			AvailableBatches: availableBatches,
 			BlockHeaders:     blockHeaders,
-			State:            newState.Serialize(),
+			State:            *newState,
 			Num:              md.LatestSequence,
 		}).Bytes(),
 		Metadata: metadata,
@@ -509,10 +552,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	c.Arma.Commit(controlEvents)
 	c.Storage.Append(rawDecision)
 
-	var newState arma.State
-	if err := newState.Deserialize(hdr.State, &state.BAFDeserializer{}); err != nil {
-		c.Logger.Panicf("Failed to deserialize state from header: %v", err)
-	}
+	newState := hdr.State
 
 	numBlockHeaders := len(hdr.BlockHeaders)
 	if numBlockHeaders > 0 {
@@ -521,7 +561,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	}
 
 	c.stateLock.Lock()
-	c.State = newState
+	c.State = &newState
 	c.stateLock.Unlock()
 
 	return types.Reconfig{
@@ -613,13 +653,13 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma.Logger) *Conse
 		WAL:            wal,
 		CurrentConfig:  types.Configuration{SelfID: uint64(conf.PartyId)},
 		Arma: &arma.Consenter{
-			State:           initialState,
+			State:           &initialState,
 			DB:              db,
 			Logger:          logger,
 			BAFDeserializer: &state.BAFDeserializer{},
 		},
 		Logger:       logger,
-		State:        initialState,
+		State:        &initialState,
 		CurrentNodes: currentNodes,
 		Storage:      consLedger,
 		SigVerifier:  consenterVerifier,

@@ -75,6 +75,9 @@ func (s *State) configToBytes() []byte {
 }
 
 func shardsToBytes(shards []ShardTerm) []byte {
+	if len(shards) == 0 {
+		return nil
+	}
 	buff := make([]byte, len(shards)*(2+8))
 
 	var pos int
@@ -88,6 +91,9 @@ func shardsToBytes(shards []ShardTerm) []byte {
 }
 
 func complaintsToBytes(complaints []Complaint) []byte {
+	if len(complaints) == 0 {
+		return nil
+	}
 	cBuff := bytes.Buffer{}
 	for _, c := range complaints {
 		cBytes := c.Bytes()
@@ -102,6 +108,9 @@ func complaintsToBytes(complaints []Complaint) []byte {
 }
 
 func fragmentsToBytes(fragments []BatchAttestationFragment) []byte {
+	if len(fragments) == 0 {
+		return nil
+	}
 	fragmentBuff := bytes.Buffer{}
 	for _, baf := range fragments {
 		bafBytes := baf.Serialize()
@@ -160,6 +169,11 @@ func (s *State) loadPending(buff []byte, bafd BAFDeserializer) error {
 		pending = append(pending, baf)
 	}
 
+	if len(pending) == 0 {
+		s.Pending = nil
+		return nil
+	}
+
 	s.Pending = pending
 
 	return nil
@@ -184,11 +198,20 @@ func (s *State) loadComplaints(buff []byte) error {
 		complaints = append(complaints, c)
 	}
 
+	if len(complaints) == 0 {
+		s.Complaints = nil
+		return nil
+	}
+
 	s.Complaints = complaints
 	return nil
 }
 
 func (s *State) loadShards(rawBytes []byte, count int) {
+	if count == 0 {
+		s.Shards = nil
+		return
+	}
 	var pos int
 	shards := make([]ShardTerm, int(s.ShardCount))
 	for i := 0; i < count; i++ {
@@ -288,20 +311,20 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l Logger, ces ...ControlEvent) (State, []BatchAttestationFragment) {
+func (s *State) Process(l Logger, ces ...ControlEvent) (*State, []BatchAttestationFragment) {
 	s2 := s.Clone()
 
 	for _, rule := range Rules {
-		rule(&s2, l, ces...)
+		rule(s2, l, ces...)
 	}
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
-	extracted := ExtractBatchAttestationsFromPending(&s2, l)
+	extracted := ExtractBatchAttestationsFromPending(s2, l)
 
 	return s2, extracted
 }
 
-func (s *State) Clone() State {
+func (s *State) Clone() *State {
 	s2 := *s
 	s2.Shards = make([]ShardTerm, len(s.Shards))
 	s2.Pending = make([]BatchAttestationFragment, len(s.Pending))
@@ -314,7 +337,7 @@ func (s *State) Clone() State {
 		s2.AppContext = make([]byte, 0, len(s.AppContext))
 		s2.AppContext = append(s2.AppContext, s.AppContext...)
 	}
-	return s2
+	return &s2
 }
 
 func CleanupOldComplaints(s *State, l Logger, _ ...ControlEvent) {

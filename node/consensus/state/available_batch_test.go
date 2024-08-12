@@ -14,7 +14,8 @@ func TestAvailableBatches(t *testing.T) {
 	ab.seq = 100
 
 	var ab2 AvailableBatch
-	ab2.Deserialize(ab.Serialize())
-
+	require.NoError(t, ab2.Deserialize(ab.Serialize()))
 	require.Equal(t, ab, ab2)
+	require.True(t, ab.Equal(&ab2))
+	require.True(t, ab2.Equal(&ab))
 }

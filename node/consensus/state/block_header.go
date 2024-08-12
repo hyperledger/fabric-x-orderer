@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/binary"
@@ -70,8 +71,29 @@ func (bh *BlockHeader) Bytes() []byte {
 }
 
 func (bh *BlockHeader) FromBytes(bytes []byte) error {
+	if bytes == nil {
+		return errors.Errorf("nil bytes")
+	}
+	if len(bytes) != BlockHeaderBytesSize {
+		return errors.Errorf("len of bytes %d does not equal the block header size %d", len(bytes), BlockHeaderBytesSize)
+	}
 	bh.Number = binary.BigEndian.Uint64(bytes[0:8])
 	bh.PrevHash = bytes[8:40]
 	bh.Digest = bytes[40:]
 	return nil
+}
+
+func (bh *BlockHeader) Equal(bh2 *BlockHeader) bool {
+	if bh.Number != bh2.Number {
+		return false
+	}
+	if !bytes.Equal(bh.PrevHash, bh2.PrevHash) {
+		return false
+	}
+	// just to make sure they are the same size (there can be trailing zeros)
+	bhd := make([]byte, 32)
+	copy(bhd[0:], bh.Digest)
+	bh2d := make([]byte, 32)
+	copy(bh2d[0:], bh2.Digest)
+	return bytes.Equal(bhd, bh2d)
 }

@@ -19,10 +19,10 @@ type Consenter struct {
 	TotalOrder      TotalOrder
 	DB              BatchAttestationDB
 	BAFDeserializer BAFDeserializer
-	State           State
+	State           *State
 }
 
-func (c *Consenter) SimulateStateTransition(prevState State, requests [][]byte) (State, [][]BatchAttestationFragment) {
+func (c *Consenter) SimulateStateTransition(prevState *State, requests [][]byte) (*State, [][]BatchAttestationFragment) {
 	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)

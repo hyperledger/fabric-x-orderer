@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBAHeader(t *testing.T) {
+func TestBlockHeader(t *testing.T) {
 	var bh BlockHeader
 	bh.Number = 0
 	bh.PrevHash = make([]byte, 32)
@@ -19,10 +19,16 @@ func TestBAHeader(t *testing.T) {
 
 	require.Equal(t, bh.Hash(), bh2.Hash())
 
+	require.True(t, bh.Equal(&bh2))
+	require.True(t, bh2.Equal(&bh))
+
 	var bh3 BlockHeader
-	bh3.FromBytes(bh.Bytes())
+	require.NoError(t, bh3.FromBytes(bh.Bytes()))
 
 	require.Equal(t, bh, bh3)
 
 	require.Equal(t, bh.Hash(), bh3.Hash())
+
+	require.True(t, bh.Equal(&bh3))
+	require.True(t, bh3.Equal(&bh))
 }

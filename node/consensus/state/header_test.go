@@ -3,12 +3,14 @@ package state
 import (
 	"testing"
 
+	arma "arma/core"
+
 	"github.com/stretchr/testify/require"
 )
 
 func TestHeaderBytes(t *testing.T) {
 	hdr := Header{
-		State: []byte{1, 2, 3},
+		State: arma.State{AppContext: []byte{}},
 		Num:   100,
 		AvailableBatches: []AvailableBatch{
 			NewAvailableBatch(3, 2, 1, make([]byte, 32)),
@@ -21,7 +23,7 @@ func TestHeaderBytes(t *testing.T) {
 	}
 
 	var hdr2 Header
-	hdr2.FromBytes(hdr.Bytes())
+	require.NoError(t, hdr2.FromBytes(hdr.Bytes()))
 
 	require.Equal(t, hdr, hdr2)
 }

@@ -1,22 +1,24 @@
 package state
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	arma "arma/core"
+
+	"github.com/pkg/errors"
 )
 
 type AvailableBatch struct {
-	// TODO change the types in here to PartyID / ShardID, and define a type for the uint64, maybe BatchSequence
-	primary uint16
-	shard   uint16
-	seq     uint64
+	primary arma.PartyID
+	shard   arma.ShardID
+	seq     uint64 // TODO define a type for this uint64, maybe BatchSequence
 	digest  []byte
 }
 
 func NewAvailableBatch(
-	primary uint16,
-	shard uint16,
+	primary arma.PartyID,
+	shard arma.ShardID,
 	seq uint64,
 	digest []byte,
 ) AvailableBatch {
@@ -26,6 +28,18 @@ func NewAvailableBatch(
 		seq:     seq,
 		digest:  digest,
 	}
+}
+
+func (ab *AvailableBatch) Equal(ab2 *AvailableBatch) bool {
+	if ab.primary != ab2.primary || ab.shard != ab2.shard || ab.seq != ab2.seq {
+		return false
+	}
+	// just to make sure they are the same size (there can be trailing zeros)
+	abd := make([]byte, 32)
+	copy(abd[0:], ab.digest)
+	ab2d := make([]byte, 32)
+	copy(ab2d[0:], ab2.digest)
+	return bytes.Equal(abd, ab2d)
 }
 
 // TODO define a seprate interface for AvailableBatch
@@ -54,9 +68,9 @@ var AvailableBatchSerializedSize = 2 + 2 + 8 + 32 // uint16 + uint16 + uint64 + 
 func (ab *AvailableBatch) Serialize() []byte {
 	buff := make([]byte, AvailableBatchSerializedSize)
 	var pos int
-	binary.BigEndian.PutUint16(buff[pos:], ab.primary)
+	binary.BigEndian.PutUint16(buff[pos:], uint16(ab.primary))
 	pos += 2
-	binary.BigEndian.PutUint16(buff[pos:], ab.shard)
+	binary.BigEndian.PutUint16(buff[pos:], uint16(ab.shard))
 	pos += 2
 	binary.BigEndian.PutUint64(buff[pos:], ab.seq)
 	pos += 8
@@ -66,8 +80,14 @@ func (ab *AvailableBatch) Serialize() []byte {
 }
 
 func (ab *AvailableBatch) Deserialize(bytes []byte) error {
-	ab.primary = binary.BigEndian.Uint16(bytes[0:2])
-	ab.shard = binary.BigEndian.Uint16(bytes[2:4])
+	if bytes == nil {
+		return errors.Errorf("nil bytes")
+	}
+	if len(bytes) != AvailableBatchSerializedSize {
+		return errors.Errorf("len of bytes %d does not equal the available batch size %d", len(bytes), AvailableBatchSerializedSize)
+	}
+	ab.primary = arma.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
+	ab.shard = arma.ShardID(binary.BigEndian.Uint16(bytes[2:4]))
 	ab.seq = binary.BigEndian.Uint64(bytes[4:12])
 	ab.digest = bytes[12:]
 

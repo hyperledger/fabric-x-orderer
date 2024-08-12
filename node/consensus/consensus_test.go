@@ -111,7 +111,7 @@ func TestConsensus(t *testing.T) {
 				Digest:   nil,
 			}
 
-			initialState := arma.State{
+			initialState := &arma.State{
 				ShardCount: 2,
 				N:          4,
 				Shards:     []arma.ShardTerm{{Shard: 1}, {Shard: 2}},
@@ -220,7 +220,7 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState arma.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma.PartyID, network network, initialState *arma.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma.ShardID{1, 2, math.MaxUint16} {

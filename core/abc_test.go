@@ -119,7 +119,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	totalOrder := make(naiveTotalOrder, 1000)
 
-	initialState := arma.State{
+	initialState := &arma.State{
 		Threshold:  1,
 		N:          1,
 		ShardCount: uint16(shardCount),

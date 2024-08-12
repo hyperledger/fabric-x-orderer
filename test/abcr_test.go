@@ -16,9 +16,8 @@ import (
 	"testing"
 	"time"
 
-	node2 "arma/node"
-
 	arma "arma/core"
+	node2 "arma/node"
 	"arma/node/assembler"
 	"arma/node/batcher"
 	"arma/node/comm"
