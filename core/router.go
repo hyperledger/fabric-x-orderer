@@ -1,4 +1,4 @@
-package arma
+package core
 
 import (
 	"encoding/binary"

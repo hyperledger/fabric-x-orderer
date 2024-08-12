@@ -1,4 +1,4 @@
-package arma
+package core
 
 type Logger interface {
 	Debugf(template string, args ...interface{})

@@ -1,4 +1,4 @@
-package arma_test
+package core_test
 
 import (
 	"testing"
