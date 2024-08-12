@@ -90,10 +90,5 @@ func (bh *BlockHeader) Equal(bh2 *BlockHeader) bool {
 	if !bytes.Equal(bh.PrevHash, bh2.PrevHash) {
 		return false
 	}
-	// just to make sure they are the same size (there can be trailing zeros)
-	bhd := make([]byte, 32)
-	copy(bhd[0:], bh.Digest)
-	bh2d := make([]byte, 32)
-	copy(bh2d[0:], bh2.Digest)
-	return bytes.Equal(bhd, bh2d)
+	return bytes.Equal(bh.Digest, bh2.Digest)
 }

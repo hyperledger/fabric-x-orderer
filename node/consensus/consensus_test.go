@@ -40,28 +40,36 @@ func TestConsensus(t *testing.T) {
 
 	sks := []*ecdsa.PrivateKey{sk1, sk2, sk3, sk4}
 
-	baf1, err := batcher.CreateBAF(sk1, uint16(1), 1, []byte{1, 2, 3}, 1, 1)
+	dig3 := make([]byte, 32-3)
+	d123 := []byte{1, 2, 3}
+	dig3 = append(d123, dig3...)
+	baf1, err := batcher.CreateBAF(sk1, uint16(1), 1, dig3, 1, 1)
 	assert.NoError(t, err)
 
-	baf2, err := batcher.CreateBAF(sk2, uint16(2), 1, []byte{1, 2, 3}, 1, 1)
+	baf2, err := batcher.CreateBAF(sk2, uint16(2), 1, dig3, 1, 1)
+	assert.NoError(t, err)
+	baf11, err := batcher.CreateBAF(sk3, uint16(3), 1, dig3, 1, 1)
 	assert.NoError(t, err)
 
-	baf11, err := batcher.CreateBAF(sk3, uint16(3), 1, []byte{1, 2, 3}, 1, 1)
+	baf21, err := batcher.CreateBAF(sk4, uint16(4), 1, dig3, 1, 1)
 	assert.NoError(t, err)
 
-	baf21, err := batcher.CreateBAF(sk4, uint16(4), 1, []byte{1, 2, 3}, 1, 1)
+	dig4 := make([]byte, 32-3)
+	d124 := []byte{1, 2, 4}
+	dig4 = append(d124, dig4...)
+	baf3, err := batcher.CreateBAF(sk1, uint16(1), 2, dig4, 2, 1)
 	assert.NoError(t, err)
 
-	baf3, err := batcher.CreateBAF(sk1, uint16(1), 2, []byte{1, 2, 4}, 2, 1)
+	baf4, err := batcher.CreateBAF(sk2, uint16(2), 2, dig4, 2, 1)
 	assert.NoError(t, err)
 
-	baf4, err := batcher.CreateBAF(sk2, uint16(2), 2, []byte{1, 2, 4}, 2, 1)
+	dig5 := make([]byte, 32-3)
+	d125 := []byte{1, 2, 5}
+	dig5 = append(d125, dig5...)
+	baf5, err := batcher.CreateBAF(sk1, uint16(1), 1, dig5, 1, 2)
 	assert.NoError(t, err)
 
-	baf5, err := batcher.CreateBAF(sk1, uint16(1), 1, []byte{1, 2, 5}, 1, 2)
-	assert.NoError(t, err)
-
-	baf6, err := batcher.CreateBAF(sk2, uint16(2), 1, []byte{1, 2, 5}, 1, 2)
+	baf6, err := batcher.CreateBAF(sk2, uint16(2), 1, dig5, 1, 2)
 	assert.NoError(t, err)
 
 	for _, tst := range []struct {

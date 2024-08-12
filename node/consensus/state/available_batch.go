@@ -34,12 +34,7 @@ func (ab *AvailableBatch) Equal(ab2 *AvailableBatch) bool {
 	if ab.primary != ab2.primary || ab.shard != ab2.shard || ab.seq != ab2.seq {
 		return false
 	}
-	// just to make sure they are the same size (there can be trailing zeros)
-	abd := make([]byte, 32)
-	copy(abd[0:], ab.digest)
-	ab2d := make([]byte, 32)
-	copy(ab2d[0:], ab2.digest)
-	return bytes.Equal(abd, ab2d)
+	return bytes.Equal(ab.digest, ab.digest)
 }
 
 // TODO define a seprate interface for AvailableBatch
