@@ -24,7 +24,7 @@ func TestBatchLedgerPart(t *testing.T) {
 		}, &disabled.Provider{})
 	require.NoError(t, err)
 
-	part, err := newBatchLedgerPart(provider, 1, 1, 2, logger)
+	part, err := newBatchLedgerPart(provider, 5, 1, 2, logger)
 	require.NoError(t, err)
 	require.NotNil(t, part)
 	require.Equal(t, uint64(0), part.Height())
@@ -38,6 +38,7 @@ func TestBatchLedgerPart(t *testing.T) {
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
 		require.Equal(t, arma.PartyID(2), batch.Party())
+		require.Equal(t, arma.ShardID(5), batch.Shard())
 		require.NotNil(t, batch.Digest())
 	}
 	require.Nil(t, part.RetrieveBatchByNumber(100))

@@ -70,7 +70,9 @@ func (r *naiveReplication) RetrieveBatchByNumber(partyID arma.PartyID, seq uint6
 }
 
 type naiveBatch struct {
+	shardID  arma.ShardID
 	node     arma.PartyID
+	seq      uint64 // TODO use BatchSequence
 	requests [][]byte
 }
 
@@ -84,6 +86,14 @@ func (nb *naiveBatch) Digest() []byte {
 		h.Write(req)
 	}
 	return h.Sum(nil)
+}
+
+func (nb *naiveBatch) Shard() arma.ShardID {
+	return nb.shardID
+}
+
+func (nb *naiveBatch) Seq() uint64 {
+	return nb.seq
 }
 
 func (nb *naiveBatch) Requests() arma.BatchedRequests {

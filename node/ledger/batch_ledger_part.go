@@ -67,7 +67,7 @@ func newBatchLedgerPart(
 func (b *BatchLedgerPart) Append(seq uint64, batchBytes []byte) {
 	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, len(batchBytes), b.primaryPartyID)
 
-	block, _ := NewFabricBatchFromRaw(b.primaryPartyID, seq, batchBytes, b.prevHash)
+	block, _ := NewFabricBatchFromRaw(b.primaryPartyID, b.shardID, seq, batchBytes, b.prevHash)
 
 	// Note: We do this only because we reuse the Fabric ledger, we don't really need a hash chain here.
 	b.prevHash = protoutil.BlockHeaderHash(block.Header)

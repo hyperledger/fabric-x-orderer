@@ -37,6 +37,26 @@ type FakeBatch struct {
 	requestsReturnsOnCall map[int]struct {
 		result1 arma.BatchedRequests
 	}
+	SeqStub        func() uint64
+	seqMutex       sync.RWMutex
+	seqArgsForCall []struct {
+	}
+	seqReturns struct {
+		result1 uint64
+	}
+	seqReturnsOnCall map[int]struct {
+		result1 uint64
+	}
+	ShardStub        func() arma.ShardID
+	shardMutex       sync.RWMutex
+	shardArgsForCall []struct {
+	}
+	shardReturns struct {
+		result1 arma.ShardID
+	}
+	shardReturnsOnCall map[int]struct {
+		result1 arma.ShardID
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -200,6 +220,112 @@ func (fake *FakeBatch) RequestsReturnsOnCall(i int, result1 arma.BatchedRequests
 	}{result1}
 }
 
+func (fake *FakeBatch) Seq() uint64 {
+	fake.seqMutex.Lock()
+	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
+	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
+	}{})
+	stub := fake.SeqStub
+	fakeReturns := fake.seqReturns
+	fake.recordInvocation("Seq", []interface{}{})
+	fake.seqMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeBatch) SeqCallCount() int {
+	fake.seqMutex.RLock()
+	defer fake.seqMutex.RUnlock()
+	return len(fake.seqArgsForCall)
+}
+
+func (fake *FakeBatch) SeqCalls(stub func() uint64) {
+	fake.seqMutex.Lock()
+	defer fake.seqMutex.Unlock()
+	fake.SeqStub = stub
+}
+
+func (fake *FakeBatch) SeqReturns(result1 uint64) {
+	fake.seqMutex.Lock()
+	defer fake.seqMutex.Unlock()
+	fake.SeqStub = nil
+	fake.seqReturns = struct {
+		result1 uint64
+	}{result1}
+}
+
+func (fake *FakeBatch) SeqReturnsOnCall(i int, result1 uint64) {
+	fake.seqMutex.Lock()
+	defer fake.seqMutex.Unlock()
+	fake.SeqStub = nil
+	if fake.seqReturnsOnCall == nil {
+		fake.seqReturnsOnCall = make(map[int]struct {
+			result1 uint64
+		})
+	}
+	fake.seqReturnsOnCall[i] = struct {
+		result1 uint64
+	}{result1}
+}
+
+func (fake *FakeBatch) Shard() arma.ShardID {
+	fake.shardMutex.Lock()
+	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
+	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
+	}{})
+	stub := fake.ShardStub
+	fakeReturns := fake.shardReturns
+	fake.recordInvocation("Shard", []interface{}{})
+	fake.shardMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeBatch) ShardCallCount() int {
+	fake.shardMutex.RLock()
+	defer fake.shardMutex.RUnlock()
+	return len(fake.shardArgsForCall)
+}
+
+func (fake *FakeBatch) ShardCalls(stub func() arma.ShardID) {
+	fake.shardMutex.Lock()
+	defer fake.shardMutex.Unlock()
+	fake.ShardStub = stub
+}
+
+func (fake *FakeBatch) ShardReturns(result1 arma.ShardID) {
+	fake.shardMutex.Lock()
+	defer fake.shardMutex.Unlock()
+	fake.ShardStub = nil
+	fake.shardReturns = struct {
+		result1 arma.ShardID
+	}{result1}
+}
+
+func (fake *FakeBatch) ShardReturnsOnCall(i int, result1 arma.ShardID) {
+	fake.shardMutex.Lock()
+	defer fake.shardMutex.Unlock()
+	fake.ShardStub = nil
+	if fake.shardReturnsOnCall == nil {
+		fake.shardReturnsOnCall = make(map[int]struct {
+			result1 arma.ShardID
+		})
+	}
+	fake.shardReturnsOnCall[i] = struct {
+		result1 arma.ShardID
+	}{result1}
+}
+
 func (fake *FakeBatch) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -209,6 +335,10 @@ func (fake *FakeBatch) Invocations() map[string][][]interface{} {
 	defer fake.partyMutex.RUnlock()
 	fake.requestsMutex.RLock()
 	defer fake.requestsMutex.RUnlock()
+	fake.seqMutex.RLock()
+	defer fake.seqMutex.RUnlock()
+	fake.shardMutex.RLock()
+	defer fake.shardMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -35,22 +35,38 @@ func (b *FabricBatch) Party() arma.PartyID {
 	}
 
 	buff := m[BlockMetadataIndex_Party]
-	if len(buff) < 2 {
+	if len(buff) < 4 {
 		return 0
 	}
 
 	return arma.PartyID(binary.BigEndian.Uint16(buff[:2]))
 }
 
-func (b *FabricBatch) Sequence() uint64 {
+// Shard returns the ShardID if encoded correctly, or 0.
+func (b *FabricBatch) Shard() arma.ShardID {
+	m := (*common.Block)(b).GetMetadata().GetMetadata()
+	if len(m) <= BlockMetadataIndex_Party {
+		return 0
+	}
+
+	buff := m[BlockMetadataIndex_Party]
+	if len(buff) < 4 {
+		return 0
+	}
+
+	return arma.ShardID(binary.BigEndian.Uint16(buff[2:]))
+}
+
+func (b *FabricBatch) Seq() uint64 {
 	return (*common.Block)(b).GetHeader().GetNumber()
 }
 
-func NewFabricBatchFromRaw(partyID arma.PartyID, seq uint64, batchBytes []byte, prevHash []byte) (*FabricBatch, error) {
+func NewFabricBatchFromRaw(partyID arma.PartyID, shardID arma.ShardID, seq uint64, batchBytes []byte, prevHash []byte) (*FabricBatch, error) {
 	batchedRequests := arma.BatchFromRaw(batchBytes) // TODO return an error, don't panic. See: https://github.ibm.com/decentralized-trust-research/ARMA/issues/132
 
-	buff := make([]byte, 2)
+	buff := make([]byte, 4)
 	binary.BigEndian.PutUint16(buff[:2], uint16(partyID))
+	binary.BigEndian.PutUint16(buff[2:], uint16(shardID))
 
 	digest := sha256.Sum256(batchBytes)
 

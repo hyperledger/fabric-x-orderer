@@ -103,7 +103,7 @@ func (br *BatchFetcher) pullFromParty(shardID arma.ShardID, batcherToPullFrom co
 		br.clientConfig(),
 		func(block *common.Block) {
 			fb := ledger.FabricBatch(*block)
-			br.logger.Infof("Assembler Pulled <%d,%d,%d> with digest %s", shardID, fb.Party(), fb.Sequence(), hex.EncodeToString(fb.Digest()[:8]))
+			br.logger.Infof("Assembler Pulled <%d,%d,%d> with digest %s", shardID, fb.Party(), fb.Seq(), hex.EncodeToString(fb.Digest()[:8]))
 			resultChan <- &fb
 		},
 	)

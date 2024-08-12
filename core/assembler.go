@@ -54,34 +54,17 @@ type Assembler struct {
 	BatchAttestationReplicator BatchAttestationReplicator
 	Replicator                 BatchReplicator
 	Index                      AssemblerIndex
-	signal                     sync.Cond
-	lock                       sync.RWMutex
 	Shards                     []ShardID
+
+	lock   sync.RWMutex
+	signal sync.Cond
 }
 
 func (a *Assembler) Run() {
 	a.signal = sync.Cond{L: &a.lock}
 
-	var replicationSources []<-chan Batch
-
 	for _, shardID := range a.Shards {
-		batches := a.Replicator.Replicate(shardID)
-		replicationSources = append(replicationSources, batches)
-	}
-
-	for i, shardID := range a.Shards {
-		go func(shardID ShardID, i int) {
-			var seq uint64
-			batches := replicationSources[i]
-			for batch := range batches {
-				a.Logger.Infof("Got batch of %d requests for shard %d", len(batch.Requests()), shardID)
-				a.lock.RLock()
-				a.Index.Index(batch.Party(), shardID, seq, batch)
-				a.signal.Signal()
-				a.lock.RUnlock()
-				seq++
-			}
-		}(shardID, i)
+		go a.fetchBatchesFromShard(shardID)
 	}
 
 	attestations := a.BatchAttestationReplicator.Replicate(0)
@@ -94,6 +77,21 @@ func (a *Assembler) Run() {
 			a.Ledger.Append(ba.Seq(), batch, ba)
 		}
 	}(attestations)
+}
+
+func (a *Assembler) fetchBatchesFromShard(shardID ShardID) {
+	a.Logger.Infof("Starting to fetch batches from shard: %d", shardID)
+
+	batchCh := a.Replicator.Replicate(shardID)
+	for batch := range batchCh {
+		a.Logger.Infof("Got batch of %d requests for shard %d", len(batch.Requests()), shardID)
+		a.lock.RLock()
+		a.Index.Index(batch.Party(), shardID, batch.Seq(), batch)
+		a.signal.Signal()
+		a.lock.RUnlock()
+	}
+
+	a.Logger.Infof("Finished fetching batches from shard: %d", shardID)
 }
 
 func (a *Assembler) processAttestations(ba BatchAttestation) Batch {
