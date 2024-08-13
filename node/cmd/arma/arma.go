@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node"
 	"arma/node/assembler"
 	"arma/node/batcher"
@@ -145,7 +145,7 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 	}
 }
 
-func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byte, logger arma.Logger) func(configFile *os.File) {
+func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byte, logger core.Logger) func(configFile *os.File) {
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseRouterConfig(configContent)

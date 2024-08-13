@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	cstate "arma/node/consensus/state"
@@ -50,7 +50,7 @@ func ClientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.Cli
 	return cc
 }
 
-func Pull(context context.Context, channel string, logger arma.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
+func Pull(context context.Context, channel string, logger core.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
 	logger.Infof("Assembler pulling from: %s", channel)
 	for {
 		time.Sleep(time.Second)
@@ -89,7 +89,7 @@ func Pull(context context.Context, channel string, logger arma.Logger, endpoint 
 	}
 }
 
-func pullBlocks(channel string, logger arma.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
+func pullBlocks(channel string, logger core.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
 	logger.Infof("Assembler pulling blocks from: %s", channel)
 	for {
 		resp, err := stream.Recv()
@@ -123,10 +123,10 @@ type BAReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
-	logger          arma.Logger
+	logger          core.Logger
 }
 
-func NewBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger arma.Logger) *BAReplicator {
+func NewBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger core.Logger) *BAReplicator {
 	baReplicator := &BAReplicator{
 		cc:       ClientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint: endpoint,
@@ -137,7 +137,7 @@ func NewBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCe
 	return baReplicator
 }
 
-func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
+func (bar *BAReplicator) Replicate(seq uint64) <-chan core.BatchAttestation {
 	endpoint := func() string {
 		return bar.endpoint
 	}
@@ -155,7 +155,7 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 		bar.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
-	res := make(chan arma.BatchAttestation, 100)
+	res := make(chan core.BatchAttestation, 100)
 
 	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
@@ -170,7 +170,7 @@ func (bar *BAReplicator) Replicate(seq uint64) <-chan arma.BatchAttestation {
 	return res
 }
 
-func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
+func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *core.State {
 	endpoint := func() string {
 		return bar.endpoint
 	}
@@ -188,7 +188,7 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
 		bar.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
-	res := make(chan *arma.State, 100)
+	res := make(chan *core.State, 100)
 
 	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
@@ -198,7 +198,7 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
 	return res
 }
 
-func extractHeaderFromBlock(block *common.Block, logger arma.Logger) *cstate.Header {
+func extractHeaderFromBlock(block *common.Block, logger core.Logger) *cstate.Header {
 	decisionAsBytes := block.Data.Data[0]
 
 	headerSize := decisionAsBytes[:4]

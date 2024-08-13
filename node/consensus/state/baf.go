@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 
 	arma_types "arma/common/types"
-	arma "arma/core"
+	"arma/core"
 )
 
-func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
+func ToBeSignedBAF(baf core.BatchAttestationFragment) []byte {
 	buff := make([]byte, 2+8+2+8+2+32+len(baf.GarbageCollect())*32)
 	var pos int
 	binary.BigEndian.PutUint16(buff, uint16(baf.Shard()))
@@ -32,7 +32,7 @@ func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 
 type BAFDeserializer struct{}
 
-func (bafd *BAFDeserializer) Deserialize(bytes []byte) (arma.BatchAttestationFragment, error) {
+func (bafd *BAFDeserializer) Deserialize(bytes []byte) (core.BatchAttestationFragment, error) {
 	var baf arma_types.SimpleBatchAttestationFragment
 	if err := baf.Deserialize(bytes); err != nil {
 		return nil, err

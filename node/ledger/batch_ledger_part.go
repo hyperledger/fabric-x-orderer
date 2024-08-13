@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -18,20 +18,20 @@ import (
 // The BatchLedgerPart for shard=A and party=B (where A,B are int) is stored in ledger that belongs to
 // channel name "shardApartyB".
 type BatchLedgerPart struct {
-	shardID        arma.ShardID           // The shard this object belongs to.
-	partyID        arma.PartyID           // The party that operates this object.
-	primaryPartyID arma.PartyID           // The primary party that generated the batches in this object.
+	shardID        core.ShardID           // The shard this object belongs to.
+	partyID        core.PartyID           // The party that operates this object.
+	primaryPartyID core.PartyID           // The primary party that generated the batches in this object.
 	ledger         blockledger.ReadWriter // The fabric block ledger that holds batches.
 	prevHash       []byte                 // The header hash of the last block; we need this because the Fabric ledger enforces a hash chain.
-	logger         arma.Logger
+	logger         core.Logger
 }
 
 // newBatchLedgerPart creates a new BatchLedgerPart.
 func newBatchLedgerPart(
 	provider *blkstorage.BlockStoreProvider,
-	shardID arma.ShardID,
-	partyID, primaryPartyID arma.PartyID,
-	logger arma.Logger,
+	shardID core.ShardID,
+	partyID, primaryPartyID core.PartyID,
+	logger core.Logger,
 ) (*BatchLedgerPart, error) {
 	name := fmt.Sprintf("shard%dparty%d", shardID, primaryPartyID)
 	ledger, err := provider.Open(name)
@@ -63,7 +63,7 @@ func newBatchLedgerPart(
 
 // Append adds a batch to the end of the ledger chain.
 // The `seq` must match the expected block number (i.e. Height()).
-// The raw batch bytes `batchBytes` must be able to decode to arma.BatchedRequests.
+// The raw batch bytes `batchBytes` must be able to decode to core.BatchedRequests.
 func (b *BatchLedgerPart) Append(seq uint64, batchBytes []byte) {
 	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, len(batchBytes), b.primaryPartyID)
 
@@ -83,7 +83,7 @@ func (b *BatchLedgerPart) Height() uint64 {
 }
 
 // RetrieveBatchByNumber retrieves the batch with a specific sequence, or returns nil if not found.
-func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) arma.Batch {
+func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) core.Batch {
 	block, err := b.ledger.RetrieveBlockByNumber(seq)
 	if err != nil {
 		b.logger.Errorf("Batch not found: %d, err: %s", seq, err)

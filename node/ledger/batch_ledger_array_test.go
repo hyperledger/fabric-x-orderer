@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/stretchr/testify/require"
@@ -14,7 +14,7 @@ func TestNewBatchLedgerArray(t *testing.T) {
 	dir := t.TempDir()
 	logger := flogging.MustGetLogger("test")
 
-	parties := []arma.PartyID{1, 2, 3, 4}
+	parties := []core.PartyID{1, 2, 3, 4}
 	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
@@ -31,16 +31,16 @@ func TestBatchLedgerArray(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	t.Log("Open, write & read")
-	parties := []arma.PartyID{1, 2, 3, 4}
+	parties := []core.PartyID{1, 2, 3, 4}
 	a, err := NewBatchLedgerArray(1, 3, parties, dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
 	numBatches := uint64(10)
-	var batchedRequests arma.BatchedRequests
+	var batchedRequests core.BatchedRequests
 	for _, pID := range parties {
 		for seq := uint64(0); seq < numBatches; seq++ {
-			batchedRequests = arma.BatchedRequests{
+			batchedRequests = core.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
 			a.Append(pID, seq, batchedRequests.ToBytes())
@@ -70,7 +70,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	for _, pID := range parties {
 		for seq := numBatches; seq < 2*numBatches; seq++ {
-			batchedRequests = arma.BatchedRequests{
+			batchedRequests = core.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
 			a.Append(pID, seq, batchedRequests.ToBytes())
@@ -88,12 +88,12 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 	dir := t.TempDir()
 	logger := flogging.MustGetLogger("test")
 
-	parties := []arma.PartyID{1, 2, 3, 4}
+	parties := []core.PartyID{1, 2, 3, 4}
 	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
-	batchedRequests := arma.BatchedRequests{[]byte("tx1"), []byte("tx2")}
+	batchedRequests := core.BatchedRequests{[]byte("tx1"), []byte("tx2")}
 	for _, pID := range parties {
 		part := a.Part(pID)
 		for seq := uint64(0); seq < 10; seq++ {

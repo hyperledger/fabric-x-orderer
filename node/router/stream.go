@@ -4,13 +4,13 @@ import (
 	"context"
 	"sync"
 
-	arma "arma/core"
+	"arma/core"
 	protos "arma/node/protos/comm"
 )
 
 type stream struct {
 	endpoint string
-	logger   arma.Logger
+	logger   core.Logger
 	protos.RequestTransmit_SubmitStreamClient
 	ctx              context.Context
 	once             sync.Once

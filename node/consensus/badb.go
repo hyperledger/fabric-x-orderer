@@ -3,7 +3,7 @@ package consensus
 import (
 	"encoding/binary"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -11,10 +11,10 @@ import (
 
 type BatchAttestationDB struct {
 	db     *leveldb.DB
-	logger arma.Logger
+	logger core.Logger
 }
 
-func NewBatchAttestationDB(path string, logger arma.Logger) (*BatchAttestationDB, error) {
+func NewBatchAttestationDB(path string, logger core.Logger) (*BatchAttestationDB, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	return &BatchAttestationDB{db: db, logger: logger}, err
 }

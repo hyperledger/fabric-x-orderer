@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 	node2 "arma/node"
 	"arma/node/assembler"
 	"arma/node/batcher"
@@ -250,7 +250,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 
 		gRPCServer := consenterNodes[i].Server()
 
-		partyID := arma.PartyID(i + 1)
+		partyID := core.PartyID(i + 1)
 
 		logger := testutil.CreateLogger(t, int(partyID))
 

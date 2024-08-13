@@ -28,16 +28,15 @@ func (fake *FakeBatchPuller) PullBatches(arg1 core.PartyID) <-chan core.Batch {
 	fake.pullBatchesArgsForCall = append(fake.pullBatchesArgsForCall, struct {
 		arg1 core.PartyID
 	}{arg1})
-	stub := fake.PullBatchesStub
-	fakeReturns := fake.pullBatchesReturns
 	fake.recordInvocation("PullBatches", []interface{}{arg1})
 	fake.pullBatchesMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.PullBatchesStub != nil {
+		return fake.PullBatchesStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.pullBatchesReturns
 	return fakeReturns.result1
 }
 

@@ -3,14 +3,14 @@ package state
 import (
 	"testing"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestHeaderBytes(t *testing.T) {
 	hdr := Header{
-		State: &arma.State{AppContext: []byte{}},
+		State: &core.State{AppContext: []byte{}},
 		Num:   100,
 		AvailableBatches: []AvailableBatch{
 			NewAvailableBatch(3, 2, 1, make([]byte, 32)),

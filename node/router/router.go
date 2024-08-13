@@ -14,7 +14,7 @@ import (
 	"arma/node/batcher"
 	"arma/node/config"
 
-	arma "arma/core"
+	"arma/core"
 
 	protos "arma/node/protos/comm"
 
@@ -23,11 +23,11 @@ import (
 )
 
 type Router struct {
-	router       arma.Router
+	router       core.Router
 	shardRouters map[uint16]*ShardRouter
 	TLSCert      []byte
 	TLSKey       []byte
-	logger       arma.Logger
+	logger       core.Logger
 	shards       []uint16
 	incoming     uint64
 }
@@ -92,7 +92,7 @@ func NewRouter(shards []uint16,
 	batcherRootCAs [][][]byte,
 	tlsCert []byte,
 	tlsKey []byte,
-	logger arma.Logger,
+	logger core.Logger,
 	numOfConnectionsForBatcher int,
 	numOfgRPCStreamsPerConnection int,
 ) *Router {
@@ -104,7 +104,7 @@ func NewRouter(shards []uint16,
 		numOfgRPCStreamsPerConnection = defaultRouter2batcherStreamsPerConn
 	}
 
-	r := &Router{shards: shards, shardRouters: make(map[uint16]*ShardRouter), logger: logger, router: arma.Router{Logger: logger, ShardCount: uint16(len(shards))}}
+	r := &Router{shards: shards, shardRouters: make(map[uint16]*ShardRouter), logger: logger, router: core.Router{Logger: logger, ShardCount: uint16(len(shards))}}
 	for i, shard := range shards {
 		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i], tlsCert, tlsKey, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection)
 	}
@@ -263,7 +263,7 @@ func createTraceID(rand *rand2.Rand) []byte {
 	return trace
 }
 
-func CreateRouter(config config.RouterNodeConfig, logger arma.Logger) *Router {
+func CreateRouter(config config.RouterNodeConfig, logger core.Logger) *Router {
 	var shards []uint16
 	var endpoints []string
 	var tlsCAs [][][]byte

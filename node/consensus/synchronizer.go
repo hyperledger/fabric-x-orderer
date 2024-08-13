@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node/comm"
 	"arma/node/delivery"
 
@@ -21,7 +21,7 @@ type synchronizer struct {
 	getHeight                func() uint64
 	CurrentNodes             []uint64
 	CurrentConfig            types.Configuration
-	logger                   arma.Logger
+	logger                   core.Logger
 	endpoint                 func() string
 	cc                       comm.ClientConfig
 	nextSeq                  func() uint64
@@ -103,7 +103,7 @@ func (s *synchronizer) Sync() types.SyncResponse {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
 		}
 
-		for _, req := range arma.BatchFromRaw(proposal.Payload) {
+		for _, req := range core.BatchFromRaw(proposal.Payload) {
 			s.pruneRequestsFromMemPool(req)
 		}
 

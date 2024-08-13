@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	"arma/node/delivery"
@@ -16,14 +16,14 @@ import (
 )
 
 type AssemblerLedgerHeightReader interface {
-	Height(shardID arma.ShardID, partyID arma.PartyID) uint64
+	Height(shardID core.ShardID, partyID core.PartyID) uint64
 }
 
 type BatchFetcher struct {
 	ledgerHeightReader AssemblerLedgerHeightReader
 	tlsKey, tlsCert    []byte
 	config             config.AssemblerNodeConfig
-	logger             arma.Logger
+	logger             core.Logger
 }
 
 func (br *BatchFetcher) clientConfig() comm.ClientConfig {
@@ -54,7 +54,7 @@ func (br *BatchFetcher) clientConfig() comm.ClientConfig {
 	return cc
 }
 
-func (br *BatchFetcher) Replicate(shardID arma.ShardID) <-chan arma.Batch {
+func (br *BatchFetcher) Replicate(shardID core.ShardID) <-chan core.Batch {
 	br.logger.Infof("Assembler %d Replicate from shard %d", br.config.PartyId, shardID)
 
 	// Find the batcher from my party in this shard.
@@ -63,7 +63,7 @@ func (br *BatchFetcher) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 
 	br.logger.Infof("Assembler %d Replicate from shard %d batcher info %+v", br.config.PartyId, shardID, batcherToPullFrom)
 
-	res := make(chan arma.Batch, 100)
+	res := make(chan core.Batch, 100)
 
 	for _, p := range partiesFromAssemblerConfig(br.config) {
 		br.pullFromParty(shardID, batcherToPullFrom, p, res)
@@ -72,7 +72,7 @@ func (br *BatchFetcher) Replicate(shardID arma.ShardID) <-chan arma.Batch {
 	return res
 }
 
-func (br *BatchFetcher) pullFromParty(shardID arma.ShardID, batcherToPullFrom config.BatcherInfo, partyID arma.PartyID, resultChan chan arma.Batch) {
+func (br *BatchFetcher) pullFromParty(shardID core.ShardID, batcherToPullFrom config.BatcherInfo, partyID core.PartyID, resultChan chan core.Batch) {
 	seq := br.ledgerHeightReader.Height(shardID, partyID)
 
 	endpoint := func() string {
@@ -110,7 +110,7 @@ func (br *BatchFetcher) pullFromParty(shardID arma.ShardID, batcherToPullFrom co
 	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
 }
 
-func (br *BatchFetcher) findShardID(shardID arma.ShardID) config.BatcherInfo {
+func (br *BatchFetcher) findShardID(shardID core.ShardID) config.BatcherInfo {
 	for _, shard := range br.config.Shards {
 		if shard.ShardId == uint16(shardID) {
 			for _, b := range shard.Batchers {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node/ledger"
 
 	//lint:ignore SA1019 since we are reusing Fabric's delivery service, we must use the old proto package
@@ -24,7 +24,7 @@ import (
 
 type BatcherDeliverService struct {
 	LedgerArray *ledger.BatchLedgerArray
-	Logger      arma.Logger
+	Logger      core.Logger
 }
 
 func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -77,7 +77,7 @@ func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string)
 
 type chainManager struct {
 	ledgerArray *ledger.BatchLedgerArray
-	logger      arma.Logger
+	logger      core.Logger
 }
 
 func (c *chainManager) GetChain(chainID string) deliver.Chain {

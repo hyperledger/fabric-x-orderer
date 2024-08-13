@@ -3,7 +3,7 @@ package node
 import (
 	"encoding/asn1"
 
-	arma "arma/core"
+	"arma/core"
 )
 
 type SimpleBatchAttestationFragment struct {
@@ -15,20 +15,20 @@ type SimpleBatchAttestationFragment struct {
 	Gc        [][]byte
 }
 
-func (s *SimpleBatchAttestationFragment) Seq() arma.BatchSequence {
-	return arma.BatchSequence(s.Se)
+func (s *SimpleBatchAttestationFragment) Seq() core.BatchSequence {
+	return core.BatchSequence(s.Se)
 }
 
-func (s *SimpleBatchAttestationFragment) Primary() arma.PartyID {
-	return arma.PartyID(s.P)
+func (s *SimpleBatchAttestationFragment) Primary() core.PartyID {
+	return core.PartyID(s.P)
 }
 
-func (s *SimpleBatchAttestationFragment) Signer() arma.PartyID {
-	return arma.PartyID(s.Si)
+func (s *SimpleBatchAttestationFragment) Signer() core.PartyID {
+	return core.PartyID(s.Si)
 }
 
-func (s *SimpleBatchAttestationFragment) Shard() arma.ShardID {
-	return arma.ShardID(s.Sh)
+func (s *SimpleBatchAttestationFragment) Shard() core.ShardID {
+	return core.ShardID(s.Sh)
 }
 
 func (s *SimpleBatchAttestationFragment) Digest() []byte {

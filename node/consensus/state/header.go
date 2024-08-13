@@ -3,7 +3,7 @@ package state
 import (
 	"encoding/binary"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/pkg/errors"
 )
@@ -12,7 +12,7 @@ type Header struct {
 	Num              uint64
 	AvailableBatches []AvailableBatch
 	BlockHeaders     []BlockHeader
-	State            *arma.State
+	State            *core.State
 }
 
 func (h *Header) FromBytes(rawHeader []byte) error {
@@ -52,7 +52,7 @@ func (h *Header) FromBytes(rawHeader []byte) error {
 	}
 
 	rawState := rawHeader[pos:]
-	h.State = &arma.State{}
+	h.State = &core.State{}
 	h.State.Deserialize(rawState, &BAFDeserializer{})
 
 	return nil

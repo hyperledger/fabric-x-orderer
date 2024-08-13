@@ -3,7 +3,7 @@ package assembler
 import (
 	"fmt"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node/config"
 	"arma/node/delivery"
 	node_ledger "arma/node/ledger"
@@ -16,8 +16,8 @@ import (
 )
 
 type Assembler struct {
-	assembler arma.Assembler
-	logger    arma.Logger
+	assembler core.Assembler
+	logger    core.Logger
 	getHeight func() uint64
 	ds        delivery.DeliverService
 }
@@ -35,7 +35,7 @@ func (a *Assembler) GetTxCount() uint64 {
 	return a.assembler.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
 }
 
-func newAssembler(logger arma.Logger, config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
+func newAssembler(logger core.Logger, config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
 	index := NewIndex(config, blockStores, logger)
 
 	tlsKey := config.TLSPrivateKeyFile
@@ -54,9 +54,9 @@ func newAssembler(logger arma.Logger, config config.AssemblerNodeConfig, blockSt
 		tlsCert:            tlsCert,
 	}
 
-	var shards []arma.ShardID
+	var shards []core.ShardID
 	for _, shard := range config.Shards {
-		shards = append(shards, arma.ShardID(shard.ShardId))
+		shards = append(shards, core.ShardID(shard.ShardId))
 	}
 
 	al := &node_ledger.AssemblerLedger{Ledger: ledger, Logger: logger}
@@ -64,7 +64,7 @@ func newAssembler(logger arma.Logger, config config.AssemblerNodeConfig, blockSt
 	assembler := &Assembler{
 		ds:        make(delivery.DeliverService),
 		getHeight: ledger.Height,
-		assembler: arma.Assembler{
+		assembler: core.Assembler{
 			Shards:                     shards,
 			BatchAttestationReplicator: baReplicator,
 			Replicator:                 br,
@@ -83,14 +83,14 @@ func newAssembler(logger arma.Logger, config config.AssemblerNodeConfig, blockSt
 	return assembler
 }
 
-func newBAReplicator(logger arma.Logger, config config.AssemblerNodeConfig, tlsKey config.RawBytes, tlsCert config.RawBytes) *delivery.BAReplicator {
+func newBAReplicator(logger core.Logger, config config.AssemblerNodeConfig, tlsKey config.RawBytes, tlsCert config.RawBytes) *delivery.BAReplicator {
 	r := delivery.NewBAReplicator(config.Consenter.TLSCACerts, tlsKey, tlsCert, config.Consenter.Endpoint, logger)
 	return r
 }
 
 type FactoryCreator func(string) blockledger.Factory
 
-func NewAssembler(config config.AssemblerNodeConfig, logger arma.Logger) *Assembler {
+func NewAssembler(config config.AssemblerNodeConfig, logger core.Logger) *Assembler {
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(config.Directory, -1),
 		&blkstorage.IndexConfig{
@@ -116,7 +116,7 @@ func NewAssembler(config config.AssemblerNodeConfig, logger arma.Logger) *Assemb
 	for _, shard := range config.Shards {
 		// Open an array for each shard
 		for _, p := range parties {
-			name := node_ledger.ShardPartyToChannelName(arma.ShardID(shard.ShardId), p)
+			name := node_ledger.ShardPartyToChannelName(core.ShardID(shard.ShardId), p)
 			batcherLedger, err := provider.Open(name)
 			if err != nil {
 				logger.Panicf("Failed opening ledger: %v", err)

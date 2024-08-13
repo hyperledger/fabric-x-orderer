@@ -10,7 +10,7 @@ import (
 	"time"
 
 	arma_types "arma/common/types"
-	arma "arma/core"
+	"arma/core"
 	"arma/core/mocks"
 	"arma/testutil"
 
@@ -38,13 +38,13 @@ func (n naiveTotalOrder) SubmitRequest(req []byte) error {
 
 type naiveblock struct {
 	seq         uint64
-	batch       arma.Batch
-	attestation arma.BatchAttestation
+	batch       core.Batch
+	attestation core.BatchAttestation
 }
 
 type naiveBlockLedger chan naiveblock
 
-func (n naiveBlockLedger) Append(seq uint64, batch arma.Batch, attestation arma.BatchAttestation) {
+func (n naiveBlockLedger) Append(seq uint64, batch core.Batch, attestation core.BatchAttestation) {
 	n <- naiveblock{
 		seq:         seq,
 		batch:       batch,
@@ -57,44 +57,44 @@ type shardCommitter struct {
 	shardID uint16
 }
 
-func (s *shardCommitter) Append(party arma.PartyID, _ uint64, rawBatch []byte) {
+func (s *shardCommitter) Append(party core.PartyID, _ uint64, rawBatch []byte) {
 	nb := &naiveBatch{
-		requests: arma.BatchFromRaw(rawBatch),
+		requests: core.BatchFromRaw(rawBatch),
 		node:     party,
 	}
 
 	s.sr.subscribers[s.shardID] <- nb
 }
 
-func (r *shardCommitter) Height(partyID arma.PartyID) uint64 {
+func (r *shardCommitter) Height(partyID core.PartyID) uint64 {
 	return 0
 }
 
-func (r *shardCommitter) RetrieveBatchByNumber(partyID arma.PartyID, seq uint64) arma.Batch {
+func (r *shardCommitter) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.Batch {
 	return nil
 }
 
 type shardReplicator struct {
-	subscribers []chan arma.Batch
+	subscribers []chan core.Batch
 }
 
-func (s *shardReplicator) Replicate(shard arma.ShardID) <-chan arma.Batch {
+func (s *shardReplicator) Replicate(shard core.ShardID) <-chan core.Batch {
 	return s.subscribers[shard]
 }
 
 type stateProvider struct {
-	s *arma.State
+	s *core.State
 }
 
-func (s *stateProvider) GetLatestStateChan() <-chan *arma.State {
-	stateChan := make(chan *arma.State, 1)
+func (s *stateProvider) GetLatestStateChan() <-chan *core.State {
+	stateChan := make(chan *core.State, 1)
 	stateChan <- s.s
 	return stateChan
 }
 
 type BAFSimpleDeserializer struct{}
 
-func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (arma.BatchAttestationFragment, error) {
+func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (core.BatchAttestationFragment, error) {
 	var baf arma_types.SimpleBatchAttestationFragment
 	if err := baf.Deserialize(bytes); err != nil {
 		return nil, err
@@ -112,24 +112,24 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	replicator := &shardReplicator{}
 	for i := 0; i < shardCount; i++ {
-		replicator.subscribers = append(replicator.subscribers, make(chan arma.Batch, 1000))
+		replicator.subscribers = append(replicator.subscribers, make(chan core.Batch, 1000))
 	}
 	assembler.Replicator = replicator
 	assembler.Logger = logger
 
 	totalOrder := make(naiveTotalOrder, 1000)
 
-	initialState := &arma.State{
+	initialState := &core.State{
 		Threshold:  1,
 		N:          1,
 		ShardCount: uint16(shardCount),
 	}
 
 	for shardID := uint16(1); shardID <= initialState.ShardCount; shardID++ {
-		initialState.Shards = append(initialState.Shards, arma.ShardTerm{Shard: arma.ShardID(shardID), Term: 1})
+		initialState.Shards = append(initialState.Shards, core.ShardTerm{Shard: core.ShardID(shardID), Term: 1})
 	}
 
-	consenter := &arma.Consenter{
+	consenter := &core.Consenter{
 		State:           initialState,
 		DB:              &mockBatchAttestationDB{},
 		BAFDeserializer: &BAFSimpleDeserializer{},
@@ -163,22 +163,22 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		}
 	}()
 
-	var batchers []*arma.Batcher
+	var batchers []*core.Batcher
 
-	state := arma.State{N: uint16(shardCount)}
+	state := core.State{N: uint16(shardCount)}
 	for shard := 0; shard < shardCount; shard++ {
-		state.Shards = append(state.Shards, arma.ShardTerm{Shard: arma.ShardID(shard)})
+		state.Shards = append(state.Shards, core.ShardTerm{Shard: core.ShardID(shard)})
 	}
 
-	var parties []arma.PartyID
+	var parties []core.PartyID
 	for shardID := 0; shardID < shardCount; shardID++ {
-		parties = append(parties, arma.PartyID(shardID))
+		parties = append(parties, core.PartyID(shardID))
 	}
 
 	for shardID := 0; shardID < shardCount; shardID++ {
 		batcher := createTestBatcher(t, shardID, shardID, parties)
 		batcher.Logger = logger
-		batcher.TotalOrderBAF = func(baf arma.BatchAttestationFragment) {
+		batcher.TotalOrderBAF = func(baf core.BatchAttestationFragment) {
 			ba := &arma_types.SimpleBatchAttestationFragment{
 				Dig: baf.Digest(),
 				Se:  int(baf.Seq()),
@@ -186,7 +186,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 				Si:  int(baf.Signer()),
 				P:   int(baf.Primary()),
 			}
-			consenter.Submit((&arma.ControlEvent{
+			consenter.Submit((&core.ControlEvent{
 				BAF: ba,
 			}).Bytes())
 		}
@@ -202,14 +202,14 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			sr:      replicator,
 		}
 		batcher := batchers[i]
-		batcher.AckBAF = func(seq arma.BatchSequence, to arma.PartyID) {
+		batcher.AckBAF = func(seq core.BatchSequence, to core.PartyID) {
 			batchers[to].HandleAck(seq, batcher.ID)
 		}
 		batchers[i].Ledger = sc
 		batchers[i].BatchPuller = nil
 		batchers[i].N = state.N
 		batchers[i].StateProvider = sp
-		batchers[i].ID = arma.PartyID(i)
+		batchers[i].ID = core.PartyID(i)
 		batchers[i].Start()
 		defer batchers[i].Stop()
 	}
@@ -218,7 +218,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	assembler.Run()
 
-	router := &arma.Router{
+	router := &core.Router{
 		Logger:     logger,
 		ShardCount: uint16(shardCount),
 	}

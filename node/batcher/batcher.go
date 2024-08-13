@@ -21,7 +21,7 @@ import (
 	"arma/node/delivery"
 
 	arma_types "arma/common/types"
-	arma "arma/core"
+	"arma/core"
 	"arma/node/comm"
 	node_config "arma/node/config"
 	node_ledger "arma/node/ledger"
@@ -48,9 +48,9 @@ var defaultBatcherMemPoolOpts = request.PoolOptions{
 
 type Batcher struct {
 	ds                  *BatcherDeliverService
-	logger              arma.Logger
-	b                   *arma.Batcher
-	batcherCerts2IDs    map[string]arma.PartyID
+	logger              core.Logger
+	b                   *core.Batcher
+	batcherCerts2IDs    map[string]core.PartyID
 	primaryEndpoint     string
 	primaryTLSCA        []node_config.RawBytes
 	consensusStreams    []protos.Consensus_NotifyEventClient
@@ -63,7 +63,7 @@ type Batcher struct {
 	tlsKey              []byte
 	tlsCert             []byte
 	stateRef            atomic.Value
-	stateChan           chan *arma.State
+	stateChan           chan *core.State
 	running             sync.WaitGroup
 	stopChan            chan struct{}
 }
@@ -72,7 +72,7 @@ func (b *Batcher) Run() {
 	b.running.Add(1)
 	b.stopChan = make(chan struct{})
 
-	b.stateChan = make(chan *arma.State)
+	b.stateChan = make(chan *core.State)
 
 	bar := b.createBAR()
 
@@ -121,7 +121,7 @@ func (b *Batcher) replicateState(seq uint64, bar *delivery.BAReplicator) {
 	}
 }
 
-func (b *Batcher) GetLatestStateChan() <-chan *arma.State {
+func (b *Batcher) GetLatestStateChan() <-chan *core.State {
 	return b.stateChan
 }
 
@@ -233,11 +233,11 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 		if err != nil {
 			return err
 		}
-		b.b.HandleAck(arma.BatchSequence(msg.Seq), from)
+		b.b.HandleAck(core.BatchSequence(msg.Seq), from)
 	}
 }
 
-func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger arma.BatchLedger, bp arma.BatchPuller, ds *BatcherDeliverService) *Batcher {
+func NewBatcher(logger core.Logger, config node_config.BatcherNodeConfig, ledger core.BatchLedger, bp core.BatchPuller, ds *BatcherDeliverService) *Batcher {
 	cert := config.TLSCertificateFile
 	sk := config.TLSPrivateKeyFile
 
@@ -245,7 +245,7 @@ func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger
 		ds:               ds,
 		sk:               createSigner(logger, config),
 		logger:           logger,
-		batcherCerts2IDs: make(map[string]arma.PartyID),
+		batcherCerts2IDs: make(map[string]core.PartyID),
 		config:           config,
 		tlsKey:           sk,
 		tlsCert:          cert,
@@ -260,7 +260,7 @@ func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger
 
 	f := (initState.N - 1) / 3
 
-	b.b = &arma.Batcher{
+	b.b = &core.Batcher{
 		Batchers:      parties,
 		BatchPuller:   bp,
 		Threshold:     int(f + 1),
@@ -270,11 +270,11 @@ func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger
 		MemPool:       b.createMemPool(config),
 		AttestBatch:   b.attestBatch,
 		StateProvider: b,
-		ID:            arma.PartyID(config.PartyId),
-		Shard:         arma.ShardID(config.ShardId),
+		ID:            core.PartyID(config.PartyId),
+		Shard:         core.ShardID(config.ShardId),
 		Logger:        logger,
 		Digest: func(data [][]byte) []byte {
-			batch := arma.BatchedRequests(data)
+			batch := core.BatchedRequests(data)
 			digest := sha256.Sum256(batch.ToBytes())
 			return digest[:]
 		},
@@ -288,16 +288,16 @@ func NewBatcher(logger arma.Logger, config node_config.BatcherNodeConfig, ledger
 	return b
 }
 
-func batcherIDs(logger arma.Logger, config node_config.BatcherNodeConfig) []arma.PartyID {
+func batcherIDs(logger core.Logger, config node_config.BatcherNodeConfig) []core.PartyID {
 	batchers := batchersFromConfig(logger, config)
-	var parties []arma.PartyID
+	var parties []core.PartyID
 	for _, batcher := range batchers {
-		parties = append(parties, arma.PartyID(batcher.PartyID))
+		parties = append(parties, core.PartyID(batcher.PartyID))
 	}
 	return parties
 }
 
-func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) arma.MemPool {
+func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPool {
 	opts := defaultBatcherMemPoolOpts
 	opts.BatchMaxSizeBytes = config.BatchMaxBytes
 	opts.MaxSize = config.MemPoolMaxSize
@@ -326,11 +326,11 @@ func (b *Batcher) indexTLSCerts() {
 			b.logger.Panicf("Failed decoding TLS certificate of %d from PEM", batcher.PartyID)
 		}
 
-		b.batcherCerts2IDs[string(bl.Bytes)] = arma.PartyID(batcher.PartyID)
+		b.batcherCerts2IDs[string(bl.Bytes)] = core.PartyID(batcher.PartyID)
 	}
 }
 
-func createSigner(logger arma.Logger, config node_config.BatcherNodeConfig) *ecdsa.PrivateKey {
+func createSigner(logger core.Logger, config node_config.BatcherNodeConfig) *ecdsa.PrivateKey {
 	rawKey := config.SigningPrivateKey
 	bl, _ := pem.Decode(rawKey)
 
@@ -346,11 +346,11 @@ func createSigner(logger arma.Logger, config node_config.BatcherNodeConfig) *ecd
 	return sk.(*ecdsa.PrivateKey)
 }
 
-func (b *Batcher) attestBatch(seq arma.BatchSequence, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
-	var pending []arma.BatchAttestationFragment
+func (b *Batcher) attestBatch(seq core.BatchSequence, primary core.PartyID, shard core.ShardID, digest []byte) core.BatchAttestationFragment {
+	var pending []core.BatchAttestationFragment
 	ref := b.stateRef.Load()
 	if ref != nil {
-		state := ref.(*arma.State)
+		state := ref.(*core.State)
 		pending = state.Pending
 	}
 	baf, err := CreateBAF(b.sk, b.config.PartyId, uint16(shard), digest, uint16(primary), seq, pending...)
@@ -368,7 +368,7 @@ func (b *Batcher) setupPrimaryEndpoint() {
 	primaryID := b.getPrimaryID()
 
 	for _, batcher := range batchers {
-		if arma.PartyID(batcher.PartyID) == primaryID {
+		if core.PartyID(batcher.PartyID) == primaryID {
 			b.primaryEndpoint = batcher.Endpoint
 			b.primaryTLSCA = batcher.TLSCACerts
 			b.logger.Infof("Primary for shard %d: %d %s", b.config.ShardId, primaryID, b.primaryEndpoint)
@@ -379,11 +379,11 @@ func (b *Batcher) setupPrimaryEndpoint() {
 	b.logger.Panicf("Could not find primaryID %d of shard %d within %v", primaryID, b.config.ShardId, batchers)
 }
 
-func (b *Batcher) getPrimaryID() arma.PartyID {
-	state := b.stateRef.Load().(*arma.State)
+func (b *Batcher) getPrimaryID() core.PartyID {
+	state := b.stateRef.Load().(*core.State)
 	term := uint64(math.MaxUint64)
 	for _, shard := range state.Shards {
-		if shard.Shard == arma.ShardID(b.config.ShardId) {
+		if shard.Shard == core.ShardID(b.config.ShardId) {
 			term = shard.Term
 		}
 	}
@@ -392,20 +392,20 @@ func (b *Batcher) getPrimaryID() arma.PartyID {
 		b.logger.Panicf("Could not find our shard (%d) within the shards: %v", b.config.ShardId, state.Shards)
 	}
 
-	primaryIndex := arma.PartyID((uint64(b.config.ShardId) + term) % uint64(state.N))
+	primaryIndex := core.PartyID((uint64(b.config.ShardId) + term) % uint64(state.N))
 
 	batchers := batchersFromConfig(b.logger, b.config)
 
-	primaryID := arma.PartyID(batchers[primaryIndex].PartyID)
+	primaryID := core.PartyID(batchers[primaryIndex].PartyID)
 
 	return primaryID
 }
 
-func computeZeroState(config node_config.BatcherNodeConfig) arma.State {
-	var state arma.State
+func computeZeroState(config node_config.BatcherNodeConfig) core.State {
+	var state core.State
 	for _, shard := range config.Shards {
-		state.Shards = append(state.Shards, arma.ShardTerm{
-			Shard: arma.ShardID(shard.ShardId),
+		state.Shards = append(state.Shards, core.ShardTerm{
+			Shard: core.ShardID(shard.ShardId),
 		})
 	}
 
@@ -414,7 +414,7 @@ func computeZeroState(config node_config.BatcherNodeConfig) arma.State {
 	return state
 }
 
-func batchersFromConfig(logger arma.Logger, config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
+func batchersFromConfig(logger core.Logger, config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
 	var batchers []node_config.BatcherInfo
 	for _, shard := range config.Shards {
 		if shard.ShardId == config.ShardId {
@@ -429,7 +429,7 @@ func batchersFromConfig(logger arma.Logger, config node_config.BatcherNodeConfig
 	return batchers
 }
 
-func (b *Batcher) sendAck(seq arma.BatchSequence, to arma.PartyID) {
+func (b *Batcher) sendAck(seq core.BatchSequence, to core.PartyID) {
 	b.connectToPrimaryIfNeeded()
 
 	if b.primaryClientStream == nil {
@@ -468,7 +468,7 @@ func (b *Batcher) connectToPrimaryIfNeeded() {
 	}
 }
 
-func (b *Batcher) broadcastEvent(baf arma.BatchAttestationFragment) {
+func (b *Batcher) broadcastEvent(baf core.BatchAttestationFragment) {
 	b.initConsensusConnections()
 
 	for index, stream := range b.consensusStreams {
@@ -484,7 +484,7 @@ func (b *Batcher) initConsensusConnections() {
 	}
 }
 
-func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, stream protos.Consensus_NotifyEventClient, index int) {
+func (b *Batcher) sendBAF(baf core.BatchAttestationFragment, stream protos.Consensus_NotifyEventClient, index int) {
 	t1 := time.Now()
 
 	defer func() {
@@ -495,7 +495,7 @@ func (b *Batcher) sendBAF(baf arma.BatchAttestationFragment, stream protos.Conse
 		return
 	}
 
-	var ce arma.ControlEvent
+	var ce core.ControlEvent
 	ce.BAF = baf
 
 	err := stream.Send(&protos.Event{
@@ -576,7 +576,7 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func CreateBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq arma.BatchSequence, pending ...arma.BatchAttestationFragment) (arma.BatchAttestationFragment, error) {
+func CreateBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq core.BatchSequence, pending ...core.BatchAttestationFragment) (core.BatchAttestationFragment, error) {
 	epoch := int(time.Now().Unix()) / 10
 
 	gc := make([][]byte, 0, len(pending))
@@ -633,22 +633,22 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 	return certs[0].Raw
 }
 
-func CreateBatcher(conf node_config.BatcherNodeConfig, logger arma.Logger) *Batcher {
+func CreateBatcher(conf node_config.BatcherNodeConfig, logger core.Logger) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
-	var parties []arma.PartyID
+	var parties []core.PartyID
 	for shIdx, sh := range conf.Shards {
 		if sh.ShardId != conf.ShardId {
 			continue
 		}
 
 		for _, b := range conf.Shards[shIdx].Batchers {
-			parties = append(parties, arma.PartyID(b.PartyID))
+			parties = append(parties, core.PartyID(b.PartyID))
 		}
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(arma.ShardID(conf.ShardId), arma.PartyID(conf.PartyId), parties, conf.Directory, logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(core.ShardID(conf.ShardId), core.PartyID(conf.PartyId), parties, conf.Directory, logger)
 	if err != nil {
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}

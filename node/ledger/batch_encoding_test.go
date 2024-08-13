@@ -3,7 +3,7 @@ package ledger_test
 import (
 	"testing"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node/ledger"
 
 	"github.com/stretchr/testify/require"
@@ -18,8 +18,8 @@ func TestChannelNameToShardParty(t *testing.T) {
 	t.Run("good", func(t *testing.T) {
 		shardID, partyID, err := ledger.ChannelNameToShardParty("shard2party3")
 		require.NoError(t, err)
-		require.Equal(t, arma.ShardID(2), shardID)
-		require.Equal(t, arma.PartyID(3), partyID)
+		require.Equal(t, core.ShardID(2), shardID)
+		require.Equal(t, core.PartyID(3), partyID)
 	})
 
 	t.Run("bad", func(t *testing.T) {
@@ -60,8 +60,8 @@ func TestChannelNameToShardParty(t *testing.T) {
 		} {
 			shardID, partyID, err := ledger.ChannelNameToShardParty(tc.in)
 			require.EqualError(t, err, tc.expErr)
-			require.Equal(t, arma.ShardID(0), shardID)
-			require.Equal(t, arma.PartyID(0), partyID)
+			require.Equal(t, core.ShardID(0), shardID)
+			require.Equal(t, core.PartyID(0), partyID)
 		}
 	})
 }

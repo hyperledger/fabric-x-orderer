@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
@@ -31,14 +31,14 @@ func TestBatchLedgerPart(t *testing.T) {
 	require.Nil(t, part.RetrieveBatchByNumber(0))
 
 	for seq := uint64(0); seq < 10; seq++ {
-		batchedRequests := arma.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
+		batchedRequests := core.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
 		part.Append(seq, batchedRequests.ToBytes())
 		require.Equal(t, seq+1, part.Height())
 		batch := part.RetrieveBatchByNumber(seq)
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
-		require.Equal(t, arma.PartyID(2), batch.Party())
-		require.Equal(t, arma.ShardID(5), batch.Shard())
+		require.Equal(t, core.PartyID(2), batch.Party())
+		require.Equal(t, core.ShardID(5), batch.Shard())
 		require.NotNil(t, batch.Digest())
 	}
 	require.Nil(t, part.RetrieveBatchByNumber(100))
@@ -60,7 +60,7 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 	require.NotNil(t, part)
 
 	for seq := uint64(0); seq < 10; seq++ {
-		batchedRequests := arma.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
+		batchedRequests := core.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
 		part.Append(seq, batchedRequests.ToBytes())
 	}
 

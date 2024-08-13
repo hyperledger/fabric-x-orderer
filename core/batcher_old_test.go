@@ -11,7 +11,7 @@ import (
 	"time"
 
 	arma_types "arma/common/types"
-	arma "arma/core"
+	"arma/core"
 	"arma/request"
 	"arma/testutil"
 )
@@ -25,58 +25,58 @@ func (ri *reqInspector) RequestID(req []byte) string {
 
 type noopLedger struct{}
 
-func (*noopLedger) Append(_ arma.PartyID, _ uint64, _ []byte) {
+func (*noopLedger) Append(_ core.PartyID, _ uint64, _ []byte) {
 }
 
-func (*noopLedger) Height(partyID arma.PartyID) uint64 {
+func (*noopLedger) Height(partyID core.PartyID) uint64 {
 	return 0
 }
 
-func (*noopLedger) RetrieveBatchByNumber(partyID arma.PartyID, seq uint64) arma.Batch {
+func (*noopLedger) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.Batch {
 	return nil
 }
 
 type naiveReplication struct {
-	subscribers []chan arma.Batch
+	subscribers []chan core.Batch
 	i           uint32
 }
 
-func (r *naiveReplication) Replicate(_ arma.ShardID) <-chan arma.Batch {
+func (r *naiveReplication) Replicate(_ core.ShardID) <-chan core.Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
 
-func (r *naiveReplication) PullBatches(_ arma.PartyID) <-chan arma.Batch {
+func (r *naiveReplication) PullBatches(_ core.PartyID) <-chan core.Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
 
-func (r *naiveReplication) Append(_ arma.PartyID, _ uint64, bytes []byte) {
+func (r *naiveReplication) Append(_ core.PartyID, _ uint64, bytes []byte) {
 	for _, s := range r.subscribers {
 		s <- &naiveBatch{
-			requests: arma.BatchFromRaw(bytes),
+			requests: core.BatchFromRaw(bytes),
 		}
 	}
 }
 
-func (r *naiveReplication) Height(partyID arma.PartyID) uint64 {
+func (r *naiveReplication) Height(partyID core.PartyID) uint64 {
 	// TODO use in test
 	return 0
 }
 
-func (r *naiveReplication) RetrieveBatchByNumber(partyID arma.PartyID, seq uint64) arma.Batch {
+func (r *naiveReplication) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.Batch {
 	// TODO use in test
 	return nil
 }
 
 type naiveBatch struct {
-	shardID  arma.ShardID
-	node     arma.PartyID
-	seq      arma.BatchSequence
+	shardID  core.ShardID
+	node     core.PartyID
+	seq      core.BatchSequence
 	requests [][]byte
 }
 
-func (nb *naiveBatch) Party() arma.PartyID {
+func (nb *naiveBatch) Party() core.PartyID {
 	return nb.node
 }
 
@@ -88,15 +88,15 @@ func (nb *naiveBatch) Digest() []byte {
 	return h.Sum(nil)
 }
 
-func (nb *naiveBatch) Shard() arma.ShardID {
+func (nb *naiveBatch) Shard() core.ShardID {
 	return nb.shardID
 }
 
-func (nb *naiveBatch) Seq() arma.BatchSequence {
+func (nb *naiveBatch) Seq() core.BatchSequence {
 	return nb.seq
 }
 
-func (nb *naiveBatch) Requests() arma.BatchedRequests {
+func (nb *naiveBatch) Requests() core.BatchedRequests {
 	return nb.requests
 }
 
@@ -163,15 +163,15 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	var stopped sync.WaitGroup
 	stopped.Add(n)
 
-	state := arma.State{}
+	state := core.State{}
 	for shard := 0; shard < 1; shard++ {
-		state.Shards = append(state.Shards, arma.ShardTerm{Shard: arma.ShardID(shard), Term: 5})
+		state.Shards = append(state.Shards, core.ShardTerm{Shard: core.ShardID(shard), Term: 5})
 	}
 
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
 		b := b
-		b.AckBAF = func(_ arma.BatchSequence, _ arma.PartyID) {}
+		b.AckBAF = func(_ core.BatchSequence, _ core.PartyID) {}
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 5,
@@ -218,10 +218,10 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	stopped.Wait()
 }
 
-func createBatchers(t *testing.T, n int) ([]*arma.Batcher, <-chan arma.Batch) {
-	var batchers []*arma.Batcher
+func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
+	var batchers []*core.Batcher
 
-	var batcherConf []arma.PartyID
+	var batcherConf []core.PartyID
 	for i := 0; i < n; i++ {
 		batchers[i].Batchers = batcherConf
 	}
@@ -234,10 +234,10 @@ func createBatchers(t *testing.T, n int) ([]*arma.Batcher, <-chan arma.Batch) {
 	r := &naiveReplication{}
 
 	for i := 1; i < n; i++ {
-		r.subscribers = append(r.subscribers, make(chan arma.Batch, 100))
+		r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
 	}
 
-	r.subscribers = append(r.subscribers, make(chan arma.Batch, 100))
+	r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
 	commit := r.PullBatches(0)
 
 	batchers[0].Ledger = r
@@ -247,9 +247,9 @@ func createBatchers(t *testing.T, n int) ([]*arma.Batcher, <-chan arma.Batch) {
 
 	for i := 0; i < n; i++ {
 		from := i
-		batchers[i].TotalOrderBAF = func(arma.BatchAttestationFragment) {}
-		batchers[i].AckBAF = func(seq arma.BatchSequence, to arma.PartyID) {
-			batchers[to].HandleAck(seq, arma.PartyID(from))
+		batchers[i].TotalOrderBAF = func(core.BatchAttestationFragment) {}
+		batchers[i].AckBAF = func(seq core.BatchSequence, to core.PartyID) {
+			batchers[to].HandleAck(seq, core.PartyID(from))
 		}
 	}
 
@@ -259,7 +259,7 @@ func createBatchers(t *testing.T, n int) ([]*arma.Batcher, <-chan arma.Batch) {
 	return batchers, commit
 }
 
-func createTestBatcher(t *testing.T, shardID int, nodeID int, batchers []arma.PartyID) *arma.Batcher {
+func createTestBatcher(t *testing.T, shardID int, nodeID int, batchers []core.PartyID) *core.Batcher {
 	sugaredLogger := testutil.CreateLogger(t, nodeID)
 
 	requestInspector := &reqInspector{}
@@ -272,10 +272,10 @@ func createTestBatcher(t *testing.T, shardID int, nodeID int, batchers []arma.Pa
 		SubmitTimeout:         time.Second * 10,
 	})
 
-	b := &arma.Batcher{
+	b := &core.Batcher{
 		Batchers: batchers,
-		Shard:    arma.ShardID(shardID),
-		AttestBatch: func(seq arma.BatchSequence, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
+		Shard:    core.ShardID(shardID),
+		AttestBatch: func(seq core.BatchSequence, primary core.PartyID, shard core.ShardID, digest []byte) core.BatchAttestationFragment {
 			return &arma_types.SimpleBatchAttestationFragment{
 				Dig: digest,
 				Sh:  shardID,
@@ -294,7 +294,7 @@ func createTestBatcher(t *testing.T, shardID int, nodeID int, batchers []arma.Pa
 		RequestInspector: requestInspector,
 		Logger:           sugaredLogger,
 		MemPool:          pool,
-		ID:               arma.PartyID(nodeID),
+		ID:               core.PartyID(nodeID),
 		Threshold:        2,
 	}
 

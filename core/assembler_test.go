@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
 
-type naiveBatchAttestationReplicator chan arma.BatchAttestation
+type naiveBatchAttestationReplicator chan core.BatchAttestation
 
-func (n naiveBatchAttestationReplicator) Replicate(u uint64) <-chan arma.BatchAttestation {
+func (n naiveBatchAttestationReplicator) Replicate(u uint64) <-chan core.BatchAttestation {
 	return n
 }
 
@@ -26,11 +26,11 @@ type naiveIndex struct {
 	sync.Map
 }
 
-func (n *naiveIndex) Index(_ arma.PartyID, _ arma.ShardID, _ arma.BatchSequence, batch arma.Batch) {
+func (n *naiveIndex) Index(_ core.PartyID, _ core.ShardID, _ core.BatchSequence, batch core.Batch) {
 	n.Store(string(batch.Digest()), batch)
 }
 
-func (n *naiveIndex) Retrieve(_ arma.PartyID, _ arma.ShardID, _ arma.BatchSequence, digest []byte) (arma.Batch, bool) {
+func (n *naiveIndex) Retrieve(_ core.PartyID, _ core.ShardID, _ core.BatchSequence, digest []byte) (core.Batch, bool) {
 	val, exists := n.Load(string(digest))
 
 	if !exists {
@@ -40,14 +40,14 @@ func (n *naiveIndex) Retrieve(_ arma.PartyID, _ arma.ShardID, _ arma.BatchSequen
 	defer func() {
 		n.Delete(string(digest))
 	}()
-	return val.(arma.Batch), true
+	return val.(core.Batch), true
 }
 
 type naiveBatchAttestation struct {
-	primary arma.PartyID
-	seq     arma.BatchSequence
-	node    arma.PartyID
-	shard   arma.ShardID
+	primary core.PartyID
+	seq     core.BatchSequence
+	node    core.PartyID
+	shard   core.ShardID
 	digest  []byte
 }
 
@@ -59,19 +59,19 @@ func (nba *naiveBatchAttestation) GarbageCollect() [][]byte {
 	return nil
 }
 
-func (nba *naiveBatchAttestation) Signer() arma.PartyID {
+func (nba *naiveBatchAttestation) Signer() core.PartyID {
 	return nba.node
 }
 
-func (nba *naiveBatchAttestation) Primary() arma.PartyID {
+func (nba *naiveBatchAttestation) Primary() core.PartyID {
 	return nba.primary
 }
 
-func (nba *naiveBatchAttestation) Seq() arma.BatchSequence {
+func (nba *naiveBatchAttestation) Seq() core.BatchSequence {
 	return nba.seq
 }
 
-func (nba *naiveBatchAttestation) Shard() arma.ShardID {
+func (nba *naiveBatchAttestation) Shard() core.ShardID {
 	return nba.shard
 }
 
@@ -79,7 +79,7 @@ func (nba *naiveBatchAttestation) Digest() []byte {
 	return nba.digest
 }
 
-func (nba *naiveBatchAttestation) Fragments() []arma.BatchAttestationFragment {
+func (nba *naiveBatchAttestation) Fragments() []core.BatchAttestationFragment {
 	return nil
 }
 
@@ -107,14 +107,14 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 	seq := m["seq"]
 	dig := m["digest"]
 
-	nba.seq = arma.BatchSequence(seq.(float64))
+	nba.seq = core.BatchSequence(seq.(float64))
 	nba.digest, _ = hex.DecodeString(dig.(string))
 	return nil
 }
 
-type naiveAssemblerLedger chan arma.BatchAttestation
+type naiveAssemblerLedger chan core.BatchAttestation
 
-func (n naiveAssemblerLedger) Append(_ uint64, _ arma.Batch, attestation arma.BatchAttestation) {
+func (n naiveAssemblerLedger) Append(_ uint64, _ core.Batch, attestation core.BatchAttestation) {
 	n <- attestation
 }
 
@@ -135,9 +135,9 @@ func TestAssembler(t *testing.T) {
 
 	digests := make(map[string]struct{})
 
-	var batches [][]arma.Batch
+	var batches [][]core.Batch
 	for shardID := 0; shardID < shardCount; shardID++ {
-		var batchesForShard []arma.Batch
+		var batchesForShard []core.Batch
 		for j := 0; j < batchNum; j++ {
 			buff := make([]byte, 1024)
 			binary.BigEndian.PutUint16(buff, uint16(shardID))
@@ -177,7 +177,7 @@ func TestAssembler(t *testing.T) {
 		var seq uint64
 
 		for nba := range totalOrder {
-			nba.seq = arma.BatchSequence(seq)
+			nba.seq = core.BatchSequence(seq)
 			seq++
 			nbar <- nba
 		}
@@ -185,29 +185,29 @@ func TestAssembler(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		block := <-ledger
-		assert.Equal(t, arma.BatchSequence(i), block.Seq())
+		assert.Equal(t, core.BatchSequence(i), block.Seq())
 		delete(digests, string(block.Digest()))
 	}
 
 	assert.Len(t, digests, 0)
 }
 
-func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveBatchAttestationReplicator, *arma.Assembler) {
+func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveBatchAttestationReplicator, *core.Assembler) {
 	index := &naiveIndex{}
 
 	r := &naiveReplication{}
 
-	var shards []arma.ShardID
+	var shards []core.ShardID
 	for i := 0; i < shardCount; i++ {
-		r.subscribers = append(r.subscribers, make(chan arma.Batch, 100))
-		shards = append(shards, arma.ShardID(i))
+		r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
+		shards = append(shards, core.ShardID(i))
 	}
 
 	ledger := make(naiveAssemblerLedger, 10)
 
 	nbar := make(naiveBatchAttestationReplicator)
 
-	assembler := &arma.Assembler{
+	assembler := &core.Assembler{
 		Shards:                     shards,
 		Logger:                     testutil.CreateLogger(t, 0),
 		Replicator:                 r,

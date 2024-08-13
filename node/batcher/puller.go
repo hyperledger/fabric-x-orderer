@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	node_ledger "arma/node/ledger"
@@ -21,14 +21,14 @@ import (
 // Both the server and side and client side will need to go a revision.
 
 type BatchPuller struct {
-	ledger  arma.BatchLedger
-	logger  arma.Logger
+	ledger  core.BatchLedger
+	logger  core.Logger
 	config  config.BatcherNodeConfig
 	tlsKey  []byte
 	tlsCert []byte
 }
 
-func NewBatchPuller(config config.BatcherNodeConfig, ledger arma.BatchLedger, logger arma.Logger) *BatchPuller {
+func NewBatchPuller(config config.BatcherNodeConfig, ledger core.BatchLedger, logger core.Logger) *BatchPuller {
 	puller := &BatchPuller{
 		ledger:  ledger,
 		logger:  logger,
@@ -39,18 +39,18 @@ func NewBatchPuller(config config.BatcherNodeConfig, ledger arma.BatchLedger, lo
 	return puller
 }
 
-func (bp *BatchPuller) PullBatches(from arma.PartyID) <-chan arma.Batch {
-	res := make(chan arma.Batch, 100)
+func (bp *BatchPuller) PullBatches(from core.PartyID) <-chan core.Batch {
+	res := make(chan core.Batch, 100)
 
 	seq := bp.ledger.Height(from)
 
-	primary := bp.findPrimary(arma.ShardID(bp.config.ShardId), from)
+	primary := bp.findPrimary(core.ShardID(bp.config.ShardId), from)
 
 	endpoint := func() string {
 		return primary.Endpoint
 	}
 
-	channelName := node_ledger.ShardPartyToChannelName(arma.ShardID(bp.config.ShardId), arma.PartyID(primary.PartyID))
+	channelName := node_ledger.ShardPartyToChannelName(core.ShardID(bp.config.ShardId), core.PartyID(primary.PartyID))
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		channelName,
@@ -73,8 +73,8 @@ func (bp *BatchPuller) PullBatches(from arma.PartyID) <-chan arma.Batch {
 	return res
 }
 
-func (bp *BatchPuller) clientConfig(primary arma.PartyID) comm.ClientConfig {
-	shardInfo := bp.findPrimary(arma.ShardID(bp.config.ShardId), primary)
+func (bp *BatchPuller) clientConfig(primary core.PartyID) comm.ClientConfig {
+	shardInfo := bp.findPrimary(core.ShardID(bp.config.ShardId), primary)
 
 	var tlsCAs [][]byte
 	for _, cert := range shardInfo.TLSCACerts {
@@ -99,12 +99,12 @@ func (bp *BatchPuller) clientConfig(primary arma.PartyID) comm.ClientConfig {
 	return cc
 }
 
-func (bp *BatchPuller) findPrimary(shardID arma.ShardID, primary arma.PartyID) config.BatcherInfo {
+func (bp *BatchPuller) findPrimary(shardID core.ShardID, primary core.PartyID) config.BatcherInfo {
 	for _, shard := range bp.config.Shards {
 		if shard.ShardId == uint16(shardID) {
 			for _, b := range shard.Batchers {
 				bp.logger.Infof("Primary: %d, primaryID: %d, b.PartyID: %d", primary, primary, b.PartyID)
-				if arma.PartyID(b.PartyID) == primary {
+				if core.PartyID(b.PartyID) == primary {
 					return b
 				}
 				bp.logger.Infof("primary: %d, shardID: %d, current partyID: %d, currentShard: %d", primary, shardID, b.PartyID, shard.ShardId)
@@ -127,7 +127,7 @@ func nextSeekInfo(startSeq uint64) *orderer.SeekInfo {
 	}
 }
 
-func pull(context context.Context, channel string, logger arma.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
+func pull(context context.Context, channel string, logger core.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
 	for {
 		time.Sleep(time.Second)
 
@@ -165,7 +165,7 @@ func pull(context context.Context, channel string, logger arma.Logger, endpoint 
 	}
 }
 
-func pullBlocks(channel string, logger arma.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
+func pullBlocks(channel string, logger core.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
 	for {
 		resp, err := stream.Recv()
 		if err != nil {

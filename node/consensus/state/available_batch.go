@@ -4,22 +4,22 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/pkg/errors"
 )
 
 type AvailableBatch struct {
-	primary arma.PartyID
-	shard   arma.ShardID
-	seq     arma.BatchSequence
+	primary core.PartyID
+	shard   core.ShardID
+	seq     core.BatchSequence
 	digest  []byte
 }
 
 func NewAvailableBatch(
-	primary arma.PartyID,
-	shard arma.ShardID,
-	seq arma.BatchSequence,
+	primary core.PartyID,
+	shard core.ShardID,
+	seq core.BatchSequence,
 	digest []byte,
 ) AvailableBatch {
 	return AvailableBatch{
@@ -38,7 +38,7 @@ func (ab *AvailableBatch) Equal(ab2 *AvailableBatch) bool {
 }
 
 // TODO define a seprate interface for AvailableBatch
-func (ab *AvailableBatch) Fragments() []arma.BatchAttestationFragment {
+func (ab *AvailableBatch) Fragments() []core.BatchAttestationFragment {
 	panic("should not be called")
 }
 
@@ -46,16 +46,16 @@ func (ab *AvailableBatch) Digest() []byte {
 	return ab.digest
 }
 
-func (ab *AvailableBatch) Seq() arma.BatchSequence {
-	return arma.BatchSequence(ab.seq)
+func (ab *AvailableBatch) Seq() core.BatchSequence {
+	return core.BatchSequence(ab.seq)
 }
 
-func (ab *AvailableBatch) Primary() arma.PartyID {
-	return arma.PartyID(ab.primary)
+func (ab *AvailableBatch) Primary() core.PartyID {
+	return core.PartyID(ab.primary)
 }
 
-func (ab *AvailableBatch) Shard() arma.ShardID {
-	return arma.ShardID(ab.shard)
+func (ab *AvailableBatch) Shard() core.ShardID {
+	return core.ShardID(ab.shard)
 }
 
 var AvailableBatchSerializedSize = 2 + 2 + 8 + 32 // uint16 + uint16 + uint64 + digest
@@ -81,9 +81,9 @@ func (ab *AvailableBatch) Deserialize(bytes []byte) error {
 	if len(bytes) != AvailableBatchSerializedSize {
 		return errors.Errorf("len of bytes %d does not equal the available batch size %d", len(bytes), AvailableBatchSerializedSize)
 	}
-	ab.primary = arma.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
-	ab.shard = arma.ShardID(binary.BigEndian.Uint16(bytes[2:4]))
-	ab.seq = arma.BatchSequence(binary.BigEndian.Uint64(bytes[4:12]))
+	ab.primary = core.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
+	ab.shard = core.ShardID(binary.BigEndian.Uint16(bytes[2:4]))
+	ab.seq = core.BatchSequence(binary.BigEndian.Uint64(bytes[4:12]))
 	ab.digest = bytes[12:]
 
 	return nil

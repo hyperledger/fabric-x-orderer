@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	arma "arma/core"
+	"arma/core"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
@@ -12,7 +12,7 @@ import (
 )
 
 type AssemblerLedger struct {
-	Logger           arma.Logger
+	Logger           core.Logger
 	Ledger           blockledger.ReadWriter
 	PrevHash         []byte
 	TransactionCount uint64
@@ -33,7 +33,7 @@ func (l *AssemblerLedger) GetTxCount() uint64 {
 	return c
 }
 
-func (l *AssemblerLedger) Append(seq uint64, batch arma.Batch, ba arma.BatchAttestation) {
+func (l *AssemblerLedger) Append(seq uint64, batch core.Batch, ba core.BatchAttestation) {
 	t1 := time.Now()
 	defer func() {
 		l.Logger.Infof("Appended block of %d requests to ledger in %v", len(batch.Requests()), time.Since(t1))
