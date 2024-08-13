@@ -12,14 +12,14 @@ import (
 type AvailableBatch struct {
 	primary arma.PartyID
 	shard   arma.ShardID
-	seq     uint64 // TODO define a type for this uint64, maybe BatchSequence
+	seq     arma.BatchSequence
 	digest  []byte
 }
 
 func NewAvailableBatch(
 	primary arma.PartyID,
 	shard arma.ShardID,
-	seq uint64,
+	seq arma.BatchSequence,
 	digest []byte,
 ) AvailableBatch {
 	return AvailableBatch{
@@ -46,8 +46,8 @@ func (ab *AvailableBatch) Digest() []byte {
 	return ab.digest
 }
 
-func (ab *AvailableBatch) Seq() uint64 {
-	return ab.seq
+func (ab *AvailableBatch) Seq() arma.BatchSequence {
+	return arma.BatchSequence(ab.seq)
 }
 
 func (ab *AvailableBatch) Primary() arma.PartyID {
@@ -67,7 +67,7 @@ func (ab *AvailableBatch) Serialize() []byte {
 	pos += 2
 	binary.BigEndian.PutUint16(buff[pos:], uint16(ab.shard))
 	pos += 2
-	binary.BigEndian.PutUint64(buff[pos:], ab.seq)
+	binary.BigEndian.PutUint64(buff[pos:], uint64(ab.seq))
 	pos += 8
 	copy(buff[pos:], ab.digest)
 
@@ -83,7 +83,7 @@ func (ab *AvailableBatch) Deserialize(bytes []byte) error {
 	}
 	ab.primary = arma.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
 	ab.shard = arma.ShardID(binary.BigEndian.Uint16(bytes[2:4]))
-	ab.seq = binary.BigEndian.Uint64(bytes[4:12])
+	ab.seq = arma.BatchSequence(binary.BigEndian.Uint64(bytes[4:12]))
 	ab.digest = bytes[12:]
 
 	return nil

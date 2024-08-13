@@ -233,7 +233,7 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 		if err != nil {
 			return err
 		}
-		b.b.HandleAck(msg.Seq, from)
+		b.b.HandleAck(arma.BatchSequence(msg.Seq), from)
 	}
 }
 
@@ -346,7 +346,7 @@ func createSigner(logger arma.Logger, config node_config.BatcherNodeConfig) *ecd
 	return sk.(*ecdsa.PrivateKey)
 }
 
-func (b *Batcher) attestBatch(seq uint64, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
+func (b *Batcher) attestBatch(seq arma.BatchSequence, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
 	var pending []arma.BatchAttestationFragment
 	ref := b.stateRef.Load()
 	if ref != nil {
@@ -429,14 +429,14 @@ func batchersFromConfig(logger arma.Logger, config node_config.BatcherNodeConfig
 	return batchers
 }
 
-func (b *Batcher) sendAck(seq uint64, to arma.PartyID) {
+func (b *Batcher) sendAck(seq arma.BatchSequence, to arma.PartyID) {
 	b.connectToPrimaryIfNeeded()
 
 	if b.primaryClientStream == nil {
 		return
 	}
 
-	err := b.primaryClientStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: seq})
+	err := b.primaryClientStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)})
 	if err != nil {
 		b.logger.Errorf("Failed sending ack to %s", b.primaryEndpoint)
 		b.primaryClientStream = nil
@@ -576,7 +576,7 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func CreateBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq uint64, pending ...arma.BatchAttestationFragment) (arma.BatchAttestationFragment, error) {
+func CreateBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq arma.BatchSequence, pending ...arma.BatchAttestationFragment) (arma.BatchAttestationFragment, error) {
 	epoch := int(time.Now().Unix()) / 10
 
 	gc := make([][]byte, 0, len(pending))

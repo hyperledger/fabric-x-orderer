@@ -16,7 +16,7 @@ type ShardID uint16
 type PartyID uint16
 
 // BatchSequence is the number a primary batcher assigns to the batches it produces.
-type BatchSequence uint64 // TODO use all over
+type BatchSequence uint64
 
 // BatchID is the tuple that identifies a batch.
 type BatchID interface {
@@ -25,7 +25,7 @@ type BatchID interface {
 	// Primary is the PartyID of the primary batcher which produces this batch.
 	Primary() PartyID
 	// Seq is the sequence number of this batch.
-	Seq() uint64 // TODO use BatchSequence
+	Seq() BatchSequence
 	// Digest is the digest of the requests in this batch.
 	Digest() []byte
 }

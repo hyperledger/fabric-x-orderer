@@ -10,7 +10,7 @@ import (
 type BatchAttestation interface {
 	Fragments() []BatchAttestationFragment
 	Digest() []byte
-	Seq() uint64
+	Seq() BatchSequence
 	Primary() PartyID
 	Shard() ShardID
 	Serialize() []byte
@@ -19,7 +19,7 @@ type BatchAttestation interface {
 
 //go:generate counterfeiter -o mocks/batch_attestation_fragment.go . BatchAttestationFragment
 type BatchAttestationFragment interface {
-	Seq() uint64
+	Seq() BatchSequence
 	Primary() PartyID
 	Shard() ShardID
 	Signer() PartyID
@@ -35,8 +35,8 @@ type BatchReplicator interface {
 }
 
 type AssemblerIndex interface {
-	Index(party PartyID, shard ShardID, sequence uint64, batch Batch)
-	Retrieve(party PartyID, shard ShardID, sequence uint64, digest []byte) (Batch, bool)
+	Index(party PartyID, shard ShardID, sequence BatchSequence, batch Batch)
+	Retrieve(party PartyID, shard ShardID, sequence BatchSequence, digest []byte) (Batch, bool)
 }
 
 type AssemblerLedger interface {
@@ -74,7 +74,7 @@ func (a *Assembler) Run() {
 			t1 := time.Now()
 			batch := a.processAttestations(ba)
 			a.Logger.Infof("Located batch for digest %s within %v", hex.EncodeToString(ba.Digest()[:8]), time.Since(t1))
-			a.Ledger.Append(ba.Seq(), batch, ba)
+			a.Ledger.Append(uint64(ba.Seq()), batch, ba) // TODO this is the wrong sequence number, it should be the block number from the ba header
 		}
 	}(attestations)
 }

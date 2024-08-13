@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	arma "arma/core"
+	"arma/core"
 	"sync"
 )
 
@@ -28,35 +28,35 @@ type FakeBatchAttestation struct {
 	digestReturnsOnCall map[int]struct {
 		result1 []byte
 	}
-	FragmentsStub        func() []arma.BatchAttestationFragment
+	FragmentsStub        func() []core.BatchAttestationFragment
 	fragmentsMutex       sync.RWMutex
 	fragmentsArgsForCall []struct {
 	}
 	fragmentsReturns struct {
-		result1 []arma.BatchAttestationFragment
+		result1 []core.BatchAttestationFragment
 	}
 	fragmentsReturnsOnCall map[int]struct {
-		result1 []arma.BatchAttestationFragment
+		result1 []core.BatchAttestationFragment
 	}
-	PrimaryStub        func() arma.PartyID
+	PrimaryStub        func() core.PartyID
 	primaryMutex       sync.RWMutex
 	primaryArgsForCall []struct {
 	}
 	primaryReturns struct {
-		result1 arma.PartyID
+		result1 core.PartyID
 	}
 	primaryReturnsOnCall map[int]struct {
-		result1 arma.PartyID
+		result1 core.PartyID
 	}
-	SeqStub        func() uint64
+	SeqStub        func() core.BatchSequence
 	seqMutex       sync.RWMutex
 	seqArgsForCall []struct {
 	}
 	seqReturns struct {
-		result1 uint64
+		result1 core.BatchSequence
 	}
 	seqReturnsOnCall map[int]struct {
-		result1 uint64
+		result1 core.BatchSequence
 	}
 	SerializeStub        func() []byte
 	serializeMutex       sync.RWMutex
@@ -68,15 +68,15 @@ type FakeBatchAttestation struct {
 	serializeReturnsOnCall map[int]struct {
 		result1 []byte
 	}
-	ShardStub        func() arma.ShardID
+	ShardStub        func() core.ShardID
 	shardMutex       sync.RWMutex
 	shardArgsForCall []struct {
 	}
 	shardReturns struct {
-		result1 arma.ShardID
+		result1 core.ShardID
 	}
 	shardReturnsOnCall map[int]struct {
-		result1 arma.ShardID
+		result1 core.ShardID
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -201,7 +201,7 @@ func (fake *FakeBatchAttestation) DigestReturnsOnCall(i int, result1 []byte) {
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) Fragments() []arma.BatchAttestationFragment {
+func (fake *FakeBatchAttestation) Fragments() []core.BatchAttestationFragment {
 	fake.fragmentsMutex.Lock()
 	ret, specificReturn := fake.fragmentsReturnsOnCall[len(fake.fragmentsArgsForCall)]
 	fake.fragmentsArgsForCall = append(fake.fragmentsArgsForCall, struct {
@@ -225,36 +225,36 @@ func (fake *FakeBatchAttestation) FragmentsCallCount() int {
 	return len(fake.fragmentsArgsForCall)
 }
 
-func (fake *FakeBatchAttestation) FragmentsCalls(stub func() []arma.BatchAttestationFragment) {
+func (fake *FakeBatchAttestation) FragmentsCalls(stub func() []core.BatchAttestationFragment) {
 	fake.fragmentsMutex.Lock()
 	defer fake.fragmentsMutex.Unlock()
 	fake.FragmentsStub = stub
 }
 
-func (fake *FakeBatchAttestation) FragmentsReturns(result1 []arma.BatchAttestationFragment) {
+func (fake *FakeBatchAttestation) FragmentsReturns(result1 []core.BatchAttestationFragment) {
 	fake.fragmentsMutex.Lock()
 	defer fake.fragmentsMutex.Unlock()
 	fake.FragmentsStub = nil
 	fake.fragmentsReturns = struct {
-		result1 []arma.BatchAttestationFragment
+		result1 []core.BatchAttestationFragment
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) FragmentsReturnsOnCall(i int, result1 []arma.BatchAttestationFragment) {
+func (fake *FakeBatchAttestation) FragmentsReturnsOnCall(i int, result1 []core.BatchAttestationFragment) {
 	fake.fragmentsMutex.Lock()
 	defer fake.fragmentsMutex.Unlock()
 	fake.FragmentsStub = nil
 	if fake.fragmentsReturnsOnCall == nil {
 		fake.fragmentsReturnsOnCall = make(map[int]struct {
-			result1 []arma.BatchAttestationFragment
+			result1 []core.BatchAttestationFragment
 		})
 	}
 	fake.fragmentsReturnsOnCall[i] = struct {
-		result1 []arma.BatchAttestationFragment
+		result1 []core.BatchAttestationFragment
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) Primary() arma.PartyID {
+func (fake *FakeBatchAttestation) Primary() core.PartyID {
 	fake.primaryMutex.Lock()
 	ret, specificReturn := fake.primaryReturnsOnCall[len(fake.primaryArgsForCall)]
 	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct {
@@ -278,36 +278,36 @@ func (fake *FakeBatchAttestation) PrimaryCallCount() int {
 	return len(fake.primaryArgsForCall)
 }
 
-func (fake *FakeBatchAttestation) PrimaryCalls(stub func() arma.PartyID) {
+func (fake *FakeBatchAttestation) PrimaryCalls(stub func() core.PartyID) {
 	fake.primaryMutex.Lock()
 	defer fake.primaryMutex.Unlock()
 	fake.PrimaryStub = stub
 }
 
-func (fake *FakeBatchAttestation) PrimaryReturns(result1 arma.PartyID) {
+func (fake *FakeBatchAttestation) PrimaryReturns(result1 core.PartyID) {
 	fake.primaryMutex.Lock()
 	defer fake.primaryMutex.Unlock()
 	fake.PrimaryStub = nil
 	fake.primaryReturns = struct {
-		result1 arma.PartyID
+		result1 core.PartyID
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) PrimaryReturnsOnCall(i int, result1 arma.PartyID) {
+func (fake *FakeBatchAttestation) PrimaryReturnsOnCall(i int, result1 core.PartyID) {
 	fake.primaryMutex.Lock()
 	defer fake.primaryMutex.Unlock()
 	fake.PrimaryStub = nil
 	if fake.primaryReturnsOnCall == nil {
 		fake.primaryReturnsOnCall = make(map[int]struct {
-			result1 arma.PartyID
+			result1 core.PartyID
 		})
 	}
 	fake.primaryReturnsOnCall[i] = struct {
-		result1 arma.PartyID
+		result1 core.PartyID
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) Seq() uint64 {
+func (fake *FakeBatchAttestation) Seq() core.BatchSequence {
 	fake.seqMutex.Lock()
 	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
 	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
@@ -331,32 +331,32 @@ func (fake *FakeBatchAttestation) SeqCallCount() int {
 	return len(fake.seqArgsForCall)
 }
 
-func (fake *FakeBatchAttestation) SeqCalls(stub func() uint64) {
+func (fake *FakeBatchAttestation) SeqCalls(stub func() core.BatchSequence) {
 	fake.seqMutex.Lock()
 	defer fake.seqMutex.Unlock()
 	fake.SeqStub = stub
 }
 
-func (fake *FakeBatchAttestation) SeqReturns(result1 uint64) {
+func (fake *FakeBatchAttestation) SeqReturns(result1 core.BatchSequence) {
 	fake.seqMutex.Lock()
 	defer fake.seqMutex.Unlock()
 	fake.SeqStub = nil
 	fake.seqReturns = struct {
-		result1 uint64
+		result1 core.BatchSequence
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) SeqReturnsOnCall(i int, result1 uint64) {
+func (fake *FakeBatchAttestation) SeqReturnsOnCall(i int, result1 core.BatchSequence) {
 	fake.seqMutex.Lock()
 	defer fake.seqMutex.Unlock()
 	fake.SeqStub = nil
 	if fake.seqReturnsOnCall == nil {
 		fake.seqReturnsOnCall = make(map[int]struct {
-			result1 uint64
+			result1 core.BatchSequence
 		})
 	}
 	fake.seqReturnsOnCall[i] = struct {
-		result1 uint64
+		result1 core.BatchSequence
 	}{result1}
 }
 
@@ -413,7 +413,7 @@ func (fake *FakeBatchAttestation) SerializeReturnsOnCall(i int, result1 []byte) 
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) Shard() arma.ShardID {
+func (fake *FakeBatchAttestation) Shard() core.ShardID {
 	fake.shardMutex.Lock()
 	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
 	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
@@ -437,32 +437,32 @@ func (fake *FakeBatchAttestation) ShardCallCount() int {
 	return len(fake.shardArgsForCall)
 }
 
-func (fake *FakeBatchAttestation) ShardCalls(stub func() arma.ShardID) {
+func (fake *FakeBatchAttestation) ShardCalls(stub func() core.ShardID) {
 	fake.shardMutex.Lock()
 	defer fake.shardMutex.Unlock()
 	fake.ShardStub = stub
 }
 
-func (fake *FakeBatchAttestation) ShardReturns(result1 arma.ShardID) {
+func (fake *FakeBatchAttestation) ShardReturns(result1 core.ShardID) {
 	fake.shardMutex.Lock()
 	defer fake.shardMutex.Unlock()
 	fake.ShardStub = nil
 	fake.shardReturns = struct {
-		result1 arma.ShardID
+		result1 core.ShardID
 	}{result1}
 }
 
-func (fake *FakeBatchAttestation) ShardReturnsOnCall(i int, result1 arma.ShardID) {
+func (fake *FakeBatchAttestation) ShardReturnsOnCall(i int, result1 core.ShardID) {
 	fake.shardMutex.Lock()
 	defer fake.shardMutex.Unlock()
 	fake.ShardStub = nil
 	if fake.shardReturnsOnCall == nil {
 		fake.shardReturnsOnCall = make(map[int]struct {
-			result1 arma.ShardID
+			result1 core.ShardID
 		})
 	}
 	fake.shardReturnsOnCall[i] = struct {
-		result1 arma.ShardID
+		result1 core.ShardID
 	}{result1}
 }
 
@@ -502,4 +502,4 @@ func (fake *FakeBatchAttestation) recordInvocation(key string, args []interface{
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ arma.BatchAttestation = new(FakeBatchAttestation)
+var _ core.BatchAttestation = new(FakeBatchAttestation)

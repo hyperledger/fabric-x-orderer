@@ -30,7 +30,7 @@ type Batch interface {
 	Requests() BatchedRequests
 	Party() PartyID
 	Shard() ShardID
-	Seq() uint64 // TODO use BatchSequence
+	Seq() BatchSequence
 }
 
 //go:generate counterfeiter -o mocks/batch_puller.go . BatchPuller
@@ -100,7 +100,7 @@ type BatchLedger interface {
 	BatchLedgeReader
 }
 
-var gap = uint64(10)
+var gap = BatchSequence(10)
 
 type Batcher struct {
 	Batchers           []PartyID
@@ -115,29 +115,29 @@ type Batcher struct {
 	Ledger             BatchLedger
 	BatchPuller        BatchPuller
 	StateProvider      StateProvider
-	AttestBatch        func(seq uint64, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
+	AttestBatch        func(seq BatchSequence, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
 	TotalOrderBAF      func(BatchAttestationFragment)
-	AckBAF             func(seq uint64, to PartyID)
+	AckBAF             func(seq BatchSequence, to PartyID)
 	MemPool            MemPool
-	confirmedSeq       uint64
+	confirmedSeq       BatchSequence
 	running            sync.WaitGroup
 	stopChan           chan struct{}
 	stopCtx            context.Context
 	cancelBatch        func()
 	primary            PartyID
-	seq                uint64
+	seq                BatchSequence
 	term               uint64
 	termChan           chan uint64
 	lock               sync.Mutex
 	signal             sync.Cond
-	confirmedSequences map[uint64]map[PartyID]struct{}
+	confirmedSequences map[BatchSequence]map[PartyID]struct{}
 }
 
 func (b *Batcher) Start() {
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.signal = sync.Cond{L: &b.lock}
-	b.confirmedSequences = make(map[uint64]map[PartyID]struct{})
+	b.confirmedSequences = make(map[BatchSequence]map[PartyID]struct{})
 	b.termChan = make(chan uint64)
 
 	b.running.Add(2)
@@ -156,7 +156,7 @@ func (b *Batcher) run() {
 
 		term := atomic.LoadUint64(&b.term)
 		b.primary = b.getPrimaryID(term)
-		b.seq = b.Ledger.Height(b.primary)
+		b.seq = BatchSequence(b.Ledger.Height(b.primary))
 		b.confirmedSeq = b.seq
 		b.Logger.Infof("ID: %d, shard: %d, primary id: %d, term: %d, seq: %d", b.ID, b.Shard, b.primary, term, b.seq)
 
@@ -221,7 +221,7 @@ func (b *Batcher) Submit(request []byte) error {
 	return b.MemPool.Submit(request)
 }
 
-func (b *Batcher) HandleAck(seq uint64, from PartyID) {
+func (b *Batcher) HandleAck(seq BatchSequence, from PartyID) {
 	// Only the primary performs the remaining code
 	if b.primary != b.ID {
 		b.Logger.Warnf("Batcher %d called handle ack on sequence %d from %d but it is not the primary (%d)", b.ID, seq, from, b.primary)
@@ -309,7 +309,7 @@ func (b *Batcher) runPrimary() {
 
 		baf := b.AttestBatch(b.seq, b.ID, b.Shard, digest)
 
-		b.Ledger.Append(b.ID, b.seq, serializedBatch)
+		b.Ledger.Append(b.ID, uint64(b.seq), serializedBatch)
 
 		b.sendBAF(baf)
 		b.HandleAck(b.seq, b.ID)
@@ -375,7 +375,7 @@ func (b *Batcher) runSecondary() {
 		}
 		batch := requests.ToBytes()
 		// TODO verify batch
-		b.Ledger.Append(primary, b.seq, batch) // TODO should we use the sequence of the batch?
+		b.Ledger.Append(primary, uint64(b.seq), batch) // TODO should we use the sequence of the batch?
 		b.removeRequests(requests)
 		baf := b.AttestBatch(b.seq, primary, b.Shard, b.Digest(requests))
 		b.sendBAF(baf)

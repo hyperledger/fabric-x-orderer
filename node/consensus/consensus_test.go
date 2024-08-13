@@ -74,14 +74,14 @@ func TestConsensus(t *testing.T) {
 
 	for _, tst := range []struct {
 		name                string
-		expectedSequences   [][]uint64
+		expectedSequences   [][]arma.BatchSequence
 		expectedDecisionNum []uint64
 		events              []scheduleEvent
 		commitEvent         *sync.WaitGroup
 	}{
 		{
 			name:                "two batches single decision",
-			expectedSequences:   [][]uint64{{1, 1}},
+			expectedSequences:   [][]arma.BatchSequence{{1, 1}},
 			expectedDecisionNum: []uint64{1},
 			events: []scheduleEvent{
 				{ControlEvent: &arma.ControlEvent{BAF: baf1}},
@@ -92,7 +92,7 @@ func TestConsensus(t *testing.T) {
 		},
 		{
 			name:                "two batches single decision more than needed batch attestation shares",
-			expectedSequences:   [][]uint64{{1, 1}, {2}},
+			expectedSequences:   [][]arma.BatchSequence{{1, 1}, {2}},
 			expectedDecisionNum: []uint64{1, 2},
 			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
@@ -183,7 +183,7 @@ func TestConsensus(t *testing.T) {
 				go func(node *Consensus) {
 					defer wg.Done()
 
-					tstExpectedSequences := make([][]uint64, len(tst.expectedSequences))
+					tstExpectedSequences := make([][]arma.BatchSequence, len(tst.expectedSequences))
 					tstExpectedDecisionNum := make([]uint64, len(tst.expectedDecisionNum))
 
 					copy(tstExpectedSequences, tst.expectedSequences)
@@ -204,7 +204,7 @@ func TestConsensus(t *testing.T) {
 						expectedDecisionNum := tstExpectedDecisionNum[0]
 						tstExpectedDecisionNum = tstExpectedDecisionNum[1:]
 
-						var actualSequences []uint64
+						var actualSequences []arma.BatchSequence
 						for _, ab := range hdr.AvailableBatches {
 							actualSequences = append(actualSequences, ab.Seq())
 						}

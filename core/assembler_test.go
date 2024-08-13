@@ -26,11 +26,11 @@ type naiveIndex struct {
 	sync.Map
 }
 
-func (n *naiveIndex) Index(_ arma.PartyID, _ arma.ShardID, _ uint64, batch arma.Batch) {
+func (n *naiveIndex) Index(_ arma.PartyID, _ arma.ShardID, _ arma.BatchSequence, batch arma.Batch) {
 	n.Store(string(batch.Digest()), batch)
 }
 
-func (n *naiveIndex) Retrieve(_ arma.PartyID, _ arma.ShardID, _ uint64, digest []byte) (arma.Batch, bool) {
+func (n *naiveIndex) Retrieve(_ arma.PartyID, _ arma.ShardID, _ arma.BatchSequence, digest []byte) (arma.Batch, bool) {
 	val, exists := n.Load(string(digest))
 
 	if !exists {
@@ -45,7 +45,7 @@ func (n *naiveIndex) Retrieve(_ arma.PartyID, _ arma.ShardID, _ uint64, digest [
 
 type naiveBatchAttestation struct {
 	primary arma.PartyID
-	seq     uint64
+	seq     arma.BatchSequence
 	node    arma.PartyID
 	shard   arma.ShardID
 	digest  []byte
@@ -67,7 +67,7 @@ func (nba *naiveBatchAttestation) Primary() arma.PartyID {
 	return nba.primary
 }
 
-func (nba *naiveBatchAttestation) Seq() uint64 {
+func (nba *naiveBatchAttestation) Seq() arma.BatchSequence {
 	return nba.seq
 }
 
@@ -107,7 +107,7 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 	seq := m["seq"]
 	dig := m["digest"]
 
-	nba.seq = uint64(seq.(float64))
+	nba.seq = arma.BatchSequence(seq.(float64))
 	nba.digest, _ = hex.DecodeString(dig.(string))
 	return nil
 }
@@ -177,7 +177,7 @@ func TestAssembler(t *testing.T) {
 		var seq uint64
 
 		for nba := range totalOrder {
-			nba.seq = seq
+			nba.seq = arma.BatchSequence(seq)
 			seq++
 			nbar <- nba
 		}
@@ -185,7 +185,7 @@ func TestAssembler(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		block := <-ledger
-		assert.Equal(t, uint64(i), block.Seq())
+		assert.Equal(t, arma.BatchSequence(i), block.Seq())
 		delete(digests, string(block.Digest()))
 	}
 

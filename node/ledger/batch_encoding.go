@@ -57,8 +57,8 @@ func (b *FabricBatch) Shard() arma.ShardID {
 	return arma.ShardID(binary.BigEndian.Uint16(buff[2:]))
 }
 
-func (b *FabricBatch) Seq() uint64 {
-	return (*common.Block)(b).GetHeader().GetNumber()
+func (b *FabricBatch) Seq() arma.BatchSequence {
+	return arma.BatchSequence((*common.Block)(b).GetHeader().GetNumber())
 }
 
 func NewFabricBatchFromRaw(partyID arma.PartyID, shardID arma.ShardID, seq uint64, batchBytes []byte, prevHash []byte) (*FabricBatch, error) {

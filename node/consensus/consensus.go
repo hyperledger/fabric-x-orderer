@@ -423,7 +423,7 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 	} else if ce.BAF != nil {
 		clientID = fmt.Sprintf("%d", ce.BAF.Signer())
 		payloadToHash = make([]byte, 26)
-		binary.BigEndian.PutUint64(payloadToHash, ce.BAF.Seq())
+		binary.BigEndian.PutUint64(payloadToHash, uint64(ce.BAF.Seq()))
 		binary.BigEndian.PutUint64(payloadToHash[8:], ce.BAF.Epoch())
 		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))
 		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))

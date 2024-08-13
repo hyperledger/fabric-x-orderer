@@ -8,15 +8,15 @@ import (
 
 type SimpleBatchAttestationFragment struct {
 	Ep        int
-	Se        int
-	P, Si, Sh int
+	Se        int // TODO change to uint64
+	P, Si, Sh int // TODO change to party signer and shard with types
 	Dig       []byte
 	Sig       []byte
 	Gc        [][]byte
 }
 
-func (s *SimpleBatchAttestationFragment) Seq() uint64 {
-	return uint64(s.Se)
+func (s *SimpleBatchAttestationFragment) Seq() arma.BatchSequence {
+	return arma.BatchSequence(s.Se)
 }
 
 func (s *SimpleBatchAttestationFragment) Primary() arma.PartyID {

@@ -19,7 +19,7 @@ var Rules = []Rule{
 }
 
 type batchAttestationVote struct {
-	seq     uint64
+	seq     BatchSequence
 	shard   ShardID
 	primary PartyID
 	signer  PartyID

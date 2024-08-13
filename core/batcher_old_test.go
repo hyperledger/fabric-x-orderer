@@ -72,7 +72,7 @@ func (r *naiveReplication) RetrieveBatchByNumber(partyID arma.PartyID, seq uint6
 type naiveBatch struct {
 	shardID  arma.ShardID
 	node     arma.PartyID
-	seq      uint64 // TODO use BatchSequence
+	seq      arma.BatchSequence
 	requests [][]byte
 }
 
@@ -92,7 +92,7 @@ func (nb *naiveBatch) Shard() arma.ShardID {
 	return nb.shardID
 }
 
-func (nb *naiveBatch) Seq() uint64 {
+func (nb *naiveBatch) Seq() arma.BatchSequence {
 	return nb.seq
 }
 
@@ -171,7 +171,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
 		b := b
-		b.AckBAF = func(_ uint64, _ arma.PartyID) {}
+		b.AckBAF = func(_ arma.BatchSequence, _ arma.PartyID) {}
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 5,
@@ -248,7 +248,7 @@ func createBatchers(t *testing.T, n int) ([]*arma.Batcher, <-chan arma.Batch) {
 	for i := 0; i < n; i++ {
 		from := i
 		batchers[i].TotalOrderBAF = func(arma.BatchAttestationFragment) {}
-		batchers[i].AckBAF = func(seq uint64, to arma.PartyID) {
+		batchers[i].AckBAF = func(seq arma.BatchSequence, to arma.PartyID) {
 			batchers[to].HandleAck(seq, arma.PartyID(from))
 		}
 	}
@@ -275,7 +275,7 @@ func createTestBatcher(t *testing.T, shardID int, nodeID int, batchers []arma.Pa
 	b := &arma.Batcher{
 		Batchers: batchers,
 		Shard:    arma.ShardID(shardID),
-		AttestBatch: func(seq uint64, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
+		AttestBatch: func(seq arma.BatchSequence, primary arma.PartyID, shard arma.ShardID, digest []byte) arma.BatchAttestationFragment {
 			return &arma_types.SimpleBatchAttestationFragment{
 				Dig: digest,
 				Sh:  shardID,

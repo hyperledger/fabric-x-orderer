@@ -202,7 +202,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			sr:      replicator,
 		}
 		batcher := batchers[i]
-		batcher.AckBAF = func(seq uint64, to arma.PartyID) {
+		batcher.AckBAF = func(seq arma.BatchSequence, to arma.PartyID) {
 			batchers[to].HandleAck(seq, batcher.ID)
 		}
 		batchers[i].Ledger = sc

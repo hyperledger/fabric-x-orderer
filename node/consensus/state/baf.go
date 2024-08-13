@@ -12,7 +12,7 @@ func ToBeSignedBAF(baf arma.BatchAttestationFragment) []byte {
 	var pos int
 	binary.BigEndian.PutUint16(buff, uint16(baf.Shard()))
 	pos += 2
-	binary.BigEndian.PutUint64(buff[pos:], baf.Seq())
+	binary.BigEndian.PutUint64(buff[pos:], uint64(baf.Seq()))
 	pos += 8
 	binary.BigEndian.PutUint16(buff[pos:], uint16(baf.Signer()))
 	pos += 2

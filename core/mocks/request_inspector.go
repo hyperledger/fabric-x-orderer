@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	arma "arma/core"
+	"arma/core"
 	"sync"
 )
 
@@ -112,4 +112,4 @@ func (fake *FakeRequestInspector) recordInvocation(key string, args []interface{
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ arma.RequestInspector = new(FakeRequestInspector)
+var _ core.RequestInspector = new(FakeRequestInspector)

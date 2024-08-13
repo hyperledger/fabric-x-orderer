@@ -2,26 +2,26 @@
 package mocks
 
 import (
-	arma "arma/core"
+	"arma/core"
 	"sync"
 )
 
 type FakeStateProvider struct {
-	GetLatestStateChanStub        func() <-chan *arma.State
+	GetLatestStateChanStub        func() <-chan *core.State
 	getLatestStateChanMutex       sync.RWMutex
 	getLatestStateChanArgsForCall []struct {
 	}
 	getLatestStateChanReturns struct {
-		result1 <-chan *arma.State
+		result1 <-chan *core.State
 	}
 	getLatestStateChanReturnsOnCall map[int]struct {
-		result1 <-chan *arma.State
+		result1 <-chan *core.State
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeStateProvider) GetLatestStateChan() <-chan *arma.State {
+func (fake *FakeStateProvider) GetLatestStateChan() <-chan *core.State {
 	fake.getLatestStateChanMutex.Lock()
 	ret, specificReturn := fake.getLatestStateChanReturnsOnCall[len(fake.getLatestStateChanArgsForCall)]
 	fake.getLatestStateChanArgsForCall = append(fake.getLatestStateChanArgsForCall, struct {
@@ -45,32 +45,32 @@ func (fake *FakeStateProvider) GetLatestStateChanCallCount() int {
 	return len(fake.getLatestStateChanArgsForCall)
 }
 
-func (fake *FakeStateProvider) GetLatestStateChanCalls(stub func() <-chan *arma.State) {
+func (fake *FakeStateProvider) GetLatestStateChanCalls(stub func() <-chan *core.State) {
 	fake.getLatestStateChanMutex.Lock()
 	defer fake.getLatestStateChanMutex.Unlock()
 	fake.GetLatestStateChanStub = stub
 }
 
-func (fake *FakeStateProvider) GetLatestStateChanReturns(result1 <-chan *arma.State) {
+func (fake *FakeStateProvider) GetLatestStateChanReturns(result1 <-chan *core.State) {
 	fake.getLatestStateChanMutex.Lock()
 	defer fake.getLatestStateChanMutex.Unlock()
 	fake.GetLatestStateChanStub = nil
 	fake.getLatestStateChanReturns = struct {
-		result1 <-chan *arma.State
+		result1 <-chan *core.State
 	}{result1}
 }
 
-func (fake *FakeStateProvider) GetLatestStateChanReturnsOnCall(i int, result1 <-chan *arma.State) {
+func (fake *FakeStateProvider) GetLatestStateChanReturnsOnCall(i int, result1 <-chan *core.State) {
 	fake.getLatestStateChanMutex.Lock()
 	defer fake.getLatestStateChanMutex.Unlock()
 	fake.GetLatestStateChanStub = nil
 	if fake.getLatestStateChanReturnsOnCall == nil {
 		fake.getLatestStateChanReturnsOnCall = make(map[int]struct {
-			result1 <-chan *arma.State
+			result1 <-chan *core.State
 		})
 	}
 	fake.getLatestStateChanReturnsOnCall[i] = struct {
-		result1 <-chan *arma.State
+		result1 <-chan *core.State
 	}{result1}
 }
 
@@ -98,4 +98,4 @@ func (fake *FakeStateProvider) recordInvocation(key string, args []interface{}) 
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ arma.StateProvider = new(FakeStateProvider)
+var _ core.StateProvider = new(FakeStateProvider)

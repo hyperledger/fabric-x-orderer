@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	arma "arma/core"
+	"arma/core"
 	"context"
 	"sync"
 )
@@ -295,4 +295,4 @@ func (fake *FakeMemPool) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ arma.MemPool = new(FakeMemPool)
+var _ core.MemPool = new(FakeMemPool)

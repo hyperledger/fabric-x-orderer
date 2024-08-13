@@ -51,7 +51,7 @@ func NewIndex(config config.AssemblerNodeConfig, blockStores map[string]*blkstor
 	return &Index{logger: logger, indexes: indexes, cacheMap: cacheMap}
 }
 
-func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, batch arma.Batch) {
+func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence arma.BatchSequence, batch arma.Batch) {
 	t1 := time.Now()
 	defer func() {
 		i.logger.Infof("Indexed batch %d for shard %d in %v", sequence, shard, time.Since(t1))
@@ -62,7 +62,7 @@ func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, b
 	block := &common.Block{
 		Header: &common.BlockHeader{
 			DataHash: batch.Digest(),
-			Number:   sequence,
+			Number:   uint64(sequence),
 		},
 		Data: &common.BlockData{Data: batch.Requests()},
 		Metadata: &common.BlockMetadata{
@@ -82,7 +82,7 @@ func (i *Index) Index(party arma.PartyID, shard arma.ShardID, sequence uint64, b
 	i.indexes[shard][party].AddBlock(block)
 }
 
-func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64, digest []byte) (arma.Batch, bool) {
+func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence arma.BatchSequence, digest []byte) (arma.Batch, bool) {
 	t1 := time.Now()
 
 	defer func() {
@@ -90,7 +90,7 @@ func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64
 	}()
 
 	i.lock.RLock()
-	blockFromCache, exists := i.cacheMap[shard][party].get(sequence)
+	blockFromCache, exists := i.cacheMap[shard][party].get(uint64(sequence))
 	i.lock.RUnlock()
 
 	if exists {
@@ -105,11 +105,11 @@ func (i *Index) Retrieve(party arma.PartyID, shard arma.ShardID, sequence uint64
 		i.logger.Panicf("Failed retrieving blockchain info: %v", err)
 	}
 
-	if bcInfo.Height < sequence+1 {
+	if bcInfo.Height < uint64(sequence)+1 {
 		return nil, false
 	}
 
-	block, err := ledger.RetrieveBlockByNumber(sequence)
+	block, err := ledger.RetrieveBlockByNumber(uint64(sequence))
 	if err != nil {
 		i.logger.Panicf("Failed retrieving block: %v", err)
 	}
