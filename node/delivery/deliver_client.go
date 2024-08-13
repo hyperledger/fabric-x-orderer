@@ -192,7 +192,7 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *arma.State {
 
 	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
-		res <- &header.State
+		res <- header.State
 	})
 
 	return res

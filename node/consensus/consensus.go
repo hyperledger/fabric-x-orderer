@@ -523,7 +523,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		Header: (&state.Header{
 			AvailableBatches: availableBatches,
 			BlockHeaders:     blockHeaders,
-			State:            *newState,
+			State:            newState,
 			Num:              md.LatestSequence,
 		}).Bytes(),
 		Metadata: metadata,
@@ -561,7 +561,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	}
 
 	c.stateLock.Lock()
-	c.State = &newState
+	c.State = newState
 	c.stateLock.Unlock()
 
 	return types.Reconfig{

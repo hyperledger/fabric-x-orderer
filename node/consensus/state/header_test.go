@@ -10,7 +10,7 @@ import (
 
 func TestHeaderBytes(t *testing.T) {
 	hdr := Header{
-		State: arma.State{AppContext: []byte{}},
+		State: &arma.State{AppContext: []byte{}},
 		Num:   100,
 		AvailableBatches: []AvailableBatch{
 			NewAvailableBatch(3, 2, 1, make([]byte, 32)),
