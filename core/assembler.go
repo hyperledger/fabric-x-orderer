@@ -27,7 +27,7 @@ type BatchAttestationFragment interface {
 	Serialize() []byte
 	Deserialize([]byte) error
 	GarbageCollect() [][]byte
-	Epoch() uint64
+	Epoch() int64
 }
 
 type BatchReplicator interface {

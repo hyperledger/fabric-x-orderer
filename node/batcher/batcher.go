@@ -14,8 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arma/node/consensus/state"
-
 	"arma/node/crypto"
 
 	"arma/node/delivery"
@@ -353,7 +351,7 @@ func (b *Batcher) attestBatch(seq core.BatchSequence, primary core.PartyID, shar
 		state := ref.(*core.State)
 		pending = state.Pending
 	}
-	baf, err := CreateBAF(b.sk, b.config.PartyId, uint16(shard), digest, uint16(primary), seq, pending...)
+	baf, err := CreateBAF(b.sk, core.PartyID(b.config.PartyId), shard, digest, primary, seq, pending...)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -576,34 +574,27 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func CreateBAF(sk *ecdsa.PrivateKey, id uint16, shard uint16, digest []byte, primary uint16, seq core.BatchSequence, pending ...core.BatchAttestationFragment) (core.BatchAttestationFragment, error) {
-	epoch := int(time.Now().Unix()) / 10
+func CreateBAF(sk *ecdsa.PrivateKey, id core.PartyID, shard core.ShardID, digest []byte, primary core.PartyID, seq core.BatchSequence, pending ...core.BatchAttestationFragment) (core.BatchAttestationFragment, error) {
+	epoch := time.Now().Unix() / 10
 
 	gc := make([][]byte, 0, len(pending))
 	for _, baf := range pending {
-		if int(baf.Epoch())+3 < epoch {
+		if baf.Epoch()+3 < epoch {
 			gc = append(gc, baf.Digest())
 		}
 	}
 
-	baf := &arma_types.SimpleBatchAttestationFragment{
-		Gc:  gc,
-		Ep:  epoch,
-		Sh:  int(shard),
-		Si:  int(id),
-		Se:  int(seq),
-		Dig: digest,
-		P:   int(primary),
-	}
-
+	baf := arma_types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, epoch, gc)
 	signer := crypto.ECDSASigner(*sk)
 
-	tbs := state.ToBeSignedBAF(baf)
-
+	tbs := baf.ToBeSigned()
 	sig, err := signer.Sign(tbs)
-	baf.Sig = sig
+	if err != nil {
+		return nil, err
+	}
+	baf.SetSignature(sig)
 
-	return baf, err
+	return baf, nil
 }
 
 func ExtractCertificateFromContext(ctx context.Context) []byte {

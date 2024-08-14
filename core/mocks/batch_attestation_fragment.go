@@ -28,15 +28,15 @@ type FakeBatchAttestationFragment struct {
 	digestReturnsOnCall map[int]struct {
 		result1 []byte
 	}
-	EpochStub        func() uint64
+	EpochStub        func() int64
 	epochMutex       sync.RWMutex
 	epochArgsForCall []struct {
 	}
 	epochReturns struct {
-		result1 uint64
+		result1 int64
 	}
 	epochReturnsOnCall map[int]struct {
-		result1 uint64
+		result1 int64
 	}
 	GarbageCollectStub        func() [][]byte
 	garbageCollectMutex       sync.RWMutex
@@ -219,7 +219,7 @@ func (fake *FakeBatchAttestationFragment) DigestReturnsOnCall(i int, result1 []b
 	}{result1}
 }
 
-func (fake *FakeBatchAttestationFragment) Epoch() uint64 {
+func (fake *FakeBatchAttestationFragment) Epoch() int64 {
 	fake.epochMutex.Lock()
 	ret, specificReturn := fake.epochReturnsOnCall[len(fake.epochArgsForCall)]
 	fake.epochArgsForCall = append(fake.epochArgsForCall, struct {
@@ -242,32 +242,32 @@ func (fake *FakeBatchAttestationFragment) EpochCallCount() int {
 	return len(fake.epochArgsForCall)
 }
 
-func (fake *FakeBatchAttestationFragment) EpochCalls(stub func() uint64) {
+func (fake *FakeBatchAttestationFragment) EpochCalls(stub func() int64) {
 	fake.epochMutex.Lock()
 	defer fake.epochMutex.Unlock()
 	fake.EpochStub = stub
 }
 
-func (fake *FakeBatchAttestationFragment) EpochReturns(result1 uint64) {
+func (fake *FakeBatchAttestationFragment) EpochReturns(result1 int64) {
 	fake.epochMutex.Lock()
 	defer fake.epochMutex.Unlock()
 	fake.EpochStub = nil
 	fake.epochReturns = struct {
-		result1 uint64
+		result1 int64
 	}{result1}
 }
 
-func (fake *FakeBatchAttestationFragment) EpochReturnsOnCall(i int, result1 uint64) {
+func (fake *FakeBatchAttestationFragment) EpochReturnsOnCall(i int, result1 int64) {
 	fake.epochMutex.Lock()
 	defer fake.epochMutex.Unlock()
 	fake.EpochStub = nil
 	if fake.epochReturnsOnCall == nil {
 		fake.epochReturnsOnCall = make(map[int]struct {
-			result1 uint64
+			result1 int64
 		})
 	}
 	fake.epochReturnsOnCall[i] = struct {
-		result1 uint64
+		result1 int64
 	}{result1}
 }
 

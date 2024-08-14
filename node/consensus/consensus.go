@@ -318,7 +318,7 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 		return reqID, err
 	} else if ce.BAF != nil {
 		msg := state.ToBeSignedBAF(ce.BAF)
-		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma_types.SimpleBatchAttestationFragment).Sig)
+		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma_types.SimpleBatchAttestationFragment).Signature())
 		return reqID, err
 	} else {
 		return types.RequestInfo{}, fmt.Errorf("empty Control Event")
@@ -424,7 +424,7 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 		clientID = fmt.Sprintf("%d", ce.BAF.Signer())
 		payloadToHash = make([]byte, 26)
 		binary.BigEndian.PutUint64(payloadToHash, uint64(ce.BAF.Seq()))
-		binary.BigEndian.PutUint64(payloadToHash[8:], ce.BAF.Epoch())
+		binary.BigEndian.PutUint64(payloadToHash[8:], uint64(ce.BAF.Epoch()))
 		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))
 		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))
 		binary.BigEndian.PutUint16(payloadToHash[20:], uint16(ce.BAF.Shard()))

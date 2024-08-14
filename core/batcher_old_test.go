@@ -227,7 +227,7 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	}
 
 	for i := 0; i < n; i++ {
-		b := createTestBatcher(t, 0, i, batcherConf)
+		b := createTestBatcher(t, 0, core.PartyID(i), batcherConf)
 		batchers = append(batchers, b)
 	}
 
@@ -259,8 +259,8 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	return batchers, commit
 }
 
-func createTestBatcher(t *testing.T, shardID int, nodeID int, batchers []core.PartyID) *core.Batcher {
-	sugaredLogger := testutil.CreateLogger(t, nodeID)
+func createTestBatcher(t *testing.T, shardID core.ShardID, nodeID core.PartyID, batchers []core.PartyID) *core.Batcher {
+	sugaredLogger := testutil.CreateLogger(t, int(nodeID))
 
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
@@ -276,13 +276,7 @@ func createTestBatcher(t *testing.T, shardID int, nodeID int, batchers []core.Pa
 		Batchers: batchers,
 		Shard:    core.ShardID(shardID),
 		AttestBatch: func(seq core.BatchSequence, primary core.PartyID, shard core.ShardID, digest []byte) core.BatchAttestationFragment {
-			return &arma_types.SimpleBatchAttestationFragment{
-				Dig: digest,
-				Sh:  shardID,
-				Si:  nodeID,
-				P:   int(primary),
-				Se:  int(seq),
-			}
+			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
 		},
 		Digest: func(data [][]byte) []byte {
 			h := sha256.New()

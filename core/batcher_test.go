@@ -468,13 +468,7 @@ func createBatcher(batcherID core.PartyID, shardID core.ShardID, batchers []core
 		BatchPuller:      &mocks.FakeBatchPuller{},
 		StateProvider:    &mocks.FakeStateProvider{},
 		AttestBatch: func(seq core.BatchSequence, primary core.PartyID, shard core.ShardID, digest []byte) core.BatchAttestationFragment {
-			return &arma_types.SimpleBatchAttestationFragment{
-				Dig: digest,
-				Sh:  int(shardID),
-				Si:  int(batcherID),
-				P:   int(primary),
-				Se:  int(seq),
-			}
+			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
 		},
 		TotalOrderBAF: func(core.BatchAttestationFragment) {},
 		AckBAF:        func(seq core.BatchSequence, to core.PartyID) {},

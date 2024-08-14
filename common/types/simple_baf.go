@@ -1,57 +1,145 @@
-package node
+package types
 
 import (
 	"encoding/asn1"
+	"math/big"
 
 	"arma/core"
 )
 
 type SimpleBatchAttestationFragment struct {
-	Ep        int
-	Se        int // TODO change to uint64
-	P, Si, Sh int // TODO change to party signer and shard with types
-	Dig       []byte
-	Sig       []byte
-	Gc        [][]byte
+	shard   core.ShardID
+	primary core.PartyID
+	seq     core.BatchSequence
+	digest  []byte
+
+	signer    core.PartyID
+	signature []byte
+
+	epoch          int64
+	garbageCollect [][]byte
+}
+
+func NewSimpleBatchAttestationFragment(
+	shard core.ShardID,
+	primary core.PartyID,
+	seq core.BatchSequence,
+	digest []byte,
+	signer core.PartyID,
+	sig []byte,
+	epoch int64,
+	garbageCollect [][]byte,
+) *SimpleBatchAttestationFragment {
+	return &SimpleBatchAttestationFragment{
+		epoch:          epoch,
+		seq:            seq,
+		primary:        primary,
+		signer:         signer,
+		shard:          shard,
+		digest:         digest,
+		signature:      sig,
+		garbageCollect: garbageCollect,
+	}
 }
 
 func (s *SimpleBatchAttestationFragment) Seq() core.BatchSequence {
-	return core.BatchSequence(s.Se)
+	return s.seq
 }
 
 func (s *SimpleBatchAttestationFragment) Primary() core.PartyID {
-	return core.PartyID(s.P)
+	return s.primary
 }
 
 func (s *SimpleBatchAttestationFragment) Signer() core.PartyID {
-	return core.PartyID(s.Si)
+	return s.signer
 }
 
 func (s *SimpleBatchAttestationFragment) Shard() core.ShardID {
-	return core.ShardID(s.Sh)
+	return s.shard
 }
 
 func (s *SimpleBatchAttestationFragment) Digest() []byte {
-	return s.Dig
+	return s.digest
 }
 
-func (s *SimpleBatchAttestationFragment) Epoch() uint64 {
-	return uint64(s.Ep)
+func (s *SimpleBatchAttestationFragment) Epoch() int64 {
+	return (s.epoch)
+}
+
+func (s *SimpleBatchAttestationFragment) Signature() []byte {
+	return s.signature
+}
+
+func (s *SimpleBatchAttestationFragment) SetSignature(sig []byte) {
+	s.signature = sig
+}
+
+type asn1BAF struct {
+	Shard          int
+	Primary        int
+	Seq            *big.Int
+	Digest         []byte
+	Signer         int
+	Sig            []byte
+	Epoch          *big.Int
+	GarbageCollect [][]byte
 }
 
 func (s *SimpleBatchAttestationFragment) Serialize() []byte {
-	bytes, err := asn1.Marshal(*s)
+	a := asn1BAF{
+		Shard:          int(s.shard),
+		Primary:        int(s.primary),
+		Seq:            new(big.Int).SetUint64(uint64(s.seq)),
+		Digest:         s.digest,
+		Signer:         int(s.signer),
+		Sig:            s.signature,
+		Epoch:          new(big.Int).SetInt64(s.epoch),
+		GarbageCollect: s.garbageCollect,
+	}
+	result, err := asn1.Marshal(a)
 	if err != nil {
 		panic(err)
 	}
-	return bytes
+	return result
+}
+
+func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
+	a := asn1BAF{
+		Shard:          int(s.shard),
+		Primary:        int(s.primary),
+		Seq:            new(big.Int).SetUint64(uint64(s.seq)),
+		Digest:         s.digest,
+		Signer:         int(s.signer),
+		Sig:            nil, // everything but the signature
+		Epoch:          new(big.Int).SetInt64(s.epoch),
+		GarbageCollect: s.garbageCollect,
+	}
+	result, err := asn1.Marshal(a)
+	if err != nil {
+		panic(err)
+	}
+	return result
 }
 
 func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
-	_, err := asn1.Unmarshal(bytes, s)
-	return err
+	a := &asn1BAF{}
+	_, err := asn1.Unmarshal(bytes, a)
+	if err != nil {
+		return err
+	}
+
+	s.shard = core.ShardID(a.Shard)
+	s.primary = core.PartyID(a.Primary)
+	s.seq = core.BatchSequence(a.Seq.Uint64())
+	s.digest = a.Digest
+	s.signer = core.PartyID(a.Signer)
+	s.signature = a.Sig
+	s.epoch = a.Epoch.Int64()
+	s.garbageCollect = a.GarbageCollect
+
+	return nil
 }
 
 func (s *SimpleBatchAttestationFragment) GarbageCollect() [][]byte {
-	return s.Gc
+	return s.garbageCollect
 }

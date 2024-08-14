@@ -176,16 +176,10 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	}
 
 	for shardID := 0; shardID < shardCount; shardID++ {
-		batcher := createTestBatcher(t, shardID, shardID, parties)
+		batcher := createTestBatcher(t, core.ShardID(shardID), core.PartyID(shardID), parties)
 		batcher.Logger = logger
 		batcher.TotalOrderBAF = func(baf core.BatchAttestationFragment) {
-			ba := &arma_types.SimpleBatchAttestationFragment{
-				Dig: baf.Digest(),
-				Se:  int(baf.Seq()),
-				Sh:  int(baf.Shard()),
-				Si:  int(baf.Signer()),
-				P:   int(baf.Primary()),
-			}
+			ba := arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), baf.Signer(), nil, 0, nil)
 			consenter.Submit((&core.ControlEvent{
 				BAF: ba,
 			}).Bytes())
