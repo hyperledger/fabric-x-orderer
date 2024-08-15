@@ -149,7 +149,7 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseRouterConfig(configContent)
-		router := router.CreateRouter(conf, logger)
+		router := router.NewRouter(conf, logger)
 
 		srv := node.CreateGRPCRouter(conf)
 

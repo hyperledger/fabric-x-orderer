@@ -113,7 +113,7 @@ func (bp *BatchPuller) clientConfig(primary core.PartyID) comm.ClientConfig {
 
 func (bp *BatchPuller) findPrimary(shardID core.ShardID, primary core.PartyID) config.BatcherInfo {
 	for _, shard := range bp.config.Shards {
-		if shard.ShardId == uint16(shardID) {
+		if shard.ShardId == shardID {
 			for _, b := range shard.Batchers {
 				bp.logger.Infof("Primary: %d, primaryID: %d, b.PartyID: %d", primary, primary, b.PartyID)
 				if core.PartyID(b.PartyID) == primary {

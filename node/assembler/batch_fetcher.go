@@ -112,7 +112,7 @@ func (br *BatchFetcher) pullFromParty(shardID core.ShardID, batcherToPullFrom co
 
 func (br *BatchFetcher) findShardID(shardID core.ShardID) config.BatcherInfo {
 	for _, shard := range br.config.Shards {
-		if shard.ShardId == uint16(shardID) {
+		if shard.ShardId == shardID {
 			for _, b := range shard.Batchers {
 				if b.PartyID == br.config.PartyId {
 					return b

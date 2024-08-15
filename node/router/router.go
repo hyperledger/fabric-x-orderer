@@ -22,13 +22,18 @@ import (
 	"github.com/hyperledger/fabric-protos-go/orderer"
 )
 
+const (
+	defaultRouter2batcherConnPoolSize   = 10
+	defaultRouter2batcherStreamsPerConn = 20
+)
+
 type Router struct {
 	router       core.Router
-	shardRouters map[uint16]*ShardRouter
+	shardRouters map[core.ShardID]*ShardRouter
 	TLSCert      []byte
 	TLSKey       []byte
 	logger       core.Logger
-	shards       []uint16
+	shardIDs     []core.ShardID
 	incoming     uint64
 }
 
@@ -78,8 +83,8 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 }
 
 func (r *Router) init() {
-	for _, shard := range r.shards {
-		r.shardRouters[shard].maybeInit()
+	for _, shardId := range r.shardIDs {
+		r.shardRouters[shardId].maybeInit()
 	}
 }
 
@@ -87,9 +92,9 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func NewRouter(shards []uint16,
+func createRouter(shardIDs []core.ShardID,
 	batcherEndpoints []string,
-	batcherRootCAs [][][]byte,
+	batcherRootCAs map[core.ShardID][][]byte,
 	tlsCert []byte,
 	tlsKey []byte,
 	logger core.Logger,
@@ -97,16 +102,25 @@ func NewRouter(shards []uint16,
 	numOfgRPCStreamsPerConnection int,
 ) *Router {
 	if numOfConnectionsForBatcher == 0 {
-		numOfConnectionsForBatcher = defauultRouter2batcherConnPoolSize
+		numOfConnectionsForBatcher = defaultRouter2batcherConnPoolSize
 	}
 
 	if numOfgRPCStreamsPerConnection == 0 {
 		numOfgRPCStreamsPerConnection = defaultRouter2batcherStreamsPerConn
 	}
 
-	r := &Router{shards: shards, shardRouters: make(map[uint16]*ShardRouter), logger: logger, router: core.Router{Logger: logger, ShardCount: uint16(len(shards))}}
-	for i, shard := range shards {
-		r.shardRouters[shard] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[i], tlsCert, tlsKey, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection)
+	r := &Router{
+		router: core.Router{
+			Logger:     logger,
+			ShardCount: uint16(len(shardIDs)),
+		},
+		shardRouters: make(map[core.ShardID]*ShardRouter),
+		logger:       logger,
+		shardIDs:     shardIDs,
+	}
+
+	for i, shardId := range shardIDs {
+		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[shardId], tlsCert, tlsKey, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection)
 	}
 
 	go func() {
@@ -169,17 +183,17 @@ func (r *Router) initRand() *rand2.Rand {
 
 func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 	shardIndex, reqID := r.router.Map(req.Payload)
-	shard := r.shards[shardIndex]
-	router, exists := r.shardRouters[shard]
+	shardId := r.shardIDs[shardIndex]
+	router, exists := r.shardRouters[shardId]
 	if !exists {
-		r.logger.Panicf("Mapped request %d to a non existent shard", shard)
+		r.logger.Panicf("Mapped request %d to a non existent shard", shardId)
 	}
 	return reqID, router
 }
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
-	for _, shard := range r.shards {
-		r.shardRouters[shard].maybeInit()
+	for _, shardId := range r.shardIDs {
+		r.shardRouters[shardId].maybeInit()
 	}
 
 	reqID, router := r.getRouterAndReqID(request)
@@ -242,11 +256,6 @@ func prepareRequestResponse(response *response) *protos.SubmitResponse {
 	return resp
 }
 
-const (
-	defauultRouter2batcherConnPoolSize  = 10
-	defaultRouter2batcherStreamsPerConn = 20
-)
-
 func createTraceID(rand *rand2.Rand) []byte {
 	var n1, n2 int64
 	if rand == nil {
@@ -263,26 +272,26 @@ func createTraceID(rand *rand2.Rand) []byte {
 	return trace
 }
 
-func CreateRouter(config config.RouterNodeConfig, logger core.Logger) *Router {
-	var shards []uint16
-	var endpoints []string
-	var tlsCAs [][][]byte
+func NewRouter(config config.RouterNodeConfig, logger core.Logger) *Router {
+	var shardIDs []core.ShardID
+	var batcherEndpoints []string
+	tlsCAsOfBatchers := make(map[core.ShardID][][]byte)
 	for _, shard := range config.Shards {
-		shards = append(shards, shard.ShardId)
+		shardIDs = append(shardIDs, shard.ShardId)
 		for _, batcher := range shard.Batchers {
 			if config.PartyID != batcher.PartyID {
 				continue
 			}
-			endpoints = append(endpoints, batcher.Endpoint)
+			batcherEndpoints = append(batcherEndpoints, batcher.Endpoint)
 			var tlsCAsOfBatcher [][]byte
 			for _, rawTLSCA := range batcher.TLSCACerts {
 				tlsCAsOfBatcher = append(tlsCAsOfBatcher, rawTLSCA)
 			}
 
-			tlsCAs = append(tlsCAs, tlsCAsOfBatcher)
+			tlsCAsOfBatchers[shard.ShardId] = tlsCAsOfBatcher
 		}
 	}
-	r := NewRouter(shards, endpoints, tlsCAs, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.NumOfConnectionsForBatcher, config.NumOfgRPCStreamsPerConnection)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.NumOfConnectionsForBatcher, config.NumOfgRPCStreamsPerConnection)
 	r.init()
 	return r
 }

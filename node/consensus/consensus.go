@@ -775,7 +775,7 @@ func getOurIdentity(consenterInfos []config.ConsenterInfo, partyID core.PartyID)
 	for _, ci := range consenterInfos {
 		pk := ci.PublicKey
 
-		if ci.PartyID == uint16(partyID) {
+		if ci.PartyID == partyID {
 			myIdentity = pk
 			break
 		}

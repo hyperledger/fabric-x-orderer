@@ -228,14 +228,14 @@ func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA
 			ListenAddress:      "0.0.0.0:0",
 			TLSPrivateKeyFile:  kp.Key,
 			TLSCertificateFile: kp.Cert,
-			PartyID:            uint16(i + 1),
+			PartyID:            core.PartyID(i + 1),
 			Shards: []config.ShardInfo{{
 				ShardId:  1,
 				Batchers: batcherInfos,
 			}},
 		}
 		configs = append(configs, config)
-		router := router.CreateRouter(config, l)
+		router := router.NewRouter(config, l)
 		routers = append(routers, router)
 	}
 	return routers, configs
@@ -268,7 +268,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shardInfo,
 			Consenters:         consenterInfos,
-			PartyId:            uint16(partyID),
+			PartyId:            partyID,
 			TLSPrivateKeyFile:  consenterNodes[i].TLSKey,
 			TLSCertificateFile: consenterNodes[i].TLSCert,
 			SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
@@ -311,7 +311,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shards,
 			ShardId:            1,
-			PartyId:            uint16(i + 1),
+			PartyId:            core.PartyID(i + 1),
 			Consenters:         consenterInfos,
 			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
 			TLSCertificateFile: batcherNodes[i].TLSCert,
@@ -346,7 +346,7 @@ func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]config.BatcherIn
 	var batchers []config.BatcherInfo
 	for i := 0; i < 4; i++ {
 		batchers = append(batchers, config.BatcherInfo{
-			PartyID:    uint16(i + 1),
+			PartyID:    core.PartyID(i + 1),
 			Endpoint:   batcherNodes[i].Address(),
 			TLSCert:    batcherNodes[i].TLSCert,
 			TLSCACerts: []config.RawBytes{ca.CertBytes()},
@@ -357,7 +357,7 @@ func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]config.BatcherIn
 	var consenters []config.ConsenterInfo
 	for i := 0; i < 4; i++ {
 		consenters = append(consenters, config.ConsenterInfo{
-			PartyID:    uint16(i + 1),
+			PartyID:    core.PartyID(i + 1),
 			Endpoint:   consenterNodes[i].Address(),
 			TLSCACerts: []config.RawBytes{ca.CertBytes()},
 			PublicKey:  consenterNodes[i].pk,
