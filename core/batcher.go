@@ -104,41 +104,36 @@ type BatchLedger interface {
 var gap = BatchSequence(10)
 
 type Batcher struct {
-	Batchers           []PartyID
-	BatchTimeout       time.Duration
-	Digest             func([][]byte) []byte
-	RequestInspector   RequestInspector
-	ID                 PartyID
-	Shard              ShardID
-	Threshold          int
-	N                  uint16
-	Logger             Logger
-	Ledger             BatchLedger
-	BatchPuller        BatchPuller
-	StateProvider      StateProvider
-	AttestBatch        func(seq BatchSequence, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
-	TotalOrderBAF      func(BatchAttestationFragment)
-	AckBAF             func(seq BatchSequence, to PartyID)
-	MemPool            MemPool
-	confirmedSeq       BatchSequence
-	running            sync.WaitGroup
-	stopChan           chan struct{}
-	stopCtx            context.Context
-	cancelBatch        func()
-	primary            PartyID
-	seq                BatchSequence
-	term               uint64
-	termChan           chan uint64
-	lock               sync.Mutex
-	signal             sync.Cond
-	confirmedSequences map[BatchSequence]map[PartyID]struct{}
+	Batchers         []PartyID
+	BatchTimeout     time.Duration
+	Digest           func([][]byte) []byte
+	RequestInspector RequestInspector
+	ID               PartyID
+	Shard            ShardID
+	Threshold        int
+	N                uint16
+	Logger           Logger
+	Ledger           BatchLedger
+	BatchPuller      BatchPuller
+	StateProvider    StateProvider
+	AttestBatch      func(seq BatchSequence, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
+	TotalOrderBAF    func(BatchAttestationFragment)
+	AckBAF           func(seq BatchSequence, to PartyID) // TODO turn into interface
+	MemPool          MemPool
+	running          sync.WaitGroup
+	stopChan         chan struct{}
+	stopCtx          context.Context
+	cancelBatch      func()
+	primary          PartyID
+	seq              BatchSequence
+	term             uint64
+	termChan         chan uint64
+	acker            SeqAcker
 }
 
 func (b *Batcher) Start() {
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
-	b.signal = sync.Cond{L: &b.lock}
-	b.confirmedSequences = make(map[BatchSequence]map[PartyID]struct{})
 	b.termChan = make(chan uint64)
 
 	b.running.Add(2)
@@ -158,7 +153,6 @@ func (b *Batcher) run() {
 		term := atomic.LoadUint64(&b.term)
 		b.primary = b.getPrimaryID(term)
 		b.seq = BatchSequence(b.Ledger.Height(b.primary))
-		b.confirmedSeq = b.seq
 		b.Logger.Infof("ID: %d, shard: %d, primary id: %d, term: %d, seq: %d", b.ID, b.Shard, b.primary, term, b.seq)
 
 		if b.primary == b.ID {
@@ -223,53 +217,12 @@ func (b *Batcher) Submit(request []byte) error {
 }
 
 func (b *Batcher) HandleAck(seq BatchSequence, from PartyID) {
-	// Only the primary performs the remaining code
+	// Only the primary performs handle ack
 	if b.primary != b.ID {
 		b.Logger.Warnf("Batcher %d called handle ack on sequence %d from %d but it is not the primary (%d)", b.ID, seq, from, b.primary)
 		return
 	}
-
-	b.Logger.Infof("Called handle ack on sequence %d from %d", seq, from)
-
-	b.lock.Lock()
-	defer b.lock.Unlock()
-
-	if seq < b.confirmedSeq {
-		b.Logger.Debugf("Received message on sequence %d but we expect sequence %d to %d", seq, b.confirmedSeq, b.confirmedSeq+gap)
-		return
-	}
-
-	if seq-b.confirmedSeq > gap {
-		b.Logger.Warnf("Received message on sequence %d but our confirmed sequence is only at %d", seq, b.confirmedSeq)
-		return
-	}
-
-	_, exists := b.confirmedSequences[seq]
-	if !exists {
-		b.confirmedSequences[seq] = make(map[PartyID]struct{}, len(b.Batchers))
-	}
-
-	if _, exists := b.confirmedSequences[seq][from]; exists {
-		b.Logger.Warnf("Already received conformation on %d from %d", seq, from)
-		return
-	}
-
-	b.confirmedSequences[seq][from] = struct{}{}
-
-	signatureCollectCount := len(b.confirmedSequences[b.confirmedSeq])
-	if signatureCollectCount >= b.Threshold {
-		b.Logger.Infof("Removing %d digest mapping from memory as we received enough (%d) conformations", b.confirmedSeq, signatureCollectCount)
-		delete(b.confirmedSequences, b.confirmedSeq)
-		b.confirmedSeq++
-		b.signal.Broadcast()
-	} else {
-		b.Logger.Infof("Collected %d out of %d conformations on sequence %d", signatureCollectCount, b.Threshold, seq)
-	}
-}
-
-func (b *Batcher) secondariesKeepUpWithMe() bool {
-	b.Logger.Debugf("Current sequence: %d, confirmed sequence: %d", b.seq, b.confirmedSeq)
-	return b.seq-b.confirmedSeq < gap
+	b.acker.HandleAck(seq, from)
 }
 
 func (b *Batcher) runPrimary() {
@@ -277,8 +230,10 @@ func (b *Batcher) runPrimary() {
 
 	defer func() {
 		b.Logger.Infof("Batcher %d stopped acting as primary (shard %d)", b.ID, b.Shard)
+		b.acker.Stop()
 	}()
 
+	b.acker = NewAcker(b.seq, gap, b.N, uint16(b.Threshold), b.Logger)
 	b.MemPool.Restart(true)
 
 	if b.BatchTimeout == 0 {
@@ -318,12 +273,12 @@ func (b *Batcher) runPrimary() {
 		b.Ledger.Append(b.ID, uint64(b.seq), serializedBatch)
 
 		b.sendBAF(baf)
-		b.HandleAck(b.seq, b.ID)
+		b.acker.HandleAck(b.seq, b.ID)
 
 		b.seq++
 
 		b.removeRequests(currentBatch)
-		b.waitForSecondaries()
+		b.acker.WaitForSecondaries(b.seq)
 
 		// TODO find out from the state if old batches need to be resubmitted (not enough BAFs collected)
 	}
@@ -335,18 +290,6 @@ func (b *Batcher) removeRequests(batch BatchedRequests) {
 		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
 	}
 	b.MemPool.RemoveRequests(reqInfos...)
-}
-
-func (b *Batcher) waitForSecondaries() {
-	t1 := time.Now()
-	defer func() {
-		b.Logger.Infof("Waiting for secondaries to keep up with me took %v", time.Since(t1))
-	}()
-	b.lock.Lock()
-	for !b.secondariesKeepUpWithMe() {
-		b.signal.Wait()
-	}
-	b.lock.Unlock()
 }
 
 func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
