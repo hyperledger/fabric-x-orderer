@@ -18,6 +18,10 @@ type FakeBatchPuller struct {
 	pullBatchesReturnsOnCall map[int]struct {
 		result1 <-chan core.Batch
 	}
+	StopStub        func()
+	stopMutex       sync.RWMutex
+	stopArgsForCall []struct {
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -28,15 +32,16 @@ func (fake *FakeBatchPuller) PullBatches(arg1 core.PartyID) <-chan core.Batch {
 	fake.pullBatchesArgsForCall = append(fake.pullBatchesArgsForCall, struct {
 		arg1 core.PartyID
 	}{arg1})
+	stub := fake.PullBatchesStub
+	fakeReturns := fake.pullBatchesReturns
 	fake.recordInvocation("PullBatches", []interface{}{arg1})
 	fake.pullBatchesMutex.Unlock()
-	if fake.PullBatchesStub != nil {
-		return fake.PullBatchesStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.pullBatchesReturns
 	return fakeReturns.result1
 }
 
@@ -82,11 +87,37 @@ func (fake *FakeBatchPuller) PullBatchesReturnsOnCall(i int, result1 <-chan core
 	}{result1}
 }
 
+func (fake *FakeBatchPuller) Stop() {
+	fake.stopMutex.Lock()
+	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
+	}{})
+	stub := fake.StopStub
+	fake.recordInvocation("Stop", []interface{}{})
+	fake.stopMutex.Unlock()
+	if stub != nil {
+		fake.StopStub()
+	}
+}
+
+func (fake *FakeBatchPuller) StopCallCount() int {
+	fake.stopMutex.RLock()
+	defer fake.stopMutex.RUnlock()
+	return len(fake.stopArgsForCall)
+}
+
+func (fake *FakeBatchPuller) StopCalls(stub func()) {
+	fake.stopMutex.Lock()
+	defer fake.stopMutex.Unlock()
+	fake.StopStub = stub
+}
+
 func (fake *FakeBatchPuller) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	fake.pullBatchesMutex.RLock()
 	defer fake.pullBatchesMutex.RUnlock()
+	fake.stopMutex.RLock()
+	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

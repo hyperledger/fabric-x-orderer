@@ -39,6 +39,7 @@ func (*noopLedger) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.
 type naiveReplication struct {
 	subscribers []chan core.Batch
 	i           uint32
+	stopped     int32
 }
 
 func (r *naiveReplication) Replicate(_ core.ShardID) <-chan core.Batch {
@@ -49,6 +50,10 @@ func (r *naiveReplication) Replicate(_ core.ShardID) <-chan core.Batch {
 func (r *naiveReplication) PullBatches(_ core.PartyID) <-chan core.Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
+}
+
+func (r *naiveReplication) Stop() {
+	atomic.StoreInt32(&r.stopped, 0x1)
 }
 
 func (r *naiveReplication) Append(_ core.PartyID, _ uint64, bytes []byte) {

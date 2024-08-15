@@ -39,6 +39,10 @@ func NewBatchPuller(config config.BatcherNodeConfig, ledger core.BatchLedger, lo
 	return puller
 }
 
+func (bp *BatchPuller) Stop() {
+	// TODO cause the goroutine to exit
+}
+
 func (bp *BatchPuller) PullBatches(from core.PartyID) <-chan core.Batch {
 	res := make(chan core.Batch, 100)
 
@@ -64,11 +68,19 @@ func (bp *BatchPuller) PullBatches(from core.PartyID) <-chan core.Batch {
 		bp.logger.Panicf("Failed creating seek envelope: %v", err)
 	}
 
-	go pull(context.Background(), channelName, bp.logger, endpoint, requestEnvelope, bp.clientConfig(from), func(block *common.Block) {
-		bp.logger.Infof("[%s] Fetched block %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
-		fb := node_ledger.FabricBatch(*block)
-		res <- &fb
-	})
+	go pull(
+		context.Background(),
+		channelName,
+		bp.logger,
+		endpoint,
+		requestEnvelope,
+		bp.clientConfig(from),
+		func(block *common.Block) {
+			bp.logger.Infof("[%s] Fetched block %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
+			fb := node_ledger.FabricBatch(*block)
+			res <- &fb
+		},
+	)
 
 	return res
 }

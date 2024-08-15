@@ -36,6 +36,7 @@ type Batch interface {
 //go:generate counterfeiter -o mocks/batch_puller.go . BatchPuller
 type BatchPuller interface {
 	PullBatches(from PartyID) <-chan Batch
+	Stop()
 }
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider
@@ -273,6 +274,11 @@ func (b *Batcher) secondariesKeepUpWithMe() bool {
 
 func (b *Batcher) runPrimary() {
 	b.Logger.Infof("Batcher %d acting as primary (shard %d)", b.ID, b.Shard)
+
+	defer func() {
+		b.Logger.Infof("Batcher %d stopped acting as primary (shard %d)", b.ID, b.Shard)
+	}()
+
 	b.MemPool.Restart(true)
 
 	if b.BatchTimeout == 0 {
@@ -358,6 +364,11 @@ func (b *Batcher) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, primary)
 	b.MemPool.Restart(false)
 	out := b.BatchPuller.PullBatches(primary)
+	defer func() {
+		b.BatchPuller.Stop()
+		b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, primary)
+	}()
+
 	for {
 		var batchedRequests Batch
 		select {

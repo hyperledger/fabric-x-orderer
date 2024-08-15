@@ -285,6 +285,10 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 		return ledger.AppendCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		return batchPuller.StopCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
 	require.NotZero(t, pool.NextRequestsCallCount())
 
 	batcher.Stop()
@@ -364,6 +368,10 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return pool.RestartArgsForCall(1) == false
 	}, 10*time.Second, 10*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		return batchPuller.StopCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -375,6 +383,10 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	require.False(t, pool.RestartArgsForCall(1))
 	require.Equal(t, 2, pool.RemoveRequestsCallCount())
 	require.Zero(t, pool.NextRequestsCallCount())
+
+	require.Eventually(t, func() bool {
+		return batchPuller.StopCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func TestPrimaryChangeToPrimary(t *testing.T) {
