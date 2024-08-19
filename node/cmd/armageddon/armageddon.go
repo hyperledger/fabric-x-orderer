@@ -170,6 +170,11 @@ type CLI struct {
 	transactions   *int // transactions is the number of txs to be sent
 	rate           *int // rate is the number of transaction per second to be sent
 	txSize         *int // txSize is the required transaction size
+	// load command flags
+	loadUserConfigFile **os.File
+	loadTransactions   *int
+	loadRate           *int
+	loadTxSize         *int
 }
 
 func NewCLI() *CLI {
@@ -200,6 +205,13 @@ func (cli *CLI) configureCommands() {
 	cli.txSize = submit.Flag("txSize", "The required transaction size in bytes").Default("512").Int()
 	commands["submit"] = submit
 
+	load := cli.app.Command("load", "Submit txs to routers and verify the routers have received the txs")
+	cli.loadUserConfigFile = load.Flag("config", "The user configuration needed to connection with routers").File()
+	cli.loadTransactions = load.Flag("transactions", "The number of transactions to be sent").Int()
+	cli.loadRate = load.Flag("rate", "The rate specify the number of transactions per second to be sent").Int()
+	cli.loadTxSize = load.Flag("txSize", "The required transaction size in bytes").Int()
+	commands["load"] = load
+
 	cli.commands = commands
 }
 
@@ -221,6 +233,10 @@ func (cli *CLI) Run(args []string) {
 	// "submit" command
 	case cli.commands["submit"].FullCommand():
 		submit(cli.userConfigFile, cli.transactions, cli.rate, cli.txSize)
+
+	// "load" command
+	case cli.commands["load"].FullCommand():
+		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize)
 	}
 }
 
@@ -680,7 +696,7 @@ func getUserConfigFileContent(userConfigFile **os.File) (*UserInfo, error) {
 	return &userConfig, nil
 }
 
-// submit command makes 1000 txs and sends them to all routers (assuming there are 4 routers)
+// submit command makes txs and sends them to all routers (assuming there are 4 routers)
 // it also asks for blocks from some assembler (no matter who it is) to validate the txs appear in some block
 func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
 	// check transaction size
@@ -723,6 +739,30 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 
 	// report results
 	reportResults(*transactions, elapsed, txDelayTimes, numOfBlocks, *txSize)
+}
+
+// load command makes txs and sends them to all routers (assuming there are 4 routers)
+func load(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
+	// check transaction size
+	txMinimumSize := 16 + 8 + 8
+	if *txSize < txMinimumSize {
+		fmt.Fprintf(os.Stderr, "the required tx size: %d is less than the minimum size: %d", *txSize, txMinimumSize)
+		os.Exit(3)
+	}
+
+	// get user config file content given as argument
+	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
+		os.Exit(-1)
+	}
+
+	// send txs to the routers
+	start := time.Now()
+	sendTxToRouters(userConfigFileContent, *transactions, *rate, *txSize, nil)
+	elapsed := time.Since(start)
+
+	reportLoadResults(*transactions, elapsed, *txSize)
 }
 
 func trimPortFromEndpoint(endpoint string) string {
@@ -1035,4 +1075,9 @@ func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult f
 	avgBlockRate := float64(numOfBlocksResult) / elapsed.Seconds()
 	avgBlockSize := transactions / numOfBlocksResult
 	fmt.Printf("SUCCESS: number of txs: %d, tx size: %d bytes, elapsed time: %v, avg. tx rate: %.2f, avg. tx delay: %vs, num of blocks: %d, avg. block rate: %v, avg. block size: %v txs\n", transactions, txSize, elapsed, avgTxRate, avgTxDelay, numOfBlocksResult, avgBlockRate, avgBlockSize)
+}
+
+func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
+	avgTxSendingRate := float64(transactions) / elapsed.Seconds()
+	fmt.Printf("Load command finished, sent %d TXs in %v seconds, TX size %d, avg. tx sending rate: %.2f\n", transactions, elapsed, txSize, avgTxSendingRate)
 }

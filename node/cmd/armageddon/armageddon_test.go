@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,6 +64,57 @@ func TestArmageddon(t *testing.T) {
 	txs := "1000"
 	txSize := "32"
 	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
+}
+
+// Scenario:
+// 1. Create a config YAML file to be an input to armageddon
+// 2. Run armageddon generate command to create config files in a folder structure
+// 3. Run arma with the generated config files to run each of the nodes for all parties
+// 4. Run armageddon load command to make 1000 txs and send them to all routers at a specified rate
+func TestLoad(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	generateInputConfigFileForArmageddon(t, configPath)
+
+	// 2.
+	armageddon := NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 3.
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, 20)
+	runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	startTimeout := time.After(10 * time.Second)
+	for i := 0; i < 20; i++ {
+		select {
+		case <-readyChan:
+		case <-startTimeout:
+			require.Fail(t, "arma nodes failed to start in time")
+		}
+	}
+
+	// 4.
+	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	rate := "500"
+	txs := "1000"
+	txSize := "64"
+	var waitForTxToBeSent sync.WaitGroup
+	waitForTxToBeSent.Add(1)
+	go func() {
+		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
+		waitForTxToBeSent.Done()
+	}()
+	waitForTxToBeSent.Wait()
 }
 
 func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) {
