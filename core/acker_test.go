@@ -17,7 +17,9 @@ func TestAcker(t *testing.T) {
 	var done uint32
 
 	wait := func() {
-		acker.WaitForSecondaries(110)
+		ch := acker.WaitForSecondaries(110)
+		for range ch {
+		}
 		atomic.AddUint32(&done, 1)
 	}
 
@@ -39,7 +41,9 @@ func TestAcker(t *testing.T) {
 
 	waitStop := func() {
 		atomic.AddUint32(&done2, 1)
-		acker.WaitForSecondaries(110)
+		ch := acker.WaitForSecondaries(110)
+		for range ch {
+		}
 		atomic.AddUint32(&done2, 1)
 	}
 

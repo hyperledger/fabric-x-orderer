@@ -457,6 +457,45 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 	require.True(t, pool.RestartArgsForCall(1))
 }
 
+func TestPrimaryWaiting(t *testing.T) {
+	N := uint16(4)
+	batchers := []core.PartyID{1, 2, 3, 4}
+	batcherID := 1
+	shardID := 0
+
+	logger := testutil.CreateLogger(t, batcherID)
+
+	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(core.BatchedRequests, 0, 1)
+	reqs = append(reqs, req)
+
+	pool.NextRequestsReturns(reqs)
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	batcher.Start()
+
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 10
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return pool.NextRequestsCallCount() == 10
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batcher.Stop()
+
+	require.Equal(t, 10, ledger.AppendCallCount())
+	require.Equal(t, 10, pool.NextRequestsCallCount())
+}
+
 func createBatcher(batcherID core.PartyID, shardID core.ShardID, batchers []core.PartyID, N uint16, logger core.Logger) *core.Batcher {
 	digestFunc := func(data [][]byte) []byte {
 		h := sha256.New()
@@ -473,7 +512,7 @@ func createBatcher(batcherID core.PartyID, shardID core.ShardID, batchers []core
 		RequestInspector: &mocks.FakeRequestInspector{},
 		ID:               batcherID,
 		Shard:            shardID,
-		Threshold:        1,
+		Threshold:        2,
 		N:                N,
 		Logger:           logger,
 		Ledger:           &mocks.FakeBatchLedger{},

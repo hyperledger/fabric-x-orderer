@@ -246,19 +246,19 @@ func (b *Batcher) runPrimary() {
 	for {
 		var serializedBatch []byte
 		for {
-			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
-			currentBatch = b.MemPool.NextRequests(ctx)
+			ch := b.acker.WaitForSecondaries(b.seq)
 			select {
 			case newTerm := <-b.termChan:
 				b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
-				cancel()
 				return
 			case <-b.stopChan:
-				cancel()
 				return
-			default:
+			case <-ch:
 			}
+			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
+			currentBatch = b.MemPool.NextRequests(ctx)
 			if len(currentBatch) == 0 {
+				cancel()
 				continue
 			}
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
@@ -278,7 +278,6 @@ func (b *Batcher) runPrimary() {
 		b.seq++
 
 		b.removeRequests(currentBatch)
-		b.acker.WaitForSecondaries(b.seq)
 
 		// TODO find out from the state if old batches need to be resubmitted (not enough BAFs collected)
 	}

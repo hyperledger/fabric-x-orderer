@@ -8,7 +8,7 @@ import (
 type SeqAcker interface {
 	Stop()
 	HandleAck(seq BatchSequence, from PartyID)
-	WaitForSecondaries(seq BatchSequence)
+	WaitForSecondaries(seq BatchSequence) chan struct{}
 }
 
 type Acker struct {
@@ -83,7 +83,16 @@ func (a *Acker) HandleAck(seq BatchSequence, from PartyID) {
 	}
 }
 
-func (a *Acker) WaitForSecondaries(seq BatchSequence) {
+func (a *Acker) WaitForSecondaries(seq BatchSequence) chan struct{} {
+	c := make(chan struct{})
+	go func() {
+		a.wait(seq)
+		close(c)
+	}()
+	return c
+}
+
+func (a *Acker) wait(seq BatchSequence) {
 	a.logger.Infof("Called wait with sequence %d", seq)
 	t1 := time.Now()
 	defer func() {
