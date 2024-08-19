@@ -1,11 +1,13 @@
 package armageddon
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -130,6 +132,33 @@ type SharedConfig struct {
 	Consenters []config.ConsenterInfo
 }
 
+type protectedMap struct {
+	keyValMap map[string]struct{}
+	mutex     sync.Mutex
+}
+
+func (pm *protectedMap) Add(key string, val struct{}) {
+	pm.mutex.Lock()
+	pm.keyValMap[key] = val
+	pm.mutex.Unlock()
+}
+
+func (pm *protectedMap) Remove(key string) {
+	pm.mutex.Lock()
+	delete(pm.keyValMap, key)
+	pm.mutex.Unlock()
+}
+
+func (pm *protectedMap) IsEmpty() bool {
+	pm.mutex.Lock()
+	if len(pm.keyValMap) == 0 {
+		pm.mutex.Unlock()
+		return true
+	}
+	pm.mutex.Unlock()
+	return false
+}
+
 type CLI struct {
 	app      *kingpin.Application
 	commands map[string]*kingpin.CmdClause
@@ -140,6 +169,7 @@ type CLI struct {
 	userConfigFile **os.File
 	transactions   *int // transactions is the number of txs to be sent
 	rate           *int // rate is the number of transaction per second to be sent
+	txSize         *int // txSize is the required transaction size
 }
 
 func NewCLI() *CLI {
@@ -163,10 +193,11 @@ func (cli *CLI) configureCommands() {
 	version := cli.app.Command("version", "Show version information")
 	commands["version"] = version
 
-	submit := cli.app.Command("submit", "submit txs to routers and verify the submission")
+	submit := cli.app.Command("submit", "Submit txs to routers and verify the submission")
 	cli.userConfigFile = submit.Flag("config", "The user configuration needed to connection with routers and assemblers").File()
 	cli.transactions = submit.Flag("transactions", "The number of transactions to be sent").Int()
 	cli.rate = submit.Flag("rate", "The rate specify the number of transactions per second to be sent").Int()
+	cli.txSize = submit.Flag("txSize", "The required transaction size in bytes").Default("512").Int()
 	commands["submit"] = submit
 
 	cli.commands = commands
@@ -189,7 +220,7 @@ func (cli *CLI) Run(args []string) {
 
 	// "submit" command
 	case cli.commands["submit"].FullCommand():
-		submit(cli.userConfigFile, cli.transactions, cli.rate)
+		submit(cli.userConfigFile, cli.transactions, cli.rate, cli.txSize)
 	}
 }
 
@@ -651,7 +682,14 @@ func getUserConfigFileContent(userConfigFile **os.File) (*UserInfo, error) {
 
 // submit command makes 1000 txs and sends them to all routers (assuming there are 4 routers)
 // it also asks for blocks from some assembler (no matter who it is) to validate the txs appear in some block
-func submit(userConfigFile **os.File, transactions *int, rate *int) {
+func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
+	// check transaction size
+	txMinimumSize := 16 + 8 + 8
+	if *txSize < txMinimumSize {
+		fmt.Fprintf(os.Stderr, "the required tx size: %d is less than the minimum size: %d", *txSize, txMinimumSize)
+		os.Exit(3)
+	}
+
 	// get user config file content given as argument
 	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
 	if err != nil {
@@ -660,11 +698,31 @@ func submit(userConfigFile **os.File, transactions *int, rate *int) {
 	}
 
 	// send txs to the routers
-	txsMap := make(map[string]struct{})
-	sendTxToRouters(userConfigFileContent, *transactions, *rate, txsMap)
+	start := time.Now()
+	txsMap := &protectedMap{
+		keyValMap: make(map[string]struct{}),
+		mutex:     sync.Mutex{},
+	}
+	var waitForTxToBeSentAndReceived sync.WaitGroup
+	waitForTxToBeSentAndReceived.Add(2)
+	go func() {
+		sendTxToRouters(userConfigFileContent, *transactions, *rate, *txSize, txsMap)
+		waitForTxToBeSentAndReceived.Done()
+	}()
 
 	// receive blocks from some assembler
-	receiveResponseFromAssembler(userConfigFileContent, txsMap)
+	var numOfBlocks int
+	var txDelayTimes float64
+	go func() {
+		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfigFileContent, txsMap)
+		waitForTxToBeSentAndReceived.Done()
+	}()
+
+	waitForTxToBeSentAndReceived.Wait()
+	elapsed := time.Since(start)
+
+	// report results
+	reportResults(*transactions, elapsed, txDelayTimes, numOfBlocks, *txSize)
 }
 
 func trimPortFromEndpoint(endpoint string) string {
@@ -701,7 +759,7 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 }
 
 // sendTxToRouters assumes there are 4 routers
-func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, txsMap map[string]struct{}) {
+func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
 	var serverRootCAs [][]byte
 	for _, rawBytes := range userConfigFileContent.TLSCACerts {
 		byteSlice := []byte(rawBytes)
@@ -772,6 +830,14 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 		}(n, s)
 	}
 
+	// create a session number (16 bytes)
+	sessionNumber := make([]byte, 16)
+	_, err := rand.Read(sessionNumber)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create a session number, %v", err)
+		os.Exit(3)
+	}
+
 	// send txs to all routers, using the rate limiter bucket
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
@@ -787,7 +853,7 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		sendTx(txsMap, streams, i)
+		sendTx(txsMap, streams, i, txSize, sessionNumber)
 	}
 	rl.Stop()
 
@@ -802,7 +868,7 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 	}
 }
 
-func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap map[string]struct{}) {
+func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *protectedMap) (int, float64) {
 	// choose randomly the first assembler
 	i := 0
 	var serverRootCAs [][]byte
@@ -869,12 +935,16 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap map[st
 	}
 
 	// pull blocks from assembler
+	numOfBlocksCalculated := 0
+	var sumOfDelayTimes float64
 	for {
+		currentTime := time.Now()
 		block, err := pullBlock(stream, endpointToPullFrom, gRPCAssemblerClientConn)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
 			os.Exit(3)
 		}
+		numOfBlocksCalculated += 1
 
 		// iterate over txs in block
 		for j := 0; j < len(block.Data.Data); j++ {
@@ -883,14 +953,30 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap map[st
 				fmt.Fprintf(os.Stderr, "failed to get envelope from block: %v", err)
 				os.Exit(3)
 			}
-			delete(txsMap, string(env.Payload))
+
+			// 1. extract the sending time and calculate the delay, add the delay to sumOfDelayTimes
+			readPayload := bytes.NewBuffer(env.Payload)
+			startPosition := 16 + 8
+			readPayload.Next(startPosition)
+			var extractedSendTime uint64
+			binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
+			sendTime := time.Unix(0, int64(extractedSendTime))
+			delayTime := currentTime.Sub(sendTime)
+			sumOfDelayTimes = sumOfDelayTimes + delayTime.Seconds()
+
+			// 2. delete the tx from the map
+			if txsMap != nil {
+				txsMap.Remove(string(env.Payload))
+			}
 		}
 
 		// if the map is empty it means we received all txs, then we stop asking for blocks from the assembler
-		if len(txsMap) == 0 {
+		if txsMap != nil && txsMap.IsEmpty() {
 			break
 		}
 	}
+
+	return numOfBlocksCalculated, sumOfDelayTimes
 }
 
 func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
@@ -916,9 +1002,11 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 	return block, nil
 }
 
-func sendTx(txsMap map[string]struct{}, streams []ab.AtomicBroadcast_BroadcastClient, i int) {
-	payload := []byte(fmt.Sprintf("data transaction%d", i))
-	txsMap[string(payload)] = struct{}{}
+func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
+	payload := prepareTx(i, txSize, sessionNumber)
+	if txsMap != nil {
+		txsMap.Add(string(payload), struct{}{})
+	}
 	for j := 0; j < 4; j++ {
 		err := streams[j].Send(&common.Envelope{Payload: payload})
 		if err != nil {
@@ -926,4 +1014,25 @@ func sendTx(txsMap map[string]struct{}, streams []ab.AtomicBroadcast_BroadcastCl
 			os.Exit(3)
 		}
 	}
+}
+
+func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
+	// create timestamp (8 bytes)
+	timeStamp := uint64(time.Now().UnixNano())
+
+	// prepare the payload
+	buffer := make([]byte, txSize)
+	buff := bytes.NewBuffer(buffer[:0])
+	buff.Write(sessionNumber)
+	binary.Write(buff, binary.BigEndian, uint64(txNumber))
+	binary.Write(buff, binary.BigEndian, timeStamp)
+	return buff.Bytes()
+}
+
+func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult float64, numOfBlocksResult int, txSize int) {
+	avgTxRate := float64(transactions) / elapsed.Seconds()
+	avgTxDelay := txDelayTimesResult / float64(transactions)
+	avgBlockRate := float64(numOfBlocksResult) / elapsed.Seconds()
+	avgBlockSize := transactions / numOfBlocksResult
+	fmt.Printf("SUCCESS: number of txs: %d, tx size: %d bytes, elapsed time: %v, avg. tx rate: %.2f, avg. tx delay: %vs, num of blocks: %d, avg. block rate: %v, avg. block size: %v txs\n", transactions, txSize, elapsed, avgTxRate, avgTxDelay, numOfBlocksResult, avgBlockRate, avgBlockSize)
 }
