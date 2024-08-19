@@ -11,6 +11,7 @@ type SeqAcker interface {
 	WaitForSecondaries(seq BatchSequence) chan struct{}
 }
 
+// Acker handles the acks coming from secondaries
 type Acker struct {
 	logger             Logger
 	threshold          uint16
@@ -23,6 +24,7 @@ type Acker struct {
 	stopped            bool
 }
 
+// NewAcker returns a new acker
 func NewAcker(confirmedSeq BatchSequence, gap BatchSequence, numOfParties uint16, threshold uint16, logger Logger) *Acker {
 	a := &Acker{
 		logger:             logger,
@@ -36,6 +38,7 @@ func NewAcker(confirmedSeq BatchSequence, gap BatchSequence, numOfParties uint16
 	return a
 }
 
+// Stop stops the acker (the waiting)
 func (a *Acker) Stop() {
 	a.logger.Infof("Stopping")
 	a.lock.Lock()
@@ -44,6 +47,7 @@ func (a *Acker) Stop() {
 	a.signal.Broadcast()
 }
 
+// HandleAck handles an ack with a given seq from a specific party
 func (a *Acker) HandleAck(seq BatchSequence, from PartyID) {
 	a.logger.Infof("Called handle ack on sequence %d from %d", seq, from)
 
@@ -83,6 +87,7 @@ func (a *Acker) HandleAck(seq BatchSequence, from PartyID) {
 	}
 }
 
+// WaitForSecondaries waits for the secondaries to keep up with the primary (to send enough acks)
 func (a *Acker) WaitForSecondaries(seq BatchSequence) chan struct{} {
 	c := make(chan struct{})
 	go func() {

@@ -496,6 +496,86 @@ func TestPrimaryWaiting(t *testing.T) {
 	require.Equal(t, 10, pool.NextRequestsCallCount())
 }
 
+func TestPrimaryWaitingAndTermChange(t *testing.T) {
+	N := uint16(4)
+	batchers := []core.PartyID{1, 2, 3, 4}
+	batcherID := 1
+	shardID := 0
+
+	logger := testutil.CreateLogger(t, batcherID)
+
+	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(core.BatchedRequests, 0, 1)
+	reqs = append(reqs, req)
+
+	pool.NextRequestsReturns(reqs)
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	stateProvider := &mocks.FakeStateProvider{}
+	stateChan := make(chan *core.State)
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	batcher.StateProvider = stateProvider
+
+	batch := &mocks.FakeBatch{}
+	batch.PartyReturns(1)
+	batch.RequestsReturns(reqs)
+
+	batchPuller := &mocks.FakeBatchPuller{}
+	batchChan := make(chan core.Batch)
+	batchPuller.PullBatchesReturns(batchChan)
+	batcher.BatchPuller = batchPuller
+
+	batcher.Start()
+
+	stateChan <- &core.State{
+		Shards: []core.ShardTerm{
+			{
+				Shard: 0,
+				Term:  0,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 10
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return pool.NextRequestsCallCount() == 10
+	}, 10*time.Second, 10*time.Millisecond)
+
+	stateChan <- &core.State{
+		Shards: []core.ShardTerm{
+			{
+				Shard: 0,
+				Term:  1,
+			},
+		},
+	}
+
+	require.Eventually(t, func() bool {
+		return pool.RestartArgsForCall(1) == false
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 11
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batcher.Stop()
+
+	require.Equal(t, 11, ledger.AppendCallCount())
+	require.Equal(t, 10, pool.NextRequestsCallCount())
+}
+
 func createBatcher(batcherID core.PartyID, shardID core.ShardID, batchers []core.PartyID, N uint16, logger core.Logger) *core.Batcher {
 	digestFunc := func(data [][]byte) []byte {
 		h := sha256.New()
