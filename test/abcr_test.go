@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"arma/core"
+	"arma/common/types"
 	node2 "arma/node"
 	"arma/node/assembler"
 	"arma/node/batcher"
@@ -228,7 +228,7 @@ func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA
 			ListenAddress:      "0.0.0.0:0",
 			TLSPrivateKeyFile:  kp.Key,
 			TLSCertificateFile: kp.Cert,
-			PartyID:            core.PartyID(i + 1),
+			PartyID:            types.PartyID(i + 1),
 			Shards: []config.ShardInfo{{
 				ShardId:  1,
 				Batchers: batcherInfos,
@@ -250,7 +250,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 
 		gRPCServer := consenterNodes[i].Server()
 
-		partyID := core.PartyID(i + 1)
+		partyID := types.PartyID(i + 1)
 
 		logger := testutil.CreateLogger(t, int(partyID))
 
@@ -311,7 +311,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shards,
 			ShardId:            1,
-			PartyId:            core.PartyID(i + 1),
+			PartyId:            types.PartyID(i + 1),
 			Consenters:         consenterInfos,
 			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
 			TLSCertificateFile: batcherNodes[i].TLSCert,
@@ -346,7 +346,7 @@ func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]config.BatcherIn
 	var batchers []config.BatcherInfo
 	for i := 0; i < 4; i++ {
 		batchers = append(batchers, config.BatcherInfo{
-			PartyID:    core.PartyID(i + 1),
+			PartyID:    types.PartyID(i + 1),
 			Endpoint:   batcherNodes[i].Address(),
 			TLSCert:    batcherNodes[i].TLSCert,
 			TLSCACerts: []config.RawBytes{ca.CertBytes()},
@@ -357,7 +357,7 @@ func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]config.BatcherIn
 	var consenters []config.ConsenterInfo
 	for i := 0; i < 4; i++ {
 		consenters = append(consenters, config.ConsenterInfo{
-			PartyID:    core.PartyID(i + 1),
+			PartyID:    types.PartyID(i + 1),
 			Endpoint:   consenterNodes[i].Address(),
 			TLSCACerts: []config.RawBytes{ca.CertBytes()},
 			PublicKey:  consenterNodes[i].pk,

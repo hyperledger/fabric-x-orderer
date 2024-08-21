@@ -3,17 +3,15 @@ package types
 import (
 	"encoding/asn1"
 	"math/big"
-
-	"arma/core"
 )
 
 type SimpleBatchAttestationFragment struct {
-	shard   core.ShardID
-	primary core.PartyID
-	seq     core.BatchSequence
+	shard   ShardID
+	primary PartyID
+	seq     BatchSequence
 	digest  []byte
 
-	signer    core.PartyID
+	signer    PartyID
 	signature []byte
 
 	epoch          int64
@@ -21,11 +19,11 @@ type SimpleBatchAttestationFragment struct {
 }
 
 func NewSimpleBatchAttestationFragment(
-	shard core.ShardID,
-	primary core.PartyID,
-	seq core.BatchSequence,
+	shard ShardID,
+	primary PartyID,
+	seq BatchSequence,
 	digest []byte,
-	signer core.PartyID,
+	signer PartyID,
 	sig []byte,
 	epoch int64,
 	garbageCollect [][]byte,
@@ -42,19 +40,19 @@ func NewSimpleBatchAttestationFragment(
 	}
 }
 
-func (s *SimpleBatchAttestationFragment) Seq() core.BatchSequence {
+func (s *SimpleBatchAttestationFragment) Seq() BatchSequence {
 	return s.seq
 }
 
-func (s *SimpleBatchAttestationFragment) Primary() core.PartyID {
+func (s *SimpleBatchAttestationFragment) Primary() PartyID {
 	return s.primary
 }
 
-func (s *SimpleBatchAttestationFragment) Signer() core.PartyID {
+func (s *SimpleBatchAttestationFragment) Signer() PartyID {
 	return s.signer
 }
 
-func (s *SimpleBatchAttestationFragment) Shard() core.ShardID {
+func (s *SimpleBatchAttestationFragment) Shard() ShardID {
 	return s.shard
 }
 
@@ -128,11 +126,11 @@ func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
 		return err
 	}
 
-	s.shard = core.ShardID(a.Shard)
-	s.primary = core.PartyID(a.Primary)
-	s.seq = core.BatchSequence(a.Seq.Uint64())
+	s.shard = ShardID(a.Shard)
+	s.primary = PartyID(a.Primary)
+	s.seq = BatchSequence(a.Seq.Uint64())
 	s.digest = a.Digest
-	s.signer = core.PartyID(a.Signer)
+	s.signer = PartyID(a.Signer)
 	s.signature = a.Sig
 	s.epoch = a.Epoch.Int64()
 	s.garbageCollect = a.GarbageCollect

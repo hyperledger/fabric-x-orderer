@@ -3,36 +3,38 @@ package core
 import (
 	"sync"
 	"time"
+
+	"arma/common/types"
 )
 
 type SeqAcker interface {
 	Stop()
-	HandleAck(seq BatchSequence, from PartyID)
-	WaitForSecondaries(seq BatchSequence) chan struct{}
+	HandleAck(seq types.BatchSequence, from types.PartyID)
+	WaitForSecondaries(seq types.BatchSequence) chan struct{}
 }
 
 // Acker handles the acks coming from secondaries
 type Acker struct {
-	logger             Logger
+	logger             types.Logger
 	threshold          uint16
 	numOfParties       uint16
-	gap                BatchSequence
-	confirmedSeq       BatchSequence
-	confirmedSequences map[BatchSequence]map[PartyID]bool
+	gap                types.BatchSequence
+	confirmedSeq       types.BatchSequence
+	confirmedSequences map[types.BatchSequence]map[types.PartyID]bool
 	lock               sync.Mutex
 	signal             sync.Cond
 	stopped            bool
 }
 
 // NewAcker returns a new acker
-func NewAcker(confirmedSeq BatchSequence, gap BatchSequence, numOfParties uint16, threshold uint16, logger Logger) *Acker {
+func NewAcker(confirmedSeq types.BatchSequence, gap types.BatchSequence, numOfParties uint16, threshold uint16, logger types.Logger) *Acker {
 	a := &Acker{
 		logger:             logger,
 		threshold:          threshold,
 		numOfParties:       numOfParties,
 		gap:                gap,
 		confirmedSeq:       confirmedSeq,
-		confirmedSequences: make(map[BatchSequence]map[PartyID]bool),
+		confirmedSequences: make(map[types.BatchSequence]map[types.PartyID]bool),
 	}
 	a.signal = sync.Cond{L: &a.lock}
 	return a
@@ -48,7 +50,7 @@ func (a *Acker) Stop() {
 }
 
 // HandleAck handles an ack with a given seq from a specific party
-func (a *Acker) HandleAck(seq BatchSequence, from PartyID) {
+func (a *Acker) HandleAck(seq types.BatchSequence, from types.PartyID) {
 	a.logger.Infof("Called handle ack on sequence %d from %d", seq, from)
 
 	a.lock.Lock()
@@ -66,7 +68,7 @@ func (a *Acker) HandleAck(seq BatchSequence, from PartyID) {
 
 	_, exists := a.confirmedSequences[seq]
 	if !exists {
-		a.confirmedSequences[seq] = make(map[PartyID]bool, a.numOfParties)
+		a.confirmedSequences[seq] = make(map[types.PartyID]bool, a.numOfParties)
 	}
 
 	if _, exists := a.confirmedSequences[seq][from]; exists {
@@ -88,7 +90,7 @@ func (a *Acker) HandleAck(seq BatchSequence, from PartyID) {
 }
 
 // WaitForSecondaries waits for the secondaries to keep up with the primary (to send enough acks)
-func (a *Acker) WaitForSecondaries(seq BatchSequence) chan struct{} {
+func (a *Acker) WaitForSecondaries(seq types.BatchSequence) chan struct{} {
 	c := make(chan struct{})
 	go func() {
 		a.wait(seq)
@@ -97,7 +99,7 @@ func (a *Acker) WaitForSecondaries(seq BatchSequence) chan struct{} {
 	return c
 }
 
-func (a *Acker) wait(seq BatchSequence) {
+func (a *Acker) wait(seq types.BatchSequence) {
 	a.logger.Infof("Called wait with sequence %d", seq)
 	t1 := time.Now()
 	defer func() {
@@ -115,7 +117,7 @@ func (a *Acker) wait(seq BatchSequence) {
 	a.lock.Unlock()
 }
 
-func (a *Acker) secondariesKeepUpWithMe(seq BatchSequence) bool {
+func (a *Acker) secondariesKeepUpWithMe(seq types.BatchSequence) bool {
 	a.logger.Debugf("Current sequence: %d, confirmed sequence: %d", seq, a.confirmedSeq)
 	return seq-a.confirmedSeq < a.gap
 }

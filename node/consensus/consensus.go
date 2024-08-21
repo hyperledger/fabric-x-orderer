@@ -49,7 +49,7 @@ type Signer interface {
 }
 
 type SigVerifier interface {
-	VerifySignature(id core.PartyID, shardID core.ShardID, msg, sig []byte) error
+	VerifySignature(id arma_types.PartyID, shardID arma_types.ShardID, msg, sig []byte) error
 }
 
 type Arma interface {
@@ -77,7 +77,7 @@ type Consensus struct {
 	Arma          Arma
 	stateLock     sync.Mutex
 	State         *core.State
-	Logger        core.Logger
+	Logger        arma_types.Logger
 	WAL           api.WriteAheadLog
 	sync          *synchronizer
 }
@@ -232,7 +232,10 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 }
 
 func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {
-	batch := core.BatchFromRaw(proposal.Payload)
+	var batch arma_types.BatchedRequests
+	if err := batch.Deserialize(proposal.Payload); err != nil {
+		return nil, err
+	}
 	var hdr state.Header
 	if err := hdr.FromBytes(proposal.Header); err != nil {
 		return nil, err
@@ -240,7 +243,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 
 	md := &smartbftprotos.ViewMetadata{}
 	if err := proto.Unmarshal(proposal.Metadata, md); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if md.LatestSequence != hdr.Num {
@@ -370,7 +373,7 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 }
 
 func (c *Consensus) VerifySignature(signature types.Signature) error {
-	return c.SigVerifier.VerifySignature(core.PartyID(signature.ID), core.ShardID(math.MaxUint16), signature.Msg, signature.Value)
+	return c.SigVerifier.VerifySignature(arma_types.PartyID(signature.ID), arma_types.ShardID(math.MaxUint16), signature.Msg, signature.Value)
 }
 
 func (c *Consensus) VerificationSequence() uint64 {
@@ -378,7 +381,10 @@ func (c *Consensus) VerificationSequence() uint64 {
 }
 
 func (c *Consensus) RequestsFromProposal(proposal types.Proposal) []types.RequestInfo {
-	batch := core.BatchFromRaw(proposal.Payload)
+	var batch arma_types.BatchedRequests
+	if err := batch.Deserialize(proposal.Payload); err != nil {
+		panic("failed deserializing proposal payload")
+	}
 	reqInfos := make([]types.RequestInfo, 0, len(batch))
 	for _, rawReq := range batch {
 		reqID, err := c.VerifyRequest(rawReq)
@@ -442,7 +448,10 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 }
 
 func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signature {
-	requests := core.BatchFromRaw(proposal.Payload)
+	var requests arma_types.BatchedRequests
+	if err := requests.Deserialize(proposal.Payload); err != nil {
+		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
+	}
 
 	c.stateLock.Lock()
 	_, bafs := c.Arma.SimulateStateTransition(c.State, requests)
@@ -519,6 +528,8 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		panic(err)
 	}
 
+	breqs := arma_types.BatchedRequests(requests)
+
 	return types.Proposal{
 		Header: (&state.Header{
 			AvailableBatches: availableBatches,
@@ -527,7 +538,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 			Num:              md.LatestSequence,
 		}).Bytes(),
 		Metadata: metadata,
-		Payload:  core.BatchedRequests(requests).ToBytes(),
+		Payload:  breqs.Serialize(),
 	}
 }
 
@@ -540,7 +551,11 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 		return types.Reconfig{}
 	}
 
-	controlEvents := core.BatchFromRaw(proposal.Payload)
+	var controlEvents arma_types.BatchedRequests
+	if err := controlEvents.Deserialize(proposal.Payload); err != nil {
+		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
+	}
+
 	// Why do we first give Arma the events and then append the decision to storage?
 	// Upon commit, Arma indexes the batch attestations which passed the threshold in its index,
 	// to avoid signing them again in the (near) future.
@@ -580,7 +595,7 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) core.State {
 
 	for _, shard := range config.Shards {
 		initState.Shards = append(initState.Shards, core.ShardTerm{
-			Shard: core.ShardID(shard.ShardId),
+			Shard: arma_types.ShardID(shard.ShardId),
 			Term:  0,
 		})
 	}
@@ -596,7 +611,7 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) core.State {
 	return initState
 }
 
-func CreateConsensus(conf config.ConsenterNodeConfig, logger core.Logger) *Consensus {
+func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) *Consensus {
 	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
 	if privateKey == nil || privateKey.Bytes == nil {
 		logger.Panicf("Failed decoding private key PEM")
@@ -726,14 +741,14 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger core.Logger) *Conse
 
 	c.BFT = bft
 
-	myIdentity := getOurIdentity(conf.Consenters, core.PartyID(conf.PartyId))
+	myIdentity := getOurIdentity(conf.Consenters, arma_types.PartyID(conf.PartyId))
 
 	SetupComm(c, myIdentity)
 
 	return c
 }
 
-func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger core.Logger) crypto.ECDSAVerifier {
+func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger arma_types.Logger) crypto.ECDSAVerifier {
 	verifier := make(crypto.ECDSAVerifier)
 	for _, ci := range consenterInfos {
 		pk, _ := pem.Decode(ci.PublicKey)
@@ -746,7 +761,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 			logger.Panicf("Failed parsing consenter public key: %v", err)
 		}
 
-		verifier[crypto.ShardPartyKey{Shard: crypto.CONSENSUS_CLUSTER_SHARD, Party: core.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+		verifier[crypto.ShardPartyKey{Shard: crypto.CONSENSUS_CLUSTER_SHARD, Party: arma_types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
 	}
 
 	for _, shard := range shardInfo {
@@ -763,14 +778,14 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 				logger.Panicf("Failed parsing batcher public key: %v", err)
 			}
 
-			verifier[crypto.ShardPartyKey{Shard: core.ShardID(shard.ShardId), Party: core.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+			verifier[crypto.ShardPartyKey{Shard: arma_types.ShardID(shard.ShardId), Party: arma_types.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
 		}
 	}
 
 	return verifier
 }
 
-func getOurIdentity(consenterInfos []config.ConsenterInfo, partyID core.PartyID) []byte {
+func getOurIdentity(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID) []byte {
 	var myIdentity []byte
 	for _, ci := range consenterInfos {
 		pk := ci.PublicKey

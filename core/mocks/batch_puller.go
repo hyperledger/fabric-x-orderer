@@ -2,15 +2,16 @@
 package mocks
 
 import (
+	"arma/common/types"
 	"arma/core"
 	"sync"
 )
 
 type FakeBatchPuller struct {
-	PullBatchesStub        func(core.PartyID) <-chan core.Batch
+	PullBatchesStub        func(types.PartyID) <-chan core.Batch
 	pullBatchesMutex       sync.RWMutex
 	pullBatchesArgsForCall []struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 	}
 	pullBatchesReturns struct {
 		result1 <-chan core.Batch
@@ -26,11 +27,11 @@ type FakeBatchPuller struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchPuller) PullBatches(arg1 core.PartyID) <-chan core.Batch {
+func (fake *FakeBatchPuller) PullBatches(arg1 types.PartyID) <-chan core.Batch {
 	fake.pullBatchesMutex.Lock()
 	ret, specificReturn := fake.pullBatchesReturnsOnCall[len(fake.pullBatchesArgsForCall)]
 	fake.pullBatchesArgsForCall = append(fake.pullBatchesArgsForCall, struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 	}{arg1})
 	stub := fake.PullBatchesStub
 	fakeReturns := fake.pullBatchesReturns
@@ -51,13 +52,13 @@ func (fake *FakeBatchPuller) PullBatchesCallCount() int {
 	return len(fake.pullBatchesArgsForCall)
 }
 
-func (fake *FakeBatchPuller) PullBatchesCalls(stub func(core.PartyID) <-chan core.Batch) {
+func (fake *FakeBatchPuller) PullBatchesCalls(stub func(types.PartyID) <-chan core.Batch) {
 	fake.pullBatchesMutex.Lock()
 	defer fake.pullBatchesMutex.Unlock()
 	fake.PullBatchesStub = stub
 }
 
-func (fake *FakeBatchPuller) PullBatchesArgsForCall(i int) core.PartyID {
+func (fake *FakeBatchPuller) PullBatchesArgsForCall(i int) types.PartyID {
 	fake.pullBatchesMutex.RLock()
 	defer fake.pullBatchesMutex.RUnlock()
 	argsForCall := fake.pullBatchesArgsForCall[i]

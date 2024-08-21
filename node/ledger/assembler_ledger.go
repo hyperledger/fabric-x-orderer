@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"arma/common/types"
 	"arma/core"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -12,7 +13,7 @@ import (
 )
 
 type AssemblerLedger struct {
-	Logger           core.Logger
+	Logger           types.Logger
 	Ledger           blockledger.ReadWriter
 	PrevHash         []byte
 	TransactionCount uint64

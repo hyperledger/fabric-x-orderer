@@ -6,9 +6,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+
+	"arma/common/types"
 )
 
-type Rule func(*State, Logger, ...ControlEvent)
+type Rule func(*State, types.Logger, ...ControlEvent)
 
 var Rules = []Rule{
 	CollectAndDeduplicateEvents,
@@ -19,10 +21,10 @@ var Rules = []Rule{
 }
 
 type batchAttestationVote struct {
-	seq     BatchSequence
-	shard   ShardID
-	primary PartyID
-	signer  PartyID
+	seq     types.BatchSequence
+	shard   types.ShardID
+	primary types.PartyID
+	signer  types.PartyID
 }
 
 type State struct {
@@ -216,7 +218,7 @@ func (s *State) loadShards(rawBytes []byte, count int) {
 	shards := make([]ShardTerm, int(s.ShardCount))
 	for i := 0; i < count; i++ {
 		shards[i] = ShardTerm{
-			Shard: ShardID(binary.BigEndian.Uint16(rawBytes[pos:])),
+			Shard: types.ShardID(binary.BigEndian.Uint16(rawBytes[pos:])),
 			Term:  binary.BigEndian.Uint64(rawBytes[pos+2:]),
 		}
 		pos += 10
@@ -233,13 +235,13 @@ func (s *State) loadConfig(buff []byte) {
 }
 
 type ShardTerm struct {
-	Shard ShardID
+	Shard types.ShardID
 	Term  uint64
 }
 
 type Complaint struct {
 	ShardTerm
-	Signer    PartyID
+	Signer    types.PartyID
 	Signature []byte
 }
 
@@ -265,9 +267,9 @@ func (c *Complaint) FromBytes(bytes []byte) error {
 		return fmt.Errorf("input too small (%d < 12)", len(bytes))
 	}
 
-	c.Shard = ShardID(binary.BigEndian.Uint16(bytes))
+	c.Shard = types.ShardID(binary.BigEndian.Uint16(bytes))
 	c.Term = binary.BigEndian.Uint64(bytes[2:])
-	c.Signer = PartyID(binary.BigEndian.Uint16(bytes[10:]))
+	c.Signer = types.PartyID(binary.BigEndian.Uint16(bytes[10:]))
 	c.Signature = bytes[12:]
 	return nil
 }
@@ -311,7 +313,7 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l Logger, ces ...ControlEvent) (*State, []BatchAttestationFragment) {
+func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []BatchAttestationFragment) {
 	s2 := s.Clone()
 
 	for _, rule := range Rules {
@@ -340,7 +342,7 @@ func (s *State) Clone() *State {
 	return &s2
 }
 
-func CleanupOldComplaints(s *State, l Logger, _ ...ControlEvent) {
+func CleanupOldComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	newComplaints := make([]Complaint, 0, len(s.Complaints))
 	for _, c := range s.Complaints {
 		term := s.Shards[int(c.Shard-1)].Term
@@ -354,7 +356,7 @@ func CleanupOldComplaints(s *State, l Logger, _ ...ControlEvent) {
 	s.Complaints = newComplaints
 }
 
-func CleanupOldAttestations(s *State, l Logger, _ ...ControlEvent) {
+func CleanupOldAttestations(s *State, l types.Logger, _ ...ControlEvent) {
 	// Reverse index all gc attestations by their digests
 	gc := make(map[string]int)
 	for _, p := range s.Pending {
@@ -378,7 +380,7 @@ func CleanupOldAttestations(s *State, l Logger, _ ...ControlEvent) {
 	s.Pending = newPending
 }
 
-func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
+func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
@@ -428,9 +430,9 @@ func PrimaryRotateDueToComplaints(s *State, l Logger, _ ...ControlEvent) {
 	s.Complaints = newComplaints
 }
 
-func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
+func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) {
 	shardsAndSequences := make(map[batchAttestationVote]struct{}, len(s.Pending))
-	complaints := make(map[ShardTerm]map[PartyID]struct{})
+	complaints := make(map[ShardTerm]map[types.PartyID]struct{})
 
 	for _, baf := range s.Pending {
 		shardsAndSequences[batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary(), signer: baf.Signer()}] = struct{}{}
@@ -438,7 +440,7 @@ func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
 
 	for _, complaint := range s.Complaints {
 		if _, exists := complaints[complaint.ShardTerm]; !exists {
-			complaints[complaint.ShardTerm] = make(map[PartyID]struct{})
+			complaints[complaint.ShardTerm] = make(map[types.PartyID]struct{})
 		}
 		complaints[complaint.ShardTerm][complaint.Signer] = struct{}{}
 	}
@@ -482,7 +484,7 @@ func CollectAndDeduplicateEvents(s *State, l Logger, ces ...ControlEvent) {
 	}
 }
 
-func DetectEquivocation(s *State, l Logger, _ ...ControlEvent) {
+func DetectEquivocation(s *State, l types.Logger, _ ...ControlEvent) {
 	// We have a total of N parties per shard.
 	// We collect a quorum of signatures and then wait for f+1 identical ones.
 	// If we can't collect such, it means the primary equivocated.
@@ -513,7 +515,7 @@ func DetectEquivocation(s *State, l Logger, _ ...ControlEvent) {
 
 			for _, shard := range s.Shards {
 				term := shard.Term
-				currentPrimary := PartyID(term % uint64(s.N))
+				currentPrimary := types.PartyID(term % uint64(s.N))
 				if currentPrimary == batchAttestation.primary {
 					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation for sequence %d in shard %d",
 						batchAttestation.primary, shard.Term, shard.Term+1, shard.Shard, batchAttestation.seq, batchAttestation.shard)
@@ -524,15 +526,15 @@ func DetectEquivocation(s *State, l Logger, _ ...ControlEvent) {
 	} // for all <seq, shard, primary>
 }
 
-func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[string][]PartyID {
-	m := make(map[batchAttestationVote]map[string][]PartyID)
+func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[string][]types.PartyID {
+	m := make(map[batchAttestationVote]map[string][]types.PartyID)
 
 	for _, baf := range s.Pending {
 		currentVote := batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary()}
 
 		digests2signers, exists := m[currentVote]
 		if !exists {
-			digests2signers = make(map[string][]PartyID)
+			digests2signers = make(map[string][]types.PartyID)
 			m[currentVote] = digests2signers
 		}
 
@@ -541,7 +543,7 @@ func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[strin
 	return m
 }
 
-func ExtractBatchAttestationsFromPending(s *State, l Logger) []BatchAttestationFragment {
+func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []BatchAttestationFragment {
 	// <seq, shard, primary> --> { digest -->  signer }
 	m := batchAttestationVotesByDigests(s)
 

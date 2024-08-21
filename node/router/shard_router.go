@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"arma/core"
+	"arma/common/types"
 	"arma/node/comm"
 	protos "arma/node/protos/comm"
 
@@ -17,7 +17,7 @@ import (
 type ShardRouter struct {
 	router2batcherConnPoolSize   int
 	router2batcherStreamsPerConn int
-	logger                       core.Logger
+	logger                       types.Logger
 	batcherEndpoint              string
 	batcherRootCAs               [][]byte
 	once                         sync.Once
@@ -28,7 +28,7 @@ type ShardRouter struct {
 	tlsKey                       []byte
 }
 
-func NewShardRouter(l core.Logger,
+func NewShardRouter(l types.Logger,
 	batcherEndpoint string,
 	batcherRootCAs [][]byte,
 	tlsCert []byte,

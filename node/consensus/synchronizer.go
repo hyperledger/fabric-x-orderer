@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"arma/core"
+	arma_types "arma/common/types"
 	"arma/node/comm"
 	"arma/node/delivery"
 
@@ -21,7 +21,7 @@ type synchronizer struct {
 	getHeight                func() uint64
 	CurrentNodes             []uint64
 	CurrentConfig            types.Configuration
-	logger                   core.Logger
+	logger                   arma_types.Logger
 	endpoint                 func() string
 	cc                       comm.ClientConfig
 	nextSeq                  func() uint64
@@ -103,7 +103,12 @@ func (s *synchronizer) Sync() types.SyncResponse {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
 		}
 
-		for _, req := range core.BatchFromRaw(proposal.Payload) {
+		var batch arma_types.BatchedRequests
+		if err := batch.Deserialize(proposal.Payload); err != nil {
+			s.logger.Panicf("Failed deserializing proposal payload: %v", err)
+		}
+
+		for _, req := range batch {
 			s.pruneRequestsFromMemPool(req)
 		}
 

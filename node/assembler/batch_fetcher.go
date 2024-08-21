@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"time"
 
+	"arma/common/types"
 	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
@@ -16,14 +17,14 @@ import (
 )
 
 type AssemblerLedgerHeightReader interface {
-	Height(shardID core.ShardID, partyID core.PartyID) uint64
+	Height(shardID types.ShardID, partyID types.PartyID) uint64
 }
 
 type BatchFetcher struct {
 	ledgerHeightReader AssemblerLedgerHeightReader
 	tlsKey, tlsCert    []byte
 	config             config.AssemblerNodeConfig
-	logger             core.Logger
+	logger             types.Logger
 }
 
 func (br *BatchFetcher) clientConfig() comm.ClientConfig {
@@ -54,7 +55,7 @@ func (br *BatchFetcher) clientConfig() comm.ClientConfig {
 	return cc
 }
 
-func (br *BatchFetcher) Replicate(shardID core.ShardID) <-chan core.Batch {
+func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 	br.logger.Infof("Assembler %d Replicate from shard %d", br.config.PartyId, shardID)
 
 	// Find the batcher from my party in this shard.
@@ -72,7 +73,7 @@ func (br *BatchFetcher) Replicate(shardID core.ShardID) <-chan core.Batch {
 	return res
 }
 
-func (br *BatchFetcher) pullFromParty(shardID core.ShardID, batcherToPullFrom config.BatcherInfo, partyID core.PartyID, resultChan chan core.Batch) {
+func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, partyID types.PartyID, resultChan chan core.Batch) {
 	seq := br.ledgerHeightReader.Height(shardID, partyID)
 
 	endpoint := func() string {
@@ -110,7 +111,7 @@ func (br *BatchFetcher) pullFromParty(shardID core.ShardID, batcherToPullFrom co
 	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
 }
 
-func (br *BatchFetcher) findShardID(shardID core.ShardID) config.BatcherInfo {
+func (br *BatchFetcher) findShardID(shardID types.ShardID) config.BatcherInfo {
 	for _, shard := range br.config.Shards {
 		if shard.ShardId == shardID {
 			for _, b := range shard.Batchers {

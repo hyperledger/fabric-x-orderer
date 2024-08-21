@@ -1,14 +1,14 @@
 package assembler
 
 import (
-	"arma/core"
+	"arma/common/types"
 	"arma/node/config"
 )
 
-func partiesFromAssemblerConfig(config config.AssemblerNodeConfig) []core.PartyID {
-	var parties []core.PartyID
+func partiesFromAssemblerConfig(config config.AssemblerNodeConfig) []types.PartyID {
+	var parties []types.PartyID
 	for _, b := range config.Shards[0].Batchers {
-		parties = append(parties, core.PartyID(b.PartyID))
+		parties = append(parties, types.PartyID(b.PartyID))
 	}
 	return parties
 }

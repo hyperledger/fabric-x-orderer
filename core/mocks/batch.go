@@ -2,6 +2,7 @@
 package mocks
 
 import (
+	"arma/common/types"
 	"arma/core"
 	"sync"
 )
@@ -17,45 +18,45 @@ type FakeBatch struct {
 	digestReturnsOnCall map[int]struct {
 		result1 []byte
 	}
-	PartyStub        func() core.PartyID
+	PartyStub        func() types.PartyID
 	partyMutex       sync.RWMutex
 	partyArgsForCall []struct {
 	}
 	partyReturns struct {
-		result1 core.PartyID
+		result1 types.PartyID
 	}
 	partyReturnsOnCall map[int]struct {
-		result1 core.PartyID
+		result1 types.PartyID
 	}
-	RequestsStub        func() core.BatchedRequests
+	RequestsStub        func() types.BatchedRequests
 	requestsMutex       sync.RWMutex
 	requestsArgsForCall []struct {
 	}
 	requestsReturns struct {
-		result1 core.BatchedRequests
+		result1 types.BatchedRequests
 	}
 	requestsReturnsOnCall map[int]struct {
-		result1 core.BatchedRequests
+		result1 types.BatchedRequests
 	}
-	SeqStub        func() core.BatchSequence
+	SeqStub        func() types.BatchSequence
 	seqMutex       sync.RWMutex
 	seqArgsForCall []struct {
 	}
 	seqReturns struct {
-		result1 core.BatchSequence
+		result1 types.BatchSequence
 	}
 	seqReturnsOnCall map[int]struct {
-		result1 core.BatchSequence
+		result1 types.BatchSequence
 	}
-	ShardStub        func() core.ShardID
+	ShardStub        func() types.ShardID
 	shardMutex       sync.RWMutex
 	shardArgsForCall []struct {
 	}
 	shardReturns struct {
-		result1 core.ShardID
+		result1 types.ShardID
 	}
 	shardReturnsOnCall map[int]struct {
-		result1 core.ShardID
+		result1 types.ShardID
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -114,7 +115,7 @@ func (fake *FakeBatch) DigestReturnsOnCall(i int, result1 []byte) {
 	}{result1}
 }
 
-func (fake *FakeBatch) Party() core.PartyID {
+func (fake *FakeBatch) Party() types.PartyID {
 	fake.partyMutex.Lock()
 	ret, specificReturn := fake.partyReturnsOnCall[len(fake.partyArgsForCall)]
 	fake.partyArgsForCall = append(fake.partyArgsForCall, struct {
@@ -138,36 +139,36 @@ func (fake *FakeBatch) PartyCallCount() int {
 	return len(fake.partyArgsForCall)
 }
 
-func (fake *FakeBatch) PartyCalls(stub func() core.PartyID) {
+func (fake *FakeBatch) PartyCalls(stub func() types.PartyID) {
 	fake.partyMutex.Lock()
 	defer fake.partyMutex.Unlock()
 	fake.PartyStub = stub
 }
 
-func (fake *FakeBatch) PartyReturns(result1 core.PartyID) {
+func (fake *FakeBatch) PartyReturns(result1 types.PartyID) {
 	fake.partyMutex.Lock()
 	defer fake.partyMutex.Unlock()
 	fake.PartyStub = nil
 	fake.partyReturns = struct {
-		result1 core.PartyID
+		result1 types.PartyID
 	}{result1}
 }
 
-func (fake *FakeBatch) PartyReturnsOnCall(i int, result1 core.PartyID) {
+func (fake *FakeBatch) PartyReturnsOnCall(i int, result1 types.PartyID) {
 	fake.partyMutex.Lock()
 	defer fake.partyMutex.Unlock()
 	fake.PartyStub = nil
 	if fake.partyReturnsOnCall == nil {
 		fake.partyReturnsOnCall = make(map[int]struct {
-			result1 core.PartyID
+			result1 types.PartyID
 		})
 	}
 	fake.partyReturnsOnCall[i] = struct {
-		result1 core.PartyID
+		result1 types.PartyID
 	}{result1}
 }
 
-func (fake *FakeBatch) Requests() core.BatchedRequests {
+func (fake *FakeBatch) Requests() types.BatchedRequests {
 	fake.requestsMutex.Lock()
 	ret, specificReturn := fake.requestsReturnsOnCall[len(fake.requestsArgsForCall)]
 	fake.requestsArgsForCall = append(fake.requestsArgsForCall, struct {
@@ -191,36 +192,36 @@ func (fake *FakeBatch) RequestsCallCount() int {
 	return len(fake.requestsArgsForCall)
 }
 
-func (fake *FakeBatch) RequestsCalls(stub func() core.BatchedRequests) {
+func (fake *FakeBatch) RequestsCalls(stub func() types.BatchedRequests) {
 	fake.requestsMutex.Lock()
 	defer fake.requestsMutex.Unlock()
 	fake.RequestsStub = stub
 }
 
-func (fake *FakeBatch) RequestsReturns(result1 core.BatchedRequests) {
+func (fake *FakeBatch) RequestsReturns(result1 types.BatchedRequests) {
 	fake.requestsMutex.Lock()
 	defer fake.requestsMutex.Unlock()
 	fake.RequestsStub = nil
 	fake.requestsReturns = struct {
-		result1 core.BatchedRequests
+		result1 types.BatchedRequests
 	}{result1}
 }
 
-func (fake *FakeBatch) RequestsReturnsOnCall(i int, result1 core.BatchedRequests) {
+func (fake *FakeBatch) RequestsReturnsOnCall(i int, result1 types.BatchedRequests) {
 	fake.requestsMutex.Lock()
 	defer fake.requestsMutex.Unlock()
 	fake.RequestsStub = nil
 	if fake.requestsReturnsOnCall == nil {
 		fake.requestsReturnsOnCall = make(map[int]struct {
-			result1 core.BatchedRequests
+			result1 types.BatchedRequests
 		})
 	}
 	fake.requestsReturnsOnCall[i] = struct {
-		result1 core.BatchedRequests
+		result1 types.BatchedRequests
 	}{result1}
 }
 
-func (fake *FakeBatch) Seq() core.BatchSequence {
+func (fake *FakeBatch) Seq() types.BatchSequence {
 	fake.seqMutex.Lock()
 	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
 	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
@@ -244,36 +245,36 @@ func (fake *FakeBatch) SeqCallCount() int {
 	return len(fake.seqArgsForCall)
 }
 
-func (fake *FakeBatch) SeqCalls(stub func() core.BatchSequence) {
+func (fake *FakeBatch) SeqCalls(stub func() types.BatchSequence) {
 	fake.seqMutex.Lock()
 	defer fake.seqMutex.Unlock()
 	fake.SeqStub = stub
 }
 
-func (fake *FakeBatch) SeqReturns(result1 core.BatchSequence) {
+func (fake *FakeBatch) SeqReturns(result1 types.BatchSequence) {
 	fake.seqMutex.Lock()
 	defer fake.seqMutex.Unlock()
 	fake.SeqStub = nil
 	fake.seqReturns = struct {
-		result1 core.BatchSequence
+		result1 types.BatchSequence
 	}{result1}
 }
 
-func (fake *FakeBatch) SeqReturnsOnCall(i int, result1 core.BatchSequence) {
+func (fake *FakeBatch) SeqReturnsOnCall(i int, result1 types.BatchSequence) {
 	fake.seqMutex.Lock()
 	defer fake.seqMutex.Unlock()
 	fake.SeqStub = nil
 	if fake.seqReturnsOnCall == nil {
 		fake.seqReturnsOnCall = make(map[int]struct {
-			result1 core.BatchSequence
+			result1 types.BatchSequence
 		})
 	}
 	fake.seqReturnsOnCall[i] = struct {
-		result1 core.BatchSequence
+		result1 types.BatchSequence
 	}{result1}
 }
 
-func (fake *FakeBatch) Shard() core.ShardID {
+func (fake *FakeBatch) Shard() types.ShardID {
 	fake.shardMutex.Lock()
 	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
 	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
@@ -297,32 +298,32 @@ func (fake *FakeBatch) ShardCallCount() int {
 	return len(fake.shardArgsForCall)
 }
 
-func (fake *FakeBatch) ShardCalls(stub func() core.ShardID) {
+func (fake *FakeBatch) ShardCalls(stub func() types.ShardID) {
 	fake.shardMutex.Lock()
 	defer fake.shardMutex.Unlock()
 	fake.ShardStub = stub
 }
 
-func (fake *FakeBatch) ShardReturns(result1 core.ShardID) {
+func (fake *FakeBatch) ShardReturns(result1 types.ShardID) {
 	fake.shardMutex.Lock()
 	defer fake.shardMutex.Unlock()
 	fake.ShardStub = nil
 	fake.shardReturns = struct {
-		result1 core.ShardID
+		result1 types.ShardID
 	}{result1}
 }
 
-func (fake *FakeBatch) ShardReturnsOnCall(i int, result1 core.ShardID) {
+func (fake *FakeBatch) ShardReturnsOnCall(i int, result1 types.ShardID) {
 	fake.shardMutex.Lock()
 	defer fake.shardMutex.Unlock()
 	fake.ShardStub = nil
 	if fake.shardReturnsOnCall == nil {
 		fake.shardReturnsOnCall = make(map[int]struct {
-			result1 core.ShardID
+			result1 types.ShardID
 		})
 	}
 	fake.shardReturnsOnCall[i] = struct {
-		result1 core.ShardID
+		result1 types.ShardID
 	}{result1}
 }
 

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"arma/core"
+	"arma/common/types"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/pkg/errors"
@@ -23,12 +23,12 @@ func (b *FabricBatch) Digest() []byte {
 	return (*common.Block)(b).GetHeader().GetDataHash()
 }
 
-func (b *FabricBatch) Requests() core.BatchedRequests {
+func (b *FabricBatch) Requests() types.BatchedRequests {
 	return (*common.Block)(b).GetData().GetData()
 }
 
 // Party returns the PartyID if encoded correctly, or 0.
-func (b *FabricBatch) Party() core.PartyID {
+func (b *FabricBatch) Party() types.PartyID {
 	m := (*common.Block)(b).GetMetadata().GetMetadata()
 	if len(m) <= BlockMetadataIndex_Party {
 		return 0
@@ -39,11 +39,11 @@ func (b *FabricBatch) Party() core.PartyID {
 		return 0
 	}
 
-	return core.PartyID(binary.BigEndian.Uint16(buff[:2]))
+	return types.PartyID(binary.BigEndian.Uint16(buff[:2]))
 }
 
 // Shard returns the ShardID if encoded correctly, or 0.
-func (b *FabricBatch) Shard() core.ShardID {
+func (b *FabricBatch) Shard() types.ShardID {
 	m := (*common.Block)(b).GetMetadata().GetMetadata()
 	if len(m) <= BlockMetadataIndex_Party {
 		return 0
@@ -54,15 +54,18 @@ func (b *FabricBatch) Shard() core.ShardID {
 		return 0
 	}
 
-	return core.ShardID(binary.BigEndian.Uint16(buff[2:]))
+	return types.ShardID(binary.BigEndian.Uint16(buff[2:]))
 }
 
-func (b *FabricBatch) Seq() core.BatchSequence {
-	return core.BatchSequence((*common.Block)(b).GetHeader().GetNumber())
+func (b *FabricBatch) Seq() types.BatchSequence {
+	return types.BatchSequence((*common.Block)(b).GetHeader().GetNumber())
 }
 
-func NewFabricBatchFromRaw(partyID core.PartyID, shardID core.ShardID, seq uint64, batchBytes []byte, prevHash []byte) (*FabricBatch, error) {
-	batchedRequests := core.BatchFromRaw(batchBytes) // TODO return an error, don't panic. See: https://github.ibm.com/decentralized-trust-research/ARMA/issues/132
+func NewFabricBatchFromRaw(partyID types.PartyID, shardID types.ShardID, seq uint64, batchBytes []byte, prevHash []byte) (*FabricBatch, error) {
+	var batchedRequests types.BatchedRequests
+	if err := batchedRequests.Deserialize(batchBytes); err != nil {
+		return nil, err
+	}
 
 	buff := make([]byte, 4)
 	binary.BigEndian.PutUint16(buff[:2], uint16(partyID))
@@ -87,11 +90,11 @@ func NewFabricBatchFromRaw(partyID core.PartyID, shardID core.ShardID, seq uint6
 	return (*FabricBatch)(block), nil
 }
 
-func ShardPartyToChannelName(shardID core.ShardID, partyID core.PartyID) string {
+func ShardPartyToChannelName(shardID types.ShardID, partyID types.PartyID) string {
 	return fmt.Sprintf("shard%dparty%d", shardID, partyID)
 }
 
-func ChannelNameToShardParty(channelName string) (core.ShardID, core.PartyID, error) {
+func ChannelNameToShardParty(channelName string) (types.ShardID, types.PartyID, error) {
 	s, ok := strings.CutPrefix(channelName, "shard")
 	if !ok {
 		return 0, 0, errors.Errorf("channel name does not start with 'shard': %s", channelName)
@@ -112,5 +115,5 @@ func ChannelNameToShardParty(channelName string) (core.ShardID, core.PartyID, er
 		return 0, 0, errors.Errorf("cannot extract 'partyID' from channel name: %s, err: %s", channelName, err)
 	}
 
-	return core.ShardID(shardID), core.PartyID(partyID), nil
+	return types.ShardID(shardID), types.PartyID(partyID), nil
 }

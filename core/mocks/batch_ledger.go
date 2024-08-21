@@ -2,22 +2,23 @@
 package mocks
 
 import (
+	"arma/common/types"
 	"arma/core"
 	"sync"
 )
 
 type FakeBatchLedger struct {
-	AppendStub        func(core.PartyID, uint64, []byte)
+	AppendStub        func(types.PartyID, uint64, []byte)
 	appendMutex       sync.RWMutex
 	appendArgsForCall []struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 		arg2 uint64
 		arg3 []byte
 	}
-	HeightStub        func(core.PartyID) uint64
+	HeightStub        func(types.PartyID) uint64
 	heightMutex       sync.RWMutex
 	heightArgsForCall []struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 	}
 	heightReturns struct {
 		result1 uint64
@@ -25,10 +26,10 @@ type FakeBatchLedger struct {
 	heightReturnsOnCall map[int]struct {
 		result1 uint64
 	}
-	RetrieveBatchByNumberStub        func(core.PartyID, uint64) core.Batch
+	RetrieveBatchByNumberStub        func(types.PartyID, uint64) core.Batch
 	retrieveBatchByNumberMutex       sync.RWMutex
 	retrieveBatchByNumberArgsForCall []struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 		arg2 uint64
 	}
 	retrieveBatchByNumberReturns struct {
@@ -41,7 +42,7 @@ type FakeBatchLedger struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchLedger) Append(arg1 core.PartyID, arg2 uint64, arg3 []byte) {
+func (fake *FakeBatchLedger) Append(arg1 types.PartyID, arg2 uint64, arg3 []byte) {
 	var arg3Copy []byte
 	if arg3 != nil {
 		arg3Copy = make([]byte, len(arg3))
@@ -49,7 +50,7 @@ func (fake *FakeBatchLedger) Append(arg1 core.PartyID, arg2 uint64, arg3 []byte)
 	}
 	fake.appendMutex.Lock()
 	fake.appendArgsForCall = append(fake.appendArgsForCall, struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 		arg2 uint64
 		arg3 []byte
 	}{arg1, arg2, arg3Copy})
@@ -67,24 +68,24 @@ func (fake *FakeBatchLedger) AppendCallCount() int {
 	return len(fake.appendArgsForCall)
 }
 
-func (fake *FakeBatchLedger) AppendCalls(stub func(core.PartyID, uint64, []byte)) {
+func (fake *FakeBatchLedger) AppendCalls(stub func(types.PartyID, uint64, []byte)) {
 	fake.appendMutex.Lock()
 	defer fake.appendMutex.Unlock()
 	fake.AppendStub = stub
 }
 
-func (fake *FakeBatchLedger) AppendArgsForCall(i int) (core.PartyID, uint64, []byte) {
+func (fake *FakeBatchLedger) AppendArgsForCall(i int) (types.PartyID, uint64, []byte) {
 	fake.appendMutex.RLock()
 	defer fake.appendMutex.RUnlock()
 	argsForCall := fake.appendArgsForCall[i]
 	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
 }
 
-func (fake *FakeBatchLedger) Height(arg1 core.PartyID) uint64 {
+func (fake *FakeBatchLedger) Height(arg1 types.PartyID) uint64 {
 	fake.heightMutex.Lock()
 	ret, specificReturn := fake.heightReturnsOnCall[len(fake.heightArgsForCall)]
 	fake.heightArgsForCall = append(fake.heightArgsForCall, struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 	}{arg1})
 	stub := fake.HeightStub
 	fakeReturns := fake.heightReturns
@@ -105,13 +106,13 @@ func (fake *FakeBatchLedger) HeightCallCount() int {
 	return len(fake.heightArgsForCall)
 }
 
-func (fake *FakeBatchLedger) HeightCalls(stub func(core.PartyID) uint64) {
+func (fake *FakeBatchLedger) HeightCalls(stub func(types.PartyID) uint64) {
 	fake.heightMutex.Lock()
 	defer fake.heightMutex.Unlock()
 	fake.HeightStub = stub
 }
 
-func (fake *FakeBatchLedger) HeightArgsForCall(i int) core.PartyID {
+func (fake *FakeBatchLedger) HeightArgsForCall(i int) types.PartyID {
 	fake.heightMutex.RLock()
 	defer fake.heightMutex.RUnlock()
 	argsForCall := fake.heightArgsForCall[i]
@@ -141,11 +142,11 @@ func (fake *FakeBatchLedger) HeightReturnsOnCall(i int, result1 uint64) {
 	}{result1}
 }
 
-func (fake *FakeBatchLedger) RetrieveBatchByNumber(arg1 core.PartyID, arg2 uint64) core.Batch {
+func (fake *FakeBatchLedger) RetrieveBatchByNumber(arg1 types.PartyID, arg2 uint64) core.Batch {
 	fake.retrieveBatchByNumberMutex.Lock()
 	ret, specificReturn := fake.retrieveBatchByNumberReturnsOnCall[len(fake.retrieveBatchByNumberArgsForCall)]
 	fake.retrieveBatchByNumberArgsForCall = append(fake.retrieveBatchByNumberArgsForCall, struct {
-		arg1 core.PartyID
+		arg1 types.PartyID
 		arg2 uint64
 	}{arg1, arg2})
 	stub := fake.RetrieveBatchByNumberStub
@@ -167,13 +168,13 @@ func (fake *FakeBatchLedger) RetrieveBatchByNumberCallCount() int {
 	return len(fake.retrieveBatchByNumberArgsForCall)
 }
 
-func (fake *FakeBatchLedger) RetrieveBatchByNumberCalls(stub func(core.PartyID, uint64) core.Batch) {
+func (fake *FakeBatchLedger) RetrieveBatchByNumberCalls(stub func(types.PartyID, uint64) core.Batch) {
 	fake.retrieveBatchByNumberMutex.Lock()
 	defer fake.retrieveBatchByNumberMutex.Unlock()
 	fake.RetrieveBatchByNumberStub = stub
 }
 
-func (fake *FakeBatchLedger) RetrieveBatchByNumberArgsForCall(i int) (core.PartyID, uint64) {
+func (fake *FakeBatchLedger) RetrieveBatchByNumberArgsForCall(i int) (types.PartyID, uint64) {
 	fake.retrieveBatchByNumberMutex.RLock()
 	defer fake.retrieveBatchByNumberMutex.RUnlock()
 	argsForCall := fake.retrieveBatchByNumberArgsForCall[i]

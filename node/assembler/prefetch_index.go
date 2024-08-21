@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"arma/common/types"
 	"arma/core"
 	"arma/node/config"
 	node_ledger "arma/node/ledger"
@@ -14,19 +15,19 @@ import (
 )
 
 type Index struct {
-	indexes  map[core.ShardID]map[core.PartyID]*blkstorage.BlockStore
-	logger   core.Logger
+	indexes  map[types.ShardID]map[types.PartyID]*blkstorage.BlockStore
+	logger   types.Logger
 	lock     sync.RWMutex
-	cacheMap map[core.ShardID]map[core.PartyID]*cache
+	cacheMap map[types.ShardID]map[types.PartyID]*cache
 }
 
-func NewIndex(config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore, logger core.Logger) *Index {
+func NewIndex(config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore, logger types.Logger) *Index {
 	parties := partiesFromAssemblerConfig(config)
-	indexes := make(map[core.ShardID]map[core.PartyID]*blkstorage.BlockStore)
+	indexes := make(map[types.ShardID]map[types.PartyID]*blkstorage.BlockStore)
 
 	for _, s := range config.Shards {
-		shardID := core.ShardID(s.ShardId)
-		indexes[shardID] = make(map[core.PartyID]*blkstorage.BlockStore)
+		shardID := types.ShardID(s.ShardId)
+		indexes[shardID] = make(map[types.PartyID]*blkstorage.BlockStore)
 		for _, partyID := range parties {
 			name := node_ledger.ShardPartyToChannelName(shardID, partyID)
 			batcherLedger, exists := blockStores[name]
@@ -38,10 +39,10 @@ func NewIndex(config config.AssemblerNodeConfig, blockStores map[string]*blkstor
 		}
 	}
 
-	cacheMap := make(map[core.ShardID]map[core.PartyID]*cache)
+	cacheMap := make(map[types.ShardID]map[types.PartyID]*cache)
 	for _, s := range config.Shards {
-		shardID := core.ShardID(s.ShardId)
-		cacheMap[shardID] = make(map[core.PartyID]*cache)
+		shardID := types.ShardID(s.ShardId)
+		cacheMap[shardID] = make(map[types.PartyID]*cache)
 		for _, partyID := range parties {
 			cacheMap[shardID][partyID] = newCache(defaultMaxCacheSizeBytes) // TODO expose in config
 		}
@@ -51,7 +52,7 @@ func NewIndex(config config.AssemblerNodeConfig, blockStores map[string]*blkstor
 	return &Index{logger: logger, indexes: indexes, cacheMap: cacheMap}
 }
 
-func (i *Index) Index(party core.PartyID, shard core.ShardID, sequence core.BatchSequence, batch core.Batch) {
+func (i *Index) Index(party types.PartyID, shard types.ShardID, sequence types.BatchSequence, batch core.Batch) {
 	t1 := time.Now()
 	defer func() {
 		i.logger.Infof("Indexed batch %d for shard %d in %v", sequence, shard, time.Since(t1))
@@ -82,7 +83,7 @@ func (i *Index) Index(party core.PartyID, shard core.ShardID, sequence core.Batc
 	i.indexes[shard][party].AddBlock(block)
 }
 
-func (i *Index) Retrieve(party core.PartyID, shard core.ShardID, sequence core.BatchSequence, digest []byte) (core.Batch, bool) {
+func (i *Index) Retrieve(party types.PartyID, shard types.ShardID, sequence types.BatchSequence, digest []byte) (core.Batch, bool) {
 	t1 := time.Now()
 
 	defer func() {
@@ -118,7 +119,7 @@ func (i *Index) Retrieve(party core.PartyID, shard core.ShardID, sequence core.B
 	return &fb, true
 }
 
-func (i *Index) Height(shard core.ShardID, party core.PartyID) uint64 {
+func (i *Index) Height(shard types.ShardID, party types.PartyID) uint64 {
 	shardIndex, ok := i.indexes[shard]
 	if !ok {
 		i.logger.Panicf("Failed retrieving shardIndex for shard: %d", shard)

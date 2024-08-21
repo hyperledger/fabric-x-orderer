@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"arma/common/types"
 	"arma/node/batcher"
 	"arma/node/config"
 
@@ -29,11 +30,11 @@ const (
 
 type Router struct {
 	router       core.Router
-	shardRouters map[core.ShardID]*ShardRouter
+	shardRouters map[types.ShardID]*ShardRouter
 	TLSCert      []byte
 	TLSKey       []byte
-	logger       core.Logger
-	shardIDs     []core.ShardID
+	logger       types.Logger
+	shardIDs     []types.ShardID
 	incoming     uint64
 }
 
@@ -92,12 +93,12 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []core.ShardID,
+func createRouter(shardIDs []types.ShardID,
 	batcherEndpoints []string,
-	batcherRootCAs map[core.ShardID][][]byte,
+	batcherRootCAs map[types.ShardID][][]byte,
 	tlsCert []byte,
 	tlsKey []byte,
-	logger core.Logger,
+	logger types.Logger,
 	numOfConnectionsForBatcher int,
 	numOfgRPCStreamsPerConnection int,
 ) *Router {
@@ -114,7 +115,7 @@ func createRouter(shardIDs []core.ShardID,
 			Logger:     logger,
 			ShardCount: uint16(len(shardIDs)),
 		},
-		shardRouters: make(map[core.ShardID]*ShardRouter),
+		shardRouters: make(map[types.ShardID]*ShardRouter),
 		logger:       logger,
 		shardIDs:     shardIDs,
 	}
@@ -272,10 +273,10 @@ func createTraceID(rand *rand2.Rand) []byte {
 	return trace
 }
 
-func NewRouter(config config.RouterNodeConfig, logger core.Logger) *Router {
-	var shardIDs []core.ShardID
+func NewRouter(config config.RouterNodeConfig, logger types.Logger) *Router {
+	var shardIDs []types.ShardID
 	var batcherEndpoints []string
-	tlsCAsOfBatchers := make(map[core.ShardID][][]byte)
+	tlsCAsOfBatchers := make(map[types.ShardID][][]byte)
 	for _, shard := range config.Shards {
 		shardIDs = append(shardIDs, shard.ShardId)
 		for _, batcher := range shard.Batchers {

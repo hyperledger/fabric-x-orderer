@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"arma/common/types"
 	"arma/core"
 	"arma/testutil"
 
@@ -26,11 +27,11 @@ type naiveIndex struct {
 	sync.Map
 }
 
-func (n *naiveIndex) Index(_ core.PartyID, _ core.ShardID, _ core.BatchSequence, batch core.Batch) {
+func (n *naiveIndex) Index(_ types.PartyID, _ types.ShardID, _ types.BatchSequence, batch core.Batch) {
 	n.Store(string(batch.Digest()), batch)
 }
 
-func (n *naiveIndex) Retrieve(_ core.PartyID, _ core.ShardID, _ core.BatchSequence, digest []byte) (core.Batch, bool) {
+func (n *naiveIndex) Retrieve(_ types.PartyID, _ types.ShardID, _ types.BatchSequence, digest []byte) (core.Batch, bool) {
 	val, exists := n.Load(string(digest))
 
 	if !exists {
@@ -44,10 +45,10 @@ func (n *naiveIndex) Retrieve(_ core.PartyID, _ core.ShardID, _ core.BatchSequen
 }
 
 type naiveBatchAttestation struct {
-	primary core.PartyID
-	seq     core.BatchSequence
-	node    core.PartyID
-	shard   core.ShardID
+	primary types.PartyID
+	seq     types.BatchSequence
+	node    types.PartyID
+	shard   types.ShardID
 	digest  []byte
 }
 
@@ -59,19 +60,19 @@ func (nba *naiveBatchAttestation) GarbageCollect() [][]byte {
 	return nil
 }
 
-func (nba *naiveBatchAttestation) Signer() core.PartyID {
+func (nba *naiveBatchAttestation) Signer() types.PartyID {
 	return nba.node
 }
 
-func (nba *naiveBatchAttestation) Primary() core.PartyID {
+func (nba *naiveBatchAttestation) Primary() types.PartyID {
 	return nba.primary
 }
 
-func (nba *naiveBatchAttestation) Seq() core.BatchSequence {
+func (nba *naiveBatchAttestation) Seq() types.BatchSequence {
 	return nba.seq
 }
 
-func (nba *naiveBatchAttestation) Shard() core.ShardID {
+func (nba *naiveBatchAttestation) Shard() types.ShardID {
 	return nba.shard
 }
 
@@ -107,7 +108,7 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 	seq := m["seq"]
 	dig := m["digest"]
 
-	nba.seq = core.BatchSequence(seq.(float64))
+	nba.seq = types.BatchSequence(seq.(float64))
 	nba.digest, _ = hex.DecodeString(dig.(string))
 	return nil
 }
@@ -177,7 +178,7 @@ func TestAssembler(t *testing.T) {
 		var seq uint64
 
 		for nba := range totalOrder {
-			nba.seq = core.BatchSequence(seq)
+			nba.seq = types.BatchSequence(seq)
 			seq++
 			nbar <- nba
 		}
@@ -185,7 +186,7 @@ func TestAssembler(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		block := <-ledger
-		assert.Equal(t, core.BatchSequence(i), block.Seq())
+		assert.Equal(t, types.BatchSequence(i), block.Seq())
 		delete(digests, string(block.Digest()))
 	}
 
@@ -197,10 +198,10 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 
 	r := &naiveReplication{}
 
-	var shards []core.ShardID
+	var shards []types.ShardID
 	for i := 0; i < shardCount; i++ {
 		r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
-		shards = append(shards, core.ShardID(i))
+		shards = append(shards, types.ShardID(i))
 	}
 
 	ledger := make(naiveAssemblerLedger, 10)

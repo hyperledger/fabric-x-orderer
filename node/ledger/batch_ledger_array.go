@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"slices"
 
+	"arma/common/types"
 	"arma/core"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
@@ -17,21 +18,21 @@ import (
 
 // BatchLedgerArray holds a BatchLedgerPart for each party, for a given shard.
 type BatchLedgerArray struct {
-	shardID     core.ShardID                      // The shard this array belongs to.
-	partyID     core.PartyID                      // The party that operates this object.
-	ledgerParts map[core.PartyID]*BatchLedgerPart // A BatchLedgerPart for each party in the system.
+	shardID     types.ShardID                      // The shard this array belongs to.
+	partyID     types.PartyID                      // The party that operates this object.
+	ledgerParts map[types.PartyID]*BatchLedgerPart // A BatchLedgerPart for each party in the system.
 	provider    *blkstorage.BlockStoreProvider
-	logger      core.Logger
+	logger      types.Logger
 }
 
-func NewBatchLedgerArray(shardID core.ShardID, partyID core.PartyID, parties []core.PartyID, batchLedgerDir string, logger core.Logger) (*BatchLedgerArray, error) {
+func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, batchLedgerDir string, logger types.Logger) (*BatchLedgerArray, error) {
 	if !slices.Contains(parties, partyID) {
 		return nil, errors.Errorf("partyID %d not in parties %v", partyID, parties)
 	}
 
 	logger.Infof("Creating batch ledger array for shard=%d, party=%d, parties=%v, dir=%s", shardID, partyID, parties, batchLedgerDir)
 
-	ledgerPartsMap := make(map[core.PartyID]*BatchLedgerPart)
+	ledgerPartsMap := make(map[types.PartyID]*BatchLedgerPart)
 
 	// TODO We are using the Fabric block storage for now even though it is not ideal.
 	// (1) We don't need the hash chain, and
@@ -65,11 +66,11 @@ func NewBatchLedgerArray(shardID core.ShardID, partyID core.PartyID, parties []c
 	}, nil
 }
 
-func (bla *BatchLedgerArray) ShardID() core.ShardID {
+func (bla *BatchLedgerArray) ShardID() types.ShardID {
 	return bla.shardID
 }
 
-func (bla *BatchLedgerArray) Height(partyID core.PartyID) uint64 {
+func (bla *BatchLedgerArray) Height(partyID types.PartyID) uint64 {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
@@ -77,7 +78,7 @@ func (bla *BatchLedgerArray) Height(partyID core.PartyID) uint64 {
 	return part.Height()
 }
 
-func (bla *BatchLedgerArray) Append(partyID core.PartyID, seq uint64, batchBytes []byte) {
+func (bla *BatchLedgerArray) Append(partyID types.PartyID, seq uint64, batchBytes []byte) {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
@@ -85,7 +86,7 @@ func (bla *BatchLedgerArray) Append(partyID core.PartyID, seq uint64, batchBytes
 	part.Append(seq, batchBytes)
 }
 
-func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.Batch {
+func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) core.Batch {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
@@ -93,7 +94,7 @@ func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID core.PartyID, seq uin
 	return part.RetrieveBatchByNumber(seq)
 }
 
-func (bla *BatchLedgerArray) Part(partyID core.PartyID) *BatchLedgerPart {
+func (bla *BatchLedgerArray) Part(partyID types.PartyID) *BatchLedgerPart {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
@@ -116,16 +117,21 @@ func (bla *BatchLedgerArray) Close() {
 
 type BatcherLedger struct {
 	Ledger   blockledger.ReadWriter
-	Logger   core.Logger
+	Logger   types.Logger
 	PrevHash []byte
 }
 
-func (b *BatcherLedger) Append(partyID core.PartyID, seq uint64, batchBytes []byte) {
+func (b *BatcherLedger) Append(partyID types.PartyID, seq uint64, batchBytes []byte) {
 	b.Logger.Infof("Appended block with sequence %d of size %d bytes", seq, len(batchBytes))
 	buff := make([]byte, 2)
 	binary.BigEndian.PutUint16(buff[:2], uint16(partyID))
 
 	digest := sha256.Sum256(batchBytes)
+
+	var data types.BatchedRequests
+	if err := data.Deserialize(batchBytes); err != nil {
+		panic(err)
+	}
 
 	block := &common.Block{
 		Header: &common.BlockHeader{
@@ -133,7 +139,7 @@ func (b *BatcherLedger) Append(partyID core.PartyID, seq uint64, batchBytes []by
 			DataHash: digest[:],
 		},
 		Data: &common.BlockData{
-			Data: core.BatchFromRaw(batchBytes),
+			Data: data,
 		},
 		Metadata: &common.BlockMetadata{
 			Metadata: [][]byte{{}, {}, {}, {}, {}, buff},
@@ -150,12 +156,12 @@ func (b *BatcherLedger) Append(partyID core.PartyID, seq uint64, batchBytes []by
 	}
 }
 
-func (b *BatcherLedger) Height(partyID core.PartyID) uint64 {
+func (b *BatcherLedger) Height(partyID types.PartyID) uint64 {
 	// TODO get the correct ledger part using partyID
 	return b.Ledger.Height()
 }
 
-func (b *BatcherLedger) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.Batch {
+func (b *BatcherLedger) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) core.Batch {
 	// TODO get the correct ledger part using partyID, then retrieve the batch
 	return nil
 }

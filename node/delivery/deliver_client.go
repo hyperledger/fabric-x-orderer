@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"arma/common/types"
 	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
@@ -50,7 +51,7 @@ func ClientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.Cli
 	return cc
 }
 
-func Pull(context context.Context, channel string, logger core.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
+func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
 	logger.Infof("Assembler pulling from: %s", channel)
 	for {
 		time.Sleep(time.Second)
@@ -89,7 +90,7 @@ func Pull(context context.Context, channel string, logger core.Logger, endpoint 
 	}
 }
 
-func pullBlocks(channel string, logger core.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
+func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
 	logger.Infof("Assembler pulling blocks from: %s", channel)
 	for {
 		resp, err := stream.Recv()
@@ -123,10 +124,10 @@ type BAReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
-	logger          core.Logger
+	logger          types.Logger
 }
 
-func NewBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger core.Logger) *BAReplicator {
+func NewBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger) *BAReplicator {
 	baReplicator := &BAReplicator{
 		cc:       ClientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint: endpoint,
@@ -198,7 +199,7 @@ func (bar *BAReplicator) ReplicateState(seq uint64) <-chan *core.State {
 	return res
 }
 
-func extractHeaderFromBlock(block *common.Block, logger core.Logger) *cstate.Header {
+func extractHeaderFromBlock(block *common.Block, logger types.Logger) *cstate.Header {
 	decisionAsBytes := block.Data.Data[0]
 
 	headerSize := decisionAsBytes[:4]

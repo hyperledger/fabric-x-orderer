@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"math"
 
-	"arma/core"
+	"arma/common/types"
 )
 
 // CONSENSUS_CLUSTER_SHARD is a shard ID that identifies the consensus cluster, not a batcher shard.
-const CONSENSUS_CLUSTER_SHARD = core.ShardID(math.MaxUint16)
+const CONSENSUS_CLUSTER_SHARD = types.ShardID(math.MaxUint16)
 
 type ShardPartyKey struct {
-	Shard core.ShardID
-	Party core.PartyID
+	Shard types.ShardID
+	Party types.PartyID
 }
 
 func (k *ShardPartyKey) ToString() string {
@@ -24,7 +24,7 @@ func (k *ShardPartyKey) ToString() string {
 
 type ECDSAVerifier map[ShardPartyKey]ecdsa.PublicKey
 
-func (v ECDSAVerifier) VerifySignature(partyID core.PartyID, shardID core.ShardID, msg, sig []byte) error {
+func (v ECDSAVerifier) VerifySignature(partyID types.PartyID, shardID types.ShardID, msg, sig []byte) error {
 	key := ShardPartyKey{Shard: shardID, Party: partyID}
 	pk, exists := v[key]
 	if !exists {

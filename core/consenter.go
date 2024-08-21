@@ -2,6 +2,8 @@ package core
 
 import (
 	"slices"
+
+	"arma/common/types"
 )
 
 type TotalOrder interface {
@@ -15,7 +17,7 @@ type BatchAttestationDB interface {
 }
 
 type Consenter struct {
-	Logger          Logger
+	Logger          types.Logger
 	TotalOrder      TotalOrder
 	DB              BatchAttestationDB
 	BAFDeserializer BAFDeserializer
@@ -83,14 +85,14 @@ func aggregateFragments(batchAttestationFragments []BatchAttestationFragment) []
 	var attestations [][]BatchAttestationFragment
 
 	added := make(map[struct {
-		seq   BatchSequence
-		shard ShardID
+		seq   types.BatchSequence
+		shard types.ShardID
 	}]struct{})
 
 	for _, baf := range batchAttestationFragments {
 		key := struct {
-			seq   BatchSequence
-			shard ShardID
+			seq   types.BatchSequence
+			shard types.ShardID
 		}{seq: baf.Seq(), shard: baf.Shard()}
 
 		if _, added := added[key]; added {
@@ -107,18 +109,18 @@ func aggregateFragments(batchAttestationFragments []BatchAttestationFragment) []
 }
 
 func indexBAFs(batchAttestationFragments []BatchAttestationFragment) map[struct {
-	seq   BatchSequence
-	shard ShardID
+	seq   types.BatchSequence
+	shard types.ShardID
 }][]BatchAttestationFragment {
 	index := make(map[struct {
-		seq   BatchSequence
-		shard ShardID
+		seq   types.BatchSequence
+		shard types.ShardID
 	}][]BatchAttestationFragment)
 
 	for _, baf := range batchAttestationFragments {
 		key := struct {
-			seq   BatchSequence
-			shard ShardID
+			seq   types.BatchSequence
+			shard types.ShardID
 		}{seq: baf.Seq(), shard: baf.Shard()}
 		fragments := index[key]
 		fragments = append(fragments, baf)

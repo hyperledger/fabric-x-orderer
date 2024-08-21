@@ -14,14 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arma/node/crypto"
-
-	"arma/node/delivery"
-
-	arma_types "arma/common/types"
+	"arma/common/types"
 	"arma/core"
 	"arma/node/comm"
 	node_config "arma/node/config"
+	"arma/node/crypto"
+	"arma/node/delivery"
 	node_ledger "arma/node/ledger"
 	protos "arma/node/protos/comm"
 	"arma/request"
@@ -46,9 +44,9 @@ var defaultBatcherMemPoolOpts = request.PoolOptions{
 
 type Batcher struct {
 	ds                  *BatcherDeliverService
-	logger              core.Logger
+	logger              types.Logger
 	b                   *core.Batcher
-	batcherCerts2IDs    map[string]core.PartyID
+	batcherCerts2IDs    map[string]types.PartyID
 	primaryEndpoint     string
 	primaryTLSCA        []node_config.RawBytes
 	consensusStreams    []protos.Consensus_NotifyEventClient
@@ -231,11 +229,11 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 		if err != nil {
 			return err
 		}
-		b.b.HandleAck(core.BatchSequence(msg.Seq), from)
+		b.b.HandleAck(types.BatchSequence(msg.Seq), from)
 	}
 }
 
-func NewBatcher(logger core.Logger, config node_config.BatcherNodeConfig, ledger core.BatchLedger, bp core.BatchPuller, ds *BatcherDeliverService) *Batcher {
+func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger core.BatchLedger, bp core.BatchPuller, ds *BatcherDeliverService) *Batcher {
 	cert := config.TLSCertificateFile
 	sk := config.TLSPrivateKeyFile
 
@@ -243,7 +241,7 @@ func NewBatcher(logger core.Logger, config node_config.BatcherNodeConfig, ledger
 		ds:               ds,
 		sk:               createSigner(logger, config),
 		logger:           logger,
-		batcherCerts2IDs: make(map[string]core.PartyID),
+		batcherCerts2IDs: make(map[string]types.PartyID),
 		config:           config,
 		tlsKey:           sk,
 		tlsCert:          cert,
@@ -268,12 +266,12 @@ func NewBatcher(logger core.Logger, config node_config.BatcherNodeConfig, ledger
 		MemPool:       b.createMemPool(config),
 		AttestBatch:   b.attestBatch,
 		StateProvider: b,
-		ID:            core.PartyID(config.PartyId),
-		Shard:         core.ShardID(config.ShardId),
+		ID:            types.PartyID(config.PartyId),
+		Shard:         types.ShardID(config.ShardId),
 		Logger:        logger,
 		Digest: func(data [][]byte) []byte {
-			batch := core.BatchedRequests(data)
-			digest := sha256.Sum256(batch.ToBytes())
+			batch := types.BatchedRequests(data)
+			digest := sha256.Sum256(batch.Serialize())
 			return digest[:]
 		},
 		RequestInspector: b,
@@ -286,11 +284,11 @@ func NewBatcher(logger core.Logger, config node_config.BatcherNodeConfig, ledger
 	return b
 }
 
-func batcherIDs(logger core.Logger, config node_config.BatcherNodeConfig) []core.PartyID {
+func batcherIDs(logger types.Logger, config node_config.BatcherNodeConfig) []types.PartyID {
 	batchers := batchersFromConfig(logger, config)
-	var parties []core.PartyID
+	var parties []types.PartyID
 	for _, batcher := range batchers {
-		parties = append(parties, core.PartyID(batcher.PartyID))
+		parties = append(parties, types.PartyID(batcher.PartyID))
 	}
 	return parties
 }
@@ -324,11 +322,11 @@ func (b *Batcher) indexTLSCerts() {
 			b.logger.Panicf("Failed decoding TLS certificate of %d from PEM", batcher.PartyID)
 		}
 
-		b.batcherCerts2IDs[string(bl.Bytes)] = core.PartyID(batcher.PartyID)
+		b.batcherCerts2IDs[string(bl.Bytes)] = types.PartyID(batcher.PartyID)
 	}
 }
 
-func createSigner(logger core.Logger, config node_config.BatcherNodeConfig) *ecdsa.PrivateKey {
+func createSigner(logger types.Logger, config node_config.BatcherNodeConfig) *ecdsa.PrivateKey {
 	rawKey := config.SigningPrivateKey
 	bl, _ := pem.Decode(rawKey)
 
@@ -344,14 +342,14 @@ func createSigner(logger core.Logger, config node_config.BatcherNodeConfig) *ecd
 	return sk.(*ecdsa.PrivateKey)
 }
 
-func (b *Batcher) attestBatch(seq core.BatchSequence, primary core.PartyID, shard core.ShardID, digest []byte) core.BatchAttestationFragment {
+func (b *Batcher) attestBatch(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
 	var pending []core.BatchAttestationFragment
 	ref := b.stateRef.Load()
 	if ref != nil {
 		state := ref.(*core.State)
 		pending = state.Pending
 	}
-	baf, err := CreateBAF(b.sk, core.PartyID(b.config.PartyId), shard, digest, primary, seq, pending...)
+	baf, err := CreateBAF(b.sk, types.PartyID(b.config.PartyId), shard, digest, primary, seq, pending...)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -366,7 +364,7 @@ func (b *Batcher) setupPrimaryEndpoint() {
 	primaryID := b.getPrimaryID()
 
 	for _, batcher := range batchers {
-		if core.PartyID(batcher.PartyID) == primaryID {
+		if types.PartyID(batcher.PartyID) == primaryID {
 			b.primaryEndpoint = batcher.Endpoint
 			b.primaryTLSCA = batcher.TLSCACerts
 			b.logger.Infof("Primary for shard %d: %d %s", b.config.ShardId, primaryID, b.primaryEndpoint)
@@ -377,11 +375,11 @@ func (b *Batcher) setupPrimaryEndpoint() {
 	b.logger.Panicf("Could not find primaryID %d of shard %d within %v", primaryID, b.config.ShardId, batchers)
 }
 
-func (b *Batcher) getPrimaryID() core.PartyID {
+func (b *Batcher) getPrimaryID() types.PartyID {
 	state := b.stateRef.Load().(*core.State)
 	term := uint64(math.MaxUint64)
 	for _, shard := range state.Shards {
-		if shard.Shard == core.ShardID(b.config.ShardId) {
+		if shard.Shard == types.ShardID(b.config.ShardId) {
 			term = shard.Term
 		}
 	}
@@ -390,11 +388,11 @@ func (b *Batcher) getPrimaryID() core.PartyID {
 		b.logger.Panicf("Could not find our shard (%d) within the shards: %v", b.config.ShardId, state.Shards)
 	}
 
-	primaryIndex := core.PartyID((uint64(b.config.ShardId) + term) % uint64(state.N))
+	primaryIndex := types.PartyID((uint64(b.config.ShardId) + term) % uint64(state.N))
 
 	batchers := batchersFromConfig(b.logger, b.config)
 
-	primaryID := core.PartyID(batchers[primaryIndex].PartyID)
+	primaryID := types.PartyID(batchers[primaryIndex].PartyID)
 
 	return primaryID
 }
@@ -403,7 +401,7 @@ func computeZeroState(config node_config.BatcherNodeConfig) core.State {
 	var state core.State
 	for _, shard := range config.Shards {
 		state.Shards = append(state.Shards, core.ShardTerm{
-			Shard: core.ShardID(shard.ShardId),
+			Shard: types.ShardID(shard.ShardId),
 		})
 	}
 
@@ -412,7 +410,7 @@ func computeZeroState(config node_config.BatcherNodeConfig) core.State {
 	return state
 }
 
-func batchersFromConfig(logger core.Logger, config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
+func batchersFromConfig(logger types.Logger, config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
 	var batchers []node_config.BatcherInfo
 	for _, shard := range config.Shards {
 		if shard.ShardId == config.ShardId {
@@ -427,7 +425,7 @@ func batchersFromConfig(logger core.Logger, config node_config.BatcherNodeConfig
 	return batchers
 }
 
-func (b *Batcher) sendAck(seq core.BatchSequence, to core.PartyID) {
+func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
 	b.connectToPrimaryIfNeeded()
 
 	if b.primaryClientStream == nil {
@@ -574,7 +572,7 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func CreateBAF(sk *ecdsa.PrivateKey, id core.PartyID, shard core.ShardID, digest []byte, primary core.PartyID, seq core.BatchSequence, pending ...core.BatchAttestationFragment) (core.BatchAttestationFragment, error) {
+func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence, pending ...core.BatchAttestationFragment) (core.BatchAttestationFragment, error) {
 	epoch := time.Now().Unix() / 10
 
 	gc := make([][]byte, 0, len(pending))
@@ -584,7 +582,7 @@ func CreateBAF(sk *ecdsa.PrivateKey, id core.PartyID, shard core.ShardID, digest
 		}
 	}
 
-	baf := arma_types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, epoch, gc)
+	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, epoch, gc)
 	signer := crypto.ECDSASigner(*sk)
 
 	tbs := baf.ToBeSigned()
@@ -624,22 +622,22 @@ func ExtractCertificateFromContext(ctx context.Context) []byte {
 	return certs[0].Raw
 }
 
-func CreateBatcher(conf node_config.BatcherNodeConfig, logger core.Logger) *Batcher {
+func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
-	var parties []core.PartyID
+	var parties []types.PartyID
 	for shIdx, sh := range conf.Shards {
 		if sh.ShardId != conf.ShardId {
 			continue
 		}
 
 		for _, b := range conf.Shards[shIdx].Batchers {
-			parties = append(parties, core.PartyID(b.PartyID))
+			parties = append(parties, types.PartyID(b.PartyID))
 		}
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(core.ShardID(conf.ShardId), core.PartyID(conf.PartyId), parties, conf.Directory, logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(types.ShardID(conf.ShardId), types.PartyID(conf.PartyId), parties, conf.Directory, logger)
 	if err != nil {
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}

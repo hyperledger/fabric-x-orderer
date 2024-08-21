@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	arma_types "arma/common/types"
 	"arma/core"
 	"arma/node/batcher"
 	"arma/node/consensus/state"
@@ -74,14 +75,14 @@ func TestConsensus(t *testing.T) {
 
 	for _, tst := range []struct {
 		name                string
-		expectedSequences   [][]core.BatchSequence
+		expectedSequences   [][]arma_types.BatchSequence
 		expectedDecisionNum []uint64
 		events              []scheduleEvent
 		commitEvent         *sync.WaitGroup
 	}{
 		{
 			name:                "two batches single decision",
-			expectedSequences:   [][]core.BatchSequence{{1, 1}},
+			expectedSequences:   [][]arma_types.BatchSequence{{1, 1}},
 			expectedDecisionNum: []uint64{1},
 			events: []scheduleEvent{
 				{ControlEvent: &core.ControlEvent{BAF: baf1}},
@@ -92,7 +93,7 @@ func TestConsensus(t *testing.T) {
 		},
 		{
 			name:                "two batches single decision more than needed batch attestation shares",
-			expectedSequences:   [][]core.BatchSequence{{1, 1}, {2}},
+			expectedSequences:   [][]arma_types.BatchSequence{{1, 1}, {2}},
 			expectedDecisionNum: []uint64{1, 2},
 			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
@@ -150,7 +151,7 @@ func TestConsensus(t *testing.T) {
 				onCommit := func() {
 					once.Do(tst.commitEvent.Done)
 				}
-				c, cleanup := makeConsensusNode(t, sks[i-1], core.PartyID(i), network, initialState, nodeIDs, v, onCommit)
+				c, cleanup := makeConsensusNode(t, sks[i-1], arma_types.PartyID(i), network, initialState, nodeIDs, v, onCommit)
 				network[uint64(i)] = c
 				cleanups = append(cleanups, cleanup)
 			}
@@ -183,7 +184,7 @@ func TestConsensus(t *testing.T) {
 				go func(node *Consensus) {
 					defer wg.Done()
 
-					tstExpectedSequences := make([][]core.BatchSequence, len(tst.expectedSequences))
+					tstExpectedSequences := make([][]arma_types.BatchSequence, len(tst.expectedSequences))
 					tstExpectedDecisionNum := make([]uint64, len(tst.expectedDecisionNum))
 
 					copy(tstExpectedSequences, tst.expectedSequences)
@@ -204,7 +205,7 @@ func TestConsensus(t *testing.T) {
 						expectedDecisionNum := tstExpectedDecisionNum[0]
 						tstExpectedDecisionNum = tstExpectedDecisionNum[1:]
 
-						var actualSequences []core.BatchSequence
+						var actualSequences []arma_types.BatchSequence
 						for _, ab := range hdr.AvailableBatches {
 							actualSequences = append(actualSequences, ab.Seq())
 						}
@@ -228,10 +229,10 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID core.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
-	for _, shard := range []core.ShardID{1, 2, math.MaxUint16} {
+	for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
 		verifier[crypto.ShardPartyKey{Party: partyID, Shard: shard}] = signer.PublicKey
 	}
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"arma/core"
+	"arma/common/types"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/stretchr/testify/require"
@@ -14,7 +14,7 @@ func TestNewBatchLedgerArray(t *testing.T) {
 	dir := t.TempDir()
 	logger := flogging.MustGetLogger("test")
 
-	parties := []core.PartyID{1, 2, 3, 4}
+	parties := []types.PartyID{1, 2, 3, 4}
 	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
@@ -31,19 +31,19 @@ func TestBatchLedgerArray(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	t.Log("Open, write & read")
-	parties := []core.PartyID{1, 2, 3, 4}
+	parties := []types.PartyID{1, 2, 3, 4}
 	a, err := NewBatchLedgerArray(1, 3, parties, dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
 	numBatches := uint64(10)
-	var batchedRequests core.BatchedRequests
+	var batchedRequests types.BatchedRequests
 	for _, pID := range parties {
 		for seq := uint64(0); seq < numBatches; seq++ {
-			batchedRequests = core.BatchedRequests{
+			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, seq, batchedRequests.ToBytes())
+			a.Append(pID, seq, batchedRequests.Serialize())
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -70,10 +70,10 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	for _, pID := range parties {
 		for seq := numBatches; seq < 2*numBatches; seq++ {
-			batchedRequests = core.BatchedRequests{
+			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, seq, batchedRequests.ToBytes())
+			a.Append(pID, seq, batchedRequests.Serialize())
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -88,16 +88,16 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 	dir := t.TempDir()
 	logger := flogging.MustGetLogger("test")
 
-	parties := []core.PartyID{1, 2, 3, 4}
+	parties := []types.PartyID{1, 2, 3, 4}
 	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
-	batchedRequests := core.BatchedRequests{[]byte("tx1"), []byte("tx2")}
+	batchedRequests := types.BatchedRequests{[]byte("tx1"), []byte("tx2")}
 	for _, pID := range parties {
 		part := a.Part(pID)
 		for seq := uint64(0); seq < 10; seq++ {
-			part.Append(seq, batchedRequests.ToBytes())
+			part.Append(seq, batchedRequests.Serialize())
 			require.Equal(t, seq+1, part.Height())
 			batch := part.RetrieveBatchByNumber(seq)
 			require.NotNil(t, batch)

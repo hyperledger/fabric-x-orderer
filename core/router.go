@@ -3,10 +3,12 @@ package core
 import (
 	"encoding/binary"
 	"hash/crc64"
+
+	"arma/common/types"
 )
 
 type Router struct {
-	Logger     Logger
+	Logger     types.Logger
 	ShardCount uint16
 }
 

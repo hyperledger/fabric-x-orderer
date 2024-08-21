@@ -1,50 +1,35 @@
 package core_test
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"testing"
 	"time"
 
-	"arma/testutil"
-
 	arma_types "arma/common/types"
 	"arma/core"
 	"arma/core/mocks"
+	"arma/testutil"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBatchBytes(t *testing.T) {
-	var b core.BatchedRequests
-	for i := 0; i < 10; i++ {
-		req := make([]byte, 100)
-		rand.Read(req)
-		b = append(b, req)
-	}
-
-	b2 := core.BatchFromRaw(b.ToBytes())
-	assert.Equal(t, b, b2)
-}
-
 func TestPrimaryBatcherSimple(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 1
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 0, 1)
+	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
 	pool.NextRequestsReturnsOnCall(1, reqs)
@@ -73,17 +58,17 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 
 func TestSecondaryBatcherSimple(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 2
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 1)
+	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
 	batch := &mocks.FakeBatch{}
@@ -129,20 +114,20 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 
 func TestPrimaryChangeToSecondary(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 1
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 0, 1)
+	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
 	pool.NextRequestsReturnsOnCall(1, reqs)
@@ -211,20 +196,20 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 func TestSecondaryChangeToPrimary(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 2
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 0, 1)
+	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
 	pool.NextRequestsReturnsOnCall(1, reqs)
@@ -296,23 +281,23 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	require.False(t, pool.RestartArgsForCall(0))
 	require.True(t, pool.RestartArgsForCall(1))
 
-	require.Equal(t, core.PartyID(1), ledger.HeightArgsForCall(0))
-	require.Equal(t, core.PartyID(2), ledger.HeightArgsForCall(1))
+	require.Equal(t, arma_types.PartyID(1), ledger.HeightArgsForCall(0))
+	require.Equal(t, arma_types.PartyID(2), ledger.HeightArgsForCall(1))
 }
 
 func TestSecondaryChangeToSecondary(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 3
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 1)
+	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
 	batch := &mocks.FakeBatch{}
@@ -391,20 +376,20 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 
 func TestPrimaryChangeToPrimary(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 1
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 0, 1)
+	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
 	pool.NextRequestsReturnsOnCall(1, reqs)
@@ -459,20 +444,20 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 
 func TestPrimaryWaiting(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 1
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 0, 1)
+	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
 	pool.NextRequestsReturns(reqs)
@@ -498,20 +483,20 @@ func TestPrimaryWaiting(t *testing.T) {
 
 func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	N := uint16(4)
-	batchers := []core.PartyID{1, 2, 3, 4}
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
 	batcherID := 1
 	shardID := 0
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(core.PartyID(batcherID), core.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	reqs := make(core.BatchedRequests, 0, 1)
+	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
 	pool.NextRequestsReturns(reqs)
@@ -576,7 +561,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	require.Equal(t, 10, pool.NextRequestsCallCount())
 }
 
-func createBatcher(batcherID core.PartyID, shardID core.ShardID, batchers []core.PartyID, N uint16, logger core.Logger) *core.Batcher {
+func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger arma_types.Logger) *core.Batcher {
 	digestFunc := func(data [][]byte) []byte {
 		h := sha256.New()
 		for _, d := range data {
@@ -598,11 +583,11 @@ func createBatcher(batcherID core.PartyID, shardID core.ShardID, batchers []core
 		Ledger:           &mocks.FakeBatchLedger{},
 		BatchPuller:      &mocks.FakeBatchPuller{},
 		StateProvider:    &mocks.FakeStateProvider{},
-		AttestBatch: func(seq core.BatchSequence, primary core.PartyID, shard core.ShardID, digest []byte) core.BatchAttestationFragment {
+		AttestBatch: func(seq arma_types.BatchSequence, primary arma_types.PartyID, shard arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
 			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
 		},
 		TotalOrderBAF: func(core.BatchAttestationFragment) {},
-		AckBAF:        func(seq core.BatchSequence, to core.PartyID) {},
+		AckBAF:        func(seq arma_types.BatchSequence, to arma_types.PartyID) {},
 		MemPool:       &mocks.FakeMemPool{},
 	}
 

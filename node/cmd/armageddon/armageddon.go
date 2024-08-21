@@ -20,20 +20,17 @@ import (
 	"sync"
 	"time"
 
-	"arma/core"
-
+	"arma/common/types"
 	"arma/node/comm"
+	"arma/node/comm/tlsgen"
 	"arma/node/config"
 
+	"github.com/alecthomas/kingpin"
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
-
-	"arma/node/comm/tlsgen"
-
-	"github.com/alecthomas/kingpin"
 	"gopkg.in/yaml.v3"
 )
 
@@ -78,16 +75,16 @@ type Network struct {
 }
 
 type Party struct {
-	ID                core.PartyID `yaml:"ID"`
-	AssemblerEndpoint string       `yaml:"AssemblerEndpoint"`
-	ConsenterEndpoint string       `yaml:"ConsenterEndpoint"`
-	RouterEndpoint    string       `yaml:"RouterEndpoint"`
-	BatchersEndpoints []string     `yaml:"BatchersEndpoints"`
+	ID                types.PartyID `yaml:"ID"`
+	AssemblerEndpoint string        `yaml:"AssemblerEndpoint"`
+	ConsenterEndpoint string        `yaml:"ConsenterEndpoint"`
+	RouterEndpoint    string        `yaml:"RouterEndpoint"`
+	BatchersEndpoints []string      `yaml:"BatchersEndpoints"`
 }
 
 type NetworkCryptoConfig struct {
 	// map from party to its crypto config
-	PartyToCryptoConfig map[core.PartyID]CryptoConfigPerParty
+	PartyToCryptoConfig map[types.PartyID]CryptoConfigPerParty
 }
 
 type CryptoConfigPerParty struct {
@@ -294,7 +291,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 	}
 
 	// create CA for each party
-	partiesCAs := make(map[core.PartyID][]tlsgen.CA)
+	partiesCAs := make(map[types.PartyID][]tlsgen.CA)
 	var tlsCACertsBytesPartiesCollection []config.RawBytes
 	for _, party := range network.Parties {
 		// create CA for the party
@@ -310,7 +307,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 		tlsCACertsBytesPartiesCollection = append(tlsCACertsBytesPartiesCollection, ca.CertBytes())
 	}
 
-	partyToCryptoConfig := make(map[core.PartyID]CryptoConfigPerParty)
+	partyToCryptoConfig := make(map[types.PartyID]CryptoConfigPerParty)
 
 	for _, party := range network.Parties {
 		// ca's of the party
@@ -470,7 +467,7 @@ func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConf
 	return networkConfig
 }
 
-func constructRouterNodeConfigPerParty(partyID core.PartyID, shards []config.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string) config.RouterNodeConfig {
+func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []config.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string) config.RouterNodeConfig {
 	return config.RouterNodeConfig{
 		ListenAddress:                 "0.0.0.0:" + port,
 		PartyID:                       partyID,
@@ -482,7 +479,7 @@ func constructRouterNodeConfigPerParty(partyID core.PartyID, shards []config.Sha
 	}
 }
 
-func constructBatchersNodeConfigPerParty(partyId core.PartyID, batcherEndpoints []string, sharedConfig SharedConfig, batchersCertsAndKeys map[string]CertsAndKeys) []config.BatcherNodeConfig {
+func constructBatchersNodeConfigPerParty(partyId types.PartyID, batcherEndpoints []string, sharedConfig SharedConfig, batchersCertsAndKeys map[string]CertsAndKeys) []config.BatcherNodeConfig {
 	var batchers []config.BatcherNodeConfig
 	for i, batcherEndpoint := range batcherEndpoints {
 		batcherCertsAndKeys := batchersCertsAndKeys[batcherEndpoint]
@@ -492,7 +489,7 @@ func constructBatchersNodeConfigPerParty(partyId core.PartyID, batcherEndpoints 
 			Consenters:         sharedConfig.Consenters,
 			Directory:          "",
 			PartyId:            partyId,
-			ShardId:            core.ShardID(i + 1),
+			ShardId:            types.ShardID(i + 1),
 			TLSPrivateKeyFile:  batcherCertsAndKeys.TLSCertKeyPair.Key,
 			TLSCertificateFile: batcherCertsAndKeys.TLSCertKeyPair.Cert,
 			SigningPrivateKey:  batcherCertsAndKeys.PrivateKey,
@@ -503,7 +500,7 @@ func constructBatchersNodeConfigPerParty(partyId core.PartyID, batcherEndpoints 
 	return batchers
 }
 
-func constructConsenterNodeConfigPerParty(partyId core.PartyID, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) config.ConsenterNodeConfig {
+func constructConsenterNodeConfigPerParty(partyId types.PartyID, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) config.ConsenterNodeConfig {
 	return config.ConsenterNodeConfig{
 		ListenAddress:      "0.0.0.0:" + port,
 		Shards:             sharedConfig.Shards,
@@ -516,7 +513,7 @@ func constructConsenterNodeConfigPerParty(partyId core.PartyID, sharedConfig Sha
 	}
 }
 
-func constructAssemblerNodeConfigPerParty(partyId core.PartyID, shards []config.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string) config.AssemblerNodeConfig {
+func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []config.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string) config.AssemblerNodeConfig {
 	partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[partyId]
 	var tlsCACertsCollection []config.RawBytes
 	for _, ca := range partyCryptoConfig.CAs {
@@ -541,10 +538,10 @@ func constructAssemblerNodeConfigPerParty(partyId core.PartyID, shards []config.
 
 func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig) []config.ShardInfo {
 	// construct a map that maps between shardId and batchers
-	shardToBatchers := make(map[core.ShardID][]config.BatcherInfo)
+	shardToBatchers := make(map[types.ShardID][]config.BatcherInfo)
 	for _, party := range network.Parties {
 		for idx, batcherEndpoint := range party.BatchersEndpoints {
-			shardId := core.ShardID(idx + 1)
+			shardId := types.ShardID(idx + 1)
 
 			partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[party.ID]
 			var tlsCACertsCollection []config.RawBytes
@@ -643,7 +640,7 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 			os.Exit(1)
 		}
 
-		userInfo := networkCryptoConfig.PartyToCryptoConfig[core.PartyID(i+1)].UserInfo
+		userInfo := networkCryptoConfig.PartyToCryptoConfig[types.PartyID(i+1)].UserInfo
 		configPath = path.Join(rootDir, "user_config.yaml")
 		uca, err := yaml.Marshal(&userInfo)
 		if err != nil {

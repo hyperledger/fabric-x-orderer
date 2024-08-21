@@ -25,14 +25,14 @@ func (ri *reqInspector) RequestID(req []byte) string {
 
 type noopLedger struct{}
 
-func (*noopLedger) Append(_ core.PartyID, _ uint64, _ []byte) {
+func (*noopLedger) Append(_ arma_types.PartyID, _ uint64, _ []byte) {
 }
 
-func (*noopLedger) Height(partyID core.PartyID) uint64 {
+func (*noopLedger) Height(partyID arma_types.PartyID) uint64 {
 	return 0
 }
 
-func (*noopLedger) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.Batch {
+func (*noopLedger) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) core.Batch {
 	return nil
 }
 
@@ -42,12 +42,12 @@ type naiveReplication struct {
 	stopped     int32
 }
 
-func (r *naiveReplication) Replicate(_ core.ShardID) <-chan core.Batch {
+func (r *naiveReplication) Replicate(_ arma_types.ShardID) <-chan core.Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
 
-func (r *naiveReplication) PullBatches(_ core.PartyID) <-chan core.Batch {
+func (r *naiveReplication) PullBatches(_ arma_types.PartyID) <-chan core.Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
@@ -56,32 +56,34 @@ func (r *naiveReplication) Stop() {
 	atomic.StoreInt32(&r.stopped, 0x1)
 }
 
-func (r *naiveReplication) Append(_ core.PartyID, _ uint64, bytes []byte) {
+func (r *naiveReplication) Append(_ arma_types.PartyID, _ uint64, bytes []byte) {
 	for _, s := range r.subscribers {
+		var reqs arma_types.BatchedRequests
+		reqs.Deserialize(bytes)
 		s <- &naiveBatch{
-			requests: core.BatchFromRaw(bytes),
+			requests: reqs,
 		}
 	}
 }
 
-func (r *naiveReplication) Height(partyID core.PartyID) uint64 {
+func (r *naiveReplication) Height(partyID arma_types.PartyID) uint64 {
 	// TODO use in test
 	return 0
 }
 
-func (r *naiveReplication) RetrieveBatchByNumber(partyID core.PartyID, seq uint64) core.Batch {
+func (r *naiveReplication) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) core.Batch {
 	// TODO use in test
 	return nil
 }
 
 type naiveBatch struct {
-	shardID  core.ShardID
-	node     core.PartyID
-	seq      core.BatchSequence
+	shardID  arma_types.ShardID
+	node     arma_types.PartyID
+	seq      arma_types.BatchSequence
 	requests [][]byte
 }
 
-func (nb *naiveBatch) Party() core.PartyID {
+func (nb *naiveBatch) Party() arma_types.PartyID {
 	return nb.node
 }
 
@@ -93,15 +95,15 @@ func (nb *naiveBatch) Digest() []byte {
 	return h.Sum(nil)
 }
 
-func (nb *naiveBatch) Shard() core.ShardID {
+func (nb *naiveBatch) Shard() arma_types.ShardID {
 	return nb.shardID
 }
 
-func (nb *naiveBatch) Seq() core.BatchSequence {
+func (nb *naiveBatch) Seq() arma_types.BatchSequence {
 	return nb.seq
 }
 
-func (nb *naiveBatch) Requests() core.BatchedRequests {
+func (nb *naiveBatch) Requests() arma_types.BatchedRequests {
 	return nb.requests
 }
 
@@ -170,13 +172,13 @@ func TestBatchersStopSecondaries(t *testing.T) {
 
 	state := core.State{}
 	for shard := 0; shard < 1; shard++ {
-		state.Shards = append(state.Shards, core.ShardTerm{Shard: core.ShardID(shard), Term: 5})
+		state.Shards = append(state.Shards, core.ShardTerm{Shard: arma_types.ShardID(shard), Term: 5})
 	}
 
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
 		b := b
-		b.AckBAF = func(_ core.BatchSequence, _ core.PartyID) {}
+		b.AckBAF = func(_ arma_types.BatchSequence, _ arma_types.PartyID) {}
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 5,
@@ -226,13 +228,13 @@ func TestBatchersStopSecondaries(t *testing.T) {
 func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	var batchers []*core.Batcher
 
-	var batcherConf []core.PartyID
+	var batcherConf []arma_types.PartyID
 	for i := 0; i < n; i++ {
 		batchers[i].Batchers = batcherConf
 	}
 
 	for i := 0; i < n; i++ {
-		b := createTestBatcher(t, 0, core.PartyID(i), batcherConf)
+		b := createTestBatcher(t, 0, arma_types.PartyID(i), batcherConf)
 		batchers = append(batchers, b)
 	}
 
@@ -253,8 +255,8 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	for i := 0; i < n; i++ {
 		from := i
 		batchers[i].TotalOrderBAF = func(core.BatchAttestationFragment) {}
-		batchers[i].AckBAF = func(seq core.BatchSequence, to core.PartyID) {
-			batchers[to].HandleAck(seq, core.PartyID(from))
+		batchers[i].AckBAF = func(seq arma_types.BatchSequence, to arma_types.PartyID) {
+			batchers[to].HandleAck(seq, arma_types.PartyID(from))
 		}
 	}
 
@@ -264,7 +266,7 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	return batchers, commit
 }
 
-func createTestBatcher(t *testing.T, shardID core.ShardID, nodeID core.PartyID, batchers []core.PartyID) *core.Batcher {
+func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *core.Batcher {
 	sugaredLogger := testutil.CreateLogger(t, int(nodeID))
 
 	requestInspector := &reqInspector{}
@@ -279,8 +281,8 @@ func createTestBatcher(t *testing.T, shardID core.ShardID, nodeID core.PartyID, 
 
 	b := &core.Batcher{
 		Batchers: batchers,
-		Shard:    core.ShardID(shardID),
-		AttestBatch: func(seq core.BatchSequence, primary core.PartyID, shard core.ShardID, digest []byte) core.BatchAttestationFragment {
+		Shard:    arma_types.ShardID(shardID),
+		AttestBatch: func(seq arma_types.BatchSequence, primary arma_types.PartyID, shard arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
 			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
 		},
 		Digest: func(data [][]byte) []byte {
@@ -293,7 +295,7 @@ func createTestBatcher(t *testing.T, shardID core.ShardID, nodeID core.PartyID, 
 		RequestInspector: requestInspector,
 		Logger:           sugaredLogger,
 		MemPool:          pool,
-		ID:               core.PartyID(nodeID),
+		ID:               arma_types.PartyID(nodeID),
 		Threshold:        2,
 	}
 

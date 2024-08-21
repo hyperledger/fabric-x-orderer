@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"arma/core"
+	"arma/common/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -27,7 +27,7 @@ func (bytes *RawBytes) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type BatcherInfo struct {
-	PartyID    core.PartyID
+	PartyID    types.PartyID
 	Endpoint   string
 	TLSCACerts []RawBytes
 	PublicKey  RawBytes
@@ -35,7 +35,7 @@ type BatcherInfo struct {
 }
 
 type ShardInfo struct {
-	ShardId  core.ShardID
+	ShardId  types.ShardID
 	Batchers []BatcherInfo
 }
 
@@ -44,7 +44,7 @@ type Network struct {
 }
 
 type Party struct {
-	ID        core.PartyID
+	ID        types.PartyID
 	Assembler string
 	Consenter string
 	Router    string
@@ -52,7 +52,7 @@ type Party struct {
 }
 
 type ConsenterInfo struct {
-	PartyID    core.PartyID
+	PartyID    types.PartyID
 	Endpoint   string
 	PublicKey  RawBytes
 	TLSCACerts []RawBytes
@@ -60,7 +60,7 @@ type ConsenterInfo struct {
 
 type RouterNodeConfig struct {
 	// Private config
-	PartyID            core.PartyID
+	PartyID            types.PartyID
 	TLSCertificateFile RawBytes
 	TLSPrivateKeyFile  RawBytes
 	ListenAddress      string
@@ -74,7 +74,7 @@ type AssemblerNodeConfig struct {
 	// Private config
 	TLSPrivateKeyFile  RawBytes
 	TLSCertificateFile RawBytes
-	PartyId            core.PartyID
+	PartyId            types.PartyID
 	Directory          string
 	ListenAddress      string
 	// Shared config
@@ -89,8 +89,8 @@ type BatcherNodeConfig struct {
 	Directory     string
 	ListenAddress string
 	// Private config
-	PartyId            core.PartyID
-	ShardId            core.ShardID
+	PartyId            types.PartyID
+	ShardId            types.ShardID
 	TLSPrivateKeyFile  RawBytes
 	TLSCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
@@ -108,7 +108,7 @@ type ConsenterNodeConfig struct {
 	Directory     string
 	ListenAddress string
 	// Private config
-	PartyId            core.PartyID
+	PartyId            types.PartyID
 	TLSPrivateKeyFile  RawBytes
 	TLSCertificateFile RawBytes
 	SigningPrivateKey  RawBytes

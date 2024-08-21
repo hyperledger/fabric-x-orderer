@@ -10,8 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"arma/core"
-
+	"arma/common/types"
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	"arma/testutil"
@@ -116,7 +115,7 @@ func TestRouter(t *testing.T) {
 
 	l := testutil.CreateLogger(t, 0)
 
-	router := createRouter([]core.ShardID{1}, []string{testBatcher.address}, map[core.ShardID][][]byte{1: {ca.CertBytes()}}, ckp.Cert, ckp.Key, l, 0, 0)
+	router := createRouter([]types.ShardID{1}, []string{testBatcher.address}, map[types.ShardID][][]byte{1: {ca.CertBytes()}}, ckp.Cert, ckp.Key, l, 0, 0)
 
 	protos.RegisterRequestTransmitServer(srv.Server(), router)
 

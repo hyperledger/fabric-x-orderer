@@ -2,12 +2,13 @@ package core
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"arma/common/types"
 )
 
 //go:generate counterfeiter -o mocks/request_inspector.go . RequestInspector
@@ -27,15 +28,15 @@ type MemPool interface {
 //go:generate counterfeiter -o mocks/batch.go . Batch
 type Batch interface {
 	Digest() []byte
-	Requests() BatchedRequests
-	Party() PartyID
-	Shard() ShardID
-	Seq() BatchSequence
+	Requests() types.BatchedRequests
+	Party() types.PartyID
+	Shard() types.ShardID
+	Seq() types.BatchSequence
 }
 
 //go:generate counterfeiter -o mocks/batch_puller.go . BatchPuller
 type BatchPuller interface {
-	PullBatches(from PartyID) <-chan Batch
+	PullBatches(from types.PartyID) <-chan Batch
 	Stop()
 }
 
@@ -44,55 +45,13 @@ type StateProvider interface {
 	GetLatestStateChan() <-chan *State
 }
 
-type BatchedRequests [][]byte
-
-func (batch BatchedRequests) ToBytes() []byte {
-	if len(batch) == 0 {
-		return nil
-	}
-
-	var reqSize int
-	for _, req := range batch {
-		reqSize += len(req)
-	}
-
-	reqSize += 4 * len(batch)
-
-	buff := make([]byte, reqSize)
-
-	var pos int
-	for _, req := range batch {
-		sizeBuff := make([]byte, 4)
-		binary.BigEndian.PutUint32(sizeBuff, uint32(len(req)))
-		copy(buff[pos:], sizeBuff)
-		pos += 4
-		copy(buff[pos:], req)
-		pos += len(req)
-	}
-
-	return buff
-}
-
-func BatchFromRaw(raw []byte) BatchedRequests {
-	var batch BatchedRequests
-	for len(raw) > 0 {
-		size := binary.BigEndian.Uint32(raw[0:4])
-		raw = raw[4:]
-		req := raw[0:size]
-		batch = append(batch, req)
-		raw = raw[size:]
-	}
-
-	return batch
-}
-
 type BatchLedgerWriter interface {
-	Append(PartyID, uint64, []byte)
+	Append(types.PartyID, uint64, []byte)
 }
 
 type BatchLedgeReader interface {
-	Height(partyID PartyID) uint64
-	RetrieveBatchByNumber(partyID PartyID, seq uint64) Batch
+	Height(partyID types.PartyID) uint64
+	RetrieveBatchByNumber(partyID types.PartyID, seq uint64) Batch
 }
 
 //go:generate counterfeiter -o mocks/batch_ledger.go . BatchLedger
@@ -101,31 +60,31 @@ type BatchLedger interface {
 	BatchLedgeReader
 }
 
-var gap = BatchSequence(10)
+var gap = types.BatchSequence(10)
 
 type Batcher struct {
-	Batchers         []PartyID
+	Batchers         []types.PartyID
 	BatchTimeout     time.Duration
 	Digest           func([][]byte) []byte
 	RequestInspector RequestInspector
-	ID               PartyID
-	Shard            ShardID
+	ID               types.PartyID
+	Shard            types.ShardID
 	Threshold        int
 	N                uint16
-	Logger           Logger
+	Logger           types.Logger
 	Ledger           BatchLedger
 	BatchPuller      BatchPuller
 	StateProvider    StateProvider
-	AttestBatch      func(seq BatchSequence, primary PartyID, shard ShardID, digest []byte) BatchAttestationFragment
+	AttestBatch      func(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) BatchAttestationFragment
 	TotalOrderBAF    func(BatchAttestationFragment)
-	AckBAF           func(seq BatchSequence, to PartyID) // TODO turn into interface
+	AckBAF           func(seq types.BatchSequence, to types.PartyID) // TODO turn into interface
 	MemPool          MemPool
 	running          sync.WaitGroup
 	stopChan         chan struct{}
 	stopCtx          context.Context
 	cancelBatch      func()
-	primary          PartyID
-	seq              BatchSequence
+	primary          types.PartyID
+	seq              types.BatchSequence
 	term             uint64
 	termChan         chan uint64
 	acker            SeqAcker
@@ -152,7 +111,7 @@ func (b *Batcher) run() {
 
 		term := atomic.LoadUint64(&b.term)
 		b.primary = b.getPrimaryID(term)
-		b.seq = BatchSequence(b.Ledger.Height(b.primary))
+		b.seq = types.BatchSequence(b.Ledger.Height(b.primary))
 		b.Logger.Infof("ID: %d, shard: %d, primary id: %d, term: %d, seq: %d", b.ID, b.Shard, b.primary, term, b.seq)
 
 		if b.primary == b.ID {
@@ -163,13 +122,13 @@ func (b *Batcher) run() {
 	}
 }
 
-func (b *Batcher) getPrimaryID(term uint64) PartyID {
+func (b *Batcher) getPrimaryID(term uint64) types.PartyID {
 	primaryIndex := b.getPrimaryIndex(term)
 	return b.Batchers[primaryIndex]
 }
 
-func (b *Batcher) getPrimaryIndex(term uint64) PartyID {
-	primaryIndex := PartyID((uint64(b.Shard) + term) % uint64(b.N))
+func (b *Batcher) getPrimaryIndex(term uint64) types.PartyID {
+	primaryIndex := types.PartyID((uint64(b.Shard) + term) % uint64(b.N))
 
 	return primaryIndex
 }
@@ -216,7 +175,7 @@ func (b *Batcher) Submit(request []byte) error {
 	return b.MemPool.Submit(request)
 }
 
-func (b *Batcher) HandleAck(seq BatchSequence, from PartyID) {
+func (b *Batcher) HandleAck(seq types.BatchSequence, from types.PartyID) {
 	// Only the primary performs handle ack
 	if b.primary != b.ID {
 		b.Logger.Warnf("Batcher %d called handle ack on sequence %d from %d but it is not the primary (%d)", b.ID, seq, from, b.primary)
@@ -240,7 +199,7 @@ func (b *Batcher) runPrimary() {
 		b.BatchTimeout = time.Millisecond * 500
 	}
 
-	var currentBatch BatchedRequests
+	var currentBatch types.BatchedRequests
 	var digest []byte
 
 	for {
@@ -263,7 +222,7 @@ func (b *Batcher) runPrimary() {
 			}
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
 			digest = b.Digest(currentBatch)
-			serializedBatch = currentBatch.ToBytes()
+			serializedBatch = currentBatch.Serialize()
 			cancel()
 			break
 		}
@@ -283,7 +242,7 @@ func (b *Batcher) runPrimary() {
 	}
 }
 
-func (b *Batcher) removeRequests(batch BatchedRequests) {
+func (b *Batcher) removeRequests(batch types.BatchedRequests) {
 	reqInfos := make([]string, 0, len(batch))
 	for _, req := range batch {
 		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
@@ -326,7 +285,7 @@ func (b *Batcher) runSecondary() {
 		if len(requests) == 0 {
 			panic("programming error: replicated an empty batch")
 		}
-		batch := requests.ToBytes()
+		batch := requests.Serialize()
 		// TODO verify batch
 		b.Ledger.Append(primary, uint64(b.seq), batch) // TODO should we use the sequence of the batch?
 		b.removeRequests(requests)

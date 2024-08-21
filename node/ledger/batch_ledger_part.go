@@ -3,6 +3,7 @@ package ledger
 import (
 	"fmt"
 
+	"arma/common/types"
 	"arma/core"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -18,20 +19,20 @@ import (
 // The BatchLedgerPart for shard=A and party=B (where A,B are int) is stored in ledger that belongs to
 // channel name "shardApartyB".
 type BatchLedgerPart struct {
-	shardID        core.ShardID           // The shard this object belongs to.
-	partyID        core.PartyID           // The party that operates this object.
-	primaryPartyID core.PartyID           // The primary party that generated the batches in this object.
+	shardID        types.ShardID          // The shard this object belongs to.
+	partyID        types.PartyID          // The party that operates this object.
+	primaryPartyID types.PartyID          // The primary party that generated the batches in this object.
 	ledger         blockledger.ReadWriter // The fabric block ledger that holds batches.
 	prevHash       []byte                 // The header hash of the last block; we need this because the Fabric ledger enforces a hash chain.
-	logger         core.Logger
+	logger         types.Logger
 }
 
 // newBatchLedgerPart creates a new BatchLedgerPart.
 func newBatchLedgerPart(
 	provider *blkstorage.BlockStoreProvider,
-	shardID core.ShardID,
-	partyID, primaryPartyID core.PartyID,
-	logger core.Logger,
+	shardID types.ShardID,
+	partyID, primaryPartyID types.PartyID,
+	logger types.Logger,
 ) (*BatchLedgerPart, error) {
 	name := fmt.Sprintf("shard%dparty%d", shardID, primaryPartyID)
 	ledger, err := provider.Open(name)

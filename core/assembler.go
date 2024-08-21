@@ -4,25 +4,27 @@ import (
 	"encoding/hex"
 	"sync"
 	"time"
+
+	"arma/common/types"
 )
 
 //go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation
 type BatchAttestation interface {
 	Fragments() []BatchAttestationFragment
 	Digest() []byte
-	Seq() BatchSequence
-	Primary() PartyID
-	Shard() ShardID
+	Seq() types.BatchSequence
+	Primary() types.PartyID
+	Shard() types.ShardID
 	Serialize() []byte
 	Deserialize([]byte) error
 }
 
 //go:generate counterfeiter -o mocks/batch_attestation_fragment.go . BatchAttestationFragment
 type BatchAttestationFragment interface {
-	Seq() BatchSequence
-	Primary() PartyID
-	Shard() ShardID
-	Signer() PartyID
+	Seq() types.BatchSequence
+	Primary() types.PartyID
+	Shard() types.ShardID
+	Signer() types.PartyID
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error
@@ -31,12 +33,12 @@ type BatchAttestationFragment interface {
 }
 
 type BatchReplicator interface {
-	Replicate(shardID ShardID) <-chan Batch
+	Replicate(shardID types.ShardID) <-chan Batch
 }
 
 type AssemblerIndex interface {
-	Index(party PartyID, shard ShardID, sequence BatchSequence, batch Batch)
-	Retrieve(party PartyID, shard ShardID, sequence BatchSequence, digest []byte) (Batch, bool)
+	Index(party types.PartyID, shard types.ShardID, sequence types.BatchSequence, batch Batch)
+	Retrieve(party types.PartyID, shard types.ShardID, sequence types.BatchSequence, digest []byte) (Batch, bool)
 }
 
 type AssemblerLedger interface {
@@ -50,11 +52,11 @@ type BatchAttestationReplicator interface {
 type Assembler struct {
 	ShardCount                 int
 	Ledger                     AssemblerLedger
-	Logger                     Logger
+	Logger                     types.Logger
 	BatchAttestationReplicator BatchAttestationReplicator
 	Replicator                 BatchReplicator
 	Index                      AssemblerIndex
-	Shards                     []ShardID
+	Shards                     []types.ShardID
 
 	lock   sync.RWMutex
 	signal sync.Cond
@@ -79,7 +81,7 @@ func (a *Assembler) Run() {
 	}(attestations)
 }
 
-func (a *Assembler) fetchBatchesFromShard(shardID ShardID) {
+func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
 	a.Logger.Infof("Starting to fetch batches from shard: %d", shardID)
 
 	batchCh := a.Replicator.Replicate(shardID)

@@ -11,8 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"arma/core"
-
+	"arma/common/types"
 	"arma/node/config"
 
 	"github.com/onsi/gomega/gbytes"
@@ -166,7 +165,7 @@ func generateInputConfigFileForArmageddon(t *testing.T, path string) {
 		batcher2Port, llb2 := getAvailablePort(t)
 
 		party := Party{
-			ID:                core.PartyID(i + 1),
+			ID:                types.PartyID(i + 1),
 			AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
 			ConsenterEndpoint: "127.0.0.1:" + consenterPort,
 			RouterEndpoint:    "127.0.0.1:" + routerPort,

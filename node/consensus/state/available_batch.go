@@ -4,22 +4,23 @@ import (
 	"bytes"
 	"encoding/binary"
 
+	"arma/common/types"
 	"arma/core"
 
 	"github.com/pkg/errors"
 )
 
 type AvailableBatch struct {
-	primary core.PartyID
-	shard   core.ShardID
-	seq     core.BatchSequence
+	primary types.PartyID
+	shard   types.ShardID
+	seq     types.BatchSequence
 	digest  []byte
 }
 
 func NewAvailableBatch(
-	primary core.PartyID,
-	shard core.ShardID,
-	seq core.BatchSequence,
+	primary types.PartyID,
+	shard types.ShardID,
+	seq types.BatchSequence,
 	digest []byte,
 ) AvailableBatch {
 	return AvailableBatch{
@@ -46,16 +47,16 @@ func (ab *AvailableBatch) Digest() []byte {
 	return ab.digest
 }
 
-func (ab *AvailableBatch) Seq() core.BatchSequence {
-	return core.BatchSequence(ab.seq)
+func (ab *AvailableBatch) Seq() types.BatchSequence {
+	return types.BatchSequence(ab.seq)
 }
 
-func (ab *AvailableBatch) Primary() core.PartyID {
-	return core.PartyID(ab.primary)
+func (ab *AvailableBatch) Primary() types.PartyID {
+	return types.PartyID(ab.primary)
 }
 
-func (ab *AvailableBatch) Shard() core.ShardID {
-	return core.ShardID(ab.shard)
+func (ab *AvailableBatch) Shard() types.ShardID {
+	return types.ShardID(ab.shard)
 }
 
 var AvailableBatchSerializedSize = 2 + 2 + 8 + 32 // uint16 + uint16 + uint64 + digest
@@ -81,9 +82,9 @@ func (ab *AvailableBatch) Deserialize(bytes []byte) error {
 	if len(bytes) != AvailableBatchSerializedSize {
 		return errors.Errorf("len of bytes %d does not equal the available batch size %d", len(bytes), AvailableBatchSerializedSize)
 	}
-	ab.primary = core.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
-	ab.shard = core.ShardID(binary.BigEndian.Uint16(bytes[2:4]))
-	ab.seq = core.BatchSequence(binary.BigEndian.Uint64(bytes[4:12]))
+	ab.primary = types.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
+	ab.shard = types.ShardID(binary.BigEndian.Uint16(bytes[2:4]))
+	ab.seq = types.BatchSequence(binary.BigEndian.Uint64(bytes[4:12]))
 	ab.digest = bytes[12:]
 
 	return nil
