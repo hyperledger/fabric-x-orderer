@@ -81,6 +81,7 @@ type Batcher struct {
 	MemPool          MemPool
 	running          sync.WaitGroup
 	stopChan         chan struct{}
+	stopOnce         sync.Once
 	stopCtx          context.Context
 	cancelBatch      func()
 	primary          types.PartyID
@@ -134,7 +135,7 @@ func (b *Batcher) getPrimaryIndex(term uint64) types.PartyID {
 }
 
 func (b *Batcher) Stop() {
-	close(b.stopChan)
+	b.stopOnce.Do(func() { close(b.stopChan) })
 	b.cancelBatch()
 	b.MemPool.Close()
 	b.running.Wait()

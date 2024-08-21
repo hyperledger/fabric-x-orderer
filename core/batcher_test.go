@@ -51,6 +51,7 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	batcher.Stop()
+	batcher.Stop()
 
 	require.True(t, pool.RestartArgsForCall(0))
 	require.NotZero(t, pool.NextRequestsCallCount())
