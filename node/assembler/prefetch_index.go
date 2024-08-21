@@ -58,7 +58,7 @@ func (i *Index) Index(party types.PartyID, shard types.ShardID, sequence types.B
 		i.logger.Infof("Indexed batch %d for shard %d in %v", sequence, shard, time.Since(t1))
 	}()
 	buff := make([]byte, 4)
-	binary.BigEndian.PutUint16(buff, uint16(batch.Party()))
+	binary.BigEndian.PutUint16(buff, uint16(batch.Primary()))
 
 	block := &common.Block{
 		Header: &common.BlockHeader{

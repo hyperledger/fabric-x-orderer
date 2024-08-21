@@ -48,7 +48,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
 			require.Equal(t, batchedRequests, batch.Requests())
-			require.Equal(t, pID, batch.Party())
+			require.Equal(t, pID, batch.Primary())
 			require.NotNil(t, batch.Digest())
 		}
 	}
@@ -64,7 +64,7 @@ func TestBatchLedgerArray(t *testing.T) {
 		batch := a.RetrieveBatchByNumber(pID, numBatches-1)
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
-		require.Equal(t, pID, batch.Party())
+		require.Equal(t, pID, batch.Primary())
 		require.NotNil(t, batch.Digest())
 	}
 
@@ -78,7 +78,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
 			require.Equal(t, batchedRequests, batch.Requests())
-			require.Equal(t, pID, batch.Party())
+			require.Equal(t, pID, batch.Primary())
 			require.NotNil(t, batch.Digest())
 		}
 	}
@@ -102,7 +102,7 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 			batch := part.RetrieveBatchByNumber(seq)
 			require.NotNil(t, batch)
 			require.Equal(t, batchedRequests, batch.Requests())
-			require.Equal(t, pID, batch.Party())
+			require.Equal(t, pID, batch.Primary())
 			require.NotNil(t, batch.Digest())
 		}
 	}

@@ -88,7 +88,7 @@ func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
 	for batch := range batchCh {
 		a.Logger.Infof("Got batch of %d requests for shard %d", len(batch.Requests()), shardID)
 		a.lock.RLock()
-		a.Index.Index(batch.Party(), shardID, batch.Seq(), batch)
+		a.Index.Index(batch.Primary(), shardID, batch.Seq(), batch)
 		a.signal.Signal()
 		a.lock.RUnlock()
 	}

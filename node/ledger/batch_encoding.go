@@ -27,8 +27,8 @@ func (b *FabricBatch) Requests() types.BatchedRequests {
 	return (*common.Block)(b).GetData().GetData()
 }
 
-// Party returns the PartyID if encoded correctly, or 0.
-func (b *FabricBatch) Party() types.PartyID {
+// Primary returns the PartyID if encoded correctly, or 0.
+func (b *FabricBatch) Primary() types.PartyID {
 	m := (*common.Block)(b).GetMetadata().GetMetadata()
 	if len(m) <= BlockMetadataIndex_Party {
 		return 0

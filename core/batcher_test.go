@@ -73,7 +73,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	reqs = append(reqs, req)
 
 	batch := &mocks.FakeBatch{}
-	batch.PartyReturns(1)
+	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 
 	batchPuller := &mocks.FakeBatchPuller{}
@@ -142,7 +142,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	batcher.StateProvider = stateProvider
 
 	batch := &mocks.FakeBatch{}
-	batch.PartyReturns(1)
+	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 
 	batchPuller := &mocks.FakeBatchPuller{}
@@ -224,7 +224,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	batcher.StateProvider = stateProvider
 
 	batch := &mocks.FakeBatch{}
-	batch.PartyReturns(1)
+	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 
 	batchPuller := &mocks.FakeBatchPuller{}
@@ -302,7 +302,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	reqs = append(reqs, req)
 
 	batch := &mocks.FakeBatch{}
-	batch.PartyReturns(1)
+	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 
 	batchPuller := &mocks.FakeBatchPuller{}
@@ -511,7 +511,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	batcher.StateProvider = stateProvider
 
 	batch := &mocks.FakeBatch{}
-	batch.PartyReturns(1)
+	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 
 	batchPuller := &mocks.FakeBatchPuller{}

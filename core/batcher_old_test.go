@@ -83,7 +83,7 @@ type naiveBatch struct {
 	requests [][]byte
 }
 
-func (nb *naiveBatch) Party() arma_types.PartyID {
+func (nb *naiveBatch) Primary() arma_types.PartyID {
 	return nb.node
 }
 

@@ -29,7 +29,7 @@ type MemPool interface {
 type Batch interface {
 	Digest() []byte
 	Requests() types.BatchedRequests
-	Party() types.PartyID
+	Primary() types.PartyID
 	Shard() types.ShardID
 	Seq() types.BatchSequence
 }

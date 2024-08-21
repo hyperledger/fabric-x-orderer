@@ -37,7 +37,7 @@ func TestBatchLedgerPart(t *testing.T) {
 		batch := part.RetrieveBatchByNumber(seq)
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
-		require.Equal(t, types.PartyID(2), batch.Party())
+		require.Equal(t, types.PartyID(2), batch.Primary())
 		require.Equal(t, types.ShardID(5), batch.Shard())
 		require.NotNil(t, batch.Digest())
 	}
