@@ -66,11 +66,12 @@ func TestArmageddon(t *testing.T) {
 }
 
 // Scenario:
-// 1. Create a config YAML file to be an input to armageddon
-// 2. Run armageddon generate command to create config files in a folder structure
-// 3. Run arma with the generated config files to run each of the nodes for all parties
-// 4. Run armageddon load command to make 1000 txs and send them to all routers at a specified rate
-func TestLoad(t *testing.T) {
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files in a folder structure
+//  3. Run arma with the generated config files to run each of the nodes for all parties
+//  4. Run armageddon load command to make 1000 txs and send them to all routers at a specified rate
+//     In parallel run armageddon receive command to pull blocks from the assembler and report results
+func TestLoadAndReceive(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
@@ -107,13 +108,19 @@ func TestLoad(t *testing.T) {
 	rate := "500"
 	txs := "1000"
 	txSize := "64"
-	var waitForTxToBeSent sync.WaitGroup
-	waitForTxToBeSent.Add(1)
+
+	var waitForTxToBeSentAndReceived sync.WaitGroup
+	waitForTxToBeSentAndReceived.Add(2)
 	go func() {
 		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
-		waitForTxToBeSent.Done()
+		waitForTxToBeSentAndReceived.Done()
 	}()
-	waitForTxToBeSent.Wait()
+
+	go func() {
+		armageddon.Run([]string{"receive", "--config", userConfigPath, "--expectedTxs", txs})
+		waitForTxToBeSentAndReceived.Done()
+	}()
+	waitForTxToBeSentAndReceived.Wait()
 }
 
 func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) {

@@ -172,6 +172,9 @@ type CLI struct {
 	loadTransactions   *int
 	loadRate           *int
 	loadTxSize         *int
+	// receive command flags
+	receiveUserConfigFile   **os.File
+	receiveExpectedNumOfTxs *int
 }
 
 func NewCLI() *CLI {
@@ -209,6 +212,11 @@ func (cli *CLI) configureCommands() {
 	cli.loadTxSize = load.Flag("txSize", "The required transaction size in bytes").Int()
 	commands["load"] = load
 
+	receive := cli.app.Command("receive", "Pull txs from some assembler and report statistics")
+	cli.receiveUserConfigFile = receive.Flag("config", "The user configuration needed to connection with assemblers").File()
+	cli.receiveExpectedNumOfTxs = receive.Flag("expectedTxs", "The expected number of transactions the assembler should received").Default("-1").Int()
+	commands["receive"] = receive
+
 	cli.commands = commands
 }
 
@@ -234,6 +242,10 @@ func (cli *CLI) Run(args []string) {
 	// "load" command
 	case cli.commands["load"].FullCommand():
 		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize)
+
+	// "receive" command
+	case cli.commands["receive"].FullCommand():
+		receive(cli.receiveUserConfigFile, cli.receiveExpectedNumOfTxs)
 	}
 }
 
@@ -727,7 +739,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	var numOfBlocks int
 	var txDelayTimes float64
 	go func() {
-		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfigFileContent, txsMap)
+		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfigFileContent, txsMap, *transactions)
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
@@ -760,6 +772,17 @@ func load(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
 	elapsed := time.Since(start)
 
 	reportLoadResults(*transactions, elapsed, *txSize)
+}
+
+func receive(userConfigFile **os.File, expectedNumOfTxs *int) {
+	// get user config file content given as argument
+	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
+		os.Exit(-1)
+	}
+
+	_, _ = receiveResponseFromAssembler(userConfigFileContent, nil, *expectedNumOfTxs)
 }
 
 func trimPortFromEndpoint(endpoint string) string {
@@ -905,7 +928,7 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 	}
 }
 
-func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *protectedMap) (int, float64) {
+func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
 	// choose randomly the first assembler
 	i := 0
 	var serverRootCAs [][]byte
@@ -973,6 +996,7 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 
 	// pull blocks from assembler
 	numOfBlocksCalculated := 0
+	numOfTxsCalculated := 0
 	var sumOfDelayTimes float64
 	for {
 		currentTime := time.Now()
@@ -985,6 +1009,7 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 
 		// iterate over txs in block
 		for j := 0; j < len(block.Data.Data); j++ {
+			numOfTxsCalculated += 1
 			env, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[j])
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to get envelope from block: %v", err)
@@ -1008,7 +1033,12 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 		}
 
 		// if the map is empty it means we received all txs, then we stop asking for blocks from the assembler
-		if txsMap != nil && txsMap.IsEmpty() {
+		// NOTE: the map is relevant when using the submit command. Load and receive commands don't maintain a map.
+		if expectedNumOfTxs < 0 {
+			continue
+		}
+
+		if (txsMap != nil && txsMap.IsEmpty()) || numOfTxsCalculated == expectedNumOfTxs {
 			break
 		}
 	}
