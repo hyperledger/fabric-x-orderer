@@ -528,7 +528,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		panic(err)
 	}
 
-	breqs := arma_types.BatchedRequests(requests)
+	reqs := arma_types.BatchedRequests(requests)
 
 	return types.Proposal{
 		Header: (&state.Header{
@@ -538,7 +538,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 			Num:              md.LatestSequence,
 		}).Bytes(),
 		Metadata: metadata,
-		Payload:  breqs.Serialize(),
+		Payload:  reqs.Serialize(),
 	}
 }
 

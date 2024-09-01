@@ -73,7 +73,7 @@ func TestABCR(t *testing.T) {
 	assemblerDir, err := os.MkdirTemp("", fmt.Sprintf("%s-assembler", t.Name()))
 	require.NoError(t, err)
 
-	assemberConf := config.AssemblerNodeConfig{
+	assemblerConf := config.AssemblerNodeConfig{
 		ListenAddress:      "0.0.0.0:0",
 		PartyId:            1,
 		TLSPrivateKeyFile:  ckp.Key,
@@ -84,9 +84,9 @@ func TestABCR(t *testing.T) {
 	}
 
 	aLogger := testutil.CreateLogger(t, 1)
-	assembler := assembler.NewAssembler(assemberConf, aLogger)
+	assembler := assembler.NewAssembler(assemblerConf, aLogger)
 
-	assemblerGRPC := node2.CreateGRPCAssembler(assemberConf)
+	assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 
 	go func() {
