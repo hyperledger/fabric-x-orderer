@@ -151,6 +151,7 @@ func (ps *PendingStore) changeEpochs(now time.Time) {
 
 	ps.checkFirstStrike(now)
 	if ps.checkSecondStrike(now) {
+		ps.Logger.Infof("second strike")
 		ps.SecondStrikeCallback()
 		return
 	}

@@ -2,7 +2,6 @@ package core_test
 
 import (
 	"encoding/binary"
-	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -257,7 +256,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		for _, req := range requests {
 			submittedRequests.Delete(binary.BigEndian.Uint64(req))
 		}
-		fmt.Println("committed:", committedReqCount, "submitted:", atomic.LoadUint32(&submittedCount))
+		t.Log("committed:", committedReqCount, "submitted:", atomic.LoadUint32(&submittedCount))
 	}
 
 	wg.Wait()
@@ -269,5 +268,5 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	})
 
 	assert.Equal(t, 0, remainingRequests)
-	fmt.Println(committedReqCount, time.Since(t1))
+	t.Log(committedReqCount, time.Since(t1))
 }

@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,8 +11,12 @@ import (
 
 	arma_types "arma/common/types"
 	"arma/core"
+	"arma/core/mocks"
 	"arma/request"
 	"arma/testutil"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type reqInspector struct{}
@@ -107,11 +110,12 @@ func (nb *naiveBatch) Requests() arma_types.BatchedRequests {
 	return nb.requests
 }
 
-func TestBatcherNetwork(t *testing.T) {
-	t.Skip()
-	n := 3
-
-	batchers, commit := createBatchers(t, n)
+func BenchmarkBatcherNetwork(b *testing.B) {
+	n := 4
+	batchers, commit := createBenchBatchers(b, n)
+	for _, b := range batchers {
+		b.Start()
+	}
 
 	go func() {
 		for worker := 0; worker < 100; worker++ {
@@ -140,9 +144,10 @@ func TestBatcherNetwork(t *testing.T) {
 			time.Sleep(time.Second * 5)
 			tps := atomic.LoadUint32(&committedRequestCount) / 5
 			if tps > 50*1000 {
+				b.Log("Fast batch committed; TPS:", tps)
 				atomic.AddUint64(&fastBatchesCommitted, 1)
 			} else {
-				fmt.Println("TPS:", tps)
+				b.Log("TPS:", tps)
 			}
 			atomic.StoreUint32(&committedRequestCount, 0)
 		}
@@ -150,7 +155,7 @@ func TestBatcherNetwork(t *testing.T) {
 
 	var committedRequests sync.Map
 
-	for atomic.LoadUint64(&fastBatchesCommitted) < 4 {
+	for atomic.LoadUint64(&fastBatchesCommitted) < 5 {
 		batch := <-commit
 		requests := batch.Requests()
 		atomic.AddUint32(&committedRequestCount, uint32(len(requests)))
@@ -163,40 +168,115 @@ func TestBatcherNetwork(t *testing.T) {
 	}
 }
 
+func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan core.Batch) {
+	var batcherConf []arma_types.PartyID
+	for i := 0; i < n; i++ {
+		batcherConf = append(batcherConf, arma_types.PartyID(i))
+	}
+
+	var batchers []*core.Batcher
+	for i := 0; i < n; i++ {
+		b := createBenchBatcher(b, 0, arma_types.PartyID(i), batcherConf)
+		batchers = append(batchers, b)
+	}
+
+	r := &naiveReplication{}
+
+	for i := 1; i < n; i++ {
+		r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
+	}
+
+	r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
+	commit := r.PullBatches(0)
+
+	batchers[0].Ledger = r
+	for i := 1; i < n; i++ {
+		batchers[i].BatchPuller = r
+	}
+
+	for i := 0; i < n; i++ {
+		from := i
+		batchers[i].TotalOrderBAF = func(core.BatchAttestationFragment) {}
+		batchers[i].AckBAF = func(seq arma_types.BatchSequence, to arma_types.PartyID) {
+			batchers[to].HandleAck(seq, arma_types.PartyID(from))
+		}
+	}
+	return batchers, commit
+}
+
+func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *core.Batcher {
+	logConfig := zap.NewDevelopmentConfig()
+	logConfig.Level.SetLevel(zapcore.WarnLevel)
+	logger, _ := logConfig.Build()
+	logger = logger.With(zap.String("b", b.Name())).With(zap.Int64("id", int64(nodeID)))
+	sugaredLogger := logger.Sugar()
+
+	requestInspector := &reqInspector{}
+	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
+		FirstStrikeThreshold:  time.Second * 10,
+		SecondStrikeThreshold: time.Minute / 2,
+		OnFirstStrikeTimeout: func([]byte) {
+			sugaredLogger.Info("OnFirstStrikeTimeout")
+		},
+		OnSecondStrikeTimeout: func() {
+			sugaredLogger.Warn("OnSecondStrikeTimeout")
+		},
+		BatchMaxSize:      10000,
+		MaxSize:           1000 * 100,
+		AutoRemoveTimeout: time.Minute / 2,
+		SubmitTimeout:     time.Second * 10,
+	})
+
+	batcher := &core.Batcher{
+		N:        uint16(len(batchers)),
+		Batchers: batchers,
+		Shard:    arma_types.ShardID(shardID),
+		AttestBatch: func(seq arma_types.BatchSequence, primary arma_types.PartyID, shard arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
+			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
+		},
+		Digest: func(data [][]byte) []byte {
+			h := sha256.New()
+			for _, d := range data {
+				h.Write(d)
+			}
+			return h.Sum(nil)
+		},
+		RequestInspector: requestInspector,
+		Logger:           sugaredLogger,
+		MemPool:          pool,
+		ID:               arma_types.PartyID(nodeID),
+		Threshold:        2,
+		Ledger:           &noopLedger{},
+		StateProvider:    &mocks.FakeStateProvider{},
+	}
+
+	return batcher
+}
+
 func TestBatchersStopSecondaries(t *testing.T) {
-	t.Skip()
-	n := 3
+	n := 4
 
 	var stopped sync.WaitGroup
-	stopped.Add(n)
-
-	state := core.State{}
-	for shard := 0; shard < 1; shard++ {
-		state.Shards = append(state.Shards, core.ShardTerm{Shard: arma_types.ShardID(shard), Term: 5})
-	}
+	stopped.Add(n - 1) // OnSecondStrikeTimeout applies only to secondaries
 
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
-		b := b
-		b.AckBAF = func(_ arma_types.BatchSequence, _ arma_types.PartyID) {}
+		b.AckBAF = func(_ arma_types.BatchSequence, _ arma_types.PartyID) {} // no ack will be received by the primary
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
-			SecondStrikeThreshold: time.Second * 5,
-			BatchMaxSize:          10000,
+			SecondStrikeThreshold: time.Second * 2,
+			BatchMaxSize:          100, // batch can't include all requests
 			MaxSize:               1000 * 100,
 			AutoRemoveTimeout:     time.Minute / 2,
 			SubmitTimeout:         time.Second * 10,
 			OnFirstStrikeTimeout:  func([]byte) {},
 			OnSecondStrikeTimeout: func() {
-				go func() {
-					fmt.Println("Stopping batcher", b.ID)
-					defer stopped.Done()
-					b.Stop()
-				}()
+				stopped.Done()
 			},
 		})
 		b.MemPool.Close()
 		b.MemPool = pool
+		b.Start()
 	}
 
 	var submits sync.WaitGroup
@@ -223,16 +303,19 @@ func TestBatchersStopSecondaries(t *testing.T) {
 
 	submits.Wait()
 	stopped.Wait()
+
+	for _, b := range batchers {
+		b.Stop()
+	}
 }
 
 func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
-	var batchers []*core.Batcher
-
 	var batcherConf []arma_types.PartyID
 	for i := 0; i < n; i++ {
-		batchers[i].Batchers = batcherConf
+		batcherConf = append(batcherConf, arma_types.PartyID(i))
 	}
 
+	var batchers []*core.Batcher
 	for i := 0; i < n; i++ {
 		b := createTestBatcher(t, 0, arma_types.PartyID(i), batcherConf)
 		batchers = append(batchers, b)
@@ -259,10 +342,6 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 			batchers[to].HandleAck(seq, arma_types.PartyID(from))
 		}
 	}
-
-	for i := 0; i < n; i++ {
-		batchers[i].Start()
-	}
 	return batchers, commit
 }
 
@@ -271,15 +350,22 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
-		FirstStrikeThreshold:  time.Second * 5,
+		FirstStrikeThreshold:  time.Second * 10,
 		SecondStrikeThreshold: time.Minute / 2,
-		BatchMaxSize:          10000,
-		MaxSize:               1000 * 100,
-		AutoRemoveTimeout:     time.Minute / 2,
-		SubmitTimeout:         time.Second * 10,
+		OnFirstStrikeTimeout: func([]byte) {
+			sugaredLogger.Info("OnFirstStrikeTimeout")
+		},
+		OnSecondStrikeTimeout: func() {
+			sugaredLogger.Warn("OnSecondStrikeTimeout")
+		},
+		BatchMaxSize:      10000,
+		MaxSize:           1000 * 100,
+		AutoRemoveTimeout: time.Minute / 2,
+		SubmitTimeout:     time.Second * 10,
 	})
 
 	b := &core.Batcher{
+		N:        uint16(len(batchers)),
 		Batchers: batchers,
 		Shard:    arma_types.ShardID(shardID),
 		AttestBatch: func(seq arma_types.BatchSequence, primary arma_types.PartyID, shard arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
@@ -297,9 +383,9 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		MemPool:          pool,
 		ID:               arma_types.PartyID(nodeID),
 		Threshold:        2,
+		Ledger:           &noopLedger{},
+		StateProvider:    &mocks.FakeStateProvider{},
 	}
-
-	b.Ledger = &noopLedger{}
 
 	return b
 }

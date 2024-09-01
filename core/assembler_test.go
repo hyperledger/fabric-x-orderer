@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -105,11 +104,16 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 		panic(err)
 	}
 
+	node := m["node"]
+	shard := m["shard"]
 	seq := m["seq"]
 	dig := m["digest"]
 
+	nba.node = types.PartyID(node.(float64))
+	nba.shard = types.ShardID(shard.(float64))
 	nba.seq = types.BatchSequence(seq.(float64))
 	nba.digest, _ = hex.DecodeString(dig.(string))
+
 	return nil
 }
 
@@ -126,8 +130,8 @@ func TestNaive(t *testing.T) {
 	nba.digest = []byte{1, 2, 3, 4, 5, 6, 7, 8}
 
 	nba2 := &naiveBatchAttestation{}
-	nba.Deserialize(nba.Serialize())
-	fmt.Println(nba2)
+	nba2.Deserialize(nba.Serialize())
+	assert.Equal(t, nba, nba2)
 }
 
 func TestAssembler(t *testing.T) {
