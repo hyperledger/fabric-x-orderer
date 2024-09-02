@@ -41,36 +41,28 @@ func TestConsensus(t *testing.T) {
 
 	sks := []*ecdsa.PrivateKey{sk1, sk2, sk3, sk4}
 
-	dig3 := make([]byte, 32-3)
-	d123 := []byte{1, 2, 3}
-	dig3 = append(d123, dig3...)
-	baf1, err := batcher.CreateBAF(sk1, 1, 1, dig3, 1, 1)
+	dig := make([]byte, 32-3)
+
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf123id1p1s1, err := batcher.CreateBAF(sk1, 1, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+	baf123id2p1s1, err := batcher.CreateBAF(sk2, 2, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+	baf123id3p1s1, err := batcher.CreateBAF(sk3, 3, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+	baf123id4p1s1, err := batcher.CreateBAF(sk4, 4, 1, dig123, 1, 1)
 	assert.NoError(t, err)
 
-	baf2, err := batcher.CreateBAF(sk2, 2, 1, dig3, 1, 1)
+	dig124 := append([]byte{1, 2, 4}, dig...)
+	baf124id1p2s1, err := batcher.CreateBAF(sk1, 1, 2, dig124, 2, 1)
 	assert.NoError(t, err)
-	baf11, err := batcher.CreateBAF(sk3, 3, 1, dig3, 1, 1)
-	assert.NoError(t, err)
-
-	baf21, err := batcher.CreateBAF(sk4, 4, 1, dig3, 1, 1)
+	baf124id2p2s1, err := batcher.CreateBAF(sk2, 2, 2, dig124, 2, 1)
 	assert.NoError(t, err)
 
-	dig4 := make([]byte, 32-3)
-	d124 := []byte{1, 2, 4}
-	dig4 = append(d124, dig4...)
-	baf3, err := batcher.CreateBAF(sk1, 1, 2, dig4, 2, 1)
+	dig125 := append([]byte{1, 2, 5}, dig...)
+	baf125id1p1s2, err := batcher.CreateBAF(sk1, 1, 1, dig125, 1, 2)
 	assert.NoError(t, err)
-
-	baf4, err := batcher.CreateBAF(sk2, 2, 2, dig4, 2, 1)
-	assert.NoError(t, err)
-
-	dig5 := make([]byte, 32-3)
-	d125 := []byte{1, 2, 5}
-	dig5 = append(d125, dig5...)
-	baf5, err := batcher.CreateBAF(sk1, 1, 1, dig5, 1, 2)
-	assert.NoError(t, err)
-
-	baf6, err := batcher.CreateBAF(sk2, 2, 1, dig5, 1, 2)
+	baf125id2p1s2, err := batcher.CreateBAF(sk2, 2, 1, dig125, 1, 2)
 	assert.NoError(t, err)
 
 	for _, tst := range []struct {
@@ -84,11 +76,14 @@ func TestConsensus(t *testing.T) {
 			name:                "two batches single decision",
 			expectedSequences:   [][]arma_types.BatchSequence{{1, 1}},
 			expectedDecisionNum: []uint64{1},
+			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
-				{ControlEvent: &core.ControlEvent{BAF: baf1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf2}},
-				{ControlEvent: &core.ControlEvent{BAF: baf3}},
-				{ControlEvent: &core.ControlEvent{BAF: baf4}},
+				{expectCommits: big.NewInt(4)},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id1p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf124id1p2s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf124id2p2s1}},
+				{waitForCommit: &struct{}{}},
 			},
 		},
 		{
@@ -98,21 +93,42 @@ func TestConsensus(t *testing.T) {
 			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
 				{expectCommits: big.NewInt(4)},
-				{ControlEvent: &core.ControlEvent{BAF: baf1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf2}},
-				{ControlEvent: &core.ControlEvent{BAF: baf3}},
-				{ControlEvent: &core.ControlEvent{BAF: baf4}},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id1p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf124id1p2s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf124id2p2s1}},
 				{waitForCommit: &struct{}{}},
-				{ControlEvent: &core.ControlEvent{BAF: baf11}},
-				{ControlEvent: &core.ControlEvent{BAF: baf21}},
-				{ControlEvent: &core.ControlEvent{BAF: baf5}},
-				{ControlEvent: &core.ControlEvent{BAF: baf6}},
+				{expectCommits: big.NewInt(4)},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id3p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id4p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf125id1p1s2}},
+				{ControlEvent: &core.ControlEvent{BAF: baf125id2p1s2}},
+				{waitForCommit: &struct{}{}},
+			},
+		},
+		{
+			name:                "two batches from same primary in single decision",
+			expectedSequences:   [][]arma_types.BatchSequence{{1, 2}, {1}},
+			expectedDecisionNum: []uint64{1, 2},
+			commitEvent:         new(sync.WaitGroup),
+			events: []scheduleEvent{
+				{expectCommits: big.NewInt(4)},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id3p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id4p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf125id1p1s2}},
+				{ControlEvent: &core.ControlEvent{BAF: baf125id2p1s2}},
+				{waitForCommit: &struct{}{}},
+				{expectCommits: big.NewInt(4)},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id1p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf124id1p2s1}},
+				{ControlEvent: &core.ControlEvent{BAF: baf124id2p2s1}},
+				{waitForCommit: &struct{}{}},
 			},
 		},
 	} {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
-			v := make(crypto.ECDSAVerifier)
+			verifier := make(crypto.ECDSAVerifier)
 
 			initialAppContext := &state.BlockHeader{
 				Number:   0,
@@ -138,26 +154,20 @@ func TestConsensus(t *testing.T) {
 					cleanup()
 				}
 			}()
+
 			network := make(network)
 
-			for _, event := range tst.events {
-				if event.expectCommits != nil {
-					tst.commitEvent.Add(int(event.expectCommits.Uint64()))
-				}
-			}
-
 			for i := uint16(1); i <= 4; i++ {
-				var once sync.Once
 				onCommit := func() {
-					once.Do(tst.commitEvent.Done)
+					tst.commitEvent.Done()
 				}
-				c, cleanup := makeConsensusNode(t, sks[i-1], arma_types.PartyID(i), network, initialState, nodeIDs, v, onCommit)
+				c, cleanup := makeConsensusNode(t, sks[i-1], arma_types.PartyID(i), network, initialState, nodeIDs, verifier, onCommit)
 				network[uint64(i)] = c
 				cleanups = append(cleanups, cleanup)
 			}
 
 			for i := uint16(1); i <= 4; i++ {
-				err := network[uint64(i)].BFT.Start()
+				err := network[uint64(i)].Start()
 				assert.NoError(t, err)
 			}
 
@@ -168,6 +178,7 @@ func TestConsensus(t *testing.T) {
 				}
 
 				if ce.expectCommits != nil {
+					tst.commitEvent.Add(int(ce.expectCommits.Uint64()))
 					continue
 				}
 
@@ -244,7 +255,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	db, err := NewBatchAttestationDB(dir, l)
 	assert.NoError(t, err)
 
-	consenter := &core.Consenter{
+	consenter := &core.Consenter{ // TODO should this be initialized as part of consensus node start?
 		State:           initialState,
 		DB:              db,
 		Logger:          l,
@@ -258,7 +269,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		SigVerifier:   verifier,
 		State:         initialState,
 		CurrentNodes:  nodes,
-		Storage:       &commitInterceptor{Storage: make(mockStorage, 1), f: onCommit},
+		Storage:       &commitInterceptor{Storage: make(mockStorage, 100), f: onCommit},
 		Arma:          consenter,
 	}
 
