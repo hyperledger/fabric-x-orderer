@@ -5,14 +5,6 @@ import (
 	"arma/core"
 )
 
-func ToBeSignedBAF(baf core.BatchAttestationFragment) []byte {
-	simBAF, ok := baf.(*arma_types.SimpleBatchAttestationFragment)
-	if !ok {
-		return nil
-	}
-	return simBAF.ToBeSigned()
-}
-
 type BAFDeserializer struct{}
 
 func (bafd *BAFDeserializer) Deserialize(bytes []byte) (core.BatchAttestationFragment, error) {

@@ -320,7 +320,7 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 		err := c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ToBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
 		return reqID, err
 	} else if ce.BAF != nil {
-		msg := state.ToBeSignedBAF(ce.BAF)
+		msg := toBeSignedBAF(ce.BAF)
 		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma_types.SimpleBatchAttestationFragment).Signature())
 		return reqID, err
 	} else {

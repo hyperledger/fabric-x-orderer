@@ -5,6 +5,9 @@ import (
 	"encoding/asn1"
 	"encoding/binary"
 
+	arma_types "arma/common/types"
+	"arma/core"
+
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 )
 
@@ -103,4 +106,12 @@ func bytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error)
 		Payload:  payload,
 		Metadata: metadata,
 	}, sigs, nil
+}
+
+func toBeSignedBAF(baf core.BatchAttestationFragment) []byte {
+	simBAF, ok := baf.(*arma_types.SimpleBatchAttestationFragment)
+	if !ok {
+		return nil
+	}
+	return simBAF.ToBeSigned()
 }
