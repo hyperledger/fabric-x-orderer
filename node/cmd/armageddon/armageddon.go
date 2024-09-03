@@ -132,30 +132,26 @@ type SharedConfig struct {
 }
 
 type protectedMap struct {
-	keyValMap map[string]struct{}
+	keyValMap map[string]bool
 	mutex     sync.Mutex
 }
 
-func (pm *protectedMap) Add(key string, val struct{}) {
+func (pm *protectedMap) Add(key string) {
 	pm.mutex.Lock()
-	pm.keyValMap[key] = val
-	pm.mutex.Unlock()
+	defer pm.mutex.Unlock()
+	pm.keyValMap[key] = true
 }
 
 func (pm *protectedMap) Remove(key string) {
 	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
 	delete(pm.keyValMap, key)
-	pm.mutex.Unlock()
 }
 
 func (pm *protectedMap) IsEmpty() bool {
 	pm.mutex.Lock()
-	if len(pm.keyValMap) == 0 {
-		pm.mutex.Unlock()
-		return true
-	}
-	pm.mutex.Unlock()
-	return false
+	defer pm.mutex.Unlock()
+	return len(pm.keyValMap) == 0
 }
 
 type CLI struct {
@@ -731,7 +727,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	// send txs to the routers
 	start := time.Now()
 	txsMap := &protectedMap{
-		keyValMap: make(map[string]struct{}),
+		keyValMap: make(map[string]bool),
 		mutex:     sync.Mutex{},
 	}
 	var waitForTxToBeSentAndReceived sync.WaitGroup
@@ -1139,7 +1135,7 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
 	payload := prepareTx(i, txSize, sessionNumber)
 	if txsMap != nil {
-		txsMap.Add(string(payload), struct{}{})
+		txsMap.Add(string(payload[:32]))
 	}
 	for j := 0; j < 4; j++ {
 		err := streams[j].Send(&common.Envelope{Payload: payload})

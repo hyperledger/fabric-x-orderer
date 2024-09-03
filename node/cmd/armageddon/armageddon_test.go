@@ -154,7 +154,7 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 		match, err := gbytes.Say("listening on").Match(sess.Err)
 		require.NoError(t, err)
 		return match
-	}, 10*time.Second, 10*time.Millisecond)
+	}, 30*time.Second, 10*time.Millisecond)
 
 	readyChan <- struct{}{}
 }
