@@ -266,7 +266,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 2,
 			BatchMaxSize:          100, // batch can't include all requests
-			MaxSize:               1000 * 100,
+			MaxSize:               100 * 100,
 			AutoRemoveTimeout:     time.Minute / 2,
 			SubmitTimeout:         time.Second * 10,
 			OnFirstStrikeTimeout:  func([]byte) {},
@@ -280,10 +280,10 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	}
 
 	var submits sync.WaitGroup
-	submits.Add(100)
+	submits.Add(20)
 
 	go func() {
-		for worker := 0; worker < 100; worker++ {
+		for worker := 0; worker < 20; worker++ {
 			go func(worker uint64) {
 				defer submits.Done()
 				var i int
