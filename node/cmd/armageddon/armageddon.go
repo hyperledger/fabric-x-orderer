@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/csv"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"os"
 	"path"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -175,6 +177,8 @@ type CLI struct {
 	// receive command flags
 	receiveUserConfigFile   **os.File
 	receiveExpectedNumOfTxs *int
+	receiveOutputDir        *string
+	pullFromPartyId         *int
 }
 
 func NewCLI() *CLI {
@@ -215,6 +219,8 @@ func (cli *CLI) configureCommands() {
 	receive := cli.app.Command("receive", "Pull txs from some assembler and report statistics")
 	cli.receiveUserConfigFile = receive.Flag("config", "The user configuration needed to connection with assemblers").File()
 	cli.receiveExpectedNumOfTxs = receive.Flag("expectedTxs", "The expected number of transactions the assembler should received").Default("-1").Int()
+	cli.receiveOutputDir = receive.Flag("output", "The output directory in which to place statistics file").Default(".").String()
+	cli.pullFromPartyId = receive.Flag("pullFromPartyId", "The party id of the assembler to pull blocks from").Int()
 	commands["receive"] = receive
 
 	cli.commands = commands
@@ -245,7 +251,7 @@ func (cli *CLI) Run(args []string) {
 
 	// "receive" command
 	case cli.commands["receive"].FullCommand():
-		receive(cli.receiveUserConfigFile, cli.receiveExpectedNumOfTxs)
+		receive(cli.receiveUserConfigFile, cli.pullFromPartyId, cli.receiveOutputDir, cli.receiveExpectedNumOfTxs)
 	}
 }
 
@@ -774,7 +780,8 @@ func load(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
 	reportLoadResults(*transactions, elapsed, *txSize)
 }
 
-func receive(userConfigFile **os.File, expectedNumOfTxs *int) {
+// receive command pull blocks from the assembler and report statistics
+func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *string, expectedNumOfTxs *int) {
 	// get user config file content given as argument
 	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
 	if err != nil {
@@ -782,7 +789,16 @@ func receive(userConfigFile **os.File, expectedNumOfTxs *int) {
 		os.Exit(-1)
 	}
 
-	_, _ = receiveResponseFromAssembler(userConfigFileContent, nil, *expectedNumOfTxs)
+	// pull blocks from the assembler and report statistics to statistics.csv file
+	pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs)
+	avgTxRate, avgTxDelay, err := reportStatisticsResult(path.Join(*receiveOutputDir, "statistics.csv"))
+	if err != nil {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
+			os.Exit(-1)
+		}
+	}
+	fmt.Printf("Receive command finished, statistics can be found in: %v\n avg. tx rate: %v txs/second, avg. tx delay: %vs\n", path.Join(*receiveOutputDir, "statistics.csv"), avgTxRate, avgTxDelay)
 }
 
 func trimPortFromEndpoint(endpoint string) string {
@@ -928,6 +944,315 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 	}
 }
 
+func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int) {
+	// choose randomly the first assembler
+	i := pullFromPartyId - 1
+	var serverRootCAs [][]byte
+	for _, rawBytes := range userConfigFileContent.TLSCACerts {
+		byteSlice := []byte(rawBytes)
+		serverRootCAs = append(serverRootCAs, byteSlice)
+	}
+
+	// create a gRPC connection to the assembler
+	gRPCAssemblerClient := comm.ClientConfig{
+		KaOpts: comm.KeepaliveOptions{
+			ClientInterval: time.Hour,
+			ClientTimeout:  time.Hour,
+		},
+		SecOpts: comm.SecureOptions{
+			Key:               userConfigFileContent.TLSPrivateKeyFile,
+			Certificate:       userConfigFileContent.TLSCertificateFile,
+			RequireClientCert: true,
+			UseTLS:            true,
+			ServerRootCAs:     serverRootCAs,
+		},
+		DialTimeout: time.Second * 5,
+	}
+
+	// prepare request envelope
+	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		"arma",
+		nil,
+		nextSeekInfo(0),
+		int32(0),
+		uint64(0),
+		nil,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed create a request envelope")
+		os.Exit(3)
+	}
+
+	var stream ab.AtomicBroadcast_DeliverClient
+	var gRPCAssemblerClientConn *grpc.ClientConn
+	endpointToPullFrom := userConfigFileContent.AssemblerEndpoints[i]
+
+	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", i+1, err)
+		os.Exit(3)
+	}
+
+	abc := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn)
+
+	// create a deliver stream
+	stream, err = abc.Deliver(context.TODO())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create a deliver stream to assembler %d: %v", i+1, err)
+		os.Exit(3)
+	}
+
+	// send request envelope
+	err = stream.Send(requestEnvelope)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to send a request envelope to assembler %d: %v", i+1, err)
+		os.Exit(3)
+	}
+
+	// pull blocks from assembler, every second pack statistics and send it to the manageStatistics
+	statisticsAggregator := &StatisticsAggregator{}
+
+	statisticChan := make(chan Statistics, 60)
+	blockChan := make(chan BlockWithTime)
+	stopChan := make(chan bool)
+
+	var waitToFinish sync.WaitGroup
+	waitToFinish.Add(4)
+
+	// handle statistics channel messages
+	go func() {
+		manageStatistics(receiveOutputDir, statisticChan, stopChan, expectedNumOfTxs, pullFromPartyId)
+		waitToFinish.Done()
+	}()
+
+	// every second read the statistics and send it to the manageStatistics
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// send the accumulated statistics to the channel
+				lastStat := statisticsAggregator.ReadAndReset()
+				statisticChan <- lastStat
+			case <-stopChan:
+				waitToFinish.Done()
+				return
+			}
+		}
+	}()
+
+	// pull blocks from the assembler
+	// if a flag is given, stop when finish receiving all txs
+	go func() {
+		var txsTotal int
+		for {
+			block, err := pullBlock(stream, endpointToPullFrom, gRPCAssemblerClientConn)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
+				os.Exit(3)
+			}
+			blockWithTime := BlockWithTime{
+				block:        block,
+				acceptedTime: time.Now(),
+			}
+			blockChan <- blockWithTime
+			txsTotal += len(blockWithTime.block.Data.Data)
+
+			if expectedNumOfTxs > 0 && expectedNumOfTxs == txsTotal {
+				waitToFinish.Done()
+				return
+			}
+		}
+	}()
+
+	// parse blocks and make statistics on each block
+	go func() {
+		var sumOfDelayTimes float64
+		var txs int
+		var txsTotal int
+		for {
+			blockWithTime := <-blockChan
+			sumOfDelayTimes = 0.0
+			txs = len(blockWithTime.block.Data.Data)
+			txsTotal += len(blockWithTime.block.Data.Data)
+			// iterate over txs in block
+			for j := 0; j < txs; j++ {
+				env, err := protoutil.GetEnvelopeFromBlock(blockWithTime.block.Data.Data[j])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to get envelope from block: %v", err)
+					os.Exit(3)
+				}
+
+				// extract the sending time and calculate the delay, add the delay to sumOfDelayTimes
+				delay := calculateDelayOfTx(env, blockWithTime.acceptedTime)
+				sumOfDelayTimes = sumOfDelayTimes + delay.Seconds()
+			}
+			statisticsAggregator.Add(txs, 1, sumOfDelayTimes)
+
+			if expectedNumOfTxs > 0 && expectedNumOfTxs == txsTotal {
+				close(stopChan)
+				waitToFinish.Done()
+				return
+			}
+		}
+	}()
+
+	waitToFinish.Wait()
+}
+
+func calculateDelayOfTx(env *common.Envelope, acceptedTime time.Time) time.Duration {
+	readPayload := bytes.NewBuffer(env.Payload)
+	startPosition := 16 + 8
+	readPayload.Next(startPosition)
+	var extractedSendTime uint64
+	binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
+	sendTime := time.Unix(0, int64(extractedSendTime))
+	delayTime := acceptedTime.Sub(sendTime)
+	return delayTime
+}
+
+func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
+	resp, err := stream.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("failed to receive a deliver response from %s", endpointToPullFrom)
+	}
+
+	block := resp.GetBlock()
+
+	if block == nil {
+		stream.CloseSend()
+		gRPCAssemblerClientConn.Close()
+		return nil, fmt.Errorf("received a non block message from %s: %v", endpointToPullFrom, resp)
+	}
+
+	if block.Data == nil || len(block.Data.Data) == 0 {
+		stream.CloseSend()
+		gRPCAssemblerClientConn.Close()
+		return nil, fmt.Errorf("received empty block from %s", endpointToPullFrom)
+	}
+
+	return block, nil
+}
+
+func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
+	payload := prepareTx(i, txSize, sessionNumber)
+	if txsMap != nil {
+		txsMap.Add(string(payload), struct{}{})
+	}
+	for j := 0; j < 4; j++ {
+		err := streams[j].Send(&common.Envelope{Payload: payload})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
+			os.Exit(3)
+		}
+	}
+}
+
+func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
+	// create timestamp (8 bytes)
+	timeStamp := uint64(time.Now().UnixNano())
+
+	// prepare the payload
+	buffer := make([]byte, txSize)
+	buff := bytes.NewBuffer(buffer[:0])
+	buff.Write(sessionNumber)
+	binary.Write(buff, binary.BigEndian, uint64(txNumber))
+	binary.Write(buff, binary.BigEndian, timeStamp)
+	return buff.Bytes()
+}
+
+func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult float64, numOfBlocksResult int, txSize int) {
+	avgTxRate := float64(transactions) / elapsed.Seconds()
+	avgTxDelay := txDelayTimesResult / float64(transactions)
+	avgBlockRate := float64(numOfBlocksResult) / elapsed.Seconds()
+	avgBlockSize := transactions / numOfBlocksResult
+	fmt.Printf("SUCCESS: number of txs: %d, tx size: %d bytes, elapsed time: %v, avg. tx rate: %.2f, avg. tx delay: %vs, num of blocks: %d, avg. block rate: %v, avg. block size: %v txs\n", transactions, txSize, elapsed, avgTxRate, avgTxDelay, numOfBlocksResult, avgBlockRate, avgBlockSize)
+}
+
+func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
+	avgTxSendingRate := float64(transactions) / elapsed.Seconds()
+	fmt.Printf("Load command finished, sent %d TXs in %v seconds, TX size %d, avg. tx sending rate: %.2f\n", transactions, elapsed, txSize, avgTxSendingRate)
+}
+
+// manageStatistics manages a statistics queue and every hour writes the queue to a CSV file
+func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, stopChan <-chan bool, expectedTxs int, pullFrom int) {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	filePath := path.Join(receiveOutputDir, "statistics.csv")
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open a csv file: %v", err)
+		os.Exit(3)
+	}
+	defer file.Close()
+
+	// write CSV header if file is new
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to stat the file: %v", err)
+		os.Exit(3)
+	}
+	if fileInfo.Size() == 0 {
+		writer := csv.NewWriter(file)
+		// Write the description of the experiment
+		desc := []string{"Experiment", fmt.Sprintf("Time: %dms", time.Now().UnixMilli()), fmt.Sprintf("receiver from assembler%d", pullFrom)}
+		if expectedTxs >= 0 {
+			desc = append(desc, fmt.Sprintf("Expected number of txs: %d", expectedTxs))
+		}
+		writer.Write(desc)
+		writer.Write([]string{})
+		writer.Write([]string{"Time Stamp (ms)", "Number of txs", "Number of blocks", "Sum of txs delay"})
+		writer.Flush()
+	}
+
+	var statisticsQueue []Statistics
+
+	for {
+		select {
+		case statistic := <-statisticChan:
+			statisticsQueue = append(statisticsQueue, statistic)
+
+		case <-ticker.C:
+			writeStatisticsToCSV(file, statisticsQueue)
+			statisticsQueue = []Statistics{}
+
+		case <-stopChan:
+			for {
+				select {
+				case statistic := <-statisticChan:
+					statisticsQueue = append(statisticsQueue, statistic)
+				default:
+					if len(statisticsQueue) > 0 {
+						writeStatisticsToCSV(file, statisticsQueue)
+					}
+					return
+				}
+			}
+		}
+	}
+}
+
+func writeStatisticsToCSV(file *os.File, statsQueue []Statistics) {
+	fmt.Printf("Writing %d records to CSV\n", len(statsQueue))
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	for _, statistic := range statsQueue {
+		err := writer.Write([]string{
+			fmt.Sprintf("%d", statistic.timeStamp),
+			fmt.Sprintf("%d", statistic.numOfTxs),
+			fmt.Sprintf("%d", statistic.numOfBlocks),
+			fmt.Sprintf("%.2f", statistic.sumOfTxsDelay),
+		})
+		if err != nil {
+			fmt.Printf("failed to write to CSV: %v", err)
+		}
+	}
+}
+
 func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
 	// choose randomly the first assembler
 	i := 0
@@ -999,12 +1324,12 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 	numOfTxsCalculated := 0
 	var sumOfDelayTimes float64
 	for {
-		currentTime := time.Now()
 		block, err := pullBlock(stream, endpointToPullFrom, gRPCAssemblerClientConn)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
 			os.Exit(3)
 		}
+		currentTime := time.Now()
 		numOfBlocksCalculated += 1
 
 		// iterate over txs in block
@@ -1046,65 +1371,54 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 	return numOfBlocksCalculated, sumOfDelayTimes
 }
 
-func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
-	resp, err := stream.Recv()
+func reportStatisticsResult(filePath string) (float64, float64, error) {
+	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to receive a deliver response from %s", endpointToPullFrom)
+		return 0, 0, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return 0, 0, err
 	}
 
-	block := resp.GetBlock()
-
-	if block == nil {
-		stream.CloseSend()
-		gRPCAssemblerClientConn.Close()
-		return nil, fmt.Errorf("received a non block message from %s: %v", endpointToPullFrom, resp)
+	// NOTE: records doesn't count empty lines
+	start, err := strconv.ParseInt(records[2][0], 10, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	stop, err := strconv.ParseInt(records[len(records)-1][0], 10, 64)
+	if err != nil {
+		return 0, 0, err
 	}
 
-	if block.Data == nil || len(block.Data.Data) == 0 {
-		stream.CloseSend()
-		gRPCAssemblerClientConn.Close()
-		return nil, fmt.Errorf("received empty block from %s", endpointToPullFrom)
-	}
+	// start and stop represent time in ms
+	timeDifference := stop - start
+	timeDifferenceSeconds := float64(timeDifference) / float64(1000)
 
-	return block, nil
-}
-
-func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	payload := prepareTx(i, txSize, sessionNumber)
-	if txsMap != nil {
-		txsMap.Add(string(payload), struct{}{})
-	}
-	for j := 0; j < 4; j++ {
-		err := streams[j].Send(&common.Envelope{Payload: payload})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
-			os.Exit(3)
+	var sumNumOfTxs int
+	var sumOfTxsDelay float64
+	for i, record := range records {
+		// skip the header
+		if i == 0 || i == 1 || i == 2 {
+			continue
 		}
+
+		val1, err := strconv.Atoi(record[1])
+		if err != nil {
+			return 0, 0, nil
+		}
+		val2, err := strconv.ParseFloat(record[3], 64)
+		if err != nil {
+			return 0, 0, nil
+		}
+		sumNumOfTxs += val1
+		sumOfTxsDelay += val2
 	}
-}
 
-func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
-	// create timestamp (8 bytes)
-	timeStamp := uint64(time.Now().UnixNano())
-
-	// prepare the payload
-	buffer := make([]byte, txSize)
-	buff := bytes.NewBuffer(buffer[:0])
-	buff.Write(sessionNumber)
-	binary.Write(buff, binary.BigEndian, uint64(txNumber))
-	binary.Write(buff, binary.BigEndian, timeStamp)
-	return buff.Bytes()
-}
-
-func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult float64, numOfBlocksResult int, txSize int) {
-	avgTxRate := float64(transactions) / elapsed.Seconds()
-	avgTxDelay := txDelayTimesResult / float64(transactions)
-	avgBlockRate := float64(numOfBlocksResult) / elapsed.Seconds()
-	avgBlockSize := transactions / numOfBlocksResult
-	fmt.Printf("SUCCESS: number of txs: %d, tx size: %d bytes, elapsed time: %v, avg. tx rate: %.2f, avg. tx delay: %vs, num of blocks: %d, avg. block rate: %v, avg. block size: %v txs\n", transactions, txSize, elapsed, avgTxRate, avgTxDelay, numOfBlocksResult, avgBlockRate, avgBlockSize)
-}
-
-func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
-	avgTxSendingRate := float64(transactions) / elapsed.Seconds()
-	fmt.Printf("Load command finished, sent %d TXs in %v seconds, TX size %d, avg. tx sending rate: %.2f\n", transactions, elapsed, txSize, avgTxSendingRate)
+	avgTxRate := float64(sumNumOfTxs) / timeDifferenceSeconds
+	avgTxDelay := sumOfTxsDelay / float64(sumNumOfTxs)
+	return avgTxRate, avgTxDelay, nil
 }
