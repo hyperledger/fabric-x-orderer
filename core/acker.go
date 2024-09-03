@@ -42,7 +42,7 @@ func NewAcker(confirmedSeq types.BatchSequence, gap types.BatchSequence, numOfPa
 
 // Stop stops the acker (the waiting)
 func (a *Acker) Stop() {
-	a.logger.Infof("Stopping")
+	a.logger.Debugf("Stopping")
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	a.stopped = true
@@ -51,7 +51,7 @@ func (a *Acker) Stop() {
 
 // HandleAck handles an ack with a given seq from a specific party
 func (a *Acker) HandleAck(seq types.BatchSequence, from types.PartyID) {
-	a.logger.Infof("Called handle ack on sequence %d from %d", seq, from)
+	a.logger.Debugf("Called handle ack on sequence %d from %d", seq, from)
 
 	a.lock.Lock()
 	defer a.lock.Unlock()
@@ -80,12 +80,12 @@ func (a *Acker) HandleAck(seq types.BatchSequence, from types.PartyID) {
 
 	signatureCollectCount := len(a.confirmedSequences[a.confirmedSeq])
 	if signatureCollectCount >= int(a.threshold) {
-		a.logger.Infof("Removing %d digest mapping from memory as we received enough (%d) conformations", a.confirmedSeq, signatureCollectCount)
+		a.logger.Debugf("Removing %d digest mapping from memory as we received enough (%d) conformations", a.confirmedSeq, signatureCollectCount)
 		delete(a.confirmedSequences, a.confirmedSeq)
 		a.confirmedSeq++
 		a.signal.Broadcast()
 	} else {
-		a.logger.Infof("Collected %d out of %d conformations on sequence %d", signatureCollectCount, a.threshold, seq)
+		a.logger.Debugf("Collected %d out of %d conformations on sequence %d", signatureCollectCount, a.threshold, seq)
 	}
 }
 
@@ -100,16 +100,16 @@ func (a *Acker) WaitForSecondaries(seq types.BatchSequence) chan struct{} {
 }
 
 func (a *Acker) wait(seq types.BatchSequence) {
-	a.logger.Infof("Called wait with sequence %d", seq)
+	a.logger.Debugf("Called wait with sequence %d", seq)
 	t1 := time.Now()
 	defer func() {
-		a.logger.Infof("Waiting for secondaries to keep up with me took %v", time.Since(t1))
+		a.logger.Debugf("Waiting for secondaries to keep up with me took %v", time.Since(t1))
 	}()
 	a.lock.Lock()
 	for !a.secondariesKeepUpWithMe(seq) {
 		a.signal.Wait()
 		if a.stopped {
-			a.logger.Infof("Stopped waiting with sequence %d", seq)
+			a.logger.Debugf("Stopped waiting with sequence %d", seq)
 			a.lock.Unlock()
 			return
 		}
