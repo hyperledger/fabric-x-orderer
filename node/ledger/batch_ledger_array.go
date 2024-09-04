@@ -1,18 +1,13 @@
 package ledger
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"slices"
 
 	"arma/common/types"
 	"arma/core"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
 
@@ -108,60 +103,4 @@ func (bla *BatchLedgerArray) List() ([]string, error) {
 
 func (bla *BatchLedgerArray) Close() {
 	bla.provider.Close()
-}
-
-// TODO deprecate it.
-// This implementation will be removed from use once we implement some prerequisites for the integration of the new
-// implementation above, such as augmenting the delivery service.
-// This is currently being used in the batcher and assembler.
-
-type BatcherLedger struct {
-	Ledger   blockledger.ReadWriter
-	Logger   types.Logger
-	PrevHash []byte
-}
-
-func (b *BatcherLedger) Append(partyID types.PartyID, seq uint64, batchBytes []byte) {
-	b.Logger.Infof("Appended block with sequence %d of size %d bytes", seq, len(batchBytes))
-	buff := make([]byte, 2)
-	binary.BigEndian.PutUint16(buff[:2], uint16(partyID))
-
-	digest := sha256.Sum256(batchBytes)
-
-	var data types.BatchedRequests
-	if err := data.Deserialize(batchBytes); err != nil {
-		panic(err)
-	}
-
-	block := &common.Block{
-		Header: &common.BlockHeader{
-			Number:   seq,
-			DataHash: digest[:],
-		},
-		Data: &common.BlockData{
-			Data: data,
-		},
-		Metadata: &common.BlockMetadata{
-			Metadata: [][]byte{{}, {}, {}, {}, {}, buff},
-		},
-	}
-
-	// Note: We do this only because we reuse the Fabric ledger, we don't really need a hash chain here.
-	// block.Header.DataHash, _ = protoutil.BlockDataHash(block.Data)
-	block.Header.PreviousHash = b.PrevHash
-	b.PrevHash = protoutil.BlockHeaderHash(block.Header)
-
-	if err := b.Ledger.Append(block); err != nil {
-		panic(err)
-	}
-}
-
-func (b *BatcherLedger) Height(partyID types.PartyID) uint64 {
-	// TODO get the correct ledger part using partyID
-	return b.Ledger.Height()
-}
-
-func (b *BatcherLedger) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) core.Batch {
-	// TODO get the correct ledger part using partyID, then retrieve the batch
-	return nil
 }
