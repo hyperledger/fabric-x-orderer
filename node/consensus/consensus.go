@@ -253,9 +253,6 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 	c.stateLock.Lock()
 	computedState, attestations := c.Arma.SimulateStateTransition(c.State, batch)
 	c.stateLock.Unlock()
-	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
-		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
-	}
 
 	availableBatches := make([]state.AvailableBatch, len(attestations))
 	for i, ba := range attestations {
@@ -291,6 +288,14 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		if !bh.Equal(&blockHeaders[i]) {
 			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", blockHeaders[i], i, bh)
 		}
+	}
+
+	if len(attestations) > 0 {
+		computedState.AppContext = blockHeaders[len(attestations)-1].Bytes()
+	}
+
+	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
+		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
 
 	reqInfos := make([]types.RequestInfo, 0, len(batch))
@@ -341,7 +346,7 @@ func ToBeSignedComplaint(c *core.Complaint) []byte {
 }
 
 func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Proposal) ([]byte, error) {
-	var values Bytes
+	var values [][]byte
 	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
 		return nil, err
 	}
@@ -402,8 +407,6 @@ func (c *Consensus) AuxiliaryData(i []byte) []byte {
 	return nil
 }
 
-type Bytes [][]byte
-
 func (c *Consensus) Sign(msg []byte) []byte {
 	sig, err := c.Signer.Sign(msg)
 	if err != nil {
@@ -457,7 +460,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	_, bafs := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
 
-	sigs := make(Bytes, 0, len(bafs)+1)
+	sigs := make([][]byte, 0, len(bafs)+1)
 
 	proposalSig, err := c.Signer.Sign([]byte(proposal.Digest()))
 	if err != nil {
@@ -523,6 +526,10 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		blockHeaders[i] = hdr
 	}
 
+	if len(attestations) > 0 {
+		newState.AppContext = blockHeaders[len(attestations)-1].Bytes()
+	}
+
 	md := &smartbftprotos.ViewMetadata{}
 	if err := proto.Unmarshal(metadata, md); err != nil {
 		panic(err)
@@ -567,16 +574,8 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	c.Arma.Commit(controlEvents)
 	c.Storage.Append(rawDecision)
 
-	newState := hdr.State
-
-	numBlockHeaders := len(hdr.BlockHeaders)
-	if numBlockHeaders > 0 {
-		lastBlockHeader := hdr.BlockHeaders[numBlockHeaders-1]
-		newState.AppContext = lastBlockHeader.Bytes()
-	}
-
 	c.stateLock.Lock()
-	c.State = newState
+	c.State = hdr.State
 	c.stateLock.Unlock()
 
 	return types.Reconfig{

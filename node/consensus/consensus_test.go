@@ -24,6 +24,8 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestConsensus(t *testing.T) {
@@ -341,4 +343,220 @@ type commitInterceptor struct {
 func (c *commitInterceptor) Append(bytes []byte) {
 	defer c.f()
 	c.Storage.Append(bytes)
+}
+
+func TestAssembleProposalAndVerify(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
+	assert.NoError(t, err)
+
+	db, err := NewBatchAttestationDB(dir, logger)
+	assert.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	numOfParties := 4
+
+	sks := make([]*ecdsa.PrivateKey, numOfParties)
+
+	for i := 0; i < numOfParties; i++ {
+		sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		assert.NoError(t, err)
+
+		sks[i] = sk
+
+		signer := crypto.ECDSASigner(*sk)
+		for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
+			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+		}
+	}
+
+	dig := make([]byte, 32-3)
+
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf123id1p1s1, err := batcher.CreateBAF(sks[0], 1, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+	baf123id2p1s1, err := batcher.CreateBAF(sks[1], 2, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+
+	dig124 := append([]byte{1, 2, 4}, dig...)
+	baf124id3p1s2, err := batcher.CreateBAF(sks[2], 3, 1, dig124, 1, 2)
+	assert.NoError(t, err)
+	baf124id4p1s2, err := batcher.CreateBAF(sks[3], 4, 1, dig124, 1, 2)
+	assert.NoError(t, err)
+
+	dig125 := append([]byte{1, 2, 5}, dig...)
+	baf125id1p1s3, err := batcher.CreateBAF(sks[0], 1, 1, dig125, 1, 3)
+	assert.NoError(t, err)
+
+	for _, tst := range []struct {
+		name                   string
+		initialAppContext      state.BlockHeader
+		metadata               *smartbftprotos.ViewMetadata
+		ces                    []core.ControlEvent
+		bafsOfAvailableBatches []core.BatchAttestationFragment
+		numPending             int
+	}{
+		{
+			name: "single block",
+			initialAppContext: state.BlockHeader{
+				Number:   0,
+				PrevHash: make([]byte, 32),
+				Digest:   make([]byte, 32),
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 0,
+			},
+			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}},
+			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1},
+			numPending:             0,
+		},
+		{
+			name: "pending",
+			initialAppContext: state.BlockHeader{
+				Number:   0,
+				PrevHash: make([]byte, 32),
+				Digest:   make([]byte, 32),
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 0,
+			},
+			ces:        []core.ControlEvent{{BAF: baf123id1p1s1}},
+			numPending: 1,
+		},
+		{
+			name: "single block too many bafs",
+			initialAppContext: state.BlockHeader{
+				Number:   0,
+				PrevHash: make([]byte, 32),
+				Digest:   make([]byte, 32),
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 0,
+			},
+			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id2p1s1}},
+			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1},
+			numPending:             0,
+		},
+		{
+			name: "two blocks plus pending",
+			initialAppContext: state.BlockHeader{
+				Number:   0,
+				PrevHash: make([]byte, 32),
+				Digest:   make([]byte, 32),
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 0,
+			},
+			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}},
+			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1, baf124id3p1s2},
+			numPending:             1,
+		},
+		{
+			name: "block with different context",
+			initialAppContext: state.BlockHeader{
+				Number:   10,
+				PrevHash: append(make([]byte, 31), byte(10)),
+				Digest:   append(make([]byte, 31), byte(20)),
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 5,
+			},
+			ces:                    []core.ControlEvent{{BAF: baf124id4p1s2}, {BAF: baf124id3p1s2}},
+			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf124id3p1s2},
+			numPending:             0,
+		},
+		{
+			name: "no blocks with two pending",
+			initialAppContext: state.BlockHeader{
+				Number:   10,
+				PrevHash: append(make([]byte, 31), byte(1)),
+				Digest:   append(make([]byte, 31), byte(2)),
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 5,
+			},
+			ces:        []core.ControlEvent{{BAF: baf124id4p1s2}, {BAF: baf123id2p1s1}},
+			numPending: 2,
+		},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			initialState := &core.State{
+				ShardCount: 2,
+				N:          4,
+				Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+				Threshold:  2,
+				Quorum:     3,
+				AppContext: tst.initialAppContext.Bytes(),
+			}
+
+			consenter := &core.Consenter{
+				DB:              db,
+				State:           initialState,
+				Logger:          logger,
+				BAFDeserializer: &state.BAFDeserializer{},
+			}
+
+			c := &Consensus{
+				Arma:        consenter,
+				State:       initialState,
+				Logger:      logger,
+				SigVerifier: verifier,
+			}
+
+			reqs := make([][]byte, len(tst.ces))
+			for i, ce := range tst.ces {
+				reqs[i] = ce.Bytes()
+			}
+
+			mBytes, err := proto.Marshal(tst.metadata)
+			require.NoError(t, err)
+
+			proposal := c.AssembleProposal(mBytes, reqs)
+			require.NotNil(t, proposal)
+
+			brs := arma_types.BatchedRequests(reqs)
+			require.Equal(t, brs.Serialize(), proposal.Payload)
+
+			header := &state.Header{}
+			require.NoError(t, header.FromBytes(proposal.Header))
+
+			require.Equal(t, tst.metadata.LatestSequence, header.Num)
+
+			require.Len(t, header.AvailableBatches, len(tst.bafsOfAvailableBatches))
+
+			for i, baf := range tst.bafsOfAvailableBatches {
+				ab := state.NewAvailableBatch(baf.Primary(), baf.Shard(), baf.Seq(), baf.Digest())
+				require.Equal(t, ab, header.AvailableBatches[i])
+			}
+
+			require.Len(t, header.BlockHeaders, len(tst.bafsOfAvailableBatches))
+
+			latestBlockHeader := tst.initialAppContext
+			latestBlockNumber := tst.initialAppContext.Number + 1
+			latestBlockHash := tst.initialAppContext.Hash()
+
+			for i, baf := range tst.bafsOfAvailableBatches {
+				latestBlockHeader = state.BlockHeader{
+					Number:   latestBlockNumber,
+					PrevHash: latestBlockHash,
+					Digest:   baf.Digest(),
+				}
+
+				require.Equal(t, latestBlockHeader, header.BlockHeaders[i])
+
+				latestBlockNumber++
+				latestBlockHash = latestBlockHeader.Hash()
+			}
+
+			require.NotNil(t, header.State)
+			require.Len(t, header.State.Pending, tst.numPending)
+
+			require.Equal(t, latestBlockHeader.Bytes(), header.State.AppContext)
+
+			_, err = c.VerifyProposal(proposal)
+			require.Nil(t, err)
+		})
+	}
 }
