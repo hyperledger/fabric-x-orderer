@@ -69,7 +69,7 @@ func TestArmageddon(t *testing.T) {
 //  1. Create a config YAML file to be an input to armageddon
 //  2. Run armageddon generate command to create config files in a folder structure
 //  3. Run arma with the generated config files to run each of the nodes for all parties
-//  4. Run armageddon load command to make 1000 txs and send them to all routers at a specified rate
+//  4. Run armageddon load command to make 10000 txs and send them to all routers at a specified rate
 //  5. In parallel, run armageddon receive command to pull blocks from the assembler and report results
 func TestLoadAndReceive(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
@@ -106,7 +106,7 @@ func TestLoadAndReceive(t *testing.T) {
 	// 4. + 5.
 	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
 	rate := "500"
-	txs := "1000"
+	txs := "10000"
 	txSize := "64"
 
 	var waitForTxToBeSentAndReceived sync.WaitGroup

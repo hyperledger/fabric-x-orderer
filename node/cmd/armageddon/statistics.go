@@ -9,7 +9,7 @@ import (
 
 // Statistics holds aggregated data related to transactions and blocks per second
 type Statistics struct {
-	timeStamp     int64
+	timeStamp     float64 // the time passed since the experiment started in seconds
 	numOfTxs      int
 	numOfBlocks   int
 	sumOfTxsDelay float64 // the cumulative sum of transaction delays in seconds
@@ -17,6 +17,7 @@ type Statistics struct {
 
 type StatisticsAggregator struct {
 	mu        sync.Mutex
+	startTime int64
 	statistic Statistics
 }
 
@@ -31,9 +32,11 @@ func (sta *StatisticsAggregator) Add(numOfTxs int, numOfBlocks int, sumOfTxsDela
 func (sta *StatisticsAggregator) ReadAndReset() Statistics {
 	sta.mu.Lock()
 	defer sta.mu.Unlock()
-	time := time.Now().UnixMilli()
+	currentTime := time.Now().UnixMilli()
+	timeSinceStartMs := currentTime - sta.startTime
+	timeSinceStartS := float64(timeSinceStartMs) / 1000
 	val := Statistics{
-		timeStamp:     time,
+		timeStamp:     timeSinceStartS,
 		numOfTxs:      sta.statistic.numOfTxs,
 		numOfBlocks:   sta.statistic.numOfBlocks,
 		sumOfTxsDelay: sta.statistic.sumOfTxsDelay,
