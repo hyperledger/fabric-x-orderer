@@ -15,6 +15,7 @@ import (
 	"arma/request"
 	"arma/testutil"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -256,8 +257,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 func TestBatchersStopSecondaries(t *testing.T) {
 	n := 4
 
-	var stopped sync.WaitGroup
-	stopped.Add(n - 1) // OnSecondStrikeTimeout applies only to secondaries
+	var secondStrikeCount uint32
 
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
@@ -266,28 +266,27 @@ func TestBatchersStopSecondaries(t *testing.T) {
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 2,
 			BatchMaxSize:          100, // batch can't include all requests
-			MaxSize:               100 * 100,
+			MaxSize:               100 * 1000,
 			AutoRemoveTimeout:     time.Minute / 2,
 			SubmitTimeout:         time.Second * 10,
 			OnFirstStrikeTimeout:  func([]byte) {},
 			OnSecondStrikeTimeout: func() {
-				stopped.Done()
+				atomic.AddUint32(&secondStrikeCount, 1)
 			},
 		})
-		b.MemPool.Close()
 		b.MemPool = pool
 		b.Start()
 	}
 
 	var submits sync.WaitGroup
-	submits.Add(20)
+	submits.Add(100)
 
 	go func() {
-		for worker := 0; worker < 20; worker++ {
+		for worker := 0; worker < 100; worker++ {
 			go func(worker uint64) {
 				defer submits.Done()
 				var i int
-				for j := 0; j < 100; j++ {
+				for j := 0; j < 1000; j++ {
 					req := make([]byte, 512)
 					binary.BigEndian.PutUint64(req, uint64(i))
 					i++
@@ -302,7 +301,9 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	}()
 
 	submits.Wait()
-	stopped.Wait()
+	require.Eventually(t, func() bool {
+		return atomic.LoadUint32(&secondStrikeCount) >= uint32(3)
+	}, 1*time.Minute, 1*time.Second)
 
 	for _, b := range batchers {
 		b.Stop()
