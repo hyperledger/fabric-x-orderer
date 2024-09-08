@@ -1071,9 +1071,11 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo
 		var sumOfDelayTimes float64
 		var txs int
 		var txsTotal int
+		var sumOfTxsSize int
 		for {
 			blockWithTime := <-blockChan
 			sumOfDelayTimes = 0.0
+			sumOfTxsSize = 0
 			txs = len(blockWithTime.block.Data.Data)
 			txsTotal += len(blockWithTime.block.Data.Data)
 			// iterate over txs in block
@@ -1084,11 +1086,12 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo
 					os.Exit(3)
 				}
 
-				// extract the sending time and calculate the delay, add the delay to sumOfDelayTimes
+				// extract the tx size, sending time and calculate the delay, add the delay to sumOfDelayTimes
+				sumOfTxsSize += len(env.Payload)
 				delay := calculateDelayOfTx(env, blockWithTime.acceptedTime)
 				sumOfDelayTimes = sumOfDelayTimes + delay.Seconds()
 			}
-			statisticsAggregator.Add(txs, 1, sumOfDelayTimes)
+			statisticsAggregator.Add(txs, 1, sumOfDelayTimes, sumOfTxsSize)
 
 			if expectedNumOfTxs > 0 && expectedNumOfTxs == txsTotal {
 				close(stopChan)
@@ -1159,7 +1162,12 @@ func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
 	buff.Write(sessionNumber)
 	binary.Write(buff, binary.BigEndian, uint64(txNumber))
 	binary.Write(buff, binary.BigEndian, timeStamp)
-	return buff.Bytes()
+	result := buff.Bytes()
+	if len(buff.Bytes()) < txSize {
+		padding := make([]byte, txSize-len(result))
+		result = append(result, padding...)
+	}
+	return result
 }
 
 func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult float64, numOfBlocksResult int, txSize int) {
@@ -1202,9 +1210,9 @@ func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, 
 			desc = desc + fmt.Sprintf("Expected number of txs: %d", expectedTxs)
 		}
 
-		writer.Write([]string{desc, "", "", "", ""})
+		writer.Write([]string{desc, "", "", "", "", ""})
 		writer.Write([]string{""})
-		writer.Write([]string{"Time Since Start (s)", "Number of txs", "Number of blocks", "Sum of txs delay (s)", "Avg. tx delay (s)"})
+		writer.Write([]string{"Time Since Start (s)", "Number of txs", "Number of blocks", "Sum of txs size", "Sum of txs delay (s)", "Avg. tx delay (s)"})
 		writer.Flush()
 	}
 
@@ -1242,9 +1250,10 @@ func writeStatisticsToCSV(file *os.File, statsQueue []Statistics) {
 
 	for _, statistic := range statsQueue {
 		err := writer.Write([]string{
-			fmt.Sprintf("%.2f", statistic.timeStamp),
+			fmt.Sprintf("%.f", statistic.timeStamp),
 			fmt.Sprintf("%d", statistic.numOfTxs),
 			fmt.Sprintf("%d", statistic.numOfBlocks),
+			fmt.Sprintf("%d", statistic.sumOfTxsSize),
 			fmt.Sprintf("%.2f", statistic.sumOfTxsDelay),
 			fmt.Sprintf("%.2f", statistic.sumOfTxsDelay/float64(statistic.numOfTxs)),
 		})
@@ -1400,6 +1409,8 @@ func reportStatisticsResult(filePath string) (float64, float64, error) {
 	timeDiff := stop - start + 1
 
 	var sumNumOfTxs int
+	var sumNumOfBlocks int
+	var sumOfTxsSize int
 	var sumOfTxsDelay float64
 	for i, record := range records {
 		// skip the headers
@@ -1410,16 +1421,29 @@ func reportStatisticsResult(filePath string) (float64, float64, error) {
 		if err != nil {
 			return 0, 0, nil
 		}
-		val2, err := strconv.ParseFloat(record[3], 64)
+		val2, err := strconv.Atoi(record[2])
+		if err != nil {
+			return 0, 0, nil
+		}
+		val3, err := strconv.Atoi(record[3])
+		if err != nil {
+			return 0, 0, nil
+		}
+		val4, err := strconv.ParseFloat(record[4], 64)
 		if err != nil {
 			return 0, 0, nil
 		}
 		sumNumOfTxs += val1
-		sumOfTxsDelay += val2
+		sumNumOfBlocks += val2
+		sumOfTxsSize += val3
+		sumOfTxsDelay += val4
 	}
 
+	avgTxSize := sumOfTxsSize / sumNumOfTxs
 	avgTxRate := float64(sumNumOfTxs) / timeDiff
 	avgTxDelay := sumOfTxsDelay / float64(sumNumOfTxs)
+	avgBlockRate := float64(sumNumOfBlocks) / timeDiff
+	avgBlockSize := sumNumOfTxs / sumNumOfBlocks
 
 	// write results to the CSV
 	_, err = file.Seek(0, io.SeekEnd)
@@ -1431,11 +1455,18 @@ func reportStatisticsResult(filePath string) (float64, float64, error) {
 	defer writer.Flush()
 
 	writer.Write([]string{
-		"Average",
+		"average tx size",
+		"average tx rate",
+		"average tx delay",
+		"average block rate",
+		"average block size",
+	})
+	writer.Write([]string{
+		fmt.Sprintf("%d", avgTxSize),
 		fmt.Sprintf("%.2f", avgTxRate),
-		"",
-		"",
 		fmt.Sprintf("%.2f", avgTxDelay),
+		fmt.Sprintf("%.2f", avgBlockRate),
+		fmt.Sprintf("%d", avgBlockSize),
 	})
 	return avgTxRate, avgTxDelay, nil
 }

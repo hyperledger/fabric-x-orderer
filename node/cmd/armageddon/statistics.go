@@ -13,6 +13,7 @@ type Statistics struct {
 	numOfTxs      int
 	numOfBlocks   int
 	sumOfTxsDelay float64 // the cumulative sum of transaction delays in seconds
+	sumOfTxsSize  int
 }
 
 type StatisticsAggregator struct {
@@ -21,12 +22,13 @@ type StatisticsAggregator struct {
 	statistic Statistics
 }
 
-func (sta *StatisticsAggregator) Add(numOfTxs int, numOfBlocks int, sumOfTxsDelay float64) {
+func (sta *StatisticsAggregator) Add(numOfTxs int, numOfBlocks int, sumOfTxsDelay float64, sumOfTxsSize int) {
 	sta.mu.Lock()
 	defer sta.mu.Unlock()
 	sta.statistic.numOfTxs += numOfTxs
 	sta.statistic.numOfBlocks += numOfBlocks
 	sta.statistic.sumOfTxsDelay += sumOfTxsDelay
+	sta.statistic.sumOfTxsSize += sumOfTxsSize
 }
 
 func (sta *StatisticsAggregator) ReadAndReset() Statistics {
@@ -40,10 +42,12 @@ func (sta *StatisticsAggregator) ReadAndReset() Statistics {
 		numOfTxs:      sta.statistic.numOfTxs,
 		numOfBlocks:   sta.statistic.numOfBlocks,
 		sumOfTxsDelay: sta.statistic.sumOfTxsDelay,
+		sumOfTxsSize:  sta.statistic.sumOfTxsSize,
 	}
 	sta.statistic.numOfTxs = 0
 	sta.statistic.numOfBlocks = 0
 	sta.statistic.sumOfTxsDelay = 0.0
+	sta.statistic.sumOfTxsSize = 0
 	return val
 }
 
