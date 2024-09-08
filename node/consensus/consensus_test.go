@@ -276,6 +276,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	}
 
 	c.CurrentConfig.SelfID = uint64(partyID)
+	c.CurrentConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
 
 	wal, err := wal.Create(l, dir, &wal.Options{
 		FileSizeBytes:   wal.FileSizeBytesDefault,
