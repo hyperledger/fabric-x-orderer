@@ -181,8 +181,10 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.RestartArgsForCall(1) == false
+		return pool.RestartCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
+
+	require.False(t, pool.RestartArgsForCall(1))
 
 	batchChan <- batch
 	require.Eventually(t, func() bool {
@@ -264,8 +266,10 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.RestartArgsForCall(1) == true
+		return pool.RestartCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
+
+	require.True(t, pool.RestartArgsForCall(1))
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -351,8 +355,10 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.RestartArgsForCall(1) == false
+		return pool.RestartCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
+
+	require.False(t, pool.RestartArgsForCall(1))
 
 	require.Eventually(t, func() bool {
 		return batchPuller.StopCallCount() == 1
@@ -434,8 +440,10 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.RestartArgsForCall(1) == true
+		return pool.RestartCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
+
+	require.True(t, pool.RestartArgsForCall(1))
 
 	batcher.Stop()
 
@@ -548,8 +556,10 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.RestartArgsForCall(1) == false
+		return pool.RestartCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
+
+	require.False(t, pool.RestartArgsForCall(1))
 
 	batchChan <- batch
 	require.Eventually(t, func() bool {
