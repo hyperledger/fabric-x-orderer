@@ -232,18 +232,25 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 }
 
 func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {
+	if proposal.Header == nil || proposal.Metadata == nil || proposal.Payload == nil {
+		return nil, errors.New("proposal has a nil header or metadata or payload")
+	}
 	var batch arma_types.BatchedRequests
 	if err := batch.Deserialize(proposal.Payload); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to deserialize proposal payload")
 	}
 	var hdr state.Header
 	if err := hdr.FromBytes(proposal.Header); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to deserialize proposal header")
+	}
+
+	if hdr.State == nil {
+		return nil, errors.New("state in proposal header is nil")
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
 	if err := proto.Unmarshal(proposal.Metadata, md); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to unmarshal proposal metadata")
 	}
 
 	if md.LatestSequence != hdr.Num {
@@ -286,7 +293,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 
 	for i, bh := range hdr.BlockHeaders {
 		if !bh.Equal(&blockHeaders[i]) {
-			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", blockHeaders[i], i, bh)
+			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", bh, i, blockHeaders[i])
 		}
 	}
 
@@ -431,7 +438,7 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 		clientID = fmt.Sprintf("%d", ce.Complaint.Signer)
 	} else if ce.BAF != nil {
 		clientID = fmt.Sprintf("%d", ce.BAF.Signer())
-		payloadToHash = make([]byte, 26)
+		payloadToHash = make([]byte, 22+32) // seq and epoch are uint64, signer, primary and shard are uint16, and digest is 32 bytes
 		binary.BigEndian.PutUint64(payloadToHash, uint64(ce.BAF.Seq()))
 		binary.BigEndian.PutUint64(payloadToHash[8:], uint64(ce.BAF.Epoch()))
 		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))

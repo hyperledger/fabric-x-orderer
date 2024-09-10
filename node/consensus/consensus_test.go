@@ -561,3 +561,200 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyProposal(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
+	assert.NoError(t, err)
+
+	db, err := NewBatchAttestationDB(dir, logger)
+	assert.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	numOfParties := 4
+
+	sks := make([]*ecdsa.PrivateKey, numOfParties)
+
+	for i := 0; i < numOfParties; i++ {
+		sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		assert.NoError(t, err)
+
+		sks[i] = sk
+
+		signer := crypto.ECDSASigner(*sk)
+		for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
+			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+		}
+	}
+
+	initialAppContext := state.BlockHeader{
+		Number:   10,
+		PrevHash: make([]byte, 32),
+		Digest:   make([]byte, 32),
+	}
+
+	initialState := core.State{
+		ShardCount: 2,
+		N:          4,
+		Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  2,
+		Quorum:     3,
+		AppContext: initialAppContext.Bytes(),
+	}
+
+	consenter := &core.Consenter{
+		DB:              db,
+		State:           &initialState,
+		Logger:          logger,
+		BAFDeserializer: &state.BAFDeserializer{},
+	}
+
+	c := &Consensus{
+		Arma:        consenter,
+		State:       &initialState,
+		Logger:      logger,
+		SigVerifier: verifier,
+	}
+
+	dig := make([]byte, 32-3)
+
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf123id1p1s1, err := batcher.CreateBAF(sks[0], 1, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+	baf123id2p1s1, err := batcher.CreateBAF(sks[1], 2, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+
+	ces := []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
+	reqs := make([][]byte, len(ces))
+	for i, ce := range ces {
+		reqs[i] = ce.Bytes()
+	}
+	brs := arma_types.BatchedRequests(reqs)
+
+	header := state.Header{}
+	header.Num = 0
+
+	header.AvailableBatches = []state.AvailableBatch{state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}
+
+	latestBlockHeader := initialAppContext
+	latestBlockHeader.Number += 1
+	latestBlockHeader.Digest = baf123id1p1s1.Digest()
+	latestBlockHeader.PrevHash = initialAppContext.Hash()
+
+	header.BlockHeaders = []state.BlockHeader{latestBlockHeader}
+
+	newState := initialState
+	newState.AppContext = latestBlockHeader.Bytes()
+
+	header.State = &newState
+
+	metadata := &smartbftprotos.ViewMetadata{
+		LatestSequence: 0,
+	}
+
+	mBytes, err := proto.Marshal(metadata)
+	require.NoError(t, err)
+
+	// 1. no error
+	t.Log("no error")
+
+	proposal := types.Proposal{
+		Header:   header.Bytes(),
+		Payload:  brs.Serialize(),
+		Metadata: mBytes,
+	}
+
+	infos, err := c.VerifyProposal(proposal)
+	require.Nil(t, err)
+	require.NotNil(t, infos)
+	require.Equal(t, len(brs), len(infos))
+	require.Equal(t, c.RequestID(brs[0]), infos[0])
+	require.Equal(t, c.RequestID(brs[1]), infos[1])
+
+	// 2. nil header
+	t.Log("nil header")
+	verifyProposalRequireError(t, c, nil, brs.Serialize(), mBytes)
+
+	// 3. nil metadata
+	t.Log("nil metadata")
+	verifyProposalRequireError(t, c, header.Bytes(), brs.Serialize(), nil)
+
+	// 4. nil payload
+	t.Log("nil payload")
+	verifyProposalRequireError(t, c, header.Bytes(), nil, mBytes)
+
+	// 5. mismatch metadata latest sequence and header number
+	t.Log("mismatch metadata latest sequence and header number")
+	header1 := header
+	header1.Num = 1
+	verifyProposalRequireError(t, c, header1.Bytes(), brs.Serialize(), mBytes)
+
+	// 6. mismatch state config in header
+	t.Log("mismatch state config in header")
+	headerState := header
+	badState := newState
+	headerState.State = &badState
+	headerState.State.Quorum = 10
+	verifyProposalRequireError(t, c, headerState.Bytes(), brs.Serialize(), mBytes)
+	headerState.State.Quorum = header.State.Quorum
+	headerState.State.Threshold = 10
+	verifyProposalRequireError(t, c, headerState.Bytes(), brs.Serialize(), mBytes)
+	headerState.State.Threshold = header.State.Threshold
+	headerState.State.N = 10
+	verifyProposalRequireError(t, c, headerState.Bytes(), brs.Serialize(), mBytes)
+
+	// 7. mismatch state pending in header
+	t.Log("mismatch state pending in header")
+	headerPending := header
+	badState = newState
+	headerPending.State = &badState
+	headerPending.State.Pending = []core.BatchAttestationFragment{baf123id1p1s1}
+	verifyProposalRequireError(t, c, headerPending.Bytes(), brs.Serialize(), mBytes)
+
+	// 8. mismatch state app context in header
+	t.Log("mismatch state app context in header")
+	headerAppContext := header
+	badState = newState
+	headerAppContext.State = &badState
+	badAppContext := latestBlockHeader
+	badAppContext.Number = 100
+	headerAppContext.State.AppContext = badAppContext.Bytes()
+	verifyProposalRequireError(t, c, headerAppContext.Bytes(), brs.Serialize(), mBytes)
+	badAppContext.Number = latestBlockHeader.Number
+	badAppContext.Digest = []byte{1}
+	headerAppContext.State.AppContext = badAppContext.Bytes()
+	verifyProposalRequireError(t, c, headerAppContext.Bytes(), brs.Serialize(), mBytes)
+	badAppContext.Digest = latestBlockHeader.Digest
+	badAppContext.PrevHash = []byte{2}
+	headerAppContext.State.AppContext = badAppContext.Bytes()
+	verifyProposalRequireError(t, c, headerAppContext.Bytes(), brs.Serialize(), mBytes)
+
+	// 9. mismatch available batch in header
+	t.Log("mismatch available batch in header")
+	headerAB := header
+	headerAB.AvailableBatches = []state.AvailableBatch{state.NewAvailableBatch(10, baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}
+	verifyProposalRequireError(t, c, headerAB.Bytes(), brs.Serialize(), mBytes)
+
+	// 10. mismatch block header in header
+	t.Log("mismatch block header in header")
+	headerBH := header
+	badBH := latestBlockHeader
+	badBH.Digest = []byte{1}
+	headerBH.BlockHeaders = []state.BlockHeader{badBH}
+	verifyProposalRequireError(t, c, headerBH.Bytes(), brs.Serialize(), mBytes)
+}
+
+func verifyProposalRequireError(t *testing.T, c *Consensus, header, payload, metadata []byte) {
+	proposal := types.Proposal{
+		Header:   header,
+		Payload:  payload,
+		Metadata: metadata,
+	}
+
+	infos, err := c.VerifyProposal(proposal)
+	require.NotNil(t, err)
+	require.Nil(t, infos)
+	t.Logf("err: %v", err)
+}

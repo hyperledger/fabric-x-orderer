@@ -26,4 +26,9 @@ func TestHeaderBytes(t *testing.T) {
 	require.NoError(t, hdr2.FromBytes(hdr.Bytes()))
 
 	require.Equal(t, hdr, hdr2)
+
+	hdr.State = nil
+	require.NoError(t, hdr2.FromBytes(hdr.Bytes()))
+
+	require.Equal(t, hdr, hdr2)
 }

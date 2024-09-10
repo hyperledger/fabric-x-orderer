@@ -52,6 +52,10 @@ func (h *Header) FromBytes(rawHeader []byte) error {
 	}
 
 	rawState := rawHeader[pos:]
+	if len(rawState) == 0 {
+		h.State = nil
+		return nil
+	}
 	h.State = &core.State{}
 	h.State.Deserialize(rawState, &BAFDeserializer{})
 
@@ -64,7 +68,10 @@ func (h *Header) Bytes() []byte {
 	}
 	availableBatchesBytes := availableBatchesToBytes(h.AvailableBatches)
 	blockHeadersBytes := blockHeadersToBytes(h.BlockHeaders)
-	rawState := h.State.Serialize()
+	rawState := []byte{}
+	if h.State != nil {
+		rawState = h.State.Serialize()
+	}
 	buff := make([]byte, 8+len(availableBatchesBytes)+len(blockHeadersBytes)+len(rawState))
 
 	binary.BigEndian.PutUint64(buff, h.Num)
