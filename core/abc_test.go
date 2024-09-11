@@ -126,7 +126,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		ShardCount: uint16(shardCount),
 	}
 
-	for shardID := uint16(1); shardID <= initialState.ShardCount; shardID++ {
+	for shardID := uint16(0); shardID < initialState.ShardCount; shardID++ {
 		initialState.Shards = append(initialState.Shards, core.ShardTerm{Shard: arma_types.ShardID(shardID), Term: 1})
 	}
 

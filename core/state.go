@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"slices"
 
 	"arma/common/types"
 )
@@ -384,9 +385,9 @@ func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
-
-		if len(s.Shards) < int(complaint.Shard) {
-			l.Errorf("Got complaint for shard %d but only have %d shards, ignoring complaint", complaint.Shard, len(s.Shards))
+		exsits := shardExists(complaint.Shard, s.Shards)
+		if !exsits {
+			l.Errorf("Got complaint for shard %d but it was not found in the shards: %v, ignoring complaint", complaint.Shard, s.Shards)
 			continue
 		}
 
@@ -452,8 +453,9 @@ func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) 
 
 		if ce.BAF != nil {
 			shard := ce.BAF.Shard()
-			if len(s.Shards) < int(shard) {
-				l.Warnf("Got Batch Attestation Fragment for shard %d but only have %d shards, ignoring it", ce.BAF.Shard(), len(s.Shards))
+			exists := shardExists(shard, s.Shards)
+			if !exists {
+				l.Warnf("Got Batch Attestation Fragment for shard %d but it was not found in the shards: %v, ignoring it", ce.BAF.Shard(), s.Shards)
 				continue
 			}
 
@@ -467,9 +469,9 @@ func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) 
 		}
 
 		if ce.Complaint != nil {
-			shard := ce.Complaint.Shard
-			if len(s.Shards) <= int(shard) {
-				l.Warnf("Got complaint for shard %d but only have %d shards, ignoring it", ce.Complaint.Shard, len(s.Shards))
+			st := ce.Complaint.ShardTerm
+			if !slices.Contains(s.Shards, st) {
+				l.Warnf("Got complaint for shard %d in term %d but it was not found in the shards: %v, ignoring it", ce.Complaint.Shard, ce.Complaint.Term, s.Shards)
 				continue
 			}
 
@@ -595,4 +597,13 @@ func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []BatchAttest
 	s.Pending = newPending
 
 	return extracted
+}
+
+func shardExists(shard types.ShardID, shardTerms []ShardTerm) bool {
+	for _, st := range shardTerms {
+		if st.Shard == shard {
+			return true
+		}
+	}
+	return false
 }
