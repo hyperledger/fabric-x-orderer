@@ -59,10 +59,10 @@ func (ab *AvailableBatch) Shard() types.ShardID {
 	return types.ShardID(ab.shard)
 }
 
-var AvailableBatchSerializedSize = 2 + 2 + 8 + 32 // uint16 + uint16 + uint64 + digest
+const availableBatchSerializedSize = 2 + 2 + 8 + 32 // uint16 + uint16 + uint64 + digest
 
 func (ab *AvailableBatch) Serialize() []byte {
-	buff := make([]byte, AvailableBatchSerializedSize)
+	buff := make([]byte, availableBatchSerializedSize)
 	var pos int
 	binary.BigEndian.PutUint16(buff[pos:], uint16(ab.primary))
 	pos += 2
@@ -79,8 +79,8 @@ func (ab *AvailableBatch) Deserialize(bytes []byte) error {
 	if bytes == nil {
 		return errors.Errorf("nil bytes")
 	}
-	if len(bytes) != AvailableBatchSerializedSize {
-		return errors.Errorf("len of bytes %d does not equal the available batch size %d", len(bytes), AvailableBatchSerializedSize)
+	if len(bytes) != availableBatchSerializedSize {
+		return errors.Errorf("len of bytes %d does not equal the available batch size %d", len(bytes), availableBatchSerializedSize)
 	}
 	ab.primary = types.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
 	ab.shard = types.ShardID(binary.BigEndian.Uint16(bytes[2:4]))

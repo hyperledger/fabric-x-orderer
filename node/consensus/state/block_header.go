@@ -60,10 +60,10 @@ func (bh *BlockHeader) Hash() []byte {
 	return sum[:]
 }
 
-var BlockHeaderBytesSize = 8 + 32 + 32 // uint64 + hash + digest
+const blockHeaderBytesSize = 8 + 32 + 32 // uint64 + hash + digest
 
 func (bh *BlockHeader) Bytes() []byte {
-	buff := make([]byte, BlockHeaderBytesSize)
+	buff := make([]byte, blockHeaderBytesSize)
 	binary.BigEndian.PutUint64(buff, bh.Number)
 	copy(buff[8:], bh.PrevHash)
 	copy(buff[40:], bh.Digest)
@@ -74,8 +74,8 @@ func (bh *BlockHeader) FromBytes(bytes []byte) error {
 	if bytes == nil {
 		return errors.Errorf("nil bytes")
 	}
-	if len(bytes) != BlockHeaderBytesSize {
-		return errors.Errorf("len of bytes %d does not equal the block header size %d", len(bytes), BlockHeaderBytesSize)
+	if len(bytes) != blockHeaderBytesSize {
+		return errors.Errorf("len of bytes %d does not equal the block header size %d", len(bytes), blockHeaderBytesSize)
 	}
 	bh.Number = binary.BigEndian.Uint64(bytes[0:8])
 	bh.PrevHash = bytes[8:40]
