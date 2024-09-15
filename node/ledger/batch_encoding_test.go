@@ -3,6 +3,9 @@ package ledger_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/stretchr/testify/assert"
+
 	"arma/common/types"
 	"arma/node/ledger"
 
@@ -64,4 +67,94 @@ func TestChannelNameToShardParty(t *testing.T) {
 			require.Equal(t, types.PartyID(0), partyID)
 		}
 	})
+}
+
+func TestNewFabricBatchFromBlock(t *testing.T) {
+	type testCase struct {
+		name        string
+		block       *common.Block
+		expectedErr string
+	}
+	header := &common.BlockHeader{
+		Number:       7,
+		PreviousHash: []byte{1, 2, 3, 4},
+		DataHash:     []byte{5, 6, 7, 8},
+	}
+	data := &common.BlockData{
+		Data: [][]byte{{1, 2}, {3, 4}},
+	}
+
+	for _, tc := range []testCase{
+		{
+			name:        "empty block",
+			block:       nil,
+			expectedErr: "empty block",
+		},
+		{
+			name:        "empty block header",
+			block:       &common.Block{},
+			expectedErr: "empty block header",
+		},
+		{
+			name: "empty block data",
+			block: &common.Block{
+				Header:   header,
+				Data:     nil,
+				Metadata: nil,
+			},
+			expectedErr: "empty block data",
+		},
+		{
+			name: "empty block metadata",
+			block: &common.Block{
+				Header:   header,
+				Data:     data,
+				Metadata: nil,
+			},
+			expectedErr: "empty block metadata",
+		},
+		{
+			name: "missing shard party metadata 2",
+			block: &common.Block{
+				Header:   header,
+				Data:     data,
+				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}}},
+			},
+			expectedErr: "missing shard party metadata",
+		},
+		{
+			name: "bad shard party metadata",
+			block: &common.Block{
+				Header:   header,
+				Data:     data,
+				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}, {}}},
+			},
+			expectedErr: "bad shard party metadata",
+		},
+		{
+			name: "good",
+			block: &common.Block{
+				Header:   header,
+				Data:     data,
+				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}, {0x01, 0x02, 0x03, 0x04}}},
+			},
+			expectedErr: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fb, err := ledger.NewFabricBatchFromBlock(tc.block)
+			if len(tc.expectedErr) != 0 {
+				assert.Nil(t, fb)
+				assert.EqualError(t, err, tc.expectedErr)
+			} else {
+				assert.NotNil(t, fb)
+				assert.NoError(t, err)
+				assert.Equal(t, types.BatchSequence(7), fb.Seq())
+				assert.Equal(t, types.PartyID(0x102), fb.Primary())
+				assert.Equal(t, types.ShardID(0x304), fb.Shard())
+				assert.Len(t, fb.Requests(), 2)
+				assert.Equal(t, header.DataHash, fb.Digest())
+			}
+		})
+	}
 }

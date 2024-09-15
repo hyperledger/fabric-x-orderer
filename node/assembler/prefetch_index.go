@@ -119,7 +119,7 @@ func (i *Index) Retrieve(party types.PartyID, shard types.ShardID, sequence type
 	return &fb, true
 }
 
-func (i *Index) Height(shard types.ShardID, party types.PartyID) uint64 {
+func (i *Index) Height(shard types.ShardID, party types.PartyID) types.BatchSequence {
 	shardIndex, ok := i.indexes[shard]
 	if !ok {
 		i.logger.Panicf("Failed retrieving shardIndex for shard: %d", shard)
@@ -132,5 +132,5 @@ func (i *Index) Height(shard types.ShardID, party types.PartyID) uint64 {
 	if err != nil {
 		i.logger.Panicf("Failed retrieving blockchain info: %v", err)
 	}
-	return info.GetHeight()
+	return types.BatchSequence(info.GetHeight())
 }

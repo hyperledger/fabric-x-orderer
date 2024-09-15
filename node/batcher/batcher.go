@@ -84,7 +84,7 @@ func (b *Batcher) Stop() {
 	b.running.Wait()
 }
 
-func (b *Batcher) createBAR() *delivery.BAReplicator {
+func (b *Batcher) createBAR() *delivery.ConsensusReplicator {
 	var endpoint string
 	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(b.config.Consenters); i++ {
@@ -99,12 +99,12 @@ func (b *Batcher) createBAR() *delivery.BAReplicator {
 		b.logger.Panicf("Failed finding endpoint and TLS CAs for party %d", b.config.PartyId)
 	}
 
-	bar := delivery.NewBAReplicator(tlsCAs, b.tlsKey, b.tlsCert, endpoint, b.logger)
+	bar := delivery.NewConsensusReplicator(tlsCAs, b.tlsKey, b.tlsCert, endpoint, b.logger)
 
 	return bar
 }
 
-func (b *Batcher) replicateState(seq uint64, bar *delivery.BAReplicator) {
+func (b *Batcher) replicateState(seq uint64, bar *delivery.ConsensusReplicator) {
 	defer b.running.Done()
 	for {
 		select {

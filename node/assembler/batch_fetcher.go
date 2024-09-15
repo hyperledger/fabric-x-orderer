@@ -1,8 +1,11 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
+	"sync"
 	"time"
 
 	"arma/common/types"
@@ -16,8 +19,10 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
+// AssemblerLedgerHeightReader returns the last batch sequence delivered from a shard, for a given primary.
+// This is a good hint to where to start replicating the stream of batches.
 type AssemblerLedgerHeightReader interface {
-	Height(shardID types.ShardID, partyID types.PartyID) uint64
+	Height(shardID types.ShardID, partyID types.PartyID) types.BatchSequence
 }
 
 type BatchFetcher struct {
@@ -73,21 +78,21 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 	return res
 }
 
-func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, partyID types.PartyID, resultChan chan core.Batch) {
-	seq := br.ledgerHeightReader.Height(shardID, partyID)
+func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan core.Batch) {
+	seq := br.ledgerHeightReader.Height(shardID, primaryID)
 
 	endpoint := func() string {
 		return batcherToPullFrom.Endpoint
 	}
 
-	channelName := ledger.ShardPartyToChannelName(shardID, partyID)
+	channelName := ledger.ShardPartyToChannelName(shardID, primaryID)
 	br.logger.Infof("Assembler replicating from channel %s ", channelName)
 
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		channelName,
 		nil,
-		delivery.NextSeekInfo(seq),
+		delivery.NextSeekInfo(uint64(seq)),
 		int32(0),
 		uint64(0),
 		nil,
@@ -96,17 +101,24 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		br.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
+	blockHandlerFunc := func(block *common.Block) {
+		fb, errFB := ledger.NewFabricBatchFromBlock(block)
+		if errFB != nil {
+			br.logger.Errorf("Assembler pulled from %s a block that cannot be converted to a FabricBatch: %s", batcherToPullFrom.Endpoint, errFB)
+			return
+		}
+		br.logger.Infof("Assembler pulled from %s batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
+		resultChan <- fb
+	}
+
 	go delivery.Pull(
 		context.Background(),
 		channelName,
-		br.logger, endpoint,
+		br.logger,
+		endpoint,
 		requestEnvelope,
 		br.clientConfig(),
-		func(block *common.Block) {
-			fb := ledger.FabricBatch(*block)
-			br.logger.Infof("Assembler Pulled <%d,%d,%d> with digest %s", shardID, fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()[:8]))
-			resultChan <- &fb
-		},
+		blockHandlerFunc,
 	)
 	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
 }
@@ -126,4 +138,93 @@ func (br *BatchFetcher) findShardID(shardID types.ShardID) config.BatcherInfo {
 
 	br.logger.Panicf("Failed finding shard ID %d within %v", shardID, br.config.Shards)
 	return config.BatcherInfo{}
+}
+
+// GetBatch polls every batcher in the shard for a batch that has a specific batchID.
+// The ShardID is taken from the batchID.
+// It polls all the batchers in parallel but cancels the requests as soon as the first match is found.
+// The Arma protocol ensures that if the batchID is from consensus, at least one batcher in the shard has it.
+func (br *BatchFetcher) GetBatch(batchID types.BatchID) (core.Batch, error) {
+	var shardInfo config.ShardInfo
+	for _, shard := range br.config.Shards {
+		if shard.ShardId == batchID.Shard() {
+			shardInfo = shard
+			break
+		}
+	}
+	if len(shardInfo.Batchers) == 0 {
+		return nil, fmt.Errorf("failed finding shard %d within config: %v", batchID.Shard(), br.config.Shards)
+	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	res := make(chan core.Batch, len(shardInfo.Batchers))
+
+	var wg sync.WaitGroup
+	wg.Add(len(shardInfo.Batchers))
+	for _, fromBatcher := range shardInfo.Batchers {
+		go func(from config.BatcherInfo) {
+			defer wg.Done()
+			br.pullSingleBatch(ctx, from, batchID, res)
+		}(fromBatcher)
+	}
+
+	count := 0
+
+	for {
+		// TODO use select with case for shutdown, will be implemented in next PR
+		fetchedBatch := <-res
+		count++
+		if fetchedBatch.Shard() == batchID.Shard() && fetchedBatch.Primary() == batchID.Primary() && fetchedBatch.Seq() == batchID.Seq() && bytes.Equal(fetchedBatch.Digest(), batchID.Digest()) {
+			br.logger.Infof("Found batch %v", fetchedBatch)
+			cancelFunc()
+			wg.Wait()
+
+			return fetchedBatch, nil
+		} else if count == len(shardInfo.Batchers) {
+			cancelFunc()
+			wg.Wait()
+			return nil, fmt.Errorf("failed finding batchID %v within shard: %v", batchID, shardInfo)
+		}
+	}
+}
+
+func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom config.BatcherInfo, batchID types.BatchID, resultChan chan core.Batch) {
+	br.logger.Infof("Assembler trying to pull from %s, batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, batchID.Shard(), batchID.Primary(), batchID.Seq(), hex.EncodeToString(batchID.Digest()))
+
+	channelName := ledger.ShardPartyToChannelName(batchID.Shard(), batchID.Primary())
+	br.logger.Infof("Assembler replicating from channel %s ", channelName)
+
+	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		channelName,
+		nil,
+		delivery.SingleSpecifiedSeekInfo(uint64(batchID.Seq())),
+		int32(0),
+		uint64(0),
+		nil,
+	)
+	if err != nil {
+		br.logger.Panicf("Failed creating signed envelope: %v", err)
+	}
+
+	block, err := delivery.PullOne(
+		ctx,
+		channelName,
+		br.logger,
+		batcherToPullFrom.Endpoint,
+		requestEnvelope,
+		br.clientConfig(),
+	)
+	if err != nil {
+		br.logger.Errorf("Assembler failed to pull batch %v from %v", batchID, batcherToPullFrom)
+		resultChan <- nil
+	}
+
+	fb, err := ledger.NewFabricBatchFromBlock(block)
+	if err != nil {
+		br.logger.Errorf("Assembler pulled from %s a block that cannot be converted to a FabricBatch: %s", batcherToPullFrom.Endpoint, err)
+		return
+	}
+	br.logger.Infof("Assembler pulled from %s batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
+	resultChan <- fb
 }

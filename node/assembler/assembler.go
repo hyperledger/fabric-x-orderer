@@ -84,8 +84,8 @@ func newAssembler(logger types.Logger, config config.AssemblerNodeConfig, blockS
 	return assembler
 }
 
-func newBAReplicator(logger types.Logger, config config.AssemblerNodeConfig, tlsKey config.RawBytes, tlsCert config.RawBytes) *delivery.BAReplicator {
-	r := delivery.NewBAReplicator(config.Consenter.TLSCACerts, tlsKey, tlsCert, config.Consenter.Endpoint, logger)
+func newBAReplicator(logger types.Logger, config config.AssemblerNodeConfig, tlsKey config.RawBytes, tlsCert config.RawBytes) *delivery.ConsensusReplicator {
+	r := delivery.NewConsensusReplicator(config.Consenter.TLSCACerts, tlsKey, tlsCert, config.Consenter.Endpoint, logger)
 	return r
 }
 

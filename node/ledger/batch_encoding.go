@@ -13,8 +13,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-// BlockMetadataIndex_Party is one location after the last entry that Fabric uses, which evaluates to 5.
-var BlockMetadataIndex_Party = len(common.BlockMetadataIndex_name)
+// BlockMetadataIndex_PartyShard is one location after the last entry that Fabric uses, which evaluates to 5.
+// It includes the primary PartyID and ShardID.
+var BlockMetadataIndex_PartyShard = len(common.BlockMetadataIndex_name)
 
 // FabricBatch is a core.Batch encoded in a Fabric block
 type FabricBatch common.Block
@@ -30,11 +31,11 @@ func (b *FabricBatch) Requests() types.BatchedRequests {
 // Primary returns the PartyID if encoded correctly, or 0.
 func (b *FabricBatch) Primary() types.PartyID {
 	m := (*common.Block)(b).GetMetadata().GetMetadata()
-	if len(m) <= BlockMetadataIndex_Party {
+	if len(m) <= BlockMetadataIndex_PartyShard {
 		return 0
 	}
 
-	buff := m[BlockMetadataIndex_Party]
+	buff := m[BlockMetadataIndex_PartyShard]
 	if len(buff) < 4 {
 		return 0
 	}
@@ -45,11 +46,11 @@ func (b *FabricBatch) Primary() types.PartyID {
 // Shard returns the ShardID if encoded correctly, or 0.
 func (b *FabricBatch) Shard() types.ShardID {
 	m := (*common.Block)(b).GetMetadata().GetMetadata()
-	if len(m) <= BlockMetadataIndex_Party {
+	if len(m) <= BlockMetadataIndex_PartyShard {
 		return 0
 	}
 
-	buff := m[BlockMetadataIndex_Party]
+	buff := m[BlockMetadataIndex_PartyShard]
 	if len(buff) < 4 {
 		return 0
 	}
@@ -88,6 +89,34 @@ func NewFabricBatchFromRaw(partyID types.PartyID, shardID types.ShardID, seq uin
 	}
 
 	return (*FabricBatch)(block), nil
+}
+
+func NewFabricBatchFromBlock(block *common.Block) (*FabricBatch, error) {
+	if block == nil {
+		return nil, errors.New("empty block")
+	}
+	if block.Header == nil {
+		return nil, errors.New("empty block header")
+	}
+	if block.Data == nil {
+		return nil, errors.New("empty block data")
+	}
+	if block.Metadata == nil || len(block.GetMetadata().GetMetadata()) == 0 {
+		return nil, errors.New("empty block metadata")
+	}
+
+	m := block.GetMetadata().GetMetadata()
+	if len(m) <= BlockMetadataIndex_PartyShard {
+		return nil, errors.New("missing shard party metadata")
+	}
+
+	buff := m[BlockMetadataIndex_PartyShard]
+	if len(buff) < 4 {
+		return nil, errors.New("bad shard party metadata")
+	}
+
+	batch := (*FabricBatch)(block)
+	return batch, nil
 }
 
 func ShardPartyToChannelName(shardID types.ShardID, partyID types.PartyID) string {
