@@ -168,3 +168,45 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	core.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 }
+
+func TestPrimaryRotateDueToComplaints(t *testing.T) {
+	state := core.State{
+		N:          4,
+		Quorum:     2,
+		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
+		ShardCount: 2,
+		Complaints: []core.Complaint{
+			{ShardTerm: core.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
+			{ShardTerm: core.ShardTerm{Shard: 1, Term: 1}, Signer: 3},
+		},
+	}
+
+	logger := testutil.CreateLogger(t, 0)
+
+	core.PrimaryRotateDueToComplaints(&state, logger)
+
+	// Check that the term for shard 1 has been incremented
+	expectedShards := []core.ShardTerm{{Shard: 1, Term: 2}, {Shard: 2, Term: 1}}
+	assert.Equal(t, expectedShards, state.Shards)
+
+	assert.Empty(t, state.Complaints)
+}
+
+func TestCleanupOldComplaints(t *testing.T) {
+	state := core.State{
+		Shards: []core.ShardTerm{{Shard: 1, Term: 2}},
+		Complaints: []core.Complaint{
+			{ShardTerm: core.ShardTerm{Shard: 1, Term: 1}, Signer: 2}, // Old complaint
+			{ShardTerm: core.ShardTerm{Shard: 1, Term: 2}, Signer: 3}, // Valid complaint
+		},
+	}
+
+	logger := testutil.CreateLogger(t, 0)
+
+	core.CleanupOldComplaints(&state, logger)
+
+	expectedComplaints := []core.Complaint{
+		{ShardTerm: core.ShardTerm{Shard: 1, Term: 2}, Signer: 3},
+	}
+	assert.Equal(t, expectedComplaints, state.Complaints)
+}
