@@ -17,7 +17,6 @@ import (
 	"os"
 	"path"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -787,14 +786,7 @@ func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *s
 
 	// pull blocks from the assembler and report statistics to statistics.csv file
 	pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs)
-	avgTxRate, avgTxDelay, err := reportStatisticsResult(path.Join(*receiveOutputDir, "statistics.csv"))
-	if err != nil {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
-			os.Exit(-1)
-		}
-	}
-	fmt.Printf("Receive command finished, statistics can be found in: %v\navg. tx rate: %v txs/second, avg. tx delay: %vs\n", path.Join(*receiveOutputDir, "statistics.csv"), avgTxRate, avgTxDelay)
+	fmt.Printf("Receive command finished, statistics can be found in: %v\n", path.Join(*receiveOutputDir, "statistics.csv"))
 }
 
 func trimPortFromEndpoint(endpoint string) string {
@@ -1018,16 +1010,17 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo
 
 	statisticsAggregator.startTime = time.Now().UnixMilli()
 	startTimeS := float64(statisticsAggregator.startTime) / 1000
+	timeIntervalToSampleStat := 1 * time.Second
 
 	// handle statistics channel messages
 	go func() {
-		manageStatistics(receiveOutputDir, statisticChan, stopChan, startTimeS, expectedNumOfTxs, pullFromPartyId)
+		manageStatistics(receiveOutputDir, statisticChan, stopChan, startTimeS, expectedNumOfTxs, pullFromPartyId, timeIntervalToSampleStat)
 		waitToFinish.Done()
 	}()
 
 	// every second read the statistics and send it to the manageStatistics
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(timeIntervalToSampleStat)
 		defer ticker.Stop()
 		for {
 			select {
@@ -1184,11 +1177,9 @@ func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
 }
 
 // manageStatistics manages a statistics queue and every hour writes the queue to a CSV file
-func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, stopChan <-chan bool, startTime float64, expectedTxs int, pullFrom int) {
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-
+func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, stopChan <-chan bool, startTime float64, expectedTxs int, pullFrom int, timeIntervalToSampleStat time.Duration) {
 	filePath := path.Join(receiveOutputDir, "statistics.csv")
+	fmt.Printf("the file path is: %v\n", filePath)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open a csv file: %v", err)
@@ -1210,32 +1201,23 @@ func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, 
 			desc = desc + fmt.Sprintf("Expected number of txs: %d", expectedTxs)
 		}
 
-		writer.Write([]string{desc, "", "", "", "", ""})
+		writer.Write([]string{desc, "", "", "", "", "", "", "", ""})
 		writer.Write([]string{""})
-		writer.Write([]string{"Time Since Start (s)", "Number of txs", "Number of blocks", "Sum of txs size", "Sum of txs delay (s)", "Avg. tx delay (s)"})
+		writer.Write([]string{"Time Since Start (s)", "Number of txs", "Number of blocks", "Avg. tx rate", "Sum of txs size", "Avg. tx size (byte)", "Sum of txs delay (s)", "Avg. tx delay (s)", "Avg. block rate", "Avg. block size (byte)", "Avg. number of txs in block"})
 		writer.Flush()
 	}
-
-	var statisticsQueue []Statistics
 
 	for {
 		select {
 		case statistic := <-statisticChan:
-			statisticsQueue = append(statisticsQueue, statistic)
-
-		case <-ticker.C:
-			writeStatisticsToCSV(file, statisticsQueue)
-			statisticsQueue = []Statistics{}
+			writeStatisticsToCSV(file, statistic, timeIntervalToSampleStat)
 
 		case <-stopChan:
 			for {
 				select {
 				case statistic := <-statisticChan:
-					statisticsQueue = append(statisticsQueue, statistic)
+					writeStatisticsToCSV(file, statistic, timeIntervalToSampleStat)
 				default:
-					if len(statisticsQueue) > 0 {
-						writeStatisticsToCSV(file, statisticsQueue)
-					}
 					return
 				}
 			}
@@ -1243,23 +1225,36 @@ func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, 
 	}
 }
 
-func writeStatisticsToCSV(file *os.File, statsQueue []Statistics) {
-	fmt.Printf("Writing %d records to CSV\n", len(statsQueue))
+func writeStatisticsToCSV(file *os.File, statistic Statistics, timeIntervalToSampleStat time.Duration) {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	for _, statistic := range statsQueue {
-		err := writer.Write([]string{
-			fmt.Sprintf("%.f", statistic.timeStamp),
-			fmt.Sprintf("%d", statistic.numOfTxs),
-			fmt.Sprintf("%d", statistic.numOfBlocks),
-			fmt.Sprintf("%d", statistic.sumOfTxsSize),
-			fmt.Sprintf("%.2f", statistic.sumOfTxsDelay),
-			fmt.Sprintf("%.2f", statistic.sumOfTxsDelay/float64(statistic.numOfTxs)),
-		})
-		if err != nil {
-			fmt.Printf("failed to write to CSV: %v", err)
-		}
+	var avgTxSize int
+	var avgTxDelay float64
+	var avgBlockSize int
+	var avgNumOfTxsInBlock int
+	if statistic.numOfTxs != 0 {
+		avgTxSize = statistic.sumOfTxsSize / statistic.numOfTxs
+		avgTxDelay = statistic.sumOfTxsDelay / float64(statistic.numOfTxs)
+		avgBlockSize = statistic.sumOfTxsSize / statistic.numOfBlocks
+		avgNumOfTxsInBlock = statistic.numOfTxs / statistic.numOfBlocks
+	}
+
+	err := writer.Write([]string{
+		fmt.Sprintf("%.f", statistic.timeStamp),
+		fmt.Sprintf("%d", statistic.numOfTxs),
+		fmt.Sprintf("%d", statistic.numOfBlocks),
+		fmt.Sprintf("%.2f", float64(statistic.numOfTxs)/timeIntervalToSampleStat.Seconds()),
+		fmt.Sprintf("%d", statistic.sumOfTxsSize),
+		fmt.Sprintf("%d", avgTxSize),
+		fmt.Sprintf("%.2f", statistic.sumOfTxsDelay),
+		fmt.Sprintf("%.2f", avgTxDelay),
+		fmt.Sprintf("%.2f", float64(statistic.numOfBlocks)/timeIntervalToSampleStat.Seconds()),
+		fmt.Sprintf("%d", avgBlockSize),
+		fmt.Sprintf("%d", avgNumOfTxsInBlock),
+	})
+	if err != nil {
+		fmt.Printf("failed to write to CSV: %v", err)
 	}
 }
 
@@ -1379,94 +1374,4 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 	}
 
 	return numOfBlocksCalculated, sumOfDelayTimes
-}
-
-func reportStatisticsResult(filePath string) (float64, float64, error) {
-	// open file
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0o644)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return 0, 0, err
-	}
-
-	// parse the start and stop times which are in units of a second
-	// NOTE: records doesn't count empty lines
-	start, err := strconv.ParseFloat(records[2][0], 64)
-	if err != nil {
-		return 0, 0, err
-	}
-	stop, err := strconv.ParseFloat(records[len(records)-1][0], 64)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	timeDiff := stop - start + 1
-
-	var sumNumOfTxs int
-	var sumNumOfBlocks int
-	var sumOfTxsSize int
-	var sumOfTxsDelay float64
-	for i, record := range records {
-		// skip the headers
-		if i == 0 || i == 1 {
-			continue
-		}
-		val1, err := strconv.Atoi(record[1])
-		if err != nil {
-			return 0, 0, nil
-		}
-		val2, err := strconv.Atoi(record[2])
-		if err != nil {
-			return 0, 0, nil
-		}
-		val3, err := strconv.Atoi(record[3])
-		if err != nil {
-			return 0, 0, nil
-		}
-		val4, err := strconv.ParseFloat(record[4], 64)
-		if err != nil {
-			return 0, 0, nil
-		}
-		sumNumOfTxs += val1
-		sumNumOfBlocks += val2
-		sumOfTxsSize += val3
-		sumOfTxsDelay += val4
-	}
-
-	avgTxSize := sumOfTxsSize / sumNumOfTxs
-	avgTxRate := float64(sumNumOfTxs) / timeDiff
-	avgTxDelay := sumOfTxsDelay / float64(sumNumOfTxs)
-	avgBlockRate := float64(sumNumOfBlocks) / timeDiff
-	avgBlockSize := sumNumOfTxs / sumNumOfBlocks
-
-	// write results to the CSV
-	_, err = file.Seek(0, io.SeekEnd)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	writer.Write([]string{
-		"average tx size",
-		"average tx rate",
-		"average tx delay",
-		"average block rate",
-		"average block size",
-	})
-	writer.Write([]string{
-		fmt.Sprintf("%d", avgTxSize),
-		fmt.Sprintf("%.2f", avgTxRate),
-		fmt.Sprintf("%.2f", avgTxDelay),
-		fmt.Sprintf("%.2f", avgBlockRate),
-		fmt.Sprintf("%d", avgBlockSize),
-	})
-	return avgTxRate, avgTxDelay, nil
 }
