@@ -3,12 +3,10 @@ package consensus
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -430,30 +428,14 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 		return types.RequestInfo{}
 	}
 
-	var clientID string
-	var payloadToHash []byte
-	if ce.Complaint != nil {
-		ce.Complaint.Signature = nil
-		payloadToHash = ce.Complaint.Bytes()
-		clientID = fmt.Sprintf("%d", ce.Complaint.Signer)
-	} else if ce.BAF != nil {
-		clientID = fmt.Sprintf("%d", ce.BAF.Signer())
-		payloadToHash = make([]byte, 22+32) // seq and epoch are uint64, signer, primary and shard are uint16, and digest is 32 bytes
-		binary.BigEndian.PutUint64(payloadToHash, uint64(ce.BAF.Seq()))
-		binary.BigEndian.PutUint64(payloadToHash[8:], uint64(ce.BAF.Epoch()))
-		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))
-		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))
-		binary.BigEndian.PutUint16(payloadToHash[20:], uint16(ce.BAF.Shard()))
-		copy(payloadToHash[22:], ce.BAF.Digest())
-	} else {
+	if ce.Complaint == nil && ce.BAF == nil {
 		c.Logger.Warnf("Empty ControlEvent")
 		return types.RequestInfo{}
 	}
 
-	dig := sha256.Sum256(payloadToHash)
 	return types.RequestInfo{
-		ID:       hex.EncodeToString(dig[:]),
-		ClientID: clientID,
+		ID:       ce.ID(),
+		ClientID: ce.SignerID(),
 	}
 }
 

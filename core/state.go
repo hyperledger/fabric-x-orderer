@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/binary"
 	"encoding/hex"
@@ -246,10 +247,6 @@ type Complaint struct {
 	Signature []byte
 }
 
-func (c *Complaint) String() string {
-	return fmt.Sprintf("{Shard: %d, Term: %d}", c.Shard, c.Term)
-}
-
 func (c *Complaint) Bytes() []byte {
 	buff := make([]byte, 12+len(c.Signature))
 	var pos int
@@ -278,6 +275,40 @@ func (c *Complaint) FromBytes(bytes []byte) error {
 type ControlEvent struct {
 	BAF       BatchAttestationFragment
 	Complaint *Complaint
+}
+
+// ID returns a string representing the specific control event
+func (ce *ControlEvent) ID() string {
+	var payloadToHash []byte
+	if ce.Complaint != nil {
+		ce.Complaint.Signature = nil
+		payloadToHash = ce.Complaint.Bytes()
+	} else if ce.BAF != nil {
+		payloadToHash = make([]byte, 22+32) // seq and epoch are uint64, signer, primary and shard are uint16, and digest is 32 bytes
+		binary.BigEndian.PutUint64(payloadToHash, uint64(ce.BAF.Seq()))
+		binary.BigEndian.PutUint64(payloadToHash[8:], uint64(ce.BAF.Epoch()))
+		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))
+		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))
+		binary.BigEndian.PutUint16(payloadToHash[20:], uint16(ce.BAF.Shard()))
+		copy(payloadToHash[22:], ce.BAF.Digest())
+	} else {
+		return string("")
+	}
+	dig := sha256.Sum256(payloadToHash)
+	return hex.EncodeToString(dig[:])
+}
+
+// SignerID returns a string representing the signer of the specific control event
+func (ce *ControlEvent) SignerID() string {
+	var signerID string
+	if ce.Complaint != nil {
+		signerID = fmt.Sprintf("%d", ce.Complaint.Signer)
+	} else if ce.BAF != nil {
+		signerID = fmt.Sprintf("%d", ce.BAF.Signer())
+	} else {
+		return string("")
+	}
+	return signerID
 }
 
 func (ce *ControlEvent) Bytes() []byte {
