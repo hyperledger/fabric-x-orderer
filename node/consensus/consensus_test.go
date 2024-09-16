@@ -758,3 +758,115 @@ func verifyProposalRequireError(t *testing.T, c *Consensus, header, payload, met
 	require.Nil(t, infos)
 	t.Logf("err: %v", err)
 }
+
+func TestSignProposal(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
+	assert.NoError(t, err)
+
+	db, err := NewBatchAttestationDB(dir, logger)
+	assert.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	numOfParties := 4
+
+	sks := make([]*ecdsa.PrivateKey, numOfParties)
+
+	for i := 0; i < numOfParties; i++ {
+		sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		assert.NoError(t, err)
+
+		sks[i] = sk
+
+		signer := crypto.ECDSASigner(*sk)
+		for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
+			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+		}
+	}
+
+	initialAppContext := state.BlockHeader{
+		Number:   10,
+		PrevHash: make([]byte, 32),
+		Digest:   make([]byte, 32),
+	}
+
+	initialState := core.State{
+		ShardCount: 2,
+		N:          4,
+		Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  2,
+		Quorum:     3,
+		AppContext: initialAppContext.Bytes(),
+	}
+
+	consenter := &core.Consenter{
+		DB:              db,
+		State:           &initialState,
+		Logger:          logger,
+		BAFDeserializer: &state.BAFDeserializer{},
+	}
+
+	c := &Consensus{
+		CurrentConfig: types.Configuration{SelfID: 1},
+		Arma:          consenter,
+		State:         &initialState,
+		Logger:        logger,
+		SigVerifier:   verifier,
+		Signer:        crypto.ECDSASigner(*sks[0]),
+	}
+
+	proposal := types.Proposal{}
+
+	require.Panics(t, func() {
+		c.SignProposal(proposal, nil)
+	})
+
+	dig := make([]byte, 32-3)
+
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf123id1p1s1, err := batcher.CreateBAF(sks[0], 1, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+	baf123id2p1s1, err := batcher.CreateBAF(sks[1], 2, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+
+	ces := []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
+	reqs := make([][]byte, len(ces))
+	for i, ce := range ces {
+		reqs[i] = ce.Bytes()
+	}
+	brs := arma_types.BatchedRequests(reqs)
+
+	proposal.Payload = brs.Serialize()
+
+	require.Panics(t, func() {
+		c.SignProposal(proposal, nil)
+	})
+
+	header := state.Header{}
+	header.Num = 0
+
+	header.AvailableBatches = []state.AvailableBatch{state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}
+
+	latestBlockHeader := initialAppContext
+	latestBlockHeader.Number += 1
+	latestBlockHeader.Digest = baf123id1p1s1.Digest()
+	latestBlockHeader.PrevHash = initialAppContext.Hash()
+
+	header.BlockHeaders = []state.BlockHeader{latestBlockHeader}
+
+	newState := initialState
+	newState.AppContext = latestBlockHeader.Bytes()
+
+	header.State = &newState
+
+	proposal.Header = header.Bytes()
+
+	sig := c.SignProposal(proposal, nil)
+
+	require.NotNil(t, sig)
+
+	_, err = c.VerifyConsenterSig(*sig, proposal)
+	require.NoError(t, err)
+}

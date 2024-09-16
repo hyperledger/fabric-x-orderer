@@ -361,12 +361,12 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 		Msg:   []byte(prop.Digest()),
 		ID:    signature.ID,
 	}); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed verifying signature over proposal")
 	}
 
 	var hdr state.Header
 	if err := hdr.FromBytes(prop.Header); err != nil {
-		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
+		return nil, errors.Wrap(err, "failed deserializing proposal header")
 	}
 
 	for i, bh := range hdr.BlockHeaders {
@@ -375,7 +375,7 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 			Msg:   bh.Bytes(),
 			ID:    signature.ID,
 		}); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "failed verifying signature over block header")
 		}
 	}
 
@@ -445,6 +445,11 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
 	}
 
+	var hdr state.Header
+	if err := hdr.FromBytes(proposal.Header); err != nil {
+		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
+	}
+
 	c.stateLock.Lock()
 	_, bafs := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
@@ -453,21 +458,16 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 
 	proposalSig, err := c.Signer.Sign([]byte(proposal.Digest()))
 	if err != nil {
-		panic(err)
+		c.Logger.Panicf("Failed signing proposal digest: %v", err)
 	}
 
 	sigs = append(sigs, proposalSig)
-
-	var hdr state.Header
-	if err := hdr.FromBytes(proposal.Header); err != nil {
-		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
-	}
 
 	for _, bh := range hdr.BlockHeaders {
 		msg := bh.Bytes()
 		sig, err := c.Signer.Sign(msg)
 		if err != nil {
-			panic(err)
+			c.Logger.Panicf("Failed signing block header: %v", err)
 		}
 
 		sigs = append(sigs, sig)
@@ -475,10 +475,11 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 
 	sigsRaw, err := asn1.Marshal(sigs)
 	if err != nil {
-		panic(err)
+		c.Logger.Panicf("Failed marshaling signatures: %v", err)
 	}
 
 	return &types.Signature{
+		// the Msg is defined by VerifyConsenterSig
 		Value: sigsRaw,
 		ID:    c.CurrentConfig.SelfID,
 	}
