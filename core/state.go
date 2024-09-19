@@ -262,7 +262,7 @@ func (c *Complaint) Bytes() []byte {
 
 func (c *Complaint) FromBytes(bytes []byte) error {
 	if len(bytes) <= 12 {
-		return fmt.Errorf("input too small (%d < 12)", len(bytes))
+		return fmt.Errorf("input too small (%d <= 12)", len(bytes))
 	}
 
 	c.Shard = types.ShardID(binary.BigEndian.Uint16(bytes))
