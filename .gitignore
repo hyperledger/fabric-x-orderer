@@ -23,4 +23,9 @@
 # Binaries built with `make binary`
 bin/
 
+# Logs 
+*.log
+
+# Docker image tar files
+*.tar
 
