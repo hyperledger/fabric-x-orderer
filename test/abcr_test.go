@@ -81,6 +81,7 @@ func TestABCR(t *testing.T) {
 		Shards:             shards,
 		Consenter:          consenterInfos[0],
 		Directory:          assemblerDir,
+		UseTLS:             true,
 	}
 
 	aLogger := testutil.CreateLogger(t, 1)
@@ -233,6 +234,7 @@ func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA
 				ShardId:  1,
 				Batchers: batcherInfos,
 			}},
+			UseTLS: true,
 		}
 		configs = append(configs, config)
 		router := router.NewRouter(config, l)

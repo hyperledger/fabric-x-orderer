@@ -41,6 +41,7 @@ func TestRouter(t *testing.T) {
 		TLSCertificateFile: ckp.Cert,
 		PartyID:            1,
 		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{Endpoint: "127.0.0.1:80", PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}},
+		UseTLS:             true,
 	}, configPath)
 	require.NoError(t, err)
 

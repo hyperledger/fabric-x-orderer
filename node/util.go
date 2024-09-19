@@ -59,7 +59,7 @@ func CreateGRPCRouter(conf config.RouterNodeConfig) *comm.GRPCServer {
 		},
 		SecOpts: comm.SecureOptions{
 			ClientRootCAs:     tlsCAs,
-			UseTLS:            true,
+			UseTLS:            conf.UseTLS,
 			RequireClientCert: true,
 			Certificate:       conf.TLSCertificateFile,
 			Key:               conf.TLSPrivateKeyFile,
@@ -118,7 +118,7 @@ func CreateGRPCAssembler(conf config.AssemblerNodeConfig) *comm.GRPCServer {
 		},
 		SecOpts: comm.SecureOptions{
 			ClientRootCAs:     tlsCAs,
-			UseTLS:            true,
+			UseTLS:            conf.UseTLS,
 			RequireClientCert: true,
 			Certificate:       conf.TLSCertificateFile,
 			Key:               conf.TLSPrivateKeyFile,

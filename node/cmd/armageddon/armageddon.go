@@ -106,6 +106,7 @@ type UserInfo struct {
 	RouterEndpoints    []string
 	AssemblerEndpoints []string
 	TLSCACerts         []config.RawBytes
+	UseTLS             bool
 }
 
 type CertsAndKeys struct {
@@ -159,6 +160,7 @@ type CLI struct {
 	// generate command flags
 	outputDir     *string
 	genConfigFile **os.File
+	useTLS        *bool
 	// submit command flags
 	userConfigFile **os.File
 	transactions   *int // transactions is the number of txs to be sent
@@ -190,6 +192,7 @@ func (cli *CLI) configureCommands() {
 
 	cli.outputDir = gen.Flag("output", "The output directory in which to place config files").Default("arma-config").String()
 	cli.genConfigFile = gen.Flag("config", "The configuration template to use").File()
+	cli.useTLS = gen.Flag("useTLS", "Defines if the connection between a client to a router and an assembler is a TLS one or not").Bool()
 
 	showtemplate := cli.app.Command("showtemplate", "Show the default configuration template needed to build Arma config material")
 	commands["showtemplate"] = showtemplate
@@ -226,7 +229,7 @@ func (cli *CLI) Run(args []string) {
 
 	// "generate" command
 	case cli.commands["generate"].FullCommand():
-		generate(cli.genConfigFile, cli.outputDir)
+		generate(cli.genConfigFile, cli.outputDir, cli.useTLS)
 
 	// "showtemplate" command
 	case cli.commands["showtemplate"].FullCommand():
@@ -250,7 +253,7 @@ func (cli *CLI) Run(args []string) {
 	}
 }
 
-func generate(genConfigFile **os.File, outputDir *string) {
+func generate(genConfigFile **os.File, outputDir *string, useTLS *bool) {
 	// get config file content given as argument
 	networkConfigFileContent, err := getConfigFileContent(genConfigFile)
 	if err != nil {
@@ -259,14 +262,14 @@ func generate(genConfigFile **os.File, outputDir *string) {
 	}
 
 	// create crypto config material for each party
-	networkCryptoConfig := createNetworkCryptoConfig(networkConfigFileContent)
+	networkCryptoConfig := createNetworkCryptoConfig(networkConfigFileContent, useTLS)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating network crypto config: %s", err)
 		os.Exit(-1)
 	}
 
 	// parse the file and use the crypto material to create the network config
-	networkConfig := parseNetworkConfig(networkConfigFileContent, networkCryptoConfig)
+	networkConfig := parseNetworkConfig(networkConfigFileContent, networkCryptoConfig, useTLS)
 
 	// create config material for each party in a folder structure
 	createConfigMaterial(networkConfig, networkCryptoConfig, outputDir)
@@ -294,7 +297,7 @@ func getConfigFileContent(genConfigFile **os.File) (*Network, error) {
 	return &network, nil
 }
 
-func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
+func createNetworkCryptoConfig(network *Network, useTLS *bool) *NetworkCryptoConfig {
 	// collect router and assembler endpoints, required for defining a user for each party
 	var routerEndpoints []string
 	var assemblerEndpoints []string
@@ -437,6 +440,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 			RouterEndpoints:    routerEndpoints,
 			AssemblerEndpoints: assemblerEndpoints,
 			TLSCACerts:         tlsCACertsBytesPartiesCollection,
+			UseTLS:             *useTLS,
 		}
 
 		partyCryptoConfig := CryptoConfigPerParty{
@@ -457,7 +461,7 @@ func createNetworkCryptoConfig(network *Network) *NetworkCryptoConfig {
 	return networkCryptoConfig
 }
 
-func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConfig) *NetworkConfig {
+func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConfig, useTLS *bool) *NetworkConfig {
 	// construct shared config
 	sharedConfig := constructSharedConfig(network, networkCryptoConfig)
 
@@ -465,10 +469,10 @@ func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConf
 
 	for _, party := range network.Parties {
 		partyConfig := PartyConfig{
-			RouterConfig:    constructRouterNodeConfigPerParty(party.ID, sharedConfig.Shards, networkCryptoConfig.PartyToCryptoConfig[party.ID].RouterCertKeyPair, trimHostFromEndpoint(party.RouterEndpoint)),
+			RouterConfig:    constructRouterNodeConfigPerParty(party.ID, sharedConfig.Shards, networkCryptoConfig.PartyToCryptoConfig[party.ID].RouterCertKeyPair, trimHostFromEndpoint(party.RouterEndpoint), useTLS),
 			BatchersConfig:  constructBatchersNodeConfigPerParty(party.ID, party.BatchersEndpoints, sharedConfig, networkCryptoConfig.PartyToCryptoConfig[party.ID].BatchersCertsAndKeys),
 			ConsenterConfig: constructConsenterNodeConfigPerParty(party.ID, sharedConfig, networkCryptoConfig.PartyToCryptoConfig[party.ID].ConsenterCertsAndKeys, trimHostFromEndpoint(party.ConsenterEndpoint)),
-			AssemblerConfig: constructAssemblerNodeConfigPerParty(party.ID, sharedConfig.Shards, party.ConsenterEndpoint, networkCryptoConfig, trimHostFromEndpoint(party.AssemblerEndpoint)),
+			AssemblerConfig: constructAssemblerNodeConfigPerParty(party.ID, sharedConfig.Shards, party.ConsenterEndpoint, networkCryptoConfig, trimHostFromEndpoint(party.AssemblerEndpoint), useTLS),
 		}
 		partiesConfig = append(partiesConfig, partyConfig)
 	}
@@ -480,7 +484,7 @@ func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConf
 	return networkConfig
 }
 
-func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []config.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string) config.RouterNodeConfig {
+func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []config.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string, useTLS *bool) config.RouterNodeConfig {
 	return config.RouterNodeConfig{
 		ListenAddress:                 "0.0.0.0:" + port,
 		PartyID:                       partyID,
@@ -489,6 +493,7 @@ func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []config.Sh
 		Shards:                        shards,
 		NumOfConnectionsForBatcher:    10,
 		NumOfgRPCStreamsPerConnection: 5,
+		UseTLS:                        *useTLS,
 	}
 }
 
@@ -526,7 +531,7 @@ func constructConsenterNodeConfigPerParty(partyId types.PartyID, sharedConfig Sh
 	}
 }
 
-func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []config.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string) config.AssemblerNodeConfig {
+func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []config.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string, useTLS *bool) config.AssemblerNodeConfig {
 	partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[partyId]
 	var tlsCACertsCollection []config.RawBytes
 	for _, ca := range partyCryptoConfig.CAs {
@@ -546,6 +551,7 @@ func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []config
 			PublicKey:  partyCryptoConfig.ConsenterCertsAndKeys.PublicKey,
 			TLSCACerts: tlsCACertsCollection,
 		},
+		UseTLS: *useTLS,
 	}
 }
 
@@ -845,7 +851,7 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 				Key:               userConfigFileContent.TLSPrivateKeyFile,
 				Certificate:       userConfigFileContent.TLSCertificateFile,
 				RequireClientCert: true,
-				UseTLS:            true,
+				UseTLS:            userConfigFileContent.UseTLS,
 				ServerRootCAs:     serverRootCAs,
 			},
 			DialTimeout: time.Second * 5,
@@ -951,7 +957,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo
 			Key:               userConfigFileContent.TLSPrivateKeyFile,
 			Certificate:       userConfigFileContent.TLSCertificateFile,
 			RequireClientCert: true,
-			UseTLS:            true,
+			UseTLS:            userConfigFileContent.UseTLS,
 			ServerRootCAs:     serverRootCAs,
 		},
 		DialTimeout: time.Second * 5,
@@ -1278,7 +1284,7 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 			Key:               userConfigFileContent.TLSPrivateKeyFile,
 			Certificate:       userConfigFileContent.TLSCertificateFile,
 			RequireClientCert: true,
-			UseTLS:            true,
+			UseTLS:            userConfigFileContent.UseTLS,
 			ServerRootCAs:     serverRootCAs,
 		},
 		DialTimeout: time.Second * 5,

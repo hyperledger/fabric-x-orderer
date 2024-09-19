@@ -2,7 +2,7 @@
 set -eux
 make binary
 
-./bin/armageddon generate --config="node/examples/config/example-deployment.yaml" --output="/tmp/arma-sample/arma-config"
+./bin/armageddon generate --config="node/examples/config/example-deployment.yaml" --output="/tmp/arma-sample/arma-config" --useTLS
 cd node/examples && docker-compose up -d  
 sleep 10
 
