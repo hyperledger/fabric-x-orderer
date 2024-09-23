@@ -89,6 +89,16 @@ type FakeBatchAttestationFragment struct {
 	shardReturnsOnCall map[int]struct {
 		result1 types.ShardID
 	}
+	SignatureStub        func() []byte
+	signatureMutex       sync.RWMutex
+	signatureArgsForCall []struct {
+	}
+	signatureReturns struct {
+		result1 []byte
+	}
+	signatureReturnsOnCall map[int]struct {
+		result1 []byte
+	}
 	SignerStub        func() types.PartyID
 	signerMutex       sync.RWMutex
 	signerArgsForCall []struct {
@@ -114,15 +124,16 @@ func (fake *FakeBatchAttestationFragment) Deserialize(arg1 []byte) error {
 	fake.deserializeArgsForCall = append(fake.deserializeArgsForCall, struct {
 		arg1 []byte
 	}{arg1Copy})
+	stub := fake.DeserializeStub
+	fakeReturns := fake.deserializeReturns
 	fake.recordInvocation("Deserialize", []interface{}{arg1Copy})
 	fake.deserializeMutex.Unlock()
-	if fake.DeserializeStub != nil {
-		return fake.DeserializeStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.deserializeReturns
 	return fakeReturns.result1
 }
 
@@ -173,15 +184,16 @@ func (fake *FakeBatchAttestationFragment) Digest() []byte {
 	ret, specificReturn := fake.digestReturnsOnCall[len(fake.digestArgsForCall)]
 	fake.digestArgsForCall = append(fake.digestArgsForCall, struct {
 	}{})
+	stub := fake.DigestStub
+	fakeReturns := fake.digestReturns
 	fake.recordInvocation("Digest", []interface{}{})
 	fake.digestMutex.Unlock()
-	if fake.DigestStub != nil {
-		return fake.DigestStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.digestReturns
 	return fakeReturns.result1
 }
 
@@ -225,15 +237,16 @@ func (fake *FakeBatchAttestationFragment) Epoch() int64 {
 	ret, specificReturn := fake.epochReturnsOnCall[len(fake.epochArgsForCall)]
 	fake.epochArgsForCall = append(fake.epochArgsForCall, struct {
 	}{})
+	stub := fake.EpochStub
+	fakeReturns := fake.epochReturns
 	fake.recordInvocation("Epoch", []interface{}{})
 	fake.epochMutex.Unlock()
-	if fake.EpochStub != nil {
-		return fake.EpochStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.epochReturns
 	return fakeReturns.result1
 }
 
@@ -277,15 +290,16 @@ func (fake *FakeBatchAttestationFragment) GarbageCollect() [][]byte {
 	ret, specificReturn := fake.garbageCollectReturnsOnCall[len(fake.garbageCollectArgsForCall)]
 	fake.garbageCollectArgsForCall = append(fake.garbageCollectArgsForCall, struct {
 	}{})
+	stub := fake.GarbageCollectStub
+	fakeReturns := fake.garbageCollectReturns
 	fake.recordInvocation("GarbageCollect", []interface{}{})
 	fake.garbageCollectMutex.Unlock()
-	if fake.GarbageCollectStub != nil {
-		return fake.GarbageCollectStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.garbageCollectReturns
 	return fakeReturns.result1
 }
 
@@ -329,15 +343,16 @@ func (fake *FakeBatchAttestationFragment) Primary() types.PartyID {
 	ret, specificReturn := fake.primaryReturnsOnCall[len(fake.primaryArgsForCall)]
 	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct {
 	}{})
+	stub := fake.PrimaryStub
+	fakeReturns := fake.primaryReturns
 	fake.recordInvocation("Primary", []interface{}{})
 	fake.primaryMutex.Unlock()
-	if fake.PrimaryStub != nil {
-		return fake.PrimaryStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.primaryReturns
 	return fakeReturns.result1
 }
 
@@ -381,15 +396,16 @@ func (fake *FakeBatchAttestationFragment) Seq() types.BatchSequence {
 	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
 	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
 	}{})
+	stub := fake.SeqStub
+	fakeReturns := fake.seqReturns
 	fake.recordInvocation("Seq", []interface{}{})
 	fake.seqMutex.Unlock()
-	if fake.SeqStub != nil {
-		return fake.SeqStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.seqReturns
 	return fakeReturns.result1
 }
 
@@ -433,15 +449,16 @@ func (fake *FakeBatchAttestationFragment) Serialize() []byte {
 	ret, specificReturn := fake.serializeReturnsOnCall[len(fake.serializeArgsForCall)]
 	fake.serializeArgsForCall = append(fake.serializeArgsForCall, struct {
 	}{})
+	stub := fake.SerializeStub
+	fakeReturns := fake.serializeReturns
 	fake.recordInvocation("Serialize", []interface{}{})
 	fake.serializeMutex.Unlock()
-	if fake.SerializeStub != nil {
-		return fake.SerializeStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.serializeReturns
 	return fakeReturns.result1
 }
 
@@ -485,15 +502,16 @@ func (fake *FakeBatchAttestationFragment) Shard() types.ShardID {
 	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
 	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
 	}{})
+	stub := fake.ShardStub
+	fakeReturns := fake.shardReturns
 	fake.recordInvocation("Shard", []interface{}{})
 	fake.shardMutex.Unlock()
-	if fake.ShardStub != nil {
-		return fake.ShardStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.shardReturns
 	return fakeReturns.result1
 }
 
@@ -532,20 +550,74 @@ func (fake *FakeBatchAttestationFragment) ShardReturnsOnCall(i int, result1 type
 	}{result1}
 }
 
+func (fake *FakeBatchAttestationFragment) Signature() []byte {
+	fake.signatureMutex.Lock()
+	ret, specificReturn := fake.signatureReturnsOnCall[len(fake.signatureArgsForCall)]
+	fake.signatureArgsForCall = append(fake.signatureArgsForCall, struct {
+	}{})
+	stub := fake.SignatureStub
+	fakeReturns := fake.signatureReturns
+	fake.recordInvocation("Signature", []interface{}{})
+	fake.signatureMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeBatchAttestationFragment) SignatureCallCount() int {
+	fake.signatureMutex.RLock()
+	defer fake.signatureMutex.RUnlock()
+	return len(fake.signatureArgsForCall)
+}
+
+func (fake *FakeBatchAttestationFragment) SignatureCalls(stub func() []byte) {
+	fake.signatureMutex.Lock()
+	defer fake.signatureMutex.Unlock()
+	fake.SignatureStub = stub
+}
+
+func (fake *FakeBatchAttestationFragment) SignatureReturns(result1 []byte) {
+	fake.signatureMutex.Lock()
+	defer fake.signatureMutex.Unlock()
+	fake.SignatureStub = nil
+	fake.signatureReturns = struct {
+		result1 []byte
+	}{result1}
+}
+
+func (fake *FakeBatchAttestationFragment) SignatureReturnsOnCall(i int, result1 []byte) {
+	fake.signatureMutex.Lock()
+	defer fake.signatureMutex.Unlock()
+	fake.SignatureStub = nil
+	if fake.signatureReturnsOnCall == nil {
+		fake.signatureReturnsOnCall = make(map[int]struct {
+			result1 []byte
+		})
+	}
+	fake.signatureReturnsOnCall[i] = struct {
+		result1 []byte
+	}{result1}
+}
+
 func (fake *FakeBatchAttestationFragment) Signer() types.PartyID {
 	fake.signerMutex.Lock()
 	ret, specificReturn := fake.signerReturnsOnCall[len(fake.signerArgsForCall)]
 	fake.signerArgsForCall = append(fake.signerArgsForCall, struct {
 	}{})
+	stub := fake.SignerStub
+	fakeReturns := fake.signerReturns
 	fake.recordInvocation("Signer", []interface{}{})
 	fake.signerMutex.Unlock()
-	if fake.SignerStub != nil {
-		return fake.SignerStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.signerReturns
 	return fakeReturns.result1
 }
 
@@ -603,6 +675,8 @@ func (fake *FakeBatchAttestationFragment) Invocations() map[string][][]interface
 	defer fake.serializeMutex.RUnlock()
 	fake.shardMutex.RLock()
 	defer fake.shardMutex.RUnlock()
+	fake.signatureMutex.RLock()
+	defer fake.signatureMutex.RUnlock()
 	fake.signerMutex.RLock()
 	defer fake.signerMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

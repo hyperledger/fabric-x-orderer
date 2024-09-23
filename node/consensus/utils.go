@@ -109,9 +109,21 @@ func bytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error)
 }
 
 func toBeSignedBAF(baf core.BatchAttestationFragment) []byte {
-	simBAF, ok := baf.(*arma_types.SimpleBatchAttestationFragment)
+	simpleBAF, ok := baf.(*arma_types.SimpleBatchAttestationFragment)
 	if !ok {
 		return nil
 	}
-	return simBAF.ToBeSigned()
+	return simpleBAF.ToBeSigned()
+}
+
+func toBeSignedComplaint(c *core.Complaint) []byte {
+	buff := make([]byte, 12)
+	var pos int
+	binary.BigEndian.PutUint16(buff, uint16(c.Shard))
+	pos += 2
+	binary.BigEndian.PutUint64(buff[pos:], c.Term)
+	pos += 8
+	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Signer))
+
+	return buff
 }

@@ -25,6 +25,7 @@ type BatchAttestationFragment interface {
 	Primary() types.PartyID
 	Shard() types.ShardID
 	Signer() types.PartyID
+	Signature() []byte
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error

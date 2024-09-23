@@ -265,18 +265,18 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	}
 
 	c := &Consensus{
-		CurrentConfig: types.DefaultConfig,
-		Logger:        l,
-		Signer:        signer,
-		SigVerifier:   verifier,
-		State:         initialState,
-		CurrentNodes:  nodes,
-		Storage:       &commitInterceptor{Storage: make(mockStorage, 100), f: onCommit},
-		Arma:          consenter,
+		BFTConfig:    types.DefaultConfig,
+		Logger:       l,
+		Signer:       signer,
+		SigVerifier:  verifier,
+		State:        initialState,
+		CurrentNodes: nodes,
+		Storage:      &commitInterceptor{Storage: make(mockStorage, 100), f: onCommit},
+		Arma:         consenter,
 	}
 
-	c.CurrentConfig.SelfID = uint64(partyID)
-	c.CurrentConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
+	c.BFTConfig.SelfID = uint64(partyID)
+	c.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
 
 	wal, err := wal.Create(l, dir, &wal.Options{
 		FileSizeBytes:   wal.FileSizeBytesDefault,
@@ -294,7 +294,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 		WAL:               wal,
-		Config:            c.CurrentConfig,
+		Config:            c.BFTConfig,
 		Verifier:          c,
 		Comm: &mockComm{
 			nodes: nodes,
@@ -807,12 +807,12 @@ func TestSignProposal(t *testing.T) {
 	}
 
 	c := &Consensus{
-		CurrentConfig: types.Configuration{SelfID: 1},
-		Arma:          consenter,
-		State:         &initialState,
-		Logger:        logger,
-		SigVerifier:   verifier,
-		Signer:        crypto.ECDSASigner(*sks[0]),
+		BFTConfig:   types.Configuration{SelfID: 1},
+		Arma:        consenter,
+		State:       &initialState,
+		Logger:      logger,
+		SigVerifier: verifier,
+		Signer:      crypto.ECDSASigner(*sks[0]),
 	}
 
 	proposal := types.Proposal{}

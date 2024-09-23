@@ -2,38 +2,25 @@ package consensus
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
-	"encoding/binary"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"math"
-	"os"
-	"path/filepath"
 	"sync"
-	"time"
 
 	arma_types "arma/common/types"
 	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	"arma/node/consensus/state"
-	"arma/node/crypto"
 	"arma/node/delivery"
-	"arma/node/ledger"
 	protos "arma/node/protos/comm"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/api"
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
-	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
-	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -65,19 +52,17 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	Config        config.ConsenterNodeConfig
-	SigVerifier   SigVerifier
-	Signer        Signer
-	CurrentNodes  []uint64
-	CurrentConfig types.Configuration
-	BFT           *consensus.Consensus
-	Storage       Storage
-	Arma          Arma
-	stateLock     sync.Mutex
-	State         *core.State
-	Logger        arma_types.Logger
-	WAL           api.WriteAheadLog
-	sync          *synchronizer
+	Config       config.ConsenterNodeConfig
+	SigVerifier  SigVerifier
+	Signer       Signer
+	CurrentNodes []uint64
+	BFTConfig    types.Configuration
+	BFT          *consensus.Consensus
+	Storage      Storage
+	Arma         Arma
+	stateLock    sync.Mutex
+	State        *core.State
+	Logger       arma_types.Logger
 }
 
 func (c *Consensus) Start() error {
@@ -100,8 +85,9 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 	bafd := &state.BAFDeserializer{}
 	if err := ce.FromBytes(rawCE, bafd.Deserialize); err != nil {
 		c.Logger.Errorf("Failed unmarshaling control event %s: %v", base64.StdEncoding.EncodeToString(rawCE), err)
-		return nil
+		return errors.Wrap(err, "failed unmarshaling control event")
 	}
+	c.BFT.HandleRequest(sender, rawCE)
 	return nil
 }
 
@@ -117,107 +103,11 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 			return err
 		}
 
-		var ce core.ControlEvent
-		bafd := &state.BAFDeserializer{}
-		if err := ce.FromBytes(event.GetPayload(), bafd.Deserialize); err != nil {
-			return fmt.Errorf("malformed control event: %v", err)
-		}
-
 		c.Logger.Infof("Received event %x", event.Payload)
 
 		if err := c.SubmitRequest(event.GetPayload()); err != nil {
 			c.Logger.Warnf("Failed submitting request: %v", err)
 		}
-	}
-}
-
-func (c *Consensus) clientConfig() comm.ClientConfig {
-	var tlsCAs [][]byte
-
-	for _, ci := range c.Config.Consenters {
-		for _, tlsCACert := range ci.TLSCACerts {
-			tlsCAs = append(tlsCAs, tlsCACert)
-		}
-	}
-
-	cert := c.Config.TLSCertificateFile
-
-	tlsKey := c.Config.TLSPrivateKeyFile
-
-	cc := comm.ClientConfig{
-		AsyncConnect: true,
-		KaOpts: comm.KeepaliveOptions{
-			ClientInterval: time.Hour,
-			ClientTimeout:  time.Hour,
-		},
-		SecOpts: comm.SecureOptions{
-			Key:               tlsKey,
-			Certificate:       cert,
-			RequireClientCert: true,
-			UseTLS:            true,
-			ServerRootCAs:     tlsCAs,
-		},
-		DialTimeout: time.Second * 5,
-	}
-	return cc
-}
-
-func SetupComm(c *Consensus, selfID []byte) {
-	c.ClusterService = &comm.ClusterService{
-		Logger:                           c.Logger,
-		CertExpWarningThreshold:          time.Hour,
-		NodeIdentity:                     selfID,
-		StepLogger:                       c.Logger,
-		MinimumExpirationWarningInterval: time.Hour,
-		RequestHandler:                   c,
-	}
-
-	var consenterConfigs []*common.Consenter
-	var remotesNodes []comm.RemoteNode
-	for _, node := range c.Config.Consenters {
-		var tlsCAs [][]byte
-		for _, caCert := range node.TLSCACerts {
-			tlsCAs = append(tlsCAs, caCert)
-		}
-
-		identity := node.PublicKey
-
-		remotesNodes = append(remotesNodes, comm.RemoteNode{
-			NodeCerts: comm.NodeCerts{
-				Identity:     identity,
-				ServerRootCA: tlsCAs,
-			},
-			NodeAddress: comm.NodeAddress{
-				ID:       uint64(node.PartyID),
-				Endpoint: node.Endpoint,
-			},
-		})
-		consenterConfigs = append(consenterConfigs, &common.Consenter{
-			Identity: identity,
-			Id:       uint32(node.PartyID),
-		})
-	}
-	c.ConfigureNodeCerts(consenterConfigs)
-
-	commAuth := &comm.AuthCommMgr{
-		Logger:         c.Logger,
-		Signer:         c.Signer,
-		SendBufferSize: 2000,
-		NodeIdentity:   selfID,
-		Connections:    comm.NewConnectionMgr(c.clientConfig()),
-	}
-
-	commAuth.Configure(remotesNodes)
-
-	c.BFT.Comm = &comm.Egress{
-		NodeList: c.CurrentNodes,
-		Logger:   c.Logger,
-		RPC: &comm.RPC{
-			StreamsByType: comm.NewStreamsByType(),
-			Timeout:       time.Minute,
-			Logger:        c.Logger,
-			Comm:          commAuth,
-		},
 	}
 }
 
@@ -229,6 +119,8 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 	return c.BFT.SubmitRequest(req)
 }
 
+// VerifyProposal verifies the given proposal and returns the included requests' info
+// (from SmartBFT API)
 func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {
 	if proposal.Header == nil || proposal.Metadata == nil || proposal.Payload == nil {
 		return nil, errors.New("proposal has a nil header or metadata or payload")
@@ -315,6 +207,8 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 	return reqInfos, nil
 }
 
+// VerifyRequest verifies the given request and returns its info
+// (from SmartBFT API)
 func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 	var ce core.ControlEvent
 	bafd := &state.BAFDeserializer{}
@@ -325,30 +219,17 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 	reqID := c.RequestID(req)
 
 	if ce.Complaint != nil {
-		ce.Complaint.Bytes()
-		err := c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ToBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
-		return reqID, err
+		return reqID, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, toBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
-		msg := toBeSignedBAF(ce.BAF)
-		err := c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), msg, ce.BAF.(*arma_types.SimpleBatchAttestationFragment).Signature())
-		return reqID, err
+		return reqID, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else {
-		return types.RequestInfo{}, fmt.Errorf("empty Control Event")
+		return types.RequestInfo{}, fmt.Errorf("empty control event")
 	}
 }
 
-func ToBeSignedComplaint(c *core.Complaint) []byte {
-	buff := make([]byte, 12)
-	var pos int
-	binary.BigEndian.PutUint16(buff, uint16(c.Shard))
-	pos += 2
-	binary.BigEndian.PutUint64(buff[pos:], c.Term)
-	pos += 8
-	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Signer))
-
-	return buff
-}
-
+// VerifyConsenterSig verifies the signature for the given proposal
+// It returns the auxiliary data in the signature
+// (from SmartBFT API)
 func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Proposal) ([]byte, error) {
 	var values [][]byte
 	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
@@ -381,14 +262,20 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 	return nil, nil
 }
 
+// VerifySignature verifies the signature
+// (from SmartBFT API)
 func (c *Consensus) VerifySignature(signature types.Signature) error {
 	return c.SigVerifier.VerifySignature(arma_types.PartyID(signature.ID), arma_types.ShardID(math.MaxUint16), signature.Msg, signature.Value)
 }
 
+// VerificationSequence returns the current verification sequence
+// (from SmartBFT API)
 func (c *Consensus) VerificationSequence() uint64 {
 	return 0
 }
 
+// RequestsFromProposal returns from the given proposal the included requests' info
+// (from SmartBFT API)
 func (c *Consensus) RequestsFromProposal(proposal types.Proposal) []types.RequestInfo {
 	var batch arma_types.BatchedRequests
 	if err := batch.Deserialize(proposal.Payload); err != nil {
@@ -407,10 +294,14 @@ func (c *Consensus) RequestsFromProposal(proposal types.Proposal) []types.Reques
 	return reqInfos
 }
 
+// AuxiliaryData extracts the auxiliary data from a signature's message
+// (from SmartBFT API)
 func (c *Consensus) AuxiliaryData(i []byte) []byte {
 	return nil
 }
 
+// Sign signs on the given data and returns the signature
+// (from SmartBFT API)
 func (c *Consensus) Sign(msg []byte) []byte {
 	sig, err := c.Signer.Sign(msg)
 	if err != nil {
@@ -420,6 +311,8 @@ func (c *Consensus) Sign(msg []byte) []byte {
 	return sig
 }
 
+// RequestID returns info about the given request
+// (from SmartBFT API)
 func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 	var ce core.ControlEvent
 	bafd := &state.BAFDeserializer{}
@@ -428,7 +321,7 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 	}
 
 	if ce.Complaint == nil && ce.BAF == nil {
-		c.Logger.Warnf("Empty ControlEvent")
+		c.Logger.Warnf("Empty control event")
 		return types.RequestInfo{}
 	}
 
@@ -438,6 +331,8 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 	}
 }
 
+// SignProposal signs on the given proposal and returns a composite Signature
+// (from SmartBFT API)
 func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signature {
 	var requests arma_types.BatchedRequests
 	if err := requests.Deserialize(proposal.Payload); err != nil {
@@ -480,10 +375,12 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	return &types.Signature{
 		// the Msg is defined by VerifyConsenterSig
 		Value: sigsRaw,
-		ID:    c.CurrentConfig.SelfID,
+		ID:    c.BFTConfig.SelfID,
 	}
 }
 
+// AssembleProposal creates a proposal which includes the given requests (when permitting) and metadata
+// (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.Proposal {
 	c.stateLock.Lock()
 	newState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
@@ -537,13 +434,16 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 	}
 }
 
+// Deliver delivers the given proposal and signatures.
+// After the call returns we assume that this proposal is stored in persistent memory.
+// It returns whether this proposal was a reconfiguration and the current config.
+// (from SmartBFT API)
 func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signature) types.Reconfig {
 	rawDecision := decisionToBytes(proposal, signatures)
 
 	hdr := &state.Header{}
 	if err := hdr.Deserialize(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing header: %v", err)
-		return types.Reconfig{}
 	}
 
 	var controlEvents arma_types.BatchedRequests
@@ -568,219 +468,6 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 
 	return types.Reconfig{
 		CurrentNodes:  c.CurrentNodes,
-		CurrentConfig: c.CurrentConfig,
+		CurrentConfig: c.BFTConfig,
 	}
-}
-
-func initialStateFromConfig(config config.ConsenterNodeConfig) core.State {
-	var initState core.State
-	initState.ShardCount = uint16(len(config.Shards))
-	initState.N = uint16(len(config.Consenters))
-	F := (uint16(initState.N) - 1) / 3
-	initState.Threshold = F + 1
-	initState.Quorum = uint16(math.Ceil((float64(initState.N) + float64(F) + 1) / 2.0))
-
-	for _, shard := range config.Shards {
-		initState.Shards = append(initState.Shards, core.ShardTerm{
-			Shard: arma_types.ShardID(shard.ShardId),
-			Term:  0,
-		})
-	}
-
-	// TODO set right initial app context
-	initialAppContext := &state.BlockHeader{
-		Number:   0,
-		PrevHash: nil,
-		Digest:   nil,
-	}
-	initState.AppContext = initialAppContext.Bytes()
-
-	return initState
-}
-
-func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) *Consensus {
-	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
-	if privateKey == nil || privateKey.Bytes == nil {
-		logger.Panicf("Failed decoding private key PEM")
-	}
-
-	priv, err := x509.ParsePKCS8PrivateKey(privateKey.Bytes)
-	if err != nil {
-		logger.Panicf("Failed parsing private key DER: %v", err)
-	}
-
-	var currentNodes []uint64
-	for _, node := range conf.Consenters {
-		currentNodes = append(currentNodes, uint64(node.PartyID))
-	}
-
-	initialState := initialStateFromConfig(conf)
-
-	config := types.DefaultConfig
-	config.RequestBatchMaxInterval = time.Millisecond * 500
-	if conf.BatchTimeout != 0 {
-		config.RequestBatchMaxInterval = conf.BatchTimeout
-	}
-	config.RequestForwardTimeout = time.Second * 10
-	config.SelfID = uint64(conf.PartyId)
-	config.DecisionsPerLeader = 0
-	config.LeaderRotation = false
-
-	dbDir := filepath.Join(conf.Directory, "batchDB")
-	os.MkdirAll(dbDir, 0o755)
-
-	db, err := NewBatchAttestationDB(dbDir, logger)
-	if err != nil {
-		logger.Panicf("Failed creating Batch attestation DB: %v", err)
-	}
-
-	consenterVerifier := buildVerifier(conf.Consenters, conf.Shards, logger)
-
-	wal, err := wal.Create(logger, filepath.Join(conf.Directory, "wal"), &wal.Options{
-		FileSizeBytes:   wal.FileSizeBytesDefault,
-		BufferSizeBytes: wal.BufferSizeBytesDefault,
-	})
-	if err != nil {
-		logger.Panicf("Failed creating WAL: %v", err)
-	}
-
-	consLedger, err := ledger.NewConsensusLedger(conf.Directory)
-	if err != nil {
-		logger.Panicf("Failed creating consensus ledger: %s", err)
-	}
-
-	c := &Consensus{
-		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
-		Config:         conf,
-		WAL:            wal,
-		CurrentConfig:  types.Configuration{SelfID: uint64(conf.PartyId)},
-		Arma: &core.Consenter{
-			State:           &initialState,
-			DB:              db,
-			Logger:          logger,
-			BAFDeserializer: &state.BAFDeserializer{},
-		},
-		Logger:       logger,
-		State:        &initialState,
-		CurrentNodes: currentNodes,
-		Storage:      consLedger,
-		SigVerifier:  consenterVerifier,
-		Signer:       crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey)),
-	}
-
-	bft := &consensus.Consensus{
-		Metadata:          &smartbftprotos.ViewMetadata{},
-		Logger:            logger,
-		Config:            config,
-		WAL:               wal,
-		RequestInspector:  c,
-		Signer:            c,
-		Assembler:         c,
-		Scheduler:         time.NewTicker(time.Second).C,
-		ViewChangerTicker: time.NewTicker(time.Second).C,
-		Application:       c,
-		Verifier:          c,
-	}
-
-	c.sync = &synchronizer{
-		deliver: func(proposal types.Proposal, signatures []types.Signature) {
-			c.Deliver(proposal, signatures)
-		},
-		getHeight: func() uint64 {
-			return consLedger.Height()
-		},
-		getBlock: func(seq uint64) *common.Block {
-			block, err := consLedger.RetrieveBlockByNumber(seq)
-			if err != nil {
-				panic(err)
-			}
-			return block
-		},
-		pruneRequestsFromMemPool: func(req []byte) {
-			bft.Pool.RemoveRequest(c.RequestID(req))
-		},
-		memStore: make(map[uint64]*common.Block),
-		cc:       c.clientConfig(),
-		logger:   c.Logger,
-		endpoint: func() string {
-			leader := c.BFT.GetLeaderID()
-			for i, node := range c.BFT.Comm.Nodes() {
-				if node == leader {
-					return c.Config.Consenters[i].Endpoint
-				}
-			}
-			return ""
-		},
-		nextSeq: func() uint64 {
-			return consLedger.Height()
-		},
-		CurrentConfig: c.CurrentConfig,
-		CurrentNodes:  c.CurrentNodes,
-	}
-
-	consLedger.RegisterAppendListener(c.sync)
-
-	defer func() {
-		go c.sync.run()
-	}()
-
-	bft.Synchronizer = c.sync
-
-	c.BFT = bft
-
-	myIdentity := getOurIdentity(conf.Consenters, arma_types.PartyID(conf.PartyId))
-
-	SetupComm(c, myIdentity)
-
-	return c
-}
-
-func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger arma_types.Logger) crypto.ECDSAVerifier {
-	verifier := make(crypto.ECDSAVerifier)
-	for _, ci := range consenterInfos {
-		pk, _ := pem.Decode(ci.PublicKey)
-		if pk == nil || pk.Bytes == nil {
-			logger.Panicf("Failed decoding consenter public key")
-		}
-
-		pk4, err := x509.ParsePKIXPublicKey(pk.Bytes)
-		if err != nil {
-			logger.Panicf("Failed parsing consenter public key: %v", err)
-		}
-
-		verifier[crypto.ShardPartyKey{Shard: crypto.CONSENSUS_CLUSTER_SHARD, Party: arma_types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
-	}
-
-	for _, shard := range shardInfo {
-		for _, bi := range shard.Batchers {
-			pk := bi.PublicKey
-
-			pk3, _ := pem.Decode(pk)
-			if pk == nil {
-				logger.Panicf("Failed decoding batcher public key")
-			}
-
-			pk4, err := x509.ParsePKIXPublicKey(pk3.Bytes)
-			if err != nil {
-				logger.Panicf("Failed parsing batcher public key: %v", err)
-			}
-
-			verifier[crypto.ShardPartyKey{Shard: arma_types.ShardID(shard.ShardId), Party: arma_types.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
-		}
-	}
-
-	return verifier
-}
-
-func getOurIdentity(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID) []byte {
-	var myIdentity []byte
-	for _, ci := range consenterInfos {
-		pk := ci.PublicKey
-
-		if ci.PartyID == partyID {
-			myIdentity = pk
-			break
-		}
-	}
-	return myIdentity
 }

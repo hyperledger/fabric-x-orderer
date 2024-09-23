@@ -20,7 +20,7 @@ type synchronizer struct {
 	getBlock                 func(seq uint64) *common.Block
 	getHeight                func() uint64
 	CurrentNodes             []uint64
-	CurrentConfig            types.Configuration
+	BFTConfig                types.Configuration
 	logger                   arma_types.Logger
 	endpoint                 func() string
 	cc                       comm.ClientConfig
@@ -122,7 +122,7 @@ func (s *synchronizer) Sync() types.SyncResponse {
 
 	return types.SyncResponse{
 		Reconfig: types.ReconfigSync{
-			CurrentConfig: s.CurrentConfig,
+			CurrentConfig: s.BFTConfig,
 			CurrentNodes:  s.CurrentNodes,
 		},
 		Latest: types.Decision{Proposal: proposal, Signatures: signatures},

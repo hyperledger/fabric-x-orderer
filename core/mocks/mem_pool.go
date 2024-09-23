@@ -52,9 +52,10 @@ func (fake *FakeMemPool) Close() {
 	fake.closeMutex.Lock()
 	fake.closeArgsForCall = append(fake.closeArgsForCall, struct {
 	}{})
+	stub := fake.CloseStub
 	fake.recordInvocation("Close", []interface{}{})
 	fake.closeMutex.Unlock()
-	if fake.CloseStub != nil {
+	if stub != nil {
 		fake.CloseStub()
 	}
 }
@@ -77,15 +78,16 @@ func (fake *FakeMemPool) NextRequests(arg1 context.Context) [][]byte {
 	fake.nextRequestsArgsForCall = append(fake.nextRequestsArgsForCall, struct {
 		arg1 context.Context
 	}{arg1})
+	stub := fake.NextRequestsStub
+	fakeReturns := fake.nextRequestsReturns
 	fake.recordInvocation("NextRequests", []interface{}{arg1})
 	fake.nextRequestsMutex.Unlock()
-	if fake.NextRequestsStub != nil {
-		return fake.NextRequestsStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.nextRequestsReturns
 	return fakeReturns.result1
 }
 
@@ -136,9 +138,10 @@ func (fake *FakeMemPool) RemoveRequests(arg1 ...string) {
 	fake.removeRequestsArgsForCall = append(fake.removeRequestsArgsForCall, struct {
 		arg1 []string
 	}{arg1})
+	stub := fake.RemoveRequestsStub
 	fake.recordInvocation("RemoveRequests", []interface{}{arg1})
 	fake.removeRequestsMutex.Unlock()
-	if fake.RemoveRequestsStub != nil {
+	if stub != nil {
 		fake.RemoveRequestsStub(arg1...)
 	}
 }
@@ -167,9 +170,10 @@ func (fake *FakeMemPool) Restart(arg1 bool) {
 	fake.restartArgsForCall = append(fake.restartArgsForCall, struct {
 		arg1 bool
 	}{arg1})
+	stub := fake.RestartStub
 	fake.recordInvocation("Restart", []interface{}{arg1})
 	fake.restartMutex.Unlock()
-	if fake.RestartStub != nil {
+	if stub != nil {
 		fake.RestartStub(arg1)
 	}
 }
@@ -204,15 +208,16 @@ func (fake *FakeMemPool) Submit(arg1 []byte) error {
 	fake.submitArgsForCall = append(fake.submitArgsForCall, struct {
 		arg1 []byte
 	}{arg1Copy})
+	stub := fake.SubmitStub
+	fakeReturns := fake.submitReturns
 	fake.recordInvocation("Submit", []interface{}{arg1Copy})
 	fake.submitMutex.Unlock()
-	if fake.SubmitStub != nil {
-		return fake.SubmitStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.submitReturns
 	return fakeReturns.result1
 }
 
