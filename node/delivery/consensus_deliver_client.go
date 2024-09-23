@@ -85,10 +85,10 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.BatchAttestati
 	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
 
-		for _, ab := range header.AvailableBatches {
-			bar.logger.Infof("Replicated batch attestation with seq %d and shard %d", ab.Seq(), ab.Shard())
-			ab2 := ab
-			res <- &ab2
+		for _, ab := range header.AvailableBlocks {
+			bar.logger.Infof("Replicated batch attestation with seq %d and shard %d", ab.Batch.Seq(), ab.Batch.Shard())
+			batch := ab.Batch
+			res <- &batch
 		}
 	})
 
@@ -103,7 +103,7 @@ func extractHeaderFromBlock(block *common.Block, logger types.Logger) *cstate.He
 	rawHeader := decisionAsBytes[12 : 12+binary.BigEndian.Uint32(headerSize)]
 
 	header := &cstate.Header{}
-	if err := header.FromBytes(rawHeader); err != nil {
+	if err := header.Deserialize(rawHeader); err != nil {
 		logger.Panicf("Failed parsing rawHeader")
 	}
 	return header

@@ -238,7 +238,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		return nil, errors.Wrap(err, "failed to deserialize proposal payload")
 	}
 	var hdr state.Header
-	if err := hdr.FromBytes(proposal.Header); err != nil {
+	if err := hdr.Deserialize(proposal.Header); err != nil {
 		return nil, errors.Wrap(err, "failed to deserialize proposal header")
 	}
 
@@ -259,14 +259,14 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 	computedState, attestations := c.Arma.SimulateStateTransition(c.State, batch)
 	c.stateLock.Unlock()
 
-	availableBatches := make([]state.AvailableBatch, len(attestations))
+	availableBlocks := make([]state.AvailableBlock, len(attestations))
 	for i, ba := range attestations {
-		availableBatches[i] = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
+		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
 	}
 
-	for i, ab := range hdr.AvailableBatches {
-		if !ab.Equal(&availableBatches[i]) {
-			return nil, fmt.Errorf("proposed available batch %v in index %d isn't equal to computed available batch %v", availableBatches[i], i, ab)
+	for i, ab := range hdr.AvailableBlocks {
+		if !ab.Batch.Equal(&availableBlocks[i].Batch) {
+			return nil, fmt.Errorf("proposed available batch %v in index %d isn't equal to computed available batch %v", availableBlocks[i].Batch, i, ab)
 		}
 	}
 
@@ -278,7 +278,6 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 	lastBlockNumber := lastBlockHeader.Number
 	prevHash := lastBlockHeader.Hash()
 
-	blockHeaders := make([]state.BlockHeader, len(attestations))
 	for i, ba := range attestations {
 		var hdr state.BlockHeader
 		hdr.Digest = ba[0].Digest()
@@ -286,17 +285,17 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash
 		prevHash = hdr.Hash()
-		blockHeaders[i] = hdr
+		availableBlocks[i].Header = hdr
 	}
 
-	for i, bh := range hdr.BlockHeaders {
-		if !bh.Equal(&blockHeaders[i]) {
-			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", bh, i, blockHeaders[i])
+	for i, bh := range hdr.AvailableBlocks {
+		if !bh.Header.Equal(&availableBlocks[i].Header) {
+			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", bh, i, availableBlocks[i].Header)
 		}
 	}
 
 	if len(attestations) > 0 {
-		computedState.AppContext = blockHeaders[len(attestations)-1].Bytes()
+		computedState.AppContext = availableBlocks[len(attestations)-1].Header.Bytes()
 	}
 
 	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
@@ -365,14 +364,14 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 	}
 
 	var hdr state.Header
-	if err := hdr.FromBytes(prop.Header); err != nil {
+	if err := hdr.Deserialize(prop.Header); err != nil {
 		return nil, errors.Wrap(err, "failed deserializing proposal header")
 	}
 
-	for i, bh := range hdr.BlockHeaders {
+	for i, bh := range hdr.AvailableBlocks {
 		if err := c.VerifySignature(types.Signature{
 			Value: values[i+1],
-			Msg:   bh.Bytes(),
+			Msg:   bh.Header.Bytes(),
 			ID:    signature.ID,
 		}); err != nil {
 			return nil, errors.Wrap(err, "failed verifying signature over block header")
@@ -446,7 +445,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 	}
 
 	var hdr state.Header
-	if err := hdr.FromBytes(proposal.Header); err != nil {
+	if err := hdr.Deserialize(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
 	}
 
@@ -463,8 +462,8 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 
 	sigs = append(sigs, proposalSig)
 
-	for _, bh := range hdr.BlockHeaders {
-		msg := bh.Bytes()
+	for _, bh := range hdr.AvailableBlocks {
+		msg := bh.Header.Bytes()
 		sig, err := c.Signer.Sign(msg)
 		if err != nil {
 			c.Logger.Panicf("Failed signing block header: %v", err)
@@ -500,12 +499,12 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 
 	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
 
-	availableBatches := make([]state.AvailableBatch, len(attestations))
+	availableBlocks := make([]state.AvailableBlock, len(attestations))
+
 	for i, ba := range attestations {
-		availableBatches[i] = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
+		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
 	}
 
-	blockHeaders := make([]state.BlockHeader, len(attestations))
 	for i, ba := range attestations {
 		var hdr state.BlockHeader
 		hdr.Digest = ba[0].Digest()
@@ -513,11 +512,11 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash
 		prevHash = hdr.Hash()
-		blockHeaders[i] = hdr
+		availableBlocks[i].Header = hdr
 	}
 
 	if len(attestations) > 0 {
-		newState.AppContext = blockHeaders[len(attestations)-1].Bytes()
+		newState.AppContext = availableBlocks[len(attestations)-1].Header.Bytes()
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
@@ -529,11 +528,10 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 
 	return types.Proposal{
 		Header: (&state.Header{
-			AvailableBatches: availableBatches,
-			BlockHeaders:     blockHeaders,
-			State:            newState,
-			Num:              md.LatestSequence,
-		}).Bytes(),
+			AvailableBlocks: availableBlocks,
+			State:           newState,
+			Num:             md.LatestSequence,
+		}).Serialize(),
 		Metadata: metadata,
 		Payload:  reqs.Serialize(),
 	}
@@ -543,7 +541,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	rawDecision := decisionToBytes(proposal, signatures)
 
 	hdr := &state.Header{}
-	if err := hdr.FromBytes(proposal.Header); err != nil {
+	if err := hdr.Deserialize(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing header: %v", err)
 		return types.Reconfig{}
 	}

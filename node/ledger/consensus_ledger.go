@@ -64,7 +64,7 @@ func (c *ConsensusLedger) Append(bytes []byte) {
 	headerSize := binary.BigEndian.Uint32(headerSizeBuff)
 	headerBytes := bytes[12 : 12+headerSize]
 	header := &state.Header{}
-	if err := header.FromBytes(headerBytes); err != nil {
+	if err := header.Deserialize(headerBytes); err != nil {
 		panic(err)
 	}
 
