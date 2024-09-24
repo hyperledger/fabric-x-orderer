@@ -72,7 +72,7 @@ func (c *ConsensusLedger) Append(bytes []byte) {
 
 	block := &common.Block{
 		Header: &common.BlockHeader{
-			Number:       header.Num - 1,
+			Number:       uint64(header.Num) - 1,
 			DataHash:     digest[:],
 			PreviousHash: c.prevHash,
 		},

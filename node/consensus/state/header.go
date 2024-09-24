@@ -3,13 +3,14 @@ package state
 import (
 	"encoding/binary"
 
+	"arma/common/types"
 	"arma/core"
 
 	"github.com/pkg/errors"
 )
 
 type Header struct {
-	Num             uint64 // TODO add DecisionNum type
+	Num             types.DecisionNum
 	AvailableBlocks []AvailableBlock
 	State           *core.State
 }
@@ -21,7 +22,7 @@ func (h *Header) Deserialize(bytes []byte) error {
 	if len(bytes) < 8+4 { // at least header number (uint64) and length of available blocks (uint32)
 		return errors.Errorf("len of bytes is just %d; expected at least 12", len(bytes))
 	}
-	h.Num = binary.BigEndian.Uint64(bytes[0:8])
+	h.Num = types.DecisionNum(binary.BigEndian.Uint64(bytes[0:8]))
 	availableBlockCount := int(binary.BigEndian.Uint32(bytes[8:12]))
 	pos := 12
 	h.AvailableBlocks = nil
@@ -56,7 +57,7 @@ func (h *Header) Serialize() []byte {
 
 	buff := make([]byte, 8+len(availableBlocksBytes)+len(rawState))
 
-	binary.BigEndian.PutUint64(buff, h.Num)
+	binary.BigEndian.PutUint64(buff, uint64(h.Num))
 	copy(buff[8:], availableBlocksBytes)
 	copy(buff[8+len(availableBlocksBytes):], rawState)
 

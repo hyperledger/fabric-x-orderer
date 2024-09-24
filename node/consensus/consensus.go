@@ -143,7 +143,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		return nil, errors.Wrap(err, "failed to unmarshal proposal metadata")
 	}
 
-	if md.LatestSequence != hdr.Num {
+	if md.LatestSequence != uint64(hdr.Num) {
 		return nil, fmt.Errorf("proposed number %d isn't equal to computed number %x", hdr.Num, md.LatestSequence)
 	}
 
@@ -427,7 +427,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		Header: (&state.Header{
 			AvailableBlocks: availableBlocks,
 			State:           newState,
-			Num:             md.LatestSequence,
+			Num:             arma_types.DecisionNum(md.LatestSequence),
 		}).Serialize(),
 		Metadata: metadata,
 		Payload:  reqs.Serialize(),

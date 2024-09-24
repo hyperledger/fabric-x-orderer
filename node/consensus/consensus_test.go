@@ -223,7 +223,7 @@ func TestConsensus(t *testing.T) {
 							actualSequences = append(actualSequences, ab.Batch.Seq())
 						}
 						assert.Equal(t, expectedSequences, actualSequences)
-						assert.Equal(t, expectedDecisionNum, hdr.Num)
+						assert.Equal(t, expectedDecisionNum, uint64(hdr.Num))
 
 						if len(tstExpectedSequences) == 0 {
 							return
@@ -546,7 +546,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			header := &state.Header{}
 			require.NoError(t, header.Deserialize(proposal.Header))
 
-			require.Equal(t, tst.metadata.LatestSequence, header.Num)
+			require.Equal(t, tst.metadata.LatestSequence, uint64(header.Num))
 
 			require.Len(t, header.AvailableBlocks, len(tst.bafsOfAvailableBatches))
 

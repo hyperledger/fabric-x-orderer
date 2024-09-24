@@ -10,6 +10,9 @@ type PartyID uint16
 // BatchSequence is the number a primary batcher assigns to the batches it produces.
 type BatchSequence uint64
 
+// DecisionNum is the number the consensus nodes assign to each decision they produce.
+type DecisionNum uint64
+
 // BatchID is the tuple that identifies a batch.
 type BatchID interface {
 	// Shard the shard from which this batch was produced.
