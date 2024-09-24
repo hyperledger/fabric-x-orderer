@@ -373,6 +373,24 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		}
 	}
 
+	signer1 := crypto.ECDSASigner(*sks[0])
+	complaint1 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 1}
+	sig, err := signer1.Sign(toBeSignedComplaint(complaint1))
+	require.NoError(t, err)
+	complaint1.Signature = sig
+
+	signer2 := crypto.ECDSASigner(*sks[1])
+	complaint2 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 2}
+	sig, err = signer2.Sign(toBeSignedComplaint(complaint2))
+	require.NoError(t, err)
+	complaint2.Signature = sig
+
+	signer3 := crypto.ECDSASigner(*sks[2])
+	complaint3 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 3}
+	sig, err = signer3.Sign(toBeSignedComplaint(complaint3))
+	require.NoError(t, err)
+	complaint3.Signature = sig
+
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
@@ -398,6 +416,8 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		ces                    []core.ControlEvent
 		bafsOfAvailableBatches []core.BatchAttestationFragment
 		numPending             int
+		numComplaints          int
+		newTermForShard1       uint64
 	}{
 		{
 			name: "single block",
@@ -441,7 +461,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			numPending:             0,
 		},
 		{
-			name: "two blocks plus pending",
+			name: "two blocks plus pending and two complaint",
 			initialAppContext: state.BlockHeader{
 				Number:   0,
 				PrevHash: make([]byte, 32),
@@ -450,12 +470,13 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}},
+			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}, {Complaint: complaint3}, {Complaint: complaint2}},
 			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1, baf124id3p1s2},
 			numPending:             1,
+			numComplaints:          2,
 		},
 		{
-			name: "block with different context",
+			name: "block with different context and term change",
 			initialAppContext: state.BlockHeader{
 				Number:   10,
 				PrevHash: append(make([]byte, 31), byte(10)),
@@ -464,12 +485,13 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
 			},
-			ces:                    []core.ControlEvent{{BAF: baf124id4p1s2}, {BAF: baf124id3p1s2}},
+			ces:                    []core.ControlEvent{{Complaint: complaint1}, {Complaint: complaint2}, {Complaint: complaint3}, {BAF: baf124id4p1s2}, {BAF: baf124id3p1s2}},
 			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf124id3p1s2},
 			numPending:             0,
+			newTermForShard1:       1,
 		},
 		{
-			name: "no blocks with two pending",
+			name: "no blocks with two pending and one complaint",
 			initialAppContext: state.BlockHeader{
 				Number:   10,
 				PrevHash: append(make([]byte, 31), byte(1)),
@@ -478,8 +500,9 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
 			},
-			ces:        []core.ControlEvent{{BAF: baf124id4p1s2}, {BAF: baf123id2p1s1}},
-			numPending: 2,
+			ces:           []core.ControlEvent{{BAF: baf124id4p1s2}, {BAF: baf123id2p1s1}, {Complaint: complaint1}},
+			numPending:    2,
+			numComplaints: 1,
 		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
@@ -553,6 +576,8 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 			require.NotNil(t, header.State)
 			require.Len(t, header.State.Pending, tst.numPending)
+			require.Len(t, header.State.Complaints, tst.numComplaints)
+			require.Equal(t, tst.newTermForShard1, header.State.Shards[0].Term)
 
 			require.Equal(t, latestBlockHeader.Bytes(), header.State.AppContext)
 
