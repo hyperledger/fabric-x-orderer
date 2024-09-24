@@ -8,6 +8,7 @@ before_script:
 - go install golang.org/x/tools/cmd/goimports@latest
 - go install honnef.co/go/tools/cmd/staticcheck@latest
 - go install mvdan.cc/gofumpt@latest
+- go install github.com/golang/protobuf/protoc-gen-go@latest
 
 jobs:
   include:
@@ -21,4 +22,11 @@ jobs:
         - set -e
         - make linter
         - make check-deps
+        - |
+          make protos
+          git diff --quiet --exit-code -- '*.pb.go' || {
+            echo "The following .pb.go files have been modified after compilation:"
+            git diff --name-only -- '*.pb.go'
+            exit 1
+          }
         - go test -race ./...

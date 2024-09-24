@@ -6,7 +6,7 @@ ARG GO_VER=1.22
 ARG PROTOC_VER=1.5.4
 ARG PROTOTOOL_VER=1.10.0
 
-FROM golang:${GO_VER}-alpine as golang
+FROM golang:${GO_VER}-alpine AS golang
 RUN mkdir -p /tools
 WORKDIR /tools
 ARG PROTOC_VER
@@ -17,7 +17,7 @@ RUN git clone -q -c advice.detachedHead=false -b v${PROTOC_VER} --depth 1 https:
 WORKDIR protobuf
 RUN GOBIN=/usr/local/bin go install ./protoc-gen-go
 
-FROM golang as prototool
+FROM golang AS prototool
 ARG PROTOTOOL_VER=1.8.0
 RUN curl -sL -o /usr/local/bin/prototool https://github.com/uber/prototool/releases/download/v${PROTOTOOL_VER}/prototool-Linux-x86_64 && chmod +x /usr/local/bin/prototool
 

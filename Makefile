@@ -4,6 +4,7 @@
 #   - linter: runs all code checks
 #   - binary: compiles arma and tools (armageddon) into ./bin directory
 #   - clean-binary: removes all contents of the ./bin directory
+#   - protos: generate all protobuf artifacts based on .proto files
 
 .PHONY: linter
 linter: check-deps
@@ -24,3 +25,8 @@ binary:
 .PHONY: clean-binary
 clean-binary:
 	rm -rf ./bin/*
+
+.PHONY: protos
+protos: 
+	@echo "Compiling non-API protos..."
+	(cd node && bash ./scripts/compile_protos.sh)
