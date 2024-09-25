@@ -103,10 +103,11 @@ func TestControlEventSerialization(t *testing.T) {
 func TestCollectAndDeduplicateEvents(t *testing.T) {
 	state := initialState
 	ce := core.ControlEvent{nil, &complaint}
+	ce2 := core.ControlEvent{nil, &complaint}
 	logger := testutil.CreateLogger(t, 0)
 
-	// Update state with a valid Complaint
-	core.CollectAndDeduplicateEvents(&state, logger, ce)
+	// Add a valid Complaint and ensure no duplicates are accepted in the same round
+	core.CollectAndDeduplicateEvents(&state, logger, ce, ce2)
 
 	expectedState := core.State{
 		N:          4,

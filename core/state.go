@@ -506,12 +506,15 @@ func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) 
 				continue
 			}
 
-			if complainers, exists := complaints[ce.Complaint.ShardTerm]; exists {
+			if complainers, exists := complaints[st]; exists {
 				if _, exists := complainers[ce.Complaint.Signer]; exists {
 					l.Warnf("Node %d already signed complaint for shard %d and term %d", ce.Complaint.Shard, ce.Complaint.Term)
 					continue
 				}
+			} else {
+				complaints[st] = make(map[types.PartyID]struct{})
 			}
+			complaints[st][ce.Complaint.Signer] = struct{}{}
 			s.Complaints = append(s.Complaints, *ce.Complaint)
 		}
 	}
