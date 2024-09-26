@@ -211,3 +211,43 @@ func TestCleanupOldComplaints(t *testing.T) {
 	}
 	assert.Equal(t, expectedComplaints, state.Complaints)
 }
+
+func TestCleanupOldAttestations(t *testing.T) {
+	state := initialState
+
+	// Test condition where the threshold is not met
+	baf1 := types.NewSimpleBatchAttestationFragment(
+		types.ShardID(1),
+		types.PartyID(1),
+		types.BatchSequence(1),
+		[]byte{1, 2},
+		types.PartyID(2),
+		[]byte{},
+		1,
+		[][]byte{{1, 2}, {3, 4}},
+	)
+	logger := testutil.CreateLogger(t, 0)
+
+	state.Pending = append(state.Pending, baf1)
+	core.CleanupOldAttestations(&state, logger)
+
+	assert.Len(t, state.Pending, 1)
+
+	// Test condition where the threshold is met
+	baf2 := types.NewSimpleBatchAttestationFragment(
+		types.ShardID(1),
+		types.PartyID(1),
+		types.BatchSequence(1),
+		[]byte{3, 4},
+		types.PartyID(3),
+		[]byte{},
+		1,
+		[][]byte{{3, 4}},
+	)
+
+	state.Pending = append(state.Pending, baf2)
+	core.CleanupOldAttestations(&state, logger)
+
+	assert.Len(t, state.Pending, 1)
+	assert.Equal(t, baf1, state.Pending[0])
+}
