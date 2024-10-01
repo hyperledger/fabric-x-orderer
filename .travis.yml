@@ -4,29 +4,27 @@ go:
 services:
   - docker
 
-before_script:
-- go install golang.org/x/tools/cmd/goimports@latest
-- go install honnef.co/go/tools/cmd/staticcheck@latest
-- go install mvdan.cc/gofumpt@latest
-- go install github.com/golang/protobuf/protoc-gen-go@latest
-
 jobs:
   include:
-    - name: "Build Docker & Run Armageddon Test"
-      script:
-        - set -e
-        - (cd node/examples; bash ./scripts/build_docker.sh)
-        - (bash ./node/examples/scripts/run_sample.sh)
-    - name: "Lint & Test"
+    - stage: "Basic Checks"
+      before_script:
+        - go install golang.org/x/tools/cmd/goimports@latest
+        - go install honnef.co/go/tools/cmd/staticcheck@latest
+        - go install mvdan.cc/gofumpt@latest
+        - go install github.com/golang/protobuf/protoc-gen-go@latest
       script:
         - set -e
         - make linter
         - make check-deps
-        - |
-          make protos
-          git diff --quiet --exit-code -- '*.pb.go' || {
-            echo "The following .pb.go files have been modified after compilation:"
-            git diff --name-only -- '*.pb.go'
-            exit 1
-          }
+        - bash ./scripts/check_protos.sh
+    - stage: "Tests"
+      name: "Unit Tests"
+      script: 
+        - set -e
         - go test -race ./...
+    - stage: "Tests"
+      name: "Armageddon Test"
+      script:
+        - set -e
+        - (cd node/examples; bash ./scripts/build_docker.sh)
+        - (bash ./node/examples/scripts/run_sample.sh)
