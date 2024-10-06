@@ -92,7 +92,7 @@ TODO
 
 ## Configuration and deployment
 
-TODO
+For more information about deployment of Arma, please refer to [arma-deployment](deployment/README.md).
 
 
 
