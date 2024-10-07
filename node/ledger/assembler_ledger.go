@@ -13,24 +13,32 @@ import (
 )
 
 type AssemblerLedger struct {
-	Logger           types.Logger
-	Ledger           blockledger.ReadWriter
-	PrevHash         []byte
-	TransactionCount uint64
-	NextSeq          uint64
+	Logger types.Logger
+	Ledger blockledger.ReadWriter
+
+	// TODO We need to recover these values when the assembler restarts
+	prevHash         []byte
+	transactionCount uint64
+	nextSeq          uint64
 }
 
 func (l *AssemblerLedger) TrackThroughput() {
+	// TODO we need to be able to stop this routine
+	firstProbe := true
+	lastTxCount := uint64(0)
 	for {
-		commitCountSinceLastProbe := atomic.LoadUint64(&l.TransactionCount)
-		atomic.StoreUint64(&l.TransactionCount, 0)
-		l.Logger.Infof("Commit throughput: %d", commitCountSinceLastProbe/10)
+		txCount := atomic.LoadUint64(&l.transactionCount)
+		if !firstProbe {
+			l.Logger.Infof("Tx Count: %d, Commit throughput: %.2f", txCount, float64(txCount-lastTxCount)/10.0)
+		}
+		lastTxCount = txCount
+		firstProbe = false
 		time.Sleep(time.Second * 10)
 	}
 }
 
 func (l *AssemblerLedger) GetTxCount() uint64 {
-	c := atomic.LoadUint64(&l.TransactionCount)
+	c := atomic.LoadUint64(&l.transactionCount)
 	return c
 }
 
@@ -41,9 +49,9 @@ func (l *AssemblerLedger) Append(seq uint64, batch core.Batch, ba core.BatchAtte
 	}()
 	block := &common.Block{
 		Header: &common.BlockHeader{
-			Number:       l.NextSeq,
+			Number:       l.nextSeq,
 			DataHash:     ba.Digest(),
-			PreviousHash: l.PrevHash,
+			PreviousHash: l.prevHash,
 		},
 		Data: &common.BlockData{
 			Data: batch.Requests(),
@@ -53,15 +61,12 @@ func (l *AssemblerLedger) Append(seq uint64, batch core.Batch, ba core.BatchAtte
 		},
 	}
 
-	l.NextSeq++
-
-	defer func() {
-		atomic.AddUint64(&l.TransactionCount, uint64(len(batch.Requests())))
-	}()
-
-	l.PrevHash = protoutil.BlockHeaderHash(block.Header)
+	l.nextSeq++
+	l.prevHash = protoutil.BlockHeaderHash(block.Header)
 
 	if err := l.Ledger.Append(block); err != nil {
 		panic(err)
 	}
+
+	atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
 }
