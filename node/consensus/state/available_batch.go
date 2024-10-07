@@ -22,8 +22,8 @@ func NewAvailableBatch(
 	shard types.ShardID,
 	seq types.BatchSequence,
 	digest []byte,
-) AvailableBatch { // TODO should return a pointer
-	return AvailableBatch{
+) *AvailableBatch {
+	return &AvailableBatch{
 		primary: primary,
 		shard:   shard,
 		seq:     seq,

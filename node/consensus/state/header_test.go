@@ -14,8 +14,8 @@ func TestHeaderBytes(t *testing.T) {
 		State: &core.State{AppContext: []byte{}},
 		Num:   100,
 		AvailableBlocks: []AvailableBlock{
-			{Header: BlockHeader{10, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(3, 2, 1, make([]byte, 32))},
-			{Header: BlockHeader{11, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(6, 5, 4, make([]byte, 32))},
+			{Header: &BlockHeader{10, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(3, 2, 1, make([]byte, 32))},
+			{Header: &BlockHeader{11, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(6, 5, 4, make([]byte, 32))},
 		},
 	}
 
@@ -52,7 +52,7 @@ func TestHeaderBytes(t *testing.T) {
 	bytes = make([]byte, 8+4+availableBlockSerializedSize)
 	binary.BigEndian.PutUint64(bytes, 100)
 	binary.BigEndian.PutUint32(bytes[8:], 1)
-	ab := AvailableBlock{Header: BlockHeader{10, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(3, 2, 1, make([]byte, 32))}
+	ab := AvailableBlock{Header: &BlockHeader{10, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(3, 2, 1, make([]byte, 32))}
 	copy(bytes[12:], ab.Serialize())
 	err = hdr.Deserialize(bytes)
 	require.NoError(t, err)

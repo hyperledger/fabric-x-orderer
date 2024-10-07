@@ -9,7 +9,7 @@ import (
 	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
-	cstate "arma/node/consensus/state"
+	"arma/node/consensus/state"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -88,21 +88,21 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.BatchAttestati
 		for _, ab := range header.AvailableBlocks {
 			bar.logger.Infof("Replicated batch attestation with seq %d and shard %d", ab.Batch.Seq(), ab.Batch.Shard())
 			batch := ab.Batch
-			res <- &batch
+			res <- batch
 		}
 	})
 
 	return res
 }
 
-func extractHeaderFromBlock(block *common.Block, logger types.Logger) *cstate.Header {
+func extractHeaderFromBlock(block *common.Block, logger types.Logger) *state.Header {
 	decisionAsBytes := block.Data.Data[0]
 
 	headerSize := decisionAsBytes[:4]
 
 	rawHeader := decisionAsBytes[12 : 12+binary.BigEndian.Uint32(headerSize)]
 
-	header := &cstate.Header{}
+	header := &state.Header{}
 	if err := header.Deserialize(rawHeader); err != nil {
 		logger.Panicf("Failed parsing rawHeader")
 	}

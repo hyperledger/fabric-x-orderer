@@ -47,7 +47,7 @@ func TestAssemblerLedge_Append(t *testing.T) {
 	assert.NoError(t, err)
 	ba := state.NewAvailableBatch(1, 2, 3, fb.Digest())
 
-	al.Append(0, fb, &ba)
+	al.Append(0, fb, ba)
 	count = al.GetTxCount()
 	assert.Equal(t, uint64(2), count)
 }

@@ -8,13 +8,13 @@ import (
 
 func TestAvailableBlockBytes(t *testing.T) {
 	block := AvailableBlock{
-		Header: BlockHeader{10, make([]byte, 32), make([]byte, 2)},
+		Header: &BlockHeader{10, make([]byte, 32), make([]byte, 2)},
 		Batch:  NewAvailableBatch(3, 2, 1, make([]byte, 3)),
 	}
 	require.Panics(t, func() { block.Serialize() }) // digests are not equal
 
 	block = AvailableBlock{
-		Header: BlockHeader{0, make([]byte, 32), make([]byte, 32)},
+		Header: &BlockHeader{0, make([]byte, 32), make([]byte, 32)},
 		Batch:  NewAvailableBatch(0, 0, 0, make([]byte, 32)),
 	}
 	block2 := AvailableBlock{}
@@ -22,7 +22,7 @@ func TestAvailableBlockBytes(t *testing.T) {
 	require.Equal(t, block, block2)
 
 	block = AvailableBlock{
-		Header: BlockHeader{10, make([]byte, 32), make([]byte, 32)},
+		Header: &BlockHeader{10, make([]byte, 32), make([]byte, 32)},
 		Batch:  NewAvailableBatch(3, 2, 1, make([]byte, 32)),
 	}
 	block2 = AvailableBlock{}

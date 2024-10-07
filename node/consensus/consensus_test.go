@@ -566,7 +566,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 					Digest:   baf.Digest(),
 				}
 
-				require.Equal(t, latestBlockHeader, header.AvailableBlocks[i].Header)
+				require.Equal(t, latestBlockHeader, *header.AvailableBlocks[i].Header)
 
 				latestBlockNumber++
 				latestBlockHash = latestBlockHeader.Hash()
@@ -664,7 +664,7 @@ func TestVerifyProposal(t *testing.T) {
 	latestBlockHeader.Digest = baf123id1p1s1.Digest()
 	latestBlockHeader.PrevHash = initialAppContext.Hash()
 
-	header.AvailableBlocks = []state.AvailableBlock{{Header: latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	header.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 
 	newState := initialState
 	newState.AppContext = latestBlockHeader.Bytes()
@@ -755,7 +755,7 @@ func TestVerifyProposal(t *testing.T) {
 	// 9. mismatch available batch in header
 	t.Log("mismatch available batch in header")
 	headerAB := header
-	headerAB.AvailableBlocks = []state.AvailableBlock{{Header: latestBlockHeader, Batch: state.NewAvailableBatch(10, baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	headerAB.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(10, baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 	verifyProposalRequireError(t, c, headerAB.Serialize(), brs.Serialize(), mBytes)
 
 	// 10. mismatch block header in header
@@ -763,7 +763,7 @@ func TestVerifyProposal(t *testing.T) {
 	headerBH := header
 	badBH := latestBlockHeader
 	badBH.PrevHash = []byte{1}
-	headerBH.AvailableBlocks = []state.AvailableBlock{{Header: badBH, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	headerBH.AvailableBlocks = []state.AvailableBlock{{Header: &badBH, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 	verifyProposalRequireError(t, c, headerBH.Serialize(), brs.Serialize(), mBytes)
 }
 
@@ -873,7 +873,7 @@ func TestSignProposal(t *testing.T) {
 	latestBlockHeader.Digest = baf123id1p1s1.Digest()
 	latestBlockHeader.PrevHash = initialAppContext.Hash()
 
-	header.AvailableBlocks = []state.AvailableBlock{{Header: latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	header.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 
 	newState := initialState
 	newState.AppContext = latestBlockHeader.Bytes()

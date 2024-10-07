@@ -157,7 +157,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 	}
 
 	for i, ab := range hdr.AvailableBlocks {
-		if !ab.Batch.Equal(&availableBlocks[i].Batch) {
+		if !ab.Batch.Equal(availableBlocks[i].Batch) {
 			return nil, fmt.Errorf("proposed available batch %v in index %d isn't equal to computed available batch %v", availableBlocks[i].Batch, i, ab)
 		}
 	}
@@ -177,11 +177,11 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash
 		prevHash = hdr.Hash()
-		availableBlocks[i].Header = hdr
+		availableBlocks[i].Header = &hdr
 	}
 
 	for i, bh := range hdr.AvailableBlocks {
-		if !bh.Header.Equal(&availableBlocks[i].Header) {
+		if !bh.Header.Equal(availableBlocks[i].Header) {
 			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", bh, i, availableBlocks[i].Header)
 		}
 	}
@@ -409,7 +409,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash
 		prevHash = hdr.Hash()
-		availableBlocks[i].Header = hdr
+		availableBlocks[i].Header = &hdr
 	}
 
 	if len(attestations) > 0 {
