@@ -18,7 +18,6 @@ type BatchAttestationDB interface {
 
 type Consenter struct {
 	Logger          types.Logger
-	TotalOrder      TotalOrder
 	DB              BatchAttestationDB
 	BAFDeserializer BAFDeserializer
 	State           *State
@@ -70,13 +69,6 @@ func (c *Consenter) indexAttestationsInDB(batchAttestations [][]BatchAttestation
 		c.Logger.Debugf("Indexed batch attestation for digest %x", bafs[0].Digest())
 	}
 	c.DB.Put(digests, epochs)
-}
-
-func (c *Consenter) Submit(rawControlEvent []byte) {
-	if err := c.TotalOrder.SubmitRequest(rawControlEvent); err != nil {
-		c.Logger.Warnf("Failed submitting request:", err)
-		return
-	}
 }
 
 func aggregateFragments(batchAttestationFragments []BatchAttestationFragment) [][]BatchAttestationFragment {

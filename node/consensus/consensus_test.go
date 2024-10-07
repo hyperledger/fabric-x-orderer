@@ -303,8 +303,6 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		},
 	}
 
-	consenter.TotalOrder = c.BFT
-
 	return c, func() {
 		os.RemoveAll(dir)
 	}

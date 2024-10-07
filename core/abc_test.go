@@ -135,7 +135,6 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		DB:              &mockBatchAttestationDB{},
 		BAFDeserializer: &BAFSimpleDeserializer{},
 		Logger:          logger,
-		TotalOrder:      &totalOrder,
 	}
 
 	go func() {
@@ -181,9 +180,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		batcher.Logger = logger
 		batcher.TotalOrderBAF = func(baf core.BatchAttestationFragment) {
 			ba := arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), baf.Signer(), nil, 0, nil)
-			consenter.Submit((&core.ControlEvent{
-				BAF: ba,
-			}).Bytes())
+			totalOrder.SubmitRequest((&core.ControlEvent{BAF: ba}).Bytes())
 		}
 		batcher.Threshold = 1
 		batchers = append(batchers, batcher)
