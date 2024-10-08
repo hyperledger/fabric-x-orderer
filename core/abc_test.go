@@ -153,7 +153,11 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 					ba := &mocks.FakeBatchAttestation{}
 					ba.DigestReturns(bafs[0].Digest())
 					ba.FragmentsReturns(bafs)
-					baReplicator <- ba
+					oba := &naiveOrderedBatchAttestation{
+						ba:           ba,
+						orderingInfo: 0,
+					}
+					baReplicator <- oba
 				}
 				events = nil
 

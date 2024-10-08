@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type naiveBatchAttestationReplicator chan core.BatchAttestation
+type naiveOrderedBatchAttestationReplicator chan core.OrderedBatchAttestation
 
-func (n naiveBatchAttestationReplicator) Replicate(u uint64) <-chan core.BatchAttestation {
+func (n naiveOrderedBatchAttestationReplicator) Replicate(u uint64) <-chan core.OrderedBatchAttestation {
 	return n
 }
 
@@ -117,6 +117,19 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 	return nil
 }
 
+type naiveOrderedBatchAttestation struct {
+	ba           core.BatchAttestation
+	orderingInfo int
+}
+
+func (noba *naiveOrderedBatchAttestation) BatchAttestation() core.BatchAttestation {
+	return noba.ba
+}
+
+func (noba *naiveOrderedBatchAttestation) OrderingInfo() interface{} {
+	return noba.orderingInfo
+}
+
 type naiveAssemblerLedger chan core.BatchAttestation
 
 func (n naiveAssemblerLedger) Append(_ uint64, _ core.Batch, attestation core.BatchAttestation) {
@@ -156,7 +169,7 @@ func TestAssembler(t *testing.T) {
 		batches = append(batches, batchesForShard)
 	}
 
-	r, ledger, nbar, assembler := createAssembler(t, shardCount)
+	r, ledger, nobar, assembler := createAssembler(t, shardCount)
 
 	assembler.Run()
 
@@ -184,7 +197,11 @@ func TestAssembler(t *testing.T) {
 		for nba := range totalOrder {
 			nba.seq = types.BatchSequence(seq)
 			seq++
-			nbar <- nba
+			noba := &naiveOrderedBatchAttestation{
+				ba:           nba,
+				orderingInfo: 0,
+			}
+			nobar <- noba
 		}
 	}()
 
@@ -197,7 +214,7 @@ func TestAssembler(t *testing.T) {
 	assert.Len(t, digests, 0)
 }
 
-func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveBatchAttestationReplicator, *core.Assembler) {
+func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveOrderedBatchAttestationReplicator, *core.Assembler) {
 	index := &naiveIndex{}
 
 	r := &naiveReplication{}
@@ -210,16 +227,16 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 
 	ledger := make(naiveAssemblerLedger, 10)
 
-	nbar := make(naiveBatchAttestationReplicator)
+	nobar := make(naiveOrderedBatchAttestationReplicator)
 
 	assembler := &core.Assembler{
-		Shards:                     shards,
-		Logger:                     testutil.CreateLogger(t, 0),
-		Replicator:                 r,
-		Ledger:                     ledger,
-		ShardCount:                 shardCount,
-		BatchAttestationReplicator: nbar,
-		Index:                      index,
+		Shards:                            shards,
+		Logger:                            testutil.CreateLogger(t, 0),
+		Replicator:                        r,
+		Ledger:                            ledger,
+		ShardCount:                        shardCount,
+		OrderedBatchAttestationReplicator: nobar,
+		Index:                             index,
 	}
-	return r, ledger, nbar, assembler
+	return r, ledger, nobar, assembler
 }

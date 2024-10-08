@@ -37,8 +37,9 @@ type BatchAttestationFragment interface {
 // consensus cluster. This information is used when appending to the ledger, and helps the assembler to recover
 // following a shutdown or a failure.
 type OrderedBatchAttestation interface {
-	BatchAttestation
-	// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation.
+	BatchAttestation() BatchAttestation
+	// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
+	// metadata to be used in the construction of the block.
 	OrderingInfo() interface{}
 }
 
@@ -55,18 +56,18 @@ type AssemblerLedger interface {
 	Append(uint64, Batch, BatchAttestation)
 }
 
-type BatchAttestationReplicator interface {
-	Replicate(uint64) <-chan BatchAttestation
+type OrderedBatchAttestationReplicator interface {
+	Replicate(uint64) <-chan OrderedBatchAttestation
 }
 
 type Assembler struct {
-	ShardCount                 int
-	Ledger                     AssemblerLedger
-	Logger                     types.Logger
-	BatchAttestationReplicator BatchAttestationReplicator
-	Replicator                 BatchReplicator
-	Index                      AssemblerIndex
-	Shards                     []types.ShardID
+	ShardCount                        int
+	Ledger                            AssemblerLedger
+	Logger                            types.Logger
+	OrderedBatchAttestationReplicator OrderedBatchAttestationReplicator
+	Replicator                        BatchReplicator
+	Index                             AssemblerIndex
+	Shards                            []types.ShardID
 
 	lock   sync.RWMutex
 	signal sync.Cond
@@ -102,13 +103,13 @@ func (a *Assembler) processOrderedBatchAttestations() {
 	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
 	// TODO after recovery support is added, start replicating from the last decision, not 0 (separate issue).
-	attestations := a.BatchAttestationReplicator.Replicate(0) // TODO change type to OrderedBatchAttestation (next commit).
-	for ba := range attestations {
-		a.Logger.Infof("Received attestation with digest %s", shortDigestString(ba.Digest()))
+	attestations := a.OrderedBatchAttestationReplicator.Replicate(0) // TODO change type to OrderedBatchAttestation (next commit).
+	for oba := range attestations {
+		a.Logger.Infof("Received attestation with digest %s", shortDigestString(oba.BatchAttestation().Digest()))
 		t1 := time.Now()
-		batch := a.collateAttestationWithBatch(ba)
-		a.Logger.Infof("Located batch for digest %s within %v", shortDigestString(ba.Digest()), time.Since(t1))
-		a.Ledger.Append(uint64(ba.Seq()), batch, ba) // TODO this is the wrong sequence number, it should be the block number from the ba header (next commit)
+		batch := a.collateAttestationWithBatch(oba.BatchAttestation())
+		a.Logger.Infof("Located batch for digest %s within %v", shortDigestString(oba.BatchAttestation().Digest()), time.Since(t1))
+		a.Ledger.Append(uint64(0), batch, oba.BatchAttestation()) // TODO this is the wrong sequence number, it should be the block number from the ba header (next commit)
 	}
 
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")

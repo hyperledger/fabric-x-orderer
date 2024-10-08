@@ -126,9 +126,10 @@ func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembl
 	wg.Wait()
 
 	totalTxn := workPerWorker * runtime.NumCPU()
+	t.Logf("Expecting %d TXs", totalTxn)
 	require.Eventually(t, func() bool {
 		n := assembler.GetTxCount()
-		t.Logf("#txs: %d", n)
+		t.Logf("Received TXs: %d", n)
 		return int(n) >= totalTxn
 	}, 30*time.Second, 1000*time.Millisecond)
 

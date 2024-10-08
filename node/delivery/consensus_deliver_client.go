@@ -65,7 +65,7 @@ func (bar *ConsensusReplicator) ReplicateState(seq uint64) <-chan *core.State {
 	return res
 }
 
-func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.BatchAttestation {
+func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.OrderedBatchAttestation {
 	endpoint := func() string {
 		return bar.endpoint
 	}
@@ -83,7 +83,7 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.BatchAttestati
 		bar.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
-	res := make(chan core.BatchAttestation, 100)
+	res := make(chan core.OrderedBatchAttestation, 100)
 
 	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
 		header, sigs, err2 := extractHeaderAndSigsFromBlock(block)
@@ -91,14 +91,25 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.BatchAttestati
 			bar.logger.Panicf("Failed extracting ordered batch attestation from decision: %s", err2)
 		}
 
+		bar.logger.Infof("Extracted a decision header with %d available blocks", len(header.AvailableBlocks))
 		for index, ab := range header.AvailableBlocks {
-			bar.logger.Infof("Replicated batch attestation no. %d with: shard %d, primary %d, seq %d", index+1, ab.Batch.Shard(), ab.Batch.Primary(), ab.Batch.Seq())
+			bar.logger.Infof("Replicated batch attestation no. %d with: shard %d, primary %d, seq %d", index, ab.Batch.Shard(), ab.Batch.Primary(), ab.Batch.Seq())
 			bar.logger.Infof("BA block header: %+v", ab.Header)
-			bar.logger.Infof("BA block sigs: %+v", sigs[index])
+			bar.logger.Infof("BA block signers: %+v", signersFromSigs(sigs[index]))
 
-			// TODO change the channel type to accept an ordered BA
-			batch := ab.Batch
-			res <- batch
+			abo := &state.AvailableBatchOrdered{
+				AvailableBatch: ab.Batch,
+				OrderingInformation: &state.OrderingInformation{
+					BlockHeader: ab.Header,
+					Signatures:  sigs[index],
+					DecisionNum: header.Num,
+					BatchIndex:  index,
+					BatchCount:  len(header.AvailableBlocks),
+				},
+			}
+			bar.logger.Debugf("AvailableBatchOrdered: %+v", abo)
+
+			res <- abo
 		}
 	})
 
@@ -142,6 +153,14 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 	}
 
 	return stateHeader, sigs, nil
+}
+
+func signersFromSigs(sigs []smartbft_types.Signature) []uint64 {
+	var signers []uint64
+	for _, sig := range sigs {
+		signers = append(signers, sig.ID)
+	}
+	return signers
 }
 
 func clientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.ClientConfig {

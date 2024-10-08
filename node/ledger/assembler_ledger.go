@@ -43,6 +43,7 @@ func (l *AssemblerLedger) GetTxCount() uint64 {
 }
 
 func (l *AssemblerLedger) Append(seq uint64, batch core.Batch, ba core.BatchAttestation) {
+	// TODO input arguments will change in next commit
 	t1 := time.Now()
 	defer func() {
 		l.Logger.Infof("Appended block of %d requests to ledger in %v", len(batch.Requests()), time.Since(t1))
