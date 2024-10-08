@@ -7,6 +7,7 @@ import (
 
 	arma_types "arma/common/types"
 	"arma/node/comm"
+	"arma/node/consensus/state"
 	"arma/node/delivery"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -98,7 +99,7 @@ func (s *synchronizer) Sync() types.SyncResponse {
 		latestBlock = retrievedBlock
 		nextSeqToCommit++
 
-		proposal, signatures, err := bytesToDecision(latestBlock.Data.Data[0])
+		proposal, signatures, err := state.BytesToDecision(latestBlock.Data.Data[0])
 		if err != nil {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
 		}
@@ -115,7 +116,7 @@ func (s *synchronizer) Sync() types.SyncResponse {
 		s.deliver(proposal, signatures)
 	}
 
-	proposal, signatures, err := bytesToDecision(latestBlock.Data.Data[0])
+	proposal, signatures, err := state.BytesToDecision(latestBlock.Data.Data[0])
 	if err != nil {
 		s.logger.Panicf("Failed parsing block we pulled: %v", err)
 	}

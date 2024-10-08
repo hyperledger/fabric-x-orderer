@@ -205,7 +205,7 @@ func TestConsensus(t *testing.T) {
 
 					for {
 						rawDecision := <-node.Storage.(*commitInterceptor).Storage.(mockStorage)
-						decision, _, err := bytesToDecision(rawDecision)
+						decision, _, err := state.BytesToDecision(rawDecision)
 						assert.NoError(t, err)
 
 						hdr := &state.Header{}

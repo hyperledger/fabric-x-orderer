@@ -439,7 +439,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 // It returns whether this proposal was a reconfiguration and the current config.
 // (from SmartBFT API)
 func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signature) types.Reconfig {
-	rawDecision := decisionToBytes(proposal, signatures)
+	rawDecision := state.DecisionToBytes(proposal, signatures)
 
 	hdr := &state.Header{}
 	if err := hdr.Deserialize(proposal.Header); err != nil {
