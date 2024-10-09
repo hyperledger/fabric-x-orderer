@@ -422,7 +422,7 @@ func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 			continue
 		}
 
-		term := s.Shards[complaint.Shard].Term
+		term := s.Shards[complaint.Shard-1].Term
 		if term != complaint.Term {
 			l.Infof("Got complaint for shard %d in term %d but shard is at term %d", complaint.Shard, complaint.Term, term)
 			continue

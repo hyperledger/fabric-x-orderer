@@ -10,6 +10,7 @@ type TotalOrder interface {
 	SubmitRequest(req []byte) error
 }
 
+//go:generate counterfeiter -o mocks/batch_attestation_db.go . BatchAttestationDB
 type BatchAttestationDB interface {
 	Exists(digest []byte) bool
 	Put(digest [][]byte, epoch []uint64)
@@ -29,20 +30,21 @@ func (c *Consenter) SimulateStateTransition(prevState *State, requests [][]byte)
 		panic(err)
 	}
 
-	newState, fragments := prevState.Process(c.Logger, controlEvents...)
+	filteredControlEvents := make([]ControlEvent, 0, len(controlEvents))
 
-	filteredFragments := make([]BatchAttestationFragment, 0, len(fragments))
-
-	// Iterate over all fragments and prune those that already exist in our DB
-	for _, baf := range fragments {
-		if c.DB.Exists(baf.Digest()) {
-			c.Logger.Debugf("Batch attestation for digest %x already exists", baf.Digest())
-			continue
+	// Iterate over all control events and prune those that already exist in our DB
+	for _, ce := range controlEvents {
+		if ce.BAF != nil {
+			if c.DB.Exists(ce.BAF.Digest()) {
+				c.Logger.Debugf("Batch attestation for digest %x already exists", ce.BAF.Digest())
+				continue
+			}
 		}
-		filteredFragments = append(filteredFragments, baf)
+		filteredControlEvents = append(filteredControlEvents, ce)
 	}
 
-	batchAttestations := aggregateFragments(filteredFragments)
+	newState, fragments := prevState.Process(c.Logger, filteredControlEvents...)
+	batchAttestations := aggregateFragments(fragments)
 
 	return newState, batchAttestations
 }
@@ -52,7 +54,9 @@ func (c *Consenter) SimulateStateTransition(prevState *State, requests [][]byte)
 // TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
 func (c *Consenter) Commit(events [][]byte) {
 	state, batchAttestations := c.SimulateStateTransition(c.State, events)
-	c.indexAttestationsInDB(batchAttestations)
+	if len(batchAttestations) > 0 {
+		c.indexAttestationsInDB(batchAttestations)
+	}
 	c.State = state
 }
 
