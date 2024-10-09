@@ -3,6 +3,7 @@ package state
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"arma/common/types"
 	"arma/core"
@@ -88,4 +89,8 @@ func (ab *AvailableBatch) Deserialize(bytes []byte) error {
 	ab.digest = bytes[12:]
 
 	return nil
+}
+
+func (ab *AvailableBatch) String() string {
+	return fmt.Sprintf("Pri %d, Sha %d, Seq %d, Dig %s", ab.primary, ab.shard, ab.seq, core.ShortDigestString(ab.Digest()))
 }

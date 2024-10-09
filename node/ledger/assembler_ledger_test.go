@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"arma/common/types"
+	"arma/core"
 	"arma/node/consensus/state"
 	node_ledger "arma/node/ledger"
 
@@ -28,6 +29,7 @@ func TestAssemblerLedge_Create(t *testing.T) {
 	assert.Equal(t, uint64(0), count)
 }
 
+// TestAssemblerLedge_Append append two blocks
 func TestAssemblerLedge_Append(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
@@ -36,37 +38,55 @@ func TestAssemblerLedge_Append(t *testing.T) {
 	require.NoError(t, err)
 	go al.TrackThroughput()
 
-	count := al.GetTxCount()
-	assert.Equal(t, uint64(0), count)
+	t.Run("three batches", func(t *testing.T) {
+		batches, ordInfos := createBatchesAndOrdInfo(t, 3)
 
-	batchedRequests := types.BatchedRequests{
-		[]byte("tx1-1"), []byte("tx2"),
+		al.Append(batches[0], ordInfos[0])
+		assert.Equal(t, uint64(2), al.GetTxCount())
+		assert.Equal(t, uint64(1), al.Ledger.Height())
+
+		al.Append(batches[1], ordInfos[1])
+		assert.Equal(t, uint64(4), al.GetTxCount())
+		assert.Equal(t, uint64(2), al.Ledger.Height())
+
+		al.Append(batches[2], ordInfos[2])
+		assert.Equal(t, uint64(6), al.GetTxCount())
+		assert.Equal(t, uint64(3), al.Ledger.Height())
+	})
+}
+
+func TestAssemblerLedge_ReadAndParse(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := flogging.MustGetLogger("arma-assembler")
+
+	al, err := createAssemblerLedger(tmpDir, logger)
+	require.NoError(t, err)
+	go al.TrackThroughput()
+
+	batches, ordInfos := createBatchesAndOrdInfo(t, 2)
+
+	al.Append(batches[0], ordInfos[0])
+	al.Append(batches[1], ordInfos[1])
+	assert.Equal(t, uint64(4), al.GetTxCount())
+	assert.Equal(t, uint64(2), al.Ledger.Height())
+
+	for n := uint64(0); n < 2; n++ {
+		block, err := al.Ledger.RetrieveBlockByNumber(n)
+		assert.NoError(t, err)
+		batchID, ordInfo, err := node_ledger.AssemblerBatchIdOrderingInfoFromBlock(block)
+		assert.NoError(t, err)
+
+		assert.Equal(t, batches[n].Digest(), batchID.Digest())
+		assert.Equal(t, batches[n].Shard(), batchID.Shard())
+		assert.Equal(t, batches[n].Seq(), batchID.Seq())
+		assert.Equal(t, batches[n].Primary(), batchID.Primary())
+
+		assert.Equal(t, ordInfos[n].Hash(), ordInfo.Hash())
+		assert.Equal(t, ordInfos[n].DecisionNum, ordInfo.DecisionNum)
+		assert.Equal(t, ordInfos[n].BatchIndex, ordInfo.BatchIndex)
+		assert.Equal(t, ordInfos[n].BatchCount, ordInfo.BatchCount)
+		assert.Equal(t, ordInfos[n].Signatures, ordInfo.Signatures)
 	}
-	batchBytes := batchedRequests.Serialize()
-
-	fb, err := node_ledger.NewFabricBatchFromRaw(1, 2, 3, batchBytes, []byte("bogus"))
-	assert.NoError(t, err)
-
-	oi := &state.OrderingInformation{
-		BlockHeader: &state.BlockHeader{
-			Number:   0,
-			PrevHash: []byte{},
-			Digest:   fb.Digest(),
-		},
-		Signatures: []smartbft_types.Signature{{
-			ID:    1,
-			Value: []byte("sig1"),
-		}, {
-			ID:    2,
-			Value: []byte("sig2"),
-		}},
-		DecisionNum: 3,
-		BatchIndex:  0,
-		BatchCount:  1,
-	}
-	al.Append(fb, oi)
-	count = al.GetTxCount()
-	assert.Equal(t, uint64(2), count)
 }
 
 func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_ledger.AssemblerLedger, error) {
@@ -88,4 +108,45 @@ func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_
 
 	al := &node_ledger.AssemblerLedger{Ledger: armaFileLedger, Logger: logger}
 	return al, nil
+}
+
+func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.OrderingInformation) {
+	var batches []core.Batch
+	var ordInfos []*state.OrderingInformation
+
+	for n := uint64(0); n < uint64(num); n++ {
+		batchedRequests := types.BatchedRequests{
+			[]byte{1, 2, 3, 4, byte(n)}, []byte{5, 6, 7, 8, byte(n)},
+		}
+		batchBytes := batchedRequests.Serialize()
+
+		fb, err := node_ledger.NewFabricBatchFromRaw(1, 2, n+3, batchBytes, nil)
+		require.NoError(t, err)
+
+		oi := &state.OrderingInformation{
+			BlockHeader: &state.BlockHeader{
+				Number:   n,
+				PrevHash: nil,
+				Digest:   fb.Digest(),
+			},
+			Signatures: []smartbft_types.Signature{{
+				ID:    1,
+				Value: []byte("sig1"),
+			}, {
+				ID:    2,
+				Value: []byte("sig2"),
+			}},
+			DecisionNum: types.DecisionNum(3 + n),
+			BatchIndex:  0,
+			BatchCount:  1,
+		}
+		if n > 0 {
+			oi.BlockHeader.PrevHash = ordInfos[n-1].Hash()
+		}
+
+		batches = append(batches, fb)
+		ordInfos = append(ordInfos, oi)
+	}
+
+	return batches, ordInfos
 }

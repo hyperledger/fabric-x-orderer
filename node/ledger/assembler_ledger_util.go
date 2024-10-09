@@ -6,6 +6,10 @@ import (
 	"arma/common/types"
 	"arma/node/consensus/state"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric/protoutil"
+
 	"github.com/pkg/errors"
 )
 
@@ -55,4 +59,60 @@ func AssemblerBlockMetadataFromBytes(metadata []byte) (primary types.PartyID, sh
 	batchCount = (binary.BigEndian.Uint32(metadata[24:28]))
 
 	return
+}
+
+// AssemblerBatchIdOrderingInfoFromBlock returns the BatchID and OrderingInformation that are encoded in the metadata
+// and header of the block.
+func AssemblerBatchIdOrderingInfoFromBlock(block *common.Block) (types.BatchID, *state.OrderingInformation, error) {
+	if block == nil {
+		return nil, nil, errors.Errorf("nil block")
+	}
+
+	if block.Header == nil {
+		return nil, nil, errors.Errorf("nil block header")
+	}
+
+	if block.Metadata == nil || len(block.Metadata.Metadata) == 0 {
+		return nil, nil, errors.Errorf("missing block metadata")
+	}
+
+	if len(block.Metadata.Metadata) < int(common.BlockMetadataIndex_ORDERER)+1 {
+		return nil, nil, errors.Errorf("missing block ORDERER metadata")
+	}
+
+	pr, sh, seq, num, bI, bC, err := AssemblerBlockMetadataFromBytes(block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER])
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to extract AssemblerBlockMetadata")
+	}
+
+	mdSigs, err := protoutil.GetMetadataFromBlock(block, common.BlockMetadataIndex_SIGNATURES)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to extract signatures")
+	}
+
+	var bftSigs []smartbft_types.Signature
+	for _, sig := range mdSigs.Signatures {
+		identifierHeader, err := protoutil.UnmarshalIdentifierHeader(sig.IdentifierHeader)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "failed to extract signature identifier")
+		}
+		bftSigs = append(bftSigs, smartbft_types.Signature{
+			ID:    uint64(identifierHeader.GetIdentifier()),
+			Value: sig.Signature,
+		})
+	}
+
+	ab := state.NewAvailableBatch(pr, sh, seq, block.GetHeader().GetDataHash())
+	oi := &state.OrderingInformation{
+		BlockHeader: &state.BlockHeader{
+			Number:   block.GetHeader().GetNumber(),
+			PrevHash: block.GetHeader().GetPreviousHash(),
+			Digest:   block.GetHeader().GetDataHash(),
+		},
+		Signatures:  bftSigs,
+		DecisionNum: num,
+		BatchIndex:  int(bI),
+		BatchCount:  int(bC),
+	}
+	return ab, oi, nil
 }
