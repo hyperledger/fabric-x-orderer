@@ -68,8 +68,8 @@ At this point, a network of Arma is running, so you can start send txs.
 ### VM profiles 
 **Storage:**  
 * Routers do not use storage, don't require SSD or heavy storage capacity. 
-* Batchers and Assemblers heavily utilize storage for their operations, we strongly recommend using SSD for optimal performance.
-* Consenters moderately use storage, SSD are not a strict requirement but may improve performance.
+* Batchers and Assemblers heavily utilize storage for their operations, we strongly recommend using SSD for optimal performance. We recommend using high capacity storage since all transaction data is stored on these servers.
+* Consenters moderately use storage capacity, yet SSD is recommended for optimal performance.
 
 **Connectivity:**  
 Routers and Assemblers need connectivity to clients.
