@@ -47,7 +47,13 @@ func TestArmageddonWithTLS(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	sessions := runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	defer func() {
+		for i := range sessions {
+			sessions[i].Kill()
+		}
+	}()
+
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
 		select {
@@ -93,7 +99,13 @@ func TestLoadAndReceive(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	sessions := runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	defer func() {
+		for i := range sessions {
+			sessions[i].Kill()
+		}
+	}()
+
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
 		select {
@@ -123,7 +135,7 @@ func TestLoadAndReceive(t *testing.T) {
 	waitForTxToBeSentAndReceived.Wait()
 }
 
-func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) {
+func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}) []*gexec.Session {
 	nodes := map[string][]string{
 		"router":    {"router_node_config.yaml"},
 		"batcher":   {"batcher_node_1_config.yaml", "batcher_node_2_config.yaml"},
@@ -131,16 +143,19 @@ func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		"assembler": {"assembler_node_config.yaml"},
 	}
 
+	var sessions []*gexec.Session
 	for _, nodeType := range []string{"consensus", "batcher", "router", "assembler"} {
 		for i := 0; i < 4; i++ {
 			partyDir := path.Join(dir, fmt.Sprintf("Party%d", i+1))
 			for j := 0; j < len(nodes[nodeType]); j++ {
 				nodeConfigPath := path.Join(partyDir, nodes[nodeType][j])
 				editDirectoryInNodeConfigYAML(t, nodeType, nodeConfigPath)
-				runNode(t, nodeType, armaBinaryPath, nodeConfigPath, readyChan)
+				sess := runNode(t, nodeType, armaBinaryPath, nodeConfigPath, readyChan)
+				sessions = append(sessions, sess)
 			}
 		}
 	}
+	return sessions
 }
 
 // Scenario:
@@ -170,7 +185,13 @@ func TestArmageddonNonTLS(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	sessions := runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	defer func() {
+		for i := range sessions {
+			sessions[i].Kill()
+		}
+	}()
+
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
 		select {
@@ -188,7 +209,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
 }
 
-func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}) {
+func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}) *gexec.Session {
 	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
 	require.NotNil(t, cmd)
 
@@ -202,6 +223,7 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	}, 30*time.Second, 10*time.Millisecond)
 
 	readyChan <- struct{}{}
+	return sess
 }
 
 // generateInputConfigFileForArmageddon create a config.yaml file which is the input to armageddon generate command.
