@@ -60,13 +60,19 @@ func (bh *BlockHeader) Hash() []byte {
 	return sum[:]
 }
 
-const blockHeaderBytesSize = 8 + 32 + 32 // uint64 + hash + digest
+const (
+	flagNil  = byte(0)
+	flagFull = byte(32)
+)
+
+const blockHeaderBytesSize = 8 + 1 + 32 + 1 + 32 // uint64 + flag + hash + flag + digest
 
 func (bh *BlockHeader) Bytes() []byte {
 	buff := make([]byte, blockHeaderBytesSize)
 	binary.BigEndian.PutUint64(buff, bh.Number)
-	copy(buff[8:], bh.PrevHash)
-	copy(buff[40:], bh.Digest)
+	encodeHashBytes(buff, 8, bh.PrevHash)
+	encodeHashBytes(buff, 41, bh.Digest)
+
 	return buff
 }
 
@@ -78,9 +84,37 @@ func (bh *BlockHeader) FromBytes(bytes []byte) error {
 		return errors.Errorf("len of bytes %d does not equal the block header size %d", len(bytes), blockHeaderBytesSize)
 	}
 	bh.Number = binary.BigEndian.Uint64(bytes[0:8])
-	bh.PrevHash = bytes[8:40]
-	bh.Digest = bytes[40:]
+	bh.PrevHash = decodeHashBytes(bytes[8:41])
+	bh.Digest = decodeHashBytes(bytes[41:])
 	return nil
+}
+
+// encodeHashBytes encodes a nil or 32 byte hash in a constant size.
+// We must be able to encode nil because the fabric ledger expects the first block to have PrevHash=nil.
+func encodeHashBytes(buff []byte, pos int, h []byte) {
+	if h == nil {
+		z := make([]byte, 32)
+		buff[pos] = flagNil
+		pos++
+		copy(buff[pos:], z)
+	} else if len(h) == 32 {
+		buff[pos] = flagFull
+		pos++
+		copy(buff[pos:], h)
+	} else {
+		panic("unsupported hash size")
+	}
+}
+
+func decodeHashBytes(encoded []byte) []byte {
+	if len(encoded) != 33 {
+		panic("unexpected encoded hash size")
+	}
+	if encoded[0] == flagNil {
+		return nil
+	}
+
+	return encoded[1:]
 }
 
 func (bh *BlockHeader) Equal(bh2 *BlockHeader) bool {

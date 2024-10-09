@@ -52,8 +52,8 @@ type AssemblerIndex interface {
 	Retrieve(party types.PartyID, shard types.ShardID, sequence types.BatchSequence, digest []byte) (Batch, bool)
 }
 
-type AssemblerLedger interface {
-	Append(uint64, Batch, BatchAttestation)
+type AssemblerLedgerWriter interface {
+	Append(batch Batch, orderingInfo interface{})
 }
 
 type OrderedBatchAttestationReplicator interface {
@@ -62,7 +62,7 @@ type OrderedBatchAttestationReplicator interface {
 
 type Assembler struct {
 	ShardCount                        int
-	Ledger                            AssemblerLedger
+	Ledger                            AssemblerLedgerWriter
 	Logger                            types.Logger
 	OrderedBatchAttestationReplicator OrderedBatchAttestationReplicator
 	Replicator                        BatchReplicator
@@ -103,13 +103,18 @@ func (a *Assembler) processOrderedBatchAttestations() {
 	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
 	// TODO after recovery support is added, start replicating from the last decision, not 0 (separate issue).
-	attestations := a.OrderedBatchAttestationReplicator.Replicate(0) // TODO change type to OrderedBatchAttestation (next commit).
-	for oba := range attestations {
-		a.Logger.Infof("Received attestation with digest %s", shortDigestString(oba.BatchAttestation().Digest()))
+	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate(0)
+	for oba := range orderedBatchAttestations {
+		a.Logger.Infof("Received ordered batch attestation with BatchID primary=%d, shard=%d, seq=%d; digest %s",
+			oba.BatchAttestation().Primary(), oba.BatchAttestation().Shard(), oba.BatchAttestation().Seq(),
+			ShortDigestString(oba.BatchAttestation().Digest()))
+		a.Logger.Infof("Received ordered batch attestation with OrderingInfo: %+v; digest %s",
+			oba.OrderingInfo(),
+			ShortDigestString(oba.BatchAttestation().Digest()))
 		t1 := time.Now()
 		batch := a.collateAttestationWithBatch(oba.BatchAttestation())
-		a.Logger.Infof("Located batch for digest %s within %v", shortDigestString(oba.BatchAttestation().Digest()), time.Since(t1))
-		a.Ledger.Append(uint64(0), batch, oba.BatchAttestation()) // TODO this is the wrong sequence number, it should be the block number from the ba header (next commit)
+		a.Logger.Infof("Located batch for digest %s within %v", ShortDigestString(oba.BatchAttestation().Digest()), time.Since(t1))
+		a.Ledger.Append(batch, oba.OrderingInfo())
 	}
 
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
@@ -126,13 +131,13 @@ func (a *Assembler) collateAttestationWithBatch(ba BatchAttestation) Batch {
 			a.signal.Wait()
 			continue
 		}
-		a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), shortDigestString(ba.Digest()), time.Since(t1))
+		a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), ShortDigestString(ba.Digest()), time.Since(t1))
 		return batch
 	}
 }
 
-// shortDigestString provides a short string from a potentially long (32B) digest.
-func shortDigestString(digest []byte) string {
+// ShortDigestString provides a short string from a potentially long (32B) digest.
+func ShortDigestString(digest []byte) string {
 	if digest == nil {
 		return "nil"
 	}

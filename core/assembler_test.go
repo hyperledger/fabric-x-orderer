@@ -119,7 +119,7 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 
 type naiveOrderedBatchAttestation struct {
 	ba           core.BatchAttestation
-	orderingInfo int
+	orderingInfo uint64
 }
 
 func (noba *naiveOrderedBatchAttestation) BatchAttestation() core.BatchAttestation {
@@ -130,10 +130,20 @@ func (noba *naiveOrderedBatchAttestation) OrderingInfo() interface{} {
 	return noba.orderingInfo
 }
 
-type naiveAssemblerLedger chan core.BatchAttestation
+type naiveAssemblerLedger chan core.OrderedBatchAttestation
 
-func (n naiveAssemblerLedger) Append(_ uint64, _ core.Batch, attestation core.BatchAttestation) {
-	n <- attestation
+func (n naiveAssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
+	noba := &naiveOrderedBatchAttestation{
+		ba: &naiveBatchAttestation{
+			primary: batch.Primary(),
+			seq:     batch.Seq(),
+			node:    batch.Primary(),
+			shard:   batch.Shard(),
+			digest:  batch.Digest(),
+		},
+		orderingInfo: orderingInfo.(uint64),
+	}
+	n <- noba
 }
 
 func TestNaive(t *testing.T) {
@@ -148,19 +158,22 @@ func TestNaive(t *testing.T) {
 }
 
 func TestAssembler(t *testing.T) {
-	shardCount := 10
-	batchNum := 100
+	shardCount := 4
+	batchNum := 20
 
 	digests := make(map[string]struct{})
 
 	var batches [][]core.Batch
-	for shardID := 0; shardID < shardCount; shardID++ {
+	for shardID := types.ShardID(0); shardID < types.ShardID(shardCount); shardID++ {
 		var batchesForShard []core.Batch
-		for j := 0; j < batchNum; j++ {
+		for seq := types.BatchSequence(0); seq < types.BatchSequence(batchNum); seq++ {
 			buff := make([]byte, 1024)
 			binary.BigEndian.PutUint16(buff, uint16(shardID))
-			binary.BigEndian.PutUint16(buff[100:], uint16(j))
+			binary.BigEndian.PutUint16(buff[100:], uint16(seq))
 			batch := &naiveBatch{
+				shardID:  shardID,
+				node:     1,
+				seq:      seq,
 				requests: [][]byte{buff},
 			}
 			digests[string(batch.Digest())] = struct{}{}
@@ -183,32 +196,37 @@ func TestAssembler(t *testing.T) {
 	for shardID := 0; shardID < shardCount; shardID++ {
 		go func(shard int) {
 			for _, batch := range batches[shard] {
+
 				r.subscribers[shard] <- batch
-				totalOrder <- &naiveBatchAttestation{
-					digest: batch.Digest(),
+
+				nba := &naiveBatchAttestation{
+					primary: batch.Primary(),
+					seq:     batch.Seq(),
+					shard:   batch.Shard(),
+					digest:  batch.Digest(),
 				}
+				totalOrder <- nba
 			}
 		}(shardID)
 	}
 
 	go func() {
-		var seq uint64
+		var num uint64
 
 		for nba := range totalOrder {
-			nba.seq = types.BatchSequence(seq)
-			seq++
 			noba := &naiveOrderedBatchAttestation{
 				ba:           nba,
-				orderingInfo: 0,
+				orderingInfo: num,
 			}
 			nobar <- noba
+			num++
 		}
 	}()
 
-	for i := 0; i < 1000; i++ {
-		block := <-ledger
-		assert.Equal(t, types.BatchSequence(i), block.Seq())
-		delete(digests, string(block.Digest()))
+	for i := uint64(0); i < uint64(batchNum*shardCount); i++ {
+		noba := <-ledger
+		assert.Equal(t, i, noba.OrderingInfo().(uint64))
+		delete(digests, string(noba.BatchAttestation().Digest()))
 	}
 
 	assert.Len(t, digests, 0)

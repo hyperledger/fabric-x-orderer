@@ -744,11 +744,11 @@ func TestVerifyProposal(t *testing.T) {
 	headerAppContext.State.AppContext = badAppContext.Bytes()
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
 	badAppContext.Number = latestBlockHeader.Number
-	badAppContext.Digest = []byte{1}
+	badAppContext.Digest[0]++
 	headerAppContext.State.AppContext = badAppContext.Bytes()
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
 	badAppContext.Digest = latestBlockHeader.Digest
-	badAppContext.PrevHash = []byte{2}
+	badAppContext.PrevHash[0]++
 	headerAppContext.State.AppContext = badAppContext.Bytes()
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
 
@@ -762,7 +762,7 @@ func TestVerifyProposal(t *testing.T) {
 	t.Log("mismatch block header in header")
 	headerBH := header
 	badBH := latestBlockHeader
-	badBH.PrevHash = []byte{1}
+	badBH.PrevHash[0]++
 	headerBH.AvailableBlocks = []state.AvailableBlock{{Header: &badBH, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 	verifyProposalRequireError(t, c, headerBH.Serialize(), brs.Serialize(), mBytes)
 }

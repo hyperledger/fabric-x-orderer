@@ -169,6 +169,9 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 
 	lastBlockNumber := lastBlockHeader.Number
 	prevHash := lastBlockHeader.Hash()
+	if lastBlockNumber == math.MaxUint64 { // This is a signal that we bootstrap
+		prevHash = nil
+	}
 
 	for i, ba := range attestations {
 		var hdr state.BlockHeader
@@ -180,9 +183,10 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		availableBlocks[i].Header = &hdr
 	}
 
-	for i, bh := range hdr.AvailableBlocks {
-		if !bh.Header.Equal(availableBlocks[i].Header) {
-			return nil, fmt.Errorf("proposed block headers %v in index %d isn't equal to computed block header %v", bh, i, availableBlocks[i].Header)
+	for i, availableBlock := range hdr.AvailableBlocks {
+		if !availableBlock.Header.Equal(availableBlocks[i].Header) {
+			return nil, fmt.Errorf("proposed block header %+v in index %d isn't equal to computed block header %+v",
+				availableBlock.Header, i, availableBlocks[i].Header)
 		}
 	}
 
@@ -393,6 +397,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 
 	lastBlockNumber := lastBlockHeader.Number
 	prevHash := lastBlockHeader.Hash()
+	if lastBlockNumber == math.MaxUint64 { // This is a signal that we bootstrap
+		prevHash = nil
+	}
 
 	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
 

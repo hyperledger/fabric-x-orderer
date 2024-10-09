@@ -244,7 +244,7 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) core.State {
 
 	// TODO set right initial app context
 	initialAppContext := &state.BlockHeader{
-		Number:   0,
+		Number:   math.MaxUint64, // We want the first block to start with 0, this is how we signal bootstrap
 		PrevHash: nil,
 		Digest:   nil,
 	}

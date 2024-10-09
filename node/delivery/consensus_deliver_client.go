@@ -93,9 +93,10 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.OrderedBatchAt
 
 		bar.logger.Infof("Extracted a decision header with %d available blocks", len(header.AvailableBlocks))
 		for index, ab := range header.AvailableBlocks {
-			bar.logger.Infof("Replicated batch attestation no. %d with: shard %d, primary %d, seq %d", index, ab.Batch.Shard(), ab.Batch.Primary(), ab.Batch.Seq())
+			bar.logger.Infof("BA index %d with: shard %d, primary %d, seq %d", index, ab.Batch.Shard(), ab.Batch.Primary(), ab.Batch.Seq())
 			bar.logger.Infof("BA block header: %+v", ab.Header)
 			bar.logger.Infof("BA block signers: %+v", signersFromSigs(sigs[index]))
+			bar.logger.Infof("BA digest: %s; block header digest: %s, ", core.ShortDigestString(ab.Batch.Digest()), core.ShortDigestString(ab.Header.Digest))
 
 			abo := &state.AvailableBatchOrdered{
 				AvailableBatch: ab.Batch,

@@ -43,11 +43,16 @@ type naiveblock struct {
 
 type naiveBlockLedger chan naiveblock
 
-func (n naiveBlockLedger) Append(seq uint64, batch core.Batch, attestation core.BatchAttestation) {
+func (n naiveBlockLedger) Append(batch core.Batch, orderingInfo interface{}) {
 	n <- naiveblock{
-		seq:         seq,
-		batch:       batch,
-		attestation: attestation,
+		seq:   orderingInfo.(uint64),
+		batch: batch,
+		attestation: &naiveBatchAttestation{
+			primary: batch.Primary(),
+			seq:     batch.Seq(),
+			shard:   batch.Shard(),
+			digest:  batch.Digest(),
+		},
 	}
 }
 
@@ -140,6 +145,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	go func() {
 		var events [][]byte
 		state := consenter.State.Clone()
+		num := uint64(0)
 		for {
 			select {
 			case <-time.After(time.Millisecond * 100):
@@ -155,9 +161,10 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 					ba.FragmentsReturns(bafs)
 					oba := &naiveOrderedBatchAttestation{
 						ba:           ba,
-						orderingInfo: 0,
+						orderingInfo: num,
 					}
 					baReplicator <- oba
+					num++
 				}
 				events = nil
 
@@ -250,8 +257,11 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		}(worker)
 	}
 
+	num := uint64(0)
 	for committedReqCount < workerNum*workerPerWorker {
 		block := <-blockLedger
+		assert.Equal(t, num, block.seq)
+		num++
 		requests := block.batch.Requests()
 		committedReqCount += len(requests)
 		for _, req := range requests {

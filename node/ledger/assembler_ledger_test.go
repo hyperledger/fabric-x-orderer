@@ -7,6 +7,7 @@ import (
 	"arma/node/consensus/state"
 	node_ledger "arma/node/ledger"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -43,11 +44,27 @@ func TestAssemblerLedge_Append(t *testing.T) {
 	}
 	batchBytes := batchedRequests.Serialize()
 
-	fb, err := node_ledger.NewFabricBatchFromRaw(1, 2, 3, batchBytes, []byte("prev-hash"))
+	fb, err := node_ledger.NewFabricBatchFromRaw(1, 2, 3, batchBytes, []byte("bogus"))
 	assert.NoError(t, err)
-	ba := state.NewAvailableBatch(1, 2, 3, fb.Digest())
 
-	al.Append(0, fb, ba)
+	oi := &state.OrderingInformation{
+		BlockHeader: &state.BlockHeader{
+			Number:   0,
+			PrevHash: []byte{},
+			Digest:   fb.Digest(),
+		},
+		Signatures: []smartbft_types.Signature{{
+			ID:    1,
+			Value: []byte("sig1"),
+		}, {
+			ID:    2,
+			Value: []byte("sig2"),
+		}},
+		DecisionNum: 3,
+		BatchIndex:  0,
+		BatchCount:  1,
+	}
+	al.Append(fb, oi)
 	count = al.GetTxCount()
 	assert.Equal(t, uint64(2), count)
 }
