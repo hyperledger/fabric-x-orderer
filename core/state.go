@@ -377,7 +377,8 @@ func (s *State) Clone() *State {
 func CleanupOldComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	newComplaints := make([]Complaint, 0, len(s.Complaints))
 	for _, c := range s.Complaints {
-		term := s.Shards[int(c.Shard-1)].Term
+		shardIndex, _ := shardExists(c.Shard, s.Shards)
+		term := s.Shards[shardIndex].Term
 		if c.Term < term {
 			l.Infof("Cleaning complaint of shard %d for term %d as the current term is %d", c.Shard, c.Term, term)
 			continue
@@ -416,13 +417,13 @@ func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
-		exsits := shardExists(complaint.Shard, s.Shards)
+		shardIndex, exsits := shardExists(complaint.Shard, s.Shards)
 		if !exsits {
 			l.Errorf("Got complaint for shard %d but it was not found in the shards: %v, ignoring complaint", complaint.Shard, s.Shards)
 			continue
 		}
 
-		term := s.Shards[complaint.Shard-1].Term
+		term := s.Shards[shardIndex].Term
 		if term != complaint.Term {
 			l.Infof("Got complaint for shard %d in term %d but shard is at term %d", complaint.Shard, complaint.Term, term)
 			continue
@@ -437,19 +438,20 @@ func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	for _, complaint := range s.Complaints {
 		if complaintsToNum[complaint.ShardTerm] >= int(s.Quorum) {
 
-			term := s.Shards[int(complaint.Shard-1)].Term
+			shardIndex, _ := shardExists(complaint.Shard, s.Shards)
+			term := s.Shards[shardIndex].Term
 			if term != complaint.Term {
 				l.Infof("Got complaint for shard %d in term %d but shard is at term %d", complaint.Shard, complaint.Term, term)
 				continue
 			}
 
 			complaintNum := complaintsToNum[complaint.ShardTerm]
-			oldTerm := s.Shards[complaint.Shard-1].Term
+			oldTerm := s.Shards[shardIndex].Term
 			oldPrimary := uint16((oldTerm + uint64(complaint.Shard)) % uint64(s.N))
 
-			s.Shards[complaint.Shard-1].Term++
+			s.Shards[shardIndex].Term++
 
-			newTerm := s.Shards[complaint.Shard-1].Term
+			newTerm := s.Shards[shardIndex].Term
 			newPrimary := uint16((newTerm + uint64(complaint.Shard)) % uint64(s.N))
 
 			l.Infof("Shard %d advanced from term %d to term %d due to %d complaintsToNum (quorum is %d), and the primary switched from %d to %d",
@@ -484,7 +486,7 @@ func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) 
 
 		if ce.BAF != nil {
 			shard := ce.BAF.Shard()
-			exists := shardExists(shard, s.Shards)
+			_, exists := shardExists(shard, s.Shards)
 			if !exists {
 				l.Warnf("Got Batch Attestation Fragment for shard %d but it was not found in the shards: %v, ignoring it", ce.BAF.Shard(), s.Shards)
 				continue
@@ -633,11 +635,11 @@ func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []BatchAttest
 	return extracted
 }
 
-func shardExists(shard types.ShardID, shardTerms []ShardTerm) bool {
-	for _, st := range shardTerms {
+func shardExists(shard types.ShardID, shardTerms []ShardTerm) (int, bool) {
+	for index, st := range shardTerms {
 		if st.Shard == shard {
-			return true
+			return index, true
 		}
 	}
-	return false
+	return -1, false
 }
