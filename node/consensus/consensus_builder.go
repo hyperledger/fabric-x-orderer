@@ -11,6 +11,7 @@ import (
 
 	arma_types "arma/common/types"
 	"arma/core"
+	"arma/core/badb"
 	"arma/node/comm"
 	"arma/node/config"
 	"arma/node/consensus/state"
@@ -151,7 +152,7 @@ func createConsenter(conf config.ConsenterNodeConfig, logger arma_types.Logger, 
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
 
-	db, err := NewBatchAttestationDB(dbDir, logger)
+	db, err := badb.NewBatchAttestationDB(dbDir, logger)
 	if err != nil {
 		logger.Panicf("Failed creating Batch attestation DB: %v", err)
 	}

@@ -14,6 +14,7 @@ import (
 
 	arma_types "arma/common/types"
 	"arma/core"
+	"arma/core/badb"
 	"arma/node/batcher"
 	"arma/node/consensus/state"
 	"arma/node/crypto"
@@ -254,7 +255,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	l := testutil.CreateLogger(t, int(partyID))
 
-	db, err := NewBatchAttestationDB(dir, l)
+	db, err := badb.NewBatchAttestationDB(dir, l)
 	assert.NoError(t, err)
 
 	consenter := &core.Consenter{ // TODO should this be initialized as part of consensus node start?
@@ -350,7 +351,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
 	assert.NoError(t, err)
 
-	db, err := NewBatchAttestationDB(dir, logger)
+	db, err := badb.NewBatchAttestationDB(dir, logger)
 	assert.NoError(t, err)
 
 	verifier := make(crypto.ECDSAVerifier)
@@ -591,7 +592,7 @@ func TestVerifyProposal(t *testing.T) {
 	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
 	assert.NoError(t, err)
 
-	db, err := NewBatchAttestationDB(dir, logger)
+	db, err := badb.NewBatchAttestationDB(dir, logger)
 	assert.NoError(t, err)
 
 	verifier := make(crypto.ECDSAVerifier)
@@ -786,7 +787,7 @@ func TestSignProposal(t *testing.T) {
 	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
 	assert.NoError(t, err)
 
-	db, err := NewBatchAttestationDB(dir, logger)
+	db, err := badb.NewBatchAttestationDB(dir, logger)
 	assert.NoError(t, err)
 
 	verifier := make(crypto.ECDSAVerifier)

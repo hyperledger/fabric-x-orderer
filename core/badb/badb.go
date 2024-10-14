@@ -1,4 +1,4 @@
-package consensus
+package badb
 
 import (
 	"encoding/binary"
@@ -33,7 +33,10 @@ func (db *BatchAttestationDB) List() ([][]byte, []uint64) {
 	for iter.Next() {
 		key := iter.Key()
 		if key[0] == 0 {
-			digests = append(digests, key[1:])
+			digestCopy := make([]byte, len(key[1:]))
+			copy(digestCopy, key[1:])
+
+			digests = append(digests, digestCopy)
 			epochs = append(epochs, binary.BigEndian.Uint64(iter.Value()))
 		}
 	}
