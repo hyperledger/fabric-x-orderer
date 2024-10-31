@@ -712,7 +712,7 @@ func getUserConfigFileContent(userConfigFile **os.File) (*UserInfo, error) {
 	return &userConfig, nil
 }
 
-// submit command makes txs and sends them to all routers (assuming there are 4 routers)
+// submit command makes txs and sends them to all routers
 // it also asks for blocks from some assembler (no matter who it is) to validate the txs appear in some block
 func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
 	// check transaction size
@@ -757,7 +757,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	reportResults(*transactions, elapsed, txDelayTimes, numOfBlocks, *txSize)
 }
 
-// load command makes txs and sends them to all routers (assuming there are 4 routers)
+// load command makes txs and sends them to all routers
 func load(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
 	// check transaction size
 	txMinimumSize := 16 + 8 + 8
@@ -828,7 +828,6 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 	}
 }
 
-// sendTxToRouters assumes there are 4 routers
 func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
 	var serverRootCAs [][]byte
 	for _, rawBytes := range userConfigFileContent.TLSCACerts {
@@ -840,7 +839,7 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 	var streams []ab.AtomicBroadcast_BroadcastClient
 
 	// create gRPC clients and streams to the routers
-	for i := 0; i < 4; i++ {
+	for i := 0; i < len(userConfigFileContent.RouterEndpoints); i++ {
 		// create a gRPC connection to the router
 		gRPCRouterClient := comm.ClientConfig{
 			KaOpts: comm.KeepaliveOptions{
@@ -1142,7 +1141,7 @@ func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, 
 	if txsMap != nil {
 		txsMap.Add(string(payload[:32]))
 	}
-	for j := 0; j < 4; j++ {
+	for j := 0; j < len(streams); j++ {
 		err := streams[j].Send(&common.Envelope{Payload: payload})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
