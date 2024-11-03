@@ -113,3 +113,26 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
 
 	atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
 }
+
+// LastOrderingInfo returns the ordering information from the last block.
+// If the ledger is empty it returns `nil,nil`.
+//
+// It is typically used in recovery of the assembler, to deduce from where to start consuming decisions from consensus.
+func (l *AssemblerLedger) LastOrderingInfo() (*state.OrderingInformation, error) {
+	h := l.Ledger.Height()
+	if h == 0 {
+		return nil, nil
+	}
+
+	block, err := l.Ledger.RetrieveBlockByNumber(h - 1)
+	if err != nil {
+		return nil, err
+	}
+
+	_, ordInfo, err := AssemblerBatchIdOrderingInfoFromBlock(block)
+	if err != nil {
+		return nil, err
+	}
+
+	return ordInfo, nil
+}

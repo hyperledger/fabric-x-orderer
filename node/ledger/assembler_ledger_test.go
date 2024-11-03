@@ -89,6 +89,31 @@ func TestAssemblerLedge_ReadAndParse(t *testing.T) {
 	}
 }
 
+func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := flogging.MustGetLogger("arma-assembler")
+
+	al, err := createAssemblerLedger(tmpDir, logger)
+	require.NoError(t, err)
+	go al.TrackThroughput()
+
+	batches, ordInfos := createBatchesAndOrdInfo(t, 2)
+
+	al.Append(batches[0], ordInfos[0])
+	al.Append(batches[1], ordInfos[1])
+	assert.Equal(t, uint64(4), al.GetTxCount())
+	assert.Equal(t, uint64(2), al.Ledger.Height())
+
+	ordInfo, err := al.LastOrderingInfo()
+	require.NoError(t, err)
+
+	assert.Equal(t, ordInfos[1].Hash(), ordInfo.Hash())
+	assert.Equal(t, ordInfos[1].DecisionNum, ordInfo.DecisionNum)
+	assert.Equal(t, ordInfos[1].BatchIndex, ordInfo.BatchIndex)
+	assert.Equal(t, ordInfos[1].BatchCount, ordInfo.BatchCount)
+	assert.Equal(t, ordInfos[1].Signatures, ordInfo.Signatures)
+}
+
 func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_ledger.AssemblerLedger, error) {
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(tmpDir, -1),
