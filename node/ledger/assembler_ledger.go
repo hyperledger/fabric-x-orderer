@@ -1,6 +1,8 @@
 package ledger
 
 import (
+	"math"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -135,4 +137,64 @@ func (l *AssemblerLedger) LastOrderingInfo() (*state.OrderingInformation, error)
 	}
 
 	return ordInfo, nil
+}
+
+// BatchFrontier retrieves, for each shard and party, the last batch-sequence that was committed.
+// It skips config blocks and tries to cover the set {shards}X{parties} before the timeout expires.
+func (l *AssemblerLedger) BatchFrontier(
+	shards []types.ShardID,
+	parties []types.PartyID,
+	scanTimeout time.Duration,
+) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error) {
+	height := l.Ledger.Height()
+	if height == 0 {
+		return nil, nil
+	}
+
+	shardParty2Seq := make(map[types.ShardID]map[types.PartyID]types.BatchSequence)
+	count := len(shards) * len(parties)
+	deadline := time.Now().Add(scanTimeout)
+
+	for h := height; h > 0; h-- {
+		block, err := l.Ledger.RetrieveBlockByNumber(h - 1)
+		if err != nil {
+			return nil, err
+		}
+		batchID, _, err := AssemblerBatchIdOrderingInfoFromBlock(block)
+		if err != nil {
+			return nil, err
+		}
+
+		l.Logger.Debugf("Block %d, Sh %d, Pr %d, Seq %d", block.GetHeader().GetNumber(), batchID.Shard(), batchID.Primary(), batchID.Seq())
+
+		// If it is a config block, we skip it
+		if batchID.Shard() == math.MaxUint16 || batchID.Primary() == 0 {
+			continue
+		}
+
+		if _, exists := shardParty2Seq[batchID.Shard()]; !exists {
+			shardParty2Seq[batchID.Shard()] = make(map[types.PartyID]types.BatchSequence)
+		}
+
+		// If we had already encountered this <shard,primary> we don't count it again
+		if _, exists := shardParty2Seq[batchID.Shard()][batchID.Primary()]; exists {
+			continue
+		}
+		// This is a <shard,party> we see for the first time, so we save it
+		shardParty2Seq[batchID.Shard()][batchID.Primary()] = batchID.Seq()
+		// We only count <shard,party> combinations that are currently configured, as stated in the input parameters.
+		// We will return shards and parties that were removed, but try to cover the currently defined space.
+		if slices.Contains(parties, batchID.Primary()) && slices.Contains(shards, batchID.Shard()) {
+			count--
+			if count == 0 {
+				break
+			}
+		}
+
+		if time.Now().After(deadline) {
+			break
+		}
+	}
+
+	return shardParty2Seq, nil
 }

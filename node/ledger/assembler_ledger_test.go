@@ -2,6 +2,7 @@ package ledger_test
 
 import (
 	"testing"
+	"time"
 
 	"arma/common/types"
 	"arma/core"
@@ -114,6 +115,100 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	assert.Equal(t, ordInfos[1].Signatures, ordInfo.Signatures)
 }
 
+func TestAssemblerLedger_BatchFrontier(t *testing.T) {
+	t.Run("covers all shards and parties", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+
+		num := 128
+		batches, ordInfos := createBatchesAndOrdInfo(t, num)
+
+		for n := 0; n < num; n++ {
+			al.Append(batches[n], ordInfos[n])
+		}
+
+		assert.Equal(t, uint64(num*2), al.GetTxCount())
+		assert.Equal(t, uint64(num), al.Ledger.Height())
+
+		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Hour)
+		assert.NoError(t, err)
+		assert.Len(t, bf, 8) // every shard
+		for _, bfs := range bf {
+			assert.Len(t, bfs, 4) // every party
+			for _, seq := range bfs {
+				assert.Equal(t, types.BatchSequence(3), seq)
+			}
+		}
+	})
+
+	t.Run("empty ledger", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+
+		assert.Equal(t, uint64(0), al.GetTxCount())
+		assert.Equal(t, uint64(0), al.Ledger.Height())
+
+		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Hour)
+		assert.NoError(t, err)
+		assert.Len(t, bf, 0)
+	})
+
+	t.Run("stops at block 0", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+
+		num := 8
+		batches, ordInfos := createBatchesAndOrdInfo(t, num)
+
+		for n := 0; n < num; n++ {
+			al.Append(batches[n], ordInfos[n])
+		}
+		assert.Equal(t, uint64(8), al.Ledger.Height())
+
+		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Hour)
+		assert.NoError(t, err)
+		assert.Len(t, bf, 8) // every shard
+		for _, bfs := range bf {
+			assert.Len(t, bfs, 1) // only one party
+			for _, seq := range bfs {
+				assert.Equal(t, types.BatchSequence(0), seq)
+			}
+		}
+	})
+
+	t.Run("respects the timeout", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+
+		num := 10
+		batches, ordInfos := createBatchesAndOrdInfo(t, num)
+
+		for n := 0; n < num; n++ {
+			al.Append(batches[n], ordInfos[n])
+		}
+		assert.Equal(t, uint64(num), al.Ledger.Height())
+
+		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Nanosecond)
+		assert.NoError(t, err)
+		assert.Len(t, bf, 1) // just one block before the deadline
+		for _, bfs := range bf {
+			assert.Len(t, bfs, 1) // only one party
+		}
+	})
+}
+
 func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_ledger.AssemblerLedger, error) {
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(tmpDir, -1),
@@ -135,9 +230,19 @@ func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_
 	return al, nil
 }
 
+// createBatchesAndOrdInfo creates a series of batches and their corresponding ordering information, emulating the
+// output of consensus and including the batches retrieved from the batchers by the assembler.
+// When generating batches, we try to cover every <shard, primary> with a batches.
+// Assuming 4 parties (1-4) and 8 shards (1-8).
 func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.OrderingInformation) {
 	var batches []core.Batch
 	var ordInfos []*state.OrderingInformation
+
+	// this 2D matrix holds the last batch-sequence of every [shard][primary]
+	seqArray := make([][]uint64, 8)
+	for s := 0; s < 8; s++ {
+		seqArray[s] = make([]uint64, 4)
+	}
 
 	for n := uint64(0); n < uint64(num); n++ {
 		batchedRequests := types.BatchedRequests{
@@ -145,7 +250,18 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.Orde
 		}
 		batchBytes := batchedRequests.Serialize()
 
-		fb, err := node_ledger.NewFabricBatchFromRaw(1, 2, n+3, batchBytes, nil)
+		// deal a batch on every shard
+		sIdx := n % 8
+		shard := types.ShardID(sIdx + 1)
+		// every |shards| change primary
+		pIdx := (n / 8) % 4
+		party := types.PartyID(pIdx + 1)
+		// on each <shard,primary> the sequence increases by +1 increments
+		seq := seqArray[sIdx][pIdx]
+		seqArray[sIdx][pIdx] = seq + 1
+
+		fb, err := node_ledger.NewFabricBatchFromRaw(
+			party, shard, seq, batchBytes, nil)
 		require.NoError(t, err)
 
 		oi := &state.OrderingInformation{
