@@ -9,20 +9,17 @@ import (
 	"testing"
 	"time"
 
-	"arma/node/router"
-
-	"arma/node/config"
-
-	"google.golang.org/grpc/grpclog"
-
+	"arma/common/types"
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
-	"arma/testutil"
-
+	"arma/node/config"
 	protos "arma/node/protos/comm"
+	"arma/node/router"
+	"arma/testutil"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/grpclog"
 )
 
 func init() {
@@ -33,23 +30,29 @@ func init() {
 type routerTestSetup struct {
 	ca         tlsgen.CA
 	router     *comm.GRPCServer
-	batcher    *stubBatcher
+	batchers   []*stubBatcher
 	clientConn *grpc.ClientConn
 }
 
-func createRouterTestSetup(t *testing.T) *routerTestSetup {
-	// create a CA that issues a certificate for the router and the batcher
+func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int) *routerTestSetup {
+	// create a CA that issues a certificate for the router and the batchers
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	// create a stub batcher
-	batcher := NewStubBatcher(t, ca)
+	// create stub batchers
+	var batchers []*stubBatcher
+	for i := 0; i < numOfShards; i++ {
+		batcher := NewStubBatcher(t, ca, partyID, types.ShardID(i+1))
+		batchers = append(batchers, &batcher)
+	}
 
-	// start the batcher
-	batcher.Start()
+	// start the batchers
+	for _, batcher := range batchers {
+		batcher.Start()
+	}
 
 	// create and start router
-	routerServer := createAndStartRouter(t, ca, batcher.server.Address())
+	routerServer := createAndStartRouter(t, partyID, ca, batchers)
 
 	// create a client to the router
 	conn := createClientConnToRouter(t, ca, routerServer)
@@ -57,7 +60,7 @@ func createRouterTestSetup(t *testing.T) *routerTestSetup {
 	return &routerTestSetup{
 		ca:         ca,
 		router:     routerServer,
-		batcher:    &batcher,
+		batchers:   batchers,
 		clientConn: conn,
 	}
 }
@@ -67,13 +70,13 @@ func createRouterTestSetup(t *testing.T) *routerTestSetup {
 // 2. send 10 requests by client to router
 // 3. check that the batcher received the expected number of requests
 func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
-	routerTestSetup := createRouterTestSetup(t)
+	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 1)
 
 	err := submitStreamRequests(routerTestSetup.clientConn, 10)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return routerTestSetup.batcher.ReceivedMessageCount() == uint32(10)
+		return routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(10)
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
@@ -82,31 +85,70 @@ func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
 // 2. send a request by client to router
 // 3. check that the batcher received one request
 func TestStubBatcherReceivesClientRouterSingleRequest(t *testing.T) {
-	routerTestSetup := createRouterTestSetup(t)
+	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 1)
 
 	err := submitRequest(routerTestSetup.clientConn)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return routerTestSetup.batcher.ReceivedMessageCount() == uint32(1)
+		return routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(1)
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func TestClientRouterFailsToSendRequestOnBatcherServerStop(t *testing.T) {
-	routerTestSetup := createRouterTestSetup(t)
+	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 1)
 
 	// send request, should succeed
 	err := submitRequest(routerTestSetup.clientConn)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		return routerTestSetup.batcher.ReceivedMessageCount() == uint32(1)
+		return routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(1)
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// stop the batcher and send request, expect to error
-	routerTestSetup.batcher.Stop()
+	routerTestSetup.batchers[0].Stop()
 	err = submitRequest(routerTestSetup.clientConn)
 	require.NotNil(t, err)
-	require.EqualError(t, err, "could not establish stream to "+routerTestSetup.batcher.server.Address())
+	require.EqualError(t, err, "could not establish stream to "+routerTestSetup.batchers[0].server.Address())
+}
+
+// Scenario:
+// 1. start a client, router and 2 stub batchers (2 shards)
+// 2. send a request by client to router
+// 3. check that a batcher received one request
+func TestClientRouterSubmitSingleRequestAgainstMultipleBatchers(t *testing.T) {
+	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 2)
+
+	err := submitRequest(routerTestSetup.clientConn)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return (routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(1) && routerTestSetup.batchers[1].ReceivedMessageCount() == uint32(0)) || (routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(0) && routerTestSetup.batchers[1].ReceivedMessageCount() == uint32(1))
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// Scenario:
+// 1. start a client, router and 2 stub batchers (2 shards)
+// 2. send 10 requests by client to router
+// 3. check that the batchers received the expected number of requests
+func TestClientRouterSubmitStreamRequestsAgainstMultipleBatchers(t *testing.T) {
+	numOfShards := 2
+	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), numOfShards)
+
+	err := submitStreamRequests(routerTestSetup.clientConn, 10)
+	require.NoError(t, err)
+
+	recvCond := func() uint32 {
+		receivedTxCount := uint32(0)
+		for i := 0; i < numOfShards; i++ {
+			receivedTxCount += routerTestSetup.batchers[i].ReceivedMessageCount()
+		}
+		return receivedTxCount
+	}
+
+	require.Eventually(t, func() bool {
+		return recvCond() == uint32(10)
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) error {
@@ -178,7 +220,7 @@ func submitRequest(conn *grpc.ClientConn) error {
 	return nil
 }
 
-func createAndStartRouter(t *testing.T, ca tlsgen.CA, batcherEndpoint string) *comm.GRPCServer {
+func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher) *comm.GRPCServer {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
@@ -196,15 +238,18 @@ func createAndStartRouter(t *testing.T, ca tlsgen.CA, batcherEndpoint string) *c
 
 	logger := testutil.CreateLogger(t, 0)
 
-	shards := []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{PartyID: 1, Endpoint: batcherEndpoint, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}}
+	// create router config
+	var shards []config.ShardInfo
+	for j := 0; j < len(batchers); j++ {
+		shards = append(shards, config.ShardInfo{ShardId: types.ShardID(j + 1), Batchers: []config.BatcherInfo{{PartyID: 1, Endpoint: batchers[j].server.Address(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}}})
+	}
+
 	config := config.RouterNodeConfig{
-		PartyID:                       1,
-		TLSCertificateFile:            ckp.Cert,
-		TLSPrivateKeyFile:             ckp.Key,
-		ListenAddress:                 srv.Address(),
-		Shards:                        shards,
-		NumOfConnectionsForBatcher:    0,
-		NumOfgRPCStreamsPerConnection: 0,
+		PartyID:            partyID,
+		TLSCertificateFile: ckp.Cert,
+		TLSPrivateKeyFile:  ckp.Key,
+		ListenAddress:      srv.Address(),
+		Shards:             shards,
 	}
 	router := router.NewRouter(config, logger)
 

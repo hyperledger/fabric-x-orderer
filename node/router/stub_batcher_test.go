@@ -6,6 +6,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"arma/common/types"
+	"arma/testutil"
+
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	protos "arma/node/protos/comm"
@@ -14,12 +17,15 @@ import (
 )
 
 type stubBatcher struct {
-	ca     tlsgen.CA        // Certificate authority that issues a certificate for the batcher
-	server *comm.GRPCServer // GRPCServer instance represents the batcher
-	txs    uint32           // Number of txs received from router
+	ca      tlsgen.CA        // Certificate authority that issues a certificate for the batcher
+	server  *comm.GRPCServer // GRPCServer instance represents the batcher
+	txs     uint32           // Number of txs received from router
+	partyID types.PartyID
+	shardID types.ShardID
+	logger  types.Logger
 }
 
-func NewStubBatcher(t *testing.T, ca tlsgen.CA) stubBatcher {
+func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID types.ShardID) stubBatcher {
 	// create a (cert,key) pair for the batcher
 	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
@@ -36,8 +42,11 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA) stubBatcher {
 
 	// return a stub batcher that includes all server setup
 	stubBatcher := stubBatcher{
-		ca:     ca,
-		server: server,
+		ca:      ca,
+		server:  server,
+		partyID: partyID,
+		shardID: shardID,
+		logger:  testutil.CreateLogger(t, int(shardID)),
 	}
 	return stubBatcher
 }
@@ -91,5 +100,6 @@ func (sb *stubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamSe
 }
 
 func (sb *stubBatcher) ReceivedMessageCount() uint32 {
+	sb.logger.Infof("stub batcher from party %v and shard %v received %v txs\n", sb.partyID, sb.shardID, sb.txs)
 	return atomic.LoadUint32(&sb.txs)
 }
