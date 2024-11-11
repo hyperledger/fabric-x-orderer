@@ -47,6 +47,7 @@ type BFT interface {
 	Start() error
 	HandleMessage(targetID uint64, m *smartbftprotos.Message)
 	HandleRequest(targetID uint64, request []byte)
+	Stop()
 }
 
 type Consensus struct {
@@ -67,6 +68,10 @@ type Consensus struct {
 
 func (c *Consensus) Start() error {
 	return c.BFT.Start()
+}
+
+func (c *Consensus) Stop() {
+	c.BFT.Stop()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {

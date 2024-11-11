@@ -890,3 +890,90 @@ func TestSignProposal(t *testing.T) {
 	_, err = c.VerifyConsenterSig(*sig, proposal)
 	require.NoError(t, err)
 }
+
+func TestConsensusStop(t *testing.T) {
+	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	initialAppContext := &state.BlockHeader{
+		Number:   0,
+		PrevHash: make([]byte, 32),
+		Digest:   make([]byte, 32),
+	}
+
+	initialState := &core.State{
+		ShardCount: 2,
+		N:          1,
+		Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  1,
+		Quorum:     1,
+		AppContext: initialAppContext.Bytes(),
+	}
+
+	nodeIDs := []uint64{1}
+
+	commitEvent := new(sync.WaitGroup)
+	commitEvent.Add(1)
+
+	onCommit := func() {
+		commitEvent.Done()
+	}
+
+	network := make(map[uint64]*Consensus)
+	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, onCommit)
+	defer cleanup()
+	err = c.Start()
+	assert.NoError(t, err)
+
+	// Assemble and verify first proposal
+	dig := make([]byte, 32-3)
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf1, err := batcher.CreateBAF(sk, 1, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+
+	controlEvents1 := []core.ControlEvent{{BAF: baf1}}
+	reqs1 := [][]byte{controlEvents1[0].Bytes()}
+
+	metadata1 := &smartbftprotos.ViewMetadata{LatestSequence: 0}
+	mBytes1, err := proto.Marshal(metadata1)
+	assert.NoError(t, err)
+
+	proposal1 := c.AssembleProposal(mBytes1, reqs1)
+
+	var header state.Header
+	err = header.Deserialize(proposal1.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, arma_types.DecisionNum(0), header.Num)
+
+	signatures1 := []types.Signature{{ID: 1, Value: []byte("sig1")}}
+	c.Deliver(proposal1, signatures1)
+	commitEvent.Wait()
+
+	// Stop and restart consensus node
+	c.Stop()
+	err = c.Start()
+	assert.NoError(t, err)
+
+	// Assemble and verify second proposal
+	commitEvent.Add(1)
+	dig124 := append([]byte{1, 2, 4}, dig...)
+	baf2, err := batcher.CreateBAF(sk, 1, 1, dig124, 1, 2)
+	assert.NoError(t, err)
+
+	controlEvents2 := []core.ControlEvent{{BAF: baf2}}
+	reqs2 := [][]byte{controlEvents2[0].Bytes()}
+	metadata2 := &smartbftprotos.ViewMetadata{LatestSequence: 1}
+	mBytes2, err := proto.Marshal(metadata2)
+	assert.NoError(t, err)
+
+	proposal2 := c.AssembleProposal(mBytes2, reqs2)
+	err = header.Deserialize(proposal2.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, arma_types.DecisionNum(1), header.Num)
+
+	signatures2 := []types.Signature{{ID: 1, Value: []byte("sig2")}}
+	c.Deliver(proposal2, signatures2)
+	commitEvent.Wait()
+}
