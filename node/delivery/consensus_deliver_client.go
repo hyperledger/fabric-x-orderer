@@ -5,13 +5,13 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"arma/common/types"
 	"arma/core"
 	"arma/node/comm"
 	"arma/node/config"
 	"arma/node/consensus/state"
+
+	"github.com/pkg/errors"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -146,6 +146,11 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 	stateHeader := &state.Header{}
 	if err := stateHeader.Deserialize(proposal.Header); err != nil {
 		return nil, nil, errors.Wrapf(err, "failed parsing consensus/state.Header from block: %d", block.GetHeader().GetNumber())
+	}
+
+	if stateHeader.Num == 0 { // this is the genesis block
+		sigs := make([][]smartbft_types.Signature, 1) // no signatures
+		return stateHeader, sigs, nil
 	}
 
 	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableBlocks))

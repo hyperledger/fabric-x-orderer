@@ -6,10 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arma/node/consensus/state"
-
 	"arma/common/types"
 	"arma/core"
+	"arma/node/consensus/state"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"

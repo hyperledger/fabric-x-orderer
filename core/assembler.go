@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/hex"
+	"math"
 	"sync"
 	"time"
 
@@ -112,7 +113,14 @@ func (a *Assembler) processOrderedBatchAttestations() {
 			oba.OrderingInfo(),
 			ShortDigestString(oba.BatchAttestation().Digest()))
 		t1 := time.Now()
-		batch := a.collateAttestationWithBatch(oba.BatchAttestation())
+		var batch Batch
+		if oba.BatchAttestation().Shard() == math.MaxUint16 && oba.BatchAttestation().Primary() == 0 {
+			requests := make(types.BatchedRequests, 1)
+			requests[0] = []byte("placeholder for config tx")
+			batch = types.NewSimpleBatch(0, math.MaxUint16, 0, requests, nil) // TODO create a correct genesis batch
+		} else {
+			batch = a.collateAttestationWithBatch(oba.BatchAttestation())
+		}
 		a.Logger.Infof("Located batch for digest %s within %v", ShortDigestString(oba.BatchAttestation().Digest()), time.Since(t1))
 		a.Ledger.Append(batch, oba.OrderingInfo())
 	}

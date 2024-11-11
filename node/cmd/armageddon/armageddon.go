@@ -1050,6 +1050,11 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo
 				fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
 				os.Exit(3)
 			}
+
+			if block.Header.Number == 0 {
+				continue
+			}
+
 			blockWithTime := BlockWithTime{
 				block:        block,
 				acceptedTime: time.Now(),
@@ -1340,6 +1345,11 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
 			os.Exit(3)
 		}
+
+		if block.Header.Number == 0 {
+			continue
+		}
+
 		currentTime := time.Now()
 		numOfBlocksCalculated += 1
 

@@ -402,9 +402,6 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 
 	lastBlockNumber := lastBlockHeader.Number
 	prevHash := lastBlockHeader.Hash()
-	if lastBlockNumber == math.MaxUint64 { // This is a signal that we bootstrap
-		prevHash = nil
-	}
 
 	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
 

@@ -55,6 +55,28 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) 
 		Signer:         buildSigner(conf, logger),
 	}
 
+	genesisBlocks := make([]state.AvailableBlock, 1)
+	genesisBlocks[0] = state.AvailableBlock{
+		Header: &state.BlockHeader{
+			Number:   0,
+			PrevHash: nil,
+			Digest:   nil, // TODO create a correct digest
+		},
+		Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, nil), // TODO create a correct digest
+	}
+
+	genesisProposal := types.Proposal{
+		Payload: []byte("placeholder for config tx"), // TODO create a correct payload
+		Header: (&state.Header{
+			AvailableBlocks: genesisBlocks,
+			State:           &initialState,
+			Num:             0,
+		}).Serialize(),
+		Metadata: nil, // TODO maybe use this metadata
+	}
+
+	c.Storage.Append(state.DecisionToBytes(genesisProposal, nil))
+
 	c.BFT = createBFT(c)
 
 	c.BFT.Synchronizer = createSynchronizer(consLedger, c)
@@ -245,7 +267,7 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) core.State {
 
 	// TODO set right initial app context
 	initialAppContext := &state.BlockHeader{
-		Number:   math.MaxUint64, // We want the first block to start with 0, this is how we signal bootstrap
+		Number:   0, // We want the first block to start with 0, this is how we signal bootstrap
 		PrevHash: nil,
 		Digest:   nil,
 	}
