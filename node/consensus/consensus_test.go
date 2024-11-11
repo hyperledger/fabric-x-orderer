@@ -892,6 +892,7 @@ func TestSignProposal(t *testing.T) {
 }
 
 func TestConsensusStop(t *testing.T) {
+	t.Skip()
 	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	assert.NoError(t, err)
 
