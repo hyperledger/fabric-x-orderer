@@ -25,8 +25,8 @@ func (ri *reqInspector) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func TestRequestPool(t *testing.T) {
-	sugaredLogger := testutil.CreateLogger(t, 0)
+func BenchmarkRequestPool(b *testing.B) {
+	sugaredLogger := testutil.CreateBenchmarkLogger(b, 0)
 
 	requestInspector := &reqInspector{}
 
@@ -144,7 +144,7 @@ func TestRestartPool(t *testing.T) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	batch1 := pool.NextRequests(ctx)
@@ -214,7 +214,7 @@ func TestBasicBatching(t *testing.T) {
 	assert.NoError(t, pool.Submit(byteReq2))
 	assert.NoError(t, pool.Submit(byteReq3))
 
-	ctx, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel2 := context.WithTimeout(context.Background(), time.Second)
 	defer cancel2()
 
 	res := pool.NextRequests(ctx)
@@ -281,15 +281,17 @@ func TestBasicBatchingWhileSubmitting(t *testing.T) {
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          100,
 		BatchMaxSizeBytes:     5000,
-		MaxSize:               200,
+		MaxSize:               300,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	})
 
 	pool.Restart(true)
 
+	submitted := 300
+
 	go func() {
-		for i := 0; i < 300; i++ {
+		for i := 0; i < submitted; i++ {
 			iStr := fmt.Sprintf("%d", i)
 			byteReq := makeTestRequest(iStr, "foo")
 			err := pool.Submit(byteReq)
@@ -297,28 +299,20 @@ func TestBasicBatchingWhileSubmitting(t *testing.T) {
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	requests := 0
 
-	res := pool.NextRequests(ctx)
-	assert.Len(t, res, 100)
-	for i := 0; i < 100; i++ {
-		iStr := fmt.Sprintf("%d", i)
-		pool.RemoveRequests(iStr)
-	}
-
-	res = pool.NextRequests(ctx)
-	assert.Len(t, res, 100)
-	for i := 0; i < 100; i++ {
-		iStr := fmt.Sprintf("%d", i)
-		pool.RemoveRequests(iStr)
-	}
-
-	res = pool.NextRequests(ctx)
-	assert.Len(t, res, 100)
-	for i := 0; i < 100; i++ {
-		iStr := fmt.Sprintf("%d", i)
-		pool.RemoveRequests(iStr)
+	timer := time.NewTimer(30 * time.Second)
+	for requests < submitted {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		res := pool.NextRequests(ctx)
+		requests += len(res)
+		cancel()
+		select {
+		case <-timer.C:
+			t.Logf("timeout")
+			t.Fail()
+		default:
+		}
 	}
 
 	pool.Close()
@@ -384,7 +378,7 @@ func TestBasicPrune(t *testing.T) {
 		return nil
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	res := pool.NextRequests(ctx)

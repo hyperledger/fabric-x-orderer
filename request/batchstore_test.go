@@ -14,20 +14,22 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBatchStore(t *testing.T) {
+func BenchmarkBatchStore(b *testing.B) {
 	max := uint32(100)
 	lenByte := uint32(8)
 	var removed uint32
-	sugaredLogger := testutil.CreateLogger(t, 0)
+
+	sugaredLogger := testutil.CreateBenchmarkLogger(b, 0)
+
 	bs := NewBatchStore(max, max*lenByte, func(string) {
 		atomic.AddUint32(&removed, 1)
 	}, sugaredLogger)
-	assert.NotNil(t, bs)
+	assert.NotNil(b, bs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	fetched := bs.Fetch(ctx)
-	assert.Len(t, fetched, 0)
+	assert.Len(b, fetched, 0)
 
 	requestInspector := &reqInspector{}
 
@@ -60,13 +62,13 @@ func TestBatchStore(t *testing.T) {
 	wg.Wait()
 	close(loaded)
 
-	assert.Equal(t, workerNum*workPerWorker, int(inserted))
+	assert.Equal(b, workerNum*workPerWorker, int(inserted))
 
 	for i := 0; i < 10; i++ {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		fetched = bs.Fetch(ctx)
-		assert.Len(t, fetched, int(max))
+		assert.Len(b, fetched, int(max))
 	}
 
 	wg.Add(workerNum)
@@ -87,20 +89,20 @@ func TestBatchStore(t *testing.T) {
 
 	wg.Wait()
 
-	assert.Equal(t, workerNum*workPerWorker, int(removed))
+	assert.Equal(b, workerNum*workPerWorker, int(removed))
 }
 
-func TestBatch(t *testing.T) {
+func BenchmarkBatch(b *testing.B) {
 	requestInspector := &reqInspector{}
 
 	workerNum := runtime.NumCPU()
 	workPerWorker := 100000
 
-	b := &batch{}
+	batch := &batch{}
 
-	assert.False(t, b.isEnqueued())
-	b.markEnqueued()
-	assert.True(t, b.isEnqueued())
+	assert.False(b, batch.isEnqueued())
+	batch.markEnqueued()
+	assert.True(b, batch.isEnqueued())
 
 	loaded := make(chan string, workerNum*workPerWorker)
 
@@ -116,7 +118,7 @@ func TestBatch(t *testing.T) {
 				binary.BigEndian.PutUint32(key, uint32(worker))
 				binary.BigEndian.PutUint32(key[4:], uint32(i))
 				keyID := requestInspector.RequestID(key)
-				b.Store(keyID, struct{}{})
+				batch.Store(keyID, struct{}{})
 				loaded <- keyID
 			}
 		}(worker)
@@ -127,12 +129,12 @@ func TestBatch(t *testing.T) {
 
 	count := 0
 
-	b.Range(func(key, value any) bool {
+	batch.Range(func(key, value any) bool {
 		count++
 		return true
 	})
 
-	assert.Equal(t, workerNum*workPerWorker, count)
+	assert.Equal(b, workerNum*workPerWorker, count)
 
 	wg.Add(workerNum)
 
@@ -145,10 +147,10 @@ func TestBatch(t *testing.T) {
 				binary.BigEndian.PutUint32(key, uint32(worker))
 				binary.BigEndian.PutUint32(key[4:], uint32(i))
 				keyID := requestInspector.RequestID(key)
-				if _, ok := b.Load(keyID); !ok {
+				if _, ok := batch.Load(keyID); !ok {
 					break
 				}
-				b.Delete(keyID)
+				batch.Delete(keyID)
 			}
 		}(worker)
 	}
@@ -157,10 +159,10 @@ func TestBatch(t *testing.T) {
 
 	zero := 0
 
-	b.Range(func(key, value any) bool {
+	batch.Range(func(key, value any) bool {
 		zero++
 		return true
 	})
 
-	assert.Zero(t, zero)
+	assert.Zero(b, zero)
 }

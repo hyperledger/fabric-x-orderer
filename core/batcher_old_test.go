@@ -16,8 +16,6 @@ import (
 	"arma/testutil"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type reqInspector struct{}
@@ -206,11 +204,7 @@ func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan core.Batc
 }
 
 func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *core.Batcher {
-	logConfig := zap.NewDevelopmentConfig()
-	logConfig.Level.SetLevel(zapcore.WarnLevel)
-	logger, _ := logConfig.Build()
-	logger = logger.With(zap.String("b", b.Name())).With(zap.Int64("id", int64(nodeID)))
-	sugaredLogger := logger.Sugar()
+	sugaredLogger := testutil.CreateBenchmarkLogger(b, int(nodeID))
 
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{

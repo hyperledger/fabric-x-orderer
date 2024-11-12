@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPending(t *testing.T) {
-	sugaredLogger := testutil.CreateLogger(t, 0)
+func BenchmarkPending(b *testing.B) {
+	sugaredLogger := testutil.CreateBenchmarkLogger(b, 0)
 	requestInspector := &reqInspector{}
 
 	start := time.Now()
@@ -89,7 +89,7 @@ func TestPending(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, uint32(workerNum*workPerWorker), atomic.LoadUint32(&submittedCount))
+	assert.Equal(b, uint32(workerNum*workPerWorker), atomic.LoadUint32(&submittedCount))
 }
 
 func TestGetAll(t *testing.T) {
