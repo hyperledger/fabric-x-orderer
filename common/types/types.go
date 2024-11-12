@@ -14,6 +14,8 @@ type BatchSequence uint64
 type DecisionNum uint64
 
 // BatchID is the tuple that identifies a batch.
+//
+//go:generate counterfeiter -o mocks/batch_id.go . BatchID
 type BatchID interface {
 	// Shard the shard from which this batch was produced.
 	Shard() ShardID

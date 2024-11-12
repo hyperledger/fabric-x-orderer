@@ -1,7 +1,10 @@
 package assembler
 
 import (
+	"fmt"
+
 	"arma/common/types"
+	"arma/core"
 	"arma/node/config"
 )
 
@@ -11,4 +14,12 @@ func partiesFromAssemblerConfig(config config.AssemblerNodeConfig) []types.Party
 		parties = append(parties, types.PartyID(b.PartyID))
 	}
 	return parties
+}
+
+// TODO: use stringer/formatter/gostringer for more general solution
+func BatchToString(batch types.BatchID) string {
+	if batch == nil {
+		return "<NIL BATCH>"
+	}
+	return fmt.Sprintf("Batch<shard: %d, primary: %d, seq: %d, digest: %s>", batch.Shard(), batch.Primary(), batch.Seq(), core.ShortDigestString(batch.Digest()))
 }

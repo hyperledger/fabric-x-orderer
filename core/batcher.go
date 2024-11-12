@@ -27,11 +27,8 @@ type MemPool interface {
 
 //go:generate counterfeiter -o mocks/batch.go . Batch
 type Batch interface {
-	Digest() []byte
+	types.BatchID
 	Requests() types.BatchedRequests
-	Primary() types.PartyID
-	Shard() types.ShardID
-	Seq() types.BatchSequence
 }
 
 //go:generate counterfeiter -o mocks/batch_puller.go . BatchPuller
