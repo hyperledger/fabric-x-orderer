@@ -279,10 +279,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	c.BFTConfig.SelfID = uint64(partyID)
 	c.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
 
-	wal, err := wal.Create(l, dir, &wal.Options{
-		FileSizeBytes:   wal.FileSizeBytesDefault,
-		BufferSizeBytes: wal.BufferSizeBytesDefault,
-	})
+	bftWAL, walInitState, err := wal.InitializeAndReadAll(l, dir, wal.DefaultOptions())
 	assert.NoError(t, err)
 
 	c.BFT = &consensus.Consensus{
@@ -294,7 +291,8 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Assembler:         c,
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
-		WAL:               wal,
+		WAL:               bftWAL,
+		WALInitialContent: walInitState,
 		Config:            c.BFTConfig,
 		Verifier:          c,
 		Comm: &mockComm{
