@@ -101,24 +101,22 @@ func buildSigner(conf config.ConsenterNodeConfig, logger arma_types.Logger) Sign
 }
 
 func createBFT(c *Consensus) *consensus.Consensus {
-	wal, err := wal.Create(c.Logger, filepath.Join(c.Config.Directory, "wal"), &wal.Options{
-		FileSizeBytes:   wal.FileSizeBytesDefault,
-		BufferSizeBytes: wal.BufferSizeBytesDefault,
-	})
+	bftWAL, walInitState, err := wal.InitializeAndReadAll(c.Logger, filepath.Join(c.Config.Directory, "wal"), wal.DefaultOptions())
 	if err != nil {
-		c.Logger.Panicf("Failed creating WAL: %v", err)
+		c.Logger.Panicf("Failed creating BFT WAL: %v", err)
 	}
 
 	return &consensus.Consensus{
 		Config:            c.BFTConfig,
 		Application:       c,
 		Assembler:         c,
-		WAL:               wal,
+		WAL:               bftWAL,
+		WALInitialContent: walInitState,
 		Signer:            c,
 		Verifier:          c,
 		RequestInspector:  c,
 		Logger:            c.Logger,
-		Metadata:          &smartbftprotos.ViewMetadata{},
+		Metadata:          &smartbftprotos.ViewMetadata{}, // TODO use current metadata
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 	}
