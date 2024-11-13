@@ -16,11 +16,14 @@ import (
 	"github.com/pkg/errors"
 )
 
+//go:generate counterfeiter -o mocks/append_listener.go . AppendListener
 type AppendListener interface {
 	OnAppend(block *common.Block)
 }
 
 type ConsensusLedger struct {
+	blockStore     *blkstorage.BlockStore
+	provider       *blkstorage.BlockStoreProvider
 	prevHash       []byte
 	ledger         blockledger.ReadWriter
 	appendListener AppendListener
@@ -36,23 +39,29 @@ func NewConsensusLedger(ledgerDir string) (*ConsensusLedger, error) {
 		return nil, errors.Wrap(err, "failed creating block provider")
 	}
 
-	consensusLedger, err := provider.Open("consensus")
+	blockStore, err := provider.Open("consensus")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed creating consensus ledger")
 	}
 
-	fl := fileledger.NewFileLedger(consensusLedger)
-	consLedger := newConsensusLedger(fl)
+	fl := fileledger.NewFileLedger(blockStore)
 
-	return consLedger, nil
-}
-
-func newConsensusLedger(rwLedger blockledger.ReadWriter) *ConsensusLedger {
-	l := &ConsensusLedger{
-		ledger: rwLedger,
+	consensusLedger := &ConsensusLedger{
+		blockStore: blockStore,
+		provider:   provider,
+		ledger:     fl,
 	}
 
-	return l
+	height := fl.Height()
+	if height > 0 {
+		block, err := fl.RetrieveBlockByNumber(height - 1)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed retrieving last block")
+		}
+		consensusLedger.prevHash = protoutil.BlockHeaderHash(block.Header)
+	}
+
+	return consensusLedger, nil
 }
 
 func (l *ConsensusLedger) RegisterAppendListener(listener AppendListener) {
@@ -104,4 +113,9 @@ func (c *ConsensusLedger) Height() uint64 {
 
 func (c *ConsensusLedger) RetrieveBlockByNumber(blockNumber uint64) (*common.Block, error) {
 	return c.ledger.RetrieveBlockByNumber(blockNumber)
+}
+
+func (c *ConsensusLedger) Close() {
+	c.blockStore.Shutdown()
+	c.provider.Close()
 }
