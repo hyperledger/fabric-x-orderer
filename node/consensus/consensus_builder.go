@@ -42,17 +42,31 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) 
 
 	bftConfig := createBFTconfig(conf)
 
+	dbDir := filepath.Join(conf.Directory, "batchDB")
+	os.MkdirAll(dbDir, 0o755)
+
+	badb, err := badb.NewBatchAttestationDB(dbDir, logger)
+	if err != nil {
+		logger.Panicf("Failed creating Batch attestation DB: %v", err)
+	}
+
 	c := &Consensus{
 		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
 		Config:         conf,
 		BFTConfig:      bftConfig,
-		Arma:           createConsenter(conf, logger, &initialState),
-		Logger:         logger,
-		State:          &initialState,
-		CurrentNodes:   currentNodes,
-		Storage:        consLedger,
-		SigVerifier:    buildVerifier(conf.Consenters, conf.Shards, logger),
-		Signer:         buildSigner(conf, logger),
+		Arma: &core.Consenter{
+			State:           &initialState,
+			DB:              badb,
+			Logger:          logger,
+			BAFDeserializer: &state.BAFDeserializer{},
+		},
+		BADB:         badb,
+		Logger:       logger,
+		State:        &initialState,
+		CurrentNodes: currentNodes,
+		Storage:      consLedger,
+		SigVerifier:  buildVerifier(conf.Consenters, conf.Shards, logger),
+		Signer:       buildSigner(conf, logger),
 	}
 
 	genesisBlocks := make([]state.AvailableBlock, 1)
@@ -166,23 +180,6 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 	}()
 
 	return synchronizer
-}
-
-func createConsenter(conf config.ConsenterNodeConfig, logger arma_types.Logger, initState *core.State) *core.Consenter {
-	dbDir := filepath.Join(conf.Directory, "batchDB")
-	os.MkdirAll(dbDir, 0o755)
-
-	db, err := badb.NewBatchAttestationDB(dbDir, logger)
-	if err != nil {
-		logger.Panicf("Failed creating Batch attestation DB: %v", err)
-	}
-
-	return &core.Consenter{
-		State:           initState,
-		DB:              db,
-		Logger:          logger,
-		BAFDeserializer: &state.BAFDeserializer{},
-	}
 }
 
 func createBFTconfig(conf config.ConsenterNodeConfig) types.Configuration {

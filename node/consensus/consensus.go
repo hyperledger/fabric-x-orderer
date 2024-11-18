@@ -11,6 +11,7 @@ import (
 
 	arma_types "arma/common/types"
 	"arma/core"
+	"arma/core/badb"
 	"arma/node/comm"
 	"arma/node/config"
 	"arma/node/consensus/state"
@@ -27,6 +28,7 @@ import (
 
 type Storage interface {
 	Append([]byte)
+	Close()
 }
 
 type Signer interface {
@@ -60,6 +62,7 @@ type Consensus struct {
 	BFTConfig    types.Configuration
 	BFT          *consensus.Consensus
 	Storage      Storage
+	BADB         *badb.BatchAttestationDB
 	Arma         Arma
 	stateLock    sync.Mutex
 	State        *core.State
@@ -72,6 +75,8 @@ func (c *Consensus) Start() error {
 
 func (c *Consensus) Stop() {
 	c.BFT.Stop()
+	c.BADB.Close()
+	c.Storage.Close()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {

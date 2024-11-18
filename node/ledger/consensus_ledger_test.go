@@ -46,6 +46,7 @@ func TestConsensusLedger(t *testing.T) {
 	require.Equal(t, 1, listener.OnAppendCallCount())
 
 	l.Close()
+	l.Close() // make sure there is no issue closing again
 
 	l, err = ledger.NewConsensusLedger(dir)
 	require.NoError(t, err)

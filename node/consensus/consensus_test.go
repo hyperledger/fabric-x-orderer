@@ -274,6 +274,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		CurrentNodes: nodes,
 		Storage:      &commitInterceptor{Storage: make(mockStorage, 100), f: onCommit},
 		Arma:         consenter,
+		BADB:         db,
 	}
 
 	c.BFTConfig.SelfID = uint64(partyID)
@@ -303,6 +304,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	}
 
 	return c, func() {
+		c.Stop()
 		os.RemoveAll(dir)
 	}
 }
@@ -332,6 +334,8 @@ type mockStorage chan []byte
 func (m mockStorage) Append(bytes []byte) {
 	m <- bytes
 }
+
+func (m mockStorage) Close() {}
 
 type commitInterceptor struct {
 	Storage
