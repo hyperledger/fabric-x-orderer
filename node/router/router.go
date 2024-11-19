@@ -128,7 +128,7 @@ func createRouter(shardIDs []types.ShardID,
 		for {
 			time.Sleep(time.Second * 10)
 			tps := atomic.LoadUint64(&r.incoming)
-			r.logger.Infof("Received %d transactions", tps/10)
+			r.logger.Infof("Received %d transactions per second", tps/10)
 			atomic.StoreUint64(&r.incoming, 0)
 		}
 	}()
@@ -163,6 +163,9 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		if err != nil {
 			return err
 		}
+
+		atomic.AddUint64(&r.incoming, 1)
+
 		reqID, router := r.getRouterAndReqID(req)
 
 		trace := createTraceID(rand)
@@ -193,6 +196,7 @@ func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 }
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	atomic.AddUint64(&r.incoming, 1)
 	for _, shardId := range r.shardIDs {
 		r.shardRouters[shardId].maybeInit()
 	}

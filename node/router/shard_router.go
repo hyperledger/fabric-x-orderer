@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/connectivity"
+
 	"arma/common/types"
 	"arma/node/comm"
 	protos "arma/node/protos/comm"
@@ -42,8 +44,8 @@ func NewShardRouter(l types.Logger,
 		logger:                       l,
 		batcherEndpoint:              batcherEndpoint,
 		batcherRootCAs:               batcherRootCAs,
-		router2batcherStreamsPerConn: numOfConnectionsForBatcher,
-		router2batcherConnPoolSize:   numOfgRPCStreamsPerConnection,
+		router2batcherStreamsPerConn: numOfgRPCStreamsPerConnection,
+		router2batcherConnPoolSize:   numOfConnectionsForBatcher,
 	}
 
 	return sr
@@ -136,7 +138,7 @@ func (sr *ShardRouter) replenishNeeded() bool {
 	return createConnNeeded
 }
 
-func (sr *ShardRouter) replenishConnPool() {
+func (sr *ShardRouter) replenishConnPool() error {
 	sr.lock.Lock()
 	defer sr.lock.Unlock()
 
@@ -157,15 +159,21 @@ func (sr *ShardRouter) replenishConnPool() {
 	}
 
 	for i, conn := range sr.connPool {
-		if conn == nil {
+		if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
+			sr.logger.Infof("Establishing connection %d to %s", i, sr.batcherEndpoint)
 			conn, err := cc.Dial(sr.batcherEndpoint)
 			if err != nil {
 				sr.logger.Errorf("Failed connecting to %s: %v", sr.batcherEndpoint, err)
-			} else {
-				sr.connPool[i] = conn
+				return fmt.Errorf("failed connecting to %s: %v", sr.batcherEndpoint, err)
 			}
+			if sr.connPool[i] != nil {
+				sr.connPool[i].Close() // Close the old connection
+			}
+			sr.logger.Infof("Connection %d to %s was replenished", i, sr.batcherEndpoint)
+			sr.connPool[i] = conn
 		}
 	}
+	return nil
 }
 
 func (sr *ShardRouter) initStreams() {
