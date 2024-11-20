@@ -85,7 +85,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 func (r *Router) init() {
 	for _, shardId := range r.shardIDs {
-		r.shardRouters[shardId].maybeInit()
+		r.shardRouters[shardId].MaybeInit()
 	}
 }
 
@@ -136,10 +136,14 @@ func createRouter(shardIDs []types.ShardID,
 	return r
 }
 
-type response struct {
+type Response struct {
 	err   error
 	reqID []byte
 	*protos.SubmitResponse
+}
+
+func (resp *Response) GetResponseError() error {
+	return resp.err
 }
 
 func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
@@ -152,7 +156,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		close(exit)
 	}()
 
-	feedbackChan := make(chan response, 100)
+	feedbackChan := make(chan Response, 100)
 	go r.sendFeedbackRequestStream(stream, exit, feedbackChan)
 
 	for {
@@ -170,7 +174,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		trace := createTraceID(rand)
 
-		router.forward(reqID, req.Payload, feedbackChan, trace)
+		router.Forward(reqID, req.Payload, feedbackChan, trace)
 	}
 }
 
@@ -198,15 +202,15 @@ func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	atomic.AddUint64(&r.incoming, 1)
 	for _, shardId := range r.shardIDs {
-		r.shardRouters[shardId].maybeInit()
+		r.shardRouters[shardId].MaybeInit()
 	}
 
 	reqID, router := r.getRouterAndReqID(request)
 
 	trace := createTraceID(nil)
 
-	feedbackChan := make(chan response, 1)
-	router.forward(reqID, request.Payload, feedbackChan, trace)
+	feedbackChan := make(chan Response, 1)
+	router.Forward(reqID, request.Payload, feedbackChan, trace)
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)
 
@@ -226,7 +230,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 // 	}
 // }
 
-func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, errors chan response) {
+func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, errors chan Response) {
 	for {
 		select {
 		case <-exit:
@@ -249,7 +253,7 @@ func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitS
 // 	return resp
 // }
 
-func prepareRequestResponse(response *response) *protos.SubmitResponse {
+func prepareRequestResponse(response *Response) *protos.SubmitResponse {
 	resp := &protos.SubmitResponse{
 		ReqID: response.reqID,
 	}

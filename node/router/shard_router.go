@@ -73,7 +73,7 @@ func (sr *ShardRouter) forwardBestEffort(reqID, request []byte) error {
 	return nil
 }
 
-func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, trace []byte) {
+func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, trace []byte) {
 	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
 	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % sr.router2batcherStreamsPerConn
 
@@ -86,7 +86,7 @@ func (sr *ShardRouter) forward(reqID, request []byte, responses chan response, t
 	}
 
 	if stream == nil || stream.faulty() {
-		responses <- response{
+		responses <- Response{
 			err:   fmt.Errorf("could not establish stream to %s", sr.batcherEndpoint),
 			reqID: reqID,
 		}
@@ -114,7 +114,7 @@ func (sr *ShardRouter) maybeInitStream(connIndex int, streamInConnIndex int) *st
 	return stream
 }
 
-func (sr *ShardRouter) maybeInit() {
+func (sr *ShardRouter) MaybeInit() {
 	sr.initConnPoolAndStreamsOnce()
 	sr.maybeConnect()
 }
@@ -134,6 +134,7 @@ func (sr *ShardRouter) replenishNeeded() bool {
 	for _, conn := range sr.connPool {
 		createConnNeeded = createConnNeeded || conn == nil
 	}
+	createConnNeeded = createConnNeeded || len(sr.connPool) == 0
 	sr.lock.RUnlock()
 	return createConnNeeded
 }
@@ -203,7 +204,7 @@ func (sr *ShardRouter) initStream(i int, j int) {
 		s := &stream{
 			endpoint:                           sr.batcherEndpoint,
 			logger:                             sr.logger,
-			m:                                  make(map[string]chan response),
+			requestTraceIdToResponseChannel:    make(map[string]chan Response),
 			requests:                           make(chan *protos.Request, 1000),
 			RequestTransmit_SubmitStreamClient: newStream,
 			cancelThisStream:                   cancel,
