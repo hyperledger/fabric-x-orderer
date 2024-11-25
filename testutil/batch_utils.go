@@ -55,9 +55,9 @@ func CreateMockBatchId(shard types.ShardID, primary types.PartyID, seq types.Bat
 	return batchId
 }
 
-func AssertBatchIdsEquals(t *testing.T, batchId types.BatchID, otherBatchId types.BatchID) {
-	require.Equal(t, batchId.Shard(), otherBatchId.Shard())
-	require.Equal(t, batchId.Primary(), otherBatchId.Primary())
-	require.Equal(t, batchId.Seq(), otherBatchId.Seq())
-	require.Equal(t, batchId.Digest(), otherBatchId.Digest())
+func AssertBatchIdsEquals(t *testing.T, expectedBatchId, actualBatchId types.BatchID) {
+	require.Equal(t, expectedBatchId.Shard(), actualBatchId.Shard())
+	require.Equal(t, expectedBatchId.Primary(), actualBatchId.Primary())
+	require.Equal(t, expectedBatchId.Seq(), actualBatchId.Seq())
+	require.Equal(t, expectedBatchId.Digest(), actualBatchId.Digest())
 }

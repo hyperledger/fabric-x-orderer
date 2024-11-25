@@ -4,4 +4,7 @@ import (
 	"errors"
 )
 
-var ErrBatchNotExists = errors.New("batch not exists")
+var (
+	ErrBatchAlreadyExists = errors.New("batch already exists")
+	ErrBatchDoesNotExist  = errors.New("batch does not exist")
+)
