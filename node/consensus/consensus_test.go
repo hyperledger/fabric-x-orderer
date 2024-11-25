@@ -164,7 +164,8 @@ func TestConsensus(t *testing.T) {
 				onCommit := func() {
 					tst.commitEvent.Done()
 				}
-				c, cleanup := makeConsensusNode(t, sks[i-1], arma_types.PartyID(i), network, initialState, nodeIDs, verifier, onCommit)
+				dir := t.TempDir()
+				c, cleanup := makeConsensusNode(t, sks[i-1], arma_types.PartyID(i), network, initialState, nodeIDs, verifier, onCommit, dir)
 				network[uint64(i)] = c
 				cleanups = append(cleanups, cleanup)
 			}
@@ -243,15 +244,12 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func()) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func(), dir string) (*Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
 		verifier[crypto.ShardPartyKey{Party: partyID, Shard: shard}] = signer.PublicKey
 	}
-
-	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
-	assert.NoError(t, err)
 
 	l := testutil.CreateLogger(t, int(partyID))
 
@@ -893,8 +891,9 @@ func TestSignProposal(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestConsensusStop(t *testing.T) {
-	t.Skip()
+func TestConsensusStartStop(t *testing.T) {
+	dir := t.TempDir()
+
 	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	assert.NoError(t, err)
 
@@ -918,65 +917,105 @@ func TestConsensusStop(t *testing.T) {
 	nodeIDs := []uint64{1}
 
 	commitEvent := new(sync.WaitGroup)
-	commitEvent.Add(1)
-
 	onCommit := func() {
 		commitEvent.Done()
 	}
 
 	network := make(map[uint64]*Consensus)
-	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, onCommit)
+
+	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, onCommit, dir)
 	defer cleanup()
+
 	err = c.Start()
 	assert.NoError(t, err)
 
-	// Assemble and verify first proposal
+	// 1. Valid request
+	commitEvent.Add(1)
 	dig := make([]byte, 32-3)
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf1, err := batcher.CreateBAF(sk, 1, 1, dig123, 1, 1)
+	baf123id1p1s1, err := batcher.CreateBAF(sk, 1, 1, dig123, 1, 1)
 	assert.NoError(t, err)
 
-	controlEvents1 := []core.ControlEvent{{BAF: baf1}}
-	reqs1 := [][]byte{controlEvents1[0].Bytes()}
-
-	metadata1 := &smartbftprotos.ViewMetadata{LatestSequence: 0}
-	mBytes1, err := proto.Marshal(metadata1)
-	assert.NoError(t, err)
-
-	proposal1 := c.AssembleProposal(mBytes1, reqs1)
-
-	var header state.Header
-	err = header.Deserialize(proposal1.Header)
-	assert.NoError(t, err)
-	assert.Equal(t, arma_types.DecisionNum(0), header.Num)
-
-	signatures1 := []types.Signature{{ID: 1, Value: []byte("sig1")}}
-	c.Deliver(proposal1, signatures1)
+	ce1 := &core.ControlEvent{BAF: baf123id1p1s1}
+	c.SubmitRequest(ce1.Bytes())
 	commitEvent.Wait()
 
-	// Stop and restart consensus node
+	rawDecision := <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
+	decision, _, err := state.BytesToDecision(rawDecision)
+	assert.NoError(t, err)
+
+	hdr := &state.Header{}
+	err = hdr.Deserialize(decision.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(hdr.AvailableBlocks))
 	c.Stop()
+
+	c, cleanup = makeConsensusNode(t, sk, arma_types.PartyID(1), network, c.State, nodeIDs, verifier, onCommit, dir)
+	defer cleanup()
+
 	err = c.Start()
 	assert.NoError(t, err)
 
-	// Assemble and verify second proposal
+	// 2. Verify handling duplicates after recovery node
 	commitEvent.Add(1)
-	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf2, err := batcher.CreateBAF(sk, 1, 1, dig124, 1, 2)
-	assert.NoError(t, err)
-
-	controlEvents2 := []core.ControlEvent{{BAF: baf2}}
-	reqs2 := [][]byte{controlEvents2[0].Bytes()}
-	metadata2 := &smartbftprotos.ViewMetadata{LatestSequence: 1}
-	mBytes2, err := proto.Marshal(metadata2)
-	assert.NoError(t, err)
-
-	proposal2 := c.AssembleProposal(mBytes2, reqs2)
-	err = header.Deserialize(proposal2.Header)
-	assert.NoError(t, err)
-	assert.Equal(t, arma_types.DecisionNum(1), header.Num)
-
-	signatures2 := []types.Signature{{ID: 1, Value: []byte("sig2")}}
-	c.Deliver(proposal2, signatures2)
+	c.SubmitRequest(ce1.Bytes())
 	commitEvent.Wait()
+
+	digests, _ := c.BADB.List()
+	assert.Equal(t, 1, len(digests))
+	assert.Contains(t, digests, dig123)
+
+	c.Stop()
+
+	c, cleanup = makeConsensusNode(t, sk, arma_types.PartyID(1), network, c.State, nodeIDs, verifier, onCommit, dir)
+	defer cleanup()
+
+	err = c.Start()
+	assert.NoError(t, err)
+
+	// 3. Valid request after recovery node
+	// TODO: Update to 1 when the test uses a real ledger
+	// Using 2 because WAL is restored but the ledger is not
+	commitEvent.Add(2)
+	dig124 := append([]byte{1, 2, 4}, dig...)
+	baf124id1p1s2, err := batcher.CreateBAF(sk, 1, 1, dig124, 1, 2)
+	assert.NoError(t, err)
+
+	ce2 := &core.ControlEvent{BAF: baf124id1p1s2}
+	c.SubmitRequest(ce2.Bytes())
+	commitEvent.Wait()
+
+	rawDecision = <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
+	decision, _, err = state.BytesToDecision(rawDecision)
+	assert.NoError(t, err)
+
+	err = hdr.Deserialize(decision.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(hdr.AvailableBlocks))
+
+	rawDecision = <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
+	decision, _, err = state.BytesToDecision(rawDecision)
+	assert.NoError(t, err)
+
+	err = hdr.Deserialize(decision.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(hdr.AvailableBlocks))
+
+	// 4. Verify duplicate dig123 is handled correctly by BADB
+	commitEvent.Add(1)
+	c.SubmitRequest(ce1.Bytes())
+	commitEvent.Wait()
+
+	digests, _ = c.BADB.List()
+	assert.Equal(t, 2, len(digests))
+	assert.Contains(t, digests, dig123)
+	assert.Contains(t, digests, dig124)
+
+	rawDecision = <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
+	decision, _, err = state.BytesToDecision(rawDecision)
+	assert.NoError(t, err)
+
+	err = hdr.Deserialize(decision.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(hdr.AvailableBlocks))
 }
