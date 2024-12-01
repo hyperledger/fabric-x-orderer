@@ -202,13 +202,13 @@ func (sr *ShardRouter) initStream(i int, j int) {
 	newStream, err := client.SubmitStream(context.Background())
 	if err == nil {
 		s := &stream{
-			endpoint:                           sr.batcherEndpoint,
-			logger:                             sr.logger,
-			requestTraceIdToResponseChannel:    make(map[string]chan Response),
-			requests:                           make(chan *protos.Request, 1000),
-			RequestTransmit_SubmitStreamClient: newStream,
-			cancelThisStream:                   cancel,
-			ctx:                                ctx,
+			endpoint:                          sr.batcherEndpoint,
+			logger:                            sr.logger,
+			requestTraceIdToResponseChannel:   make(map[string]chan Response),
+			requests:                          make(chan *protos.Request, 1000),
+			requestTransmitSubmitStreamClient: newStream,
+			cancelFunc:                        cancel,
+			ctx:                               ctx,
 		}
 		go s.sendRequests()
 		go s.readResponses()

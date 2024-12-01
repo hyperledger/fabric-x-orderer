@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"arma/common/types"
@@ -9,15 +10,15 @@ import (
 )
 
 type stream struct {
-	endpoint string
-	logger   types.Logger
-	protos.RequestTransmit_SubmitStreamClient
-	ctx                             context.Context
-	once                            sync.Once
-	cancelThisStream                func()
-	requests                        chan *protos.Request
-	lock                            sync.Mutex
-	requestTraceIdToResponseChannel map[string]chan Response
+	endpoint                          string
+	logger                            types.Logger
+	requestTransmitSubmitStreamClient protos.RequestTransmit_SubmitStreamClient
+	ctx                               context.Context
+	once                              sync.Once
+	cancelFunc                        func()
+	requests                          chan *protos.Request
+	lock                              sync.Mutex
+	requestTraceIdToResponseChannel   map[string]chan Response
 }
 
 // readResponses listens for responses from the batcher.
@@ -25,7 +26,7 @@ type stream struct {
 // If the batcher is not alive, Recv return an error and the cancellation method is applied to mark the stream as faulty.
 func (s *stream) readResponses() {
 	for {
-		resp, err := s.Recv()
+		resp, err := s.requestTransmitSubmitStreamClient.Recv()
 		if err != nil {
 			s.cancel()
 			return
@@ -36,6 +37,7 @@ func (s *stream) readResponses() {
 		delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
 		s.lock.Unlock()
 		if exists {
+			s.logger.Debugf("read response from batcher %v on request with trace id %x", s.endpoint, resp.TraceId)
 			ch <- Response{
 				SubmitResponse: resp,
 			}
@@ -47,16 +49,18 @@ func (s *stream) readResponses() {
 func (s *stream) sendRequests() {
 	for {
 		msg := <-s.requests
-		err := s.Send(msg)
+		s.logger.Debugf("send request with trace id %v to the batcher %x", msg.TraceId, s.endpoint)
+		err := s.requestTransmitSubmitStreamClient.Send(msg)
 		if err != nil {
-			s.logger.Errorf("Failed sending to %s", s.endpoint)
+			s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+			s.cancel()
 			return
 		}
 	}
 }
 
 func (s *stream) cancel() {
-	s.once.Do(s.cancelThisStream)
+	s.once.Do(s.cancelFunc)
 }
 
 // faulty returns true if the stream is faulty, else return false.
@@ -75,4 +79,54 @@ func (s *stream) registerReply(traceID []byte, responses chan Response) {
 	defer s.lock.Unlock()
 
 	s.requestTraceIdToResponseChannel[string(traceID)] = responses
+}
+
+// RenewStream creates a new stream that inherits the map and the requests channel
+// TODO: this method does not work and will be fixed in the next PR
+func (s *stream) renewStream(client protos.RequestTransmitClient) (*stream, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	newGRPCStream, err := client.SubmitStream(context.Background())
+	if err != nil {
+		s.logger.Errorf("Failed establishing a new stream")
+		cancel()
+		return nil, fmt.Errorf("failed establishing a new stream: %w", err)
+	}
+
+	newStream := &stream{
+		endpoint:                          s.endpoint,
+		logger:                            s.logger,
+		requestTransmitSubmitStreamClient: newGRPCStream,
+		ctx:                               ctx,
+		cancelFunc:                        cancel,
+		requests:                          s.requests,
+		requestTraceIdToResponseChannel:   s.requestTraceIdToResponseChannel,
+	}
+
+	s.logger.Infof("renew stream")
+	go newStream.sendRequests()
+	go newStream.readResponses()
+
+	return newStream, nil
+}
+
+// isRequestRegistered is only used for testing to validate that a request has been recorded in the map
+func (s *stream) isRequestRegistered(traceID []byte) (chan Response, bool) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	respChan, exists := s.requestTraceIdToResponseChannel[string(traceID)]
+	return respChan, exists
+}
+
+// getMap is only used for testing
+func (s *stream) getMap() map[string]chan Response {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.requestTraceIdToResponseChannel
+}
+
+// getRequests is only used for testing
+func (s *stream) getRequests() chan *protos.Request {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.requests
 }
