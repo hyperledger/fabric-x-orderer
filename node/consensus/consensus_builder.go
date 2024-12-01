@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
+	"google.golang.org/protobuf/proto"
 )
 
 func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) *Consensus {
@@ -33,14 +34,12 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) 
 		currentNodes = append(currentNodes, uint64(node.PartyID))
 	}
 
-	initialState := initialStateFromConfig(conf)
-
 	consLedger, err := ledger.NewConsensusLedger(conf.Directory)
 	if err != nil {
 		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	bftConfig := createBFTconfig(conf)
+	initialState, metadata := getInitialStateAndMetadata(conf, consLedger)
 
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
@@ -53,49 +52,26 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) 
 	c := &Consensus{
 		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
 		Config:         conf,
-		BFTConfig:      bftConfig,
+		BFTConfig:      createBFTconfig(conf),
 		Arma: &core.Consenter{
-			State:           &initialState,
+			State:           initialState,
 			DB:              badb,
 			Logger:          logger,
 			BAFDeserializer: &state.BAFDeserializer{},
 		},
 		BADB:         badb,
 		Logger:       logger,
-		State:        &initialState,
+		State:        initialState,
 		CurrentNodes: currentNodes,
 		Storage:      consLedger,
 		SigVerifier:  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:       buildSigner(conf, logger),
 	}
 
-	genesisBlocks := make([]state.AvailableBlock, 1)
-	genesisBlocks[0] = state.AvailableBlock{
-		Header: &state.BlockHeader{
-			Number:   0,
-			PrevHash: nil,
-			Digest:   nil, // TODO create a correct digest
-		},
-		Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, nil), // TODO create a correct digest
-	}
-
-	genesisProposal := types.Proposal{
-		Payload: []byte("placeholder for config tx"), // TODO create a correct payload
-		Header: (&state.Header{
-			AvailableBlocks: genesisBlocks,
-			State:           &initialState,
-			Num:             0,
-		}).Serialize(),
-		Metadata: nil, // TODO maybe use this metadata
-	}
-
-	c.Storage.Append(state.DecisionToBytes(genesisProposal, nil))
-
-	c.BFT = createBFT(c)
-
-	c.BFT.Synchronizer = createSynchronizer(consLedger, c)
-
-	setupComm(c, getOurIdentity(conf.Consenters, arma_types.PartyID(conf.PartyId)))
+	c.BFT = createBFT(c, metadata)
+	setupComm(c)
+	c.Synchronizer = createSynchronizer(consLedger, c)
+	c.BFT.Synchronizer = c.Synchronizer
 
 	return c
 }
@@ -114,7 +90,7 @@ func buildSigner(conf config.ConsenterNodeConfig, logger arma_types.Logger) Sign
 	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }
 
-func createBFT(c *Consensus) *consensus.Consensus {
+func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata) *consensus.Consensus {
 	bftWAL, walInitState, err := wal.InitializeAndReadAll(c.Logger, filepath.Join(c.Config.Directory, "wal"), wal.DefaultOptions())
 	if err != nil {
 		c.Logger.Panicf("Failed creating BFT WAL: %v", err)
@@ -130,7 +106,7 @@ func createBFT(c *Consensus) *consensus.Consensus {
 		Verifier:          c,
 		RequestInspector:  c,
 		Logger:            c.Logger,
-		Metadata:          &smartbftprotos.ViewMetadata{}, // TODO use current metadata
+		Metadata:          m,
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 	}
@@ -157,15 +133,7 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 		memStore: make(map[uint64]*common.Block),
 		cc:       c.clientConfig(),
 		logger:   c.Logger,
-		endpoint: func() string {
-			leader := c.BFT.GetLeaderID()
-			for i, node := range c.BFT.Comm.Nodes() {
-				if node == leader {
-					return c.Config.Consenters[i].Endpoint
-				}
-			}
-			return ""
-		},
+		endpoint: c.pickEndpoint,
 		nextSeq: func() uint64 {
 			return ledger.Height()
 		},
@@ -232,20 +200,38 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getOurIdentity(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID) []byte {
-	var myIdentity []byte
-	for _, ci := range consenterInfos {
-		pk := ci.PublicKey
-
-		if ci.PartyID == partyID {
-			myIdentity = pk
-			break
-		}
+func getInitialStateAndMetadata(config config.ConsenterNodeConfig, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata) {
+	height := ledger.Height()
+	if height == 0 {
+		initState := initialStateFromConfig(config)
+		createAndAppendGenesisBlock(initState, ledger)
+		return initState, &smartbftprotos.ViewMetadata{}
 	}
-	return myIdentity
+
+	block, err := ledger.RetrieveBlockByNumber(height - 1)
+	if err != nil {
+		panic("couldn't retrieve last block from ledger")
+	}
+
+	proposal, _, err := state.BytesToDecision(block.Data.Data[0])
+	if err != nil {
+		panic("couldn't read decision from last block")
+	}
+
+	md := &smartbftprotos.ViewMetadata{}
+	if err := proto.Unmarshal(proposal.Metadata, md); err != nil {
+		panic(err)
+	}
+
+	header := &state.Header{}
+	if err := header.Deserialize(proposal.Header); err != nil {
+		panic(err)
+	}
+
+	return header.State, md
 }
 
-func initialStateFromConfig(config config.ConsenterNodeConfig) core.State {
+func initialStateFromConfig(config config.ConsenterNodeConfig) *core.State {
 	var initState core.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
@@ -268,7 +254,31 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) core.State {
 	}
 	initState.AppContext = initialAppContext.Bytes()
 
-	return initState
+	return &initState
+}
+
+func createAndAppendGenesisBlock(initState *core.State, ledger *ledger.ConsensusLedger) {
+	genesisBlocks := make([]state.AvailableBlock, 1)
+	genesisBlocks[0] = state.AvailableBlock{
+		Header: &state.BlockHeader{
+			Number:   0,
+			PrevHash: nil,
+			Digest:   nil, // TODO create a correct digest
+		},
+		Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, nil), // TODO create a correct digest
+	}
+
+	genesisProposal := types.Proposal{
+		Payload: []byte("placeholder for config tx"), // TODO create a correct payload
+		Header: (&state.Header{
+			AvailableBlocks: genesisBlocks,
+			State:           initState,
+			Num:             0,
+		}).Serialize(),
+		Metadata: nil, // TODO maybe use this metadata
+	}
+
+	ledger.Append(state.DecisionToBytes(genesisProposal, nil))
 }
 
 func (c *Consensus) clientConfig() comm.ClientConfig {
@@ -302,7 +312,8 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 	return cc
 }
 
-func setupComm(c *Consensus, selfID []byte) {
+func setupComm(c *Consensus) {
+	selfID := getSelfID(c.Config.Consenters, c.Config.PartyId)
 	c.ClusterService = &comm.ClusterService{
 		Logger:                           c.Logger,
 		CertExpWarningThreshold:          time.Hour,
@@ -359,4 +370,17 @@ func setupComm(c *Consensus, selfID []byte) {
 			Comm:          commAuth,
 		},
 	}
+}
+
+func getSelfID(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID) []byte {
+	var myIdentity []byte
+	for _, ci := range consenterInfos {
+		pk := ci.PublicKey
+
+		if ci.PartyID == partyID {
+			myIdentity = pk
+			break
+		}
+	}
+	return myIdentity
 }

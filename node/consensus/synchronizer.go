@@ -29,6 +29,7 @@ type synchronizer struct {
 	lock                     sync.Mutex
 	memStore                 map[uint64]*common.Block
 	latestCommittedBlock     uint64
+	stopSync                 func()
 }
 
 func (s *synchronizer) OnAppend(block *common.Block) {
@@ -40,7 +41,13 @@ func (s *synchronizer) OnAppend(block *common.Block) {
 	delete(s.memStore, block.Header.Number)
 }
 
+func (s *synchronizer) stop() {
+	s.stopSync()
+}
+
 func (s *synchronizer) run() {
+	var stopCtx context.Context
+	stopCtx, s.stopSync = context.WithCancel(context.Background())
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"consensus",
@@ -54,7 +61,7 @@ func (s *synchronizer) run() {
 		s.logger.Panicf("Failed creating signed envelope: %v", err)
 	}
 
-	go delivery.Pull(context.Background(), "consensus", s.logger, s.endpoint, requestEnvelope, s.cc, func(block *common.Block) {
+	go delivery.Pull(stopCtx, "consensus", s.logger, s.endpoint, requestEnvelope, s.cc, func(block *common.Block) {
 		for s.memStoreTooBig() {
 			time.Sleep(time.Second)
 			s.logger.Infof("Mem store is too big, waiting for BFT to catch up")

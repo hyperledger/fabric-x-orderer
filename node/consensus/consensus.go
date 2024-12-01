@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"sync"
 
 	arma_types "arma/common/types"
@@ -29,6 +30,10 @@ import (
 type Storage interface {
 	Append([]byte)
 	Close()
+}
+
+type Net interface {
+	Stop()
 }
 
 type Signer interface {
@@ -55,6 +60,7 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
+	Net          Net
 	Config       config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
 	Signer       Signer
@@ -67,6 +73,7 @@ type Consensus struct {
 	stateLock    sync.Mutex
 	State        *core.State
 	Logger       arma_types.Logger
+	Synchronizer *synchronizer
 }
 
 func (c *Consensus) Start() error {
@@ -75,8 +82,10 @@ func (c *Consensus) Start() error {
 
 func (c *Consensus) Stop() {
 	c.BFT.Stop()
+	c.Synchronizer.stop()
 	c.BADB.Close()
 	c.Storage.Close()
+	c.Net.Stop()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
@@ -484,4 +493,28 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 		CurrentNodes:  c.CurrentNodes,
 		CurrentConfig: c.BFTConfig,
 	}
+}
+
+func (c *Consensus) pickEndpoint() string {
+	leader := c.BFT.GetLeaderID()
+	c.Logger.Infof("Leader ID : %d", leader)
+	for _, node := range c.Config.Consenters {
+		if c.BFT.Config.SelfID == leader {
+			c.Logger.Infof("I am the leader (ID=%d)", leader)
+			break
+		}
+		if uint64(node.PartyID) == leader {
+			c.Logger.Infof("Found leader (ID=%d); returning endpoint : %s", leader, node.Endpoint)
+			return node.Endpoint
+		}
+	}
+	var r int
+	for {
+		r = rand.Intn(len(c.Config.Consenters)) // if leader was not found pick a node randomly
+		if c.Config.PartyId != c.Config.Consenters[r].PartyID {
+			break // make sure not to pick myself
+		}
+	}
+	c.Logger.Infof("Returning random node (ID=%d) endpoint : %s", c.Config.Consenters[r].PartyID, c.Config.Consenters[r].Endpoint)
+	return c.Config.Consenters[r].Endpoint
 }

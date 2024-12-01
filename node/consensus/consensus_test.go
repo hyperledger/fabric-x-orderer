@@ -273,6 +273,8 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Storage:      &commitInterceptor{Storage: make(mockStorage, 100), f: onCommit},
 		Arma:         consenter,
 		BADB:         db,
+		Net:          &mockNet{},
+		Synchronizer: &synchronizer{stopSync: func() {}},
 	}
 
 	c.BFTConfig.SelfID = uint64(partyID)
@@ -306,6 +308,10 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		os.RemoveAll(dir)
 	}
 }
+
+type mockNet struct{}
+
+func (n *mockNet) Stop() {}
 
 type mockComm struct {
 	from  uint64
