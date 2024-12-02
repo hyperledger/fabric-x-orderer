@@ -4,12 +4,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"time"
 
 	arma_types "arma/common/types"
+	"arma/common/utils"
 	"arma/core"
 	"arma/core/badb"
 	"arma/node/comm"
@@ -25,6 +27,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
+	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -258,18 +261,28 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) *core.State {
 }
 
 func createAndAppendGenesisBlock(initState *core.State, ledger *ledger.ConsensusLedger) {
+	genesisBlock := utils.EmptyGenesisBlock("arma") // TODO load a genesis block
 	genesisBlocks := make([]state.AvailableBlock, 1)
+	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
+
 	genesisBlocks[0] = state.AvailableBlock{
 		Header: &state.BlockHeader{
 			Number:   0,
 			PrevHash: nil,
-			Digest:   nil, // TODO create a correct digest
+			Digest:   genesisDigest,
 		},
-		Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, nil), // TODO create a correct digest
+		Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, genesisDigest),
 	}
 
+	var lastBlockHeader state.BlockHeader
+	if err := lastBlockHeader.FromBytes(initState.AppContext); err != nil {
+		panic(fmt.Sprintf("Failed deserializing app context to BlockHeader from initial state: %v", err))
+	}
+	lastBlockHeader.Digest = genesisDigest
+	initState.AppContext = lastBlockHeader.Bytes()
+
 	genesisProposal := types.Proposal{
-		Payload: []byte("placeholder for config tx"), // TODO create a correct payload
+		Payload: protoutil.MarshalOrPanic(genesisBlock), // TODO create a correct payload
 		Header: (&state.Header{
 			AvailableBlocks: genesisBlocks,
 			State:           initState,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"arma/common/types"
+	"arma/common/utils"
 )
 
 //go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation
@@ -116,8 +117,8 @@ func (a *Assembler) processOrderedBatchAttestations() {
 		var batch Batch
 		if oba.BatchAttestation().Shard() == math.MaxUint16 && oba.BatchAttestation().Primary() == 0 {
 			requests := make(types.BatchedRequests, 1)
-			requests[0] = []byte("placeholder for config tx")
-			batch = types.NewSimpleBatch(0, math.MaxUint16, 0, requests, nil) // TODO create a correct genesis batch
+			requests[0] = utils.EmptyGenesisBlockBytes("arma") // TODO load the correct genesis block, at node start, not here
+			batch = types.NewSimpleBatch(0, math.MaxUint16, 0, requests, oba.BatchAttestation().Digest())
 		} else {
 			batch = a.collateAttestationWithBatch(oba.BatchAttestation())
 		}
