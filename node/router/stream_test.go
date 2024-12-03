@@ -179,8 +179,20 @@ func TestRenewStreamSuccess(t *testing.T) {
 		ReqID:   reqID,
 		TraceId: traceID,
 	}, fmt.Errorf("rpc error: service unavailable"))
+	fakeSubmitStreamClient.SendReturns(nil)
+
 	logger := testutil.CreateLogger(t, 4)
 	ctx, cancel := context.WithCancel(context.Background())
+
+	requests := make(chan *protos.Request, 10)
+	requestTraceIdToResponseChannel := make(map[string]chan Response)
+
+	req := &protos.Request{
+		Payload: []byte{123},
+		TraceId: []byte{1},
+	}
+	requests <- req
+	requestTraceIdToResponseChannel[string(req.TraceId)] = make(chan Response)
 
 	faultyStream := &stream{
 		endpoint:                          "127.0.0.1:7015",
@@ -188,17 +200,32 @@ func TestRenewStreamSuccess(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requests:                          make(chan *protos.Request, 10),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requests:                          requests,
+		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
 	}
 
 	faultyStream.cancel()
 
 	client := &commMocks.FakeRequestTransmitClient{}
 	client.SubmitStreamReturns(fakeSubmitStreamClient, nil)
-	newStream, err := faultyStream.renewStream(client)
+	newStream, err := faultyStream.renewStream(client, faultyStream.endpoint, faultyStream.logger)
 	require.NoError(t, err)
 	require.NotNil(t, newStream)
-	require.Equal(t, faultyStream.getRequests(), newStream.getRequests())
-	require.Equal(t, faultyStream.getMap(), newStream.getMap())
+
+	// compare maps
+	mapOfFaultyStream := faultyStream.getMap()
+	mapOfNewStream := newStream.getMap()
+	require.Equal(t, len(mapOfFaultyStream), len(mapOfNewStream))
+	resp, exists := mapOfNewStream[string(req.TraceId)]
+	require.True(t, exists)
+	require.NotNil(t, resp)
+
+	// compare requests channel
+	reqsOfFaultyStream := faultyStream.getRequests()
+	reqsOfNewStream := newStream.getRequests()
+	reqByNewStream := <-reqsOfNewStream
+	require.Equal(t, len(reqsOfFaultyStream), len(reqsOfNewStream))
+	require.Equal(t, req, reqByNewStream)
+
+	newStream.cancel()
 }

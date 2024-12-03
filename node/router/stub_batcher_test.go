@@ -2,6 +2,7 @@ package router_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -17,12 +18,14 @@ import (
 )
 
 type stubBatcher struct {
-	ca      tlsgen.CA        // Certificate authority that issues a certificate for the batcher
-	server  *comm.GRPCServer // GRPCServer instance represents the batcher
-	txs     uint32           // Number of txs received from router
-	partyID types.PartyID
-	shardID types.ShardID
-	logger  types.Logger
+	ca          tlsgen.CA // Certificate authority that issues a certificate for the batcher
+	certificate []byte
+	key         []byte
+	server      *comm.GRPCServer // GRPCServer instance represents the batcher
+	txs         uint32           // Number of txs received from router
+	partyID     types.PartyID
+	shardID     types.ShardID
+	logger      types.Logger
 }
 
 func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID types.ShardID) stubBatcher {
@@ -42,11 +45,13 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 
 	// return a stub batcher that includes all server setup
 	stubBatcher := stubBatcher{
-		ca:      ca,
-		server:  server,
-		partyID: partyID,
-		shardID: shardID,
-		logger:  testutil.CreateLogger(t, int(shardID)),
+		ca:          ca,
+		certificate: certKeyPair.Cert,
+		key:         certKeyPair.Key,
+		server:      server,
+		partyID:     partyID,
+		shardID:     shardID,
+		logger:      testutil.CreateLogger(t, int(shardID)),
 	}
 	return stubBatcher
 }
@@ -62,6 +67,33 @@ func (sb *stubBatcher) Start() {
 
 func (sb *stubBatcher) Stop() {
 	sb.server.Stop()
+}
+
+func (sb *stubBatcher) Restart() {
+	// save the current server address
+	addr := sb.server.Address()
+
+	// create a new gRPC server with the same settings (same address and TLS options)
+	server, err := comm.NewGRPCServer(addr, comm.ServerConfig{
+		SecOpts: comm.SecureOptions{
+			UseTLS:      true,
+			Certificate: sb.certificate,
+			Key:         sb.key,
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to restart gRPC server: %v", err))
+	}
+
+	sb.server = server
+
+	// register the service again and start the new server
+	protos.RegisterRequestTransmitServer(sb.server.Server(), sb)
+	go func() {
+		if err := sb.server.Start(); err != nil {
+			panic(err)
+		}
+	}()
 }
 
 func (sb *stubBatcher) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {

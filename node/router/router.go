@@ -75,7 +75,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		reqID, router := r.getRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
 
-		if err := router.forwardBestEffort(reqID, req.Payload); err != nil {
+		if err := router.ForwardBestEffort(reqID, req.Payload); err != nil {
 			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_INTERNAL_SERVER_ERROR, Info: err.Error()}
 		} else {
 			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_SUCCESS}

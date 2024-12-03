@@ -81,9 +81,10 @@ func (s *stream) registerReply(traceID []byte, responses chan Response) {
 	s.requestTraceIdToResponseChannel[string(traceID)] = responses
 }
 
-// RenewStream creates a new stream that inherits the map and the requests channel
-// TODO: this method does not work and will be fixed in the next PR
-func (s *stream) renewStream(client protos.RequestTransmitClient) (*stream, error) {
+// renewStream creates a new stream that inherits the map and the requests channel
+func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger types.Logger) (*stream, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	newGRPCStream, err := client.SubmitStream(context.Background())
 	if err != nil {
@@ -92,17 +93,27 @@ func (s *stream) renewStream(client protos.RequestTransmitClient) (*stream, erro
 		return nil, fmt.Errorf("failed establishing a new stream: %w", err)
 	}
 
+	newStreamRequests := make(chan *protos.Request, 1000)
+	newRequestTraceIdToResponseChannelMap := make(map[string]chan Response)
+	for i := 0; i < len(s.requests); i++ {
+		req := <-s.requests
+		newStreamRequests <- req
+	}
+	for traceId, respChan := range s.requestTraceIdToResponseChannel {
+		newRequestTraceIdToResponseChannelMap[traceId] = respChan
+	}
+
 	newStream := &stream{
-		endpoint:                          s.endpoint,
-		logger:                            s.logger,
+		endpoint:                          endpoint,
+		logger:                            logger,
 		requestTransmitSubmitStreamClient: newGRPCStream,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requests:                          s.requests,
-		requestTraceIdToResponseChannel:   s.requestTraceIdToResponseChannel,
+		requestTraceIdToResponseChannel:   newRequestTraceIdToResponseChannelMap,
+		requests:                          newStreamRequests,
 	}
 
-	s.logger.Infof("renew stream")
+	newStream.logger.Infof("renew stream")
 	go newStream.sendRequests()
 	go newStream.readResponses()
 

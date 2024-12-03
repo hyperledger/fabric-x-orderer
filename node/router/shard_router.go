@@ -16,6 +16,31 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	minRetryInterval = 1 * time.Second
+	maxRetryInterval = 10 * time.Second
+	retryPolicy      = `{
+	 "methodConfig": [
+	   {
+	     "name": [
+	       {
+	         "service": ""
+	       }
+	     ],
+	     "retryPolicy": {
+	       "maxAttempts": 7,
+	       "initialBackoff": "0.1s",
+	       "maxBackoff": "1s",
+	       "backoffMultiplier": 2,
+	       "retryableStatusCodes": [
+	         "UNAVAILABLE"
+	       ]
+	     }
+	   }
+	 ]
+	}`
+)
+
 type ShardRouter struct {
 	router2batcherConnPoolSize   int
 	router2batcherStreamsPerConn int
@@ -28,6 +53,7 @@ type ShardRouter struct {
 	streams                      [][]*stream
 	tlsCert                      []byte
 	tlsKey                       []byte
+	clientConfig                 comm.ClientConfig
 }
 
 func NewShardRouter(l types.Logger,
@@ -38,6 +64,22 @@ func NewShardRouter(l types.Logger,
 	numOfConnectionsForBatcher int,
 	numOfgRPCStreamsPerConnection int,
 ) *ShardRouter {
+	cc := comm.ClientConfig{
+		AsyncConnect: false,
+		KaOpts: comm.KeepaliveOptions{
+			ClientInterval: 30 * time.Second,
+			ClientTimeout:  30 * time.Second,
+		},
+		SecOpts: comm.SecureOptions{
+			UseTLS:            true,
+			ServerRootCAs:     batcherRootCAs,
+			Key:               tlsKey,
+			Certificate:       tlsCert,
+			RequireClientCert: true,
+		},
+		DialTimeout: time.Second * 20,
+	}
+
 	sr := &ShardRouter{
 		tlsCert:                      tlsCert,
 		tlsKey:                       tlsKey,
@@ -46,12 +88,13 @@ func NewShardRouter(l types.Logger,
 		batcherRootCAs:               batcherRootCAs,
 		router2batcherStreamsPerConn: numOfgRPCStreamsPerConnection,
 		router2batcherConnPoolSize:   numOfConnectionsForBatcher,
+		clientConfig:                 cc,
 	}
 
 	return sr
 }
 
-func (sr *ShardRouter) forwardBestEffort(reqID, request []byte) error {
+func (sr *ShardRouter) ForwardBestEffort(reqID, request []byte) error {
 	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
 	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % sr.router2batcherStreamsPerConn
 
@@ -95,6 +138,7 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 
 	stream.registerReply(trace, responses)
 
+	sr.logger.Debugf("enter request to the requests list\n")
 	stream.requests <- &protos.Request{
 		TraceId: trace,
 		Payload: request,
@@ -105,13 +149,55 @@ func (sr *ShardRouter) maybeInitStream(connIndex int, streamInConnIndex int) *st
 	sr.lock.Lock()
 	defer sr.lock.Unlock()
 
-	stream := sr.streams[connIndex][streamInConnIndex]
-	if stream == nil || stream.faulty() {
-		sr.initStream(connIndex, streamInConnIndex)
+	var stream *stream
+	var err error
+
+	currentStream := sr.streams[connIndex][streamInConnIndex]
+
+	if currentStream == nil || currentStream.faulty() {
+		// check the connection, and if it is faulty try to reconnect and renew the stream
+		sr.logger.Infof("stream is faulty, checking connection")
+		conn := sr.connPool[connIndex]
+		if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
+			sr.reconnect(connIndex)
+			client := protos.NewRequestTransmitClient(sr.connPool[connIndex])
+			stream, err = currentStream.renewStream(client, sr.batcherEndpoint, sr.logger)
+			if err != nil {
+				sr.logger.Errorf("failed to renew stream, err: %v", err)
+			}
+			sr.streams[connIndex][streamInConnIndex] = stream
+		} else {
+			sr.initStream(connIndex, streamInConnIndex)
+			stream = sr.streams[connIndex][streamInConnIndex]
+		}
 	}
-	stream = sr.streams[connIndex][streamInConnIndex]
 
 	return stream
+}
+
+func (sr *ShardRouter) reconnect(connIndex int) {
+	sr.logger.Infof("Connection is broken, attempting to reconnect...")
+
+	interval := minRetryInterval
+	numOfRetries := 1
+	for {
+		sr.logger.Infof("Retry attempt #" + fmt.Sprintf("%v", numOfRetries))
+		numOfRetries++
+
+		conn, err := sr.clientConfig.Dial(sr.batcherEndpoint)
+		if err != nil {
+			sr.logger.Errorf("Reconnection failed: %v, trying again in: %s", err, interval)
+			time.Sleep(interval)
+			interval = interval * 2
+			if interval > maxRetryInterval {
+				interval = maxRetryInterval
+			}
+			continue
+		}
+		sr.connPool[connIndex] = conn
+		sr.logger.Infof("Reconnection succeeded")
+		break
+	}
 }
 
 func (sr *ShardRouter) MaybeInit() {
@@ -143,30 +229,28 @@ func (sr *ShardRouter) replenishConnPool() error {
 	sr.lock.Lock()
 	defer sr.lock.Unlock()
 
-	cc := comm.ClientConfig{
-		AsyncConnect: true,
-		KaOpts: comm.KeepaliveOptions{
-			ClientInterval: time.Hour,
-			ClientTimeout:  time.Hour,
-		},
-		SecOpts: comm.SecureOptions{
-			UseTLS:            true,
-			ServerRootCAs:     sr.batcherRootCAs,
-			Key:               sr.tlsKey,
-			Certificate:       sr.tlsCert,
-			RequireClientCert: true,
-		},
-		DialTimeout: time.Second * 5,
-	}
-
 	for i, conn := range sr.connPool {
 		if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
 			sr.logger.Infof("Establishing connection %d to %s", i, sr.batcherEndpoint)
-			conn, err := cc.Dial(sr.batcherEndpoint)
+
+			dialOpts, err := sr.clientConfig.DialOptions()
+			if err != nil {
+				sr.logger.Errorf("Failed to get DialOptions: %v", err)
+				return fmt.Errorf("failed to get DialOptions: %v", err)
+			}
+
+			dialOpts = append(dialOpts, grpc.WithDefaultServiceConfig(retryPolicy))
+
+			conn, err := grpc.DialContext(
+				context.Background(),
+				sr.batcherEndpoint,
+				dialOpts...,
+			)
 			if err != nil {
 				sr.logger.Errorf("Failed connecting to %s: %v", sr.batcherEndpoint, err)
 				return fmt.Errorf("failed connecting to %s: %v", sr.batcherEndpoint, err)
 			}
+
 			if sr.connPool[i] != nil {
 				sr.connPool[i].Close() // Close the old connection
 			}
