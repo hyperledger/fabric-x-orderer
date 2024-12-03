@@ -7,14 +7,14 @@ cd images/multi-platform
 
 ### With podman
 
-Create a manifest with the correct version (e.g. for git version v0.0.4 => 0.0.4):
+Create a manifest with the correct version (e.g. for git version v0.0.5 => 0.0.5):
 ```
-podman manifest create icr.io/cbdc/arma-node:0.0.4
+podman manifest create icr.io/cbdc/arma-node:0.0.5
 ```
 
 Generate a multi-platform image using podman:
 ```
-podman build --platform linux/amd64,linux/s390x,linux/arm64 --manifest icr.io/cbdc/arma-node:0.0.4 -f Dockerfile ../../
+podman build --platform linux/amd64,linux/s390x,linux/arm64 --manifest icr.io/cbdc/arma-node:0.0.5 -f Dockerfile ../../
 ```
 
 ### With docker buildx
@@ -31,42 +31,47 @@ docker buildx inspect --bootstrap
 
 Generate an image for every platform and save the image to a tarball. The image is tagged by the "os-arch-version".
 ```
-docker buildx build --platform linux/s390x --file Dockerfile --output type=docker,push=false,name=arma-node:linux-s390x-0.0.4,dest=arma-node_linux-s390x-0.0.4.tar ../../
+docker buildx build --platform linux/s390x --file Dockerfile --output type=docker,push=false,name=arma-node:linux-s390x-0.0.5,dest=arma-node_linux-s390x-0.0.5.tar ../../
 ```
 
 ```
-docker buildx build --platform linux/amd64 --file Dockerfile --output type=docker,push=false,name=arma-node:linux-amd64-0.0.4,dest=arma-node_linux-amd64-0.0.4.tar ../../
+docker buildx build --platform linux/amd64 --file Dockerfile --output type=docker,push=false,name=arma-node:linux-amd64-0.0.5,dest=arma-node_linux-amd64-0.0.5.tar ../../
 ```
 
 ```
-docker buildx build --platform linux/arm64 --file Dockerfile --output type=docker,push=false,name=arma-node:linux-arm64-0.0.4,dest=arma-node_linux-arm64-0.0.4.tar ../../
+docker buildx build --platform linux/arm64 --file Dockerfile --output type=docker,push=false,name=arma-node:linux-arm64-0.0.5,dest=arma-node_linux-arm64-0.0.5.tar ../../
 ```
 
 One can then load said images to the local image store:
 ```
-docker image load -i arma-node_linux-s390x-0.0.4.tar
+docker image load -i arma-node_linux-s390x-0.0.5.tar
 ```
 ```
-docker image load -i arma-node_linux-amd64-0.0.4.tar
+docker image load -i arma-node_linux-amd64-0.0.5.tar
 ```
 ```
-docker image load -i arma-node_linux-arm64-0.0.4.tar
+docker image load -i arma-node_linux-arm64-0.0.5.tar
 ```
 
 Then re-tag them to ibm cloud container registry
 ```
-docker image tag arma-node:linux-s390x-0.0.4 icr.io/cbdc/arma-node:linux-s390x-0.0.4
-docker image tag arma-node:linux-amd64-0.0.4 icr.io/cbdc/arma-node:linux-amd64-0.0.4
-docker image tag arma-node:linux-arm64-0.0.4 icr.io/cbdc/arma-node:linux-arm64-0.0.4
+docker image tag arma-node:linux-s390x-0.0.5 icr.io/cbdc/arma-node:linux-s390x-0.0.5
+docker image tag arma-node:linux-amd64-0.0.5 icr.io/cbdc/arma-node:linux-amd64-0.0.5
+docker image tag arma-node:linux-arm64-0.0.5 icr.io/cbdc/arma-node:linux-arm64-0.0.5
 ```
 
 and push to icr.io (you and the docker agent need to be logged-in first)
 ```
-docker image push icr.io/cbdc/arma-node:linux-s390x-0.0.4
-docker image push icr.io/cbdc/arma-node:linux-amd64-0.0.4
-docker image push icr.io/cbdc/arma-node:linux-arm64-0.0.4
+docker image push icr.io/cbdc/arma-node:linux-s390x-0.0.5
+docker image push icr.io/cbdc/arma-node:linux-amd64-0.0.5
+docker image push icr.io/cbdc/arma-node:linux-arm64-0.0.5
 ```
+--------------
+Note: to login to IBM cloud:
 
+ibmcloud login  --sso
+ibmcloud target -g zrl-dec-trust-identity
+ibmcloud cr login
 
 --------------
 Note: TODO automate in a script like:
