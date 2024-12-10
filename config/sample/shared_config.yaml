@@ -1,0 +1,183 @@
+################################################################################
+#
+#    Arma Shared Configuration
+#
+#   - This is used to define an Arma deployment and is included in the genesis block.
+#
+################################################################################
+
+# A party is a distributed ordering node, which includes:
+# a router, a consenter, an assembler, and several batchers, one for each shard.
+Parties:
+    # PartyID uint16, id >0
+  - PartyID: 1
+    # The CA certs of the CA generating the party's signing key-pairs
+    # Note: later this will come from the MSP, as defined in the config block, we do not support it yet
+    CACerts:
+      - path/to/cacert1
+    # The CA certs of the CA generating the party's TLS key-pairs
+    # Note: later this will come from the MSP, as defined in the config block, we do not support it yet
+    TLSCACerts:
+      - path/to/tlscacert1
+    Consenter:
+      Host: consenter1.example.org
+      Port: 7050
+      PublicKey: path/to/consenter/signingkey1
+      TLSCert: path/to/consenter-tlscert1
+    Router:
+      Host: router1.example.org
+      Port: 8050
+      TLSCert: path/to/router-tlscert1
+    Assembler:
+      Host: assembler1.example.com
+      Port: 9050
+      TLSCert: path/to/assembler-tlscert1
+    Batchers:
+      - ShardID: 1
+        Host: batcher1s1.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey11
+        TLSCert: path/to/batcher-tlscert11
+      - ShardID: 2
+        Host: batcher1s2.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey12
+        TLSCert: path/to/batcher-tlscert12
+
+  - PartyID: 2
+    CACerts:
+      - path/to/cacert2
+    TLSCACerts:
+      - path/to/tlscacert2
+    Consenter:
+      Host: consenter2.example.org
+      Port: 7050
+      PublicKey: path/to/consenter/signingkey2
+      TLSCert: path/to/consenter-tlscert2
+    Router:
+      Host: router2.example.org
+      Port: 8050
+      TLSCert: path/to/router-tlscert2
+    Assembler:
+      Host: assembler2.example.com
+      Port: 9050
+      TLSCert: path/to/assembler-tlscert2
+    Batchers:
+      - ShardID: 1
+        Host: batcher2s1.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey21
+        TLSCert: path/to/batcher-tlscert21
+      - ShardID: 2
+        Host: batcher2s2.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey22
+        TLSCert: path/to/batcher-tlscert22
+
+  - PartyID: 3
+    CACerts:
+      - path/to/cacert3
+    TLSCACerts:
+      - path/to/tlscacert3
+    Consenter:
+      Host: consenter3.example.org
+      Port: 7050
+      PublicKey: path/to/consenter/signingkey3
+      TLSCert: path/to/consenter-tlscert3
+    Router:
+      Host: router3.example.org
+      Port: 8050
+      TLSCert: path/to/router-tlscert3
+    Assembler:
+      Host: assembler3.example.com
+      Port: 9050
+      TLSCert: path/to/assembler-tlscert3
+    Batchers:
+      - ShardID: 1
+        Host: batcher3s1.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey31
+        TLSCert: path/to/batcher-tlscert31
+      - ShardID: 2
+        Host: batcher3s2.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey32
+        TLSCert: path/to/batcher-tlscert32
+
+  - PartyID: 4
+    CACerts:
+      - path/to/cacert4
+    TLSCACerts:
+      - path/to/tlscacert4
+    Consenter:
+      Host: consenter4.example.org
+      Port: 7050
+      PublicKey: path/to/consenter/signingkey4
+      TLSCert: path/to/consenter-tlscert4
+    Router:
+      Host: router4.example.org
+      Port: 8050
+      TLSCert: path/to/router-tlscert4
+    Assembler:
+      Host: assembler4.example.com
+      Port: 9050
+      TLSCert: path/to/assembler-tlscert4
+    Batchers:
+      - ShardID: 1
+        Host: batcher4s1.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey41
+        TLSCert: path/to/batcher-tlscert41
+      - ShardID: 2
+        Host: batcher4s2.example.com
+        Port: 6050
+        PublicKey: path/to/signingkey42
+        TLSCert: path/to/batcher-tlscert42
+
+# Consensus carries config parameters that need to be uniform across the consenters' cluster.
+Consensus:
+  SmartBFT:
+    RequestBatchMaxInterval: 200ms
+    RequestForwardTimeout: 5s
+    RequestComplainTimeout: 20s
+    RequestAutoRemoveTimeout: 3m0s
+    ViewChangeResendInterval: 5s
+    ViewChangeTimeout: 20s
+    LeaderHeartbeatTimeout: 1m0s
+    CollectTimeout: 1s
+    IncomingMessageBufferSize: 200
+    RequestPoolSize: 100000
+    LeaderHeartbeatCount: 10
+
+# Batching carries config parameters that need to be uniform across all nodes that generate and validate batches (blocks).
+Batching:
+  # Batch Timeout: The amount of time to wait before creating a batch.
+  BatchTimeout: 500ms
+
+  # Batch Size: Controls the number of messages batched into a block.
+  BatchSize:
+    # Max Message Count: The maximum number of messages to permit in a
+    # batch.  No block will contain more than this number of messages.
+    MaxMessageCount: 1000
+
+    # Absolute Max Bytes: The absolute maximum number of bytes allowed for
+    # the serialized messages in a batch. The maximum block size is this value
+    # plus the size of the associated metadata (usually a few KB depending
+    # upon the size of the signing identities). Any transaction larger than
+    # this value will be rejected by ordering.
+    # It is recommended not to exceed 49 MB, given the default grpc max message size of 100 MB
+    # configured on orderer and peer nodes (and allowing for message expansion during communication).
+    AbsoluteMaxBytes: 10 MB
+
+    # Preferred Max Bytes: The preferred maximum number of bytes allowed
+    # for the serialized messages in a batch. Roughly, this field may be considered
+    # the best effort maximum size of a batch. A batch will fill with messages
+    # until this size is reached (or the max message count, or batch timeout is
+    # exceeded).  If adding a new message to the batch would cause the batch to
+    # exceed the preferred max bytes, then the current batch is closed and written
+    # to a block, and a new batch containing the new message is created.  If a
+    # message larger than the preferred max bytes is received, then its batch
+    # will contain only that message.  Because messages may be larger than
+    # preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed
+    # the preferred max bytes, but will always contain exactly one transaction.
+    PreferredMaxBytes: 2 MB

@@ -1,0 +1,33 @@
+################################################################################
+#
+#    Arma Assembler Configuration Template
+#
+################################################################################
+
+# PartyID a unique identifier for each Arma party, uint16, id>0
+PartyID: 1
+
+################################################################################
+#
+#   SECTION: General: same as in template, except:
+#   - Assembler does not need signing key pair (under LocalMSPDir)
+#
+################################################################################
+General:
+
+################################################################################
+#
+#   SECTION: File Store: same as in template
+#
+################################################################################
+FileStore:
+
+################################################################################
+#
+#   SECTION: Role specific configuration: only `Assembler` key
+#
+################################################################################
+
+# Assembler specific parameters
+Assembler:
+  PrefetchBufferMemoryMB: 1024
