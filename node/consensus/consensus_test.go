@@ -18,12 +18,14 @@ import (
 	"arma/node/batcher"
 	"arma/node/consensus/state"
 	"arma/node/crypto"
+	"arma/node/ledger"
 	"arma/testutil"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -159,13 +161,17 @@ func TestConsensus(t *testing.T) {
 			}()
 
 			network := make(network)
+			listeners := make([]*storageListener, 4)
 
 			for i := uint16(1); i <= 4; i++ {
 				onCommit := func() {
 					tst.commitEvent.Done()
 				}
 				dir := t.TempDir()
-				c, cleanup := makeConsensusNode(t, sks[i-1], arma_types.PartyID(i), network, initialState, nodeIDs, verifier, onCommit, dir)
+				c, cleanup := makeConsensusNode(t, sks[i-1], arma_types.PartyID(i), network, initialState, nodeIDs, verifier, dir)
+
+				listeners[i-1] = &storageListener{c: make(chan *common.Block, 100), f: onCommit}
+				c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listeners[i-1])
 				network[uint64(i)] = c
 				cleanups = append(cleanups, cleanup)
 			}
@@ -206,8 +212,8 @@ func TestConsensus(t *testing.T) {
 					copy(tstExpectedDecisionNum, tst.expectedDecisionNum)
 
 					for {
-						rawDecision := <-node.Storage.(*commitInterceptor).Storage.(mockStorage)
-						decision, _, err := state.BytesToDecision(rawDecision)
+						b := <-listeners[node.BFTConfig.SelfID-1].c
+						decision, _, err := state.BytesToDecision(b.Data.Data[0])
 						assert.NoError(t, err)
 
 						hdr := &state.Header{}
@@ -244,7 +250,7 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, onCommit func(), dir string) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
@@ -255,6 +261,11 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	db, err := badb.NewBatchAttestationDB(dir, l)
 	assert.NoError(t, err)
+
+	ledger, err := ledger.NewConsensusLedger(dir)
+	assert.NoError(t, err)
+
+	initialState, md := initializeStateAndMetadata(t, initialState, ledger)
 
 	consenter := &core.Consenter{ // TODO should this be initialized as part of consensus node start?
 		State:           initialState,
@@ -270,7 +281,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		SigVerifier:  verifier,
 		State:        initialState,
 		CurrentNodes: nodes,
-		Storage:      &commitInterceptor{Storage: make(mockStorage, 100), f: onCommit},
+		Storage:      ledger,
 		Arma:         consenter,
 		BADB:         db,
 		Net:          &mockNet{},
@@ -284,7 +295,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	assert.NoError(t, err)
 
 	c.BFT = &consensus.Consensus{
-		Metadata:          &smartbftprotos.ViewMetadata{},
+		Metadata:          md,
 		Logger:            l,
 		Signer:            c,
 		Application:       c,
@@ -307,6 +318,47 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		c.Stop()
 		os.RemoveAll(dir)
 	}
+}
+
+func initializeStateAndMetadata(t *testing.T, initState *core.State, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata) {
+	height := ledger.Height()
+
+	if height == 0 {
+		genesisBlock := state.AvailableBlock{
+			Header: &state.BlockHeader{
+				Number:   0,
+				PrevHash: nil,
+				Digest:   make([]byte, 32),
+			},
+			Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, make([]byte, 32)),
+		}
+		genesisProposal := types.Proposal{
+			Header: (&state.Header{
+				AvailableBlocks: []state.AvailableBlock{genesisBlock},
+				State:           initState,
+				Num:             0,
+			}).Serialize(),
+			Metadata: nil,
+		}
+		ledger.Append(state.DecisionToBytes(genesisProposal, nil))
+		return initState, &smartbftprotos.ViewMetadata{}
+	}
+
+	lastBlock, err := ledger.RetrieveBlockByNumber(height - 1)
+	assert.NoError(t, err)
+
+	proposal, _, err := state.BytesToDecision(lastBlock.Data.Data[0])
+	assert.NoError(t, err)
+
+	md := &smartbftprotos.ViewMetadata{}
+	err = proto.Unmarshal(proposal.Metadata, md)
+	assert.NoError(t, err)
+
+	header := &state.Header{}
+	err = header.Deserialize(proposal.Header)
+	assert.NoError(t, err)
+
+	return header.State, md
 }
 
 type mockNet struct{}
@@ -333,22 +385,14 @@ func (comm *mockComm) Nodes() []uint64 {
 
 type network map[uint64]*Consensus
 
-type mockStorage chan []byte
-
-func (m mockStorage) Append(bytes []byte) {
-	m <- bytes
-}
-
-func (m mockStorage) Close() {}
-
-type commitInterceptor struct {
-	Storage
+type storageListener struct {
 	f func()
+	c chan *common.Block
 }
 
-func (c *commitInterceptor) Append(bytes []byte) {
-	defer c.f()
-	c.Storage.Append(bytes)
+func (l *storageListener) OnAppend(block *common.Block) {
+	defer l.f()
+	l.c <- block
 }
 
 func TestAssembleProposalAndVerify(t *testing.T) {
@@ -906,7 +950,7 @@ func TestConsensusStartStop(t *testing.T) {
 	verifier := make(crypto.ECDSAVerifier)
 
 	initialAppContext := &state.BlockHeader{
-		Number:   0,
+		Number:   1,
 		PrevHash: make([]byte, 32),
 		Digest:   make([]byte, 32),
 	}
@@ -929,8 +973,11 @@ func TestConsensusStartStop(t *testing.T) {
 
 	network := make(map[uint64]*Consensus)
 
-	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, onCommit, dir)
+	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
 	defer cleanup()
+
+	listener := &storageListener{c: make(chan *common.Block, 100), f: onCommit}
+	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
 
 	err = c.Start()
 	assert.NoError(t, err)
@@ -943,11 +990,14 @@ func TestConsensusStartStop(t *testing.T) {
 	assert.NoError(t, err)
 
 	ce1 := &core.ControlEvent{BAF: baf123id1p1s1}
-	c.SubmitRequest(ce1.Bytes())
+	err = c.SubmitRequest(ce1.Bytes())
+	assert.NoError(t, err)
 	commitEvent.Wait()
 
-	rawDecision := <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
-	decision, _, err := state.BytesToDecision(rawDecision)
+	b := <-listener.c
+	assert.Equal(t, uint64(1), b.Header.Number)
+
+	decision, _, err := state.BytesToDecision(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	hdr := &state.Header{}
@@ -956,16 +1006,29 @@ func TestConsensusStartStop(t *testing.T) {
 	assert.Equal(t, 1, len(hdr.AvailableBlocks))
 	c.Stop()
 
-	c, cleanup = makeConsensusNode(t, sk, arma_types.PartyID(1), network, c.State, nodeIDs, verifier, onCommit, dir)
+	c, cleanup = makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
 	defer cleanup()
+
+	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
 
 	err = c.Start()
 	assert.NoError(t, err)
 
 	// 2. Verify handling duplicates after recovery node
 	commitEvent.Add(1)
-	c.SubmitRequest(ce1.Bytes())
+	err = c.SubmitRequest(ce1.Bytes())
+	assert.NoError(t, err)
 	commitEvent.Wait()
+
+	b = <-listener.c
+	assert.Equal(t, uint64(2), b.Header.Number)
+
+	decision, _, err = state.BytesToDecision(b.Data.Data[0])
+	assert.NoError(t, err)
+
+	err = hdr.Deserialize(decision.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(hdr.AvailableBlocks))
 
 	digests, _ := c.BADB.List()
 	assert.Equal(t, 1, len(digests))
@@ -973,34 +1036,28 @@ func TestConsensusStartStop(t *testing.T) {
 
 	c.Stop()
 
-	c, cleanup = makeConsensusNode(t, sk, arma_types.PartyID(1), network, c.State, nodeIDs, verifier, onCommit, dir)
+	c, cleanup = makeConsensusNode(t, sk, arma_types.PartyID(1), network, c.State, nodeIDs, verifier, dir)
 	defer cleanup()
+
+	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
 
 	err = c.Start()
 	assert.NoError(t, err)
 
 	// 3. Valid request after recovery node
-	// TODO: Update to 1 when the test uses a real ledger
-	// Using 2 because WAL is restored but the ledger is not
-	commitEvent.Add(2)
 	dig124 := append([]byte{1, 2, 4}, dig...)
 	baf124id1p1s2, err := batcher.CreateBAF(sk, 1, 1, dig124, 1, 2)
 	assert.NoError(t, err)
-
 	ce2 := &core.ControlEvent{BAF: baf124id1p1s2}
-	c.SubmitRequest(ce2.Bytes())
+	commitEvent.Add(1)
+	err = c.SubmitRequest(ce2.Bytes())
+	assert.NoError(t, err)
 	commitEvent.Wait()
 
-	rawDecision = <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
-	decision, _, err = state.BytesToDecision(rawDecision)
-	assert.NoError(t, err)
+	b = <-listener.c
+	assert.Equal(t, uint64(3), b.Header.Number)
 
-	err = hdr.Deserialize(decision.Header)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(hdr.AvailableBlocks))
-
-	rawDecision = <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
-	decision, _, err = state.BytesToDecision(rawDecision)
+	decision, _, err = state.BytesToDecision(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	err = hdr.Deserialize(decision.Header)
@@ -1009,7 +1066,8 @@ func TestConsensusStartStop(t *testing.T) {
 
 	// 4. Verify duplicate dig123 is handled correctly by BADB
 	commitEvent.Add(1)
-	c.SubmitRequest(ce1.Bytes())
+	err = c.SubmitRequest(ce1.Bytes())
+	assert.NoError(t, err)
 	commitEvent.Wait()
 
 	digests, _ = c.BADB.List()
@@ -1017,8 +1075,10 @@ func TestConsensusStartStop(t *testing.T) {
 	assert.Contains(t, digests, dig123)
 	assert.Contains(t, digests, dig124)
 
-	rawDecision = <-c.Storage.(*commitInterceptor).Storage.(mockStorage)
-	decision, _, err = state.BytesToDecision(rawDecision)
+	b = <-listener.c
+	assert.Equal(t, uint64(4), b.Header.Number)
+
+	decision, _, err = state.BytesToDecision(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	err = hdr.Deserialize(decision.Header)
