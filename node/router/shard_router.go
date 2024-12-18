@@ -138,7 +138,7 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 
 	stream.registerReply(trace, responses)
 
-	sr.logger.Debugf("enter request to the requests list\n")
+	sr.logger.Debugf("enter request %x to the requests list", reqID)
 	stream.requests <- &protos.Request{
 		TraceId: trace,
 		Payload: request,
@@ -176,12 +176,12 @@ func (sr *ShardRouter) maybeInitStream(connIndex int, streamInConnIndex int) *st
 }
 
 func (sr *ShardRouter) reconnect(connIndex int) {
-	sr.logger.Infof("Connection is broken, attempting to reconnect...")
+	sr.logger.Infof("Connection %d is broken, attempting to reconnect...", connIndex)
 
 	interval := minRetryInterval
 	numOfRetries := 1
 	for {
-		sr.logger.Infof("Retry attempt #" + fmt.Sprintf("%v", numOfRetries))
+		sr.logger.Infof("Retry attempt #%d", numOfRetries)
 		numOfRetries++
 
 		conn, err := sr.clientConfig.Dial(sr.batcherEndpoint)
@@ -231,7 +231,7 @@ func (sr *ShardRouter) replenishConnPool() error {
 
 	for i, conn := range sr.connPool {
 		if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
-			sr.logger.Infof("Establishing connection %d to %s", i, sr.batcherEndpoint)
+			sr.logger.Debugf("Establishing connection %d to %s", i, sr.batcherEndpoint)
 
 			dialOpts, err := sr.clientConfig.DialOptions()
 			if err != nil {
@@ -254,7 +254,7 @@ func (sr *ShardRouter) replenishConnPool() error {
 			if sr.connPool[i] != nil {
 				sr.connPool[i].Close() // Close the old connection
 			}
-			sr.logger.Infof("Connection %d to %s was replenished", i, sr.batcherEndpoint)
+			sr.logger.Debugf("Connection %d to %s was replenished", i, sr.batcherEndpoint)
 			sr.connPool[i] = conn
 		}
 	}

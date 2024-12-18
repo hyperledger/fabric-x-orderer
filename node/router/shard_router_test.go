@@ -53,6 +53,7 @@ func TestShardRouterConnectivityToBatcherByForwardBestEffort(t *testing.T) {
 	reqID, payload := createRequestAndRequestId(1, uint32(10000))
 	err := testSetup.shardRouter.ForwardBestEffort(reqID, payload)
 	require.NoError(t, err)
+	require.Eventually(t, func() bool { return testSetup.stubBatcher.ReceivedMessageCount() == uint32(1) }, 60*time.Second, 10*time.Millisecond)
 }
 
 func TestShardRouterRetryConnectToBatcherAndForwardReq(t *testing.T) {

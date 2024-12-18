@@ -132,8 +132,9 @@ func (sb *stubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamSe
 }
 
 func (sb *stubBatcher) ReceivedMessageCount() uint32 {
-	sb.logger.Infof("stub batcher from party %v and shard %v received %v txs\n", sb.partyID, sb.shardID, sb.txs)
-	return atomic.LoadUint32(&sb.txs)
+	receivedTxs := atomic.LoadUint32(&sb.txs)
+	sb.logger.Infof("stub batcher from party %d and shard %d received %d txs\n", sb.partyID, sb.shardID, receivedTxs)
+	return receivedTxs
 }
 
 func (sb *stubBatcher) GetBatcherEndpoint() string {
