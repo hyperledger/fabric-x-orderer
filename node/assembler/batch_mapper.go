@@ -35,7 +35,7 @@ func (m *BatchMapper[K, V]) assertShardAndParty(batchId K) {
 	}
 }
 
-// insert puts batch-value pair and returns if the action.
+// insert puts batch-value pair and returns if the action completed successfuly.
 // If overwrite controls what happens if the batch is already exists, true will overwrite the value, false will do nothing.
 // Returns true if the operation has succeeded.
 func (m *BatchMapper[K, V]) insert(batchId K, value V, overwrite bool) bool {

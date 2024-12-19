@@ -23,3 +23,11 @@ func BatchToString(batch types.BatchID) string {
 	}
 	return fmt.Sprintf("Batch<shard: %d, primary: %d, seq: %d, digest: %s>", batch.Shard(), batch.Primary(), batch.Seq(), core.ShortDigestString(batch.Digest()))
 }
+
+func batchSizeBytes(batch core.Batch) int {
+	size := 0
+	for _, req := range batch.Requests() {
+		size += len(req)
+	}
+	return size
+}

@@ -1,0 +1,302 @@
+package assembler
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+
+	"arma/common/types"
+	"arma/core"
+)
+
+type StoppableTimer interface {
+	Stop() bool
+}
+
+//go:generate counterfeiter -o ./mocks/timer_factory.go . TimerFactory
+type TimerFactory interface {
+	Create(time.Duration, func()) StoppableTimer
+}
+
+type ShardPrimary struct {
+	Shard   types.ShardID
+	Primary types.PartyID
+}
+
+func ShardPrimaryFromBatch(batchId types.BatchID) ShardPrimary {
+	return ShardPrimary{
+		Shard:   batchId.Shard(),
+		Primary: batchId.Primary(),
+	}
+}
+
+//go:generate counterfeiter -o ./mocks/partition_prefetch_index.go . PartitionPrefetchIndexer
+type PartitionPrefetchIndexer interface {
+	PopOrWait(batchId types.BatchID) (core.Batch, error)
+	Put(batch core.Batch) error
+	PutForce(batch core.Batch) error
+	Stop()
+}
+
+//go:generate counterfeiter -o ./mocks/partition_prefetch_index_factory.go . PartitionPrefetchIndexerFactory
+type PartitionPrefetchIndexerFactory interface {
+	Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) PartitionPrefetchIndexer
+}
+
+type RealPartitionPrefetchIndexerFactory struct{}
+
+func (f *RealPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) PartitionPrefetchIndexer {
+	return NewPartitionPrefetchIndex(
+		partition,
+		logger,
+		defaultTtl,
+		maxSizeBytes,
+		timerFactory,
+		batchCacheFactory,
+		batchRequestChan,
+	)
+}
+
+// PartitionPrefetchIndex handles the prefetch actions for a specific partition (shard + primary),
+//
+// The core purpose of this struct is to pair batch ids with full batches:
+//  1. An external module is getting batch ids from the Consensus and is calling PopOrWait to get the full batch.
+//     Please note that there is no constraint on the sequence of the batch.
+//  2. An external module is getting the full batchers from the Batcher and using Put to insert the batch into the indexer.
+//     Please note that there it is assumed that the batches are arriving with increasing sequence.
+//
+// Here is a detailed technical explanation:
+//
+// Getting batches - PopOrWait:
+//
+//  1. A batch id is extracted from a Consensus decision, PopOrWait is called with this batch id.
+//
+//  2. PopOrWait updates the max requested batch sequence - maxPoppedCallSeq and Broadcasts on stateCond.
+//     It is important for the operation of Put - this variable indicates for the Put method if the batch it is trying to put is relevant or it should wait.
+//
+//  3. PopOrWait tries to pop the relevant batch from it's cache, if the batch already exists, the batch is removed from the indexer and returned.
+//
+//  4. If the batch does not exist, we request the batch from an external module only if:
+//     a. This batch was not requested by the current call to the method (we avoid multiple requests).
+//     b. This batch sequence is less than the sequence of the most recently Put batch
+//     (since Put is called with increasing sequence, and we already passed it, we need to make a separate request).
+//     c. This batch sequence is equal to the sequence of the most recently Put batch -
+//     in this case this is a batch with the same <shard, primary, sequence> but with different digests (otherwise we would have returned it).
+//
+//  5. We keep waiting on stateCond, waiting for Put or PutForce to add the desired batch.
+//
+//     Note:
+//     a. If the sequence is lower than the sequence of the most recently Put batch - we wait for it to be added to the index using Put.
+//     b. If the context is cancelled, the method will return with an error.
+//
+// Put:
+//
+//  1. If the batch is too large, it will return ErrBatchTooLarge.
+//
+//  2. If the batch is already in the index, it will return ErrBatchAlreadyExists.
+//
+//  3. Aquire the lock.
+//
+//  4. We update lastPutSeqRequest with the sequence of the batch.
+//
+//  5. If there is space in the index - put the batch, Broadcast on stateCond and return.
+//
+//  6. While there is no space for the batch:
+//     a. If the batches sequence is lower than the max we are prefetching too fast,
+//     wait (sync.Cond wait) for the batches in the index to be popped prior to putting this batch.
+//     b. Else - we remove the oldest batch from the index.
+//
+//  7. There is a free space - insert the batch into the index.
+//
+//  8. Release the lock.
+//
+//     Note: If the context is cancelled, the method will return with an error.
+//
+// PutForce:
+//
+// If PopOrWait has requested a batch, this batch needs to be put into the index from an external module using PutForce,
+// unlike the regular Put that has constraints, this put always succeeds immediately, since this batch is needed now.
+//
+// Auto Eviction:
+// Each batch is put with a TTL timer, after it is expired, we automatically remove the batch and Broadcast on stateCond
+type PartitionPrefetchIndex struct {
+	logger    types.Logger
+	partition ShardPrimary
+	// last seq with call to put
+	lastPutSeqRequest types.BatchSequence
+	// last seq that was put into cache by Put or PutForce
+	lastPutSeq types.BatchSequence
+	// the max pop call batch seq
+	maxPoppedCallSeq    types.BatchSequence
+	cache               *BatchCache
+	sequenceHeap        *BatchHeap[StoppableTimer]
+	stateCond           *sync.Cond
+	maxSizeBytes        int
+	batchRequestChan    chan types.BatchID
+	defaultTtl          time.Duration
+	timerFactory        TimerFactory
+	cancellationContext context.Context
+	cancelContextFunc   context.CancelFunc
+}
+
+func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) *PartitionPrefetchIndex {
+	ctx, cancel := context.WithCancel(context.Background())
+	pi := &PartitionPrefetchIndex{
+		logger:              logger,
+		partition:           partition,
+		cache:               batchCacheFactory.Create(partition.Shard, partition.Primary),
+		sequenceHeap:        NewBatchHeap(partition.Shard, partition.Primary, func(item1, item2 *BatchHeapItem[StoppableTimer]) bool { return item1.Batch.Seq() < item2.Batch.Seq() }),
+		stateCond:           sync.NewCond(&sync.Mutex{}),
+		maxSizeBytes:        maxSizeBytes,
+		batchRequestChan:    batchRequestChan,
+		defaultTtl:          defaultTtl,
+		timerFactory:        timerFactory,
+		cancellationContext: ctx,
+		cancelContextFunc:   cancel,
+	}
+	return pi
+}
+
+func (pi *PartitionPrefetchIndex) getName() string {
+	return fmt.Sprintf("partition prefetch index [shard: %d, primary: %d]", pi.partition.Shard, pi.partition.Primary)
+}
+
+func (pi *PartitionPrefetchIndex) assertBatchPartition(batchId types.BatchID) {
+	partition := ShardPrimaryFromBatch(batchId)
+	if partition != pi.partition {
+		panic(fmt.Sprintf("batch partition %v does not match the partition of the store %v", partition, pi.partition))
+	}
+}
+
+func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
+	pi.logger.Debugf("PopOrWait called for %s on batch %s", pi.getName(), BatchToString(batchId))
+	pi.assertBatchPartition(batchId)
+	pi.stateCond.L.Lock()
+	defer pi.stateCond.L.Unlock()
+	if pi.maxPoppedCallSeq < batchId.Seq() {
+		pi.maxPoppedCallSeq = batchId.Seq()
+		pi.stateCond.Broadcast()
+	}
+	wasBatchRequested := false
+	// while not exists, wait
+	for {
+		if pi.cancellationContext.Err() != nil {
+			return nil, ErrOperationCancelled
+		}
+		batch, err := pi.cache.Pop(batchId)
+		if err != nil && !errors.Is(err, ErrBatchDoesNotExist) {
+			panic(fmt.Sprintf("unexpected error occured while poping batch %s: %v", BatchToString(batchId), err))
+		}
+		if err == nil {
+			// this batch exists in the index
+			heapItem, err := pi.sequenceHeap.Remove(batchId)
+			if err != nil {
+				panic(fmt.Sprintf("unexpected error occured while removing batch %s from heap: %v", BatchToString(batchId), err))
+			}
+			heapItem.Value.Stop()
+			pi.stateCond.Broadcast()
+			return batch, nil
+		}
+		// batchId.Seq() == bs.lastPutSeq is true in case we have 2 digests
+		if !wasBatchRequested && (batchId.Seq() < pi.lastPutSeqRequest || batchId.Seq() == pi.lastPutSeq) {
+			wasBatchRequested = true
+			pi.batchRequestChan <- batchId
+		}
+		pi.stateCond.Wait()
+	}
+}
+
+func (pi *PartitionPrefetchIndex) saveBatch(batch core.Batch) error {
+	err := pi.cache.Put(batch)
+	if err != nil {
+		return err
+	}
+	pi.lastPutSeq = batch.Seq()
+	timer := pi.timerFactory.Create(pi.defaultTtl, func() {
+		pi.logger.Infof("TTL handler executed for batch %s", BatchToString(batch))
+		err := pi.remove(batch)
+		if err != nil {
+			pi.logger.Errorf("there was unexpected error which removing a batch with expired TTL: %v", err)
+		}
+	})
+	pi.sequenceHeap.Push(&BatchHeapItem[StoppableTimer]{Batch: batch, Value: timer})
+	pi.stateCond.Broadcast()
+	return nil
+}
+
+func (pi *PartitionPrefetchIndex) Put(batch core.Batch) error {
+	pi.logger.Debugf("Put called for %s on batch %s", pi.getName(), BatchToString(batch))
+	pi.assertBatchPartition(batch)
+	batchSize := batchSizeBytes(batch)
+	if batchSize > pi.maxSizeBytes {
+		return ErrBatchTooLarge
+	}
+	pi.stateCond.L.Lock()
+	defer pi.stateCond.L.Unlock()
+	if pi.cache.Has(batch) {
+		return ErrBatchAlreadyExists
+	}
+	pi.lastPutSeqRequest = batch.Seq()
+	for pi.cache.SizeBytes()+batchSize > pi.maxSizeBytes {
+		if pi.cancellationContext.Err() != nil {
+			return ErrOperationCancelled
+		}
+		if pi.maxPoppedCallSeq < batch.Seq() {
+			// we are prefetching too fast, wait for the batches in the index to be used
+			pi.stateCond.Wait()
+			continue
+		}
+		// the batch we are trying to put is needed, we will evict a batch
+		err := pi.evictOldestBatch()
+		if err != nil {
+			return fmt.Errorf("failed to evict batch: %w", err)
+		}
+	}
+	return pi.saveBatch(batch)
+}
+
+func (bs *PartitionPrefetchIndex) PutForce(batch core.Batch) error {
+	bs.logger.Debugf("PutForce called for %s on batch %s", bs.getName(), BatchToString(batch))
+	bs.assertBatchPartition(batch)
+	batchSize := batchSizeBytes(batch)
+	if batchSize > bs.maxSizeBytes {
+		return ErrBatchTooLarge
+	}
+	bs.stateCond.L.Lock()
+	defer bs.stateCond.L.Unlock()
+	return bs.saveBatch(batch)
+}
+
+func (pi *PartitionPrefetchIndex) evictOldestBatch() error {
+	batchAndTimer := pi.sequenceHeap.Pop()
+	batchAndTimer.Value.Stop()
+	_, err := pi.cache.Pop(batchAndTimer.Batch)
+	if err != nil {
+		return err
+	}
+	pi.stateCond.Broadcast()
+	return nil
+}
+
+func (pi *PartitionPrefetchIndex) remove(batchId types.BatchID) error {
+	pi.stateCond.L.Lock()
+	defer pi.stateCond.L.Unlock()
+	_, err := pi.cache.Pop(batchId)
+	if err != nil {
+		return fmt.Errorf("failed to remove batch from cache: %w", err)
+	}
+	batchAndTimer, err := pi.sequenceHeap.Remove(batchId)
+	if err != nil {
+		return fmt.Errorf("failed to remove batch from heap: %w", err)
+	}
+	batchAndTimer.Value.Stop()
+	pi.stateCond.Broadcast()
+	return nil
+}
+
+func (bs *PartitionPrefetchIndex) Stop() {
+	bs.cancelContextFunc()
+	bs.stateCond.Broadcast()
+}
