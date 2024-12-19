@@ -14,9 +14,11 @@ type stream struct {
 	logger                            types.Logger
 	requestTransmitSubmitStreamClient protos.RequestTransmit_SubmitStreamClient
 	ctx                               context.Context
-	once                              sync.Once
+	cancelOnce                        sync.Once
 	cancelFunc                        func()
-	requests                          chan *protos.Request
+	requestsChannel                   chan *protos.Request
+	doneChannel                       chan bool
+	doneOnce                          sync.Once
 	lock                              sync.Mutex
 	requestTraceIdToResponseChannel   map[string]chan Response
 }
@@ -26,20 +28,30 @@ type stream struct {
 // If the batcher is not alive, Recv return an error and the cancellation method is applied to mark the stream as faulty.
 func (s *stream) readResponses() {
 	for {
-		resp, err := s.requestTransmitSubmitStreamClient.Recv()
-		if err != nil {
-			s.cancel()
+		select {
+		case <-s.doneChannel:
+			s.logger.Debugf("the stream has been closed, readResponses goroutine is exiting, it was connected to batcher %s ", s.endpoint)
 			return
-		}
+		default:
+			resp, err := s.requestTransmitSubmitStreamClient.Recv()
+			if err != nil {
+				s.logger.Debugf("failed receiving response from batcher %s", s.endpoint)
+				s.cancel()
+				return
+			}
 
-		s.lock.Lock()
-		ch, exists := s.requestTraceIdToResponseChannel[string(resp.TraceId)]
-		delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
-		s.lock.Unlock()
-		if exists {
-			s.logger.Debugf("read response from batcher %v on request with trace id %x", s.endpoint, resp.TraceId)
-			ch <- Response{
-				SubmitResponse: resp,
+			s.lock.Lock()
+			ch, exists := s.requestTraceIdToResponseChannel[string(resp.TraceId)]
+			delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
+			s.lock.Unlock()
+			if exists {
+				s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
+				s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", resp.TraceId)
+				ch <- Response{
+					SubmitResponse: resp,
+				}
+			} else {
+				s.logger.Debugf("received a response from batcher %v for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
 			}
 		}
 	}
@@ -48,19 +60,29 @@ func (s *stream) readResponses() {
 // sendRequests sends requests to the batcher.
 func (s *stream) sendRequests() {
 	for {
-		msg := <-s.requests
-		s.logger.Debugf("send request with trace id %v to the batcher %x", msg.TraceId, s.endpoint)
-		err := s.requestTransmitSubmitStreamClient.Send(msg)
-		if err != nil {
-			s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-			s.cancel()
+		select {
+		case <-s.doneChannel:
+			s.logger.Debugf("the stream has been closed, sendRequests goroutine is exiting, it was connected to batcher %s", s.endpoint)
 			return
+		case msg, ok := <-s.requestsChannel:
+			if !ok {
+				s.logger.Debugf("request channel to batcher %s have been closed", s.endpoint)
+				s.cancel()
+				return
+			}
+			s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
+			err := s.requestTransmitSubmitStreamClient.Send(msg)
+			if err != nil {
+				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+				s.cancel()
+				return
+			}
 		}
 	}
 }
 
 func (s *stream) cancel() {
-	s.once.Do(s.cancelFunc)
+	s.cancelOnce.Do(s.cancelFunc)
 }
 
 // faulty returns true if the stream is faulty, else return false.
@@ -82,11 +104,11 @@ func (s *stream) registerReply(traceID []byte, responses chan Response) {
 }
 
 // renewStream creates a new stream that inherits the map and the requests channel
-func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger types.Logger) (*stream, error) {
+func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger types.Logger, ctx context.Context, cancel context.CancelFunc) (*stream, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	ctx, cancel := context.WithCancel(context.Background())
-	newGRPCStream, err := client.SubmitStream(context.Background())
+
+	newGRPCStream, err := client.SubmitStream(ctx)
 	if err != nil {
 		s.logger.Errorf("Failed establishing a new stream")
 		cancel()
@@ -95,10 +117,14 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 
 	newStreamRequests := make(chan *protos.Request, 1000)
 	newRequestTraceIdToResponseChannelMap := make(map[string]chan Response)
-	for i := 0; i < len(s.requests); i++ {
-		req := <-s.requests
+
+	elem := len(s.requestsChannel)
+	for i := 0; i < elem; i++ {
+		req := <-s.requestsChannel
 		newStreamRequests <- req
 	}
+	s.close() // close the old stream
+
 	for traceId, respChan := range s.requestTraceIdToResponseChannel {
 		newRequestTraceIdToResponseChannelMap[traceId] = respChan
 	}
@@ -110,7 +136,8 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
 		requestTraceIdToResponseChannel:   newRequestTraceIdToResponseChannelMap,
-		requests:                          newStreamRequests,
+		requestsChannel:                   newStreamRequests,
+		doneChannel:                       make(chan bool),
 	}
 
 	newStream.logger.Infof("renew stream")
@@ -128,6 +155,14 @@ func (s *stream) isRequestRegistered(traceID []byte) (chan Response, bool) {
 	return respChan, exists
 }
 
+// close closes the read and send channels
+func (s *stream) close() {
+	s.doneOnce.Do(func() {
+		s.cancel()
+		close(s.doneChannel)
+	})
+}
+
 // getMap is only used for testing
 func (s *stream) getMap() map[string]chan Response {
 	s.lock.Lock()
@@ -139,5 +174,5 @@ func (s *stream) getMap() map[string]chan Response {
 func (s *stream) getRequests() chan *protos.Request {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	return s.requests
+	return s.requestsChannel
 }

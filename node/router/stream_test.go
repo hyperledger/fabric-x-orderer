@@ -1,8 +1,10 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,15 +41,20 @@ func TestRegisterReply(t *testing.T) {
 }
 
 func TestSendRequests(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
 	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
 	fakeSubmitStreamClient.SendReturns(nil)
+	fakeSubmitStreamClient.ContextReturns(ctx)
 	logger := testutil.CreateLogger(t, 0)
 
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
 		logger:                            logger,
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
-		requests:                          make(chan *protos.Request, 10),
+		ctx:                               ctx,
+		cancelFunc:                        cancel,
+		requestsChannel:                   make(chan *protos.Request, 10),
+		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 	}
 
@@ -56,8 +63,8 @@ func TestSendRequests(t *testing.T) {
 	req1 := &protos.Request{TraceId: []byte("request1")}
 	req2 := &protos.Request{TraceId: []byte("request2")}
 
-	s.requests <- req1
-	s.requests <- req2
+	s.requestsChannel <- req1
+	s.requestsChannel <- req2
 
 	assert.Eventually(t, func() bool {
 		return fakeSubmitStreamClient.SendCallCount() == 2
@@ -68,6 +75,8 @@ func TestSendRequests(t *testing.T) {
 
 	sentReq2 := fakeSubmitStreamClient.SendArgsForCall(1)
 	require.Equal(t, req2, sentReq2)
+
+	s.close()
 }
 
 func TestSendRequestsReturnsWithError(t *testing.T) {
@@ -82,14 +91,15 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requests:                          make(chan *protos.Request, 10),
+		requestsChannel:                   make(chan *protos.Request, 10),
+		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 	}
 
 	go s.sendRequests()
 
 	req := &protos.Request{TraceId: []byte("request")}
-	s.requests <- req
+	s.requestsChannel <- req
 
 	assert.Eventually(t, func() bool {
 		return fakeSubmitStreamClient.SendCallCount() == 1 && s.faulty()
@@ -104,12 +114,19 @@ func TestReadResponses(t *testing.T) {
 	traceID := []byte("request123")
 
 	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
-	fakeSubmitStreamClient.RecvReturns(&protos.SubmitResponse{
-		Error:   "",
-		ReqID:   reqID,
-		TraceId: traceID,
-	}, nil)
+	fakeSubmitStreamClient.RecvStub = func() (*protos.SubmitResponse, error) {
+		if fakeSubmitStreamClient.RecvCallCount() == 1 {
+			return &protos.SubmitResponse{
+				Error:   "",
+				ReqID:   reqID,
+				TraceId: traceID,
+			}, nil
+		}
+		return nil, fmt.Errorf("rpc error: service unavailable")
+	}
+
 	logger := testutil.CreateLogger(t, 2)
+	ctx, cancel := context.WithCancel(context.Background())
 
 	responseChan := make(chan Response, 1)
 
@@ -117,7 +134,10 @@ func TestReadResponses(t *testing.T) {
 		endpoint:                          "127.0.0.1:5017",
 		logger:                            logger,
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
-		requests:                          make(chan *protos.Request, 10),
+		ctx:                               ctx,
+		cancelFunc:                        cancel,
+		requestsChannel:                   make(chan *protos.Request, 10),
+		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 	}
 
@@ -158,7 +178,8 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requests:                          make(chan *protos.Request, 10),
+		requestsChannel:                   make(chan *protos.Request, 10),
+		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 	}
 
@@ -170,29 +191,30 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 }
 
 func TestRenewStreamSuccess(t *testing.T) {
-	reqID := []byte{123}
-	traceID := []byte("request123")
-
 	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
-	fakeSubmitStreamClient.RecvReturns(&protos.SubmitResponse{
-		Error:   "SERVICE_UNAVAILABLE",
-		ReqID:   reqID,
-		TraceId: traceID,
-	}, fmt.Errorf("rpc error: service unavailable"))
-	fakeSubmitStreamClient.SendReturns(nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	fakeSubmitStreamClient.ContextReturns(ctx)
 
 	logger := testutil.CreateLogger(t, 4)
-	ctx, cancel := context.WithCancel(context.Background())
 
+	// prepare requests and map
 	requests := make(chan *protos.Request, 10)
 	requestTraceIdToResponseChannel := make(map[string]chan Response)
 
-	req := &protos.Request{
-		Payload: []byte{123},
+	req1 := &protos.Request{
+		Payload: []byte{0o123},
 		TraceId: []byte{1},
 	}
-	requests <- req
-	requestTraceIdToResponseChannel[string(req.TraceId)] = make(chan Response)
+	requests <- req1
+	requestTraceIdToResponseChannel[string(req1.TraceId)] = make(chan Response, 100)
+
+	req2 := &protos.Request{
+		Payload: []byte{123},
+		TraceId: []byte{2},
+	}
+	requests <- req2
+	requestTraceIdToResponseChannel[string(req2.TraceId)] = make(chan Response, 100)
 
 	faultyStream := &stream{
 		endpoint:                          "127.0.0.1:7015",
@@ -200,32 +222,76 @@ func TestRenewStreamSuccess(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requests:                          requests,
+		requestsChannel:                   requests,
+		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
 	}
 
 	faultyStream.cancel()
+	assert.Eventually(t, func() bool {
+		return faultyStream.faulty()
+	}, time.Second, 10*time.Millisecond)
 
 	client := &commMocks.FakeRequestTransmitClient{}
-	client.SubmitStreamReturns(fakeSubmitStreamClient, nil)
-	newStream, err := faultyStream.renewStream(client, faultyStream.endpoint, faultyStream.logger)
+	newFakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
+	newFakeSubmitStreamClient.RecvStub = func() (*protos.SubmitResponse, error) {
+		if newFakeSubmitStreamClient.RecvCallCount() == 1 {
+			return &protos.SubmitResponse{
+				Error:   "",
+				TraceId: req1.TraceId,
+			}, nil
+		}
+		if newFakeSubmitStreamClient.RecvCallCount() == 2 {
+			return &protos.SubmitResponse{
+				Error:   "",
+				TraceId: req2.TraceId,
+			}, nil
+		}
+		return nil, fmt.Errorf("error")
+	}
+
+	// var reqPool []*protos.Request
+	var reqPool safeReqPool
+	newFakeSubmitStreamClient.SendStub = func(request *protos.Request) error {
+		reqPool.append(request)
+		return nil
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+	newFakeSubmitStreamClient.ContextReturns(ctx)
+	client.SubmitStreamReturns(newFakeSubmitStreamClient, nil)
+	newStream, err := faultyStream.renewStream(client, faultyStream.endpoint, faultyStream.logger, ctx, cancel)
 	require.NoError(t, err)
 	require.NotNil(t, newStream)
+	require.False(t, newStream.faulty())
 
-	// compare maps
-	mapOfFaultyStream := faultyStream.getMap()
-	mapOfNewStream := newStream.getMap()
-	require.Equal(t, len(mapOfFaultyStream), len(mapOfNewStream))
-	resp, exists := mapOfNewStream[string(req.TraceId)]
-	require.True(t, exists)
-	require.NotNil(t, resp)
+	assert.Eventually(t, func() bool {
+		reqCond := reqPool.length() == 2 && bytes.Equal(reqPool.getElement(0).TraceId, req1.TraceId) && bytes.Equal(reqPool.getElement(1).TraceId, req2.TraceId)
+		return reqCond && newFakeSubmitStreamClient.SendCallCount() >= 2 && newFakeSubmitStreamClient.RecvCallCount() >= 2
+	}, 30*time.Second, 10*time.Millisecond)
 
-	// compare requests channel
-	reqsOfFaultyStream := faultyStream.getRequests()
-	reqsOfNewStream := newStream.getRequests()
-	reqByNewStream := <-reqsOfNewStream
-	require.Equal(t, len(reqsOfFaultyStream), len(reqsOfNewStream))
-	require.Equal(t, req, reqByNewStream)
+	newStream.close()
+}
 
-	newStream.cancel()
+type safeReqPool struct {
+	mu      sync.Mutex
+	reqPool []*protos.Request
+}
+
+func (srp *safeReqPool) append(request *protos.Request) {
+	srp.mu.Lock()
+	defer srp.mu.Unlock()
+	srp.reqPool = append(srp.reqPool, request)
+}
+
+func (srp *safeReqPool) length() int {
+	srp.mu.Lock()
+	defer srp.mu.Unlock()
+	return len(srp.reqPool)
+}
+
+func (srp *safeReqPool) getElement(i int) *protos.Request {
+	srp.mu.Lock()
+	defer srp.mu.Unlock()
+	return srp.reqPool[i]
 }

@@ -110,7 +110,7 @@ func (sr *ShardRouter) ForwardBestEffort(reqID, request []byte) error {
 		return fmt.Errorf("could not establish stream to %s", sr.batcherEndpoint)
 	}
 
-	stream.requests <- &protos.Request{
+	stream.requestsChannel <- &protos.Request{
 		Payload: request,
 	}
 	return nil
@@ -139,7 +139,7 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 	stream.registerReply(trace, responses)
 
 	sr.logger.Debugf("enter request %x to the requests list", reqID)
-	stream.requests <- &protos.Request{
+	stream.requestsChannel <- &protos.Request{
 		TraceId: trace,
 		Payload: request,
 	}
@@ -161,12 +161,14 @@ func (sr *ShardRouter) maybeInitStream(connIndex int, streamInConnIndex int) *st
 		if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
 			sr.reconnect(connIndex)
 			client := protos.NewRequestTransmitClient(sr.connPool[connIndex])
-			stream, err = currentStream.renewStream(client, sr.batcherEndpoint, sr.logger)
+			ctx, cancel := context.WithCancel(context.Background())
+			stream, err = currentStream.renewStream(client, sr.batcherEndpoint, sr.logger, ctx, cancel)
 			if err != nil {
 				sr.logger.Errorf("failed to renew stream, err: %v", err)
 			}
 			sr.streams[connIndex][streamInConnIndex] = stream
 		} else {
+			currentStream.close()
 			sr.initStream(connIndex, streamInConnIndex)
 			stream = sr.streams[connIndex][streamInConnIndex]
 		}
@@ -283,13 +285,14 @@ func (sr *ShardRouter) initStream(i int, j int) {
 
 	client := protos.NewRequestTransmitClient(sr.connPool[i])
 	ctx, cancel := context.WithCancel(context.Background())
-	newStream, err := client.SubmitStream(context.Background())
+	newStream, err := client.SubmitStream(ctx)
 	if err == nil {
 		s := &stream{
 			endpoint:                          sr.batcherEndpoint,
 			logger:                            sr.logger,
 			requestTraceIdToResponseChannel:   make(map[string]chan Response),
-			requests:                          make(chan *protos.Request, 1000),
+			requestsChannel:                   make(chan *protos.Request, 1000),
+			doneChannel:                       make(chan bool, 1),
 			requestTransmitSubmitStreamClient: newStream,
 			cancelFunc:                        cancel,
 			ctx:                               ctx,
