@@ -118,6 +118,7 @@ func encodePEM(keyType string, data []byte) []byte {
 
 // RFC 7093, Section 2, Method 4
 func computeSKI(key *ecdsa.PublicKey) []byte {
+	//lint:ignore SA1019 used for testing only, improve: elliptic.Marshal has been deprecated since Go 1.21: for ECDH, use the crypto/ecdh package. This function returns an encoding equivalent to that of PublicKey.Bytes in crypto/ecdh.
 	raw := elliptic.Marshal(key.Curve, key.X, key.Y)
 	hash := sha256.Sum256(raw)
 	return hash[:]

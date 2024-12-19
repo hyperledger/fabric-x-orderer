@@ -43,7 +43,7 @@ fi
 
 # staticcheck Arma source files - ignore issues in vendored dependency projects
 echo "Checking with staticcheck"
-OUTPUT="$(staticcheck ./... | grep -v vendor/ || true)"
+OUTPUT="$(staticcheck ./... | grep -v vendor/ | grep -v "but Staticcheck was built with" || true)"
 if [ -n "$OUTPUT" ]; then
     echo "The following staticcheck issues were flagged"
     echo "$OUTPUT"
