@@ -162,17 +162,3 @@ func (s *stream) close() {
 		close(s.doneChannel)
 	})
 }
-
-// getMap is only used for testing
-func (s *stream) getMap() map[string]chan Response {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	return s.requestTraceIdToResponseChannel
-}
-
-// getRequests is only used for testing
-func (s *stream) getRequests() chan *protos.Request {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	return s.requestsChannel
-}
