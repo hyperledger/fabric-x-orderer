@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"arma/common/types"
+
+	"github.com/pkg/errors"
 )
 
 //go:generate counterfeiter -o mocks/request_inspector.go . RequestInspector
@@ -57,7 +60,10 @@ type BatchLedger interface {
 	BatchLedgeReader
 }
 
-var gap = types.BatchSequence(10)
+var (
+	gap                 = types.BatchSequence(10)
+	defaultBatchTimeout = time.Millisecond * 500
+)
 
 type Batcher struct {
 	Batchers         []types.PartyID
@@ -89,6 +95,10 @@ type Batcher struct {
 }
 
 func (b *Batcher) Start() {
+	if b.BatchTimeout == 0 {
+		b.BatchTimeout = defaultBatchTimeout
+	}
+
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.termChan = make(chan uint64)
@@ -193,10 +203,6 @@ func (b *Batcher) runPrimary() {
 	b.acker = NewAcker(b.seq, gap, b.N, uint16(b.Threshold), b.Logger)
 	b.MemPool.Restart(true)
 
-	if b.BatchTimeout == 0 {
-		b.BatchTimeout = time.Millisecond * 500
-	}
-
 	var currentBatch types.BatchedRequests
 	var digest []byte
 
@@ -259,37 +265,54 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 }
 
 func (b *Batcher) runSecondary() {
-	primary := b.primary
-	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, primary)
+	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
-	out := b.BatchPuller.PullBatches(primary)
+	out := b.BatchPuller.PullBatches(b.primary)
 	defer func() {
 		b.BatchPuller.Stop()
-		b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, primary)
+		b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	}()
 
 	for {
-		var batchedRequests Batch
+		var batch Batch
 		select {
-		case batchedRequests = <-out:
+		case batch = <-out:
 		case newTerm := <-b.termChan:
 			b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
 			return
 		case <-b.stopChan:
 			return
 		}
-
-		requests := batchedRequests.Requests()
-		if len(requests) == 0 {
-			panic("programming error: replicated an empty batch")
+		if err := b.verifyBatch(batch); err != nil {
+			// TODO complain
+			b.Logger.Warnf("Secondary batch %d (shard %d) sending a complaint (primary %d); verify batch err: %v", b.ID, b.Shard, b.primary, err)
 		}
-		batch := requests.Serialize()
-		// TODO verify batch
-		b.Ledger.Append(primary, uint64(b.seq), batch) // TODO should we use the sequence of the batch?
+		requests := batch.Requests()
+		b.Ledger.Append(b.primary, uint64(b.seq), requests.Serialize())
 		b.removeRequests(requests)
-		baf := b.AttestBatch(b.seq, primary, b.Shard, b.Digest(requests))
+		baf := b.AttestBatch(b.seq, b.primary, b.Shard, b.Digest(requests))
 		b.sendBAF(baf)
-		b.AckBAF(baf.Seq(), primary)
+		b.AckBAF(baf.Seq(), b.primary)
 		b.seq++
 	}
+}
+
+func (b *Batcher) verifyBatch(batch Batch) error {
+	if batch.Primary() != b.primary {
+		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
+	}
+	if batch.Shard() != b.Shard {
+		return errors.Errorf("batch shard (%d) not equal to expected shard (%d)", batch.Shard(), b.Shard)
+	}
+	if batch.Seq() != b.seq {
+		return errors.Errorf("batch seq (%d) not equal to expected seq (%d)", batch.Seq(), b.seq)
+	}
+	if len(batch.Requests()) == 0 {
+		return errors.Errorf("empty batch")
+	}
+	if !slices.Equal(batch.Digest(), b.Digest(batch.Requests())) {
+		return errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), b.Digest(batch.Requests()))
+	}
+	// TODO verify requests
+	return nil
 }

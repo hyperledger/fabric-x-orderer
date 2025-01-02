@@ -75,6 +75,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
+	batch.DigestReturns(batcher.Digest(reqs))
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -96,11 +97,13 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 		return stateProvider.GetLatestStateChanCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
+	batch.SeqReturns(0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
+	batch.SeqReturns(1)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -142,8 +145,10 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	batcher.StateProvider = stateProvider
 
 	batch := &mocks.FakeBatch{}
-	batch.PrimaryReturns(1)
+	batch.PrimaryReturns(2)
+	batch.SeqReturns(0)
 	batch.RequestsReturns(reqs)
+	batch.DigestReturns(batcher.Digest(reqs))
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -228,6 +233,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
+	batch.DigestReturns(batcher.Digest(reqs))
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -308,6 +314,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
+	batch.DigestReturns(batcher.Digest(reqs))
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -364,6 +371,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return batchPuller.StopCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
+	batch.PrimaryReturns(2)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -519,8 +527,9 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	batcher.StateProvider = stateProvider
 
 	batch := &mocks.FakeBatch{}
-	batch.PrimaryReturns(1)
+	batch.PrimaryReturns(2)
 	batch.RequestsReturns(reqs)
+	batch.DigestReturns(batcher.Digest(reqs))
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
