@@ -19,7 +19,7 @@ var Rules = []Rule{
 	// DetectEquivocation, // TODO: false positive, lets find out why
 	PrimaryRotateDueToComplaints,
 	CleanupOldComplaints,
-	CleanupOldAttestations,
+	// CleanupOldAttestations, // TODO: fully test for byzantine failures
 }
 
 type batchAttestationVote struct {
