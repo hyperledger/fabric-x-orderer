@@ -1,0 +1,128 @@
+syntax = "proto3";
+option go_package = "arma/node/protos";
+
+// SharedConfig holds the initial configuration that will be used to bootstrap new nodes.
+// This configuration is common to all Arma nodes.
+message SharedConfig {
+  PartiesConfig PartiesConfig = 1;
+  ConsensusBFTConfig ConsensusBFTConfig = 2;
+  BatchingConfig BatchingConfig = 3;
+}
+
+// PartiesConfig carries the identity, certificates and nodes configuration of a party.
+message PartiesConfig {
+  repeated PartyConfig Party = 1;
+}
+
+message PartyConfig {
+  // the identity of the party, type unit16, id > 0
+  uint32 PartyID = 1;
+  // the certificates of the certificate authorities who generates the party's signing key-pairs
+  repeated bytes CACerts = 2;
+  // the certificates of the certificate authorities who generates the party's TLS key-pairs
+  repeated bytes TLSCACerts = 3;
+  // the shared configuration of the router
+  RouterNodeConfig RouterConfig = 4;
+  // the shared configuration of the batchers
+  repeated BatcherNodeConfig BatchersConfig = 5;
+  // the shared configuration of the consenter
+  ConsenterNodeConfig ConsenterConfig = 6;
+  // the shared configuration of the assembler
+  AssemblerNodeConfig AssemblerConfig = 7;
+}
+
+message RouterNodeConfig {
+  // the hostname or IP on which the gRPC server will listen
+  string host = 1;
+  // the port on which the gRPC server will listen
+  uint32 port = 2;
+  // the certificate used to authenticate with clients
+  bytes tls_cert = 3;
+}
+
+message BatcherNodeConfig {
+  // the ID of the shard to which the batcher is associated
+  uint32 shardID = 1;
+  // the hostname or IP on which the gRPC server will listen
+  string host = 2;
+  // the port on which the gRPC server will listen
+  uint32 port = 3;
+  // the public key of the batcher used to authenticate signatures on BAS's
+  bytes public_key = 4;
+  // the certificate used to authenticate with clients
+  bytes tls_cert = 5;
+}
+
+message ConsenterNodeConfig {
+  // the hostname or IP on which the gRPC server will listen
+  string host = 1;
+  // the port on which the gRPC server will listen
+  uint32 port = 2;
+  // the public key of the consensus used to authenticate signatures on blocks
+  bytes public_key = 3;
+  // the certificate used to authenticate with clients
+  bytes tls_cert = 4;
+}
+
+message AssemblerNodeConfig {
+  // the hostname or IP on which the gRPC server will listen
+  string host = 1;
+  // the port on which the gRPC server will listen
+  uint32 port = 2;
+  // the certificate used to authenticate with clients
+  bytes tls_cert = 3;
+}
+
+// BFT configuration
+message ConsensusBFTConfig {
+  SmartBFTConfig BFTConfig = 1;
+}
+
+message SmartBFTConfig {
+  // RequestBatchMaxInterval is the maximal time interval a request batch can wait before it is proposed. A request batch is accumulating requests until `RequestBatchMaxInterval` had elapsed from the time the batch was first created (i.e. the time the first request was added to it), or until it is of count `RequestBatchMaxCount`, or it reaches `RequestBatchMaxBytes`, whichever occurs first.
+  uint32 RequestBatchMaxInterval = 1;
+  // RequestForwardTimeout is started from the moment a request is submitted, and defines the interval after which a request is forwarded to the leader.
+  uint32 RequestForwardTimeout = 2;
+  // RequestComplainTimeout is started when `RequestForwardTimeout` expires, and defines the interval after which the node complains about the view leader.
+  uint32 RequestComplainTimeout= 3;
+  // RequestAutoRemoveTimeout is started when `RequestComplainTimeout` expires, and defines the interval after which a request is removed (dropped) from the request pool.
+  uint32 RequestAutoRemoveTimeout = 4;
+  // ViewChangeResendInterval defines the interval after which the ViewChange message is resent.
+  uint32 ViewChangeResendInterval = 5;
+  // ViewChangeTimeout is started when a node first receives a quorum of `ViewChange` messages, and defines the interval after which the node will try to initiate a view change with a higher view number.
+  uint32 ViewChangeTimeout = 6;
+ // LeaderHeartbeatTimeout is the interval after which, if nodes do not receive a "sign of life" from the leader, they complain about the current leader and try to initiate a view change. A sign of life is either a heartbeat or a message from the leader.
+  uint32 LeaderHeartbeatTimeout = 7;
+  // CollectTimeout is the interval after which the node stops listening to `StateTransferResponse` messages, stops collecting information about view metadata from remote nodes.
+  uint32 CollectTimeout = 8;
+  // IncomingMessageBufferSize is the size of the buffer holding incoming messages before they are processed (maximal number of messages).
+  uint32 IncomingMessageBufferSize = 9;
+  // RequestPoolSize is the number of pending requests retained by the node. The `RequestPoolSize` is recommended to be at least double (x2) the `RequestBatchMaxCount`. This cannot be changed dynamically and the node must be restarted to pick up the change.
+  uint32 RequestPoolSize = 10;
+  // LeaderHeartbeatCount is the number of heartbeats per `LeaderHeartbeatTimeout` that the leader should emit. The heartbeat-interval is equal to: `LeaderHeartbeatTimeout/LeaderHeartbeatCount`.
+  uint32 LeaderHeartbeatCount = 11;
+}
+
+message BatchingConfig {
+  // BatchTimeout is the amount of time to wait before creating a batch.
+  uint32 BatchTimeout = 1;
+  // BatchSize controls the number of messages batched into a block and defines limits on a batch size.
+  BatchSize BatchSize = 2;
+}
+
+message BatchSize {
+  // MaxMessageCount is the maximum number of messages to permit in a batch. No block will contain more than this number of messages.
+  uint32 MaxMessageCount = 1;
+  // AbsoluteMaxBytes is the absolute maximum number of bytes allowed for the serialized messages in a batch.
+  // The maximum block size is this value plus the size of the associated metadata (usually a few KB depending upon the size of the signing identities).
+  // Any transaction larger than this value will be rejected by ordering.
+  // It is recommended not to exceed 49 MB, given the default grpc max message size of 100 MB
+  uint32 AbsoluteMaxBytes = 2;
+  // PreferredMaxBytes is the preferred maximum number of bytes allowed for the serialized messages in a batch.
+  // Roughly, this field may be considered the best effort maximum size of a batch.
+  // A batch will fill with messages until this size is reached (or the max message count, or batch timeout is exceeded).
+  // If adding a new message to the batch would cause the batch to exceed the preferred max bytes, then the current batch is closed and written to a block, and a new batch containing the new message is created.
+  // If a message larger than the preferred max bytes is received, then its batch will contain only that message.
+  // Because messages may be larger than preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed the preferred max bytes, but will always contain exactly one transaction.
+  uint32 PreferredMaxBytes = 3;
+}
