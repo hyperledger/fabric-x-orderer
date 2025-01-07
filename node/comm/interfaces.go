@@ -10,9 +10,8 @@ import (
 	"context"
 	"fmt"
 
-	//lint:ignore SA1019 since we are reusing Fabric's comm service, we must use the old proto package for now
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"google.golang.org/protobuf/proto"
 )
 
 //go:generate mockery --dir . --name Communicator --case underscore --output ./mocks/

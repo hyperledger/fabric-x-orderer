@@ -28,7 +28,7 @@ import (
 	"arma/node/router"
 	"arma/testutil"
 
-	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	_ "github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"

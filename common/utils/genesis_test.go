@@ -11,11 +11,10 @@ import (
 
 	"arma/common/utils"
 
-	//lint:ignore SA1019 since we are reusing Fabric's code, we must use the old proto package for now
-	"github.com/golang/protobuf/proto"
-	cb "github.com/hyperledger/fabric-protos-go/common"
+	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestEmptyGenesisBlock(t *testing.T) {

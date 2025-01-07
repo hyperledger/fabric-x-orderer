@@ -16,14 +16,13 @@ import (
 	"time"
 
 	"arma/node/comm"
-	"arma/node/comm/testpb"
+	testgrpc "arma/node/comm/testdata/grpc"
 
-	//lint:ignore SA1019 since we are reusing Fabric's comm service, we must use the old proto package for now
-	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/proto"
 )
 
 const testTimeout = 1 * time.Second // conservative
@@ -31,8 +30,8 @@ const testTimeout = 1 * time.Second // conservative
 type echoServer struct{}
 
 func (es *echoServer) EchoCall(ctx context.Context,
-	echo *testpb.Echo,
-) (*testpb.Echo, error) {
+	echo *testgrpc.Echo,
+) (*testgrpc.Echo, error) {
 	return echo, nil
 }
 
@@ -264,7 +263,7 @@ func TestSetMessageSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test server: %v", err)
 	}
-	testpb.RegisterEchoServiceServer(srv.Server(), &echoServer{})
+	testgrpc.RegisterEchoServiceServer(srv.Server(), &echoServer{})
 	defer srv.Stop()
 	go srv.Start()
 
@@ -316,12 +315,12 @@ func TestSetMessageSize(t *testing.T) {
 			require.NoError(t, err)
 			defer conn.Close()
 			// create service client from conn
-			svcClient := testpb.NewEchoServiceClient(conn)
+			svcClient := testgrpc.NewEchoServiceClient(conn)
 			callCtx := context.Background()
 			callCtx, cancel := context.WithTimeout(callCtx, testTimeout)
 			defer cancel()
 			// invoke service
-			echo := &testpb.Echo{
+			echo := &testgrpc.Echo{
 				Payload: []byte{0, 0, 0, 0, 0},
 			}
 			resp, err := svcClient.EchoCall(callCtx, echo)

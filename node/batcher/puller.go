@@ -11,8 +11,8 @@ import (
 	"arma/node/config"
 	node_ledger "arma/node/ledger"
 
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc"
 )
@@ -77,8 +77,8 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan core.Batch {
 		bp.clientConfig(from),
 		func(block *common.Block) {
 			bp.logger.Infof("[%s] Fetched block %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
-			fb := node_ledger.FabricBatch(*block)
-			res <- &fb
+			fb := (*node_ledger.FabricBatch)(block)
+			res <- fb
 		},
 	)
 

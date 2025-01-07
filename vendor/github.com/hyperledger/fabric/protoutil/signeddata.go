@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/msp"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"google.golang.org/protobuf/proto"
 )
 
 // SignedData is used to represent the general triplet required to verify a signature
@@ -85,9 +85,9 @@ func EnvelopeAsSignedData(env *common.Envelope) ([]*SignedData, error) {
 	}}, nil
 }
 
-// LogMessageForSerializedIdentity returns a string with seriealized identity information,
+// LogMessageForSerializedIdentity returns a string with serialized identity information,
 // or a string indicating why the serialized identity information cannot be returned.
-// Any errors are intentially returned in the return strings so that the function can be used in single-line log messages with minimal clutter.
+// Any errors are intentionally returned in the return strings so that the function can be used in single-line log messages with minimal clutter.
 func LogMessageForSerializedIdentity(serializedIdentity []byte) string {
 	id := &msp.SerializedIdentity{}
 	err := proto.Unmarshal(serializedIdentity, id)

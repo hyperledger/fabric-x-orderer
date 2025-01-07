@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 )
 
 // Statistics holds aggregated data related to transactions and blocks per second

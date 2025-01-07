@@ -10,7 +10,7 @@ import (
 	"arma/node/config"
 	node_ledger "arma/node/ledger"
 
-	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 )
 
@@ -95,8 +95,8 @@ func (i *Index) Retrieve(party types.PartyID, shard types.ShardID, sequence type
 	i.lock.RUnlock()
 
 	if exists {
-		fb := node_ledger.FabricBatch(*blockFromCache)
-		return &fb, true
+		fb := (*node_ledger.FabricBatch)(blockFromCache)
+		return fb, true
 	}
 
 	ledger := i.indexes[shard][party]
@@ -115,8 +115,8 @@ func (i *Index) Retrieve(party types.PartyID, shard types.ShardID, sequence type
 		i.logger.Panicf("Failed retrieving block: %v", err)
 	}
 
-	fb := node_ledger.FabricBatch(*block)
-	return &fb, true
+	fb := (*node_ledger.FabricBatch)(block)
+	return fb, true
 }
 
 func (i *Index) Height(shard types.ShardID, party types.PartyID) types.BatchSequence {

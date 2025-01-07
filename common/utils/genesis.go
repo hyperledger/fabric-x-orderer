@@ -1,9 +1,9 @@
 package utils
 
 import (
-	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // EmptyGenesisBlock constructs and returns an empty genesis block for a given channel ID.
@@ -11,7 +11,7 @@ func EmptyGenesisBlock(channelID string) *common.Block {
 	payloadChannelHeader := &common.ChannelHeader{
 		Type:      int32(common.HeaderType_CONFIG),
 		Version:   1,
-		Timestamp: &timestamp.Timestamp{}, // no time
+		Timestamp: &timestamppb.Timestamp{}, // no time
 		ChannelId: channelID,
 		Epoch:     0,
 	}

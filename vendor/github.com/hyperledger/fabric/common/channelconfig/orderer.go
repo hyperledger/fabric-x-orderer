@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	cb "github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/capabilities"
 	"github.com/pkg/errors"
 )
@@ -76,6 +76,10 @@ type OrdererOrgConfig struct {
 
 // Endpoints returns the set of addresses this ordering org exposes as orderers
 func (oc *OrdererOrgConfig) Endpoints() []string {
+	if oc.protos == nil || oc.protos.Endpoints == nil {
+		return nil
+	}
+
 	return oc.protos.Endpoints.Addresses
 }
 
@@ -140,6 +144,13 @@ func NewOrdererConfig(ordererGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler,
 			return nil, err
 		}
 	}
+
+	if channelCapabilities.ConsensusTypeBFT() {
+		if err := oc.validateAllOrgsHaveEndpoints(); err != nil {
+			return nil, err
+		}
+	}
+
 	return oc, nil
 }
 
@@ -225,6 +236,22 @@ func (oc *OrdererConfig) validateBatchTimeout() error {
 	if oc.batchTimeout <= 0 {
 		return fmt.Errorf("Attempted to set the batch timeout to a non-positive value: %s", oc.batchTimeout)
 	}
+	return nil
+}
+
+func (oc *OrdererConfig) validateAllOrgsHaveEndpoints() error {
+	var orgsMissingEndpoints []string
+
+	for _, org := range oc.Organizations() {
+		if len(org.Endpoints()) == 0 {
+			orgsMissingEndpoints = append(orgsMissingEndpoints, org.Name())
+		}
+	}
+
+	if len(orgsMissingEndpoints) > 0 {
+		return errors.Errorf("some orderer organizations endpoints are empty: %s", orgsMissingEndpoints)
+	}
+
 	return nil
 }
 

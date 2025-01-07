@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"arma/node/comm"
-	"arma/node/comm/testpb"
+	testgrpc "arma/node/comm/testdata/grpc"
 	"arma/node/comm/tlsgen"
 
 	"github.com/pkg/errors"
@@ -82,11 +82,11 @@ func init() {
 // test servers to be registered with the GRPCServer
 type emptyServiceServer struct{}
 
-func (ess *emptyServiceServer) EmptyCall(context.Context, *testpb.Empty) (*testpb.Empty, error) {
-	return new(testpb.Empty), nil
+func (ess *emptyServiceServer) EmptyCall(context.Context, *testgrpc.Empty) (*testgrpc.Empty, error) {
+	return new(testgrpc.Empty), nil
 }
 
-func (esss *emptyServiceServer) EmptyStream(stream testpb.EmptyService_EmptyStreamServer) error {
+func (esss *emptyServiceServer) EmptyStream(stream testgrpc.EmptyService_EmptyStreamServer) error {
 	for {
 		_, err := stream.Recv()
 		if err == io.EOF {
@@ -95,7 +95,7 @@ func (esss *emptyServiceServer) EmptyStream(stream testpb.EmptyService_EmptyStre
 		if err != nil {
 			return err
 		}
-		if err := stream.Send(&testpb.Empty{}); err != nil {
+		if err := stream.Send(&testgrpc.Empty{}); err != nil {
 			return err
 		}
 
@@ -103,7 +103,7 @@ func (esss *emptyServiceServer) EmptyStream(stream testpb.EmptyService_EmptyStre
 }
 
 // invoke the EmptyCall RPC
-func invokeEmptyCall(address string, dialOptions ...grpc.DialOption) (*testpb.Empty, error) {
+func invokeEmptyCall(address string, dialOptions ...grpc.DialOption) (*testgrpc.Empty, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	// create GRPC client conn
@@ -114,10 +114,10 @@ func invokeEmptyCall(address string, dialOptions ...grpc.DialOption) (*testpb.Em
 	defer clientConn.Close()
 
 	// create GRPC client
-	client := testpb.NewEmptyServiceClient(clientConn)
+	client := testgrpc.NewEmptyServiceClient(clientConn)
 
 	// invoke service
-	empty, err := client.EmptyCall(context.Background(), new(testpb.Empty))
+	empty, err := client.EmptyCall(context.Background(), new(testgrpc.Empty))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func invokeEmptyCall(address string, dialOptions ...grpc.DialOption) (*testpb.Em
 }
 
 // invoke the EmptyStream RPC
-func invokeEmptyStream(address string, dialOptions ...grpc.DialOption) (*testpb.Empty, error) {
+func invokeEmptyStream(address string, dialOptions ...grpc.DialOption) (*testgrpc.Empty, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	// create GRPC client conn
@@ -136,12 +136,12 @@ func invokeEmptyStream(address string, dialOptions ...grpc.DialOption) (*testpb.
 	}
 	defer clientConn.Close()
 
-	stream, err := testpb.NewEmptyServiceClient(clientConn).EmptyStream(ctx)
+	stream, err := testgrpc.NewEmptyServiceClient(clientConn).EmptyStream(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var msg *testpb.Empty
+	var msg *testgrpc.Empty
 	var streamErr error
 
 	waitc := make(chan struct{})
@@ -165,7 +165,7 @@ func invokeEmptyStream(address string, dialOptions ...grpc.DialOption) (*testpb.
 	// StreamHandler and returns an error so Send can return with an io.EOF since
 	// the server side has already terminated. Whether or not we get an error
 	// depends on timing.
-	err = stream.Send(&testpb.Empty{})
+	err = stream.Send(&testgrpc.Empty{})
 	if err != nil && err != io.EOF {
 		return nil, fmt.Errorf("stream send failed: %s", err)
 	}
@@ -526,7 +526,7 @@ func TestNewGRPCServer(t *testing.T) {
 	require.Equal(t, srv.MutualTLSRequired(), false)
 
 	// register the GRPC test server
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 
 	// start the server
 	go srv.Start()
@@ -560,7 +560,7 @@ func TestNewGRPCServerFromListener(t *testing.T) {
 	require.Equal(t, srv.MutualTLSRequired(), false)
 
 	// register the GRPC test server
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 
 	// start the server
 	go srv.Start()
@@ -605,7 +605,7 @@ func TestNewSecureGRPCServer(t *testing.T) {
 	require.Equal(t, srv.MutualTLSRequired(), false)
 
 	// register the GRPC test server
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 
 	// start the server
 	go srv.Start()
@@ -756,7 +756,7 @@ func TestWithSignedRootCertificates(t *testing.T) {
 	})
 	require.NoError(t, err, "failed to create new grpc server")
 	// register the GRPC test server
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 
 	// start the server
 	go srv.Start()
@@ -823,7 +823,7 @@ func TestWithSignedIntermediateCertificates(t *testing.T) {
 	}
 
 	// register the GRPC test server
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 
 	// start the server
 	go srv.Start()
@@ -879,7 +879,7 @@ func runMutualAuth(t *testing.T, servers []testServer, trustedClients, unTrusted
 		require.Equal(t, srv.MutualTLSRequired(), true)
 
 		// register the GRPC test server and start the GRPCServer
-		testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+		testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 		go srv.Start()
 		defer srv.Stop()
 
@@ -989,7 +989,7 @@ func TestSetClientRootCAs(t *testing.T) {
 	require.NoError(t, err, "failed to create GRPCServer")
 
 	// register the GRPC test server and start the GRPCServer
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 	go srv.Start()
 	defer srv.Stop()
 
@@ -1081,7 +1081,7 @@ func TestUpdateTLSCert(t *testing.T) {
 
 	srv, err := comm.NewGRPCServerFromListener(lis, cfg)
 	require.NoError(t, err)
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 
 	go srv.Start()
 	defer srv.Stop()
@@ -1254,7 +1254,7 @@ func TestServerInterceptors(t *testing.T) {
 
 	srv, err := comm.NewGRPCServerFromListener(lis, srvConfig)
 	require.NoError(t, err, "failed to create gRPC server")
-	testpb.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
+	testgrpc.RegisterEmptyServiceServer(srv.Server(), &emptyServiceServer{})
 	defer srv.Stop()
 	go srv.Start()
 

@@ -24,16 +24,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hyperledger/fabric/orderer/common/cluster"
-
-	//lint:ignore SA1019 since we are reusing Fabric's comm package, we must use the old proto package
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/hyperledger/fabric-config/protolator"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/deliverclient"
 	"github.com/hyperledger/fabric/common/policies"
@@ -43,7 +38,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+var ErrRetryCountExhausted = errors.New("retry attempts exhausted")
 
 // ConnByCertMap maps certificates represented as strings
 // to gRPC connections
@@ -755,11 +754,11 @@ func PullLastConfigBlock(puller ChainPuller) (*common.Block, error) {
 		return nil, err
 	}
 	if endpoint == "" {
-		return nil, cluster.ErrRetryCountExhausted
+		return nil, ErrRetryCountExhausted
 	}
 	lastBlock := puller.PullBlock(latestHeight - 1)
 	if lastBlock == nil {
-		return nil, cluster.ErrRetryCountExhausted
+		return nil, ErrRetryCountExhausted
 	}
 	lastConfNumber, err := protoutil.GetLastConfigIndexFromBlock(lastBlock)
 	if err != nil {
@@ -771,7 +770,7 @@ func PullLastConfigBlock(puller ChainPuller) (*common.Block, error) {
 	puller.Close()
 	lastConfigBlock := puller.PullBlock(lastConfNumber)
 	if lastConfigBlock == nil {
-		return nil, cluster.ErrRetryCountExhausted
+		return nil, ErrRetryCountExhausted
 	}
 	return lastConfigBlock, nil
 }
@@ -792,7 +791,7 @@ func LatestHeightAndEndpoint(puller ChainPuller) (string, uint64, error) {
 	return mostUpToDateEndpoint, maxHeight, nil
 }
 
-func EncodeTimestamp(t *timestamp.Timestamp) []byte {
+func EncodeTimestamp(t *timestamppb.Timestamp) []byte {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, uint64(t.Seconds))
 	return b

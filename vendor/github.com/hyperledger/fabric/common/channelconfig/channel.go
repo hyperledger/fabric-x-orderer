@@ -11,7 +11,7 @@ import (
 	"math"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
-	cb "github.com/hyperledger/fabric-protos-go/common"
+	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/common/capabilities"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/msp"
@@ -52,7 +52,8 @@ type ChannelValues interface {
 	// Merkle tree to compute the BlockData hash
 	BlockDataHashingStructureWidth() uint32
 
-	// OrdererAddresses returns the list of valid orderer addresses to connect to invoke Broadcast/Deliver
+	// OrdererAddresses returns the list of valid global orderer addresses (does not include org-specific orderer endpoints)
+	// Deprecated
 	OrdererAddresses() []string
 }
 
@@ -180,8 +181,16 @@ func (cc *ChannelConfig) Validate(channelCapabilities ChannelCapabilities) error
 		}
 	}
 
+	// We check global orderer addresses only if we are below ChannelV1_4_2
 	if !channelCapabilities.OrgSpecificOrdererEndpoints() {
-		return cc.validateOrdererAddresses()
+		if err := cc.validateOrdererAddresses(); err != nil {
+			return err
+		}
+	}
+
+	// We validate no global endpoints at V3_0 or above
+	if channelCapabilities.ConsensusTypeBFT() {
+		return cc.validateNoOrdererAddresses()
 	}
 
 	return nil
@@ -210,6 +219,13 @@ func (cc *ChannelConfig) validateBlockDataHashingStructure() error {
 func (cc *ChannelConfig) validateOrdererAddresses() error {
 	if len(cc.protos.OrdererAddresses.Addresses) == 0 {
 		return fmt.Errorf("Must set some OrdererAddresses")
+	}
+	return nil
+}
+
+func (cc *ChannelConfig) validateNoOrdererAddresses() error {
+	if len(cc.protos.OrdererAddresses.Addresses) > 0 {
+		return fmt.Errorf("global OrdererAddresses are not allowed with V3_0 capability, use org specific addresses only")
 	}
 	return nil
 }
