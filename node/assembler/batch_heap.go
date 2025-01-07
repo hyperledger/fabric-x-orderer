@@ -21,10 +21,10 @@ type batchHeap[T any] struct {
 	less         HeapLessComperator[T]
 }
 
-func newBatchHeap[T any](shardId types.ShardID, partyId types.PartyID, less HeapLessComperator[T]) *batchHeap[T] {
+func newBatchHeap[T any](partition ShardPrimary, less HeapLessComperator[T]) *batchHeap[T] {
 	return &batchHeap[T]{
 		data:         []*BatchHeapItem[T]{},
-		batchToIndex: NewBatchMapper[types.BatchID, int](shardId, partyId),
+		batchToIndex: NewBatchMapper[types.BatchID, int](partition),
 		less:         less,
 	}
 }
@@ -96,9 +96,9 @@ type BatchHeap[T any] struct {
 	heap *batchHeap[T]
 }
 
-func NewBatchHeap[T any](shardId types.ShardID, partyId types.PartyID, less HeapLessComperator[T]) *BatchHeap[T] {
+func NewBatchHeap[T any](partition ShardPrimary, less HeapLessComperator[T]) *BatchHeap[T] {
 	return &BatchHeap[T]{
-		heap: newBatchHeap[T](shardId, partyId, less),
+		heap: newBatchHeap[T](partition, less),
 	}
 }
 

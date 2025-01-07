@@ -62,7 +62,7 @@ func NewPrefetchIndex(
 func (pi *PrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
 	t1 := time.Now()
 	defer func() {
-		pi.logger.Infof("PrefetchIndex PopOrWait %s in %v", BatchToString(batchId), time.Since(t1))
+		pi.logger.Debugf("PrefetchIndex PopOrWait %s in %v", BatchToString(batchId), time.Since(t1))
 	}()
 	partitionIndex := pi.partitionToIndex[ShardPrimaryFromBatch(batchId)]
 	return partitionIndex.PopOrWait(batchId)
@@ -71,7 +71,7 @@ func (pi *PrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
 func (pi *PrefetchIndex) Put(batch core.Batch) error {
 	t1 := time.Now()
 	defer func() {
-		pi.logger.Infof("PrefetchIndex Put %s in %v", BatchToString(batch), time.Since(t1))
+		pi.logger.Debugf("PrefetchIndex Put %s in %v", BatchToString(batch), time.Since(t1))
 	}()
 	partitionIndex := pi.partitionToIndex[ShardPrimaryFromBatch(batch)]
 	return partitionIndex.Put(batch)
@@ -80,7 +80,7 @@ func (pi *PrefetchIndex) Put(batch core.Batch) error {
 func (pi *PrefetchIndex) PutForce(batch core.Batch) error {
 	t1 := time.Now()
 	defer func() {
-		pi.logger.Infof("PrefetchIndex PutForce with force %s in %v", BatchToString(batch), time.Since(t1))
+		pi.logger.Debugf("PrefetchIndex PutForce with force %s in %v", BatchToString(batch), time.Since(t1))
 	}()
 	partitionIndex := pi.partitionToIndex[ShardPrimaryFromBatch(batch)]
 	return partitionIndex.PutForce(batch)

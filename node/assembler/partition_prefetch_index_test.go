@@ -37,6 +37,7 @@ type partitionPrefetchIndexTestVars struct {
 	defaultTtl             time.Duration
 	timers                 []*timerMock
 	batchCache             *assembler.BatchCache
+	forcePutCache          *assembler.BatchCache
 	batchRequestChan       chan types.BatchID
 	partitionPrefetchIndex *assembler.PartitionPrefetchIndex
 }
@@ -51,12 +52,20 @@ func setupPartitionPrefetchIndexTest(t *testing.T, maxSizeBytes int) *partitionP
 		batchRequestChan: make(chan types.BatchID, 100),
 	}
 	cacheFactory := &mocks.FakeBatchCacheFactory{}
-	cacheFactory.CreateCalls(func(shardId types.ShardID, partyId types.PartyID) *assembler.BatchCache {
-		if vars.batchCache != nil {
-			require.FailNow(t, "Trying to create multiple batch caches for a single partition index")
+	cacheFactory.CreateWithTagCalls(func(partition assembler.ShardPrimary, tag string) *assembler.BatchCache {
+		var cache **assembler.BatchCache
+		if tag == assembler.BATCH_CACHE_TAG {
+			cache = &vars.batchCache
+		} else if tag == assembler.FORCE_PUT_CACHE_TAG {
+			cache = &vars.forcePutCache
+		} else {
+			require.FailNowf(t, "Unrecognized tag %s", tag)
 		}
-		vars.batchCache = assembler.NewBatchCache(shardId, partyId)
-		return vars.batchCache
+		if *cache != nil {
+			require.FailNowf(t, "Trying to create multiple batch caches for a single partition index with tag %s", tag)
+		}
+		*cache = assembler.NewBatchCache(partition, tag)
+		return *cache
 	})
 
 	timerFactoryMock := &mocks.FakeTimerFactory{}
@@ -453,12 +462,93 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Assert
 		// all the batches are in the cache
 		for _, batch := range batches {
-			require.True(t, test.batchCache.Has(batch))
+			require.True(t, test.forcePutCache.Has(batch))
 		}
 		// no timer was stoped
 		for _, timer := range test.timers {
 			require.Zero(t, timer.stopCallCount)
 		}
+	})
+
+	t.Run("BatchWillBePutOnlyInForcedPutCache", func(t *testing.T) {
+		// Arrange
+		test := setupPartitionPrefetchIndexTest(t, 2)
+		defer test.finish()
+		batches := []core.Batch{}
+		for i := 0; i < 10; i++ {
+			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+		}
+
+		// Act
+		for _, batch := range batches {
+			require.NoError(t, test.partitionPrefetchIndex.PutForce(batch))
+		}
+
+		// Assert
+		for _, batch := range batches {
+			require.True(t, test.forcePutCache.Has(batch))
+		}
+		for _, batch := range batches {
+			require.False(t, test.batchCache.Has(batch))
+		}
+	})
+
+	t.Run("BatchWillDeletedFromForcedPutCacheAfterPop", func(t *testing.T) {
+		// Arrange
+		test := setupPartitionPrefetchIndexTest(t, 2)
+		defer test.finish()
+		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		require.NoError(t, test.partitionPrefetchIndex.PutForce(batch))
+
+		// Act
+		poppedBatch, err := test.partitionPrefetchIndex.PopOrWait(batch)
+
+		// Assert
+		require.NoError(t, err)
+		testutil.AssertBatchIdsEquals(t, batch, poppedBatch)
+		require.False(t, test.forcePutCache.Has(batch))
+	})
+
+	t.Run("PutForceBatchDoesNotCreateTtlTimer", func(t *testing.T) {
+		// Arrange
+		test := setupPartitionPrefetchIndexTest(t, 2)
+		defer test.finish()
+		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+
+		// Act
+		require.NoError(t, test.partitionPrefetchIndex.PutForce(batch))
+
+		// Assert
+		require.Empty(t, test.timers)
+	})
+
+	t.Run("ForcePutBatchWillNotBeEvictedByOtherPut", func(t *testing.T) {
+		// Arrange
+		test := setupPartitionPrefetchIndexTest(t, 2)
+		defer test.finish()
+		batches := []core.Batch{}
+		for i := 0; i < 10; i++ {
+			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+		}
+		require.NoError(t, test.partitionPrefetchIndex.Put(batches[1]))
+		require.NoError(t, test.partitionPrefetchIndex.Put(batches[2]))
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			poppedBatch, err := test.partitionPrefetchIndex.PopOrWait(batches[3])
+			require.NoError(t, err)
+			testutil.AssertBatchIdsEquals(t, batches[3], poppedBatch)
+		}()
+
+		// Act
+		require.NoError(t, test.partitionPrefetchIndex.PutForce(batches[0]))
+		require.NoError(t, test.partitionPrefetchIndex.Put(batches[3]))
+
+		// Assert
+		wg.Wait()
+		require.True(t, test.forcePutCache.Has(batches[0]))
+		require.False(t, test.batchCache.Has(batches[1]))
 	})
 }
 

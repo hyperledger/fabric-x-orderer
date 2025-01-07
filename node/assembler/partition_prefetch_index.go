@@ -11,6 +11,11 @@ import (
 	"arma/core"
 )
 
+const (
+	BATCH_CACHE_TAG     = "cache"
+	FORCE_PUT_CACHE_TAG = "force put batches"
+)
+
 type StoppableTimer interface {
 	Stop() bool
 }
@@ -62,10 +67,11 @@ func (f *RealPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, log
 // PartitionPrefetchIndex handles the prefetch actions for a specific partition (shard + primary),
 //
 // The core purpose of this struct is to pair batch ids with full batches:
-//  1. An external module is getting batch ids from the Consensus and is calling PopOrWait to get the full batch.
+//  1. An external module, with separate a goroutine, is getting batch ids from the Consensus and is calling PopOrWait to get the full batch.
 //     Please note that there is no constraint on the sequence of the batch.
-//  2. An external module is getting the full batchers from the Batcher and using Put to insert the batch into the indexer.
-//     Please note that there it is assumed that the batches are arriving with increasing sequence.
+//  2. An external module, with separate a goroutine, "stream fetcher" is getting the full batch from the Batcher and using Put to insert the batch into the indexer.
+//     Please note that it is assumed that the batches are arriving and inserted with Put in a stream of increasing sequence numbers.
+//  3. An external module, with separate a goroutine, "unary fetcher" is fetching a single full batch upon specific request from the Batcher and using PutForce to insert the batch into the indexer.
 //
 // Here is a detailed technical explanation:
 //
@@ -78,7 +84,7 @@ func (f *RealPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, log
 //
 //  3. PopOrWait tries to pop the relevant batch from it's cache, if the batch already exists, the batch is removed from the indexer and returned.
 //
-//  4. If the batch does not exist, we request the batch from an external module only if:
+//  4. If the batch does not exist, we request the batch from the unary fetcher external module only if:
 //     a. This batch was not requested by the current call to the method (we avoid multiple requests).
 //     b. This batch sequence is less than the sequence of the most recently Put batch
 //     (since Put is called with increasing sequence, and we already passed it, we need to make a separate request).
@@ -88,7 +94,7 @@ func (f *RealPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, log
 //  5. We keep waiting on stateCond, waiting for Put or PutForce to add the desired batch.
 //
 //     Note:
-//     a. If the sequence is lower than the sequence of the most recently Put batch - we wait for it to be added to the index using Put.
+//     a. If the sequence is higher than the sequence of the most recently Put batch - we wait for it to be added to the index using Put.
 //     b. If the context is cancelled, the method will return with an error.
 //
 // Put:
@@ -104,7 +110,7 @@ func (f *RealPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, log
 //  5. If there is space in the index - put the batch, Broadcast on stateCond and return.
 //
 //  6. While there is no space for the batch:
-//     a. If the batches sequence is lower than the max we are prefetching too fast,
+//     a. If the sequence of the batch is lower than the max popped sequence (stored in `maxPoppedCallSeq`) we are prefetching too fast,
 //     wait (sync.Cond wait) for the batches in the index to be popped prior to putting this batch.
 //     b. Else - we remove the oldest batch from the index.
 //
@@ -117,7 +123,7 @@ func (f *RealPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, log
 // PutForce:
 //
 // If PopOrWait has requested a batch, this batch needs to be put into the index from an external module using PutForce,
-// unlike the regular Put that has constraints, this put always succeeds immediately, since this batch is needed now.
+// unlike the regular Put that has space constraints, this put always succeeds immediately, since this batch is needed now.
 //
 // Auto Eviction:
 // Each batch is put with a TTL timer, after it is expired, we automatically remove the batch and Broadcast on stateCond
@@ -131,6 +137,7 @@ type PartitionPrefetchIndex struct {
 	// the max pop call batch seq
 	maxPoppedCallSeq    types.BatchSequence
 	cache               *BatchCache
+	forcedPutCache      *BatchCache
 	sequenceHeap        *BatchHeap[StoppableTimer]
 	stateCond           *sync.Cond
 	maxSizeBytes        int
@@ -146,8 +153,9 @@ func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defa
 	pi := &PartitionPrefetchIndex{
 		logger:              logger,
 		partition:           partition,
-		cache:               batchCacheFactory.Create(partition.Shard, partition.Primary),
-		sequenceHeap:        NewBatchHeap(partition.Shard, partition.Primary, func(item1, item2 *BatchHeapItem[StoppableTimer]) bool { return item1.Batch.Seq() < item2.Batch.Seq() }),
+		cache:               batchCacheFactory.CreateWithTag(partition, BATCH_CACHE_TAG),
+		forcedPutCache:      batchCacheFactory.CreateWithTag(partition, FORCE_PUT_CACHE_TAG),
+		sequenceHeap:        NewBatchHeap(partition, func(item1, item2 *BatchHeapItem[StoppableTimer]) bool { return item1.Batch.Seq() < item2.Batch.Seq() }),
 		stateCond:           sync.NewCond(&sync.Mutex{}),
 		maxSizeBytes:        maxSizeBytes,
 		batchRequestChan:    batchRequestChan,
@@ -185,18 +193,11 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, 
 		if pi.cancellationContext.Err() != nil {
 			return nil, ErrOperationCancelled
 		}
-		batch, err := pi.cache.Pop(batchId)
+		batch, err := pi.removeUnsafe(batchId)
 		if err != nil && !errors.Is(err, ErrBatchDoesNotExist) {
 			panic(fmt.Sprintf("unexpected error occured while poping batch %s: %v", BatchToString(batchId), err))
 		}
 		if err == nil {
-			// this batch exists in the index
-			heapItem, err := pi.sequenceHeap.Remove(batchId)
-			if err != nil {
-				panic(fmt.Sprintf("unexpected error occured while removing batch %s from heap: %v", BatchToString(batchId), err))
-			}
-			heapItem.Value.Stop()
-			pi.stateCond.Broadcast()
 			return batch, nil
 		}
 		// batchId.Seq() == bs.lastPutSeq is true in case we have 2 digests
@@ -208,15 +209,18 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, 
 	}
 }
 
-func (pi *PartitionPrefetchIndex) saveBatch(batch core.Batch) error {
+func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch core.Batch) error {
 	err := pi.cache.Put(batch)
 	if err != nil {
 		return err
 	}
+	var timer StoppableTimer
 	pi.lastPutSeq = batch.Seq()
-	timer := pi.timerFactory.Create(pi.defaultTtl, func() {
+	timer = pi.timerFactory.Create(pi.defaultTtl, func() {
 		pi.logger.Infof("TTL handler executed for batch %s", BatchToString(batch))
-		err := pi.remove(batch)
+		pi.stateCond.L.Lock()
+		_, err := pi.removeUnsafe(batch)
+		pi.stateCond.L.Unlock()
 		if err != nil {
 			pi.logger.Errorf("there was unexpected error which removing a batch with expired TTL: %v", err)
 		}
@@ -254,7 +258,7 @@ func (pi *PartitionPrefetchIndex) Put(batch core.Batch) error {
 			return fmt.Errorf("failed to evict batch: %w", err)
 		}
 	}
-	return pi.saveBatch(batch)
+	return pi.saveOrdinaryBatch(batch)
 }
 
 func (bs *PartitionPrefetchIndex) PutForce(batch core.Batch) error {
@@ -266,7 +270,12 @@ func (bs *PartitionPrefetchIndex) PutForce(batch core.Batch) error {
 	}
 	bs.stateCond.L.Lock()
 	defer bs.stateCond.L.Unlock()
-	return bs.saveBatch(batch)
+	err := bs.forcedPutCache.Put(batch)
+	if err != nil {
+		return err
+	}
+	bs.stateCond.Broadcast()
+	return nil
 }
 
 func (pi *PartitionPrefetchIndex) evictOldestBatch() error {
@@ -280,20 +289,28 @@ func (pi *PartitionPrefetchIndex) evictOldestBatch() error {
 	return nil
 }
 
-func (pi *PartitionPrefetchIndex) remove(batchId types.BatchID) error {
-	pi.stateCond.L.Lock()
-	defer pi.stateCond.L.Unlock()
-	_, err := pi.cache.Pop(batchId)
-	if err != nil {
-		return fmt.Errorf("failed to remove batch from cache: %w", err)
+func (pi *PartitionPrefetchIndex) removeUnsafe(batchId types.BatchID) (core.Batch, error) {
+	// try to pop from the cache
+	batch, err := pi.cache.Pop(batchId)
+	if errors.Is(err, ErrBatchDoesNotExist) {
+		// not in the cache, check if a force put
+		batch, err = pi.forcedPutCache.Pop(batchId)
+		if err == nil {
+			pi.stateCond.Broadcast()
+			return batch, nil
+		}
 	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to remove batch from cache: %w", err)
+	}
+	// if here, a batch was found in the cache
 	batchAndTimer, err := pi.sequenceHeap.Remove(batchId)
 	if err != nil {
-		return fmt.Errorf("failed to remove batch from heap: %w", err)
+		return nil, fmt.Errorf("failed to remove batch from heap: %w", err)
 	}
 	batchAndTimer.Value.Stop()
 	pi.stateCond.Broadcast()
-	return nil
+	return batch, nil
 }
 
 func (bs *PartitionPrefetchIndex) Stop() {

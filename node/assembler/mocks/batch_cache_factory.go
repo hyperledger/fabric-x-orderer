@@ -2,17 +2,15 @@
 package mocks
 
 import (
-	"arma/common/types"
 	"arma/node/assembler"
 	"sync"
 )
 
 type FakeBatchCacheFactory struct {
-	CreateStub        func(types.ShardID, types.PartyID) *assembler.BatchCache
+	CreateStub        func(assembler.ShardPrimary) *assembler.BatchCache
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
-		arg1 types.ShardID
-		arg2 types.PartyID
+		arg1 assembler.ShardPrimary
 	}
 	createReturns struct {
 		result1 *assembler.BatchCache
@@ -20,21 +18,32 @@ type FakeBatchCacheFactory struct {
 	createReturnsOnCall map[int]struct {
 		result1 *assembler.BatchCache
 	}
+	CreateWithTagStub        func(assembler.ShardPrimary, string) *assembler.BatchCache
+	createWithTagMutex       sync.RWMutex
+	createWithTagArgsForCall []struct {
+		arg1 assembler.ShardPrimary
+		arg2 string
+	}
+	createWithTagReturns struct {
+		result1 *assembler.BatchCache
+	}
+	createWithTagReturnsOnCall map[int]struct {
+		result1 *assembler.BatchCache
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchCacheFactory) Create(arg1 types.ShardID, arg2 types.PartyID) *assembler.BatchCache {
+func (fake *FakeBatchCacheFactory) Create(arg1 assembler.ShardPrimary) *assembler.BatchCache {
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
-		arg1 types.ShardID
-		arg2 types.PartyID
-	}{arg1, arg2})
-	fake.recordInvocation("Create", []interface{}{arg1, arg2})
+		arg1 assembler.ShardPrimary
+	}{arg1})
+	fake.recordInvocation("Create", []interface{}{arg1})
 	fake.createMutex.Unlock()
 	if fake.CreateStub != nil {
-		return fake.CreateStub(arg1, arg2)
+		return fake.CreateStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
@@ -49,17 +58,17 @@ func (fake *FakeBatchCacheFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeBatchCacheFactory) CreateCalls(stub func(types.ShardID, types.PartyID) *assembler.BatchCache) {
+func (fake *FakeBatchCacheFactory) CreateCalls(stub func(assembler.ShardPrimary) *assembler.BatchCache) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeBatchCacheFactory) CreateArgsForCall(i int) (types.ShardID, types.PartyID) {
+func (fake *FakeBatchCacheFactory) CreateArgsForCall(i int) assembler.ShardPrimary {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
+	return argsForCall.arg1
 }
 
 func (fake *FakeBatchCacheFactory) CreateReturns(result1 *assembler.BatchCache) {
@@ -85,11 +94,74 @@ func (fake *FakeBatchCacheFactory) CreateReturnsOnCall(i int, result1 *assembler
 	}{result1}
 }
 
+func (fake *FakeBatchCacheFactory) CreateWithTag(arg1 assembler.ShardPrimary, arg2 string) *assembler.BatchCache {
+	fake.createWithTagMutex.Lock()
+	ret, specificReturn := fake.createWithTagReturnsOnCall[len(fake.createWithTagArgsForCall)]
+	fake.createWithTagArgsForCall = append(fake.createWithTagArgsForCall, struct {
+		arg1 assembler.ShardPrimary
+		arg2 string
+	}{arg1, arg2})
+	fake.recordInvocation("CreateWithTag", []interface{}{arg1, arg2})
+	fake.createWithTagMutex.Unlock()
+	if fake.CreateWithTagStub != nil {
+		return fake.CreateWithTagStub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.createWithTagReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeBatchCacheFactory) CreateWithTagCallCount() int {
+	fake.createWithTagMutex.RLock()
+	defer fake.createWithTagMutex.RUnlock()
+	return len(fake.createWithTagArgsForCall)
+}
+
+func (fake *FakeBatchCacheFactory) CreateWithTagCalls(stub func(assembler.ShardPrimary, string) *assembler.BatchCache) {
+	fake.createWithTagMutex.Lock()
+	defer fake.createWithTagMutex.Unlock()
+	fake.CreateWithTagStub = stub
+}
+
+func (fake *FakeBatchCacheFactory) CreateWithTagArgsForCall(i int) (assembler.ShardPrimary, string) {
+	fake.createWithTagMutex.RLock()
+	defer fake.createWithTagMutex.RUnlock()
+	argsForCall := fake.createWithTagArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *FakeBatchCacheFactory) CreateWithTagReturns(result1 *assembler.BatchCache) {
+	fake.createWithTagMutex.Lock()
+	defer fake.createWithTagMutex.Unlock()
+	fake.CreateWithTagStub = nil
+	fake.createWithTagReturns = struct {
+		result1 *assembler.BatchCache
+	}{result1}
+}
+
+func (fake *FakeBatchCacheFactory) CreateWithTagReturnsOnCall(i int, result1 *assembler.BatchCache) {
+	fake.createWithTagMutex.Lock()
+	defer fake.createWithTagMutex.Unlock()
+	fake.CreateWithTagStub = nil
+	if fake.createWithTagReturnsOnCall == nil {
+		fake.createWithTagReturnsOnCall = make(map[int]struct {
+			result1 *assembler.BatchCache
+		})
+	}
+	fake.createWithTagReturnsOnCall[i] = struct {
+		result1 *assembler.BatchCache
+	}{result1}
+}
+
 func (fake *FakeBatchCacheFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
+	fake.createWithTagMutex.RLock()
+	defer fake.createWithTagMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

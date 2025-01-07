@@ -17,26 +17,24 @@ type batchWithValue[K types.BatchID, V any] struct {
 // Not thread safe.
 type BatchMapper[K types.BatchID, V any] struct {
 	seqToBatches map[types.BatchSequence][]*batchWithValue[K, V]
-	shardId      types.ShardID
-	primaryId    types.PartyID
+	partition    ShardPrimary
 }
 
-func NewBatchMapper[K types.BatchID, V any](shardId types.ShardID, primaryId types.PartyID) *BatchMapper[K, V] {
+func NewBatchMapper[K types.BatchID, V any](partition ShardPrimary) *BatchMapper[K, V] {
 	return &BatchMapper[K, V]{
 		seqToBatches: make(map[types.BatchSequence][]*batchWithValue[K, V]),
-		shardId:      shardId,
-		primaryId:    primaryId,
+		partition:    partition,
 	}
 }
 
 func (m *BatchMapper[K, V]) assertShardAndParty(batchId K) {
-	if m.shardId != batchId.Shard() || m.primaryId != batchId.Primary() {
-		panic(fmt.Sprintf("batch of shard %d and primary %d is not compatible with mapper <%d,%d>", batchId.Shard(), batchId.Primary(), m.shardId, m.primaryId))
+	if m.partition.Shard != batchId.Shard() || m.partition.Primary != batchId.Primary() {
+		panic(fmt.Sprintf("batch of shard %d and primary %d is not compatible with mapper <%d,%d>", batchId.Shard(), batchId.Primary(), m.partition.Shard, m.partition.Primary))
 	}
 }
 
-// insert puts batch-value pair and returns if the action completed successfuly.
-// If overwrite controls what happens if the batch is already exists, true will overwrite the value, false will do nothing.
+// insert puts batch-value pair and returns if the new value was written successfully.
+// Parameter overwrite controls what happens if the batch already exists, true will overwrite the value, false will do nothing.
 // Returns true if the operation has succeeded.
 func (m *BatchMapper[K, V]) insert(batchId K, value V, overwrite bool) bool {
 	m.assertShardAndParty(batchId)

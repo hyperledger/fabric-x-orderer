@@ -6,22 +6,23 @@ import (
 )
 
 type BatchCache struct {
+	tag              string
 	shardBatchMapper *BatchMapper[types.BatchID, core.Batch]
-	shardId          types.ShardID
-	partyId          types.PartyID
+	partition        ShardPrimary
 	sizeBytes        int
 }
 
 //go:generate counterfeiter -o ./mocks/batch_cache_factory.go . BatchCacheFactory
 type BatchCacheFactory interface {
-	Create(shardId types.ShardID, partyId types.PartyID) *BatchCache
+	CreateWithTag(partition ShardPrimary, tag string) *BatchCache
+	Create(partition ShardPrimary) *BatchCache
 }
 
-func NewBatchCache(shardId types.ShardID, partyId types.PartyID) *BatchCache {
+func NewBatchCache(partition ShardPrimary, tag string) *BatchCache {
 	sc := &BatchCache{
-		shardId:          shardId,
-		partyId:          partyId,
-		shardBatchMapper: NewBatchMapper[types.BatchID, core.Batch](shardId, partyId),
+		tag:              tag,
+		partition:        partition,
+		shardBatchMapper: NewBatchMapper[types.BatchID, core.Batch](partition),
 	}
 	return sc
 }
