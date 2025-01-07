@@ -13,8 +13,8 @@ type TotalOrder interface {
 //go:generate counterfeiter -o mocks/batch_attestation_db.go . BatchAttestationDB
 type BatchAttestationDB interface {
 	Exists(digest []byte) bool
-	Put(digest [][]byte, epoch []uint64)
-	Clean(epoch uint64)
+	Put(digest [][]byte, epoch []uint64) // TODO remove epochs from BADB
+	Clean(epoch uint64)                  // TODO remove clean by epoch
 }
 
 type Consenter struct {

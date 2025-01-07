@@ -234,17 +234,14 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 }
 
 func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger core.BatchLedger, bp core.BatchPuller, ds *BatcherDeliverService) *Batcher {
-	cert := config.TLSCertificateFile
-	sk := config.TLSPrivateKeyFile
-
 	b := &Batcher{
 		ds:               ds,
 		sk:               createSigner(logger, config),
 		logger:           logger,
 		batcherCerts2IDs: make(map[string]types.PartyID),
 		config:           config,
-		tlsKey:           sk,
-		tlsCert:          cert,
+		tlsKey:           config.TLSPrivateKeyFile,
+		tlsCert:          config.TLSCertificateFile,
 	}
 
 	initState := computeZeroState(config)
@@ -307,7 +304,7 @@ func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPo
 	}
 	opts.OnSecondStrikeTimeout = func() {
 		// TODO complain
-		b.logger.Warnf("second strike timeout occurred")
+		b.logger.Warnf("Second strike timeout occurred")
 	}
 
 	return request.NewPool(b.logger, b, opts)
@@ -343,13 +340,7 @@ func createSigner(logger types.Logger, config node_config.BatcherNodeConfig) *ec
 }
 
 func (b *Batcher) attestBatch(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
-	var pending []core.BatchAttestationFragment
-	ref := b.stateRef.Load()
-	if ref != nil {
-		state := ref.(*core.State)
-		pending = state.Pending
-	}
-	baf, err := CreateBAF(b.sk, types.PartyID(b.config.PartyId), shard, digest, primary, seq, pending...)
+	baf, err := CreateBAF(b.sk, types.PartyID(b.config.PartyId), shard, digest, primary, seq)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -568,25 +559,15 @@ func (b *Batcher) clientConfig(TlsCACert []node_config.RawBytes) comm.ClientConf
 }
 
 func (b *Batcher) RequestID(req []byte) string {
+	// TODO maybe calculate the request ID differently
 	digest := sha256.Sum256(req)
 	return hex.EncodeToString(digest[:])
 }
 
-func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence, pending ...core.BatchAttestationFragment) (core.BatchAttestationFragment, error) {
-	epoch := time.Now().Unix() / 10
-
-	gc := make([][]byte, 0, len(pending))
-	for _, baf := range pending {
-		if baf.Epoch()+3 < epoch {
-			gc = append(gc, baf.Digest())
-		}
-	}
-
-	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, epoch, gc)
-	signer := crypto.ECDSASigner(*sk)
-
-	tbs := baf.ToBeSigned()
-	sig, err := signer.Sign(tbs)
+func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (core.BatchAttestationFragment, error) {
+	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, 0, nil)
+	signer := crypto.ECDSASigner(*sk) // TODO maybe use a different signer
+	sig, err := signer.Sign(baf.ToBeSigned())
 	if err != nil {
 		return nil, err
 	}
