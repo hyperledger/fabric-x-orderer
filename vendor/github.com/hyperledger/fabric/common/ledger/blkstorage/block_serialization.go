@@ -8,7 +8,6 @@ package blkstorage
 
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -85,13 +84,14 @@ func addDataBytesAndConstructTxIndexInfo(blockData *common.BlockData, buf []byte
 	buf = protowire.AppendVarint(buf, uint64(len(blockData.Data)))
 	for _, txEnvelopeBytes := range blockData.Data {
 		offset := len(buf)
-		txid, err := protoutil.GetOrComputeTxIDFromEnvelope(txEnvelopeBytes)
-		if err != nil {
-			logger.Warningf("error while extracting txid from tx envelope bytes during serialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
-				err)
-		}
+		// TODO copy this out of vendor
+		//txid, err := protoutil.GetOrComputeTxIDFromEnvelope(txEnvelopeBytes)
+		//if err != nil {
+		//	logger.Warningf("error while extracting txid from tx envelope bytes during serialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
+		//		err)
+		//}
 		buf = protowire.AppendBytes(buf, txEnvelopeBytes)
-		idxInfo := &txindexInfo{txID: txid, loc: &locPointer{offset, len(buf) - offset}}
+		idxInfo := &txindexInfo{txID: "", loc: &locPointer{offset, len(buf) - offset}}
 		txOffsets = append(txOffsets, idxInfo)
 	}
 	return txOffsets, buf
@@ -146,10 +146,11 @@ func extractData(buf *buffer) (*common.BlockData, []*txindexInfo, error) {
 		if txEnvBytes, err = buf.DecodeRawBytes(false); err != nil {
 			return nil, nil, errors.Wrap(err, "error decoding the transaction envelope")
 		}
-		if txid, err = protoutil.GetOrComputeTxIDFromEnvelope(txEnvBytes); err != nil {
-			logger.Warningf("error while extracting txid from tx envelope bytes during deserialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
-				err)
-		}
+		// TODO copy this out of vendor
+		//if txid, err = protoutil.GetOrComputeTxIDFromEnvelope(txEnvBytes); err != nil {
+		//	logger.Warningf("error while extracting txid from tx envelope bytes during deserialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
+		//		err)
+		//}
 		data.Data = append(data.Data, txEnvBytes)
 		idxInfo := &txindexInfo{txID: txid, loc: &locPointer{txOffset, buf.GetBytesConsumed() - txOffset}}
 		txOffsets = append(txOffsets, idxInfo)
