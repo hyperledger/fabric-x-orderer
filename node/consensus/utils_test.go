@@ -209,3 +209,31 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []confi
 		Directory:          dir,
 	}
 }
+
+func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsgen.CA) error {
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], setup.loggers[nodeIndex])
+
+	newConsenterNode := &node{
+		TLSCert: setup.consenterNodes[nodeIndex].TLSCert,
+		TLSKey:  setup.consenterNodes[nodeIndex].TLSKey,
+		sk:      setup.consenterNodes[nodeIndex].sk,
+		pk:      setup.consenterNodes[nodeIndex].pk,
+	}
+	var err error
+	newConsenterNode.GRPCServer, err = newGRPCServer(setup.consenterNodes[nodeIndex].Address(), ca, &tlsgen.CertKeyPair{
+		Key:  setup.consenterNodes[nodeIndex].TLSKey,
+		Cert: setup.consenterNodes[nodeIndex].TLSCert,
+	})
+	require.NoError(t, err)
+
+	grpcRegisterAndStart(setup.consensusNodes[nodeIndex], newConsenterNode)
+
+	newListener := &storageListener{c: make(chan *common.Block, 100)}
+	setup.consensusNodes[nodeIndex].Storage.(*ledger.ConsensusLedger).RegisterAppendListener(newListener)
+	setup.listeners[nodeIndex] = newListener
+
+	err = setup.consensusNodes[nodeIndex].Start()
+	require.NoError(t, err)
+
+	return nil
+}
