@@ -285,6 +285,10 @@ func (rp *Pool) Restart(batching bool) {
 
 	defer atomic.StoreUint32(&rp.stopped, 0)
 
+	if rp.isClosed() {
+		return
+	}
+
 	rp.Halt()
 
 	batchingWasEnabled := rp.isBatchingEnabled()
