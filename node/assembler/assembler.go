@@ -2,6 +2,7 @@ package assembler
 
 import (
 	"fmt"
+	"time"
 
 	"arma/common/types"
 	"arma/core"
@@ -14,6 +15,11 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
+)
+
+// TODO: move to config
+const (
+	ledgerScanTimeout = 5 * time.Second
 )
 
 type Assembler struct {
@@ -47,21 +53,24 @@ func newAssembler(logger types.Logger, config config.AssemblerNodeConfig, blockS
 
 	baReplicator := newBAReplicator(logger, config, tlsKey, tlsCert)
 
-	br := &BatchFetcher{
-		ledgerHeightReader: index,
-		logger:             logger,
-		config:             config,
-		tlsKey:             tlsKey,
-		tlsCert:            tlsCert,
+	al := &node_ledger.AssemblerLedger{Ledger: ledger, Logger: logger}
+	go al.TrackThroughput()
+
+	shardIds := shardsFromAssemblerConfig(config)
+	partyIds := partiesFromAssemblerConfig(config)
+
+	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, ledgerScanTimeout)
+	if err != nil {
+		logger.Panicf("Failed fetching last ordering info: %v", err)
 	}
+
+	br := NewBatchFetcher(batchFrontier, config, logger)
 
 	var shards []types.ShardID
 	for _, shard := range config.Shards {
 		shards = append(shards, types.ShardID(shard.ShardId))
 	}
 
-	al := &node_ledger.AssemblerLedger{Ledger: ledger, Logger: logger}
-	go al.TrackThroughput()
 	assembler := &Assembler{
 		ds:        make(delivery.DeliverService),
 		getHeight: ledger.Height,

@@ -16,6 +16,14 @@ func partiesFromAssemblerConfig(config config.AssemblerNodeConfig) []types.Party
 	return parties
 }
 
+func shardsFromAssemblerConfig(config config.AssemblerNodeConfig) []types.ShardID {
+	shardIds := make([]types.ShardID, len(config.Shards))
+	for i, shard := range config.Shards {
+		shardIds[i] = shard.ShardId
+	}
+	return shardIds
+}
+
 // TODO: use stringer/formatter/gostringer for more general solution
 func BatchToString(batch types.BatchID) string {
 	if batch == nil {

@@ -19,22 +19,25 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-// AssemblerLedgerHeightReader returns the last batch sequence delivered from a shard, for a given primary.
-// This is a good hint to where to start replicating the stream of batches.
-type AssemblerLedgerHeightReader interface {
-	Height(shardID types.ShardID, partyID types.PartyID) types.BatchSequence
+// TODO: move to config
+const defaultReplicationChanSize = 100
+
+//go:generate counterfeiter -o ./mocks/batch_fetcher.go . BatchBringer
+type BatchBringer interface {
+	Replicate(shardID types.ShardID) <-chan core.Batch
+	GetBatch(batchID types.BatchID) (core.Batch, error)
 }
 
 type BatchFetcher struct {
-	ledgerHeightReader AssemblerLedgerHeightReader
-	tlsKey, tlsCert    []byte
-	config             config.AssemblerNodeConfig
-	logger             types.Logger
+	initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence
+	config               config.AssemblerNodeConfig
+	clientConfig         comm.ClientConfig
+	logger               types.Logger
 }
 
-func (br *BatchFetcher) clientConfig() comm.ClientConfig {
+func fetcherClientConfig(config config.AssemblerNodeConfig) comm.ClientConfig {
 	var tlsCAs [][]byte
-	for _, shard := range br.config.Shards {
+	for _, shard := range config.Shards {
 		for _, batcher := range shard.Batchers {
 			for _, tlsCA := range batcher.TLSCACerts {
 				tlsCAs = append(tlsCAs, tlsCA)
@@ -49,8 +52,8 @@ func (br *BatchFetcher) clientConfig() comm.ClientConfig {
 			ClientTimeout:  time.Hour,
 		},
 		SecOpts: comm.SecureOptions{
-			Key:               br.tlsKey,
-			Certificate:       br.tlsCert,
+			Key:               config.TLSPrivateKeyFile,
+			Certificate:       config.TLSCertificateFile,
 			RequireClientCert: true,
 			UseTLS:            true,
 			ServerRootCAs:     tlsCAs,
@@ -58,6 +61,16 @@ func (br *BatchFetcher) clientConfig() comm.ClientConfig {
 		DialTimeout: time.Second * 5,
 	}
 	return cc
+}
+
+func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) *BatchFetcher {
+	logger.Infof("Creating new Batch Fetcher using batch frontier %v and config %v", initialBatchFrontier, config)
+	return &BatchFetcher{
+		initialBatchFrontier: initialBatchFrontier,
+		config:               config,
+		clientConfig:         fetcherClientConfig(config),
+		logger:               logger,
+	}
 }
 
 func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
@@ -69,7 +82,7 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 
 	br.logger.Infof("Assembler %d Replicate from shard %d batcher info %+v", br.config.PartyId, shardID, batcherToPullFrom)
 
-	res := make(chan core.Batch, 100)
+	res := make(chan core.Batch, defaultReplicationChanSize)
 
 	for _, p := range partiesFromAssemblerConfig(br.config) {
 		br.pullFromParty(shardID, batcherToPullFrom, p, res)
@@ -79,7 +92,7 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 }
 
 func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan core.Batch) {
-	seq := br.ledgerHeightReader.Height(shardID, primaryID)
+	seq := br.initialBatchFrontier[shardID][primaryID]
 
 	endpoint := func() string {
 		return batcherToPullFrom.Endpoint
@@ -117,7 +130,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		br.logger,
 		endpoint,
 		requestEnvelope,
-		br.clientConfig(),
+		br.clientConfig,
 		blockHandlerFunc,
 	)
 	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
@@ -213,7 +226,7 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		br.logger,
 		batcherToPullFrom.Endpoint,
 		requestEnvelope,
-		br.clientConfig(),
+		br.clientConfig,
 	)
 	if err != nil {
 		br.logger.Errorf("Assembler failed to pull batch %v from %v", batchID, batcherToPullFrom)
