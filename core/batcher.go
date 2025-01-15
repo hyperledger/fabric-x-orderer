@@ -101,7 +101,7 @@ func (b *Batcher) Start() {
 
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
-	b.termChan = make(chan uint64)
+	b.termChan = make(chan uint64, 1)
 
 	b.running.Add(2)
 	go b.getTermAndNotifyChange()
