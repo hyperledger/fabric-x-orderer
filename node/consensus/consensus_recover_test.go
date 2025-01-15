@@ -208,3 +208,104 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 		c.Stop()
 	}
 }
+
+// This test initializes a cluster of 4 consensus nodes and check three scenarios where a non-leader node fails and recovers.
+// In the first scenario, node (ID=2) fails and recovers before the first request is sent.
+// In the second scenario, node (ID=2) fails after the first block is committed.
+// The second request is sent and committed by the remaining nodes while node (ID=2) is down.
+// After it recovers, another request is sent, and we check the restarted node is synced with all blocks.
+// In the third scenario, node (ID=2) fails and recovers between blocks.
+// No requests are sent while it is down.
+// After recovery, two more requests are sent, and both blocks are committed to the ledger.
+func TestNonLeaderNodeFailureRecovery(t *testing.T) {
+	parties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	setup := setupConsensusTest(t, ca, parties)
+
+	// Node fails and recovers before the first request
+	setup.consensusNodes[1].Stop()
+	err = recoverNode(t, setup, 1, ca)
+	require.NoError(t, err)
+
+	baf123id1p1s1, err := batcher.CreateBAF(setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	assert.NoError(t, err)
+	ce := &core.ControlEvent{BAF: baf123id1p1s1}
+
+	err = setup.consensusNodes[0].SubmitRequest(ce.Bytes())
+	require.NoError(t, err)
+
+	b := <-setup.listeners[0].c
+	require.Equal(t, uint64(1), b.Header.Number)
+
+	// Ensure node recovers correctly
+	b1 := <-setup.listeners[1].c
+	require.Equal(t, uint64(1), b1.Header.Number)
+
+	// Node fails and submit the second request
+	setup.consensusNodes[1].Stop()
+
+	baf124id1p1s2, err := batcher.CreateBAF(setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	assert.NoError(t, err)
+	ce = &core.ControlEvent{BAF: baf124id1p1s2}
+
+	err = setup.consensusNodes[0].SubmitRequest(ce.Bytes())
+	require.NoError(t, err)
+
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(2), b.Header.Number)
+
+	err = recoverNode(t, setup, 1, ca)
+	require.NoError(t, err)
+
+	baf125id1p1s3, err := batcher.CreateBAF(setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	assert.NoError(t, err)
+	ce = &core.ControlEvent{BAF: baf125id1p1s3}
+
+	err = setup.consensusNodes[0].SubmitRequest(ce.Bytes())
+	require.NoError(t, err)
+
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(3), b.Header.Number)
+
+	// Ensure node recovers correctly
+	b1 = <-setup.listeners[1].c
+	require.Equal(t, uint64(2), b1.Header.Number)
+	b1 = <-setup.listeners[1].c
+	require.Equal(t, uint64(3), b1.Header.Number)
+
+	// Node fails and recovers between blocks
+	setup.consensusNodes[1].Stop()
+	err = recoverNode(t, setup, 1, ca)
+	require.NoError(t, err)
+
+	baf125id1p1s4, err := batcher.CreateBAF(setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
+	assert.NoError(t, err)
+	ce = &core.ControlEvent{BAF: baf125id1p1s4}
+
+	err = setup.consensusNodes[0].SubmitRequest(ce.Bytes())
+	require.NoError(t, err)
+
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(4), b.Header.Number)
+
+	baf125id1p1s5, err := batcher.CreateBAF(setup.batcherNodes[0].sk, 1, 1, digest125, 1, 5)
+	assert.NoError(t, err)
+	ce = &core.ControlEvent{BAF: baf125id1p1s5}
+
+	err = setup.consensusNodes[0].SubmitRequest(ce.Bytes())
+	require.NoError(t, err)
+
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(5), b.Header.Number)
+
+	// Ensure node recovers correctly
+	b1 = <-setup.listeners[1].c
+	require.Equal(t, uint64(4), b1.Header.Number)
+	b1 = <-setup.listeners[1].c
+	require.Equal(t, uint64(5), b1.Header.Number)
+
+	for _, c := range setup.consensusNodes {
+		c.Stop()
+	}
+}
