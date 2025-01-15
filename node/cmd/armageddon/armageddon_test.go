@@ -77,6 +77,128 @@ func TestArmageddonWithTLS(t *testing.T) {
 //  1. Create a config YAML file to be an input to armageddon
 //  2. Run armageddon generate command to create config files in a folder structure
 //  3. Run arma with the generated config files to run each of the nodes for all parties
+//  4. Run armageddon loadSteps command to make 40000 txs and send them to all routers at a Multople rates which are called steps (10000 for each rate)
+//  5. In parallel, run armageddon receive command to pull blocks from the assembler and report results , number of txs should be 40000
+func TestLoadStepsAndReceive(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	generateInputConfigFileForArmageddon(t, configPath)
+
+	// 2.
+	armageddon := NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS"})
+
+	// 3.
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, 20)
+	sessions := runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	defer func() {
+		for i := range sessions {
+			sessions[i].Kill()
+		}
+	}()
+
+	startTimeout := time.After(10 * time.Second)
+	for i := 0; i < 20; i++ {
+		select {
+		case <-readyChan:
+		case <-startTimeout:
+			require.Fail(t, "arma nodes failed to start in time")
+		}
+	}
+
+	// 4. + 5.
+	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	rates := "500 1000 1500 2000"
+	txsSent := "10000"
+	txsRec := "40000"
+	txSize := "64"
+
+	var waitForTxToBeSentAndReceived sync.WaitGroup
+	waitForTxToBeSentAndReceived.Add(2)
+	go func() {
+		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txsSent, "--rate", rates, "--txSize", txSize})
+		waitForTxToBeSentAndReceived.Done()
+	}()
+
+	go func() {
+		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", txsRec, "--output", dir})
+		waitForTxToBeSentAndReceived.Done()
+	}()
+	waitForTxToBeSentAndReceived.Wait()
+}
+
+// This Test checks if we load with wrong rate, for example something cant be converted to integer, it will fail and print error
+func TestLoadStepsFails(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	generateInputConfigFileForArmageddon(t, configPath)
+
+	// 2.
+	armageddon := NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS"})
+
+	// 3.
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, 20)
+	sessions := runArmaNodes(t, dir, armaBinaryPath, readyChan)
+	defer func() {
+		for i := range sessions {
+			sessions[i].Kill()
+		}
+	}()
+
+	startTimeout := time.After(10 * time.Second)
+	for i := 0; i < 20; i++ {
+		select {
+		case <-readyChan:
+		case <-startTimeout:
+			require.Fail(t, "arma nodes failed to start in time")
+		}
+	}
+
+	// 4. + 5.
+	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	rates := "BOOM"
+	txsSent := "10000"
+	txSize := "64"
+	// Capture the output of armageddon.Run
+
+	armageddonBinary, err := gexec.BuildWithEnvironment("arma/node/cmd/armageddon/main", []string{"GOPRIVATE=github.ibm.com"})
+	require.NoError(t, err)
+	require.NotNil(t, armageddonBinary)
+	cmd := exec.Command(armageddonBinary, "load", "--config", userConfigPath, "--transactions", txsSent, "--rate", rates, "--txSize", txSize)
+	require.NotNil(t, cmd)
+	stdout, err := cmd.Output()
+	// Check if the command returned an error and the output contains the expected error message
+	require.Contains(t, string(stdout), "BOOM")
+	require.Contains(t, err.Error(), "exit status") // Or another appropriate error message
+}
+
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files in a folder structure
+//  3. Run arma with the generated config files to run each of the nodes for all parties
 //  4. Run armageddon load command to make 10000 txs and send them to all routers at a specified rate
 //  5. In parallel, run armageddon receive command to pull blocks from the assembler and report results
 func TestLoadAndReceive(t *testing.T) {

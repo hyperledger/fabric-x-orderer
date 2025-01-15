@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -169,7 +170,7 @@ type CLI struct {
 	// load command flags
 	loadUserConfigFile **os.File
 	loadTransactions   *int
-	loadRate           *int
+	loadRate           *string
 	loadTxSize         *int
 	// receive command flags
 	receiveUserConfigFile   **os.File
@@ -210,8 +211,9 @@ func (cli *CLI) configureCommands() {
 	load := cli.app.Command("load", "Submit txs to routers and verify the routers have received the txs")
 	cli.loadUserConfigFile = load.Flag("config", "The user configuration needed to connection with routers").File()
 	cli.loadTransactions = load.Flag("transactions", "The number of transactions to be sent").Int()
-	cli.loadRate = load.Flag("rate", "The rate specify the number of transactions per second to be sent").Int()
+	cli.loadRate = load.Flag("rate", "The rate specifies the number of transactions per second to be sent as one or more rate numbers separated by space").String()
 	cli.loadTxSize = load.Flag("txSize", "The required transaction size in bytes").Int()
+
 	commands["load"] = load
 
 	receive := cli.app.Command("receive", "Pull txs from some assembler and report statistics")
@@ -246,7 +248,6 @@ func (cli *CLI) Run(args []string) {
 	// "load" command
 	case cli.commands["load"].FullCommand():
 		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize)
-
 	// "receive" command
 	case cli.commands["receive"].FullCommand():
 		receive(cli.receiveUserConfigFile, cli.pullFromPartyId, cli.receiveOutputDir, cli.receiveExpectedNumOfTxs)
@@ -758,7 +759,8 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 }
 
 // load command makes txs and sends them to all routers
-func load(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
+func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int) {
+	rates := strings.Fields(*rate)
 	// check transaction size
 	txMinimumSize := 16 + 8 + 8
 	if *txSize < txMinimumSize {
@@ -772,13 +774,22 @@ func load(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
 	}
-
+	converted_rates := make([]int, len(rates))
+	for i := 0; i < len(rates); i++ {
+		fmt.Printf(rates[i])
+		converted_rates[i], err = strconv.Atoi(rates[i])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "rate is not valid: %s", err)
+			os.Exit(-1)
+		}
+	}
 	// send txs to the routers
-	start := time.Now()
-	sendTxToRouters(userConfigFileContent, *transactions, *rate, *txSize, nil)
-	elapsed := time.Since(start)
-
-	reportLoadResults(*transactions, elapsed, *txSize)
+	for i := 0; i < len(rates); i++ {
+		start := time.Now()
+		sendTxToRouters(userConfigFileContent, *transactions, converted_rates[i], *txSize, nil)
+		elapsed := time.Since(start)
+		reportLoadResults(*transactions, elapsed, *txSize)
+	}
 }
 
 // receive command pull blocks from the assembler and report statistics
