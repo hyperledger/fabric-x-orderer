@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,7 +20,6 @@ import (
 	"arma/node/comm"
 	node_config "arma/node/config"
 	"arma/node/crypto"
-	"arma/node/delivery"
 	node_ledger "arma/node/ledger"
 	protos "arma/node/protos/comm"
 	"arma/request"
@@ -42,75 +42,85 @@ var defaultBatcherMemPoolOpts = request.PoolOptions{
 	RequestMaxBytes:       1024 * 1024,
 }
 
+//go:generate counterfeiter -o mocks/state_replicator.go . StateReplicator
+type StateReplicator interface {
+	ReplicateState(seq uint64) <-chan *core.State
+}
+
 type Batcher struct {
-	ds                  *BatcherDeliverService
-	logger              types.Logger
-	b                   *core.Batcher
-	batcherCerts2IDs    map[string]types.PartyID
+	batcherDeliverService *BatcherDeliverService
+	stateReplicator       StateReplicator
+	logger                types.Logger
+	batcher               *core.Batcher
+	batcherCerts2IDs      map[string]types.PartyID
+	consensusStreams      []protos.Consensus_NotifyEventClient
+	connections           []*grpc.ClientConn
+	config                node_config.BatcherNodeConfig
+	batchers              []node_config.BatcherInfo
+	privateKey            *ecdsa.PrivateKey
+	tlsKey                []byte
+	tlsCert               []byte
+	stateRef              atomic.Value
+	stateChan             chan *core.State
+	running               sync.WaitGroup
+	stopOnce              sync.Once
+	stopChan              chan struct{}
+
+	primaryLock         sync.Mutex
+	primaryID           types.PartyID
 	primaryEndpoint     string
 	primaryTLSCA        []node_config.RawBytes
-	consensusStreams    []protos.Consensus_NotifyEventClient
 	primaryClient       protos.AckServiceClient
 	primaryClientStream protos.AckService_NotifyAckClient
 	primaryConn         *grpc.ClientConn
-	connections         []*grpc.ClientConn
-	config              node_config.BatcherNodeConfig
-	sk                  *ecdsa.PrivateKey
-	tlsKey              []byte
-	tlsCert             []byte
-	stateRef            atomic.Value
-	stateChan           chan *core.State
-	running             sync.WaitGroup
-	stopChan            chan struct{}
 }
 
 func (b *Batcher) Run() {
-	b.running.Add(1)
 	b.stopChan = make(chan struct{})
 
-	b.stateChan = make(chan *core.State)
+	b.stateChan = make(chan *core.State, 1)
 
-	bar := b.createBAR()
-
-	go b.replicateState(0, bar) // TODO use correct seq
+	go b.replicateState(0) // TODO use correct seq
 
 	b.logger.Infof("Starting batcher")
-	b.b.Start()
+	b.batcher.Start()
 }
 
 func (b *Batcher) Stop() {
-	b.b.Stop()
-	close(b.stopChan)
+	b.stopOnce.Do(func() { close(b.stopChan) })
+	b.batcher.Stop()
+	for len(b.stateChan) > 0 {
+		<-b.stateChan // drain state channel
+	}
 	b.running.Wait()
 }
 
-func (b *Batcher) createBAR() *delivery.ConsensusReplicator {
-	var endpoint string
-	var tlsCAs []node_config.RawBytes
-	for i := 0; i < len(b.config.Consenters); i++ {
-		consenter := b.config.Consenters[i]
-		if consenter.PartyID == b.config.PartyId {
-			endpoint = consenter.Endpoint
-			tlsCAs = consenter.TLSCACerts
-		}
-	}
-
-	if endpoint == "" || len(tlsCAs) == 0 {
-		b.logger.Panicf("Failed finding endpoint and TLS CAs for party %d", b.config.PartyId)
-	}
-
-	bar := delivery.NewConsensusReplicator(tlsCAs, b.tlsKey, b.tlsCert, endpoint, b.logger)
-
-	return bar
-}
-
-func (b *Batcher) replicateState(seq uint64, bar *delivery.ConsensusReplicator) {
-	defer b.running.Done()
+// replicateState runs by a separate go routine
+func (b *Batcher) replicateState(seq uint64) {
+	b.logger.Infof("Started replicating state")
+	b.running.Add(1)
+	defer func() {
+		b.running.Done()
+		b.logger.Infof("Stopped replicating state")
+	}()
+	stateChan := b.stateReplicator.ReplicateState(seq)
 	for {
 		select {
-		case state := <-bar.ReplicateState(seq):
+		case state := <-stateChan:
 			b.stateRef.Store(state)
 			b.stateChan <- state
+			primaryID := b.getPrimaryID(state)
+			b.primaryLock.Lock()
+			if b.primaryID != primaryID {
+				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
+				b.primaryID = primaryID
+				b.setupPrimaryEndpoint()
+				b.primaryConn = nil
+				b.primaryClient = nil
+				b.primaryClientStream = nil
+				b.connectToPrimaryIfNeeded()
+			}
+			b.primaryLock.Unlock()
 		case <-b.stopChan:
 			return
 		}
@@ -126,7 +136,7 @@ func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 }
 
 func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	return b.ds.Deliver(stream)
+	return b.batcherDeliverService.Deliver(stream)
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
@@ -142,7 +152,7 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 
 	var resp protos.SubmitResponse
 	resp.TraceId = traceId
-	if err := b.b.Submit(rawReq); err != nil {
+	if err := b.batcher.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
 	}
 
@@ -186,7 +196,7 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 		var resp protos.SubmitResponse
 		resp.TraceId = traceId
 
-		if err := b.b.Submit(rawReq); err != nil {
+		if err := b.batcher.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
 		}
 
@@ -229,32 +239,38 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 		if err != nil {
 			return err
 		}
-		b.b.HandleAck(types.BatchSequence(msg.Seq), from)
+		b.batcher.HandleAck(types.BatchSequence(msg.Seq), from)
 	}
 }
 
-func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger core.BatchLedger, bp core.BatchPuller, ds *BatcherDeliverService) *Batcher {
+func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger core.BatchLedger, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator) *Batcher {
 	b := &Batcher{
-		ds:               ds,
-		sk:               createSigner(logger, config),
-		logger:           logger,
-		batcherCerts2IDs: make(map[string]types.PartyID),
-		config:           config,
-		tlsKey:           config.TLSPrivateKeyFile,
-		tlsCert:          config.TLSCertificateFile,
+		batcherDeliverService: ds,
+		stateReplicator:       sr,
+		privateKey:            createSigner(logger, config),
+		logger:                logger,
+		batcherCerts2IDs:      make(map[string]types.PartyID),
+		config:                config,
+		tlsKey:                config.TLSPrivateKeyFile,
+		tlsCert:               config.TLSCertificateFile,
+	}
+
+	b.batchers = batchersFromConfig(config)
+	if len(b.batchers) == 0 {
+		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", config.ShardId, config.Shards)
 	}
 
 	initState := computeZeroState(config)
 	b.stateRef.Store(&initState)
 
-	b.indexTLSCerts()
+	b.primaryID = b.getPrimaryID(&initState)
 
-	parties := batcherIDs(logger, config)
+	b.indexTLSCerts()
 
 	f := (initState.N - 1) / 3
 
-	b.b = &core.Batcher{
-		Batchers:      parties,
+	b.batcher = &core.Batcher{
+		Batchers:      getBatchersIDs(b.batchers),
 		BatchPuller:   bp,
 		Threshold:     int(f + 1),
 		N:             initState.N,
@@ -263,8 +279,8 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 		MemPool:       b.createMemPool(config),
 		AttestBatch:   b.attestBatch,
 		StateProvider: b,
-		ID:            types.PartyID(config.PartyId),
-		Shard:         types.ShardID(config.ShardId),
+		ID:            config.PartyId,
+		Shard:         config.ShardId,
 		Logger:        logger,
 		Digest: func(data [][]byte) []byte {
 			batch := types.BatchedRequests(data)
@@ -281,12 +297,12 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 	return b
 }
 
-func batcherIDs(logger types.Logger, config node_config.BatcherNodeConfig) []types.PartyID {
-	batchers := batchersFromConfig(logger, config)
+func getBatchersIDs(batchers []node_config.BatcherInfo) []types.PartyID {
 	var parties []types.PartyID
 	for _, batcher := range batchers {
-		parties = append(parties, types.PartyID(batcher.PartyID))
+		parties = append(parties, batcher.PartyID)
 	}
+
 	return parties
 }
 
@@ -311,15 +327,14 @@ func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPo
 }
 
 func (b *Batcher) indexTLSCerts() {
-	batchers := batchersFromConfig(b.logger, b.config)
-	for _, batcher := range batchers {
+	for _, batcher := range b.batchers {
 		rawTLSCert := batcher.TLSCert
 		bl, _ := pem.Decode(rawTLSCert)
 		if bl == nil || bl.Bytes == nil {
 			b.logger.Panicf("Failed decoding TLS certificate of %d from PEM", batcher.PartyID)
 		}
 
-		b.batcherCerts2IDs[string(bl.Bytes)] = types.PartyID(batcher.PartyID)
+		b.batcherCerts2IDs[string(bl.Bytes)] = batcher.PartyID
 	}
 }
 
@@ -340,7 +355,7 @@ func createSigner(logger types.Logger, config node_config.BatcherNodeConfig) *ec
 }
 
 func (b *Batcher) attestBatch(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
-	baf, err := CreateBAF(b.sk, types.PartyID(b.config.PartyId), shard, digest, primary, seq)
+	baf, err := CreateBAF(b.privateKey, b.config.PartyId, shard, digest, primary, seq)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -349,28 +364,28 @@ func (b *Batcher) attestBatch(seq types.BatchSequence, primary types.PartyID, sh
 }
 
 func (b *Batcher) setupPrimaryEndpoint() {
-	batchers := batchersFromConfig(b.logger, b.config)
-	b.logger.Infof("Batchers: %v", batchers)
-
-	primaryID := b.getPrimaryID()
-
-	for _, batcher := range batchers {
-		if types.PartyID(batcher.PartyID) == primaryID {
+	for _, batcher := range b.batchers {
+		if batcher.PartyID == b.primaryID {
 			b.primaryEndpoint = batcher.Endpoint
 			b.primaryTLSCA = batcher.TLSCACerts
-			b.logger.Infof("Primary for shard %d: %d %s", b.config.ShardId, primaryID, b.primaryEndpoint)
+			b.logger.Infof("Primary for shard %d: %d %s", b.config.ShardId, b.primaryID, b.primaryEndpoint)
 			return
 		}
 	}
 
-	b.logger.Panicf("Could not find primaryID %d of shard %d within %v", primaryID, b.config.ShardId, batchers)
+	b.logger.Panicf("Could not find primaryID %d of shard %d within %v", b.primaryID, b.config.ShardId, b.batchers)
 }
 
-func (b *Batcher) getPrimaryID() types.PartyID {
-	state := b.stateRef.Load().(*core.State)
+func (b *Batcher) GetPrimaryID() types.PartyID {
+	b.primaryLock.Lock()
+	defer b.primaryLock.Unlock()
+	return b.primaryID
+}
+
+func (b *Batcher) getPrimaryID(state *core.State) types.PartyID {
 	term := uint64(math.MaxUint64)
 	for _, shard := range state.Shards {
-		if shard.Shard == types.ShardID(b.config.ShardId) {
+		if shard.Shard == b.config.ShardId {
 			term = shard.Term
 		}
 	}
@@ -381,9 +396,7 @@ func (b *Batcher) getPrimaryID() types.PartyID {
 
 	primaryIndex := types.PartyID((uint64(b.config.ShardId) + term) % uint64(state.N))
 
-	batchers := batchersFromConfig(b.logger, b.config)
-
-	primaryID := types.PartyID(batchers[primaryIndex].PartyID)
+	primaryID := b.batchers[primaryIndex].PartyID
 
 	return primaryID
 }
@@ -392,7 +405,7 @@ func computeZeroState(config node_config.BatcherNodeConfig) core.State {
 	var state core.State
 	for _, shard := range config.Shards {
 		state.Shards = append(state.Shards, core.ShardTerm{
-			Shard: types.ShardID(shard.ShardId),
+			Shard: shard.ShardId,
 		})
 	}
 
@@ -401,7 +414,7 @@ func computeZeroState(config node_config.BatcherNodeConfig) core.State {
 	return state
 }
 
-func batchersFromConfig(logger types.Logger, config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
+func batchersFromConfig(config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
 	var batchers []node_config.BatcherInfo
 	for _, shard := range config.Shards {
 		if shard.ShardId == config.ShardId {
@@ -409,20 +422,23 @@ func batchersFromConfig(logger types.Logger, config node_config.BatcherNodeConfi
 		}
 	}
 
-	if len(batchers) == 0 {
-		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", config.ShardId, config.Shards)
-	}
-	// TODO make sure this is sorted
+	sort.Slice(batchers, func(i, j int) bool {
+		return int(batchers[i].PartyID) < int(batchers[j].PartyID)
+	})
+
 	return batchers
 }
 
 func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
+	b.primaryLock.Lock()
+	defer b.primaryLock.Unlock()
 	b.connectToPrimaryIfNeeded()
 
 	if b.primaryClientStream == nil {
 		return
 	}
 
+	// TODO should I unlock before sending?
 	err := b.primaryClientStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)})
 	if err != nil {
 		b.logger.Errorf("Failed sending ack to %s", b.primaryEndpoint)
@@ -613,12 +629,12 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger) *Bat
 		}
 
 		for _, b := range conf.Shards[shIdx].Batchers {
-			parties = append(parties, types.PartyID(b.PartyID))
+			parties = append(parties, b.PartyID)
 		}
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(types.ShardID(conf.ShardId), types.PartyID(conf.PartyId), parties, conf.Directory, logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(conf.ShardId, conf.PartyId, parties, conf.Directory, logger)
 	if err != nil {
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
@@ -630,7 +646,9 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger) *Bat
 
 	bp := NewBatchPuller(conf, ledgerArray, logger)
 
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService)
+	cr := CreateConsensusReplicator(conf, logger)
+
+	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, cr)
 
 	batcher.initConsensusConnections()
 	batcher.connectToPrimaryIfNeeded()

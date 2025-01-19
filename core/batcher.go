@@ -145,6 +145,9 @@ func (b *Batcher) Stop() {
 	b.stopOnce.Do(func() { close(b.stopChan) })
 	b.cancelBatch()
 	b.MemPool.Close()
+	for len(b.termChan) > 0 {
+		<-b.termChan // drain term channel
+	}
 	b.running.Wait()
 }
 

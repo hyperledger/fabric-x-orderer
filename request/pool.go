@@ -225,6 +225,10 @@ func (rp *Pool) RemoveRequests(requestsIDs ...string) {
 	rp.lock.RLock()
 	defer rp.lock.RUnlock()
 
+	if rp.isClosed() {
+		return
+	}
+
 	if !rp.isBatchingEnabled() {
 		rp.pending.RemoveRequests(requestsIDs...)
 		return

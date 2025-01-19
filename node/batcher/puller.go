@@ -115,11 +115,11 @@ func (bp *BatchPuller) findPrimary(shardID types.ShardID, primary types.PartyID)
 	for _, shard := range bp.config.Shards {
 		if shard.ShardId == shardID {
 			for _, b := range shard.Batchers {
-				bp.logger.Infof("Primary: %d, primaryID: %d, b.PartyID: %d", primary, primary, b.PartyID)
+				bp.logger.Debugf("Primary: %d, primaryID: %d, b.PartyID: %d", primary, primary, b.PartyID)
 				if types.PartyID(b.PartyID) == primary {
 					return b
 				}
-				bp.logger.Infof("primary: %d, shardID: %d, current partyID: %d, currentShard: %d", primary, shardID, b.PartyID, shard.ShardId)
+				bp.logger.Debugf("primary: %d, shardID: %d, current partyID: %d, currentShard: %d", primary, shardID, b.PartyID, shard.ShardId)
 			}
 
 			bp.logger.Panicf("Failed finding primary for shard %d %d within %v", shardID, bp.config.PartyId, shard.Batchers)
