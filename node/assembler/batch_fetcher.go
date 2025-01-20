@@ -64,7 +64,7 @@ func fetcherClientConfig(config config.AssemblerNodeConfig) comm.ClientConfig {
 }
 
 func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) *BatchFetcher {
-	logger.Infof("Creating new Batch Fetcher using batch frontier %v and config %v", initialBatchFrontier, config)
+	logger.Infof("Creating new Batch Fetcher using batch frontier with assembler: endpoint %s partyID %d ", config.ListenAddress, config.PartyId)
 	return &BatchFetcher{
 		initialBatchFrontier: initialBatchFrontier,
 		config:               config,
@@ -80,7 +80,7 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 	// TODO we need retry mechanisms with timeouts and be able to connect to another party on that shard.
 	batcherToPullFrom := br.findShardID(shardID)
 
-	br.logger.Infof("Assembler %d Replicate from shard %d batcher info %+v", br.config.PartyId, shardID, batcherToPullFrom)
+	br.logger.Infof("Assembler %d Replicate from shard %d, batcher endpoint: %s, batcher party: %d", br.config.PartyId, shardID, batcherToPullFrom.Endpoint, batcherToPullFrom.PartyID)
 
 	res := make(chan core.Batch, defaultReplicationChanSize)
 
