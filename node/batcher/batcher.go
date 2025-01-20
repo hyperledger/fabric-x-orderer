@@ -431,14 +431,14 @@ func batchersFromConfig(config node_config.BatcherNodeConfig) []node_config.Batc
 
 func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
 	b.primaryLock.Lock()
-	defer b.primaryLock.Unlock()
 	b.connectToPrimaryIfNeeded()
 
 	if b.primaryClientStream == nil {
+		b.primaryLock.Unlock()
 		return
 	}
 
-	// TODO should I unlock before sending?
+	b.primaryLock.Unlock()
 	err := b.primaryClientStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)})
 	if err != nil {
 		b.logger.Errorf("Failed sending ack to %s", b.primaryEndpoint)

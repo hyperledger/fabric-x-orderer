@@ -80,6 +80,14 @@ func TestBatcherRun(t *testing.T) {
 		return ledger.Height(partyID) == uint64(1)
 	}, 10*time.Second, 10*time.Millisecond)
 
+	req2 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req2, uint64(2))
+	batcher.Submit(context.Background(), &protos.Request{Payload: req2})
+
+	require.Eventually(t, func() bool {
+		return ledger.Height(partyID) == uint64(2)
+	}, 10*time.Second, 10*time.Millisecond)
+
 	require.Equal(t, partyID, batcher.GetPrimaryID())
 	stateChan <- &core.State{N: 2, Shards: []core.ShardTerm{{Shard: shardID, Term: 0}}}
 	require.Equal(t, partyID, batcher.GetPrimaryID())
