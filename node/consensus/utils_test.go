@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"arma/common/types"
+	"arma/core"
+	"arma/node/batcher"
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	"arma/node/config"
@@ -236,4 +238,15 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 	require.NoError(t, err)
 
 	return nil
+}
+
+// helper function to create and submit a request for testing
+func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence) error {
+	baf, err := batcher.CreateBAF(sk, id, shard, digest, primary, sequence)
+	if err != nil {
+		return err
+	}
+
+	controlEvent := &core.ControlEvent{BAF: baf}
+	return node.SubmitRequest(controlEvent.Bytes())
 }
