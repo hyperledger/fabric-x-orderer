@@ -162,6 +162,7 @@ type CLI struct {
 	outputDir     *string
 	genConfigFile **os.File
 	useTLS        *bool
+	version       *int
 	// submit command flags
 	userConfigFile **os.File
 	transactions   *int // transactions is the number of txs to be sent
@@ -189,11 +190,11 @@ func NewCLI() *CLI {
 func (cli *CLI) configureCommands() {
 	commands := make(map[string]*kingpin.CmdClause)
 	gen := cli.app.Command("generate", "Generate config material")
-	commands["generate"] = gen
-
 	cli.outputDir = gen.Flag("output", "The output directory in which to place config files").Default("arma-config").String()
 	cli.genConfigFile = gen.Flag("config", "The configuration template to use").File()
 	cli.useTLS = gen.Flag("useTLS", "Defines if the connection between a client to a router and an assembler is a TLS one or not").Bool()
+	cli.version = gen.Flag("version", "The version of the configuration, for old config set version to 1, for new config set version to 2").Default("1").Int()
+	commands["generate"] = gen
 
 	showtemplate := cli.app.Command("showtemplate", "Show the default configuration template needed to build Arma config material")
 	commands["showtemplate"] = showtemplate
@@ -231,7 +232,14 @@ func (cli *CLI) Run(args []string) {
 
 	// "generate" command
 	case cli.commands["generate"].FullCommand():
-		generate(cli.genConfigFile, cli.outputDir, cli.useTLS)
+		if *cli.version == 1 {
+			generate(cli.genConfigFile, cli.outputDir, cli.useTLS)
+		} else if *cli.version == 2 {
+			generateConfig(cli.genConfigFile, cli.outputDir, cli.useTLS)
+		} else {
+			fmt.Fprintf(os.Stderr, "Invalid version: %d", *cli.version)
+			os.Exit(-1)
+		}
 
 	// "showtemplate" command
 	case cli.commands["showtemplate"].FullCommand():
@@ -254,6 +262,7 @@ func (cli *CLI) Run(args []string) {
 	}
 }
 
+// generate is generating configuration files in the old format.
 func generate(genConfigFile **os.File, outputDir *string, useTLS *bool) {
 	// get config file content given as argument
 	networkConfigFileContent, err := getConfigFileContent(genConfigFile)
@@ -274,6 +283,11 @@ func generate(genConfigFile **os.File, outputDir *string, useTLS *bool) {
 
 	// create config material for each party in a folder structure
 	createConfigMaterial(networkConfig, networkCryptoConfig, outputDir)
+}
+
+// generate is generating configuration files in the new format.
+func generateConfig(genConfigFile **os.File, outputDir *string, useTLS *bool) {
+	// TODO: complete in next PR's
 }
 
 func getConfigFileContent(genConfigFile **os.File) (*Network, error) {

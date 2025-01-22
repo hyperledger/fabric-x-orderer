@@ -38,7 +38,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 
 	// 2.
 	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS"})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "1"})
 
 	// 3.
 	// compile arma
@@ -90,7 +90,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 
 	// 2.
 	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS"})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "1"})
 
 	// 3.
 	// compile arma
@@ -298,7 +298,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 
 	// 2.
 	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "1"})
 
 	// 3.
 	// compile arma
