@@ -16,6 +16,15 @@ func CreateLogger(t *testing.T, i int) *zap.SugaredLogger {
 	return sugaredLogger
 }
 
+func CreateLoggerForModule(t *testing.T, name string, level zapcore.Level) *zap.SugaredLogger {
+	logConfig := zap.NewDevelopmentConfig()
+	logConfig.Level.SetLevel(level)
+	logger, _ := logConfig.Build()
+	logger = logger.With(zap.String("t", t.Name())).With(zap.String("m", name))
+	sugaredLogger := logger.Sugar()
+	return sugaredLogger
+}
+
 func CreateBenchmarkLogger(b *testing.B, i int) *zap.SugaredLogger {
 	logConfig := zap.NewDevelopmentConfig()
 	logConfig.Level.SetLevel(zapcore.InfoLevel)

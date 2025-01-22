@@ -50,9 +50,9 @@ type PartitionPrefetchIndexerFactory interface {
 	Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) PartitionPrefetchIndexer
 }
 
-type RealPartitionPrefetchIndexerFactory struct{}
+type DefaultPartitionPrefetchIndexerFactory struct{}
 
-func (f *RealPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) PartitionPrefetchIndexer {
+func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) PartitionPrefetchIndexer {
 	return NewPartitionPrefetchIndex(
 		partition,
 		logger,

@@ -18,6 +18,16 @@ type BatchCacheFactory interface {
 	Create(partition ShardPrimary) *BatchCache
 }
 
+type DefaultBatchCacheFactory struct{}
+
+func (dbcf *DefaultBatchCacheFactory) CreateWithTag(partition ShardPrimary, tag string) *BatchCache {
+	return NewBatchCache(partition, tag)
+}
+
+func (dbcf *DefaultBatchCacheFactory) Create(partition ShardPrimary) *BatchCache {
+	return dbcf.CreateWithTag(partition, "")
+}
+
 func NewBatchCache(partition ShardPrimary, tag string) *BatchCache {
 	sc := &BatchCache{
 		tag:              tag,
@@ -49,6 +59,10 @@ func (bc *BatchCache) Put(batch core.Batch) error {
 
 func (bc *BatchCache) Has(batchId types.BatchID) bool {
 	return bc.shardBatchMapper.Has(batchId)
+}
+
+func (bc *BatchCache) Get(batchId types.BatchID) (core.Batch, error) {
+	return bc.shardBatchMapper.Get(batchId)
 }
 
 func (bc *BatchCache) SizeBytes() int {

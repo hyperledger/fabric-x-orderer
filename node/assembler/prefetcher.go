@@ -66,9 +66,14 @@ func (p *Prefetcher) handleReplication(partition ShardPrimary) {
 		case <-p.cancellationContext.Done():
 			p.logger.Infof("Exiting replication for partition %v", partition)
 			return
-		case batch := <-batches:
-			p.logger.Infof("Got batch %s", BatchToString(batch))
-			p.prefetchIndex.Put(batch)
+		case batch, ok := <-batches:
+			if ok {
+				p.logger.Infof("Got batch %s", BatchToString(batch))
+				p.prefetchIndex.Put(batch)
+			} else {
+				p.logger.Infof("Batch Fetcher replication channel was closed, Exiting replication for partition %v", partition)
+				return
+			}
 		}
 	}
 }

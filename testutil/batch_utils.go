@@ -32,16 +32,24 @@ func CreateEmptyMockBatch(shard types.ShardID, primary types.PartyID, seq types.
 //	// 2 requests, the first of size 4 bytes, the second with 5 bytes
 //	b := CreateMockBatch(1, 2, 3, []int{4, 5})
 func CreateMockBatch(shard types.ShardID, primary types.PartyID, seq types.BatchSequence, requestsBytesSize []int) *core_mocks.FakeBatch {
-	batch := &core_mocks.FakeBatch{}
-	batch.ShardReturns(shard)
-	batch.PrimaryReturns(primary)
-	batch.SeqReturns(seq)
 	requests := types.BatchedRequests{}
 	for _, requestSize := range requestsBytesSize {
 		requests = append(requests, make([]byte, requestSize))
 	}
+	return CreateMockBatchWithRequests(shard, primary, seq, requests)
+}
+
+func CalculateDigest(requests types.BatchedRequests) []byte {
 	digest := sha256.Sum256(requests.Serialize())
-	batch.DigestReturns(digest[:])
+	return digest[:]
+}
+
+func CreateMockBatchWithRequests(shard types.ShardID, primary types.PartyID, seq types.BatchSequence, requests types.BatchedRequests) *core_mocks.FakeBatch {
+	batch := &core_mocks.FakeBatch{}
+	batch.ShardReturns(shard)
+	batch.PrimaryReturns(primary)
+	batch.SeqReturns(seq)
+	batch.DigestReturns(CalculateDigest(requests))
 	batch.RequestsReturns(requests)
 	return batch
 }
