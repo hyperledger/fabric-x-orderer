@@ -42,7 +42,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) 
 		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	initialState, metadata := getInitialStateAndMetadata(conf, consLedger)
+	initialState, metadata, lastProposal, lastSigs := getInitialStateAndMetadata(conf, consLedger)
 
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
@@ -71,7 +71,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) 
 		Signer:       buildSigner(conf, logger),
 	}
 
-	c.BFT = createBFT(c, metadata)
+	c.BFT = createBFT(c, metadata, lastProposal, lastSigs)
 	setupComm(c)
 	c.Synchronizer = createSynchronizer(consLedger, c)
 	c.BFT.Synchronizer = c.Synchronizer
@@ -93,13 +93,13 @@ func buildSigner(conf config.ConsenterNodeConfig, logger arma_types.Logger) Sign
 	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }
 
-func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata) *consensus.Consensus {
+func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *types.Proposal, lastSigs []types.Signature) *consensus.Consensus {
 	bftWAL, walInitState, err := wal.InitializeAndReadAll(c.Logger, filepath.Join(c.Config.Directory, "wal"), wal.DefaultOptions())
 	if err != nil {
 		c.Logger.Panicf("Failed creating BFT WAL: %v", err)
 	}
 
-	return &consensus.Consensus{
+	bft := &consensus.Consensus{
 		Config:            c.BFTConfig,
 		Application:       c,
 		Assembler:         c,
@@ -113,6 +113,11 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata) *consensus.Consensu
 		Scheduler:         time.NewTicker(time.Second).C,
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 	}
+	if lastProposal != nil {
+		bft.LastProposal = *lastProposal
+		bft.LastSignatures = lastSigs
+	}
+	return bft
 }
 
 func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchronizer {
@@ -203,12 +208,12 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(config config.ConsenterNodeConfig, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata) {
+func getInitialStateAndMetadata(config config.ConsenterNodeConfig, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *types.Proposal, []types.Signature) {
 	height := ledger.Height()
 	if height == 0 {
 		initState := initialStateFromConfig(config)
 		createAndAppendGenesisBlock(initState, ledger)
-		return initState, &smartbftprotos.ViewMetadata{}
+		return initState, &smartbftprotos.ViewMetadata{}, nil, nil
 	}
 
 	block, err := ledger.RetrieveBlockByNumber(height - 1)
@@ -216,7 +221,7 @@ func getInitialStateAndMetadata(config config.ConsenterNodeConfig, ledger *ledge
 		panic("couldn't retrieve last block from ledger")
 	}
 
-	proposal, _, err := state.BytesToDecision(block.Data.Data[0])
+	proposal, sigs, err := state.BytesToDecision(block.Data.Data[0])
 	if err != nil {
 		panic("couldn't read decision from last block")
 	}
@@ -231,7 +236,7 @@ func getInitialStateAndMetadata(config config.ConsenterNodeConfig, ledger *ledge
 		panic(err)
 	}
 
-	return header.State, md
+	return header.State, md, &proposal, sigs
 }
 
 func initialStateFromConfig(config config.ConsenterNodeConfig) *core.State {
