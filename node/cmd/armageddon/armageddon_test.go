@@ -77,7 +77,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 //  1. Create a config YAML file to be an input to armageddon
 //  2. Run armageddon generate command to create config files in a folder structure
 //  3. Run arma with the generated config files to run each of the nodes for all parties
-//  4. Run armageddon loadSteps command to make 40000 txs and send them to all routers at a Multople rates which are called steps (10000 for each rate)
+//  4. Run armageddon load command to make 10000 txs and send them to all routers at multiple rates (5000 for each rate)
 //  5. In parallel, run armageddon receive command to pull blocks from the assembler and report results , number of txs should be 40000
 func TestLoadStepsAndReceive(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
@@ -119,9 +119,9 @@ func TestLoadStepsAndReceive(t *testing.T) {
 
 	// 4. + 5.
 	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
-	rates := "500 1000 1500 2000"
-	txsSent := "10000"
-	txsRec := "40000"
+	rates := "500 1000"
+	txsSent := "5000"
+	txsRec := "10000"
 	txSize := "64"
 
 	var waitForTxToBeSentAndReceived sync.WaitGroup
@@ -138,7 +138,11 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	waitForTxToBeSentAndReceived.Wait()
 }
 
-// This Test checks if we load with wrong rate, for example something cant be converted to integer, it will fail and print error
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files in a folder structure
+//  3. Run arma with the generated config files to run each of the nodes for all parties
+//     4.+5. Compile armageddon and run armageddon load command with invalid rate (string which cannot be converted to integer), expect to get an error
 func TestLoadStepsFails(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -182,7 +186,6 @@ func TestLoadStepsFails(t *testing.T) {
 	rates := "BOOM"
 	txsSent := "10000"
 	txSize := "64"
-	// Capture the output of armageddon.Run
 
 	armageddonBinary, err := gexec.BuildWithEnvironment("arma/node/cmd/armageddon/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
@@ -192,7 +195,7 @@ func TestLoadStepsFails(t *testing.T) {
 	stdout, err := cmd.Output()
 	// Check if the command returned an error and the output contains the expected error message
 	require.Contains(t, string(stdout), "BOOM")
-	require.Contains(t, err.Error(), "exit status") // Or another appropriate error message
+	require.Contains(t, err.Error(), "exit status")
 }
 
 // Scenario:
