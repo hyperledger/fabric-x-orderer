@@ -14,6 +14,15 @@ import (
 	"google.golang.org/grpc"
 )
 
+func NewestSeekInfo() *orderer.SeekInfo {
+	return &orderer.SeekInfo{
+		Start:         &orderer.SeekPosition{Type: &orderer.SeekPosition_Newest{Newest: &orderer.SeekNewest{}}},
+		Stop:          &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{Number: math.MaxUint64}}},
+		Behavior:      orderer.SeekInfo_BLOCK_UNTIL_READY,
+		ErrorResponse: orderer.SeekInfo_BEST_EFFORT,
+	}
+}
+
 func NextSeekInfo(startSeq uint64) *orderer.SeekInfo {
 	return &orderer.SeekInfo{
 		Start:         &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{Number: startSeq}}},

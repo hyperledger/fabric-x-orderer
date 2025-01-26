@@ -8,10 +8,9 @@ import (
 )
 
 type FakeStateReplicator struct {
-	ReplicateStateStub        func(uint64) <-chan *core.State
+	ReplicateStateStub        func() <-chan *core.State
 	replicateStateMutex       sync.RWMutex
 	replicateStateArgsForCall []struct {
-		arg1 uint64
 	}
 	replicateStateReturns struct {
 		result1 <-chan *core.State
@@ -23,18 +22,17 @@ type FakeStateReplicator struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeStateReplicator) ReplicateState(arg1 uint64) <-chan *core.State {
+func (fake *FakeStateReplicator) ReplicateState() <-chan *core.State {
 	fake.replicateStateMutex.Lock()
 	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
 	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
-		arg1 uint64
-	}{arg1})
+	}{})
 	stub := fake.ReplicateStateStub
 	fakeReturns := fake.replicateStateReturns
-	fake.recordInvocation("ReplicateState", []interface{}{arg1})
+	fake.recordInvocation("ReplicateState", []interface{}{})
 	fake.replicateStateMutex.Unlock()
 	if stub != nil {
-		return stub(arg1)
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
@@ -48,17 +46,10 @@ func (fake *FakeStateReplicator) ReplicateStateCallCount() int {
 	return len(fake.replicateStateArgsForCall)
 }
 
-func (fake *FakeStateReplicator) ReplicateStateCalls(stub func(uint64) <-chan *core.State) {
+func (fake *FakeStateReplicator) ReplicateStateCalls(stub func() <-chan *core.State) {
 	fake.replicateStateMutex.Lock()
 	defer fake.replicateStateMutex.Unlock()
 	fake.ReplicateStateStub = stub
-}
-
-func (fake *FakeStateReplicator) ReplicateStateArgsForCall(i int) uint64 {
-	fake.replicateStateMutex.RLock()
-	defer fake.replicateStateMutex.RUnlock()
-	argsForCall := fake.replicateStateArgsForCall[i]
-	return argsForCall.arg1
 }
 
 func (fake *FakeStateReplicator) ReplicateStateReturns(result1 <-chan *core.State) {

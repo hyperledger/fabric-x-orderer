@@ -37,7 +37,7 @@ func NewConsensusReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes
 	return baReplicator
 }
 
-func (bar *ConsensusReplicator) ReplicateState(seq uint64) <-chan *core.State {
+func (bar *ConsensusReplicator) ReplicateState() <-chan *core.State {
 	endpoint := func() string {
 		return bar.endpoint
 	}
@@ -46,7 +46,7 @@ func (bar *ConsensusReplicator) ReplicateState(seq uint64) <-chan *core.State {
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"consensus",
 		nil,
-		NextSeekInfo(seq),
+		NewestSeekInfo(),
 		int32(0),
 		uint64(0),
 		nil,

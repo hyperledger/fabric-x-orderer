@@ -44,7 +44,7 @@ var defaultBatcherMemPoolOpts = request.PoolOptions{
 
 //go:generate counterfeiter -o mocks/state_replicator.go . StateReplicator
 type StateReplicator interface {
-	ReplicateState(seq uint64) <-chan *core.State
+	ReplicateState() <-chan *core.State
 }
 
 type Batcher struct {
@@ -80,7 +80,7 @@ func (b *Batcher) Run() {
 
 	b.stateChan = make(chan *core.State, 1)
 
-	go b.replicateState(0) // TODO use correct seq
+	go b.replicateState()
 
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
@@ -96,14 +96,14 @@ func (b *Batcher) Stop() {
 }
 
 // replicateState runs by a separate go routine
-func (b *Batcher) replicateState(seq uint64) {
+func (b *Batcher) replicateState() {
 	b.logger.Infof("Started replicating state")
 	b.running.Add(1)
 	defer func() {
 		b.running.Done()
 		b.logger.Infof("Stopped replicating state")
 	}()
-	stateChan := b.stateReplicator.ReplicateState(seq)
+	stateChan := b.stateReplicator.ReplicateState()
 	for {
 		select {
 		case state := <-stateChan:
