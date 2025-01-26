@@ -59,7 +59,6 @@ func TestCreateOneConsensusNode(t *testing.T) {
 // Then we restart the stopped node, send 2 more requests, and we make sure the nodes commit 2 more blocks.
 // Finally, we make sure the restarted node is synced with all blocks.
 func TestCreateMultipleConsensusNodes(t *testing.T) {
-	t.Parallel()
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -123,7 +122,6 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 // The leader fails again, recovers, and writes the second request to the ledger.
 // The leader is never replaced, and no view change occurs.
 func TestLeaderFailureAndRecovery(t *testing.T) {
-	t.Parallel()
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -165,7 +163,6 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 // No requests are sent while it is down.
 // After recovery, two more requests are sent, and both blocks are committed to the ledger.
 func TestNonLeaderNodeFailureRecovery(t *testing.T) {
-	t.Parallel()
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -242,7 +239,6 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 // Nodes (IDs=2,3) fail after the first block is committed.
 // Node (ID=2) recovers, and additional requests are sent and committed while node 3 remains down.
 func TestTwoNodeFailureRecovery(t *testing.T) {
-	t.Parallel()
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -289,7 +285,6 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 //  3. Nodes (IDs=2,3) fail and recover between block commits.
 //     No requests are sent while they are down, and additional requests are committed after recovery.
 func TestMultipleNodesFailureRecovery(t *testing.T) {
-	t.Parallel()
 	parties := 7
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -389,7 +384,6 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 // New requests are committed by the remaining nodes during the failure (a view change occurs).
 // After restarting the failed nodes, two more requests are sent, and both blocks are committed to the ledger.
 func TestMultipleLedaerNodeFailureRecovery(t *testing.T) {
-	t.Parallel()
 	parties := 7
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
