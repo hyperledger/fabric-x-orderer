@@ -126,7 +126,7 @@ func createCAsPerParty(dir string, network *Network) (map[types.PartyID][]*ca.CA
 
 	for i, party := range network.Parties {
 		// create a TLS CA for the party
-		tlsCA, err := ca.NewCA(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("Org%d", i+1), "tlsca"), "tlsCA", "cacert.pem", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
+		tlsCA, err := ca.NewCA(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("Org%d", i+1), "tlsca"), "tlsCA", "tlsca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
 		if err != nil {
 			return nil, nil, fmt.Errorf("err: %s, failed creating a TLS CA for party %d", err, party.ID)
 		}
@@ -134,7 +134,7 @@ func createCAsPerParty(dir string, network *Network) (map[types.PartyID][]*ca.CA
 		partiesTLSCAs[party.ID] = []*ca.CA{tlsCA}
 
 		// create a Signing CA for the party
-		signCA, err := ca.NewCA(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("Org%d", i+1), "ca"), "signCA", "cacert.pem", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
+		signCA, err := ca.NewCA(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("Org%d", i+1), "ca"), "signCA", "ca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
 		if err != nil {
 			return nil, nil, fmt.Errorf("err: %s, failed creating a signing CA for party %d", err, party.ID)
 		}

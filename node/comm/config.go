@@ -267,30 +267,30 @@ func (so SecureOptions) ClientCertificate() (tls.Certificate, error) {
 type KeepaliveOptions struct {
 	// ClientInterval is the duration after which if the client does not see
 	// any activity from the server it pings the server to see if it is alive
-	ClientInterval time.Duration
+	ClientInterval time.Duration `yaml:"ClientInterval,omitempty"`
 	// ClientTimeout is the duration the client waits for a response
 	// from the server after sending a ping before closing the connection
-	ClientTimeout time.Duration
+	ClientTimeout time.Duration `yaml:"ClientTimeout,omitempty"`
 	// ServerInterval is the duration after which if the server does not see
 	// any activity from the client it pings the client to see if it is alive
-	ServerInterval time.Duration
+	ServerInterval time.Duration `yaml:"ServerInterval,omitempty"`
 	// ServerTimeout is the duration the server waits for a response
 	// from the client after sending a ping before closing the connection
-	ServerTimeout time.Duration
+	ServerTimeout time.Duration `yaml:"ServerTimeout,omitempty"`
 	// ServerMinInterval is the minimum permitted time between client pings.
 	// If clients send pings more frequently, the server will disconnect them
-	ServerMinInterval time.Duration
+	ServerMinInterval time.Duration `yaml:"ServerMinInterval,omitempty"`
 }
 
 // BackoffOptions defines the configuration options for GRPC client.
 type BackoffOptions struct {
 	// BaseDelay is the amount of time to backoff after the first failure.
-	BaseDelay time.Duration
+	BaseDelay time.Duration `yaml:"BaseDelay,omitempty"`
 	// Multiplier is the factor with which to multiply backoffs after a
 	// failed retry. Should ideally be greater than 1.
-	Multiplier float64
+	Multiplier float64 `yaml:"Multiplier,omitempty"`
 	// MaxDelay is the upper bound of backoff delay.
-	MaxDelay time.Duration
+	MaxDelay time.Duration `yaml:"MaxDelay,omitempty"`
 }
 
 // ServerKeepaliveOptions returns gRPC keepalive options for a server.

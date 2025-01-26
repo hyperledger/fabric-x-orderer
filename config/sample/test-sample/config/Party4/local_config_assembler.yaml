@@ -1,0 +1,32 @@
+PartyID: 4
+General:
+    ListenAddress: 127.0.0.1
+    ListenPort: 56889
+    TLS:
+        Enabled: true
+        PrivateKey: /var/folders/5c/y9fv760d0zv82b77lvwlqp4h0000gn/T/TestLocalConfigGeneration1922188677/crypto/ordererOrganizations/org4/orderers/party4/assembler/key.pem
+        Certificate: /var/folders/5c/y9fv760d0zv82b77lvwlqp4h0000gn/T/TestLocalConfigGeneration1922188677/crypto/ordererOrganizations/org4/orderers/party4/assembler/tls-cert.pem
+        RootCAs:
+            - /var/folders/5c/y9fv760d0zv82b77lvwlqp4h0000gn/T/TestLocalConfigGeneration1922188677/crypto/ordererOrganizations/Org4/tlsca/cacert.pem
+    Keepalive:
+        ClientInterval: 1m0s
+        ClientTimeout: 20s
+        ServerInterval: 2h0m0s
+        ServerTimeout: 20s
+        ServerMinInterval: 1m0s
+    Backoff:
+        BaseDelay: 1s
+        Multiplier: 1.6
+        MaxDelay: 2m0s
+    MaxRecvMsgSize: 104857600
+    MaxSendMsgSize: 104857600
+    Bootstrap:
+        Method: yaml
+        File: /var/dec-trust/production/orderer/bootstrap/bootstrap.yaml
+    LocalMSPDir: /var/dec-trust/production/orderer/crypto
+    LocalMSPID: OrdererOrg
+    LogSpec: info
+FileStore:
+    Location: /var/dec-trust/production/orderer/store
+Assembler:
+    PrefetchBufferMemoryMB: 1024

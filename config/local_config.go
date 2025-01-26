@@ -14,57 +14,57 @@ import (
 // Every time a node starts, it is expected to load this file.
 type NodeLocalConfig struct {
 	// PartyID is the party id to which the node belongs
-	PartyID types.PartyID
+	PartyID types.PartyID `yaml:"PartyID,omitempty"`
 	// GeneralConfig configures the address, settings for gRPC, TLS config and crypto material of the node
-	GeneralConfig *GeneralConfig
+	GeneralConfig *GeneralConfig `yaml:"General,omitempty"`
 	// FileStore controls the configuration of the file store where blocks and databases are stored
-	FileStore *FileStore
+	FileStore *FileStore `yaml:"FileStore,omitempty"`
 	// RouterParams controls Router specific params. For Bathcer, Consensus or Assembler nodes this field is expected to be empty
-	RouterParams RouterParams
+	RouterParams RouterParams `yaml:"Router,omitempty"`
 	// BatcherParams controls Batcher specific params. For Router, Consensus or Assembler nodes this field is expected to be empty
-	BatcherParams BatcherParams
+	BatcherParams BatcherParams `yaml:"Batcher,omitempty"`
 	// ConsensusParams controls Consensus specific params. For Router, Batcher or Assembler nodes this field is expected to be empty
-	ConsensusParams ConsensusParams
+	ConsensusParams ConsensusParams `yaml:"Consensus,omitempty"`
 	// AssemblerParams controls Assembler specific params. For Router, Batcher or Consensus nodes this field is expected to be empty
-	AssemblerParams AssemblerParams
+	AssemblerParams AssemblerParams `yaml:"Assembler,omitempty"`
 }
 
 type GeneralConfig struct {
 	// ListenAddress is the IP on which to bind to listen
-	ListenAddress string
+	ListenAddress string `yaml:"ListenAddress,omitempty"`
 	// ListenPort is the port on which to bind to listen
-	ListenPort string
+	ListenPort int `yaml:"ListenPort,omitempty"`
 	// TLSConfig is the TLS settings for the GRPC server
-	TLSConfig TLSConfig
+	TLSConfig TLSConfig `yaml:"TLS,omitempty"`
 	// Keepalive is the Keepalive settings for the GRPC server.
-	KeepaliveSettings comm.KeepaliveOptions
+	KeepaliveSettings comm.KeepaliveOptions `yaml:"Keepalive,omitempty"`
 	// BackoffSettings is the configuration options for backoff GRPC client.
-	BackoffSettings comm.BackoffOptions
+	BackoffSettings comm.BackoffOptions `yaml:"Backoff,omitempty"`
 	// Max message size in bytes the GRPC server and client can receive
-	MaxRecvMsgSize int32
+	MaxRecvMsgSize int32 `yaml:"MaxRecvMsgSize,omitempty"`
 	// Max message size in bytes the GRPC server and client can send
-	MaxSendMsgSize int32
+	MaxSendMsgSize int32 `yaml:"MaxSendMsgSize,omitempty"`
 	// Bootstrap indicates the method by which to obtain the bootstrap configuration and the file containing the bootstrap configuration
-	Bootstrap Bootstrap
+	Bootstrap Bootstrap `yaml:"Bootstrap,omitempty"`
 	// Cluster settings for consenter nodes
-	Cluster Cluster
+	Cluster Cluster `yaml:"Cluster,omitempty"`
 	// The path to the private crypto material needed by Arma
-	LocalMSPDir string
+	LocalMSPDir string `yaml:"LocalMSPDir,omitempty"`
 	// LocalMSPID is the identity to register the local MSP material with the MSP manager
-	LocalMSPID string
+	LocalMSPID string `yaml:"LocalMSPID,omitempty"`
 	// BCCSP configures the blockchain crypto service providers
-	BCCSP BCCSP
+	BCCSP BCCSP `yaml:"BCCSP,omitempty"`
 	// LogSpec controls the logging level of the node
-	LogSpec string
+	LogSpec string `yaml:"LogSpec,omitempty"`
 }
 
 type TLSConfig struct {
-	Enabled            bool     // Require server-side TLS
-	PrivateKey         string   // The file location of the private key of the server TLS certificate.
-	Certificate        string   // The file location of the server TLS certificate.
-	RootCAs            []string // A list of additional file locations for root certificates used for verifying certificates of other nodes during outbound connections.
-	ClientAuthRequired bool     // Require client certificates / mutual TLS for inbound connections
-	ClientRootCAs      []string // A list of additional file location for root certificates used for verifying certificates of client connections. relevant for Assembler and Consensus
+	Enabled            bool     `yaml:"Enabled,omitempty"`            // Require server-side TLS
+	PrivateKey         string   `yaml:"PrivateKey,omitempty"`         // The file location of the private key of the server TLS certificate.
+	Certificate        string   `yaml:"Certificate,omitempty"`        // The file location of the server TLS certificate.
+	RootCAs            []string `yaml:"RootCAs,omitempty"`            // A list of additional file locations for root certificates used for verifying certificates of other nodes during outbound connections.
+	ClientAuthRequired bool     `yaml:"ClientAuthRequired,omitempty"` // Require client certificates / mutual TLS for inbound connections
+	ClientRootCAs      []string `yaml:"ClientRootCAs,omitempty"`      // A list of additional file location for root certificates used for verifying certificates of client connections. relevant for Assembler and Consensus
 }
 
 // Bootstrap configures how to obtain the bootstrap configuration.
@@ -73,25 +73,25 @@ type Bootstrap struct {
 	// The option can be one of:
 	//  1. "block" - path to a file containing the genesis block or config block
 	//  2. "yaml" - path to a file containing a YAML boostrap configuration (i.e. ./shared_config.yaml).
-	Method string
+	Method string `yaml:"Method,omitempty"`
 	//  File is the path for the bootstrap configuration.
 	//  The bootstrap file can be the genesis block, and it can also be a config block for late bootstrap.
-	File string
+	File string `yaml:"File,omitempty"`
 }
 
 // Cluster defines the settings for ordering service nodes that communicate with other ordering service nodes.
 type Cluster struct {
 	// SendBufferSize is the maximum number of messages in the egress buffer.
 	// Consensus messages are dropped if the buffer is full, and transaction messages are waiting for space to be freed.
-	SendBufferSize int
+	SendBufferSize int `yaml:"SendBufferSize,omitempty"`
 	// ClientCertificate governs the file location of the client TLS certificate used to establish mutual TLS connections with other ordering service nodes.
 	// If not set, the server General.TLS.Certificate is re-used.
-	ClientCertificate string
+	ClientCertificate string `yaml:"ClientCertificate,omitempty"`
 	// ClientPrivateKey governs the file location of the private key of the client TLS certificate.
 	// If not set, the server General.TLS.PrivateKey is re-used.
-	ClientPrivateKey string
+	ClientPrivateKey string `yaml:"ClientPrivateKey,omitempty"`
 	// ReplicationPolicy defines how blocks are replicated between orderers.
-	ReplicationPolicy string
+	ReplicationPolicy string `yaml:"ReplicationPolicy,omitempty"`
 }
 
 // BCCSP configures the blockchain crypto service providers.
@@ -137,43 +137,29 @@ type KeyIDMapping struct {
 // FileStore sets the configuration of the file store.
 type FileStore struct {
 	// Path is the directory to store data in, e.g. the blocks and databases.
-	Path string
+	Path string `yaml:"Location,omitempty"`
 }
 
 type RouterParams struct {
 	// NumberOfConnectionsPerBatcher specifies the number of connections between Router and Batcher
-	NumberOfConnectionsPerBatcher int
+	NumberOfConnectionsPerBatcher int `yaml:"NumberOfConnectionsPerBatcher,omitempty"`
 	// NumberOfStreamsPerConnection specifies the number of streams per connection that are opened between Router and Batcher
-	NumberOfStreamsPerConnection int
+	NumberOfStreamsPerConnection int `yaml:"NumberOfStreamsPerConnection,omitempty"`
 }
 
 type ConsensusParams struct {
 	//  WALDir specifies the location at which Write Ahead Logs for SmartBFT are stored
-	WALDir string
+	WALDir string `yaml:"WALDir,omitempty"`
 }
 
 type BatcherParams struct {
 	// ShardID specifies the shard id to which the Batcher is associated
-	ShardID types.ShardID
+	ShardID types.ShardID `yaml:"ShardID,omitempty"`
 }
 
 type AssemblerParams struct {
 	// PrefetchBufferMemoryMB is the size of the buffer that is used to store prefetched batches from the Batchers
-	PrefetchBufferMemoryMB int
-}
-
-func NodeConfigToYAML(config interface{}, path string) error {
-	rnc, err := yaml.Marshal(&config)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(path, rnc, 0o644)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	PrefetchBufferMemoryMB int `yaml:"PrefetchBufferMemoryMB,omitempty"`
 }
 
 func NodeConfigFromYAML(config interface{}, path string) error {

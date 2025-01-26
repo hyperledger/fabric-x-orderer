@@ -72,18 +72,6 @@ func init() {
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, io.Discard))
 }
 
-type Network struct {
-	Parties []Party `yaml:"Parties"`
-}
-
-type Party struct {
-	ID                types.PartyID `yaml:"ID"`
-	AssemblerEndpoint string        `yaml:"AssemblerEndpoint"`
-	ConsenterEndpoint string        `yaml:"ConsenterEndpoint"`
-	RouterEndpoint    string        `yaml:"RouterEndpoint"`
-	BatchersEndpoints []string      `yaml:"BatchersEndpoints"`
-}
-
 type NetworkCryptoConfig struct {
 	// map from party to its crypto config
 	PartyToCryptoConfig map[types.PartyID]CryptoConfigPerParty
