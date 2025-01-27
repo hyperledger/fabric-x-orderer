@@ -438,9 +438,13 @@ func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
 		return
 	}
 
+	stream := b.primaryClientStream
 	b.primaryLock.Unlock()
-	err := b.primaryClientStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)})
+
+	err := stream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)})
 	if err != nil {
+		b.primaryLock.Lock()
+		defer b.primaryLock.Unlock()
 		b.logger.Errorf("Failed sending ack to %s", b.primaryEndpoint)
 		b.primaryClientStream = nil
 	}
