@@ -17,6 +17,7 @@ import (
 
 	"arma/common/types"
 	"arma/core"
+	"arma/node"
 	"arma/node/comm"
 	node_config "arma/node/config"
 	"arma/node/crypto"
@@ -25,9 +26,8 @@ import (
 	"arma/request"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -224,13 +224,17 @@ func (b *Batcher) sendResponses(stream protos.RequestTransmit_SubmitStreamServer
 }
 
 func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
-	cert := ExtractCertificateFromContext(stream.Context())
+	cert := node.ExtractCertificateFromContext(stream.Context())
+	if cert == nil {
+		return errors.New("access denied; could not extract certificate from context")
+	}
 
 	from, exists := b.batcherCerts2IDs[string(cert)]
 	if !exists {
-		return fmt.Errorf("access denied")
+		return errors.New("access denied; unknown certificate")
 	}
 
+	b.logger.Infof("Starting to handle acks from batcher %d", from)
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -239,7 +243,20 @@ func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
 		if err != nil {
 			return err
 		}
+		b.logger.Debugf("Calling handle ack with seq %d from batcher %d", msg.Seq, from)
 		b.batcher.HandleAck(types.BatchSequence(msg.Seq), from)
+	}
+}
+
+func (b *Batcher) indexTLSCerts() {
+	for _, batcher := range b.batchers {
+		rawTLSCert := batcher.TLSCert
+		bl, _ := pem.Decode(rawTLSCert)
+		if bl == nil || bl.Bytes == nil {
+			b.logger.Panicf("Failed decoding TLS certificate of batcher %d from PEM", batcher.PartyID)
+		}
+
+		b.batcherCerts2IDs[string(bl.Bytes)] = batcher.PartyID
 	}
 }
 
@@ -247,7 +264,7 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 	b := &Batcher{
 		batcherDeliverService: ds,
 		stateReplicator:       sr,
-		privateKey:            createSigner(logger, config),
+		privateKey:            createSigner(logger, config.SigningPrivateKey),
 		logger:                logger,
 		batcherCerts2IDs:      make(map[string]types.PartyID),
 		config:                config,
@@ -326,21 +343,8 @@ func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPo
 	return request.NewPool(b.logger, b, opts)
 }
 
-func (b *Batcher) indexTLSCerts() {
-	for _, batcher := range b.batchers {
-		rawTLSCert := batcher.TLSCert
-		bl, _ := pem.Decode(rawTLSCert)
-		if bl == nil || bl.Bytes == nil {
-			b.logger.Panicf("Failed decoding TLS certificate of %d from PEM", batcher.PartyID)
-		}
-
-		b.batcherCerts2IDs[string(bl.Bytes)] = batcher.PartyID
-	}
-}
-
-func createSigner(logger types.Logger, config node_config.BatcherNodeConfig) *ecdsa.PrivateKey {
-	rawKey := config.SigningPrivateKey
-	bl, _ := pem.Decode(rawKey)
+func createSigner(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {
+	bl, _ := pem.Decode(signingPrivateKey)
 
 	if bl == nil || bl.Bytes == nil {
 		logger.Panicf("Signing key is not a valid PEM")
@@ -594,33 +598,6 @@ func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, dige
 	baf.SetSignature(sig)
 
 	return baf, nil
-}
-
-func ExtractCertificateFromContext(ctx context.Context) []byte {
-	pr, extracted := peer.FromContext(ctx)
-	if !extracted {
-		return nil
-	}
-
-	authInfo := pr.AuthInfo
-	if authInfo == nil {
-		return nil
-	}
-
-	tlsInfo, isTLSConn := authInfo.(credentials.TLSInfo)
-	if !isTLSConn {
-		return nil
-	}
-	certs := tlsInfo.State.PeerCertificates
-	if len(certs) == 0 {
-		return nil
-	}
-
-	if certs[0] == nil {
-		return nil
-	}
-
-	return certs[0].Raw
 }
 
 func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger) *Batcher {

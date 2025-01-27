@@ -12,11 +12,9 @@ import (
 	"time"
 
 	"arma/common/types"
-	"arma/node/batcher"
-	"arma/node/config"
-
 	"arma/core"
-
+	"arma/node"
+	"arma/node/config"
 	protos "arma/node/protos/comm"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -39,7 +37,7 @@ type Router struct {
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
-	clientHost := batcher.ExtractCertificateFromContext(stream.Context())
+	clientHost := node.ExtractCertificateFromContext(stream.Context())
 	r.logger.Debugf("Client %s connected", clientHost)
 
 	r.init()

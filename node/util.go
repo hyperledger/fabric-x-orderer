@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -9,6 +10,9 @@ import (
 
 	"arma/node/comm"
 	"arma/node/config"
+
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 const (
@@ -175,4 +179,31 @@ func CreateGRPCBatcher(conf config.BatcherNodeConfig) *comm.GRPCServer {
 		os.Exit(1)
 	}
 	return srv
+}
+
+func ExtractCertificateFromContext(ctx context.Context) []byte { // TODO add unit test
+	pr, extracted := peer.FromContext(ctx)
+	if !extracted {
+		return nil
+	}
+
+	authInfo := pr.AuthInfo
+	if authInfo == nil {
+		return nil
+	}
+
+	tlsInfo, isTLSConn := authInfo.(credentials.TLSInfo)
+	if !isTLSConn {
+		return nil
+	}
+	certs := tlsInfo.State.PeerCertificates
+	if len(certs) == 0 {
+		return nil
+	}
+
+	if certs[0] == nil {
+		return nil
+	}
+
+	return certs[0].Raw
 }
