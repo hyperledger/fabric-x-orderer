@@ -91,6 +91,7 @@ type Batcher struct {
 	seq              types.BatchSequence
 	term             uint64
 	termChan         chan uint64
+	ackerLock        sync.RWMutex
 	acker            SeqAcker
 }
 
@@ -187,12 +188,11 @@ func (b *Batcher) Submit(request []byte) error {
 }
 
 func (b *Batcher) HandleAck(seq types.BatchSequence, from types.PartyID) {
-	// Only the primary performs handle ack
-	if b.primary != b.ID {
-		b.Logger.Warnf("Batcher %d called handle ack on sequence %d from %d but it is not the primary (%d)", b.ID, seq, from, b.primary)
-		return
+	b.ackerLock.RLock()
+	defer b.ackerLock.RUnlock()
+	if b.acker != nil {
+		b.acker.HandleAck(seq, from)
 	}
-	b.acker.HandleAck(seq, from)
 }
 
 func (b *Batcher) runPrimary() {
@@ -200,10 +200,14 @@ func (b *Batcher) runPrimary() {
 
 	defer func() {
 		b.Logger.Infof("Batcher %d stopped acting as primary (shard %d)", b.ID, b.Shard)
+		b.ackerLock.RLock()
 		b.acker.Stop()
+		b.ackerLock.RUnlock()
 	}()
 
+	b.ackerLock.Lock()
 	b.acker = NewAcker(b.seq, gap, b.N, uint16(b.Threshold), b.Logger)
+	b.ackerLock.Unlock()
 	b.MemPool.Restart(true)
 
 	var currentBatch types.BatchedRequests
@@ -212,7 +216,9 @@ func (b *Batcher) runPrimary() {
 	for {
 		var serializedBatch []byte
 		for {
+			b.ackerLock.RLock()
 			ch := b.acker.WaitForSecondaries(b.seq)
+			b.ackerLock.RUnlock()
 			select {
 			case newTerm := <-b.termChan:
 				b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
@@ -239,7 +245,10 @@ func (b *Batcher) runPrimary() {
 		b.Ledger.Append(b.ID, uint64(b.seq), serializedBatch)
 
 		b.sendBAF(baf)
+
+		b.ackerLock.RLock()
 		b.acker.HandleAck(b.seq, b.ID)
+		b.ackerLock.RUnlock()
 
 		b.seq++
 
