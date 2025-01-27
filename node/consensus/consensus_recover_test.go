@@ -383,7 +383,7 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 // The leader (ID=1) and a follower (ID=3) fail after the first request is committed.
 // New requests are committed by the remaining nodes during the failure (a view change occurs).
 // After restarting the failed nodes, two more requests are sent, and both blocks are committed to the ledger.
-func TestMultipleLedaerNodeFailureRecovery(t *testing.T) {
+func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	parties := 7
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
