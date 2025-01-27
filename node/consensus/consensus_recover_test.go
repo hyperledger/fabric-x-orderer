@@ -250,28 +250,48 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 
 	b := <-setup.listeners[0].c
 	require.Equal(t, uint64(1), b.Header.Number)
+	b = <-setup.listeners[1].c
+	require.Equal(t, uint64(1), b.Header.Number)
+	b = <-setup.listeners[3].c
+	require.Equal(t, uint64(1), b.Header.Number)
 
 	// Nodes (IDs=2,3) fail
 	setup.consensusNodes[1].Stop()
 	setup.consensusNodes[2].Stop()
-	time.Sleep(time.Millisecond)
+	time.Sleep(time.Second)
 
 	// Node 2 recovers
 	err = recoverNode(t, setup, 1, ca)
 	require.NoError(t, err)
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(10 * time.Second)
 
 	// Submit and verify requests while node 3 remains down
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
 	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(2), b.Header.Number)
+	b = <-setup.listeners[1].c
+	require.Equal(t, uint64(2), b.Header.Number)
+	b = <-setup.listeners[3].c
 	require.Equal(t, uint64(2), b.Header.Number)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 3)
 	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 3)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 3)
+	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(3), b.Header.Number)
+	b = <-setup.listeners[1].c
+	require.Equal(t, uint64(3), b.Header.Number)
+	b = <-setup.listeners[3].c
 	require.Equal(t, uint64(3), b.Header.Number)
 
 	for _, c := range setup.consensusNodes {
