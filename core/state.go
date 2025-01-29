@@ -595,13 +595,13 @@ func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []BatchAttest
 		for _, signers := range digest2signers {
 			if len(signers) >= int(s.Threshold) {
 				foundThreshold = true
-				l.Infof("Found threshold (%d > %d) of batch attestation fragments for shard %d, seq %d", len(signers), s.Threshold-1, batchAttestation.shard, batchAttestation.seq)
+				l.Debugf("Found threshold (%d > %d) of batch attestation fragments for shard %d, seq %d", len(signers), s.Threshold-1, batchAttestation.shard, batchAttestation.seq)
 				break
 			}
 		}
 
 		if !foundThreshold {
-			l.Infof("Could not find a threshold of batch attestation fragments for shard %d, seq %d", batchAttestation.shard, batchAttestation.seq)
+			l.Debugf("Could not find a threshold of batch attestation fragments for shard %d, seq %d", batchAttestation.shard, batchAttestation.seq)
 			continue
 		}
 
@@ -629,7 +629,7 @@ func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []BatchAttest
 	oldPendingCount := len(s.Pending)
 	newPendingCount := len(newPending)
 
-	l.Infof("Pending attestations count changed from %d to %d", oldPendingCount, newPendingCount)
+	l.Debugf("Pending attestations count changed from %d to %d", oldPendingCount, newPendingCount)
 	s.Pending = newPending
 
 	return extracted
