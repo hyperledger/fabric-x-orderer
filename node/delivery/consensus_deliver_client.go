@@ -42,25 +42,31 @@ func (bar *ConsensusReplicator) ReplicateState() <-chan *core.State {
 		return bar.endpoint
 	}
 
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		"consensus",
-		nil,
-		NewestSeekInfo(),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		bar.logger.Panicf("Failed creating signed envelope: %v", err)
+	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+			common.HeaderType_DELIVER_SEEK_INFO,
+			"consensus",
+			nil,
+			NewestSeekInfo(),
+			int32(0),
+			uint64(0),
+			nil,
+		)
+		if err != nil {
+			bar.logger.Panicf("Failed creating signed envelope: %v", err)
+		}
+
+		return requestEnvelope
 	}
 
 	res := make(chan *core.State, 100)
 
-	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
+	blockHandlerFunc := func(block *common.Block) {
 		header := extractHeaderFromBlock(block, bar.logger)
 		res <- header.State
-	})
+	}
+
+	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelopeFactoryFunc, bar.cc, blockHandlerFunc)
 
 	return res
 }
@@ -70,22 +76,26 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.OrderedBatchAt
 		return bar.endpoint
 	}
 
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		"consensus",
-		nil,
-		NextSeekInfo(seq),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		bar.logger.Panicf("Failed creating signed envelope: %v", err)
+	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+			common.HeaderType_DELIVER_SEEK_INFO,
+			"consensus",
+			nil,
+			NextSeekInfo(seq),
+			int32(0),
+			uint64(0),
+			nil,
+		)
+		if err != nil {
+			bar.logger.Panicf("Failed creating signed envelope: %v", err)
+		}
+
+		return requestEnvelope
 	}
 
 	res := make(chan core.OrderedBatchAttestation, 100)
 
-	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelope, bar.cc, func(block *common.Block) {
+	blockHandlerFunc := func(block *common.Block) {
 		header, sigs, err2 := extractHeaderAndSigsFromBlock(block)
 		if err2 != nil {
 			bar.logger.Panicf("Failed extracting ordered batch attestation from decision: %s", err2)
@@ -112,7 +122,9 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.OrderedBatchAt
 
 			res <- abo
 		}
-	})
+	}
+
+	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelopeFactoryFunc, bar.cc, blockHandlerFunc)
 
 	return res
 }

@@ -48,20 +48,25 @@ func (s *synchronizer) stop() {
 func (s *synchronizer) run() {
 	var stopCtx context.Context
 	stopCtx, s.stopSync = context.WithCancel(context.Background())
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		"consensus",
-		nil,
-		delivery.NextSeekInfo(s.nextSeq()),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		s.logger.Panicf("Failed creating signed envelope: %v", err)
+
+	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+			common.HeaderType_DELIVER_SEEK_INFO,
+			"consensus",
+			nil,
+			delivery.NextSeekInfo(s.nextSeq()),
+			int32(0),
+			uint64(0),
+			nil,
+		)
+		if err != nil {
+			s.logger.Panicf("Failed creating signed envelope: %v", err)
+		}
+
+		return requestEnvelope
 	}
 
-	go delivery.Pull(stopCtx, "consensus", s.logger, s.endpoint, requestEnvelope, s.cc, func(block *common.Block) {
+	blockHandlerFunc := func(block *common.Block) {
 		for s.memStoreTooBig() {
 			time.Sleep(time.Second)
 			s.logger.Infof("Mem store is too big, waiting for BFT to catch up")
@@ -75,7 +80,9 @@ func (s *synchronizer) run() {
 		}
 
 		s.memStore[block.Header.Number] = block
-	})
+	}
+
+	go delivery.Pull(stopCtx, "consensus", s.logger, s.endpoint, requestEnvelopeFactoryFunc, s.cc, blockHandlerFunc)
 }
 
 func (s *synchronizer) memStoreTooBig() bool {

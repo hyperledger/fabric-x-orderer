@@ -50,7 +50,7 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 	return seekInfo
 }
 
-func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block)) {
+func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block)) {
 	logger.Infof("Assembler pulling from: %s", channel)
 	for {
 		time.Sleep(time.Second)
@@ -77,7 +77,7 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 			continue
 		}
 
-		err = stream.Send(requestEnvelope)
+		err = stream.Send(requestEnvelopeFactory())
 		if err != nil {
 			logger.Errorf("Failed sending request envelope to %s: %v", endpointToPullFrom, err)
 			stream.CloseSend()

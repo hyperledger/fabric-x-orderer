@@ -101,17 +101,21 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 	channelName := ledger.ShardPartyToChannelName(shardID, primaryID)
 	br.logger.Infof("Assembler replicating from channel %s ", channelName)
 
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		channelName,
-		nil,
-		delivery.NextSeekInfo(uint64(seq)),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		br.logger.Panicf("Failed creating signed envelope: %v", err)
+	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+			common.HeaderType_DELIVER_SEEK_INFO,
+			channelName,
+			nil,
+			delivery.NextSeekInfo(uint64(seq)),
+			int32(0),
+			uint64(0),
+			nil,
+		)
+		if err != nil {
+			br.logger.Panicf("Failed creating signed envelope: %v", err)
+		}
+
+		return requestEnvelope
 	}
 
 	blockHandlerFunc := func(block *common.Block) {
@@ -129,7 +133,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		channelName,
 		br.logger,
 		endpoint,
-		requestEnvelope,
+		requestEnvelopeFactoryFunc,
 		br.clientConfig,
 		blockHandlerFunc,
 	)
