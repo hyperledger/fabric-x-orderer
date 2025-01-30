@@ -9,7 +9,7 @@
 .PHONY: linter
 linter: check-deps
 	@echo "LINT: Running code checks.."
-	./scripts/golinter.sh
+	golangci-lint run --color=always --sort-results --new-from-rev=main
 
 .PHONY: check-deps
 check-deps:

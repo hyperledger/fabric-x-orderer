@@ -12,6 +12,7 @@ jobs:
         - go install honnef.co/go/tools/cmd/staticcheck@latest
         - go install mvdan.cc/gofumpt@latest
         - go install github.com/golang/protobuf/protoc-gen-go@latest
+        - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
       script:
         - set -e
         - make linter
