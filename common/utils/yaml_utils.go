@@ -1,0 +1,34 @@
+package utils
+
+import (
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
+func WriteToYAML(config interface{}, path string) error {
+	c, err := yaml.Marshal(&config)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(path, c, 0o644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ReadFromYAML(config interface{}, path string) error {
+	yamlFile, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	err = yaml.Unmarshal(yamlFile, config)
+	if err != nil {
+		return err
+	}
+	return nil
+}

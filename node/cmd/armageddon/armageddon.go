@@ -22,10 +22,12 @@ import (
 	"sync"
 	"time"
 
+	genconfig "arma/config/generate"
+
 	"arma/common/types"
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
-	"arma/node/config"
+	nodeconfig "arma/node/config"
 
 	"github.com/alecthomas/kingpin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -90,11 +92,11 @@ type CryptoConfigPerParty struct {
 // UserInfo holds the user information needed for connection to routers and assemblers
 // Note: a user will be created for each party. One of the users will be chosen as a grpc client that sends tx to all router and receives blocks from the assemblers.
 type UserInfo struct {
-	TLSPrivateKeyFile  config.RawBytes
-	TLSCertificateFile config.RawBytes
+	TLSPrivateKeyFile  nodeconfig.RawBytes
+	TLSCertificateFile nodeconfig.RawBytes
 	RouterEndpoints    []string
 	AssemblerEndpoints []string
-	TLSCACerts         []config.RawBytes
+	TLSCACerts         []nodeconfig.RawBytes
 	UseTLS             bool
 }
 
@@ -109,15 +111,15 @@ type NetworkConfig struct {
 }
 
 type PartyConfig struct {
-	RouterConfig    config.RouterNodeConfig
-	BatchersConfig  []config.BatcherNodeConfig
-	ConsenterConfig config.ConsenterNodeConfig
-	AssemblerConfig config.AssemblerNodeConfig
+	RouterConfig    nodeconfig.RouterNodeConfig
+	BatchersConfig  []nodeconfig.BatcherNodeConfig
+	ConsenterConfig nodeconfig.ConsenterNodeConfig
+	AssemblerConfig nodeconfig.AssemblerNodeConfig
 }
 
 type SharedConfig struct {
-	Shards     []config.ShardInfo
-	Consenters []config.ConsenterInfo
+	Shards     []nodeconfig.ShardInfo
+	Consenters []nodeconfig.ConsenterInfo
 }
 
 type protectedMap struct {
@@ -278,7 +280,7 @@ func generateConfig(genConfigFile **os.File, outputDir *string, useTLS *bool) {
 	// TODO: complete in next PR's
 }
 
-func getConfigFileContent(genConfigFile **os.File) (*Network, error) {
+func getConfigFileContent(genConfigFile **os.File) (*genconfig.Network, error) {
 	var configFileContent string
 	if *genConfigFile != nil {
 		data, err := io.ReadAll(*genConfigFile)
@@ -291,7 +293,7 @@ func getConfigFileContent(genConfigFile **os.File) (*Network, error) {
 		configFileContent = defaultConfig
 	}
 
-	network := Network{}
+	network := genconfig.Network{}
 	err := yaml.Unmarshal([]byte(configFileContent), &network)
 	if err != nil {
 		return nil, fmt.Errorf("error Unmarshalling YAML: %s", err)
@@ -300,7 +302,7 @@ func getConfigFileContent(genConfigFile **os.File) (*Network, error) {
 	return &network, nil
 }
 
-func createNetworkCryptoConfig(network *Network, useTLS *bool) *NetworkCryptoConfig {
+func createNetworkCryptoConfig(network *genconfig.Network, useTLS *bool) *NetworkCryptoConfig {
 	// collect router and assembler endpoints, required for defining a user for each party
 	var routerEndpoints []string
 	var assemblerEndpoints []string
@@ -311,7 +313,7 @@ func createNetworkCryptoConfig(network *Network, useTLS *bool) *NetworkCryptoCon
 
 	// create CA for each party
 	partiesCAs := make(map[types.PartyID][]tlsgen.CA)
-	var tlsCACertsBytesPartiesCollection []config.RawBytes
+	var tlsCACertsBytesPartiesCollection []nodeconfig.RawBytes
 	for _, party := range network.Parties {
 		// create CA for the party
 		// NOTE: a party can have several CA's, meanwhile armageddon creates only one CA for each party.
@@ -464,7 +466,7 @@ func createNetworkCryptoConfig(network *Network, useTLS *bool) *NetworkCryptoCon
 	return networkCryptoConfig
 }
 
-func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConfig, useTLS *bool) *NetworkConfig {
+func parseNetworkConfig(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig, useTLS *bool) *NetworkConfig {
 	// construct shared config
 	sharedConfig := constructSharedConfig(network, networkCryptoConfig)
 
@@ -487,8 +489,8 @@ func parseNetworkConfig(network *Network, networkCryptoConfig *NetworkCryptoConf
 	return networkConfig
 }
 
-func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []config.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string, useTLS *bool) config.RouterNodeConfig {
-	return config.RouterNodeConfig{
+func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []nodeconfig.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string, useTLS *bool) nodeconfig.RouterNodeConfig {
+	return nodeconfig.RouterNodeConfig{
 		ListenAddress:                 "0.0.0.0:" + port,
 		PartyID:                       partyID,
 		TLSCertificateFile:            certKeyPair.Cert,
@@ -500,11 +502,11 @@ func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []config.Sh
 	}
 }
 
-func constructBatchersNodeConfigPerParty(partyId types.PartyID, batcherEndpoints []string, sharedConfig SharedConfig, batchersCertsAndKeys map[string]CertsAndKeys) []config.BatcherNodeConfig {
-	var batchers []config.BatcherNodeConfig
+func constructBatchersNodeConfigPerParty(partyId types.PartyID, batcherEndpoints []string, sharedConfig SharedConfig, batchersCertsAndKeys map[string]CertsAndKeys) []nodeconfig.BatcherNodeConfig {
+	var batchers []nodeconfig.BatcherNodeConfig
 	for i, batcherEndpoint := range batcherEndpoints {
 		batcherCertsAndKeys := batchersCertsAndKeys[batcherEndpoint]
-		batcher := config.BatcherNodeConfig{
+		batcher := nodeconfig.BatcherNodeConfig{
 			ListenAddress:      "0.0.0.0:" + trimHostFromEndpoint(batcherEndpoint),
 			Shards:             sharedConfig.Shards,
 			Consenters:         sharedConfig.Consenters,
@@ -521,8 +523,8 @@ func constructBatchersNodeConfigPerParty(partyId types.PartyID, batcherEndpoints
 	return batchers
 }
 
-func constructConsenterNodeConfigPerParty(partyId types.PartyID, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) config.ConsenterNodeConfig {
-	return config.ConsenterNodeConfig{
+func constructConsenterNodeConfigPerParty(partyId types.PartyID, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) nodeconfig.ConsenterNodeConfig {
+	return nodeconfig.ConsenterNodeConfig{
 		ListenAddress:      "0.0.0.0:" + port,
 		Shards:             sharedConfig.Shards,
 		Consenters:         sharedConfig.Consenters,
@@ -534,21 +536,21 @@ func constructConsenterNodeConfigPerParty(partyId types.PartyID, sharedConfig Sh
 	}
 }
 
-func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []config.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string, useTLS *bool) config.AssemblerNodeConfig {
+func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []nodeconfig.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string, useTLS *bool) nodeconfig.AssemblerNodeConfig {
 	partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[partyId]
-	var tlsCACertsCollection []config.RawBytes
+	var tlsCACertsCollection []nodeconfig.RawBytes
 	for _, ca := range partyCryptoConfig.CAs {
 		tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
 	}
 
-	return config.AssemblerNodeConfig{
+	return nodeconfig.AssemblerNodeConfig{
 		ListenAddress:      "0.0.0.0:" + port,
 		TLSPrivateKeyFile:  partyCryptoConfig.AssemblerCertKeyPair.Key,
 		TLSCertificateFile: partyCryptoConfig.AssemblerCertKeyPair.Cert,
 		PartyId:            partyId,
 		Directory:          "",
 		Shards:             shards,
-		Consenter: config.ConsenterInfo{
+		Consenter: nodeconfig.ConsenterInfo{
 			PartyID:    partyId,
 			Endpoint:   consenterEndpoint,
 			PublicKey:  partyCryptoConfig.ConsenterCertsAndKeys.PublicKey,
@@ -558,21 +560,21 @@ func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []config
 	}
 }
 
-func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig) []config.ShardInfo {
+func constructShards(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig) []nodeconfig.ShardInfo {
 	// construct a map that maps between shardId and batchers
-	shardToBatchers := make(map[types.ShardID][]config.BatcherInfo)
+	shardToBatchers := make(map[types.ShardID][]nodeconfig.BatcherInfo)
 	for _, party := range network.Parties {
 		for idx, batcherEndpoint := range party.BatchersEndpoints {
 			shardId := types.ShardID(idx + 1)
 
 			partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[party.ID]
-			var tlsCACertsCollection []config.RawBytes
+			var tlsCACertsCollection []nodeconfig.RawBytes
 			for _, ca := range partyCryptoConfig.CAs {
 				tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
 			}
 			batcherCertsAndKeys := partyCryptoConfig.BatchersCertsAndKeys[batcherEndpoint]
 
-			batcher := config.BatcherInfo{
+			batcher := nodeconfig.BatcherInfo{
 				PartyID:    party.ID,
 				Endpoint:   batcherEndpoint,
 				TLSCACerts: tlsCACertsCollection,
@@ -584,9 +586,9 @@ func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig)
 	}
 
 	// build Shards from the map
-	var shards []config.ShardInfo
+	var shards []nodeconfig.ShardInfo
 	for shardId, batchers := range shardToBatchers {
-		shardInfo := config.ShardInfo{
+		shardInfo := nodeconfig.ShardInfo{
 			ShardId:  shardId,
 			Batchers: batchers,
 		}
@@ -596,17 +598,17 @@ func constructShards(network *Network, networkCryptoConfig *NetworkCryptoConfig)
 	return shards
 }
 
-func constructConsenters(network *Network, networkCryptoConfig *NetworkCryptoConfig) []config.ConsenterInfo {
-	var consenters []config.ConsenterInfo
+func constructConsenters(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig) []nodeconfig.ConsenterInfo {
+	var consenters []nodeconfig.ConsenterInfo
 	for _, party := range network.Parties {
 		partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[party.ID]
-		var tlsCACertsCollection []config.RawBytes
+		var tlsCACertsCollection []nodeconfig.RawBytes
 		for _, ca := range partyCryptoConfig.CAs {
 			tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
 		}
 		consenterCertsAndKeys := partyCryptoConfig.ConsenterCertsAndKeys
 
-		consenterInfo := config.ConsenterInfo{
+		consenterInfo := nodeconfig.ConsenterInfo{
 			PartyID:    party.ID,
 			Endpoint:   party.ConsenterEndpoint,
 			PublicKey:  consenterCertsAndKeys.PublicKey,
@@ -617,7 +619,7 @@ func constructConsenters(network *Network, networkCryptoConfig *NetworkCryptoCon
 	return consenters
 }
 
-func constructSharedConfig(network *Network, networkCryptoConfig *NetworkCryptoConfig) SharedConfig {
+func constructSharedConfig(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig) SharedConfig {
 	shards := constructShards(network, networkCryptoConfig)
 	consenters := constructConsenters(network, networkCryptoConfig)
 
@@ -633,7 +635,7 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 		os.MkdirAll(rootDir, 0o755)
 
 		configPath := path.Join(rootDir, "router_node_config.yaml")
-		err := config.NodeConfigToYAML(partyConfig.RouterConfig, configPath)
+		err := nodeconfig.NodeConfigToYAML(partyConfig.RouterConfig, configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating router node config yaml file, err: %v", err)
 			os.Exit(1)
@@ -641,7 +643,7 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 
 		for j, batcherConfig := range partyConfig.BatchersConfig {
 			configPath = path.Join(rootDir, fmt.Sprintf("batcher_node_%d_config.yaml", j+1))
-			err = config.NodeConfigToYAML(batcherConfig, configPath)
+			err = nodeconfig.NodeConfigToYAML(batcherConfig, configPath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error creating batcher node %d config yaml file, err: %v", j, err)
 				os.Exit(1)
@@ -649,14 +651,14 @@ func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *Net
 		}
 
 		configPath = path.Join(rootDir, "consenter_node_config.yaml")
-		err = config.NodeConfigToYAML(partyConfig.ConsenterConfig, configPath)
+		err = nodeconfig.NodeConfigToYAML(partyConfig.ConsenterConfig, configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating consenter node config yaml file, err: %v", err)
 			os.Exit(1)
 		}
 
 		configPath = path.Join(rootDir, "assembler_node_config.yaml")
-		err = config.NodeConfigToYAML(partyConfig.AssemblerConfig, configPath)
+		err = nodeconfig.NodeConfigToYAML(partyConfig.AssemblerConfig, configPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating assembler node config yaml file, err: %v", err)
 			os.Exit(1)

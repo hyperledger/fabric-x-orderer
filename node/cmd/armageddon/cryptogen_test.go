@@ -5,6 +5,10 @@ import (
 	"os"
 	"testing"
 
+	genconfig "arma/config/generate"
+
+	"arma/testutil"
+
 	"arma/common/types"
 
 	"github.com/stretchr/testify/require"
@@ -20,17 +24,17 @@ func TestGenerateCryptoConfig(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func prepareNetworkConfig(t *testing.T) *Network {
-	var parties []Party
+func prepareNetworkConfig(t *testing.T) *genconfig.Network {
+	var parties []genconfig.Party
 	var listeners []net.Listener
 	for i := 0; i < 4; i++ {
-		assemblerPort, lla := getAvailablePort(t)
-		consenterPort, llc := getAvailablePort(t)
-		routerPort, llr := getAvailablePort(t)
-		batcher1Port, llb1 := getAvailablePort(t)
-		batcher2Port, llb2 := getAvailablePort(t)
+		assemblerPort, lla := testutil.GetAvailablePort(t)
+		consenterPort, llc := testutil.GetAvailablePort(t)
+		routerPort, llr := testutil.GetAvailablePort(t)
+		batcher1Port, llb1 := testutil.GetAvailablePort(t)
+		batcher2Port, llb2 := testutil.GetAvailablePort(t)
 
-		party := Party{
+		party := genconfig.Party{
 			ID:                types.PartyID(i + 1),
 			AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
 			ConsenterEndpoint: "127.0.0.1:" + consenterPort,
@@ -42,7 +46,7 @@ func prepareNetworkConfig(t *testing.T) *Network {
 		listeners = append(listeners, lla, llc, llr, llb1, llb2)
 	}
 
-	network := Network{
+	network := genconfig.Network{
 		Parties: parties,
 	}
 

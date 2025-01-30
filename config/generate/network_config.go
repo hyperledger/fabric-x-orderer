@@ -1,8 +1,8 @@
-package armageddon
+package generate
 
 import (
 	"arma/common/types"
-	localconfig "arma/config"
+	"arma/config"
 )
 
 // Network describes an Arma network deployment by collecting all endpoints of nodes per party.
@@ -26,8 +26,8 @@ type NetworkLocalConfig struct {
 }
 
 type PartyLocalConfig struct {
-	RouterLocalConfig    *localconfig.NodeLocalConfig
-	BatchersLocalConfig  []*localconfig.NodeLocalConfig
-	ConsenterLocalConfig *localconfig.NodeLocalConfig
-	AssemblerLocalConfig *localconfig.NodeLocalConfig
+	RouterLocalConfig    *config.NodeLocalConfig
+	BatchersLocalConfig  []*config.NodeLocalConfig
+	ConsenterLocalConfig *config.NodeLocalConfig
+	AssemblerLocalConfig *config.NodeLocalConfig
 }

@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 
+	genconfig "arma/config/generate"
+
 	"arma/common/types"
 	"arma/internal/cryptogen/ca"
 )
@@ -41,7 +43,7 @@ import (
 //	        │       ├── consenter
 //	        │       └── assembler
 //	        └── users
-func GenerateCryptoConfig(networkConfig *Network, outputDir string) error {
+func GenerateCryptoConfig(networkConfig *genconfig.Network, outputDir string) error {
 	// create folder structure for the crypto files
 	err := generateNetworkCryptoConfigFolderStructure(outputDir, networkConfig)
 	if err != nil {
@@ -58,7 +60,7 @@ func GenerateCryptoConfig(networkConfig *Network, outputDir string) error {
 }
 
 // createNetworkCryptoMaterial creates the crypto files for each party's nodes and write them into files.
-func createNetworkCryptoMaterial(dir string, network *Network) error {
+func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 	// create TLS CA and Sign CA for each party
 	// NOTE: a party can have several CA's, meanwhile armageddon creates only one CA for each party.
 	partiesTLSCAs, partiesSignCAs, err := createCAsPerParty(dir, network)
@@ -120,7 +122,7 @@ func createNetworkCryptoMaterial(dir string, network *Network) error {
 }
 
 // createCAsPerParty creates a TLS CA and a signing CA for each party and write the ca's certificates into files.
-func createCAsPerParty(dir string, network *Network) (map[types.PartyID][]*ca.CA, map[types.PartyID][]*ca.CA, error) {
+func createCAsPerParty(dir string, network *genconfig.Network) (map[types.PartyID][]*ca.CA, map[types.PartyID][]*ca.CA, error) {
 	partiesTLSCAs := make(map[types.PartyID][]*ca.CA)
 	partiesSignCAs := make(map[types.PartyID][]*ca.CA)
 
@@ -188,7 +190,7 @@ func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, 
 }
 
 // generateNetworkCryptoConfigFolderStructure creates folders where the crypto material is written to.
-func generateNetworkCryptoConfigFolderStructure(dir string, network *Network) error {
+func generateNetworkCryptoConfigFolderStructure(dir string, network *genconfig.Network) error {
 	var folders []string
 
 	rootDir := filepath.Join(dir, "crypto", "ordererOrganizations")

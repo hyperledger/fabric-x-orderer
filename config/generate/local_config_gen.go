@@ -1,4 +1,4 @@
-package armageddon
+package generate
 
 import (
 	"fmt"
@@ -10,12 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"arma/common/types"
-	localconfig "arma/config"
-	"arma/node/comm"
-	"arma/node/config"
+	"arma/common/utils"
 
-	"gopkg.in/yaml.v3"
+	"arma/common/types"
+	"arma/config"
+	"arma/node/comm"
 )
 
 const (
@@ -44,16 +43,16 @@ var (
 	DefaultConnectionTimeout = 5 * time.Second
 )
 
-func NewGeneralConfig(partyID types.PartyID, shardID types.ShardID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, role string, logLevel string, baseDir string) *localconfig.GeneralConfig {
+func NewGeneralConfig(partyID types.PartyID, shardID types.ShardID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, role string, logLevel string, baseDir string) *config.GeneralConfig {
 	nodeRole := role
 	if role == "batcher" {
 		nodeRole = fmt.Sprintf("batcher%d", shardID)
 	}
 
-	generalConfig := &localconfig.GeneralConfig{
+	generalConfig := &config.GeneralConfig{
 		ListenAddress: listenAddress,
 		ListenPort:    listenPort,
-		TLSConfig: localconfig.TLSConfig{
+		TLSConfig: config.TLSConfig{
 			Enabled:            tlsEnabled,
 			PrivateKey:         filepath.Join(baseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), nodeRole, "key.pem"),
 			Certificate:        filepath.Join(baseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), nodeRole, "tls-cert.pem"),
@@ -64,18 +63,18 @@ func NewGeneralConfig(partyID types.PartyID, shardID types.ShardID, listenAddres
 		BackoffSettings:   DefaultBackoffOptions,
 		MaxRecvMsgSize:    DefaultMaxRecvMsgSize,
 		MaxSendMsgSize:    DefaultMaxSendMsgSize,
-		Bootstrap: localconfig.Bootstrap{
+		Bootstrap: config.Bootstrap{
 			Method: "yaml",
 			File:   "/var/dec-trust/production/orderer/bootstrap/bootstrap.yaml",
 		},
 		LocalMSPDir: "/var/dec-trust/production/orderer/crypto",
 		LocalMSPID:  "OrdererOrg",
-		BCCSP:       localconfig.BCCSP{},
+		BCCSP:       config.BCCSP{},
 		LogSpec:     logLevel,
 	}
 
 	if role == "consenter" {
-		generalConfig.Cluster = localconfig.Cluster{
+		generalConfig.Cluster = config.Cluster{
 			SendBufferSize:    DefaultSendBufferSize,
 			ClientCertificate: filepath.Join(baseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), nodeRole, "tls-cert.pem"),
 			ClientPrivateKey:  filepath.Join(baseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), nodeRole, "key.pem"),
@@ -85,28 +84,28 @@ func NewGeneralConfig(partyID types.PartyID, shardID types.ShardID, listenAddres
 	return generalConfig
 }
 
-func NewRouterLocalConfig(partyID types.PartyID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *localconfig.NodeLocalConfig {
-	return &localconfig.NodeLocalConfig{
+func NewRouterLocalConfig(partyID types.PartyID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *config.NodeLocalConfig {
+	return &config.NodeLocalConfig{
 		PartyID:       partyID,
 		GeneralConfig: NewGeneralConfig(partyID, 0, listenAddress, listenPort, tlsEnabled, clientAuthRequired, "router", logLevel, baseDir),
-		RouterParams: localconfig.RouterParams{
+		RouterParams: &config.RouterParams{
 			NumberOfConnectionsPerBatcher: DefaultNumberOfConnectionsPerBatcher,
 			NumberOfStreamsPerConnection:  DefaultNumberOfStreamsPerConnection,
 		},
 	}
 }
 
-func createBatcherLocalConfig(partyID types.PartyID, shardID types.ShardID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *localconfig.NodeLocalConfig {
-	return &localconfig.NodeLocalConfig{
+func createBatcherLocalConfig(partyID types.PartyID, shardID types.ShardID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *config.NodeLocalConfig {
+	return &config.NodeLocalConfig{
 		PartyID:       partyID,
 		GeneralConfig: NewGeneralConfig(partyID, shardID, listenAddress, listenPort, tlsEnabled, clientAuthRequired, "batcher", logLevel, baseDir),
-		FileStore:     &localconfig.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		BatcherParams: localconfig.BatcherParams{ShardID: shardID},
+		FileStore:     &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
+		BatcherParams: &config.BatcherParams{ShardID: shardID},
 	}
 }
 
-func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []string, baseDir string) []*localconfig.NodeLocalConfig {
-	var batchers []*localconfig.NodeLocalConfig
+func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []string, baseDir string) []*config.NodeLocalConfig {
+	var batchers []*config.NodeLocalConfig
 	for i, batcherEndpoint := range batcherEndpoints {
 		batcher := createBatcherLocalConfig(partyID, types.ShardID(i+1), trimPortFromEndpoint(batcherEndpoint), getPortFromEndpoint(batcherEndpoint), true, false, "info", baseDir)
 		batchers = append(batchers, batcher)
@@ -114,21 +113,21 @@ func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []st
 	return batchers
 }
 
-func NewConsensusLocalConfig(partyID types.PartyID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *localconfig.NodeLocalConfig {
-	return &localconfig.NodeLocalConfig{
+func NewConsensusLocalConfig(partyID types.PartyID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *config.NodeLocalConfig {
+	return &config.NodeLocalConfig{
 		PartyID:         partyID,
 		GeneralConfig:   NewGeneralConfig(partyID, 0, listenAddress, listenPort, tlsEnabled, clientAuthRequired, "consenter", logLevel, baseDir),
-		FileStore:       &localconfig.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		ConsensusParams: localconfig.ConsensusParams{WALDir: "/var/dec-trust/production/orderer/store/smartbft/wal"},
+		FileStore:       &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
+		ConsensusParams: &config.ConsensusParams{WALDir: "/var/dec-trust/production/orderer/store/smartbft/wal"},
 	}
 }
 
-func NewAssemblerLocalConfig(partyID types.PartyID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *localconfig.NodeLocalConfig {
-	return &localconfig.NodeLocalConfig{
+func NewAssemblerLocalConfig(partyID types.PartyID, listenAddress string, listenPort int, tlsEnabled bool, clientAuthRequired bool, logLevel string, baseDir string) *config.NodeLocalConfig {
+	return &config.NodeLocalConfig{
 		PartyID:         partyID,
 		GeneralConfig:   NewGeneralConfig(partyID, 0, listenAddress, listenPort, tlsEnabled, clientAuthRequired, "assembler", logLevel, baseDir),
-		FileStore:       &localconfig.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		AssemblerParams: localconfig.AssemblerParams{PrefetchBufferMemoryMB: DefaultPrefetchBufferMemoryMB},
+		FileStore:       &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
+		AssemblerParams: &config.AssemblerParams{PrefetchBufferMemoryMB: DefaultPrefetchBufferMemoryMB},
 	}
 }
 
@@ -158,27 +157,27 @@ func createArmaConfigFiles(networkLocalConfig *NetworkLocalConfig, outputDir str
 		os.MkdirAll(rootDir, 0o755)
 
 		configPath := path.Join(rootDir, "local_config_router.yaml")
-		err := config.NodeConfigToYAML(partyLocalConfig.RouterLocalConfig, configPath)
+		err := utils.WriteToYAML(partyLocalConfig.RouterLocalConfig, configPath)
 		if err != nil {
 			return fmt.Errorf("error creating router local config yaml file, err: %v", err)
 		}
 
 		for j, batcherConfig := range partyLocalConfig.BatchersLocalConfig {
 			configPath = path.Join(rootDir, fmt.Sprintf("local_config_batcher%d.yaml", j+1))
-			err = config.NodeConfigToYAML(batcherConfig, configPath)
+			err = utils.WriteToYAML(batcherConfig, configPath)
 			if err != nil {
 				return fmt.Errorf("error creating batcher%d local config yaml file, err: %v", j, err)
 			}
 		}
 
 		configPath = path.Join(rootDir, "local_config_consenter.yaml")
-		err = config.NodeConfigToYAML(partyLocalConfig.ConsenterLocalConfig, configPath)
+		err = utils.WriteToYAML(partyLocalConfig.ConsenterLocalConfig, configPath)
 		if err != nil {
 			return fmt.Errorf("error creating consenter local config yaml file, err: %v", err)
 		}
 
 		configPath = path.Join(rootDir, "local_config_assembler.yaml")
-		err = config.NodeConfigToYAML(partyLocalConfig.AssemblerLocalConfig, configPath)
+		err = utils.WriteToYAML(partyLocalConfig.AssemblerLocalConfig, configPath)
 		if err != nil {
 			return fmt.Errorf("error creating assembler local config yaml file, err: %v", err)
 		}
@@ -186,24 +185,76 @@ func createArmaConfigFiles(networkLocalConfig *NetworkLocalConfig, outputDir str
 	return nil
 }
 
-func CreateArmaLocalConfig(network Network, outputDir string) error {
+func CreateArmaLocalConfig(network Network, outputDir string) (*NetworkLocalConfig, error) {
 	networkLocalConfig := createNetworkLocalConfig(network, outputDir)
 	err := createArmaConfigFiles(networkLocalConfig, outputDir)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return networkLocalConfig, nil
 }
 
-func NodeConfigToYAML(config interface{}, path string) error {
-	rnc, err := yaml.Marshal(&config)
-	if err != nil {
-		return err
+// LoadArmaLocalConfig loads the local configuration of all nodes for all parties.
+func LoadArmaLocalConfig(path string) (*NetworkLocalConfig, error) {
+	if path == "" {
+		return nil, fmt.Errorf("load arma config failed, path is empty")
 	}
 
-	err = os.WriteFile(path, rnc, 0o644)
+	partiesDirs, err := os.ReadDir(path)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("read arma config failed, err: %s", err)
 	}
 
-	return nil
+	var partiesLocalConfig []PartyLocalConfig
+
+	for _, party := range partiesDirs {
+		partyPath := filepath.Join(path, party.Name())
+
+		nodesYamls, err := os.ReadDir(partyPath)
+		if err != nil {
+			return nil, fmt.Errorf("read arma config failed, err: %s", err)
+		}
+
+		numOfShards := len(nodesYamls) - 3
+
+		routerConfigPath := filepath.Join(partyPath, "local_config_router.yaml")
+		routerLocalConfig, err := config.Load(routerConfigPath)
+		if err != nil {
+			return nil, err
+		}
+
+		var batchersLocalConfig []*config.NodeLocalConfig
+		for j := 1; j <= numOfShards; j++ {
+			batcherConfigPath := filepath.Join(partyPath, fmt.Sprintf("local_config_batcher%d.yaml", j))
+			batcherLocalConfig, err := config.Load(batcherConfigPath)
+			if err != nil {
+				return nil, err
+			}
+			batchersLocalConfig = append(batchersLocalConfig, batcherLocalConfig)
+		}
+
+		consenterConfigPath := filepath.Join(partyPath, "local_config_consenter.yaml")
+		consenterLocalConfig, err := config.Load(consenterConfigPath)
+		if err != nil {
+			return nil, err
+		}
+
+		assemblerConfigPath := filepath.Join(partyPath, "local_config_assembler.yaml")
+		assemblerLocalConfig, err := config.Load(assemblerConfigPath)
+		if err != nil {
+			return nil, err
+		}
+
+		partyLocalConfig := PartyLocalConfig{
+			RouterLocalConfig:    routerLocalConfig,
+			BatchersLocalConfig:  batchersLocalConfig,
+			ConsenterLocalConfig: consenterLocalConfig,
+			AssemblerLocalConfig: assemblerLocalConfig,
+		}
+
+		partiesLocalConfig = append(partiesLocalConfig, partyLocalConfig)
+	}
+	return &NetworkLocalConfig{PartiesLocalConfig: partiesLocalConfig}, nil
 }
 
 func getPortFromEndpoint(endpoint string) int {
@@ -220,4 +271,16 @@ func getPortFromEndpoint(endpoint string) int {
 	}
 
 	return -1
+}
+
+func trimPortFromEndpoint(endpoint string) string {
+	if strings.Contains(endpoint, ":") {
+		host, _, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
+		}
+		return host
+	}
+
+	return endpoint
 }

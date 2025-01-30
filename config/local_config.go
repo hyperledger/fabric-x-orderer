@@ -1,12 +1,11 @@
 package config
 
 import (
-	"os"
+	"fmt"
 
 	"arma/common/types"
+	"arma/common/utils"
 	"arma/node/comm"
-
-	"gopkg.in/yaml.v3"
 )
 
 // NodeLocalConfig controls the configuration of an Arma node.
@@ -20,13 +19,13 @@ type NodeLocalConfig struct {
 	// FileStore controls the configuration of the file store where blocks and databases are stored
 	FileStore *FileStore `yaml:"FileStore,omitempty"`
 	// RouterParams controls Router specific params. For Bathcer, Consensus or Assembler nodes this field is expected to be empty
-	RouterParams RouterParams `yaml:"Router,omitempty"`
+	RouterParams *RouterParams `yaml:"Router,omitempty"`
 	// BatcherParams controls Batcher specific params. For Router, Consensus or Assembler nodes this field is expected to be empty
-	BatcherParams BatcherParams `yaml:"Batcher,omitempty"`
+	BatcherParams *BatcherParams `yaml:"Batcher,omitempty"`
 	// ConsensusParams controls Consensus specific params. For Router, Batcher or Assembler nodes this field is expected to be empty
-	ConsensusParams ConsensusParams `yaml:"Consensus,omitempty"`
+	ConsensusParams *ConsensusParams `yaml:"Consensus,omitempty"`
 	// AssemblerParams controls Assembler specific params. For Router, Batcher or Consensus nodes this field is expected to be empty
-	AssemblerParams AssemblerParams `yaml:"Assembler,omitempty"`
+	AssemblerParams *AssemblerParams `yaml:"Assembler,omitempty"`
 }
 
 type GeneralConfig struct {
@@ -162,15 +161,15 @@ type AssemblerParams struct {
 	PrefetchBufferMemoryMB int `yaml:"PrefetchBufferMemoryMB,omitempty"`
 }
 
-func NodeConfigFromYAML(config interface{}, path string) error {
-	yamlFile, err := os.ReadFile(path)
+func Load(filePath string) (*NodeLocalConfig, error) {
+	if filePath == "" {
+		return nil, fmt.Errorf("cannot load local node configuration, path: %s is empty", filePath)
+	}
+	nodeLocalConfig := NodeLocalConfig{}
+	err := utils.ReadFromYAML(&nodeLocalConfig, filePath)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
 	}
 
-	err = yaml.Unmarshal(yamlFile, config)
-	if err != nil {
-		return err
-	}
-	return nil
+	return &nodeLocalConfig, nil
 }

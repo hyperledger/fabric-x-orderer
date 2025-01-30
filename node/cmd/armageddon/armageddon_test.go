@@ -1,7 +1,6 @@
 package armageddon
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -9,12 +8,16 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
+	"arma/common/utils"
+	genconfig "arma/config/generate"
+
+	"arma/testutil"
+
 	"arma/common/types"
-	"arma/node/config"
+	nodeconfig "arma/node/config"
 
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
@@ -357,16 +360,16 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 // generateInputConfigFileForArmageddon create a config.yaml file which is the input to armageddon generate command.
 // the configuration includes 4 parties and 2 batchers for each party.
 func generateInputConfigFileForArmageddon(t *testing.T, path string) {
-	var parties []Party
+	var parties []genconfig.Party
 	var listeners []net.Listener
 	for i := 0; i < 4; i++ {
-		assemblerPort, lla := getAvailablePort(t)
-		consenterPort, llc := getAvailablePort(t)
-		routerPort, llr := getAvailablePort(t)
-		batcher1Port, llb1 := getAvailablePort(t)
-		batcher2Port, llb2 := getAvailablePort(t)
+		assemblerPort, lla := testutil.GetAvailablePort(t)
+		consenterPort, llc := testutil.GetAvailablePort(t)
+		routerPort, llr := testutil.GetAvailablePort(t)
+		batcher1Port, llb1 := testutil.GetAvailablePort(t)
+		batcher2Port, llb2 := testutil.GetAvailablePort(t)
 
-		party := Party{
+		party := genconfig.Party{
 			ID:                types.PartyID(i + 1),
 			AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
 			ConsenterEndpoint: "127.0.0.1:" + consenterPort,
@@ -378,50 +381,16 @@ func generateInputConfigFileForArmageddon(t *testing.T, path string) {
 		listeners = append(listeners, lla, llc, llr, llb1, llb2)
 	}
 
-	network := Network{
+	network := genconfig.Network{
 		Parties: parties,
 	}
 
-	err := writeToYAML(network, path)
+	err := utils.WriteToYAML(network, path)
 	require.NoError(t, err)
 
 	for _, ll := range listeners {
 		require.NoError(t, ll.Close())
 	}
-}
-
-func getAvailablePort(t *testing.T) (port string, ll net.Listener) {
-	addr := "127.0.0.1:0"
-	listenConfig := net.ListenConfig{Control: reusePort}
-
-	ll, err := listenConfig.Listen(context.Background(), "tcp", addr)
-	require.NoError(t, err)
-
-	endpoint := ll.Addr().String()
-	_, portS, err := net.SplitHostPort(endpoint)
-	require.NoError(t, err)
-
-	return portS, ll
-}
-
-func reusePort(network, address string, c syscall.RawConn) error {
-	return c.Control(func(descriptor uintptr) {
-		syscall.SetsockoptInt(int(descriptor), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-	})
-}
-
-func writeToYAML(config interface{}, path string) error {
-	rnc, err := yaml.Marshal(&config)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(path, rnc, 0o644)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // func readRouterNodeConfigFromYaml(t *testing.T, path string) *config.RouterNodeConfig {
@@ -433,28 +402,28 @@ func writeToYAML(config interface{}, path string) error {
 // 	return &routerConfig
 // }
 
-func readAssemblerNodeConfigFromYaml(t *testing.T, path string) *config.AssemblerNodeConfig {
+func readAssemblerNodeConfigFromYaml(t *testing.T, path string) *nodeconfig.AssemblerNodeConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assemblerConfig := config.AssemblerNodeConfig{}
+	assemblerConfig := nodeconfig.AssemblerNodeConfig{}
 	err = yaml.Unmarshal(configBytes, &assemblerConfig)
 	require.NoError(t, err)
 	return &assemblerConfig
 }
 
-func readConsenterNodeConfigFromYaml(t *testing.T, path string) *config.ConsenterNodeConfig {
+func readConsenterNodeConfigFromYaml(t *testing.T, path string) *nodeconfig.ConsenterNodeConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
-	consenterConfig := config.ConsenterNodeConfig{}
+	consenterConfig := nodeconfig.ConsenterNodeConfig{}
 	err = yaml.Unmarshal(configBytes, &consenterConfig)
 	require.NoError(t, err)
 	return &consenterConfig
 }
 
-func readBatcherNodeConfigFromYaml(t *testing.T, path string) *config.BatcherNodeConfig {
+func readBatcherNodeConfigFromYaml(t *testing.T, path string) *nodeconfig.BatcherNodeConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
-	batcherConfig := config.BatcherNodeConfig{}
+	batcherConfig := nodeconfig.BatcherNodeConfig{}
 	err = yaml.Unmarshal(configBytes, &batcherConfig)
 	require.NoError(t, err)
 	return &batcherConfig
@@ -469,14 +438,14 @@ func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
 	case "batcher":
 		batcherConfig := readBatcherNodeConfigFromYaml(t, path)
 		batcherConfig.Directory = dir
-		config.NodeConfigToYAML(batcherConfig, path)
+		nodeconfig.NodeConfigToYAML(batcherConfig, path)
 	case "consensus":
 		consenterConfig := readConsenterNodeConfigFromYaml(t, path)
 		consenterConfig.Directory = dir
-		config.NodeConfigToYAML(consenterConfig, path)
+		nodeconfig.NodeConfigToYAML(consenterConfig, path)
 	case "assembler":
 		assemblerConfig := readAssemblerNodeConfigFromYaml(t, path)
 		assemblerConfig.Directory = dir
-		config.NodeConfigToYAML(assemblerConfig, path)
+		nodeconfig.NodeConfigToYAML(assemblerConfig, path)
 	}
 }
