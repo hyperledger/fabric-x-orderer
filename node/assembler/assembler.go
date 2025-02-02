@@ -59,8 +59,10 @@ func NewAssembler(config config.AssemblerNodeConfig, logger types.Logger) *Assem
 	}
 	logger.Infof("Assembler %d opened block store: %+v", config.PartyId, armaLedger)
 	ledger := fileledger.NewFileLedger(armaLedger)
-	al := node_ledger.NewAssemblerLedger(logger, ledger)
-	go al.TrackThroughput()
+	al, err := node_ledger.NewAssemblerLedger(logger, ledger)
+	if err != nil {
+		logger.Panicf("Failed creating assembler: %v", err)
+	}
 
 	shardIds := shardsFromAssemblerConfig(config)
 	partyIds := partiesFromAssemblerConfig(config)

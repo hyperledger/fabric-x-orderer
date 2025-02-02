@@ -38,14 +38,17 @@ func TestAssemblerBlockMetadataToFromBytes(t *testing.T) {
 		BatchCount:  6,
 	}
 
-	metadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, oi)
+	expectedTransactionCount := uint64(len(batchedRequests))
+
+	metadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, oi, expectedTransactionCount)
 	assert.NoError(t, err)
-	primary, shard, seq, num, batchIndex, batchCount, err := node_ledger.AssemblerBlockMetadataFromBytes(metadata)
+	primary, shard, seq, num, batchIndex, batchCount, transactionCount, err := node_ledger.AssemblerBlockMetadataFromBytes(metadata)
 	assert.NoError(t, err)
 	assert.Equal(t, types.PartyID(1), primary)
 	assert.Equal(t, types.ShardID(2), shard)
 	assert.Equal(t, types.BatchSequence(3), seq)
-	assert.Equal(t, types.DecisionNum(4), num)
-	assert.Equal(t, uint32(5), batchIndex)
-	assert.Equal(t, uint32(6), batchCount)
+	assert.Equal(t, oi.DecisionNum, num)
+	assert.Equal(t, uint32(oi.BatchIndex), batchIndex)
+	assert.Equal(t, uint32(oi.BatchCount), batchCount)
+	assert.Equal(t, expectedTransactionCount, transactionCount)
 }

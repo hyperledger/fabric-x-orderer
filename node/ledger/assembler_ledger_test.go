@@ -18,26 +18,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAssemblerLedge_Create(t *testing.T) {
+func TestAssemblerLedger_Create(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
 	al, err := createAssemblerLedger(tmpDir, logger)
 	require.NoError(t, err)
-	go al.TrackThroughput()
+	defer al.Close()
 
 	count := al.GetTxCount()
 	assert.Equal(t, uint64(0), count)
 }
 
-// TestAssemblerLedge_Append append two blocks
-func TestAssemblerLedge_Append(t *testing.T) {
+// TestAssemblerLedger_Append append two blocks
+func TestAssemblerLedger_Append(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
 	al, err := createAssemblerLedger(tmpDir, logger)
 	require.NoError(t, err)
-	go al.TrackThroughput()
+	defer al.Close()
 
 	t.Run("three batches", func(t *testing.T) {
 		batches, ordInfos := createBatchesAndOrdInfo(t, 3)
@@ -56,13 +56,13 @@ func TestAssemblerLedge_Append(t *testing.T) {
 	})
 }
 
-func TestAssemblerLedge_ReadAndParse(t *testing.T) {
+func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
 	al, err := createAssemblerLedger(tmpDir, logger)
 	require.NoError(t, err)
-	go al.TrackThroughput()
+	defer al.Close()
 
 	batches, ordInfos := createBatchesAndOrdInfo(t, 2)
 
@@ -70,11 +70,12 @@ func TestAssemblerLedge_ReadAndParse(t *testing.T) {
 	al.Append(batches[1], ordInfos[1])
 	assert.Equal(t, uint64(4), al.GetTxCount())
 	assert.Equal(t, uint64(2), al.Ledger.Height())
+	expectedTransactionCount := []int{len(batches[0].Requests()), len(batches[0].Requests()) + len(batches[1].Requests())}
 
 	for n := uint64(0); n < 2; n++ {
 		block, err := al.Ledger.RetrieveBlockByNumber(n)
 		assert.NoError(t, err)
-		batchID, ordInfo, err := node_ledger.AssemblerBatchIdOrderingInfoFromBlock(block)
+		batchID, ordInfo, transactionCount, err := node_ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
 		assert.NoError(t, err)
 
 		assert.Equal(t, batches[n].Digest(), batchID.Digest())
@@ -87,6 +88,7 @@ func TestAssemblerLedge_ReadAndParse(t *testing.T) {
 		assert.Equal(t, ordInfos[n].BatchIndex, ordInfo.BatchIndex)
 		assert.Equal(t, ordInfos[n].BatchCount, ordInfo.BatchCount)
 		assert.Equal(t, ordInfos[n].Signatures, ordInfo.Signatures)
+		assert.Equal(t, uint64(expectedTransactionCount[n]), transactionCount)
 	}
 }
 
@@ -96,7 +98,7 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 
 	al, err := createAssemblerLedger(tmpDir, logger)
 	require.NoError(t, err)
-	go al.TrackThroughput()
+	defer al.Close()
 
 	batches, ordInfos := createBatchesAndOrdInfo(t, 2)
 
@@ -122,6 +124,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 
 		al, err := createAssemblerLedger(tmpDir, logger)
 		require.NoError(t, err)
+		defer al.Close()
 
 		num := 128
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -150,6 +153,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 
 		al, err := createAssemblerLedger(tmpDir, logger)
 		require.NoError(t, err)
+		defer al.Close()
 
 		assert.Equal(t, uint64(0), al.GetTxCount())
 		assert.Equal(t, uint64(0), al.Ledger.Height())
@@ -165,6 +169,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 
 		al, err := createAssemblerLedger(tmpDir, logger)
 		require.NoError(t, err)
+		defer al.Close()
 
 		num := 8
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -191,6 +196,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 
 		al, err := createAssemblerLedger(tmpDir, logger)
 		require.NoError(t, err)
+		defer al.Close()
 
 		num := 10
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -226,8 +232,8 @@ func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_
 
 	armaFileLedger := fileledger.NewFileLedger(armaBlockStore)
 
-	al := &node_ledger.AssemblerLedger{Ledger: armaFileLedger, Logger: logger}
-	return al, nil
+	al, err := node_ledger.NewAssemblerLedger(logger, armaFileLedger)
+	return al, err
 }
 
 // createBatchesAndOrdInfo creates a series of batches and their corresponding ordering information, emulating the
@@ -237,6 +243,7 @@ func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_
 func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.OrderingInformation) {
 	var batches []core.Batch
 	var ordInfos []*state.OrderingInformation
+	transactionCount := 0
 
 	// this 2D matrix holds the last batch-sequence of every [shard][primary]
 	seqArray := make([][]uint64, 8)
@@ -263,6 +270,8 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.Orde
 		fb, err := node_ledger.NewFabricBatchFromRaw(
 			party, shard, seq, batchBytes, nil)
 		require.NoError(t, err)
+
+		transactionCount += len(batchedRequests)
 
 		oi := &state.OrderingInformation{
 			BlockHeader: &state.BlockHeader{

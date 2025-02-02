@@ -1,6 +1,8 @@
 package ledger
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"slices"
 	"sync/atomic"
@@ -16,23 +18,43 @@ import (
 )
 
 type AssemblerLedger struct {
-	Logger types.Logger
-	Ledger blockledger.ReadWriter
-
-	// TODO We need to recover this value when the assembler restarts
-	transactionCount uint64
+	Logger              types.Logger
+	Ledger              blockledger.ReadWriter
+	transactionCount    uint64
+	cancellationContext context.Context
+	cancelContextFunc   context.CancelFunc
 }
 
-func NewAssemblerLedger(logger types.Logger, ledger blockledger.ReadWriter) *AssemblerLedger {
-	al := &AssemblerLedger{
-		Logger: logger,
-		Ledger: ledger,
+func NewAssemblerLedger(logger types.Logger, ledger blockledger.ReadWriter) (*AssemblerLedger, error) {
+	transactionCount := uint64(0)
+	height := ledger.Height()
+	if height > 0 {
+		block, err := ledger.RetrieveBlockByNumber(height - 1)
+		if err != nil {
+			return nil, fmt.Errorf("error while fetching last block from ledger %w", err)
+		}
+		_, _, transactionCount, err = AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
+		if err != nil {
+			return nil, fmt.Errorf("error while fetching last block ordering info %w", err)
+		}
 	}
-	return al
+	ctx, cancel := context.WithCancel(context.Background())
+	al := &AssemblerLedger{
+		Logger:              logger,
+		Ledger:              ledger,
+		transactionCount:    transactionCount,
+		cancellationContext: ctx,
+		cancelContextFunc:   cancel,
+	}
+	go al.trackThroughput()
+	return al, nil
 }
 
-func (l *AssemblerLedger) TrackThroughput() {
-	// TODO we need to be able to stop this routine
+func (l *AssemblerLedger) Close() {
+	l.cancelContextFunc()
+}
+
+func (l *AssemblerLedger) trackThroughput() {
 	firstProbe := true
 	lastTxCount := uint64(0)
 	for {
@@ -42,7 +64,11 @@ func (l *AssemblerLedger) TrackThroughput() {
 		}
 		lastTxCount = txCount
 		firstProbe = false
-		time.Sleep(time.Second * 10)
+		select {
+		case <-time.After(time.Second * 10):
+		case <-l.cancellationContext.Done():
+			return
+		}
 	}
 }
 
@@ -58,6 +84,8 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
 		l.Logger.Infof("Appended block %d of %d requests to ledger in %v",
 			ordInfo.BlockHeader.Number, len(batch.Requests()), time.Since(t1))
 	}()
+
+	transactionCount := atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
 
 	block := &common.Block{
 		Header: &common.BlockHeader{
@@ -102,7 +130,7 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
 
 	//===
 	// TODO Ordering metadata  marshal orderingInfo and batchID
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo)
+	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, transactionCount)
 	if err != nil {
 		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
@@ -119,8 +147,6 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
 	if err := l.Ledger.Append(block); err != nil {
 		panic(err)
 	}
-
-	atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
 }
 
 // LastOrderingInfo returns the ordering information from the last block.
@@ -138,7 +164,7 @@ func (l *AssemblerLedger) LastOrderingInfo() (*state.OrderingInformation, error)
 		return nil, err
 	}
 
-	_, ordInfo, err := AssemblerBatchIdOrderingInfoFromBlock(block)
+	_, ordInfo, _, err := AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +193,7 @@ func (l *AssemblerLedger) BatchFrontier(
 		if err != nil {
 			return nil, err
 		}
-		batchID, _, err := AssemblerBatchIdOrderingInfoFromBlock(block)
+		batchID, _, _, err := AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
 		if err != nil {
 			return nil, err
 		}
