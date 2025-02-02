@@ -55,6 +55,13 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 	for {
 		time.Sleep(time.Second)
 
+		select {
+		case <-context.Done():
+			logger.Infof("Returning since context is done")
+			return
+		default:
+		}
+
 		endpointToPullFrom := endpoint()
 
 		if endpointToPullFrom == "" {
