@@ -13,19 +13,19 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 )
 
 // TODO: move to config
 const (
+	maxSizeBytes      = 1 * 1024 * 1024 * 1024 // 1GB
 	ledgerScanTimeout = 5 * time.Second
+	evictionTtl       = time.Hour
 )
 
 type Assembler struct {
 	assembler core.Assembler
 	logger    types.Logger
-	getHeight func() uint64
 	ds        delivery.DeliverService
 }
 
@@ -42,65 +42,8 @@ func (a *Assembler) GetTxCount() uint64 {
 	return a.assembler.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
 }
 
-func newAssembler(logger types.Logger, config config.AssemblerNodeConfig, blockStores map[string]*blkstorage.BlockStore) *Assembler {
-	index := NewIndex(config, blockStores, logger)
-
-	tlsKey := config.TLSPrivateKeyFile
-
-	tlsCert := config.TLSCertificateFile
-
-	ledger := fileledger.NewFileLedger(blockStores["arma"])
-
-	baReplicator := newBAReplicator(logger, config, tlsKey, tlsCert)
-
-	al := &node_ledger.AssemblerLedger{Ledger: ledger, Logger: logger}
-	go al.TrackThroughput()
-
-	shardIds := shardsFromAssemblerConfig(config)
-	partyIds := partiesFromAssemblerConfig(config)
-
-	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, ledgerScanTimeout)
-	if err != nil {
-		logger.Panicf("Failed fetching last ordering info: %v", err)
-	}
-
-	br := NewBatchFetcher(batchFrontier, config, logger)
-
-	var shards []types.ShardID
-	for _, shard := range config.Shards {
-		shards = append(shards, types.ShardID(shard.ShardId))
-	}
-
-	assembler := &Assembler{
-		ds:        make(delivery.DeliverService),
-		getHeight: ledger.Height,
-		assembler: core.Assembler{
-			Shards:                            shards,
-			OrderedBatchAttestationReplicator: baReplicator,
-			Replicator:                        br,
-			Index:                             index,
-			Logger:                            logger,
-			Ledger:                            al,
-			ShardCount:                        len(config.Shards),
-		},
-		logger: logger,
-	}
-
-	assembler.ds["arma"] = ledger
-
-	assembler.assembler.Run()
-
-	return assembler
-}
-
-func newBAReplicator(logger types.Logger, config config.AssemblerNodeConfig, tlsKey config.RawBytes, tlsCert config.RawBytes) *delivery.ConsensusReplicator {
-	r := delivery.NewConsensusReplicator(config.Consenter.TLSCACerts, tlsKey, tlsCert, config.Consenter.Endpoint, logger)
-	return r
-}
-
-type FactoryCreator func(string) blockledger.Factory
-
 func NewAssembler(config config.AssemblerNodeConfig, logger types.Logger) *Assembler {
+	// Create the ledger
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(config.Directory, -1),
 		&blkstorage.IndexConfig{
@@ -109,35 +52,64 @@ func NewAssembler(config config.AssemblerNodeConfig, logger types.Logger) *Assem
 	if err != nil {
 		logger.Panicf("Failed creating provider: %v", err)
 	}
-
 	logger.Infof("Assembler %d opened block ledger provider, dir: %s", config.PartyId, config.Directory)
-
 	armaLedger, err := provider.Open("arma")
 	if err != nil {
 		logger.Panicf("Failed opening ledger: %v", err)
 	}
+	logger.Infof("Assembler %d opened block store: %+v", config.PartyId, armaLedger)
+	ledger := fileledger.NewFileLedger(armaLedger)
+	al := node_ledger.NewAssemblerLedger(logger, ledger)
+	go al.TrackThroughput()
 
-	blockStores := make(map[string]*blkstorage.BlockStore)
+	shardIds := shardsFromAssemblerConfig(config)
+	partyIds := partiesFromAssemblerConfig(config)
 
-	// This is the store where final blocks are stored
-	blockStores["arma"] = armaLedger
-
-	parties := partiesFromAssemblerConfig(config)
-	for _, shard := range config.Shards {
-		// Open an array for each shard
-		for _, p := range parties {
-			name := node_ledger.ShardPartyToChannelName(types.ShardID(shard.ShardId), p)
-			batcherLedger, err := provider.Open(name)
-			if err != nil {
-				logger.Panicf("Failed opening ledger: %v", err)
-			}
-			blockStores[name] = batcherLedger
-		}
+	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, ledgerScanTimeout)
+	if err != nil {
+		logger.Panicf("Failed fetching batch frontier: %v", err)
 	}
 
-	logger.Infof("Assembler %d opened block stores: %+v", config.PartyId, blockStores)
+	lastOrderingInfo, err := al.LastOrderingInfo()
+	if err != nil {
+		logger.Panicf("Failed fetching last ordering info: %v", err)
+	}
+	var lastDecisionNum types.DecisionNum
+	if lastOrderingInfo != nil {
+		lastDecisionNum = lastOrderingInfo.DecisionNum + 1
+	}
 
-	assembler := newAssembler(logger, config, blockStores)
+	index := NewPrefetchIndex(shardIds, partyIds, logger, evictionTtl, maxSizeBytes, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{})
+	if err != nil {
+		logger.Panicf("Failed creating index: %v", err)
+	}
+
+	baReplicator := delivery.NewConsensusReplicator(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, logger)
+
+	br := NewBatchFetcher(batchFrontier, config, logger)
+
+	prefetcher := NewPrefetcher(shardIds, partyIds, index, br, logger)
+	prefetcher.Start()
+
+	assembler := &Assembler{
+		ds: make(delivery.DeliverService),
+		assembler: core.Assembler{
+			Shards:                            shardIds,
+			OrderedBatchAttestationReplicator: baReplicator,
+			Replicator:                        br,
+			Index:                             index,
+			Logger:                            logger,
+			Ledger:                            al,
+			ShardCount:                        len(config.Shards),
+			StartingDesicion:                  lastDecisionNum,
+		},
+		logger: logger,
+	}
+
+	// TODO: we do not need multiple ledgers in the assembler
+	assembler.ds["arma"] = ledger
+
+	assembler.assembler.Run()
 
 	return assembler
 }

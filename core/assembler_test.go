@@ -18,7 +18,7 @@ import (
 
 type naiveOrderedBatchAttestationReplicator chan core.OrderedBatchAttestation
 
-func (n naiveOrderedBatchAttestationReplicator) Replicate(u uint64) <-chan core.OrderedBatchAttestation {
+func (n naiveOrderedBatchAttestationReplicator) Replicate(u types.DecisionNum) <-chan core.OrderedBatchAttestation {
 	return n
 }
 
@@ -26,21 +26,24 @@ type naiveIndex struct {
 	sync.Map
 }
 
-func (n *naiveIndex) Index(_ types.PartyID, _ types.ShardID, _ types.BatchSequence, batch core.Batch) {
+func (n *naiveIndex) Put(batch core.Batch) error {
 	n.Store(string(batch.Digest()), batch)
+	return nil
 }
 
-func (n *naiveIndex) Retrieve(_ types.PartyID, _ types.ShardID, _ types.BatchSequence, digest []byte) (core.Batch, bool) {
-	val, exists := n.Load(string(digest))
+func (n *naiveIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
+	for {
+		val, exists := n.Load(string(batchId.Digest()))
 
-	if !exists {
-		return nil, false
+		if !exists {
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		defer func() {
+			n.Delete(string(batchId.Digest()))
+		}()
+		return val.(core.Batch), nil
 	}
-
-	defer func() {
-		n.Delete(string(digest))
-	}()
-	return val.(core.Batch), true
 }
 
 type naiveBatchAttestation struct {

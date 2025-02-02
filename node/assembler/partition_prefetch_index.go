@@ -25,6 +25,12 @@ type TimerFactory interface {
 	Create(time.Duration, func()) StoppableTimer
 }
 
+type DefaultTimerFactory struct{}
+
+func (dtf *DefaultTimerFactory) Create(d time.Duration, f func()) StoppableTimer {
+	return time.AfterFunc(d, f)
+}
+
 type ShardPrimary struct {
 	Shard   types.ShardID
 	Primary types.PartyID

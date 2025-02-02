@@ -23,6 +23,14 @@ type AssemblerLedger struct {
 	transactionCount uint64
 }
 
+func NewAssemblerLedger(logger types.Logger, ledger blockledger.ReadWriter) *AssemblerLedger {
+	al := &AssemblerLedger{
+		Logger: logger,
+		Ledger: ledger,
+	}
+	return al
+}
+
 func (l *AssemblerLedger) TrackThroughput() {
 	// TODO we need to be able to stop this routine
 	firstProbe := true

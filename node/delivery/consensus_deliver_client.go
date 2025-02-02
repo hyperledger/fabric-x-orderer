@@ -71,7 +71,7 @@ func (bar *ConsensusReplicator) ReplicateState() <-chan *core.State {
 	return res
 }
 
-func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.OrderedBatchAttestation {
+func (bar *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.OrderedBatchAttestation {
 	endpoint := func() string {
 		return bar.endpoint
 	}
@@ -81,7 +81,7 @@ func (bar *ConsensusReplicator) Replicate(seq uint64) <-chan core.OrderedBatchAt
 			common.HeaderType_DELIVER_SEEK_INFO,
 			"consensus",
 			nil,
-			NextSeekInfo(seq),
+			NextSeekInfo(uint64(seq)),
 			int32(0),
 			uint64(0),
 			nil,

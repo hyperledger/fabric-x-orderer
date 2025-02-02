@@ -598,3 +598,38 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		require.ErrorIs(t, errs[3], assembler.ErrOperationCancelled)
 	})
 }
+
+func TestDefaultTimerFactory(t *testing.T) {
+	t.Run("ShouldFireActionAfterTimeout", func(t *testing.T) {
+		// Arrange
+		factory := assembler.DefaultTimerFactory{}
+		done := make(chan struct{})
+
+		// Act
+		factory.Create(10*time.Millisecond, func() {
+			done <- struct{}{}
+		})
+
+		// Assert
+		<-done
+	})
+
+	t.Run("ShouldNotFireActionIfStopped", func(t *testing.T) {
+		// Arrange
+		factory := assembler.DefaultTimerFactory{}
+		done := make(chan struct{})
+
+		// Act
+		timer := factory.Create(10*time.Millisecond, func() {
+			done <- struct{}{}
+		})
+		timer.Stop()
+
+		// Assert
+		select {
+		case <-done:
+			require.FailNow(t, "timer should have stopped")
+		case <-time.After(time.Second):
+		}
+	})
+}

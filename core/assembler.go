@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/hex"
 	"math"
-	"sync"
 	"time"
 
 	"arma/common/types"
@@ -50,8 +49,8 @@ type BatchReplicator interface {
 }
 
 type AssemblerIndex interface {
-	Index(party types.PartyID, shard types.ShardID, sequence types.BatchSequence, batch Batch)
-	Retrieve(party types.PartyID, shard types.ShardID, sequence types.BatchSequence, digest []byte) (Batch, bool)
+	PopOrWait(batchId types.BatchID) (Batch, error)
+	Put(batch Batch) error
 }
 
 type AssemblerLedgerWriter interface {
@@ -59,7 +58,7 @@ type AssemblerLedgerWriter interface {
 }
 
 type OrderedBatchAttestationReplicator interface {
-	Replicate(uint64) <-chan OrderedBatchAttestation
+	Replicate(types.DecisionNum) <-chan OrderedBatchAttestation
 }
 
 type Assembler struct {
@@ -70,19 +69,14 @@ type Assembler struct {
 	Replicator                        BatchReplicator
 	Index                             AssemblerIndex
 	Shards                            []types.ShardID
-
-	lock   sync.RWMutex
-	signal sync.Cond
+	StartingDesicion                  types.DecisionNum
 }
 
 func (a *Assembler) Run() {
-	a.signal = sync.Cond{L: &a.lock}
-
 	// TODO we need to be able to stop these goroutines when we stop the assembler server
 	for _, shardID := range a.Shards {
 		go a.fetchBatchesFromShard(shardID)
 	}
-
 	go a.processOrderedBatchAttestations()
 }
 
@@ -92,10 +86,7 @@ func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
 	batchCh := a.Replicator.Replicate(shardID)
 	for batch := range batchCh {
 		a.Logger.Infof("Got batch of %d requests for shard %d", len(batch.Requests()), shardID)
-		a.lock.RLock()
-		a.Index.Index(batch.Primary(), shardID, batch.Seq(), batch)
-		a.signal.Signal()
-		a.lock.RUnlock()
+		a.Index.Put(batch)
 	}
 
 	a.Logger.Infof("Finished fetching batches from shard: %d", shardID)
@@ -104,8 +95,7 @@ func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
 func (a *Assembler) processOrderedBatchAttestations() {
 	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
-	// TODO after recovery support is added, start replicating from the last decision, not 0 (separate issue).
-	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate(0)
+	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate(a.StartingDesicion)
 	for oba := range orderedBatchAttestations {
 		a.Logger.Infof("Received ordered batch attestation with BatchID primary=%d, shard=%d, seq=%d; digest %s",
 			oba.BatchAttestation().Primary(), oba.BatchAttestation().Shard(), oba.BatchAttestation().Seq(),
@@ -130,19 +120,13 @@ func (a *Assembler) processOrderedBatchAttestations() {
 }
 
 func (a *Assembler) collateAttestationWithBatch(ba BatchAttestation) Batch {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
-	for {
-		t1 := time.Now()
-		batch, retrieved := a.Index.Retrieve(ba.Primary(), ba.Shard(), ba.Seq(), ba.Digest())
-		if !retrieved {
-			a.signal.Wait()
-			continue
-		}
-		a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), ShortDigestString(ba.Digest()), time.Since(t1))
-		return batch
+	t1 := time.Now()
+	batch, err := a.Index.PopOrWait(ba)
+	if err != nil {
+		a.Logger.Panicf("Something went wrong while fetching the batch %v", ba)
 	}
+	a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), ShortDigestString(ba.Digest()), time.Since(t1))
+	return batch
 }
 
 // ShortDigestString provides a short string from a potentially long (32B) digest.
