@@ -4,16 +4,12 @@ option go_package = "arma/node/protos";
 // SharedConfig holds the initial configuration that will be used to bootstrap new nodes.
 // This configuration is common to all Arma nodes.
 message SharedConfig {
-  PartiesConfig PartiesConfig = 1;
-  ConsensusBFTConfig ConsensusBFTConfig = 2;
+  repeated PartyConfig PartiesConfig = 1;
+  ConsensusConfig ConsensusConfig = 2;
   BatchingConfig BatchingConfig = 3;
 }
 
-// PartiesConfig carries the identity, certificates and nodes configuration of a party.
-message PartiesConfig {
-  repeated PartyConfig Party = 1;
-}
-
+// PartyConfig carries the identity, certificates and nodes configuration of a party.
 message PartyConfig {
   // the identity of the party, type unit16, id > 0
   uint32 PartyID = 1;
@@ -74,8 +70,8 @@ message AssemblerNodeConfig {
 }
 
 // BFT configuration
-message ConsensusBFTConfig {
-  SmartBFTConfig BFTConfig = 1;
+message ConsensusConfig {
+  SmartBFTConfig SmartBFTConfig = 1;
 }
 
 message SmartBFTConfig {
