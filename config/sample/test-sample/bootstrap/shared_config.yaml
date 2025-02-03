@@ -1,0 +1,136 @@
+PartiesConfig:
+    - PartyID: 1
+      CACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org1/ca/ca-cert.pem
+      TLSCACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org1/tlsca/tlsca-cert.pem
+      RouterConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/router/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52799
+      BatchersConfig:
+        - ShardID: 1
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52800
+        - ShardID: 2
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher2/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher2/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52801
+      ConsenterConfig:
+        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/signing-cert.pem
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52798
+      AssemblerConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/assembler/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52797
+    - PartyID: 2
+      CACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org2/ca/ca-cert.pem
+      TLSCACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org2/tlsca/tlsca-cert.pem
+      RouterConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/router/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52804
+      BatchersConfig:
+        - ShardID: 1
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher1/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher1/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52805
+        - ShardID: 2
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher2/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher2/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52806
+      ConsenterConfig:
+        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/consenter/signing-cert.pem
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/consenter/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52803
+      AssemblerConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/assembler/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52802
+    - PartyID: 3
+      CACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org3/ca/ca-cert.pem
+      TLSCACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org3/tlsca/tlsca-cert.pem
+      RouterConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52809
+      BatchersConfig:
+        - ShardID: 1
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher1/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher1/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52810
+        - ShardID: 2
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher2/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher2/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52811
+      ConsenterConfig:
+        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/signing-cert.pem
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52808
+      AssemblerConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/assembler/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52807
+    - PartyID: 4
+      CACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org4/ca/ca-cert.pem
+      TLSCACerts:
+        - /var/dec-trust/crypto/ordererOrganizations/Org4/tlsca/tlsca-cert.pem
+      RouterConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/router/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52814
+      BatchersConfig:
+        - ShardID: 1
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher1/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher1/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52815
+        - ShardID: 2
+          PublicKey: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher2/signing-cert.pem
+          TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher2/tls-cert.pem
+          Host: 127.0.0.1
+          Port: 52816
+      ConsenterConfig:
+        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/consenter/signing-cert.pem
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/consenter/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52813
+      AssemblerConfig:
+        TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/assembler/tls-cert.pem
+        Host: 127.0.0.1
+        Port: 52812
+Consensus:
+  SmartBFT:
+    RequestBatchMaxInterval: 50ms
+    RequestForwardTimeout: 2s
+    RequestComplainTimeout: 20s
+    RequestAutoRemoveTimeout: 3m0s
+    ViewChangeResendInterval: 5s
+    ViewChangeTimeout: 20s
+    LeaderHeartbeatTimeout: 1m0s
+    CollectTimeout: 1s
+    IncomingMessageBufferSize: 200
+    RequestPoolSize: 400
+    LeaderHeartbeatCount: 10
+Batching:
+    BatchTimeout: 500ms
+    BatchSize:
+        MaxMessageCount: 1000
+        AbsoluteMaxBytes: 10485760
+        PreferredMaxBytes: 2097152

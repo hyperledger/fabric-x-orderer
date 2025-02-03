@@ -32,7 +32,7 @@ type GeneralConfig struct {
 	// ListenAddress is the IP on which to bind to listen
 	ListenAddress string `yaml:"ListenAddress,omitempty"`
 	// ListenPort is the port on which to bind to listen
-	ListenPort int `yaml:"ListenPort,omitempty"`
+	ListenPort uint32 `yaml:"ListenPort,omitempty"`
 	// TLSConfig is the TLS settings for the GRPC server
 	TLSConfig TLSConfig `yaml:"TLS,omitempty"`
 	// Keepalive is the Keepalive settings for the GRPC server.

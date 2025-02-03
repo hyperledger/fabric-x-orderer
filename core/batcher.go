@@ -62,7 +62,7 @@ type BatchLedger interface {
 
 var (
 	gap                 = types.BatchSequence(10)
-	defaultBatchTimeout = time.Millisecond * 500
+	DefaultBatchTimeout = time.Millisecond * 500
 )
 
 type Batcher struct {
@@ -97,7 +97,7 @@ type Batcher struct {
 
 func (b *Batcher) Start() {
 	if b.BatchTimeout == 0 {
-		b.BatchTimeout = defaultBatchTimeout
+		b.BatchTimeout = DefaultBatchTimeout
 	}
 
 	b.stopChan = make(chan struct{})

@@ -93,7 +93,7 @@ func TestARMALocalConfigGeneration(t *testing.T) {
 	networkConfig := generateNetworkConfig(t)
 
 	// 2.
-	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir)
+	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
 	require.NoError(t, err)
 	require.NotNil(t, networkLocalConfig)
 }
@@ -105,7 +105,7 @@ func TestARMALocalConfigLoading(t *testing.T) {
 
 	networkConfig := generateNetworkConfig(t)
 
-	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir)
+	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
 	require.NoError(t, err)
 	require.NotNil(t, networkLocalConfig)
 
