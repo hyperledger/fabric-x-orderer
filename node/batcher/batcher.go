@@ -47,6 +47,10 @@ type StateReplicator interface {
 	ReplicateState() <-chan *core.State
 }
 
+type Net interface {
+	Stop()
+}
+
 type Batcher struct {
 	batcherDeliverService *BatcherDeliverService
 	stateReplicator       StateReplicator
@@ -55,6 +59,8 @@ type Batcher struct {
 	batcherCerts2IDs      map[string]types.PartyID
 	consensusStreams      []protos.Consensus_NotifyEventClient
 	connections           []*grpc.ClientConn
+	Net                   Net
+	Ledger                *node_ledger.BatchLedgerArray
 	config                node_config.BatcherNodeConfig
 	batchers              []node_config.BatcherInfo
 	privateKey            *ecdsa.PrivateKey
@@ -92,6 +98,8 @@ func (b *Batcher) Stop() {
 	for len(b.stateChan) > 0 {
 		<-b.stateChan // drain state channel
 	}
+	b.Net.Stop()
+	b.Ledger.Close()
 	b.running.Wait()
 }
 
@@ -260,12 +268,14 @@ func (b *Batcher) indexTLSCerts() {
 	}
 }
 
-func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger core.BatchLedger, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator) *Batcher {
+func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, net Net) *Batcher {
 	b := &Batcher{
 		batcherDeliverService: ds,
 		stateReplicator:       sr,
 		privateKey:            createSigner(logger, config.SigningPrivateKey),
 		logger:                logger,
+		Net:                   net,
+		Ledger:                ledger,
 		batcherCerts2IDs:      make(map[string]types.PartyID),
 		config:                config,
 		tlsKey:                config.TLSPrivateKeyFile,
@@ -600,7 +610,7 @@ func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, dige
 	return baf, nil
 }
 
-func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger) *Batcher {
+func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net Net) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
 	var parties []types.PartyID
@@ -629,7 +639,7 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger) *Bat
 
 	cr := CreateConsensusReplicator(conf, logger)
 
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, cr)
+	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, cr, net)
 
 	batcher.initConsensusConnections()
 	batcher.connectToPrimaryIfNeeded()

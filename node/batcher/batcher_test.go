@@ -134,7 +134,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		sr.ReplicateStateReturns(stateChan)
 		stateChannels = append(stateChannels, stateChan)
 
-		batcher := batcher.NewBatcher(logger, conf, ledger, bp, deliveryService, sr)
+		batcher := batcher.NewBatcher(logger, conf, ledger, bp, deliveryService, sr, batcherNodes[i])
 		batchers = append(batchers, batcher)
 
 		batcher.Run()
