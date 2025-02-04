@@ -64,8 +64,6 @@ type Batcher struct {
 	config                node_config.BatcherNodeConfig
 	batchers              []node_config.BatcherInfo
 	privateKey            *ecdsa.PrivateKey
-	tlsKey                []byte
-	tlsCert               []byte
 	stateRef              atomic.Value
 	stateChan             chan *core.State
 	running               sync.WaitGroup
@@ -74,11 +72,7 @@ type Batcher struct {
 
 	primaryLock         sync.Mutex
 	primaryID           types.PartyID
-	primaryEndpoint     string
-	primaryTLSCA        []node_config.RawBytes
-	primaryClient       protos.AckServiceClient
 	primaryClientStream protos.AckService_NotifyAckClient
-	primaryConn         *grpc.ClientConn
 }
 
 func (b *Batcher) Run() {
@@ -122,11 +116,7 @@ func (b *Batcher) replicateState() {
 			if b.primaryID != primaryID {
 				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
 				b.primaryID = primaryID
-				b.setupPrimaryEndpoint()
-				b.primaryConn = nil
-				b.primaryClient = nil
 				b.primaryClientStream = nil
-				b.connectToPrimaryIfNeeded()
 			}
 			b.primaryLock.Unlock()
 		case <-b.stopChan:
@@ -278,8 +268,6 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 		Ledger:                ledger,
 		batcherCerts2IDs:      make(map[string]types.PartyID),
 		config:                config,
-		tlsKey:                config.TLSPrivateKeyFile,
-		tlsCert:               config.TLSCertificateFile,
 	}
 
 	b.batchers = batchersFromConfig(config)
@@ -318,8 +306,6 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 		TotalOrderBAF:    b.broadcastEvent,
 		AckBAF:           b.sendAck,
 	}
-
-	b.setupPrimaryEndpoint()
 
 	return b
 }
@@ -377,19 +363,6 @@ func (b *Batcher) attestBatch(seq types.BatchSequence, primary types.PartyID, sh
 	return baf
 }
 
-func (b *Batcher) setupPrimaryEndpoint() {
-	for _, batcher := range b.batchers {
-		if batcher.PartyID == b.primaryID {
-			b.primaryEndpoint = batcher.Endpoint
-			b.primaryTLSCA = batcher.TLSCACerts
-			b.logger.Infof("Primary for shard %d: %d %s", b.config.ShardId, b.primaryID, b.primaryEndpoint)
-			return
-		}
-	}
-
-	b.logger.Panicf("Could not find primaryID %d of shard %d within %v", b.primaryID, b.config.ShardId, b.batchers)
-}
-
 func (b *Batcher) GetPrimaryID() types.PartyID {
 	b.primaryLock.Lock()
 	defer b.primaryLock.Unlock()
@@ -444,49 +417,81 @@ func batchersFromConfig(config node_config.BatcherNodeConfig) []node_config.Batc
 }
 
 func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
-	b.primaryLock.Lock()
-	b.connectToPrimaryIfNeeded()
+	t1 := time.Now()
 
-	if b.primaryClientStream == nil {
-		b.primaryLock.Unlock()
+	defer func() {
+		b.logger.Debugf("Sending ack took %v", time.Since(t1))
+	}()
+
+	stream, err := b.getStreamToPrimaryForAck()
+	if err != nil {
+		b.logger.Errorf("Failed getting stream to primary for ack; error: %v", err)
 		return
 	}
 
-	stream := b.primaryClientStream
-	b.primaryLock.Unlock()
-
-	err := stream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)})
-	if err != nil {
+	if err := stream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)}); err != nil {
 		b.primaryLock.Lock()
-		defer b.primaryLock.Unlock()
-		b.logger.Errorf("Failed sending ack to %s", b.primaryEndpoint)
+		b.logger.Errorf("Failed sending ack to primary %d; error: %v", b.primaryID, err)
 		b.primaryClientStream = nil
+		b.primaryLock.Unlock()
 	}
 }
 
-func (b *Batcher) connectToPrimaryIfNeeded() {
-	if b.primaryConn == nil {
-		cc := b.clientConfig(b.primaryTLSCA)
+func (b *Batcher) getStreamToPrimaryForAck() (protos.AckService_NotifyAckClient, error) {
+	b.primaryLock.Lock()
+	for b.primaryClientStream == nil {
+		primary := b.primaryID
+		b.primaryLock.Unlock()
 
-		conn, err := cc.Dial(b.primaryEndpoint)
+		primaryStream, err := b.ackStreamFactory(primary)
 		if err != nil {
-			b.logger.Errorf("Failed connecting to %s: %v", b.primaryEndpoint, err)
-			return
+			return nil, errors.Errorf("Failed connecting to primary %d; error: %v", primary, err)
 		}
 
-		b.primaryConn = conn
-		b.primaryClient = protos.NewAckServiceClient(conn)
+		b.primaryLock.Lock()
+		if primary != b.primaryID { // if primary changed again then reconnect
+			b.primaryClientStream = nil
+			continue
+		}
+		b.primaryClientStream = primaryStream
+	}
+	stream := b.primaryClientStream
+	b.primaryLock.Unlock()
+	return stream, nil
+}
+
+func (b *Batcher) ackStreamFactory(primary types.PartyID) (protos.AckService_NotifyAckClient, error) {
+	primaryEndpoint := ""
+	var primaryTLSCACerts []node_config.RawBytes
+	for _, batcher := range b.batchers {
+		if batcher.PartyID == primary {
+			b.logger.Debugf("Primary for shard %d is: %d (endpoint: %s)", b.config.ShardId, primary, batcher.Endpoint)
+			primaryEndpoint = batcher.Endpoint
+			primaryTLSCACerts = batcher.TLSCACerts
+			break
+		}
 	}
 
-	if b.primaryClientStream == nil {
-		stream, err := b.primaryClient.NotifyAck(context.Background())
-		if err != nil {
-			b.logger.Errorf("Failed creating ack stream: %d %d, err: %v", b.config.ShardId, b.config.PartyId, err)
-			return
-		}
-		b.primaryClientStream = stream
-		b.logger.Infof("Created ack stream: %d %d ", b.config.ShardId, b.config.PartyId)
+	if primaryEndpoint == "" {
+		b.logger.Panicf("Could not find primaryID %d of shard %d within %v", primary, b.config.ShardId, b.batchers)
+		return nil, errors.Errorf("Could not find primaryID %d of shard %d within %v", primary, b.config.ShardId, b.batchers)
 	}
+
+	cc := b.clientConfig(primaryTLSCACerts)
+
+	conn, err := cc.Dial(primaryEndpoint)
+	if err != nil {
+		return nil, errors.Errorf("Failed connecting to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
+	}
+
+	primaryClient := protos.NewAckServiceClient(conn)
+
+	stream, err := primaryClient.NotifyAck(context.Background())
+	if err != nil {
+		return nil, errors.Errorf("Failed creating ack stream to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
+	}
+	b.logger.Debugf("Created ack stream to primary (party ID = %d)", primary)
+	return stream, nil
 }
 
 func (b *Batcher) broadcastEvent(baf core.BatchAttestationFragment) {
@@ -581,8 +586,8 @@ func (b *Batcher) clientConfig(TlsCACert []node_config.RawBytes) comm.ClientConf
 			ClientTimeout:  time.Hour,
 		},
 		SecOpts: comm.SecureOptions{
-			Key:               b.tlsKey,
-			Certificate:       b.tlsCert,
+			Key:               b.config.TLSPrivateKeyFile,
+			Certificate:       b.config.TLSCertificateFile,
 			RequireClientCert: true,
 			UseTLS:            true,
 			ServerRootCAs:     tlsCAs,
@@ -642,7 +647,6 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net 
 	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, cr, net)
 
 	batcher.initConsensusConnections()
-	batcher.connectToPrimaryIfNeeded()
 
 	return batcher
 }
