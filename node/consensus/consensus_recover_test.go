@@ -4,8 +4,10 @@ import (
 	"testing"
 
 	"arma/node/comm/tlsgen"
+	"arma/testutil"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/grpclog"
 )
 
 var (
@@ -16,7 +18,7 @@ var (
 )
 
 func TestCreateOneConsensusNode(t *testing.T) {
-	t.Parallel()
+	grpclog.SetLoggerV2(&testutil.SilentLogger{})
 
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
