@@ -496,25 +496,9 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 }
 
 func (c *Consensus) pickEndpoint() string {
-	leader := c.BFT.GetLeaderID()
-	c.Logger.Debugf("Leader ID : %d", leader)
-	for _, node := range c.Config.Consenters {
-		if leader == 0 {
-			c.Logger.Debugf("GetLeaderID() returned 0; leader is unknown")
-			break
-		}
-		if c.BFT.Config.SelfID == leader {
-			c.Logger.Debugf("I am the leader (ID=%d)", leader)
-			break
-		}
-		if uint64(node.PartyID) == leader {
-			c.Logger.Debugf("Found leader (ID=%d); returning endpoint : %s", leader, node.Endpoint)
-			return node.Endpoint
-		}
-	}
 	var r int
 	for {
-		r = rand.Intn(len(c.Config.Consenters)) // if leader was not found pick a node randomly
+		r = rand.Intn(len(c.Config.Consenters)) // pick a node randomly
 		if c.Config.PartyId != c.Config.Consenters[r].PartyID {
 			break // make sure not to pick myself
 		}

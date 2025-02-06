@@ -549,7 +549,7 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	err = recoverNode(t, setup, 2, ca)
 	require.NoError(t, err)
 
-	// Commit another request
+	// Commit more requests
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
 	require.NoError(t, err)
 	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
@@ -563,6 +563,12 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(3), b5.Header.Number)
 	b6 = <-setup.listeners[6].c
 	require.Equal(t, uint64(3), b6.Header.Number)
+
+	// Ensure node recovers correctly
+	b2 = <-setup.listeners[2].c
+	require.Equal(t, uint64(2), b2.Header.Number)
+	b2 = <-setup.listeners[2].c
+	require.Equal(t, uint64(3), b2.Header.Number)
 
 	// Restart the other node
 	err = recoverNode(t, setup, 0, ca)
@@ -590,10 +596,6 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(3), b.Header.Number)
 	b = <-setup.listeners[0].c
 	require.Equal(t, uint64(4), b.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(2), b2.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(3), b2.Header.Number)
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(4), b2.Header.Number)
 
