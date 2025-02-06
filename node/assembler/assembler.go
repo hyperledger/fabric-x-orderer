@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-
 	"arma/common/types"
+	"arma/common/utils"
 	"arma/core"
 	"arma/node/config"
 	"arma/node/delivery"
 	node_ledger "arma/node/ledger"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
@@ -66,6 +66,13 @@ func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block,
 	al, err := node_ledger.NewAssemblerLedger(logger, ledger)
 	if err != nil {
 		logger.Panicf("Failed creating assembler: %v", err)
+	}
+
+	if ledger.Height() == 0 {
+		if genesisBlock == nil {
+			genesisBlock = utils.EmptyGenesisBlock("arma")
+		}
+		al.AppendConfig(genesisBlock, 0)
 	}
 
 	shardIds := shardsFromAssemblerConfig(config)

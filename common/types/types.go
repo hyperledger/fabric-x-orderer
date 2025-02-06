@@ -1,8 +1,13 @@
 package types
 
+import "math"
+
 // ShardID identifies a shard, should be >0.
 // Value math.MaxUint16 is reserved.
 type ShardID uint16
+
+// ShardIDConsensus is used to encode a config TX / batch emitted by consensus.
+const ShardIDConsensus ShardID = math.MaxUint16
 
 // PartyID identifies a party, must be >0.
 type PartyID uint16

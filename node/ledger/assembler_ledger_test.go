@@ -4,6 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"arma/common/utils"
+
+	"github.com/hyperledger/fabric/protoutil"
+
 	"arma/common/types"
 	"arma/core"
 	"arma/node/consensus/state"
@@ -39,20 +43,24 @@ func TestAssemblerLedger_Append(t *testing.T) {
 	require.NoError(t, err)
 	defer al.Close()
 
+	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+	assert.Equal(t, uint64(1), al.GetTxCount())
+	assert.Equal(t, uint64(1), al.Ledger.Height())
+
 	t.Run("three batches", func(t *testing.T) {
 		batches, ordInfos := createBatchesAndOrdInfo(t, 3)
 
 		al.Append(batches[0], ordInfos[0])
-		assert.Equal(t, uint64(2), al.GetTxCount())
-		assert.Equal(t, uint64(1), al.Ledger.Height())
-
-		al.Append(batches[1], ordInfos[1])
-		assert.Equal(t, uint64(4), al.GetTxCount())
+		assert.Equal(t, uint64(3), al.GetTxCount())
 		assert.Equal(t, uint64(2), al.Ledger.Height())
 
-		al.Append(batches[2], ordInfos[2])
-		assert.Equal(t, uint64(6), al.GetTxCount())
+		al.Append(batches[1], ordInfos[1])
+		assert.Equal(t, uint64(5), al.GetTxCount())
 		assert.Equal(t, uint64(3), al.Ledger.Height())
+
+		al.Append(batches[2], ordInfos[2])
+		assert.Equal(t, uint64(7), al.GetTxCount())
+		assert.Equal(t, uint64(4), al.Ledger.Height())
 	})
 }
 
@@ -64,20 +72,39 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 	require.NoError(t, err)
 	defer al.Close()
 
+	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+	assert.Equal(t, uint64(1), al.GetTxCount())
+	assert.Equal(t, uint64(1), al.Ledger.Height())
+
 	batches, ordInfos := createBatchesAndOrdInfo(t, 2)
 
 	al.Append(batches[0], ordInfos[0])
 	al.Append(batches[1], ordInfos[1])
-	assert.Equal(t, uint64(4), al.GetTxCount())
-	assert.Equal(t, uint64(2), al.Ledger.Height())
-	expectedTransactionCount := []int{len(batches[0].Requests()), len(batches[0].Requests()) + len(batches[1].Requests())}
+	assert.Equal(t, uint64(5), al.GetTxCount())
+	assert.Equal(t, uint64(3), al.Ledger.Height())
+	expectedTransactionCount := []int{1 + len(batches[0].Requests()), 1 + len(batches[0].Requests()) + len(batches[1].Requests())}
 
-	for n := uint64(0); n < 2; n++ {
-		block, err := al.Ledger.RetrieveBlockByNumber(n)
+	for bn := uint64(0); bn < 3; bn++ {
+		block, err := al.Ledger.RetrieveBlockByNumber(bn)
 		assert.NoError(t, err)
 		batchID, ordInfo, transactionCount, err := node_ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
 		assert.NoError(t, err)
 
+		t.Logf("batchID: %v", batchID)
+		t.Logf("ordInfo: %v", ordInfo)
+
+		isConf := protoutil.IsConfigBlock(block)
+		if bn == 0 {
+			require.True(t, isConf)
+			assert.Equal(t, types.ShardIDConsensus, batchID.Shard())
+			assert.Equal(t, types.DecisionNum(0), ordInfo.DecisionNum)
+			assert.Equal(t, uint64(1), transactionCount)
+			continue
+		} else {
+			require.False(t, isConf)
+		}
+
+		n := bn - 1
 		assert.Equal(t, batches[n].Digest(), batchID.Digest())
 		assert.Equal(t, batches[n].Shard(), batchID.Shard())
 		assert.Equal(t, batches[n].Seq(), batchID.Seq())
@@ -100,14 +127,19 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	require.NoError(t, err)
 	defer al.Close()
 
-	batches, ordInfos := createBatchesAndOrdInfo(t, 2)
+	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+	ordInfo, err := al.LastOrderingInfo()
+	require.NoError(t, err)
+	require.NotNil(t, ordInfo)
+	assert.Equal(t, types.DecisionNum(0), ordInfo.DecisionNum)
 
+	batches, ordInfos := createBatchesAndOrdInfo(t, 2)
 	al.Append(batches[0], ordInfos[0])
 	al.Append(batches[1], ordInfos[1])
-	assert.Equal(t, uint64(4), al.GetTxCount())
-	assert.Equal(t, uint64(2), al.Ledger.Height())
+	assert.Equal(t, uint64(5), al.GetTxCount())
+	assert.Equal(t, uint64(3), al.Ledger.Height())
 
-	ordInfo, err := al.LastOrderingInfo()
+	ordInfo, err = al.LastOrderingInfo()
 	require.NoError(t, err)
 
 	assert.Equal(t, ordInfos[1].Hash(), ordInfo.Hash())
@@ -126,6 +158,8 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		require.NoError(t, err)
 		defer al.Close()
 
+		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+
 		num := 128
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
 
@@ -133,8 +167,8 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 			al.Append(batches[n], ordInfos[n])
 		}
 
-		assert.Equal(t, uint64(num*2), al.GetTxCount())
-		assert.Equal(t, uint64(num), al.Ledger.Height())
+		assert.Equal(t, uint64(1+num*2), al.GetTxCount())
+		assert.Equal(t, uint64(1+num), al.Ledger.Height())
 
 		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Hour)
 		assert.NoError(t, err)
@@ -155,8 +189,10 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		require.NoError(t, err)
 		defer al.Close()
 
-		assert.Equal(t, uint64(0), al.GetTxCount())
-		assert.Equal(t, uint64(0), al.Ledger.Height())
+		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+
+		assert.Equal(t, uint64(1), al.GetTxCount())
+		assert.Equal(t, uint64(1), al.Ledger.Height())
 
 		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Hour)
 		assert.NoError(t, err)
@@ -171,13 +207,15 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		require.NoError(t, err)
 		defer al.Close()
 
+		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+
 		num := 8
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
 
 		for n := 0; n < num; n++ {
 			al.Append(batches[n], ordInfos[n])
 		}
-		assert.Equal(t, uint64(8), al.Ledger.Height())
+		assert.Equal(t, uint64(9), al.Ledger.Height())
 
 		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Hour)
 		assert.NoError(t, err)
@@ -198,13 +236,15 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		require.NoError(t, err)
 		defer al.Close()
 
+		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+
 		num := 10
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
 
 		for n := 0; n < num; n++ {
 			al.Append(batches[n], ordInfos[n])
 		}
-		assert.Equal(t, uint64(num), al.Ledger.Height())
+		assert.Equal(t, uint64(1+num), al.Ledger.Height())
 
 		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3, 4}, time.Nanosecond)
 		assert.NoError(t, err)
@@ -275,7 +315,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.Orde
 
 		oi := &state.OrderingInformation{
 			BlockHeader: &state.BlockHeader{
-				Number:   n,
+				Number:   n + 1,
 				PrevHash: nil,
 				Digest:   fb.Digest(),
 			},
@@ -292,6 +332,9 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.Orde
 		}
 		if n > 0 {
 			oi.BlockHeader.PrevHash = ordInfos[n-1].Hash()
+		} else {
+			genesis := utils.EmptyGenesisBlock("arma")
+			oi.BlockHeader.PrevHash = protoutil.BlockHeaderHash(genesis.Header)
 		}
 
 		batches = append(batches, fb)

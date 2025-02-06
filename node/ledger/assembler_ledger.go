@@ -149,6 +149,44 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
 	}
 }
 
+func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum) {
+	t1 := time.Now()
+	defer func() {
+		l.Logger.Infof("Appended config block %d, decision %d, in %s",
+			configBlock.GetHeader().GetNumber(), decisionNum, time.Since(t1))
+	}()
+
+	if !protoutil.IsConfigBlock(configBlock) {
+		l.Logger.Panicf("attempting to AppendConfig a block which is not a config block: %d", configBlock.GetHeader().GetNumber())
+	}
+
+	// len(configBlock.GetData().GetData()) = should always be a single TX
+	// shardID=math.MaxUint16 means consensus
+	transactionCount := atomic.AddUint64(&l.transactionCount, 1)
+	batchID := types.NewSimpleBatch(0, types.ShardIDConsensus, 0, nil, nil)
+	ordInfo := &state.OrderingInformation{
+		DecisionNum: decisionNum,
+		BatchIndex:  0,
+		BatchCount:  1,
+	}
+	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batchID, ordInfo, transactionCount)
+	if err != nil {
+		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+	}
+	configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
+
+	l.Logger.Debugf("Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d>",
+		configBlock.Header,                                // Header
+		len(configBlock.GetData().GetData()),              // Data
+		batchID.Primary(), batchID.Shard(), batchID.Seq(), // Metadata batchID
+		ordInfo.DecisionNum, ordInfo.BatchIndex, ordInfo.BatchCount, // Metadata ordering
+	)
+
+	if err := l.Ledger.Append(configBlock); err != nil {
+		panic(err)
+	}
+}
+
 // LastOrderingInfo returns the ordering information from the last block.
 // If the ledger is empty it returns `nil,nil`.
 //

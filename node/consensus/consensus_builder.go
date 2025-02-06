@@ -44,7 +44,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, genesisBlock *common.Block
 		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	initialState, metadata, lastProposal, lastSigs := getInitialStateAndMetadata(conf, consLedger)
+	initialState, metadata, lastProposal, lastSigs := getInitialStateAndMetadata(conf, genesisBlock, consLedger)
 
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
@@ -210,11 +210,14 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(config config.ConsenterNodeConfig, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *types.Proposal, []types.Signature) {
+func getInitialStateAndMetadata(config config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *types.Proposal, []types.Signature) {
 	height := ledger.Height()
 	if height == 0 {
 		initState := initialStateFromConfig(config)
-		createAndAppendGenesisBlock(initState, ledger)
+		if genesisBlock == nil {
+			genesisBlock = utils.EmptyGenesisBlock("arma")
+		}
+		appendGenesisBlock(genesisBlock, initState, ledger)
 		return initState, &smartbftprotos.ViewMetadata{}, nil, nil
 	}
 
@@ -267,8 +270,7 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) *core.State {
 	return &initState
 }
 
-func createAndAppendGenesisBlock(initState *core.State, ledger *ledger.ConsensusLedger) {
-	genesisBlock := utils.EmptyGenesisBlock("arma") // TODO load a genesis block
+func appendGenesisBlock(genesisBlock *common.Block, initState *core.State, ledger *ledger.ConsensusLedger) {
 	genesisBlocks := make([]state.AvailableBlock, 1)
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
 
