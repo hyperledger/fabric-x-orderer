@@ -85,7 +85,7 @@ func TestABCR(t *testing.T) {
 	}
 
 	aLogger := testutil.CreateLogger(t, 1)
-	assembler := assembler.NewAssembler(assemblerConf, aLogger)
+	assembler := assembler.NewAssembler(assemblerConf, nil, aLogger)
 
 	assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
@@ -278,7 +278,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 			Directory:          dir,
 		}
 
-		c := consensus.CreateConsensus(conf, logger)
+		c := consensus.CreateConsensus(conf, nil, logger)
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)

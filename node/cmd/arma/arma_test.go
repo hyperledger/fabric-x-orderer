@@ -12,9 +12,12 @@ import (
 	"sync"
 	"testing"
 
-	"arma/node/config"
+	"arma/common/utils"
+
+	"github.com/hyperledger/fabric/protoutil"
 
 	"arma/node/comm/tlsgen"
+	"arma/node/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,6 +101,56 @@ func TestAssembler(t *testing.T) {
 
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Assembler listening on [::]:6023" {
+			wg.Done()
+		}
+		return nil
+	}))
+
+	cli := NewCLI()
+	cli.Run([]string{"assembler", "--config", configPath})
+	wg.Wait()
+}
+
+func TestAssemblerWithBlock(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
+	require.NoError(t, err)
+
+	err = config.NodeConfigToYAML(config.AssemblerNodeConfig{
+		PartyId:            1,
+		Directory:          dir,
+		TLSPrivateKeyFile:  ckp.Key,
+		TLSCertificateFile: ckp.Cert,
+		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}},
+		ListenAddress:      "127.0.0.1:6043",
+	}, configPath)
+	require.NoError(t, err)
+
+	block := utils.EmptyGenesisBlock("arma")
+	blockBytes := protoutil.MarshalOrPanic(block)
+	blockPath := filepath.Join(dir, "genesis.block")
+	err = os.WriteFile(blockPath, blockBytes, 0o600)
+	require.NoError(t, err)
+
+	originalLogger := logger
+	defer func() {
+		logger = originalLogger
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+		if entry.Message == "Assembler listening on 127.0.0.1:6043" {
 			wg.Done()
 		}
 		return nil
@@ -217,6 +270,73 @@ func TestConsensus(t *testing.T) {
 
 	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Consensus listening on [::]:6025" {
+			wg.Done()
+		}
+		return nil
+	}))
+
+	cli := NewCLI()
+	cli.Run([]string{"consensus", "--config", configPath})
+	wg.Wait()
+}
+
+func TestConsensusWithBlock(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+
+	pkBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	require.NoError(t, err)
+
+	err = config.NodeConfigToYAML(config.ConsenterNodeConfig{
+		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: keyBytes}),
+		PartyId:            1,
+		Directory:          dir,
+		TLSPrivateKeyFile:  ckp.Key,
+		TLSCertificateFile: ckp.Cert,
+		Consenters: []config.ConsenterInfo{
+			{PartyID: 1, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
+		},
+		Shards: []config.ShardInfo{
+			{ShardId: 1, Batchers: []config.BatcherInfo{
+				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
+			}},
+		},
+		ListenAddress: "127.0.0.1:6045",
+	}, configPath)
+	require.NoError(t, err)
+
+	block := utils.EmptyGenesisBlock("arma")
+	blockBytes := protoutil.MarshalOrPanic(block)
+	blockPath := filepath.Join(dir, "genesis.block")
+	err = os.WriteFile(blockPath, blockBytes, 0o600)
+	require.NoError(t, err)
+
+	originalLogger := logger
+	defer func() {
+		logger = originalLogger
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+		if entry.Message == "Consensus listening on 127.0.0.1:6045" {
 			wg.Done()
 		}
 		return nil

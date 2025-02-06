@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+	"path/filepath"
 
 	"arma/common/types"
 	"arma/node"
@@ -15,7 +17,9 @@ import (
 	"arma/node/router"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
@@ -55,45 +59,31 @@ func (cli *CLI) Command(name, help string, onCmd func(configFile *os.File)) {
 }
 
 func (cli *CLI) configureNodesCommands() {
-	loadConfig := func(configFile *os.File) []byte {
-		stat, err := configFile.Stat()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed opening file %s: %v", configFile.Name(), err)
-			os.Exit(2)
-		}
-
-		content := make([]byte, stat.Size())
-		_, err = io.ReadFull(configFile, content)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed reading file%s: %v", configFile.Name(), err)
-			os.Exit(2)
-		}
-
-		return content
-	}
-
 	for name, f := range map[string]func(configFile *os.File){
 		"router":    launchRouter(cli.stop, loadConfig, logger),
-		"assembler": launchAssembler(cli.stop, loadConfig),
+		"assembler": launchAssembler(cli.stop, loadConfigAndGenesis),
 		"batcher":   launchBatcher(cli.stop, loadConfig),
-		"consensus": launchConsensus(cli.stop, loadConfig),
+		"consensus": launchConsensus(cli.stop, loadConfigAndGenesis),
 	} {
 		cli.Command(name, help[name], f)
 	}
 }
 
-func launchAssembler(stop chan struct{}, loadConfig func(configFile *os.File) []byte) func(configFile *os.File) {
+func launchAssembler(
+	stop chan struct{},
+	loadConfigAndGenesis func(configFile *os.File) ([]byte, *common.Block),
+) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent := loadConfig(configFile)
+		configContent, genesisBlock := loadConfigAndGenesis(configFile)
 		conf := parseAssemblerConfig(configContent)
-		assembler := assembler.NewAssembler(conf, logger)
+		assembler := assembler.NewAssembler(conf, genesisBlock, logger)
 
 		srv := node.CreateGRPCAssembler(conf)
 
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
 
 		go func() {
-			srv.Start()
+			_ = srv.Start()
 			close(stop)
 		}()
 
@@ -101,11 +91,14 @@ func launchAssembler(stop chan struct{}, loadConfig func(configFile *os.File) []
 	}
 }
 
-func launchConsensus(stop chan struct{}, loadConfig func(configFile *os.File) []byte) func(configFile *os.File) {
+func launchConsensus(
+	stop chan struct{},
+	loadConfigAndGenesis func(configFile *os.File) ([]byte, *common.Block),
+) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent := loadConfig(configFile)
+		configContent, genesisBlock := loadConfigAndGenesis(configFile)
 		conf := parseConsensusConfig(configContent)
-		consensus := consensus.CreateConsensus(conf, logger)
+		consensus := consensus.CreateConsensus(conf, genesisBlock, logger)
 		defer consensus.Start()
 
 		srv := node.CreateGRPCConsensus(conf)
@@ -170,12 +163,11 @@ func (cli *CLI) Run(args []string) <-chan struct{} {
 	command := kingpin.MustParse(cli.app.Parse(args))
 	f, exists := cli.dispatchers[command]
 	if !exists {
-		fmt.Fprintf(os.Stderr, "command %s doesn't exist", command)
+		fmt.Fprintf(os.Stderr, "command %s doesn't exist \n", command)
 		os.Exit(2)
 	}
-
 	if *configFile == nil {
-		fmt.Fprintf(os.Stderr, "config parameter missing")
+		fmt.Fprintf(os.Stderr, "config parameter missing \n")
 		os.Exit(2)
 	}
 	f(*configFile)
@@ -185,16 +177,80 @@ func (cli *CLI) Run(args []string) <-chan struct{} {
 
 func NewCLI() *CLI {
 	app := kingpin.New("Arma", "Launches an Arma node (Router | Assembler | Batcher | Consensus)")
-	cli := &CLI{app: app, dispatchers: make(map[string]func(configFile *os.File)), stop: make(chan struct{})}
+	cli := &CLI{
+		app:         app,
+		dispatchers: make(map[string]func(configFile *os.File)),
+		stop:        make(chan struct{}),
+	}
 	cli.configureNodesCommands()
 	return cli
+}
+
+func loadConfig(configFile *os.File) []byte {
+	stat, err := configFile.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed opening file %s: %v \n", configFile.Name(), err)
+		os.Exit(2)
+	}
+
+	content := make([]byte, stat.Size())
+	_, err = io.ReadFull(configFile, content)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed reading file%s: %v \n", configFile.Name(), err)
+		os.Exit(2)
+	}
+
+	return content
+}
+
+func loadConfigAndGenesis(configFile *os.File) ([]byte, *common.Block) {
+	content := loadConfig(configFile)
+
+	absConfigFileName, err := filepath.Abs(configFile.Name())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed extracting absolute path from file %s: %v \n", configFile.Name(), err)
+		os.Exit(2)
+	}
+	configPath, _ := filepath.Split(absConfigFileName)
+	blockFileName := path.Join(configPath, "genesis.block")
+	statBlock, err := os.Stat(blockFileName)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(os.Stdout, "genesis block file does not exist in config path: %s (ignoring) \n", configPath)
+			return content, nil
+		} else {
+			fmt.Fprintf(os.Stderr, "failed stat file %s: %v \n", blockFileName, err)
+			os.Exit(2)
+		}
+	}
+
+	blockFile, err := os.Open(blockFileName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "can not open genesis block file from: %s (ignoring): %v \n", blockFileName, err)
+		return content, nil
+	}
+
+	genesisBlockBytes := make([]byte, statBlock.Size())
+	_, err = io.ReadFull(blockFile, genesisBlockBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed reading file %s: %v \n", blockFile.Name(), err)
+		os.Exit(2)
+	}
+
+	block, err := protoutil.UnmarshalBlock(genesisBlockBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed unmarshalling block %s: %v \n", blockFile.Name(), err)
+		os.Exit(2)
+	}
+
+	return content, block
 }
 
 func parseRouterConfig(rawConfig []byte) config.RouterNodeConfig {
 	var conf config.RouterNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing router config: %v", err)
+		fmt.Fprintf(os.Stderr, "failed parsing router config: %v \n", err)
 		os.Exit(2)
 	}
 
@@ -205,7 +261,7 @@ func parseAssemblerConfig(rawConfig []byte) config.AssemblerNodeConfig {
 	var conf config.AssemblerNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing assembler config: %v", err)
+		fmt.Fprintf(os.Stderr, "failed parsing assembler config: %v \n", err)
 		os.Exit(2)
 	}
 
@@ -220,7 +276,7 @@ func parseBatcherConfig(rawConfig []byte) config.BatcherNodeConfig {
 	var conf config.BatcherNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing batcher config: %v", err)
+		fmt.Fprintf(os.Stderr, "failed parsing batcher config: %v \n", err)
 		os.Exit(2)
 	}
 
@@ -235,7 +291,7 @@ func parseConsensusConfig(rawConfig []byte) config.ConsenterNodeConfig {
 	var conf config.ConsenterNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing consensus config: %v", err)
+		fmt.Fprintf(os.Stderr, "failed parsing consensus config: %v \n", err)
 		os.Exit(2)
 	}
 

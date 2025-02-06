@@ -31,7 +31,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf config.ConsenterNodeConfig, logger arma_types.Logger) *Consensus {
+func CreateConsensus(conf config.ConsenterNodeConfig, genesisBlock *common.Block, logger arma_types.Logger) *Consensus {
+	logger.Infof("Creating consensus, party: %d, address: %s, with genesis block: %t", conf.PartyId, conf.ListenAddress, genesisBlock != nil)
+
 	var currentNodes []uint64
 	for _, node := range conf.Consenters {
 		currentNodes = append(currentNodes, uint64(node.PartyID))

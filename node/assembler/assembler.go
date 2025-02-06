@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+
 	"arma/common/types"
 	"arma/core"
 	"arma/node/config"
@@ -42,7 +44,9 @@ func (a *Assembler) GetTxCount() uint64 {
 	return a.assembler.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
 }
 
-func NewAssembler(config config.AssemblerNodeConfig, logger types.Logger) *Assembler {
+func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block, logger types.Logger) *Assembler {
+	logger.Infof("Creating assembler, party: %d, address: %s, with genesis block: %t", config.PartyId, config.ListenAddress, genesisBlock != nil)
+
 	// Create the ledger
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(config.Directory, -1),

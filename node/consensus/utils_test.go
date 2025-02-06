@@ -154,7 +154,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int) consensusTes
 		conf := makeConf(dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
 
-		c := consensus.CreateConsensus(conf, logger)
+		c := consensus.CreateConsensus(conf, nil, logger)
 		grpcRegisterAndStart(c, consenterNodes[i])
 
 		listener := &storageListener{c: make(chan *common.Block, 100)}
@@ -213,7 +213,7 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []confi
 }
 
 func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsgen.CA) error {
-	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], setup.loggers[nodeIndex])
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], nil, setup.loggers[nodeIndex])
 
 	newConsenterNode := &node{
 		TLSCert: setup.consenterNodes[nodeIndex].TLSCert,
