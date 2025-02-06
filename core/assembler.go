@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/hex"
-	"math"
 	"time"
 
 	"arma/common/types"
@@ -103,7 +102,7 @@ func (a *Assembler) processOrderedBatchAttestations() {
 			oba.OrderingInfo(),
 			ShortDigestString(oba.BatchAttestation().Digest()))
 
-		if oba.BatchAttestation().Shard() == math.MaxUint16 {
+		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
 			a.Logger.Infof("Config decision: shard: %d, primary: %d, Ignoring!", oba.BatchAttestation().Shard(), oba.BatchAttestation().Primary())
 			return
 		}

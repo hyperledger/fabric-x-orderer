@@ -3,7 +3,6 @@ package ledger
 import (
 	"context"
 	"fmt"
-	"math"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -160,9 +159,7 @@ func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum ty
 		l.Logger.Panicf("attempting to AppendConfig a block which is not a config block: %d", configBlock.GetHeader().GetNumber())
 	}
 
-	// len(configBlock.GetData().GetData()) = should always be a single TX
-	// shardID=math.MaxUint16 means consensus
-	transactionCount := atomic.AddUint64(&l.transactionCount, 1)
+	transactionCount := atomic.AddUint64(&l.transactionCount, 1) // len(configBlock.GetData().GetData()) = should always be a single TX
 	batchID := types.NewSimpleBatch(0, types.ShardIDConsensus, 0, nil, nil)
 	ordInfo := &state.OrderingInformation{
 		DecisionNum: decisionNum,
@@ -239,7 +236,7 @@ func (l *AssemblerLedger) BatchFrontier(
 		l.Logger.Debugf("Block %d, Sh %d, Pr %d, Seq %d", block.GetHeader().GetNumber(), batchID.Shard(), batchID.Primary(), batchID.Seq())
 
 		// If it is a config block, we skip it
-		if batchID.Shard() == math.MaxUint16 || batchID.Primary() == 0 {
+		if batchID.Shard() == types.ShardIDConsensus || batchID.Primary() == 0 {
 			continue
 		}
 

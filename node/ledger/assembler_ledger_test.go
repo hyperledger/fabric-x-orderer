@@ -4,11 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"arma/common/utils"
-
-	"github.com/hyperledger/fabric/protoutil"
-
 	"arma/common/types"
+	"arma/common/utils"
 	"arma/core"
 	"arma/node/consensus/state"
 	node_ledger "arma/node/ledger"
@@ -18,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

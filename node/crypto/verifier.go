@@ -5,13 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-	"math"
 
 	"arma/common/types"
 )
-
-// CONSENSUS_CLUSTER_SHARD is a shard ID that identifies the consensus cluster, not a batcher shard.
-const CONSENSUS_CLUSTER_SHARD = types.ShardID(math.MaxUint16)
 
 type ShardPartyKey struct {
 	Shard types.ShardID

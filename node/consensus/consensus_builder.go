@@ -186,7 +186,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 			logger.Panicf("Failed parsing consenter public key: %v", err)
 		}
 
-		verifier[crypto.ShardPartyKey{Shard: crypto.CONSENSUS_CLUSTER_SHARD, Party: arma_types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+		verifier[crypto.ShardPartyKey{Shard: arma_types.ShardIDConsensus, Party: arma_types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
 	}
 
 	for _, shard := range shardInfo {
@@ -280,7 +280,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *core.State, ledge
 			PrevHash: nil,
 			Digest:   genesisDigest,
 		},
-		Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, genesisDigest),
+		Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest),
 	}
 
 	var lastBlockHeader state.BlockHeader

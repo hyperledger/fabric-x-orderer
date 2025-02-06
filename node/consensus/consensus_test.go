@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"math"
 	"math/big"
 	"os"
 	"strings"
@@ -253,7 +252,7 @@ type scheduleEvent struct {
 func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
-	for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
+	for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
 		verifier[crypto.ShardPartyKey{Party: partyID, Shard: shard}] = signer.PublicKey
 	}
 
@@ -330,7 +329,7 @@ func initializeStateAndMetadata(t *testing.T, initState *core.State, ledger *led
 				PrevHash: nil,
 				Digest:   make([]byte, 32),
 			},
-			Batch: state.NewAvailableBatch(0, math.MaxUint16, 0, make([]byte, 32)),
+			Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, make([]byte, 32)),
 		}
 		genesisProposal := types.Proposal{
 			Header: (&state.Header{
@@ -417,7 +416,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		sks[i] = sk
 
 		signer := crypto.ECDSASigner(*sk)
-		for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
+		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
 			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
@@ -658,7 +657,7 @@ func TestVerifyProposal(t *testing.T) {
 		sks[i] = sk
 
 		signer := crypto.ECDSASigner(*sk)
-		for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
+		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
 			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
@@ -853,7 +852,7 @@ func TestSignProposal(t *testing.T) {
 		sks[i] = sk
 
 		signer := crypto.ECDSASigner(*sk)
-		for _, shard := range []arma_types.ShardID{1, 2, math.MaxUint16} {
+		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
 			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}

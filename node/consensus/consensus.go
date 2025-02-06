@@ -288,7 +288,7 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 // VerifySignature verifies the signature
 // (from SmartBFT API)
 func (c *Consensus) VerifySignature(signature types.Signature) error {
-	return c.SigVerifier.VerifySignature(arma_types.PartyID(signature.ID), arma_types.ShardID(math.MaxUint16), signature.Msg, signature.Value)
+	return c.SigVerifier.VerifySignature(arma_types.PartyID(signature.ID), arma_types.ShardIDConsensus, signature.Msg, signature.Value)
 }
 
 // VerificationSequence returns the current verification sequence
