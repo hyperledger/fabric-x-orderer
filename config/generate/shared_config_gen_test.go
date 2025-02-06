@@ -23,7 +23,7 @@ func TestSharedConfigGeneration(t *testing.T) {
 	require.NotNil(t, networkLocalConfig)
 
 	// 3.
-	networkSharedConfig, err := generate.CreateArmaSharedConfig(networkConfig, networkLocalConfig, dir)
+	networkSharedConfig, err := generate.CreateArmaSharedConfig(networkConfig, networkLocalConfig, dir, dir)
 	require.NoError(t, err)
 	require.NotNil(t, networkSharedConfig)
 }

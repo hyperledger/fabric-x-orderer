@@ -23,7 +23,7 @@ General:
     Bootstrap:
         Method: yaml
         File: /var/dec-trust/bootstrap/shared_config.yaml)
-    LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/assembler
+    LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/assembler/msp
     LocalMSPID: OrdererOrg
     LogSpec: info
 FileStore:

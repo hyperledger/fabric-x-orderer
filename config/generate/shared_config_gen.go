@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"arma/common/utils"
 
@@ -20,8 +19,8 @@ const (
 	LocalConfigDirPermission = 0o755
 )
 
-func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, outputBaseDir string) (*SharedConfig, error) {
-	sharedConfig := createNetworkSharedConfig(network, networkLocalConfig)
+func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string, outputBaseDir string) (*SharedConfig, error) {
+	sharedConfig := createNetworkSharedConfig(network, networkLocalConfig, cryptoBaseDir)
 
 	outputPath := filepath.Join(outputBaseDir, "bootstrap")
 	err := os.MkdirAll(outputPath, LocalConfigDirPermission)
@@ -36,9 +35,9 @@ func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 	return &sharedConfig, nil
 }
 
-func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig) SharedConfig {
+func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) SharedConfig {
 	sharedConfig := SharedConfig{
-		PartiesConfig:   createPartiesConfig(network, networkLocalConfig),
+		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
 		ConsensusConfig: ConsensusConfig{BFTConfig: createConsensusBFTConfig()},
 		BatchingConfig:  createBatchingConfig(),
 	}
@@ -73,10 +72,12 @@ func createBatchingConfig() BatchingConfig {
 	}
 }
 
-func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig) []PartyConfig {
+func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) []PartyConfig {
 	partiesConfig := make([]PartyConfig, len(network.Parties))
 
 	for i, party := range network.Parties {
+		partyPath := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID))
+
 		partyLocalConfig := networkLocalConfig.PartiesLocalConfig[i]
 
 		routerConfig := RouterNodeConfig{
@@ -91,7 +92,7 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 				ShardID:   partyLocalConfig.BatchersLocalConfig[j].BatcherParams.ShardID,
 				Host:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenAddress,
 				Port:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenPort,
-				PublicKey: filepath.Join(partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.LocalMSPDir, "signing-cert.pem"),
+				PublicKey: filepath.Join(partyPath, fmt.Sprintf("batcher%d", j+1), "signing-cert.pem"),
 				TLSCert:   partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.TLSConfig.Certificate,
 			}
 			batchersConfig = append(batchersConfig, batcherConfig)
@@ -100,7 +101,7 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		consenterConfig := ConsenterNodeConfig{
 			Host:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenAddress,
 			Port:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenPort,
-			PublicKey: filepath.Join(partyLocalConfig.ConsenterLocalConfig.GeneralConfig.LocalMSPDir, "signing-cert.pem"),
+			PublicKey: filepath.Join(partyPath, "consenter", "signing-cert.pem"),
 			TLSCert:   partyLocalConfig.ConsenterLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
@@ -110,11 +111,11 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 			TLSCert: partyLocalConfig.AssemblerLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
-		cryptoPath := partyLocalConfig.RouterLocalConfig.GeneralConfig.LocalMSPDir[:strings.Index(partyLocalConfig.RouterLocalConfig.GeneralConfig.LocalMSPDir, "crypto")+len("crypto")]
+		orgDir := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("Org%d", party.ID))
 		partyConfig := PartyConfig{
 			PartyID:         party.ID,
-			CACerts:         []string{filepath.Join(cryptoPath, "ordererOrganizations", fmt.Sprintf("Org%d", party.ID), "ca", "ca-cert.pem")},
-			TLSCACerts:      []string{filepath.Join(cryptoPath, "ordererOrganizations", fmt.Sprintf("Org%d", party.ID), "tlsca", "tlsca-cert.pem")},
+			CACerts:         []string{filepath.Join(orgDir, "ca", "ca-cert.pem")},
+			TLSCACerts:      []string{filepath.Join(orgDir, "tlsca", "tlsca-cert.pem")},
 			RouterConfig:    routerConfig,
 			BatchersConfig:  batchersConfig,
 			ConsenterConfig: consenterConfig,

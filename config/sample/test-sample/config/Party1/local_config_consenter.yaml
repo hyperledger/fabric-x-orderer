@@ -27,7 +27,7 @@ General:
         SendBufferSize: 2000
         ClientCertificate: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls-cert.pem
         ClientPrivateKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/key.pem
-    LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter
+    LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/msp
     LocalMSPID: OrdererOrg
     LogSpec: info
 FileStore:
