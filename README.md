@@ -86,9 +86,44 @@ TODO
 
 ## Run
 
-TODO
+Arma is composed of 4 types of servers: `router`, `batcher`, `consensus` and `assembler`; also known as "server roles".
+To start a server use the arma CLI tool:
 
+* To run a router node:
+   ```bash
+   ./arma router --config=arma-config/Party1/router_node_config.yaml
+   ```
+* To run a batcher node:
+   ```bash
+   ./arma batcher --config=arma-config/Party1/batcher_node_1_config.yaml
+   ```
+* To run a consenter node:
+   ```bash
+   ./arma consensus --config=arma-config/Party1/consenter_node_config.yaml
+   ```
+* To run an assembler node:
+   ```bash
+   ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
+   ```
 
+Each server role expects a config file, specified in the command line (mandatory).
+For more details please refer to [arma-deployment](deployment/README.md).
+
+### Starting with an external genesis block
+
+Each server may be given an optional external genesis block, which must be on the same path as the config file and be called `genesis.block`.
+For example, if an assembler is started like so:
+   ```bash
+   ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
+   ```
+
+It will look for a genesis block here: `arma-config/Party1/genesis.block`.
+
+All parties and all servers must be given the same genesis block.
+If a genesis block is not found, Arma will start with an empty config block.
+
+*NOTE*: This is a temporary feature, as Arma is planned to migrate to a "Fabric-style" configuration.
+Furthermore, at this point the genesis block is not read by Arma at all, it is only served to client of the delivery service as block 0.
 
 ## Configuration and deployment
 
