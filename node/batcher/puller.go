@@ -21,11 +21,12 @@ import (
 // Both the server and side and client side will need to go a revision.
 
 type BatchPuller struct {
-	ledger  core.BatchLedger
-	logger  types.Logger
-	config  config.BatcherNodeConfig
-	tlsKey  []byte
-	tlsCert []byte
+	ledger     core.BatchLedger
+	logger     types.Logger
+	config     config.BatcherNodeConfig
+	tlsKey     []byte
+	tlsCert    []byte
+	stopPuller context.CancelFunc
 }
 
 func NewBatchPuller(config config.BatcherNodeConfig, ledger core.BatchLedger, logger types.Logger) *BatchPuller {
@@ -40,10 +41,13 @@ func NewBatchPuller(config config.BatcherNodeConfig, ledger core.BatchLedger, lo
 }
 
 func (bp *BatchPuller) Stop() {
-	// TODO cause the goroutine to exit
+	bp.stopPuller()
 }
 
 func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan core.Batch {
+	var stopCtx context.Context
+	stopCtx, bp.stopPuller = context.WithCancel(context.Background())
+
 	res := make(chan core.Batch, 100)
 
 	seq := bp.ledger.Height(from)
@@ -69,7 +73,7 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan core.Batch {
 	}
 
 	go pull(
-		context.Background(),
+		stopCtx,
 		channelName,
 		bp.logger,
 		endpoint,
@@ -142,6 +146,13 @@ func nextSeekInfo(startSeq uint64) *orderer.SeekInfo {
 func pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
 	for {
 		time.Sleep(time.Second)
+
+		select {
+		case <-context.Done():
+			logger.Infof("Returning since context is done")
+			return
+		default:
+		}
 
 		endpointToPullFrom := endpoint()
 

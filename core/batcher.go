@@ -143,6 +143,7 @@ func (b *Batcher) getPrimaryIndex(term uint64) types.PartyID {
 }
 
 func (b *Batcher) Stop() {
+	b.Logger.Infof("Stopping batcher core")
 	b.stopOnce.Do(func() { close(b.stopChan) })
 	b.cancelBatch()
 	b.MemPool.Close()

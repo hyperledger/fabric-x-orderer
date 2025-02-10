@@ -87,6 +87,7 @@ func (b *Batcher) Run() {
 }
 
 func (b *Batcher) Stop() {
+	b.logger.Infof("Stopping batcher node")
 	b.stopOnce.Do(func() { close(b.stopChan) })
 	b.batcher.Stop()
 	for len(b.stateChan) > 0 {

@@ -90,6 +90,60 @@ func TestBatcherRun(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
+func TestBatcherStop(t *testing.T) { // TODO test batcher restart
+	shardID := types.ShardID(0)
+	numParties := 2
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	batchers, ledgers, stateChannels, _ := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo)
+
+	defer func() {
+		for i := 0; i < numParties; i++ {
+			batchers[i].Stop()
+		}
+	}()
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+
+	require.Eventually(t, func() bool {
+		return ledgers[0].Height(1) == uint64(1) && ledgers[1].Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	req2 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req2, uint64(2))
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req2})
+
+	require.Eventually(t, func() bool {
+		return ledgers[0].Height(1) == uint64(2) && ledgers[1].Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
+	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
+	stateChannels[0] <- &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 0}}}
+	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
+	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
+
+	batchers[1].Stop()
+
+	req3 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req3, uint64(3))
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req3})
+
+	require.Eventually(t, func() bool {
+		return ledgers[0].Height(1) == uint64(3)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	batchers[0].Stop()
+}
+
 func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo) ([]*batcher.Batcher, []*ledger.BatchLedgerArray, []chan *core.State, []*zap.SugaredLogger) {
 	var batchers []*batcher.Batcher
 	var ledgers []*ledger.BatchLedgerArray
@@ -143,9 +197,6 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 			return sr.ReplicateStateCallCount() == 1
 		}, 10*time.Second, 10*time.Millisecond)
 
-	}
-
-	for i := 0; i < num; i++ {
 		grpcRegisterAndStart(batchers[i], batcherNodes[i])
 	}
 
