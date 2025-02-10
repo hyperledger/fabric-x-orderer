@@ -11,20 +11,41 @@ import (
 	"arma/core"
 	"arma/node/consensus/state"
 
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
+	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
 type AssemblerLedger struct {
-	Logger              types.Logger
-	Ledger              blockledger.ReadWriter
-	transactionCount    uint64
-	cancellationContext context.Context
-	cancelContextFunc   context.CancelFunc
+	Logger               types.Logger
+	Ledger               blockledger.ReadWriter
+	transactionCount     uint64
+	blockStorageProvider *blkstorage.BlockStoreProvider
+	blockStore           *blkstorage.BlockStore
+	cancellationContext  context.Context
+	cancelContextFunc    context.CancelFunc
 }
 
-func NewAssemblerLedger(logger types.Logger, ledger blockledger.ReadWriter) (*AssemblerLedger, error) {
+func NewAssemblerLedger(logger types.Logger, ledgerPath string) (*AssemblerLedger, error) {
+	// Create the ledger
+	provider, err := blkstorage.NewProvider(
+		blkstorage.NewConf(ledgerPath, -1),
+		&blkstorage.IndexConfig{
+			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+		}, &disabled.Provider{})
+	if err != nil {
+		logger.Panicf("Failed creating provider: %v", err)
+	}
+	logger.Infof("Assembler ledger opened block ledger provider, dir: %s", ledgerPath)
+	armaLedger, err := provider.Open("arma")
+	if err != nil {
+		logger.Panicf("Failed opening ledger: %v", err)
+	}
+	logger.Infof("Assembler ledger opened block store: %+v", armaLedger)
+	ledger := fileledger.NewFileLedger(armaLedger)
 	transactionCount := uint64(0)
 	height := ledger.Height()
 	if height > 0 {
@@ -39,11 +60,13 @@ func NewAssemblerLedger(logger types.Logger, ledger blockledger.ReadWriter) (*As
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	al := &AssemblerLedger{
-		Logger:              logger,
-		Ledger:              ledger,
-		transactionCount:    transactionCount,
-		cancellationContext: ctx,
-		cancelContextFunc:   cancel,
+		Logger:               logger,
+		Ledger:               ledger,
+		transactionCount:     transactionCount,
+		blockStorageProvider: provider,
+		blockStore:           armaLedger,
+		cancellationContext:  ctx,
+		cancelContextFunc:    cancel,
 	}
 	go al.trackThroughput()
 	return al, nil
@@ -51,6 +74,8 @@ func NewAssemblerLedger(logger types.Logger, ledger blockledger.ReadWriter) (*As
 
 func (l *AssemblerLedger) Close() {
 	l.cancelContextFunc()
+	l.blockStore.Shutdown()
+	l.blockStorageProvider.Close()
 }
 
 func (l *AssemblerLedger) trackThroughput() {

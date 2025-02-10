@@ -11,11 +11,8 @@ import (
 	"arma/node/delivery"
 	node_ledger "arma/node/ledger"
 
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 )
 
 // TODO: move to config
@@ -47,28 +44,12 @@ func (a *Assembler) GetTxCount() uint64 {
 func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block, logger types.Logger) *Assembler {
 	logger.Infof("Creating assembler, party: %d, address: %s, with genesis block: %t", config.PartyId, config.ListenAddress, genesisBlock != nil)
 
-	// Create the ledger
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(config.Directory, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
-	if err != nil {
-		logger.Panicf("Failed creating provider: %v", err)
-	}
-	logger.Infof("Assembler %d opened block ledger provider, dir: %s", config.PartyId, config.Directory)
-	armaLedger, err := provider.Open("arma")
-	if err != nil {
-		logger.Panicf("Failed opening ledger: %v", err)
-	}
-	logger.Infof("Assembler %d opened block store: %+v", config.PartyId, armaLedger)
-	ledger := fileledger.NewFileLedger(armaLedger)
-	al, err := node_ledger.NewAssemblerLedger(logger, ledger)
+	al, err := node_ledger.NewAssemblerLedger(logger, config.Directory)
 	if err != nil {
 		logger.Panicf("Failed creating assembler: %v", err)
 	}
 
-	if ledger.Height() == 0 {
+	if al.Ledger.Height() == 0 {
 		if genesisBlock == nil {
 			genesisBlock = utils.EmptyGenesisBlock("arma")
 		}
@@ -120,7 +101,7 @@ func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block,
 	}
 
 	// TODO: we do not need multiple ledgers in the assembler
-	assembler.ds["arma"] = ledger
+	assembler.ds["arma"] = al.Ledger
 
 	assembler.assembler.Run()
 

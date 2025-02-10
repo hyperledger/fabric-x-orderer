@@ -12,9 +12,6 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -254,23 +251,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 }
 
 func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_ledger.AssemblerLedger, error) {
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(tmpDir, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
-	if err != nil {
-		return nil, err
-	}
-
-	armaBlockStore, err := provider.Open("arma")
-	if err != nil {
-		return nil, err
-	}
-
-	armaFileLedger := fileledger.NewFileLedger(armaBlockStore)
-
-	al, err := node_ledger.NewAssemblerLedger(logger, armaFileLedger)
+	al, err := node_ledger.NewAssemblerLedger(logger, tmpDir)
 	return al, err
 }
 
