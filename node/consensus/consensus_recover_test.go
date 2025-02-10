@@ -418,8 +418,6 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 
 	err = recoverNode(t, setup, 1, ca)
 	require.NoError(t, err)
-	err = recoverNode(t, setup, 2, ca)
-	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
 	require.NoError(t, err)
@@ -440,6 +438,10 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(2), b1.Header.Number)
 	b1 = <-setup.listeners[1].c
 	require.Equal(t, uint64(3), b1.Header.Number)
+
+	err = recoverNode(t, setup, 2, ca)
+	require.NoError(t, err)
+
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(2), b2.Header.Number)
 	b2 = <-setup.listeners[2].c
