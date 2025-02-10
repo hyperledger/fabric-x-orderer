@@ -309,7 +309,7 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(1), b.Header.Number)
 	b = <-setup.listeners[1].c
 	require.Equal(t, uint64(1), b.Header.Number)
-	b = <-setup.listeners[3].c
+	b = <-setup.listeners[2].c
 	require.Equal(t, uint64(1), b.Header.Number)
 
 	// Nodes (IDs=2,3) fail
@@ -332,8 +332,6 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(2), b.Header.Number)
 	b = <-setup.listeners[1].c
 	require.Equal(t, uint64(2), b.Header.Number)
-	b = <-setup.listeners[3].c
-	require.Equal(t, uint64(2), b.Header.Number)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 3)
 	require.NoError(t, err)
@@ -346,6 +344,11 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(3), b.Header.Number)
 	b = <-setup.listeners[1].c
 	require.Equal(t, uint64(3), b.Header.Number)
+
+	b = <-setup.listeners[3].c
+	require.Equal(t, uint64(1), b.Header.Number)
+	b = <-setup.listeners[3].c
+	require.Equal(t, uint64(2), b.Header.Number)
 	b = <-setup.listeners[3].c
 	require.Equal(t, uint64(3), b.Header.Number)
 
