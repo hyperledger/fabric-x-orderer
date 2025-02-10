@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"arma/testutil"
+
 	"arma/config/generate"
 
 	"github.com/stretchr/testify/require"
@@ -15,7 +17,7 @@ func TestSharedConfigGeneration(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 1.
-	networkConfig := generateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t)
 
 	// 2.
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)

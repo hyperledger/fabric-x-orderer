@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"arma/testutil"
+
 	"arma/config/generate"
 	"arma/node/cmd/armageddon"
 
@@ -18,7 +20,7 @@ func TestSharedConfigLoading(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 1.
-	networkConfig := generateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t)
 	err = armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 

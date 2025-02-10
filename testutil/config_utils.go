@@ -8,7 +8,7 @@ func CreateTestRouterLocalConfig() *config.NodeLocalConfig {
 		GeneralConfig: &config.GeneralConfig{
 			ListenAddress: "127.0.0.1",
 			ListenPort:    5016,
-			TLSConfig: config.TLSConfig{
+			TLSConfig: config.TLSConfigYaml{
 				Enabled:            true,
 				PrivateKey:         "path/to/pkey.key",
 				Certificate:        "path/to/cert.crt",
@@ -22,7 +22,7 @@ func CreateTestRouterLocalConfig() *config.NodeLocalConfig {
 				Method: "block",
 				File:   "path/to/genesis-block",
 			},
-			Cluster: config.Cluster{
+			Cluster: config.ClusterYaml{
 				SendBufferSize:    0,
 				ClientCertificate: "path/to/client_certificate.crt",
 				ClientPrivateKey:  "path/to/client_private_key.key",
@@ -44,7 +44,7 @@ func CreateTestBatcherLocalConfig() *config.NodeLocalConfig {
 		GeneralConfig: &config.GeneralConfig{
 			ListenAddress: "127.0.0.1",
 			ListenPort:    5017,
-			TLSConfig: config.TLSConfig{
+			TLSConfig: config.TLSConfigYaml{
 				Enabled:            true,
 				PrivateKey:         "path/to/pkey.key",
 				Certificate:        "path/to/cert.crt",
@@ -58,7 +58,7 @@ func CreateTestBatcherLocalConfig() *config.NodeLocalConfig {
 				Method: "block",
 				File:   "path/to/genesis-block",
 			},
-			Cluster: config.Cluster{
+			Cluster: config.ClusterYaml{
 				SendBufferSize:    0,
 				ClientCertificate: "path/to/client_certificate.crt",
 				ClientPrivateKey:  "path/to/client_private_key.key",
@@ -77,7 +77,7 @@ func CreateTestConsensusLocalConfig() *config.NodeLocalConfig {
 		GeneralConfig: &config.GeneralConfig{
 			ListenAddress: "127.0.0.1",
 			ListenPort:    5018,
-			TLSConfig: config.TLSConfig{
+			TLSConfig: config.TLSConfigYaml{
 				Enabled:            true,
 				PrivateKey:         "path/to/pkey.key",
 				Certificate:        "path/to/cert.crt",
@@ -91,7 +91,7 @@ func CreateTestConsensusLocalConfig() *config.NodeLocalConfig {
 				Method: "block",
 				File:   "path/to/genesis-block",
 			},
-			Cluster: config.Cluster{
+			Cluster: config.ClusterYaml{
 				SendBufferSize:    0,
 				ClientCertificate: "path/to/client_certificate.crt",
 				ClientPrivateKey:  "path/to/client_private_key.key",
@@ -110,7 +110,7 @@ func CreateTestAssemblerLocalConfig() *config.NodeLocalConfig {
 		GeneralConfig: &config.GeneralConfig{
 			ListenAddress: "127.0.0.1",
 			ListenPort:    5019,
-			TLSConfig: config.TLSConfig{
+			TLSConfig: config.TLSConfigYaml{
 				Enabled:            true,
 				PrivateKey:         "path/to/pkey.key",
 				Certificate:        "path/to/cert.crt",
@@ -124,7 +124,7 @@ func CreateTestAssemblerLocalConfig() *config.NodeLocalConfig {
 				Method: "block",
 				File:   "path/to/genesis-block",
 			},
-			Cluster: config.Cluster{
+			Cluster: config.ClusterYaml{
 				SendBufferSize:    0,
 				ClientCertificate: "path/to/client_certificate.crt",
 				ClientPrivateKey:  "path/to/client_private_key.key",

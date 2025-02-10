@@ -1,9 +1,7 @@
 package generate
 
 import (
-	"encoding/pem"
 	"fmt"
-	"os"
 
 	"arma/common/utils"
 	"arma/config"
@@ -116,7 +114,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfig) (*config.SharedConfig
 func loadCACerts(caCertsPaths []string, tlsCACertsPaths []string) ([][]byte, [][]byte, error) {
 	var caCerts [][]byte
 	for _, caCertPath := range caCertsPaths {
-		caCert, err := readPem(caCertPath)
+		caCert, err := utils.ReadPem(caCertPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("load shared config failed, read ca cert failed, err: %v", err)
 		}
@@ -125,7 +123,7 @@ func loadCACerts(caCertsPaths []string, tlsCACertsPaths []string) ([][]byte, [][
 
 	var TLSCACerts [][]byte
 	for _, TLSCACertPath := range tlsCACertsPaths {
-		TLSCACert, err := readPem(TLSCACertPath)
+		TLSCACert, err := utils.ReadPem(TLSCACertPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("load shared config failed, read tls ca cert failed, err: %v", err)
 		}
@@ -136,7 +134,7 @@ func loadCACerts(caCertsPaths []string, tlsCACertsPaths []string) ([][]byte, [][
 }
 
 func loadRouterConfig(host string, port uint32, tlsCertPath string) (*config.RouterNodeConfig, error) {
-	TLSCert, err := readPem(tlsCertPath)
+	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read router tls cert failed, err: %v", err)
 	}
@@ -151,12 +149,12 @@ func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*config.Batch
 	var batchersConfig []*config.BatcherNodeConfig
 
 	for _, batcher := range batchersConfigYaml {
-		TLSCert, err := readPem(batcher.TLSCert)
+		TLSCert, err := utils.ReadPem(batcher.TLSCert)
 		if err != nil {
 			return nil, fmt.Errorf("load shared config failed, read batcher tls cert failed, err: %v", err)
 		}
 
-		pubKey, err := readPem(batcher.PublicKey)
+		pubKey, err := utils.ReadPem(batcher.PublicKey)
 		if err != nil {
 			return nil, fmt.Errorf("load shared config failed, read batcher public key failed, err: %v", err)
 		}
@@ -173,12 +171,12 @@ func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*config.Batch
 }
 
 func loadConsenterConfig(host string, port uint32, tlsCertPath string, pubKeyPath string) (*config.ConsenterNodeConfig, error) {
-	TLSCert, err := readPem(tlsCertPath)
+	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read consenster tls cert failed, err: %v", err)
 	}
 
-	pubKey, err := readPem(pubKeyPath)
+	pubKey, err := utils.ReadPem(pubKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read consenster public key failed, err: %v", err)
 	}
@@ -191,7 +189,7 @@ func loadConsenterConfig(host string, port uint32, tlsCertPath string, pubKeyPat
 }
 
 func loadAssemblerConfig(host string, port uint32, tlsCertPath string) (*config.AssemblerNodeConfig, error) {
-	TLSCert, err := readPem(tlsCertPath)
+	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read assembler tls cert failed, err: %v", err)
 	}
@@ -200,18 +198,4 @@ func loadAssemblerConfig(host string, port uint32, tlsCertPath string) (*config.
 		Port:    port,
 		TlsCert: TLSCert,
 	}, nil
-}
-
-func readPem(path string) ([]byte, error) {
-	if path == "" {
-		return nil, fmt.Errorf("failed reading pem file, path is empty")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed reading a pem file from %s, err: %v", path, err)
-	}
-	pbl, _ := pem.Decode(data)
-	certRaw := pbl.Bytes
-
-	return certRaw, nil
 }

@@ -1,7 +1,6 @@
 package generate_test
 
 import (
-	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -9,7 +8,6 @@ import (
 
 	"arma/common/utils"
 
-	"arma/common/types"
 	"arma/config"
 	"arma/config/generate"
 	"arma/testutil"
@@ -90,7 +88,7 @@ func TestARMALocalConfigGeneration(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 1.
-	networkConfig := generateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t)
 
 	// 2.
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
@@ -103,7 +101,7 @@ func TestARMALocalConfigLoading(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	networkConfig := generateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t)
 
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
 	require.NoError(t, err)
@@ -121,39 +119,4 @@ func TestARMALocalConfigLoading(t *testing.T) {
 		require.Equal(t, networkLocalConfig.PartiesLocalConfig[i].ConsenterLocalConfig, party.ConsenterLocalConfig)
 		require.Equal(t, networkLocalConfig.PartiesLocalConfig[i].AssemblerLocalConfig, party.AssemblerLocalConfig)
 	}
-}
-
-// generateNetworkConfig create a network config which collects the enpoints of nodes per party.
-// the generated network configuration includes 4 parties and 2 batchers for each party.
-func generateNetworkConfig(t *testing.T) generate.Network {
-	var parties []generate.Party
-	var listeners []net.Listener
-	for i := 0; i < 4; i++ {
-		assemblerPort, lla := testutil.GetAvailablePort(t)
-		consenterPort, llc := testutil.GetAvailablePort(t)
-		routerPort, llr := testutil.GetAvailablePort(t)
-		batcher1Port, llb1 := testutil.GetAvailablePort(t)
-		batcher2Port, llb2 := testutil.GetAvailablePort(t)
-
-		party := generate.Party{
-			ID:                types.PartyID(i + 1),
-			AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
-			ConsenterEndpoint: "127.0.0.1:" + consenterPort,
-			RouterEndpoint:    "127.0.0.1:" + routerPort,
-			BatchersEndpoints: []string{"127.0.0.1:" + batcher1Port, "127.0.0.1:" + batcher2Port},
-		}
-
-		parties = append(parties, party)
-		listeners = append(listeners, lla, llc, llr, llb1, llb2)
-	}
-
-	network := generate.Network{
-		Parties: parties,
-	}
-
-	for _, ll := range listeners {
-		require.NoError(t, ll.Close())
-	}
-
-	return network
 }

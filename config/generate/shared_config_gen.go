@@ -111,7 +111,7 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 			TLSCert: partyLocalConfig.AssemblerLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
-		orgDir := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("Org%d", party.ID))
+		orgDir := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID))
 		partyConfig := PartyConfig{
 			PartyID:         party.ID,
 			CACerts:         []string{filepath.Join(orgDir, "ca", "ca-cert.pem")},

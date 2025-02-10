@@ -76,15 +76,16 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 	}
 
 	partyPath := filepath.Join(generalConfigParams.cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", generalConfigParams.partyID), "orderers", fmt.Sprintf("party%d", generalConfigParams.partyID))
+	orgPath := filepath.Join(generalConfigParams.cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", generalConfigParams.partyID))
 
 	generalConfig := &config.GeneralConfig{
 		ListenAddress: generalConfigParams.listenAddress,
 		ListenPort:    generalConfigParams.listenPort,
-		TLSConfig: config.TLSConfig{
+		TLSConfig: config.TLSConfigYaml{
 			Enabled:            generalConfigParams.tlsEnabled,
 			PrivateKey:         filepath.Join(partyPath, nodeRole, "key.pem"),
 			Certificate:        filepath.Join(partyPath, nodeRole, "tls-cert.pem"),
-			RootCAs:            []string{filepath.Join(partyPath, "tlsca", "cacert.pem")},
+			RootCAs:            []string{filepath.Join(orgPath, "tlsca", "tlsca-cert.pem")},
 			ClientAuthRequired: generalConfigParams.clientAuthRequired,
 		},
 		KeepaliveSettings: DefaultKeepaliveOptions,
@@ -102,7 +103,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 	}
 
 	if generalConfigParams.role == "consenter" {
-		generalConfig.Cluster = config.Cluster{
+		generalConfig.Cluster = config.ClusterYaml{
 			SendBufferSize:    DefaultSendBufferSize,
 			ClientCertificate: filepath.Join(partyPath, nodeRole, "tls-cert.pem"),
 			ClientPrivateKey:  filepath.Join(partyPath, nodeRole, "key.pem"),
@@ -259,7 +260,7 @@ func LoadArmaLocalConfig(path string) (*NetworkLocalConfig, error) {
 		numOfShards := len(nodesYamls) - 3
 
 		routerConfigPath := filepath.Join(partyPath, "local_config_router.yaml")
-		routerLocalConfig, err := config.Load(routerConfigPath)
+		routerLocalConfig, err := config.LoadLocalConfigYaml(routerConfigPath)
 		if err != nil {
 			return nil, err
 		}
@@ -267,7 +268,7 @@ func LoadArmaLocalConfig(path string) (*NetworkLocalConfig, error) {
 		var batchersLocalConfig []*config.NodeLocalConfig
 		for j := 1; j <= numOfShards; j++ {
 			batcherConfigPath := filepath.Join(partyPath, fmt.Sprintf("local_config_batcher%d.yaml", j))
-			batcherLocalConfig, err := config.Load(batcherConfigPath)
+			batcherLocalConfig, err := config.LoadLocalConfigYaml(batcherConfigPath)
 			if err != nil {
 				return nil, err
 			}
@@ -275,13 +276,13 @@ func LoadArmaLocalConfig(path string) (*NetworkLocalConfig, error) {
 		}
 
 		consenterConfigPath := filepath.Join(partyPath, "local_config_consenter.yaml")
-		consenterLocalConfig, err := config.Load(consenterConfigPath)
+		consenterLocalConfig, err := config.LoadLocalConfigYaml(consenterConfigPath)
 		if err != nil {
 			return nil, err
 		}
 
 		assemblerConfigPath := filepath.Join(partyPath, "local_config_assembler.yaml")
-		assemblerLocalConfig, err := config.Load(assemblerConfigPath)
+		assemblerLocalConfig, err := config.LoadLocalConfigYaml(assemblerConfigPath)
 		if err != nil {
 			return nil, err
 		}

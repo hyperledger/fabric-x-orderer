@@ -34,7 +34,7 @@ type GeneralConfig struct {
 	// ListenPort is the port on which to bind to listen
 	ListenPort uint32 `yaml:"ListenPort,omitempty"`
 	// TLSConfig is the TLS settings for the GRPC server
-	TLSConfig TLSConfig `yaml:"TLS,omitempty"`
+	TLSConfig TLSConfigYaml `yaml:"TLS,omitempty"`
 	// Keepalive is the Keepalive settings for the GRPC server.
 	KeepaliveSettings comm.KeepaliveOptions `yaml:"Keepalive,omitempty"`
 	// BackoffSettings is the configuration options for backoff GRPC client.
@@ -46,7 +46,7 @@ type GeneralConfig struct {
 	// Bootstrap indicates the method by which to obtain the bootstrap configuration and the file containing the bootstrap configuration
 	Bootstrap Bootstrap `yaml:"Bootstrap,omitempty"`
 	// Cluster settings for consenter nodes
-	Cluster Cluster `yaml:"Cluster,omitempty"`
+	Cluster ClusterYaml `yaml:"Cluster,omitempty"`
 	// The path to the private crypto material needed by Arma
 	LocalMSPDir string `yaml:"LocalMSPDir,omitempty"`
 	// LocalMSPID is the identity to register the local MSP material with the MSP manager
@@ -57,7 +57,7 @@ type GeneralConfig struct {
 	LogSpec string `yaml:"LogSpec,omitempty"`
 }
 
-type TLSConfig struct {
+type TLSConfigYaml struct {
 	Enabled            bool     `yaml:"Enabled,omitempty"`            // Require server-side TLS
 	PrivateKey         string   `yaml:"PrivateKey,omitempty"`         // The file location of the private key of the server TLS certificate.
 	Certificate        string   `yaml:"Certificate,omitempty"`        // The file location of the server TLS certificate.
@@ -79,7 +79,7 @@ type Bootstrap struct {
 }
 
 // Cluster defines the settings for ordering service nodes that communicate with other ordering service nodes.
-type Cluster struct {
+type ClusterYaml struct {
 	// SendBufferSize is the maximum number of messages in the egress buffer.
 	// Consensus messages are dropped if the buffer is full, and transaction messages are waiting for space to be freed.
 	SendBufferSize int `yaml:"SendBufferSize,omitempty"`
@@ -161,15 +161,124 @@ type AssemblerParams struct {
 	PrefetchBufferMemoryMB int `yaml:"PrefetchBufferMemoryMB,omitempty"`
 }
 
-func Load(filePath string) (*NodeLocalConfig, error) {
+type TLSConfig struct {
+	Enabled            bool     `yaml:"Enabled,omitempty"`            // Require server-side TLS
+	PrivateKey         []byte   `yaml:"PrivateKey,omitempty"`         // The private key of the server TLS certificate.
+	Certificate        []byte   `yaml:"Certificate,omitempty"`        // The server TLS certificate.
+	RootCAs            [][]byte `yaml:"RootCAs,omitempty"`            // A list of additional root certificates used for verifying certificates of other nodes during outbound connections.
+	ClientAuthRequired bool     `yaml:"ClientAuthRequired,omitempty"` // Require client certificates / mutual TLS for inbound connections
+	ClientRootCAs      [][]byte `yaml:"ClientRootCAs,omitempty"`      // A list of additional root certificates used for verifying certificates of client connections. relevant for Assembler and Consensus
+}
+
+type Cluster struct {
+	// SendBufferSize is the maximum number of messages in the egress buffer.
+	// Consensus messages are dropped if the buffer is full, and transaction messages are waiting for space to be freed.
+	SendBufferSize int
+	// ClientCertificate governs the client TLS certificate used to establish mutual TLS connections with other ordering service nodes.
+	// If not set, the server General.TLS.Certificate is re-used.
+	ClientCertificate []byte
+	// ClientPrivateKey governs the private key of the client TLS certificate.
+	// If not set, the server General.TLS.PrivateKey is re-used.
+	ClientPrivateKey []byte
+	// ReplicationPolicy defines how blocks are replicated between orderers.
+	ReplicationPolicy string
+}
+
+func Load(filePath string) (*NodeLocalConfig, *TLSConfig, *Cluster, error) {
+	nodeLocalConfig, err := LoadLocalConfigYaml(filePath)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
+	}
+
+	tlsConfig, err := loadTLSCryptoConfig(&nodeLocalConfig.GeneralConfig.TLSConfig)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("cannot load local tls config, err: %s", err)
+	}
+
+	// load cluster crypto config return cluster config with empty fields except for the consenter node
+	var clusterConfig *Cluster
+	clusterConfig, err = loadClusterCryptoConfig(&nodeLocalConfig.GeneralConfig.Cluster)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
+	}
+
+	return nodeLocalConfig, tlsConfig, clusterConfig, nil
+}
+
+func LoadLocalConfigYaml(filePath string) (*NodeLocalConfig, error) {
 	if filePath == "" {
 		return nil, fmt.Errorf("cannot load local node configuration, path: %s is empty", filePath)
 	}
 	nodeLocalConfig := NodeLocalConfig{}
 	err := utils.ReadFromYAML(&nodeLocalConfig, filePath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
+		return nil, err
 	}
 
 	return &nodeLocalConfig, nil
+}
+
+func loadTLSCryptoConfig(tlsConfig *TLSConfigYaml) (*TLSConfig, error) {
+	privateKey, err := utils.ReadPem(tlsConfig.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed load private key: %s", err)
+	}
+
+	cert, err := utils.ReadPem(tlsConfig.Certificate)
+	if err != nil {
+		return nil, fmt.Errorf("failed load TLS certificate: %s", err)
+	}
+
+	var rootCAs [][]byte
+	for _, rootCAPath := range tlsConfig.RootCAs {
+		rootCACert, err := utils.ReadPem(rootCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed load root ca certificate: %s", err)
+		}
+		rootCAs = append(rootCAs, rootCACert)
+	}
+
+	var clientRootCAs [][]byte
+	for _, clientRootCAPath := range tlsConfig.ClientRootCAs {
+		clientRootCACert, err := utils.ReadPem(clientRootCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed load root ca certificate: %s", err)
+		}
+		clientRootCAs = append(clientRootCAs, clientRootCACert)
+	}
+
+	return &TLSConfig{
+		Enabled:            tlsConfig.Enabled,
+		PrivateKey:         privateKey,
+		Certificate:        cert,
+		RootCAs:            rootCAs,
+		ClientAuthRequired: tlsConfig.ClientAuthRequired,
+		ClientRootCAs:      clientRootCAs,
+	}, nil
+}
+
+func loadClusterCryptoConfig(cluster *ClusterYaml) (*Cluster, error) {
+	var clientPrivateKey []byte
+	var err error
+	if cluster.ClientPrivateKey != "" {
+		clientPrivateKey, err = utils.ReadPem(cluster.ClientPrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed load client private key: %s", err)
+		}
+	}
+
+	var clientCertificate []byte
+	if cluster.ClientCertificate != "" {
+		clientCertificate, err = utils.ReadPem(cluster.ClientCertificate)
+		if err != nil {
+			return nil, fmt.Errorf("failed load client tls certificate: %s", err)
+		}
+	}
+
+	return &Cluster{
+		SendBufferSize:    cluster.SendBufferSize,
+		ClientCertificate: clientCertificate,
+		ClientPrivateKey:  clientPrivateKey,
+		ReplicationPolicy: cluster.ReplicationPolicy,
+	}, nil
 }
