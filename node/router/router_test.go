@@ -247,7 +247,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		shards = append(shards, config.ShardInfo{ShardId: types.ShardID(j + 1), Batchers: []config.BatcherInfo{{PartyID: 1, Endpoint: batchers[j].server.Address(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}}})
 	}
 
-	config := config.RouterNodeConfig{
+	config := &config.RouterNodeConfig{
 		PartyID:            partyID,
 		TLSCertificateFile: ckp.Cert,
 		TLSPrivateKeyFile:  ckp.Key,

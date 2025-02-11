@@ -2,18 +2,19 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	"sync"
 )
 
 type FakeBatchBringerFactory struct {
-	CreateStub        func(map[types.ShardID]map[types.PartyID]types.BatchSequence, config.AssemblerNodeConfig, types.Logger) assembler.BatchBringer
+	CreateStub        func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, types.Logger) assembler.BatchBringer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence
-		arg2 config.AssemblerNodeConfig
+		arg2 *config.AssemblerNodeConfig
 		arg3 types.Logger
 	}
 	createReturns struct {
@@ -26,12 +27,12 @@ type FakeBatchBringerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchBringerFactory) Create(arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence, arg2 config.AssemblerNodeConfig, arg3 types.Logger) assembler.BatchBringer {
+func (fake *FakeBatchBringerFactory) Create(arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence, arg2 *config.AssemblerNodeConfig, arg3 types.Logger) assembler.BatchBringer {
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
 		arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence
-		arg2 config.AssemblerNodeConfig
+		arg2 *config.AssemblerNodeConfig
 		arg3 types.Logger
 	}{arg1, arg2, arg3})
 	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3})
@@ -52,13 +53,13 @@ func (fake *FakeBatchBringerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeBatchBringerFactory) CreateCalls(stub func(map[types.ShardID]map[types.PartyID]types.BatchSequence, config.AssemblerNodeConfig, types.Logger) assembler.BatchBringer) {
+func (fake *FakeBatchBringerFactory) CreateCalls(stub func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, types.Logger) assembler.BatchBringer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeBatchBringerFactory) CreateArgsForCall(i int) (map[types.ShardID]map[types.PartyID]types.BatchSequence, config.AssemblerNodeConfig, types.Logger) {
+func (fake *FakeBatchBringerFactory) CreateArgsForCall(i int) (map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, types.Logger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]

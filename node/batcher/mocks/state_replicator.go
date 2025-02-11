@@ -2,9 +2,10 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
-	"sync"
 )
 
 type FakeStateReplicator struct {
@@ -27,16 +28,15 @@ func (fake *FakeStateReplicator) ReplicateState() <-chan *core.State {
 	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
 	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
 	}{})
-	stub := fake.ReplicateStateStub
-	fakeReturns := fake.replicateStateReturns
 	fake.recordInvocation("ReplicateState", []interface{}{})
 	fake.replicateStateMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.ReplicateStateStub != nil {
+		return fake.ReplicateStateStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.replicateStateReturns
 	return fakeReturns.result1
 }
 

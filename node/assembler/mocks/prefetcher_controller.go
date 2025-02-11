@@ -2,8 +2,9 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"sync"
+
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 )
 
 type FakePrefetcherController struct {

@@ -2,10 +2,11 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"sync"
 	"time"
+
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 )
 
 type FakePrefetchIndexerFactory struct {

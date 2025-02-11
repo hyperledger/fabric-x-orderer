@@ -268,7 +268,7 @@ func loadConfigAndGenesis(configFile *os.File) ([]byte, *common.Block) {
 	return content, block
 }
 
-func parseRouterConfig(rawConfig []byte) config.RouterNodeConfig {
+func parseRouterConfig(rawConfig []byte) *config.RouterNodeConfig {
 	var conf config.RouterNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
@@ -276,10 +276,10 @@ func parseRouterConfig(rawConfig []byte) config.RouterNodeConfig {
 		os.Exit(2)
 	}
 
-	return conf
+	return &conf
 }
 
-func parseAssemblerConfig(rawConfig []byte) config.AssemblerNodeConfig {
+func parseAssemblerConfig(rawConfig []byte) *config.AssemblerNodeConfig {
 	var conf config.AssemblerNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
@@ -291,10 +291,10 @@ func parseAssemblerConfig(rawConfig []byte) config.AssemblerNodeConfig {
 		conf.Directory = DirOverride
 	}
 
-	return conf
+	return &conf
 }
 
-func parseBatcherConfig(rawConfig []byte) config.BatcherNodeConfig {
+func parseBatcherConfig(rawConfig []byte) *config.BatcherNodeConfig {
 	var conf config.BatcherNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
@@ -306,10 +306,10 @@ func parseBatcherConfig(rawConfig []byte) config.BatcherNodeConfig {
 		conf.Directory = DirOverride
 	}
 
-	return conf
+	return &conf
 }
 
-func parseConsensusConfig(rawConfig []byte) config.ConsenterNodeConfig {
+func parseConsensusConfig(rawConfig []byte) *config.ConsenterNodeConfig {
 	var conf config.ConsenterNodeConfig
 	err := yaml.Unmarshal(rawConfig, &conf)
 	if err != nil {
@@ -321,7 +321,7 @@ func parseConsensusConfig(rawConfig []byte) config.ConsenterNodeConfig {
 		conf.Directory = DirOverride
 	}
 
-	return conf
+	return &conf
 }
 
 type silentLogger struct{}

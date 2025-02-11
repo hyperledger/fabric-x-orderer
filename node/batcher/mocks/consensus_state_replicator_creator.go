@@ -2,17 +2,18 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	"sync"
 )
 
 type FakeConsensusStateReplicatorCreator struct {
-	CreateStateConsensusReplicatorStub        func(config.BatcherNodeConfig, types.Logger) batcher.StateReplicator
+	CreateStateConsensusReplicatorStub        func(*config.BatcherNodeConfig, types.Logger) batcher.StateReplicator
 	createStateConsensusReplicatorMutex       sync.RWMutex
 	createStateConsensusReplicatorArgsForCall []struct {
-		arg1 config.BatcherNodeConfig
+		arg1 *config.BatcherNodeConfig
 		arg2 types.Logger
 	}
 	createStateConsensusReplicatorReturns struct {
@@ -25,23 +26,22 @@ type FakeConsensusStateReplicatorCreator struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicator(arg1 config.BatcherNodeConfig, arg2 types.Logger) batcher.StateReplicator {
+func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicator(arg1 *config.BatcherNodeConfig, arg2 types.Logger) batcher.StateReplicator {
 	fake.createStateConsensusReplicatorMutex.Lock()
 	ret, specificReturn := fake.createStateConsensusReplicatorReturnsOnCall[len(fake.createStateConsensusReplicatorArgsForCall)]
 	fake.createStateConsensusReplicatorArgsForCall = append(fake.createStateConsensusReplicatorArgsForCall, struct {
-		arg1 config.BatcherNodeConfig
+		arg1 *config.BatcherNodeConfig
 		arg2 types.Logger
 	}{arg1, arg2})
-	stub := fake.CreateStateConsensusReplicatorStub
-	fakeReturns := fake.createStateConsensusReplicatorReturns
 	fake.recordInvocation("CreateStateConsensusReplicator", []interface{}{arg1, arg2})
 	fake.createStateConsensusReplicatorMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2)
+	if fake.CreateStateConsensusReplicatorStub != nil {
+		return fake.CreateStateConsensusReplicatorStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createStateConsensusReplicatorReturns
 	return fakeReturns.result1
 }
 
@@ -51,13 +51,13 @@ func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicatorC
 	return len(fake.createStateConsensusReplicatorArgsForCall)
 }
 
-func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicatorCalls(stub func(config.BatcherNodeConfig, types.Logger) batcher.StateReplicator) {
+func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicatorCalls(stub func(*config.BatcherNodeConfig, types.Logger) batcher.StateReplicator) {
 	fake.createStateConsensusReplicatorMutex.Lock()
 	defer fake.createStateConsensusReplicatorMutex.Unlock()
 	fake.CreateStateConsensusReplicatorStub = stub
 }
 
-func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicatorArgsForCall(i int) (config.BatcherNodeConfig, types.Logger) {
+func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicatorArgsForCall(i int) (*config.BatcherNodeConfig, types.Logger) {
 	fake.createStateConsensusReplicatorMutex.RLock()
 	defer fake.createStateConsensusReplicatorMutex.RUnlock()
 	argsForCall := fake.createStateConsensusReplicatorArgsForCall[i]

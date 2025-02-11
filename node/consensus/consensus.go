@@ -61,7 +61,7 @@ type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
 	Net          Net
-	Config       config.ConsenterNodeConfig
+	Config       *config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
 	Signer       Signer
 	CurrentNodes []uint64

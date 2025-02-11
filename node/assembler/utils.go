@@ -8,7 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
 )
 
-func partiesFromAssemblerConfig(config config.AssemblerNodeConfig) []types.PartyID {
+func partiesFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.PartyID {
 	var parties []types.PartyID
 	for _, b := range config.Shards[0].Batchers {
 		parties = append(parties, types.PartyID(b.PartyID))
@@ -16,7 +16,7 @@ func partiesFromAssemblerConfig(config config.AssemblerNodeConfig) []types.Party
 	return parties
 }
 
-func shardsFromAssemblerConfig(config config.AssemblerNodeConfig) []types.ShardID {
+func shardsFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.ShardID {
 	shardIds := make([]types.ShardID, len(config.Shards))
 	for i, shard := range config.Shards {
 		shardIds[i] = shard.ShardId

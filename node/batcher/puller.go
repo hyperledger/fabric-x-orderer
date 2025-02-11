@@ -23,13 +23,13 @@ import (
 type BatchPuller struct {
 	ledger     core.BatchLedger
 	logger     types.Logger
-	config     config.BatcherNodeConfig
+	config     *config.BatcherNodeConfig
 	tlsKey     []byte
 	tlsCert    []byte
 	stopPuller context.CancelFunc
 }
 
-func NewBatchPuller(config config.BatcherNodeConfig, ledger core.BatchLedger, logger types.Logger) *BatchPuller {
+func NewBatchPuller(config *config.BatcherNodeConfig, ledger core.BatchLedger, logger types.Logger) *BatchPuller {
 	puller := &BatchPuller{
 		ledger:  ledger,
 		logger:  logger,

@@ -2,9 +2,10 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	"sync"
 )
 
 type FakeConsenterControlEventSenderCreator struct {
@@ -33,16 +34,15 @@ func (fake *FakeConsenterControlEventSenderCreator) CreateConsenterControlEventS
 		arg2 config.RawBytes
 		arg3 config.ConsenterInfo
 	}{arg1, arg2, arg3})
-	stub := fake.CreateConsenterControlEventSenderStub
-	fakeReturns := fake.createConsenterControlEventSenderReturns
 	fake.recordInvocation("CreateConsenterControlEventSender", []interface{}{arg1, arg2, arg3})
 	fake.createConsenterControlEventSenderMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2, arg3)
+	if fake.CreateConsenterControlEventSenderStub != nil {
+		return fake.CreateConsenterControlEventSenderStub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createConsenterControlEventSenderReturns
 	return fakeReturns.result1
 }
 

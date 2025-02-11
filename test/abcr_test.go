@@ -73,7 +73,7 @@ func TestABCR(t *testing.T) {
 	assemblerDir, err := os.MkdirTemp("", fmt.Sprintf("%s-assembler", t.Name()))
 	require.NoError(t, err)
 
-	assemblerConf := config.AssemblerNodeConfig{
+	assemblerConf := &config.AssemblerNodeConfig{
 		ListenAddress:      "0.0.0.0:0",
 		PartyId:            1,
 		TLSPrivateKeyFile:  ckp.Key,
@@ -219,14 +219,14 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	}
 }
 
-func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA) ([]*router.Router, []config.RouterNodeConfig) {
-	var configs []config.RouterNodeConfig
+func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA) ([]*router.Router, []*config.RouterNodeConfig) {
+	var configs []*config.RouterNodeConfig
 	var routers []*router.Router
 	for i := 0; i < 4; i++ {
 		l := testutil.CreateLogger(t, i)
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
-		config := config.RouterNodeConfig{
+		config := &config.RouterNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			TLSPrivateKeyFile:  kp.Key,
 			TLSCertificateFile: kp.Cert,
@@ -267,7 +267,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 			defer os.RemoveAll(dir)
 		})
 
-		conf := config.ConsenterNodeConfig{
+		conf := &config.ConsenterNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shardInfo,
 			Consenters:         consenterInfos,
@@ -312,7 +312,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
 
-		batcherConf := config.BatcherNodeConfig{
+		batcherConf := &config.BatcherNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shards,
 			ShardId:            1,

@@ -291,7 +291,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	}
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf config.BatcherNodeConfig, sr batcher.StateReplicator, eventSender batcher.ConsenterControlEventSender, batcherNode *node, stateChan chan *core.State, latestState *core.State) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf *config.BatcherNodeConfig, sr batcher.StateReplicator, eventSender batcher.ConsenterControlEventSender, batcherNode *node, stateChan chan *core.State, latestState *core.State) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -317,11 +317,11 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 	return batcher
 }
 
-func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo) ([]*batcher.Batcher, []chan *core.State, []batcher.StateReplicator, []*mocks.FakeConsenterControlEventSender, []*zap.SugaredLogger, []config.BatcherNodeConfig) {
+func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo) ([]*batcher.Batcher, []chan *core.State, []batcher.StateReplicator, []*mocks.FakeConsenterControlEventSender, []*zap.SugaredLogger, []*config.BatcherNodeConfig) {
 	var batchers []*batcher.Batcher
 	var stateChannels []chan *core.State
 	var loggers []*zap.SugaredLogger
-	var configs []config.BatcherNodeConfig
+	var configs []*config.BatcherNodeConfig
 	var srs []batcher.StateReplicator
 	var eventSenders []*mocks.FakeConsenterControlEventSender
 
@@ -336,7 +336,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
-		conf := config.BatcherNodeConfig{
+		conf := &config.BatcherNodeConfig{
 			Shards:             []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
 			Consenters:         consentersInfo,
 			Directory:          t.TempDir(),

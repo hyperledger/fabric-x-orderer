@@ -2,9 +2,10 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
-	"sync"
 )
 
 type FakeConsenterControlEventSender struct {
@@ -29,16 +30,15 @@ func (fake *FakeConsenterControlEventSender) SendControlEvent(arg1 core.ControlE
 	fake.sendControlEventArgsForCall = append(fake.sendControlEventArgsForCall, struct {
 		arg1 core.ControlEvent
 	}{arg1})
-	stub := fake.SendControlEventStub
-	fakeReturns := fake.sendControlEventReturns
 	fake.recordInvocation("SendControlEvent", []interface{}{arg1})
 	fake.sendControlEventMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.SendControlEventStub != nil {
+		return fake.SendControlEventStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.sendControlEventReturns
 	return fakeReturns.result1
 }
 

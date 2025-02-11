@@ -31,25 +31,25 @@ type BatchBringer interface {
 
 //go:generate counterfeiter -o ./mocks/batch_fetcher_factory.go . BatchBringerFactory
 type BatchBringerFactory interface {
-	Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) BatchBringer
+	Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger types.Logger) BatchBringer
 }
 
 type DefaultBatchBringerFactory struct{}
 
-func (f *DefaultBatchBringerFactory) Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) BatchBringer {
+func (f *DefaultBatchBringerFactory) Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger types.Logger) BatchBringer {
 	return NewBatchFetcher(initialBatchFrontier, config, logger)
 }
 
 type BatchFetcher struct {
 	initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence
-	config               config.AssemblerNodeConfig
+	config               *config.AssemblerNodeConfig
 	clientConfig         comm.ClientConfig
 	logger               types.Logger
 	cancelCtx            context.Context
 	cancelCtxFunc        context.CancelFunc
 }
 
-func fetcherClientConfig(config config.AssemblerNodeConfig) comm.ClientConfig {
+func fetcherClientConfig(config *config.AssemblerNodeConfig) comm.ClientConfig {
 	var tlsCAs [][]byte
 	for _, shard := range config.Shards {
 		for _, batcher := range shard.Batchers {
@@ -77,7 +77,7 @@ func fetcherClientConfig(config config.AssemblerNodeConfig) comm.ClientConfig {
 	return cc
 }
 
-func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) *BatchFetcher {
+func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger types.Logger) *BatchFetcher {
 	logger.Infof("Creating new Batch Fetcher using batch frontier with assembler: endpoint %s partyID %d ", config.ListenAddress, config.PartyId)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	return &BatchFetcher{

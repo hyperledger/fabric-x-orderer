@@ -32,7 +32,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf config.ConsenterNodeConfig, genesisBlock *common.Block, logger arma_types.Logger) *Consensus {
+func CreateConsensus(conf *config.ConsenterNodeConfig, genesisBlock *common.Block, logger arma_types.Logger) *Consensus {
 	logger.Infof("Creating consensus, party: %d, address: %s, with genesis block: %t", conf.PartyId, conf.ListenAddress, genesisBlock != nil)
 
 	var currentNodes []uint64
@@ -82,7 +82,7 @@ func CreateConsensus(conf config.ConsenterNodeConfig, genesisBlock *common.Block
 	return c
 }
 
-func buildSigner(conf config.ConsenterNodeConfig, logger arma_types.Logger) Signer {
+func buildSigner(conf *config.ConsenterNodeConfig, logger arma_types.Logger) Signer {
 	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
 	if privateKey == nil || privateKey.Bytes == nil {
 		logger.Panicf("Failed decoding private key PEM")
@@ -161,7 +161,7 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 	return synchronizer
 }
 
-func createBFTconfig(conf config.ConsenterNodeConfig) types.Configuration {
+func createBFTconfig(conf *config.ConsenterNodeConfig) types.Configuration {
 	config := types.DefaultConfig
 	config.RequestBatchMaxInterval = time.Millisecond * 500
 	if conf.BatchTimeout != 0 {
@@ -211,7 +211,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(config config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *types.Proposal, []types.Signature) {
+func getInitialStateAndMetadata(config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *types.Proposal, []types.Signature) {
 	height := ledger.Height()
 	if height == 0 {
 		initState := initialStateFromConfig(config)
@@ -245,7 +245,7 @@ func getInitialStateAndMetadata(config config.ConsenterNodeConfig, genesisBlock 
 	return header.State, md, &proposal, sigs
 }
 
-func initialStateFromConfig(config config.ConsenterNodeConfig) *core.State {
+func initialStateFromConfig(config *config.ConsenterNodeConfig) *core.State {
 	var initState core.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))

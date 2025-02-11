@@ -50,7 +50,7 @@ type consensusTestSetup struct {
 	batchersInfo   []config.BatcherInfo
 	consensusNodes []*consensus.Consensus
 	loggers        []*zap.SugaredLogger
-	configs        []config.ConsenterNodeConfig
+	configs        []*config.ConsenterNodeConfig
 	listeners      []*storageListener
 }
 
@@ -140,7 +140,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int) consensusTes
 
 	var consensusNodes []*consensus.Consensus
 	var loggers []*zap.SugaredLogger
-	var configs []config.ConsenterNodeConfig
+	var configs []*config.ConsenterNodeConfig
 	var listeners []*storageListener
 
 	for i := 0; i < numParties; i++ {
@@ -195,13 +195,13 @@ func grpcRegisterAndStart(c *consensus.Consensus, n *node) {
 	}()
 }
 
-func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []config.ConsenterInfo, batchersInfo []config.BatcherInfo) config.ConsenterNodeConfig {
+func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []config.ConsenterInfo, batchersInfo []config.BatcherInfo) *config.ConsenterNodeConfig {
 	sk, err := x509.MarshalPKCS8PrivateKey(n.sk)
 	if err != nil {
 		panic(err)
 	}
 
-	return config.ConsenterNodeConfig{
+	return &config.ConsenterNodeConfig{
 		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
 		Consenters:         consentersInfo,
 		PartyId:            partyID,

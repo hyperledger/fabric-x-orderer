@@ -258,7 +258,7 @@ func createTraceID(rand *rand2.Rand) []byte {
 	return trace
 }
 
-func NewRouter(config config.RouterNodeConfig, logger types.Logger) *Router {
+func NewRouter(config *config.RouterNodeConfig, logger types.Logger) *Router {
 	var shardIDs []types.ShardID
 	var batcherEndpoints []string
 	tlsCAsOfBatchers := make(map[types.ShardID][][]byte)

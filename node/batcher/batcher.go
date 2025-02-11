@@ -58,7 +58,7 @@ type Batcher struct {
 	controlEventSenders   []ConsenterControlEventSender
 	Net                   Net
 	Ledger                *node_ledger.BatchLedgerArray
-	config                node_config.BatcherNodeConfig
+	config                *node_config.BatcherNodeConfig
 	batchers              []node_config.BatcherInfo
 	privateKey            *ecdsa.PrivateKey
 
@@ -295,7 +295,7 @@ func (b *Batcher) indexTLSCerts() {
 	}
 }
 
-func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
+func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
 	b := &Batcher{
 		batcherDeliverService: ds,
 		stateReplicator:       sr,
@@ -362,7 +362,7 @@ func getBatchersIDs(batchers []node_config.BatcherInfo) []types.PartyID {
 	return parties
 }
 
-func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPool {
+func (b *Batcher) createMemPool(config *node_config.BatcherNodeConfig) core.MemPool {
 	opts := defaultBatcherMemPoolOpts
 	opts.BatchMaxSizeBytes = config.BatchMaxBytes
 	opts.MaxSize = config.MemPoolMaxSize
@@ -444,7 +444,7 @@ func (b *Batcher) createComplaint() *core.Complaint {
 	return c
 }
 
-func computeZeroState(config node_config.BatcherNodeConfig) core.State {
+func computeZeroState(config *node_config.BatcherNodeConfig) core.State {
 	var state core.State
 	for _, shard := range config.Shards {
 		state.Shards = append(state.Shards, core.ShardTerm{
@@ -457,7 +457,7 @@ func computeZeroState(config node_config.BatcherNodeConfig) core.State {
 	return state
 }
 
-func batchersFromConfig(config node_config.BatcherNodeConfig) []node_config.BatcherInfo {
+func batchersFromConfig(config *node_config.BatcherNodeConfig) []node_config.BatcherInfo {
 	var batchers []node_config.BatcherInfo
 	for _, shard := range config.Shards {
 		if shard.ShardId == config.ShardId {
@@ -668,7 +668,7 @@ func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, dige
 	return baf, nil
 }
 
-func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator) *Batcher {
+func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
 	var parties []types.PartyID
@@ -700,7 +700,7 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net 
 	return batcher
 }
 
-func maybeSetDefaultConfig(conf node_config.BatcherNodeConfig) node_config.BatcherNodeConfig {
+func maybeSetDefaultConfig(conf *node_config.BatcherNodeConfig) *node_config.BatcherNodeConfig {
 	for {
 		switch {
 		case conf.BatchMaxSize == 0:

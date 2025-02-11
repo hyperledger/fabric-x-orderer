@@ -156,7 +156,7 @@ func (at *assemblerTest) StartAssembler() {
 	})
 
 	batchBringerFactoryMock := &assembler_mocks.FakeBatchBringerFactory{}
-	batchBringerFactoryMock.CreateCalls(func(m map[types.ShardID]map[types.PartyID]types.BatchSequence, anc config.AssemblerNodeConfig, l types.Logger) assembler.BatchBringer {
+	batchBringerFactoryMock.CreateCalls(func(m map[types.ShardID]map[types.PartyID]types.BatchSequence, anc *config.AssemblerNodeConfig, l types.Logger) assembler.BatchBringer {
 		return at.batchBringerMock
 	})
 	for _, shardId := range at.shards {
@@ -184,7 +184,7 @@ func (at *assemblerTest) StartAssembler() {
 
 	at.assembler = assembler.NewDefaultAssembler(
 		at.logger,
-		*at.nodeConfig,
+		at.nodeConfig,
 		nil,
 		ledgerFactory,
 		prefetchIndexerFactory,

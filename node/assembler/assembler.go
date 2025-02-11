@@ -66,7 +66,7 @@ func (a *Assembler) Stop() {
 
 func NewDefaultAssembler(
 	logger types.Logger,
-	config config.AssemblerNodeConfig,
+	config *config.AssemblerNodeConfig,
 	genesisBlock *common.Block,
 	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
 	prefetchIndexFactory PrefetchIndexerFactory,
@@ -138,7 +138,7 @@ func NewDefaultAssembler(
 	return assembler
 }
 
-func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block, logger types.Logger) *Assembler {
+func NewAssembler(config *config.AssemblerNodeConfig, genesisBlock *common.Block, logger types.Logger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
 		config,
