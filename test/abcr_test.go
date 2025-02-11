@@ -279,6 +279,7 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 		}
 
 		c := consensus.CreateConsensus(conf, nil, logger)
+		c.Net = consenterNodes[i].GRPCServer
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)
@@ -291,8 +292,9 @@ func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []con
 	}
 
 	return consensuses, func() {
-		for _, clean := range cleans {
+		for i, clean := range cleans {
 			clean()
+			consensuses[i].Stop()
 		}
 	}
 }
