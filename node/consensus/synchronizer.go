@@ -82,7 +82,7 @@ func (s *synchronizer) run() {
 		s.memStore[block.Header.Number] = block
 	}
 
-	go delivery.Pull(stopCtx, "consensus", s.logger, s.endpoint, requestEnvelopeFactoryFunc, s.cc, blockHandlerFunc)
+	go delivery.Pull(stopCtx, "consensus", s.logger, s.endpoint, requestEnvelopeFactoryFunc, s.cc, blockHandlerFunc, nil)
 }
 
 func (s *synchronizer) memStoreTooBig() bool {

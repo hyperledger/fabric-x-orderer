@@ -50,7 +50,7 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 	return seekInfo
 }
 
-func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block)) {
+func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
 	logger.Infof("Assembler pulling from: %s", channel)
 	for {
 		time.Sleep(time.Second)
@@ -58,6 +58,9 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 		select {
 		case <-context.Done():
 			logger.Infof("Returning since context is done")
+			if onClose != nil {
+				onClose()
+			}
 			return
 		default:
 		}

@@ -18,28 +18,56 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
+const (
+	replicateStateChanSize = 100
+	replicateChanSize      = 100
+)
+
+//go:generate counterfeiter -o ./mocks/consensus_bringer.go . ConsensusBringer
+type ConsensusBringer interface {
+	ReplicateState() <-chan *core.State
+	Replicate(seq types.DecisionNum) <-chan core.OrderedBatchAttestation
+	Stop()
+}
+
+//go:generate counterfeiter -o ./mocks/consensus_bringer_factory.go . ConsensusBringerFactory
+type ConsensusBringerFactory interface {
+	Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger) ConsensusBringer
+}
+
+type DefaultConsensusBringerFactory struct{}
+
+func (f *DefaultConsensusBringerFactory) Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger) ConsensusBringer {
+	return NewConsensusReplicator(tlsCACerts, tlsKey, tlsCert, endpoint, logger)
+}
+
 // ConsensusReplicator replicates decisions from consensus and allows the consumption of `core.state` or `core.BatchAttestation` objects.
 type ConsensusReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
 	logger          types.Logger
+	cancelCtx       context.Context
+	ctxCancelFunc   context.CancelFunc
 }
 
 func NewConsensusReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger) *ConsensusReplicator {
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	baReplicator := &ConsensusReplicator{
-		cc:       clientConfig(tlsCACerts, tlsKey, tlsCert),
-		endpoint: endpoint,
-		logger:   logger,
-		tlsKey:   tlsKey,
-		tlsCert:  tlsCert,
+		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
+		endpoint:      endpoint,
+		logger:        logger,
+		tlsKey:        tlsKey,
+		tlsCert:       tlsCert,
+		cancelCtx:     ctx,
+		ctxCancelFunc: cancelFunc,
 	}
 	return baReplicator
 }
 
-func (bar *ConsensusReplicator) ReplicateState() <-chan *core.State {
+func (cr *ConsensusReplicator) ReplicateState() <-chan *core.State {
 	endpoint := func() string {
-		return bar.endpoint
+		return cr.endpoint
 	}
 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
@@ -53,27 +81,31 @@ func (bar *ConsensusReplicator) ReplicateState() <-chan *core.State {
 			nil,
 		)
 		if err != nil {
-			bar.logger.Panicf("Failed creating signed envelope: %v", err)
+			cr.logger.Panicf("Failed creating signed envelope: %v", err)
 		}
 
 		return requestEnvelope
 	}
 
-	res := make(chan *core.State, 100)
+	res := make(chan *core.State, replicateStateChanSize)
 
 	blockHandlerFunc := func(block *common.Block) {
-		header := extractHeaderFromBlock(block, bar.logger)
+		header := extractHeaderFromBlock(block, cr.logger)
 		res <- header.State
 	}
 
-	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelopeFactoryFunc, bar.cc, blockHandlerFunc)
+	onClose := func() {
+		close(res)
+	}
+
+	go Pull(cr.cancelCtx, "consensus", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
 
 	return res
 }
 
-func (bar *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.OrderedBatchAttestation {
+func (cr *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.OrderedBatchAttestation {
 	endpoint := func() string {
-		return bar.endpoint
+		return cr.endpoint
 	}
 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
@@ -87,26 +119,26 @@ func (bar *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.Ord
 			nil,
 		)
 		if err != nil {
-			bar.logger.Panicf("Failed creating signed envelope: %v", err)
+			cr.logger.Panicf("Failed creating signed envelope: %v", err)
 		}
 
 		return requestEnvelope
 	}
 
-	res := make(chan core.OrderedBatchAttestation, 100)
+	res := make(chan core.OrderedBatchAttestation, replicateChanSize)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header, sigs, err2 := extractHeaderAndSigsFromBlock(block)
 		if err2 != nil {
-			bar.logger.Panicf("Failed extracting ordered batch attestation from decision: %s", err2)
+			cr.logger.Panicf("Failed extracting ordered batch attestation from decision: %s", err2)
 		}
 
-		bar.logger.Infof("Extracted a decision header with %d available blocks", len(header.AvailableBlocks))
+		cr.logger.Infof("Extracted a decision header with %d available blocks", len(header.AvailableBlocks))
 		for index, ab := range header.AvailableBlocks {
-			bar.logger.Infof("BA index %d with: shard %d, primary %d, seq %d", index, ab.Batch.Shard(), ab.Batch.Primary(), ab.Batch.Seq())
-			bar.logger.Infof("BA block header: %+v", ab.Header)
-			bar.logger.Infof("BA block signers: %+v", signersFromSigs(sigs[index]))
-			bar.logger.Infof("BA digest: %s; block header digest: %s, ", core.ShortDigestString(ab.Batch.Digest()), core.ShortDigestString(ab.Header.Digest))
+			cr.logger.Infof("BA index %d with: shard %d, primary %d, seq %d", index, ab.Batch.Shard(), ab.Batch.Primary(), ab.Batch.Seq())
+			cr.logger.Infof("BA block header: %+v", ab.Header)
+			cr.logger.Infof("BA block signers: %+v", signersFromSigs(sigs[index]))
+			cr.logger.Infof("BA digest: %s; block header digest: %s, ", core.ShortDigestString(ab.Batch.Digest()), core.ShortDigestString(ab.Header.Digest))
 
 			abo := &state.AvailableBatchOrdered{
 				AvailableBatch: ab.Batch,
@@ -118,15 +150,23 @@ func (bar *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.Ord
 					BatchCount:  len(header.AvailableBlocks),
 				},
 			}
-			bar.logger.Debugf("AvailableBatchOrdered: %+v", abo)
+			cr.logger.Debugf("AvailableBatchOrdered: %+v", abo)
 
 			res <- abo
 		}
 	}
 
-	go Pull(context.Background(), "consensus", bar.logger, endpoint, requestEnvelopeFactoryFunc, bar.cc, blockHandlerFunc)
+	onClose := func() {
+		close(res)
+	}
+
+	go Pull(cr.cancelCtx, "consensus", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
 
 	return res
+}
+
+func (cr *ConsensusReplicator) Stop() {
+	cr.ctxCancelFunc()
 }
 
 func extractHeaderFromBlock(block *common.Block, logger types.Logger) *state.Header {

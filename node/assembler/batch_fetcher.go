@@ -136,6 +136,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		requestEnvelopeFactoryFunc,
 		br.clientConfig,
 		blockHandlerFunc,
+		nil,
 	)
 	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
 }
