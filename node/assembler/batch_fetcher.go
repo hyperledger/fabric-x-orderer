@@ -26,6 +26,7 @@ const defaultReplicationChanSize = 100
 type BatchBringer interface {
 	Replicate(shardID types.ShardID) <-chan core.Batch
 	GetBatch(batchID types.BatchID) (core.Batch, error)
+	Stop()
 }
 
 type BatchFetcher struct {
@@ -33,6 +34,8 @@ type BatchFetcher struct {
 	config               config.AssemblerNodeConfig
 	clientConfig         comm.ClientConfig
 	logger               types.Logger
+	cancelCtx            context.Context
+	cancelCtxFunc        context.CancelFunc
 }
 
 func fetcherClientConfig(config config.AssemblerNodeConfig) comm.ClientConfig {
@@ -65,11 +68,14 @@ func fetcherClientConfig(config config.AssemblerNodeConfig) comm.ClientConfig {
 
 func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) *BatchFetcher {
 	logger.Infof("Creating new Batch Fetcher using batch frontier with assembler: endpoint %s partyID %d ", config.ListenAddress, config.PartyId)
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	return &BatchFetcher{
 		initialBatchFrontier: initialBatchFrontier,
 		config:               config,
 		clientConfig:         fetcherClientConfig(config),
 		logger:               logger,
+		cancelCtx:            ctx,
+		cancelCtxFunc:        cancelFunc,
 	}
 }
 
@@ -84,14 +90,22 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 
 	res := make(chan core.Batch, defaultReplicationChanSize)
 
+	var partyPullerWg sync.WaitGroup
+
 	for _, p := range partiesFromAssemblerConfig(br.config) {
-		br.pullFromParty(shardID, batcherToPullFrom, p, res)
+		partyPullerWg.Add(1)
+		br.pullFromParty(shardID, batcherToPullFrom, p, res, &partyPullerWg)
 	}
+
+	go func() {
+		partyPullerWg.Wait()
+		close(res)
+	}()
 
 	return res
 }
 
-func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan core.Batch) {
+func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan core.Batch, wg *sync.WaitGroup) {
 	seq := br.initialBatchFrontier[shardID][primaryID]
 
 	endpoint := func() string {
@@ -128,15 +142,19 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		resultChan <- fb
 	}
 
+	onClose := func() {
+		wg.Done()
+	}
+
 	go delivery.Pull(
-		context.Background(),
+		br.cancelCtx,
 		channelName,
 		br.logger,
 		endpoint,
 		requestEnvelopeFactoryFunc,
 		br.clientConfig,
 		blockHandlerFunc,
-		nil,
+		onClose,
 	)
 	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
 }
@@ -174,14 +192,11 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (core.Batch, error) {
 		return nil, fmt.Errorf("failed finding shard %d within config: %v", batchID.Shard(), br.config.Shards)
 	}
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
+	ctx, cancelFunc := context.WithCancel(br.cancelCtx)
 	res := make(chan core.Batch, len(shardInfo.Batchers))
 
-	var wg sync.WaitGroup
-	wg.Add(len(shardInfo.Batchers))
 	for _, fromBatcher := range shardInfo.Batchers {
 		go func(from config.BatcherInfo) {
-			defer wg.Done()
 			br.pullSingleBatch(ctx, from, batchID, res)
 		}(fromBatcher)
 	}
@@ -190,18 +205,20 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (core.Batch, error) {
 
 	for {
 		// TODO use select with case for shutdown, will be implemented in next PR
-		fetchedBatch := <-res
-		count++
-		if fetchedBatch.Shard() == batchID.Shard() && fetchedBatch.Primary() == batchID.Primary() && fetchedBatch.Seq() == batchID.Seq() && bytes.Equal(fetchedBatch.Digest(), batchID.Digest()) {
-			br.logger.Infof("Found batch %v", fetchedBatch)
+		select {
+		case <-ctx.Done():
 			cancelFunc()
-			wg.Wait()
-
-			return fetchedBatch, nil
-		} else if count == len(shardInfo.Batchers) {
-			cancelFunc()
-			wg.Wait()
-			return nil, fmt.Errorf("failed finding batchID %v within shard: %v", batchID, shardInfo)
+			return nil, fmt.Errorf("operation canceled")
+		case fetchedBatch := <-res:
+			count++
+			if fetchedBatch.Shard() == batchID.Shard() && fetchedBatch.Primary() == batchID.Primary() && fetchedBatch.Seq() == batchID.Seq() && bytes.Equal(fetchedBatch.Digest(), batchID.Digest()) {
+				br.logger.Infof("Found batch %v", fetchedBatch)
+				cancelFunc()
+				return fetchedBatch, nil
+			} else if count == len(shardInfo.Batchers) {
+				cancelFunc()
+				return nil, fmt.Errorf("failed finding batchID %v within shard: %v", batchID, shardInfo)
+			}
 		}
 	}
 }
@@ -245,4 +262,8 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 	}
 	br.logger.Infof("Assembler pulled from %s batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
 	resultChan <- fb
+}
+
+func (br *BatchFetcher) Stop() {
+	br.cancelCtxFunc()
 }

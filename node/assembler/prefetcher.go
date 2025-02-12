@@ -56,6 +56,7 @@ func (p *Prefetcher) Start() {
 func (p *Prefetcher) Stop() {
 	p.cancelContextFunc()
 	p.wg.Wait()
+	p.batchFetcher.Stop()
 }
 
 func (p *Prefetcher) handleReplication(partition ShardPrimary) {

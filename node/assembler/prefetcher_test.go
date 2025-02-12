@@ -127,3 +127,19 @@ func TestPrefetcher_RequestedBatchWillBeFetchedByFetcherAndForcePutToIndex(t *te
 	putBatch := test.prefetchIndexMock.PutForceArgsForCall(0)
 	testutil.AssertBatchIdsEquals(t, batch, putBatch)
 }
+
+func TestPrefetcher_StopWillStopBatchFetcher(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1}
+	parties := []types.PartyID{1, 2, 3}
+	test := setupPrefetcherTest(t, shards, parties)
+
+	// Act
+	test.prefetcher.Start()
+	test.finish()
+
+	// Assert
+	require.Eventually(t, func() bool {
+		return test.batchFetcherMock.StopCallCount() == 1
+	}, eventuallyTimeout, eventuallyTick)
+}

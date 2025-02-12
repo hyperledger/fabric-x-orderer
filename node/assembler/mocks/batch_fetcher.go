@@ -33,6 +33,10 @@ type FakeBatchBringer struct {
 	replicateReturnsOnCall map[int]struct {
 		result1 <-chan core.Batch
 	}
+	StopStub        func()
+	stopMutex       sync.RWMutex
+	stopArgsForCall []struct {
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -160,6 +164,29 @@ func (fake *FakeBatchBringer) ReplicateReturnsOnCall(i int, result1 <-chan core.
 	}{result1}
 }
 
+func (fake *FakeBatchBringer) Stop() {
+	fake.stopMutex.Lock()
+	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
+	}{})
+	fake.recordInvocation("Stop", []interface{}{})
+	fake.stopMutex.Unlock()
+	if fake.StopStub != nil {
+		fake.StopStub()
+	}
+}
+
+func (fake *FakeBatchBringer) StopCallCount() int {
+	fake.stopMutex.RLock()
+	defer fake.stopMutex.RUnlock()
+	return len(fake.stopArgsForCall)
+}
+
+func (fake *FakeBatchBringer) StopCalls(stub func()) {
+	fake.stopMutex.Lock()
+	defer fake.stopMutex.Unlock()
+	fake.StopStub = stub
+}
+
 func (fake *FakeBatchBringer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -167,6 +194,8 @@ func (fake *FakeBatchBringer) Invocations() map[string][][]interface{} {
 	defer fake.getBatchMutex.RUnlock()
 	fake.replicateMutex.RLock()
 	defer fake.replicateMutex.RUnlock()
+	fake.stopMutex.RLock()
+	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
