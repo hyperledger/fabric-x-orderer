@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -458,4 +459,179 @@ func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
 		assemblerConfig.Directory = dir
 		nodeconfig.NodeConfigToYAML(assemblerConfig, path)
 	}
+}
+
+// Scenario:
+// 1. Create a config YAML file to be an input to armageddon
+// 2. Run armageddon generate command to create crypto material and config files
+// 3. Check that all required material was generated in the expected structure
+func TestArmageddonGenerateNewConfig(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	generateInputConfigFileForArmageddon(t, configPath)
+
+	// 2.
+	armageddon := NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "2"})
+
+	// 3.
+	err = checkConfigDir(dir)
+	require.NoError(t, err)
+
+	err = checkBootstrapDir(dir)
+	require.NoError(t, err)
+
+	err = checkCryptoDir(dir)
+	require.NoError(t, err)
+}
+
+// Note: this function assumes that there are 2 shards
+func checkConfigDir(outputDir string) error {
+	configPath := filepath.Join(outputDir, "config")
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return fmt.Errorf("config directory is missing from: %s\n", configPath)
+	}
+
+	parties, err := os.ReadDir(configPath)
+	if err != nil {
+		return fmt.Errorf("error reading config directory: %s\n", err)
+	}
+
+	requiredPartyFiles := []string{
+		"local_config_assembler.yaml",
+		"local_config_batcher1.yaml",
+		"local_config_batcher2.yaml",
+		"local_config_consenter.yaml",
+		"local_config_router.yaml",
+	}
+
+	for _, party := range parties {
+		if !party.IsDir() {
+			return fmt.Errorf("error reading party dir, party %s does not describe a directory\n", party.Name())
+		}
+
+		partyDir := filepath.Join(configPath, party.Name())
+
+		for _, file := range requiredPartyFiles {
+			filePath := filepath.Join(partyDir, file)
+			if !fileExists(filePath) {
+				return fmt.Errorf("missing file: %s\n", filePath)
+			}
+		}
+	}
+
+	return nil
+}
+
+func checkBootstrapDir(outputDir string) error {
+	bootstrapDir := filepath.Join(outputDir, "bootstrap")
+
+	if _, err := os.Stat(bootstrapDir); os.IsNotExist(err) {
+		return fmt.Errorf("bootstrap directory is missing from: %s\n", bootstrapDir)
+	}
+
+	filePath := filepath.Join(bootstrapDir, "shared_config.yaml")
+	if !fileExists(filePath) {
+		return fmt.Errorf("missing file: %s\n", filePath)
+	}
+
+	return nil
+}
+
+func checkCryptoDir(outputDir string) error {
+	cryptoDir := filepath.Join(outputDir, "crypto")
+	if _, err := os.Stat(cryptoDir); os.IsNotExist(err) {
+		return fmt.Errorf("crypto directory is missing from: %s\n", cryptoDir)
+	}
+
+	orgsDir := filepath.Join(cryptoDir, "ordererOrganizations")
+	if _, err := os.Stat(orgsDir); os.IsNotExist(err) {
+		return fmt.Errorf("ordererOrganizations directory is missing from: %s\n", orgsDir)
+	}
+
+	orgs, err := os.ReadDir(orgsDir)
+	if err != nil {
+		return fmt.Errorf("error reading org directories: %s\n", err)
+	}
+
+	requiredOrgSubDirs := []string{
+		"ca",
+		"tlsca",
+		"msp",
+		"msp/admincerts",
+		"orderers",
+		"users",
+	}
+
+	for i, org := range orgs {
+		if !org.IsDir() {
+			return fmt.Errorf("error reading org dir, org %s does not describe a directory\n", org.Name())
+		}
+
+		orgDir := filepath.Join(orgsDir, org.Name())
+
+		// check org includes all required directories
+		for _, subDir := range requiredOrgSubDirs {
+			dirPath := filepath.Join(orgDir, subDir)
+			if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+				return fmt.Errorf("missing directory: %s\n", dirPath)
+			}
+		}
+
+		// check ca and tlsca directories
+		for _, subDir := range []string{"ca", "tlsca"} {
+			dirPath := filepath.Join(orgDir, subDir)
+			files, err := os.ReadDir(dirPath)
+			if err != nil {
+				return fmt.Errorf("error reading directory %s\n", filepath.Join(orgDir, subDir))
+			}
+			for _, file := range files {
+				if strings.Contains(file.Name(), "cert") {
+					if !strings.HasSuffix(file.Name(), ".pem") {
+						return fmt.Errorf("error reading %s files, suffix file is not pem\n", filepath.Join(orgDir, subDir))
+					}
+				}
+			}
+		}
+
+		// check orderers directory
+		orderersDir := filepath.Join(orgDir, "orderers")
+		if _, err := os.Stat(orderersDir); os.IsNotExist(err) {
+			return fmt.Errorf("missing directory: %s\n", orderersDir)
+		}
+
+		partyDir := filepath.Join(orderersDir, fmt.Sprintf("party%d", i+1))
+		if _, err := os.Stat(partyDir); os.IsNotExist(err) {
+			return fmt.Errorf("missing directory: %s\n", partyDir)
+		}
+
+		requiredPartyDirs := []string{"assembler", "batcher1", "batcher2", "consenter", "router"}
+		for _, partySubDir := range requiredPartyDirs {
+			path := filepath.Join(partyDir, partySubDir)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				return fmt.Errorf("missing directory: %s\n", path)
+			}
+			files, err := os.ReadDir(path)
+			if err != nil {
+				return fmt.Errorf("error reading directory %s\n", path)
+			}
+			for _, file := range files {
+				if !strings.HasSuffix(file.Name(), ".pem") {
+					return fmt.Errorf("error reading %s files, suffix file is not pem\n", filepath.Join(orgDir, path))
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

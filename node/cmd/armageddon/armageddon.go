@@ -225,7 +225,7 @@ func (cli *CLI) Run(args []string) {
 		if *cli.version == 1 {
 			generate(cli.genConfigFile, cli.outputDir, cli.useTLS)
 		} else if *cli.version == 2 {
-			generateConfig(cli.genConfigFile, cli.outputDir, cli.useTLS)
+			generateConfigAndCrypto(cli.genConfigFile, cli.outputDir)
 		} else {
 			fmt.Fprintf(os.Stderr, "Invalid version: %d", *cli.version)
 			os.Exit(-1)
@@ -275,9 +275,35 @@ func generate(genConfigFile **os.File, outputDir *string, useTLS *bool) {
 	createConfigMaterial(networkConfig, networkCryptoConfig, outputDir)
 }
 
-// generate is generating configuration files in the new format.
-func generateConfig(genConfigFile **os.File, outputDir *string, useTLS *bool) {
-	// TODO: complete in next PR's
+// generateConfigAndCrypto is generating the crypto material and the configuration files in the new format.
+func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string) {
+	// get config file content given as argument
+	networkConfig, err := getConfigFileContent(genConfigFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
+		os.Exit(-1)
+	}
+
+	// generate crypto material
+	err = GenerateCryptoConfig(networkConfig, *outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating crypto config: %s", err)
+		os.Exit(-1)
+	}
+
+	// generate local config yaml files
+	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(*networkConfig, *outputDir, *outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating local config: %s", err)
+		os.Exit(-1)
+	}
+
+	// generate shared config yaml file
+	_, err = genconfig.CreateArmaSharedConfig(*networkConfig, networkLocalConfig, *outputDir, *outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating shared config: %s", err)
+		os.Exit(-1)
+	}
 }
 
 func getConfigFileContent(genConfigFile **os.File) (*genconfig.Network, error) {

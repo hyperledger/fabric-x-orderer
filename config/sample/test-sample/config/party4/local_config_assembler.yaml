@@ -3,7 +3,7 @@ General:
     ListenAddress: 127.0.0.1
     ListenPort: 52812
     TLS:
-        Enabled: true
+        Enabled: false
         PrivateKey: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/assembler/key.pem
         Certificate: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/assembler/tls-cert.pem
         RootCAs:
