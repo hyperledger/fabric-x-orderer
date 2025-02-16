@@ -6,7 +6,9 @@ import (
 	"arma/node/delivery"
 )
 
-func CreateConsensusReplicator(config node_config.BatcherNodeConfig, logger types.Logger) *delivery.ConsensusReplicator {
+type ConsensusStateReplicatorFactory func(conf node_config.BatcherNodeConfig, logger types.Logger) StateReplicator
+
+func CreateStateConsensusReplicator(config node_config.BatcherNodeConfig, logger types.Logger) StateReplicator {
 	var endpoint string
 	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(config.Consenters); i++ {

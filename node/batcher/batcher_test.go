@@ -18,7 +18,6 @@ import (
 	"arma/node/comm"
 	"arma/node/comm/tlsgen"
 	"arma/node/config"
-	"arma/node/ledger"
 	protos "arma/node/protos/comm"
 	"arma/testutil"
 
@@ -41,7 +40,7 @@ func TestBatcherRun(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	batchers, ledgers, stateChannels, _ := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo)
+	batchers, stateChannels, srs, loggers, configs := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo)
 
 	defer func() {
 		for i := 0; i < numParties; i++ {
@@ -54,16 +53,16 @@ func TestBatcherRun(t *testing.T) {
 	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
 
 	require.Eventually(t, func() bool {
-		return ledgers[0].Height(1) == uint64(1) && ledgers[1].Height(1) == uint64(1)
-	}, 10*time.Second, 10*time.Millisecond)
+		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
 
 	req2 := make([]byte, 8)
 	binary.BigEndian.PutUint64(req2, uint64(2))
 	batchers[0].Submit(context.Background(), &protos.Request{Payload: req2})
 
 	require.Eventually(t, func() bool {
-		return ledgers[2].Height(1) == uint64(2) && ledgers[3].Height(1) == uint64(2)
-	}, 10*time.Second, 10*time.Millisecond)
+		return batchers[2].Ledger.Height(1) == uint64(2) && batchers[3].Ledger.Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
 
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
@@ -71,84 +70,137 @@ func TestBatcherRun(t *testing.T) {
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
 
+	termChangeState := &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 1}}}
+
 	for i := 0; i < numParties; i++ {
-		stateChannels[i] <- &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 1}}}
+		stateChannels[i] <- termChangeState
 	}
 	require.Eventually(t, func() bool {
 		return batchers[0].GetPrimaryID() == types.PartyID(2) && batchers[3].GetPrimaryID() == types.PartyID(2)
-	}, 10*time.Second, 10*time.Millisecond)
+	}, 30*time.Second, 10*time.Millisecond)
 
-	require.Equal(t, uint64(0), ledgers[0].Height(2))
-	require.Equal(t, uint64(0), ledgers[1].Height(2))
+	require.Equal(t, uint64(0), batchers[0].Ledger.Height(2))
+	require.Equal(t, uint64(0), batchers[1].Ledger.Height(2))
+
+	// stop and recover secondary
+	batchers[3].Stop()
+	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], srs[3], batcherNodes[3], stateChannels[3], termChangeState)
 
 	req3 := make([]byte, 8)
 	binary.BigEndian.PutUint64(req3, uint64(3))
 	batchers[1].Submit(context.Background(), &protos.Request{Payload: req3})
 
 	require.Eventually(t, func() bool {
-		return ledgers[0].Height(2) == uint64(1) && ledgers[1].Height(2) == uint64(1)
-	}, 10*time.Second, 10*time.Millisecond)
-}
-
-func TestBatcherStop(t *testing.T) { // TODO test batcher restart
-	shardID := types.ShardID(0)
-	numParties := 2
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
-	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
-	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
-
-	batchers, ledgers, stateChannels, _ := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo)
-
-	defer func() {
-		for i := 0; i < numParties; i++ {
-			batchers[i].Stop()
-		}
-	}()
-
-	req := make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(1))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
-
+		return batchers[0].Ledger.Height(2) == uint64(1) && batchers[1].Ledger.Height(2) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
 	require.Eventually(t, func() bool {
-		return ledgers[0].Height(1) == uint64(1) && ledgers[1].Height(1) == uint64(1)
+		return batchers[3].Ledger.Height(2) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
 
-	req2 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req2, uint64(2))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req2})
+	for i := 0; i < numParties; i++ {
+		require.Equal(t, types.PartyID(2), batchers[i].GetPrimaryID())
+	}
+
+	// stop and recover primary
+	batchers[1].Stop()
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], srs[1], batcherNodes[1], stateChannels[1], termChangeState)
+
+	req4 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req4, uint64(4))
+	batchers[1].Submit(context.Background(), &protos.Request{Payload: req4})
 
 	require.Eventually(t, func() bool {
-		return ledgers[0].Height(1) == uint64(2) && ledgers[1].Height(1) == uint64(2)
+		return batchers[0].Ledger.Height(2) == uint64(2) && batchers[1].Ledger.Height(2) == uint64(2) && batchers[3].Ledger.Height(2) == uint64(2)
 	}, 30*time.Second, 10*time.Millisecond)
 
-	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
-	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
-	stateChannels[0] <- &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 0}}}
-	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
-	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
+	for i := 0; i < numParties; i++ {
+		require.Equal(t, types.PartyID(2), batchers[i].GetPrimaryID())
+	}
 
+	// stop secondary and recover after a batch
+	batchers[2].Stop()
+
+	req5 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req5, uint64(5))
+	batchers[1].Submit(context.Background(), &protos.Request{Payload: req5})
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(2) == uint64(3) && batchers[1].Ledger.Height(2) == uint64(3) && batchers[3].Ledger.Height(2) == uint64(3)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// now recover the secondary
+	batchers[2] = recoverBatcher(t, ca, loggers[2], configs[2], srs[2], batcherNodes[2], stateChannels[2], termChangeState)
+	require.Eventually(t, func() bool {
+		return batchers[2].Ledger.Height(2) == uint64(3)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	for i := 0; i < numParties; i++ {
+		require.Equal(t, types.PartyID(2), batchers[i].GetPrimaryID())
+	}
+
+	// stop primary, change term, and recover after a batch
 	batchers[1].Stop()
 
-	req3 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req3, uint64(3))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req3})
+	termChangeAgainState := &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 2}}}
 
+	for i := 0; i < numParties; i++ {
+		if i != 1 {
+			stateChannels[i] <- termChangeAgainState
+		}
+	}
 	require.Eventually(t, func() bool {
-		return ledgers[0].Height(1) == uint64(3)
+		return batchers[0].GetPrimaryID() == types.PartyID(3) && batchers[3].GetPrimaryID() == types.PartyID(3)
 	}, 30*time.Second, 10*time.Millisecond)
 
-	batchers[0].Stop()
+	require.Equal(t, uint64(0), batchers[0].Ledger.Height(3))
+	require.Equal(t, uint64(0), batchers[2].Ledger.Height(3))
+	require.Equal(t, uint64(0), batchers[3].Ledger.Height(3))
+
+	req6 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req6, uint64(6))
+	batchers[2].Submit(context.Background(), &protos.Request{Payload: req6})
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(3) == uint64(1) && batchers[2].Ledger.Height(3) == uint64(1) && batchers[3].Ledger.Height(3) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// now recover the previous primary
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], srs[1], batcherNodes[1], stateChannels[1], termChangeAgainState)
+	require.Eventually(t, func() bool {
+		return batchers[1].Ledger.Height(3) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
 }
 
-func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo) ([]*batcher.Batcher, []*ledger.BatchLedgerArray, []chan *core.State, []*zap.SugaredLogger) {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf config.BatcherNodeConfig, sr batcher.StateReplicator, batcherNode *node, stateChan chan *core.State, latestState *core.State) *batcher.Batcher {
+	newBatcherNode := &node{
+		TLSCert: batcherNode.TLSCert,
+		TLSKey:  batcherNode.TLSKey,
+		sk:      batcherNode.sk,
+		pk:      batcherNode.pk,
+	}
+	var err error
+	newBatcherNode.GRPCServer, err = newGRPCServer(batcherNode.Address(), ca, &tlsgen.CertKeyPair{
+		Key:  batcherNode.TLSKey,
+		Cert: batcherNode.TLSCert,
+	})
+	require.NoError(t, err)
+
+	createStateReplicatorMock := func(conf config.BatcherNodeConfig, logger types.Logger) batcher.StateReplicator {
+		return sr
+	}
+	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, createStateReplicatorMock)
+	batcher.Run()
+	stateChan <- latestState
+	grpcRegisterAndStart(batcher, newBatcherNode)
+	return batcher
+}
+
+func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo) ([]*batcher.Batcher, []chan *core.State, []batcher.StateReplicator, []*zap.SugaredLogger, []config.BatcherNodeConfig) {
 	var batchers []*batcher.Batcher
-	var ledgers []*ledger.BatchLedgerArray
 	var stateChannels []chan *core.State
 	var loggers []*zap.SugaredLogger
+	var configs []config.BatcherNodeConfig
+	var srs []batcher.StateReplicator
 
 	var parties []types.PartyID
 	for i := 0; i < num; i++ {
@@ -171,24 +223,18 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
 			TLSCertificateFile: batcherNodes[i].TLSCert,
 		}
-		ledger, err := ledger.NewBatchLedgerArray(conf.ShardId, conf.PartyId, parties, conf.Directory, logger)
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), ledger.Height(conf.PartyId))
-		ledgers = append(ledgers, ledger)
+		configs = append(configs, conf)
 
-		deliveryService := &batcher.BatcherDeliverService{
-			LedgerArray: ledger,
-			Logger:      logger,
-		}
-
-		bp := batcher.NewBatchPuller(conf, ledger, logger)
-
-		sr := &mocks.FakeStateReplicator{}
 		stateChan := make(chan *core.State)
+		sr := &mocks.FakeStateReplicator{}
 		sr.ReplicateStateReturns(stateChan)
+		createStateReplicatorMock := func(conf config.BatcherNodeConfig, logger types.Logger) batcher.StateReplicator {
+			return sr
+		}
 		stateChannels = append(stateChannels, stateChan)
+		srs = append(srs, sr)
 
-		batcher := batcher.NewBatcher(logger, conf, ledger, bp, deliveryService, sr, batcherNodes[i])
+		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], createStateReplicatorMock)
 		batchers = append(batchers, batcher)
 
 		batcher.Run()
@@ -197,10 +243,10 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 			return sr.ReplicateStateCallCount() == 1
 		}, 10*time.Second, 10*time.Millisecond)
 
-		grpcRegisterAndStart(batchers[i], batcherNodes[i])
+		grpcRegisterAndStart(batcher, batcherNodes[i])
 	}
 
-	return batchers, ledgers, stateChannels, loggers
+	return batchers, stateChannels, srs, loggers, configs
 }
 
 func grpcRegisterAndStart(b *batcher.Batcher, n *node) {

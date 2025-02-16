@@ -616,7 +616,7 @@ func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, dige
 	return baf, nil
 }
 
-func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net Net) *Batcher {
+func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net Net, csr ConsensusStateReplicatorFactory) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
 	var parties []types.PartyID
@@ -643,9 +643,7 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net 
 
 	bp := NewBatchPuller(conf, ledgerArray, logger)
 
-	cr := CreateConsensusReplicator(conf, logger)
-
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, cr, net)
+	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csr(conf, logger), net)
 
 	batcher.initConsensusConnections()
 

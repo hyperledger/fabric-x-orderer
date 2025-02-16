@@ -48,28 +48,36 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan core.Batch {
 	var stopCtx context.Context
 	stopCtx, bp.stopPuller = context.WithCancel(context.Background())
 
+	primary := bp.findPrimary(bp.config.ShardId, from)
+
+	channelName := node_ledger.ShardPartyToChannelName(bp.config.ShardId, primary.PartyID)
+	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		seq := bp.ledger.Height(from)
+		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+			common.HeaderType_DELIVER_SEEK_INFO,
+			channelName,
+			nil,
+			nextSeekInfo(seq),
+			int32(0),
+			uint64(0),
+			nil,
+		)
+		if err != nil {
+			bp.logger.Panicf("Failed creating seek envelope: %v", err)
+		}
+		return requestEnvelope
+	}
+
 	res := make(chan core.Batch, 100)
-
-	seq := bp.ledger.Height(from)
-
-	primary := bp.findPrimary(types.ShardID(bp.config.ShardId), from)
 
 	endpoint := func() string {
 		return primary.Endpoint
 	}
 
-	channelName := node_ledger.ShardPartyToChannelName(types.ShardID(bp.config.ShardId), types.PartyID(primary.PartyID))
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		channelName,
-		nil,
-		nextSeekInfo(seq),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		bp.logger.Panicf("Failed creating seek envelope: %v", err)
+	blockHandlerFunc := func(block *common.Block) {
+		bp.logger.Infof("[%s] Fetched block %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
+		fb := (*node_ledger.FabricBatch)(block)
+		res <- fb
 	}
 
 	go pull(
@@ -77,20 +85,16 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan core.Batch {
 		channelName,
 		bp.logger,
 		endpoint,
-		requestEnvelope,
+		requestEnvelopeFactoryFunc,
 		bp.clientConfig(from),
-		func(block *common.Block) {
-			bp.logger.Infof("[%s] Fetched block %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
-			fb := (*node_ledger.FabricBatch)(block)
-			res <- fb
-		},
+		blockHandlerFunc,
 	)
 
 	return res
 }
 
 func (bp *BatchPuller) clientConfig(primary types.PartyID) comm.ClientConfig {
-	shardInfo := bp.findPrimary(types.ShardID(bp.config.ShardId), primary)
+	shardInfo := bp.findPrimary(bp.config.ShardId, primary)
 
 	var tlsCAs [][]byte
 	for _, cert := range shardInfo.TLSCACerts {
@@ -120,7 +124,7 @@ func (bp *BatchPuller) findPrimary(shardID types.ShardID, primary types.PartyID)
 		if shard.ShardId == shardID {
 			for _, b := range shard.Batchers {
 				bp.logger.Debugf("Primary: %d, primaryID: %d, b.PartyID: %d", primary, primary, b.PartyID)
-				if types.PartyID(b.PartyID) == primary {
+				if b.PartyID == primary {
 					return b
 				}
 				bp.logger.Debugf("primary: %d, shardID: %d, current partyID: %d, currentShard: %d", primary, shardID, b.PartyID, shard.ShardId)
@@ -143,7 +147,7 @@ func nextSeekInfo(startSeq uint64) *orderer.SeekInfo {
 	}
 }
 
-func pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelope *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
+func pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
 	for {
 		time.Sleep(time.Second)
 
@@ -176,7 +180,7 @@ func pull(context context.Context, channel string, logger types.Logger, endpoint
 			continue
 		}
 
-		err = stream.Send(requestEnvelope)
+		err = stream.Send(requestEnvelopeFactory())
 		if err != nil {
 			logger.Errorf("Failed sending request envelope to %s: %v", endpointToPullFrom, err)
 			stream.CloseSend()
