@@ -133,6 +133,12 @@ func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadc
 func PullOne(context context.Context, channel string, logger types.Logger, endpointToPullFrom string, requestEnvelope *common.Envelope, cc comm.ClientConfig) (*common.Block, error) {
 	logger.Infof("Assembler pulling one from: %s", channel)
 	for {
+		select {
+		case <-context.Done():
+			return nil, fmt.Errorf("context is done")
+		default:
+		}
+
 		conn, err := cc.Dial(endpointToPullFrom)
 		if err != nil {
 			logger.Errorf("Failed connecting to %s: %v", endpointToPullFrom, err)
