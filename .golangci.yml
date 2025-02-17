@@ -1,0 +1,72 @@
+linters:
+  disable-all: true
+  enable: 
+    - goimports
+    - gofmt
+    - govet
+    - staticcheck
+    - dupl
+    - errname
+    - ginkgolinter
+    - gosimple
+    - ineffassign
+    - nilerr
+    - promlinter
+    - rowserrcheck
+    - unused
+    - wastedassign
+    - misspell
+    - whitespace
+    - errcheck
+    - stylecheck
+    - forcetypeassert
+    - goconst
+    - gocritic
+    - gosec
+    - godot
+    - ireturn
+    - lll
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - gocognit
+
+linters-settings:
+  govet:
+  enable-all: true
+  disable:
+    - fieldalignment
+
+issues:
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: "ST1000"
+    - linters:
+        - staticcheck
+      text: "ST1003"
+    - linters:
+        - staticcheck
+      text: "ST1016"
+    - linters:
+        - staticcheck
+      text: "SA1019"
+    - linters:
+        - staticcheck
+      text: "ST1020"
+    - linters:
+        - staticcheck
+      text: "ST1021"
+    - linters:
+        - staticcheck
+      text: "ST1022"
+    - linters:
+        - dupl 
+      text: ".*_test\\.go"
+  exclude-dirs-use-default: false 
+  exclude-dirs:
+    - vendor
+
+run:
+  timeout: 2m
