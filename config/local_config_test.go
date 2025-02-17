@@ -5,10 +5,10 @@ import (
 	"path"
 	"testing"
 
+	"arma/cmd/armageddon"
 	"arma/common/utils"
 	"arma/config"
 	"arma/config/generate"
-	"arma/node/cmd/armageddon"
 	"arma/testutil"
 
 	"github.com/stretchr/testify/require"

@@ -46,7 +46,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -99,7 +99,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -163,7 +163,7 @@ func TestLoadStepsFails(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -192,7 +192,7 @@ func TestLoadStepsFails(t *testing.T) {
 	txsSent := "10000"
 	txSize := "64"
 
-	armageddonBinary, err := gexec.BuildWithEnvironment("arma/node/cmd/armageddon/main", []string{"GOPRIVATE=github.ibm.com"})
+	armageddonBinary, err := gexec.BuildWithEnvironment("arma/cmd/armageddon/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armageddonBinary)
 	cmd := exec.Command(armageddonBinary, "load", "--config", userConfigPath, "--transactions", txsSent, "--rate", rates, "--txSize", txSize)
@@ -224,7 +224,7 @@ func TestLoadAndReceive(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -317,7 +317,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/node/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 

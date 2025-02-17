@@ -8,8 +8,8 @@ import (
 
 	"arma/testutil"
 
+	"arma/cmd/armageddon"
 	"arma/config/generate"
-	"arma/node/cmd/armageddon"
 
 	"github.com/stretchr/testify/require"
 )

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"arma/node/cmd/armageddon"
+	"arma/cmd/armageddon"
 )
 
 func main() {
