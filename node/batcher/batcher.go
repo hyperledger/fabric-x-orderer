@@ -18,7 +18,6 @@ import (
 	"arma/common/types"
 	"arma/core"
 	"arma/node"
-	"arma/node/comm"
 	node_config "arma/node/config"
 	"arma/node/crypto"
 	node_ledger "arma/node/ledger"
@@ -27,7 +26,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/pkg/errors"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -57,18 +55,19 @@ type Batcher struct {
 	logger                types.Logger
 	batcher               *core.Batcher
 	batcherCerts2IDs      map[string]types.PartyID
-	consensusStreams      []protos.Consensus_NotifyEventClient
-	connections           []*grpc.ClientConn
+	controlEventSenders   []ConsenterControlEventSender
 	Net                   Net
 	Ledger                *node_ledger.BatchLedgerArray
 	config                node_config.BatcherNodeConfig
 	batchers              []node_config.BatcherInfo
 	privateKey            *ecdsa.PrivateKey
-	stateRef              atomic.Value
-	stateChan             chan *core.State
-	running               sync.WaitGroup
-	stopOnce              sync.Once
-	stopChan              chan struct{}
+
+	stateRef  atomic.Value
+	stateChan chan *core.State
+
+	running  sync.WaitGroup
+	stopOnce sync.Once
+	stopChan chan struct{}
 
 	primaryLock         sync.Mutex
 	primaryID           types.PartyID
@@ -259,7 +258,7 @@ func (b *Batcher) indexTLSCerts() {
 	}
 }
 
-func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, net Net) *Batcher {
+func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
 	b := &Batcher{
 		batcherDeliverService: ds,
 		stateReplicator:       sr,
@@ -269,6 +268,11 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 		Ledger:                ledger,
 		batcherCerts2IDs:      make(map[string]types.PartyID),
 		config:                config,
+	}
+
+	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
+	for i, consenterInfo := range config.Consenters {
+		b.controlEventSenders[i] = senderCreator.CreateConsenterControlEventSender(config.TLSPrivateKeyFile, config.TLSCertificateFile, consenterInfo)
 	}
 
 	b.batchers = batchersFromConfig(config)
@@ -478,7 +482,7 @@ func (b *Batcher) ackStreamFactory(primary types.PartyID) (protos.AckService_Not
 		return nil, errors.Errorf("Could not find primaryID %d of shard %d within %v", primary, b.config.ShardId, b.batchers)
 	}
 
-	cc := b.clientConfig(primaryTLSCACerts)
+	cc := clientConfig(b.config.TLSPrivateKeyFile, b.config.TLSCertificateFile, primaryTLSCACerts)
 
 	conn, err := cc.Dial(primaryEndpoint)
 	if err != nil {
@@ -496,106 +500,22 @@ func (b *Batcher) ackStreamFactory(primary types.PartyID) (protos.AckService_Not
 }
 
 func (b *Batcher) broadcastEvent(baf core.BatchAttestationFragment) {
-	b.initConsensusConnections()
-
-	for index, stream := range b.consensusStreams {
-		b.sendBAF(baf, stream, index)
+	for _, sender := range b.controlEventSenders {
+		b.sendBAF(baf, sender) // TODO make sure somehow we sent to 2f+1, and retry if not
 	}
 }
 
-func (b *Batcher) initConsensusConnections() {
-	b.initStreamsToConsensus()
-
-	for index := range b.consensusStreams {
-		b.connectToConsensusNodeIfNeeded(index)
-	}
-}
-
-func (b *Batcher) sendBAF(baf core.BatchAttestationFragment, stream protos.Consensus_NotifyEventClient, index int) {
+func (b *Batcher) sendBAF(baf core.BatchAttestationFragment, sender ConsenterControlEventSender) {
 	t1 := time.Now()
 
 	defer func() {
 		b.logger.Infof("Sending BAF took %v", time.Since(t1))
 	}()
 
-	if b.consensusStreams[index] == nil {
-		return
+	if err := sender.SendControlEvent(core.ControlEvent{BAF: baf}); err != nil {
+		b.logger.Errorf("Failed sending batch attestation fragment; err: %v", err)
+		// TODO do something when sending fails
 	}
-
-	var ce core.ControlEvent
-	ce.BAF = baf
-
-	err := stream.Send(&protos.Event{
-		Payload: ce.Bytes(),
-	})
-	if err != nil {
-		b.logger.Errorf("Failed sending batch attestation fragment to %d (%s): %v", b.config.Consenters[index].PartyID, b.config.Consenters[index].Endpoint, err)
-		b.consensusStreams[index] = nil
-		return
-	}
-}
-
-func (b *Batcher) initStreamsToConsensus() {
-	if len(b.connections) == 0 {
-		b.connections = make([]*grpc.ClientConn, len(b.config.Consenters))
-		b.consensusStreams = make([]protos.Consensus_NotifyEventClient, len(b.config.Consenters))
-	}
-}
-
-func (b *Batcher) connectToConsensusNodeIfNeeded(index int) {
-	if b.connections[index] != nil {
-		if b.consensusStreams[index] == nil {
-			b.createStream(index)
-		}
-		return
-	}
-
-	consenterConfig := b.config.Consenters[index]
-
-	cc := b.clientConfig(consenterConfig.TLSCACerts)
-
-	conn, err := cc.Dial(consenterConfig.Endpoint)
-	if err != nil {
-		b.logger.Errorf("Failed connecting to %s: %v", consenterConfig.Endpoint, err)
-		return
-	}
-
-	b.connections[index] = conn
-	b.createStream(index)
-}
-
-func (b *Batcher) createStream(index int) {
-	cl := protos.NewConsensusClient(b.connections[index])
-
-	var err error
-	b.consensusStreams[index], err = cl.NotifyEvent(context.Background())
-	if err != nil {
-		b.logger.Errorf("Failed creating stream: %v", err)
-	}
-}
-
-func (b *Batcher) clientConfig(TlsCACert []node_config.RawBytes) comm.ClientConfig {
-	var tlsCAs [][]byte
-	for _, cert := range TlsCACert {
-		tlsCAs = append(tlsCAs, cert)
-	}
-
-	cc := comm.ClientConfig{
-		AsyncConnect: true,
-		KaOpts: comm.KeepaliveOptions{
-			ClientInterval: time.Hour,
-			ClientTimeout:  time.Hour,
-		},
-		SecOpts: comm.SecureOptions{
-			Key:               b.config.TLSPrivateKeyFile,
-			Certificate:       b.config.TLSCertificateFile,
-			RequireClientCert: true,
-			UseTLS:            true,
-			ServerRootCAs:     tlsCAs,
-		},
-		DialTimeout: time.Second * 5,
-	}
-	return cc
 }
 
 func (b *Batcher) RequestID(req []byte) string {
@@ -616,7 +536,7 @@ func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, dige
 	return baf, nil
 }
 
-func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator) *Batcher {
+func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator) *Batcher {
 	conf = maybeSetDefaultConfig(conf)
 
 	var parties []types.PartyID
@@ -643,9 +563,7 @@ func CreateBatcher(conf node_config.BatcherNodeConfig, logger types.Logger, net 
 
 	bp := NewBatchPuller(conf, ledgerArray, logger)
 
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), net)
-
-	batcher.initConsensusConnections()
+	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), senderCreator, net)
 
 	return batcher
 }

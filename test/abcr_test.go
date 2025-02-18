@@ -327,7 +327,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 		go func(i int) {
 			defer wg.Done()
 
-			batcher := batcher.CreateBatcher(batcherConf, testutil.CreateLogger(t, i+1), batcherNodes[i], &batcher.ConsensusStateReplicatorFactory{})
+			batcher := batcher.CreateBatcher(batcherConf, testutil.CreateLogger(t, i+1), batcherNodes[i], &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
 			lock.Lock()
 			batchers = append(batchers, batcher)
 			lock.Unlock()

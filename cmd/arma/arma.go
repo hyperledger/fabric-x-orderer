@@ -120,7 +120,7 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseBatcherConfig(configContent)
-		batcher := batcher.CreateBatcher(conf, logger, nil, &batcher.ConsensusStateReplicatorFactory{})
+		batcher := batcher.CreateBatcher(conf, logger, nil, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
 		defer batcher.Run()
 
 		srv := node.CreateGRPCBatcher(conf)

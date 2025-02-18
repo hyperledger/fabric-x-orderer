@@ -40,7 +40,7 @@ func TestBatcherRun(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	batchers, stateChannels, srs, loggers, configs := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo)
+	batchers, stateChannels, srs, eventSenders, loggers, configs := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo)
 
 	defer func() {
 		for i := 0; i < numParties; i++ {
@@ -56,6 +56,13 @@ func TestBatcherRun(t *testing.T) {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		return eventSenders[0].SendControlEventCallCount() == 1*numParties && eventSenders[1].SendControlEventCallCount() == 1*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, types.PartyID(1), eventSenders[0].SendControlEventArgsForCall(1).BAF.Primary())
+	require.Equal(t, types.BatchSequence(0), eventSenders[0].SendControlEventArgsForCall(1).BAF.Seq())
+
 	req2 := make([]byte, 8)
 	binary.BigEndian.PutUint64(req2, uint64(2))
 	batchers[0].Submit(context.Background(), &protos.Request{Payload: req2})
@@ -63,6 +70,13 @@ func TestBatcherRun(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return batchers[2].Ledger.Height(1) == uint64(2) && batchers[3].Ledger.Height(1) == uint64(2)
 	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return eventSenders[2].SendControlEventCallCount() == 2*numParties && eventSenders[3].SendControlEventCallCount() == 2*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, types.PartyID(1), eventSenders[2].SendControlEventArgsForCall(5).BAF.Primary())
+	require.Equal(t, types.BatchSequence(1), eventSenders[2].SendControlEventArgsForCall(5).BAF.Seq())
 
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
@@ -84,7 +98,7 @@ func TestBatcherRun(t *testing.T) {
 
 	// stop and recover secondary
 	batchers[3].Stop()
-	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], srs[3], batcherNodes[3], stateChannels[3], termChangeState)
+	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], srs[3], eventSenders[3], batcherNodes[3], stateChannels[3], termChangeState)
 
 	req3 := make([]byte, 8)
 	binary.BigEndian.PutUint64(req3, uint64(3))
@@ -97,13 +111,17 @@ func TestBatcherRun(t *testing.T) {
 		return batchers[3].Ledger.Height(2) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		return eventSenders[0].SendControlEventCallCount() == 3*numParties && eventSenders[3].SendControlEventCallCount() == 3*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
 	for i := 0; i < numParties; i++ {
 		require.Equal(t, types.PartyID(2), batchers[i].GetPrimaryID())
 	}
 
 	// stop and recover primary
 	batchers[1].Stop()
-	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], srs[1], batcherNodes[1], stateChannels[1], termChangeState)
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], srs[1], eventSenders[1], batcherNodes[1], stateChannels[1], termChangeState)
 
 	req4 := make([]byte, 8)
 	binary.BigEndian.PutUint64(req4, uint64(4))
@@ -111,6 +129,10 @@ func TestBatcherRun(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(2) && batchers[1].Ledger.Height(2) == uint64(2) && batchers[3].Ledger.Height(2) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return eventSenders[0].SendControlEventCallCount() == 4*numParties && eventSenders[1].SendControlEventCallCount() == 4*numParties
 	}, 30*time.Second, 10*time.Millisecond)
 
 	for i := 0; i < numParties; i++ {
@@ -129,7 +151,7 @@ func TestBatcherRun(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// now recover the secondary
-	batchers[2] = recoverBatcher(t, ca, loggers[2], configs[2], srs[2], batcherNodes[2], stateChannels[2], termChangeState)
+	batchers[2] = recoverBatcher(t, ca, loggers[2], configs[2], srs[2], eventSenders[2], batcherNodes[2], stateChannels[2], termChangeState)
 	require.Eventually(t, func() bool {
 		return batchers[2].Ledger.Height(2) == uint64(3)
 	}, 30*time.Second, 10*time.Millisecond)
@@ -165,13 +187,13 @@ func TestBatcherRun(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// now recover the previous primary
-	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], srs[1], batcherNodes[1], stateChannels[1], termChangeAgainState)
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], srs[1], eventSenders[1], batcherNodes[1], stateChannels[1], termChangeAgainState)
 	require.Eventually(t, func() bool {
 		return batchers[1].Ledger.Height(3) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf config.BatcherNodeConfig, sr batcher.StateReplicator, batcherNode *node, stateChan chan *core.State, latestState *core.State) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf config.BatcherNodeConfig, sr batcher.StateReplicator, eventSender batcher.ConsenterControlEventSender, batcherNode *node, stateChan chan *core.State, latestState *core.State) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -187,19 +209,23 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 
 	csrc := &mocks.FakeConsensusStateReplicatorCreator{}
 	csrc.CreateStateConsensusReplicatorReturns(sr)
-	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, csrc)
+	eventSenderCreator := &mocks.FakeConsenterControlEventSenderCreator{}
+	eventSenderCreator.CreateConsenterControlEventSenderReturns(eventSender)
+
+	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, csrc, eventSenderCreator)
 	batcher.Run()
 	stateChan <- latestState
 	grpcRegisterAndStart(batcher, newBatcherNode)
 	return batcher
 }
 
-func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo) ([]*batcher.Batcher, []chan *core.State, []batcher.StateReplicator, []*zap.SugaredLogger, []config.BatcherNodeConfig) {
+func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo) ([]*batcher.Batcher, []chan *core.State, []batcher.StateReplicator, []*mocks.FakeConsenterControlEventSender, []*zap.SugaredLogger, []config.BatcherNodeConfig) {
 	var batchers []*batcher.Batcher
 	var stateChannels []chan *core.State
 	var loggers []*zap.SugaredLogger
 	var configs []config.BatcherNodeConfig
 	var srs []batcher.StateReplicator
+	var eventSenders []*mocks.FakeConsenterControlEventSender
 
 	var parties []types.PartyID
 	for i := 0; i < num; i++ {
@@ -232,7 +258,12 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		stateChannels = append(stateChannels, stateChan)
 		srs = append(srs, sr)
 
-		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], csrc)
+		eventSender := &mocks.FakeConsenterControlEventSender{}
+		eventSenderCreator := &mocks.FakeConsenterControlEventSenderCreator{}
+		eventSenderCreator.CreateConsenterControlEventSenderReturns(eventSender)
+		eventSenders = append(eventSenders, eventSender)
+
+		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], csrc, eventSenderCreator)
 		batchers = append(batchers, batcher)
 
 		batcher.Run()
@@ -244,7 +275,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		grpcRegisterAndStart(batcher, batcherNodes[i])
 	}
 
-	return batchers, stateChannels, srs, loggers, configs
+	return batchers, stateChannels, srs, eventSenders, loggers, configs
 }
 
 func grpcRegisterAndStart(b *batcher.Batcher, n *node) {
