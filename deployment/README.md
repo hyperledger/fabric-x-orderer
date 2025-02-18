@@ -60,7 +60,12 @@ For example:
    ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
    ```
 
+
 At this point, a network of Arma is running, so you can start send txs. 
+
+**NOTE:
+ARMA network deployment is automated by `deploy.sh` in 
+[Iaas-GO](#https://github.ibm.com/decentralized-trust-research/Iaas-Go/blob/main/scripts/deploy.sh).**
 
 ### Containers
 
