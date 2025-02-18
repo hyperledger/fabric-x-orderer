@@ -185,10 +185,9 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 	})
 	require.NoError(t, err)
 
-	createStateReplicatorMock := func(conf config.BatcherNodeConfig, logger types.Logger) batcher.StateReplicator {
-		return sr
-	}
-	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, createStateReplicatorMock)
+	csrc := &mocks.FakeConsensusStateReplicatorCreator{}
+	csrc.CreateStateConsensusReplicatorReturns(sr)
+	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, csrc)
 	batcher.Run()
 	stateChan <- latestState
 	grpcRegisterAndStart(batcher, newBatcherNode)
@@ -228,13 +227,12 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		stateChan := make(chan *core.State)
 		sr := &mocks.FakeStateReplicator{}
 		sr.ReplicateStateReturns(stateChan)
-		createStateReplicatorMock := func(conf config.BatcherNodeConfig, logger types.Logger) batcher.StateReplicator {
-			return sr
-		}
+		csrc := &mocks.FakeConsensusStateReplicatorCreator{}
+		csrc.CreateStateConsensusReplicatorReturns(sr)
 		stateChannels = append(stateChannels, stateChan)
 		srs = append(srs, sr)
 
-		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], createStateReplicatorMock)
+		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], csrc)
 		batchers = append(batchers, batcher)
 
 		batcher.Run()
