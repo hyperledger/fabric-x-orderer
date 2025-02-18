@@ -247,10 +247,12 @@ func TestRenewStreamSuccess(t *testing.T) {
 				TraceId: req2.TraceId,
 			}, nil
 		}
-		return nil, fmt.Errorf("error")
+		return &protos.SubmitResponse{
+			Error:   "",
+			TraceId: []byte{3},
+		}, nil
 	}
 
-	// var reqPool []*protos.Request
 	var reqPool safeReqPool
 	newFakeSubmitStreamClient.SendStub = func(request *protos.Request) error {
 		reqPool.append(request)
