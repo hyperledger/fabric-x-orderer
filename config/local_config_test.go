@@ -34,7 +34,7 @@ func TestLoadLocalConfigAndCrypto(t *testing.T) {
 	require.DirExists(t, dir)
 
 	// 1.
-	networkConfig := testutil.GenerateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t, "mTLS", "mTLS")
 	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 
@@ -51,6 +51,8 @@ func TestLoadLocalConfigAndCrypto(t *testing.T) {
 		require.NotNil(t, routerLocalConfigLoaded)
 		require.NotNil(t, tlsConfig)
 		require.NotNil(t, clusterConfig)
+		require.Equal(t, routerLocalConfigLoaded.GeneralConfig.TLSConfig.Enabled, true)
+		require.Equal(t, routerLocalConfigLoaded.GeneralConfig.TLSConfig.ClientAuthRequired, true)
 
 		for j := 1; j <= len(networkLocalConfig.PartiesLocalConfig[i-1].BatchersLocalConfig); j++ {
 			configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), fmt.Sprintf("local_config_batcher%d.yaml", j))
@@ -74,5 +76,7 @@ func TestLoadLocalConfigAndCrypto(t *testing.T) {
 		require.NotNil(t, assemblerLocalConfigLoaded)
 		require.NotNil(t, tlsConfig)
 		require.NotNil(t, clusterConfig)
+		require.Equal(t, assemblerLocalConfigLoaded.GeneralConfig.TLSConfig.Enabled, true)
+		require.Equal(t, assemblerLocalConfigLoaded.GeneralConfig.TLSConfig.ClientAuthRequired, true)
 	}
 }

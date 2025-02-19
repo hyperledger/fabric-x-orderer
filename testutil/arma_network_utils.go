@@ -12,7 +12,7 @@ import (
 
 // GenerateNetworkConfig create a network config which collects the enpoints of nodes per party.
 // the generated network configuration includes 4 parties and 2 batchers for each party.
-func GenerateNetworkConfig(t *testing.T) generate.Network {
+func GenerateNetworkConfig(t *testing.T, useTLSRouter string, useTLSAssembler string) generate.Network {
 	var parties []generate.Party
 	var listeners []net.Listener
 	for i := 0; i < 4; i++ {
@@ -35,7 +35,9 @@ func GenerateNetworkConfig(t *testing.T) generate.Network {
 	}
 
 	network := generate.Network{
-		Parties: parties,
+		Parties:         parties,
+		UseTLSRouter:    useTLSRouter,
+		UseTLSAssembler: useTLSAssembler,
 	}
 
 	for _, ll := range listeners {

@@ -395,7 +395,9 @@ func generateInputConfigFileForArmageddon(t *testing.T, path string) map[string]
 	}
 
 	network := genconfig.Network{
-		Parties: parties,
+		Parties:         parties,
+		UseTLSRouter:    "none",
+		UseTLSAssembler: "none",
 	}
 
 	err := utils.WriteToYAML(network, path)
@@ -596,6 +598,18 @@ func checkCryptoDir(outputDir string) error {
 						return fmt.Errorf("error reading %s files, suffix file is not pem\n", filepath.Join(orgDir, subDir))
 					}
 				}
+			}
+		}
+
+		// check users dir
+		usersDir := filepath.Join(orgDir, "users")
+		files, err := os.ReadDir(usersDir)
+		if err != nil {
+			return fmt.Errorf("error reading directory %s\n", usersDir)
+		}
+		for _, file := range files {
+			if !strings.HasSuffix(file.Name(), ".pem") {
+				return fmt.Errorf("error reading %s files, suffix file is not pem\n", filepath.Join(orgDir, usersDir))
 			}
 		}
 

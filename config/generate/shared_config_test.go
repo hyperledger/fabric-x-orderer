@@ -20,7 +20,7 @@ func TestSharedConfigLoading(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 1.
-	networkConfig := testutil.GenerateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t, "none", "none")
 	err = armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 

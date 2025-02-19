@@ -47,7 +47,9 @@ func prepareNetworkConfig(t *testing.T) *genconfig.Network {
 	}
 
 	network := genconfig.Network{
-		Parties: parties,
+		Parties:         parties,
+		UseTLSRouter:    "none",
+		UseTLSAssembler: "none",
 	}
 
 	for _, ll := range listeners {

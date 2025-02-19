@@ -104,6 +104,12 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 			}
 		}
 
+		// TLS crypto for user
+		err = createUserTLSCertKeyPair(tlsCA, dir, party.ID)
+		if err != nil {
+			return err
+		}
+
 		// signing crypto for batchers
 		for j, batcherEndpoint := range party.BatchersEndpoints {
 			err = createSignCertAndPrivateKeyForNode(signCA, dir, batcherEndpoint, fmt.Sprintf("batcher%d", j+1), party.ID)
@@ -163,6 +169,28 @@ func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role st
 		x509.ExtKeyUsageServerAuth,
 	})
 	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "key.pem"), "PRIVATE KEY", privateKeyBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// createUserTLSCertKeyPair creates a TLS cert,key pair signed by a corresponding CA for a user.
+func createUserTLSCertKeyPair(ca *ca.CA, dir string, partyID types.PartyID) error {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed creating private key for user party %d", err, partyID)
+	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for user for party %d", err, partyID)
+	}
+
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users"), "user-tls", nil, nil, getPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
+		x509.ExtKeyUsageClientAuth,
+		x509.ExtKeyUsageServerAuth,
+	})
+	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user-key.pem"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}

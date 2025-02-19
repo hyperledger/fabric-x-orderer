@@ -88,7 +88,7 @@ func TestARMALocalConfigGeneration(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 1.
-	networkConfig := testutil.GenerateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t, "TLS", "TLS")
 
 	// 2.
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
@@ -101,7 +101,7 @@ func TestARMALocalConfigLoading(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	networkConfig := testutil.GenerateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t, "none", "none")
 
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
 	require.NoError(t, err)

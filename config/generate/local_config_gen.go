@@ -163,11 +163,32 @@ func NewAssemblerLocalConfig(assemblerGeneralParams GeneralConfigParams) *config
 
 func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseDir string) *NetworkLocalConfig {
 	var partiesLocalConfig []PartyLocalConfig
+
+	validUseTLSOptions := map[string]struct{}{
+		"none": {},
+		"TLS":  {},
+		"mTLS": {},
+	}
+
+	if _, ok := validUseTLSOptions[network.UseTLSRouter]; !ok {
+		panic("invalid UseTLSRouter option, choose one of: none, TLS, mTLS")
+	}
+
+	if _, ok := validUseTLSOptions[network.UseTLSAssembler]; !ok {
+		panic("invalid UseTLSAssembler option, choose one of: none, TLS, mTLS")
+	}
+
+	useTLSRouter := network.UseTLSRouter != "none"
+	clientAuthRequiredRouter := network.UseTLSRouter == "mTLS"
+
+	useTLSAssembler := network.UseTLSAssembler != "none"
+	clientAuthRequiredAssembler := network.UseTLSAssembler == "mTLS"
+
 	redundantShardID := types.ShardID(0)
 	for _, party := range network.Parties {
-		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", trimPortFromEndpoint(party.RouterEndpoint), getPortFromEndpoint(party.RouterEndpoint), false, false, "info", cryptoBaseDir, configBaseDir)
+		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", trimPortFromEndpoint(party.RouterEndpoint), getPortFromEndpoint(party.RouterEndpoint), useTLSRouter, clientAuthRequiredRouter, "info", cryptoBaseDir, configBaseDir)
 		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", trimPortFromEndpoint(party.ConsenterEndpoint), getPortFromEndpoint(party.ConsenterEndpoint), true, false, "info", cryptoBaseDir, configBaseDir)
-		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", trimPortFromEndpoint(party.AssemblerEndpoint), getPortFromEndpoint(party.AssemblerEndpoint), false, false, "info", cryptoBaseDir, configBaseDir)
+		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", trimPortFromEndpoint(party.AssemblerEndpoint), getPortFromEndpoint(party.AssemblerEndpoint), useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir)
 		partyLocalConfig := PartyLocalConfig{
 			RouterLocalConfig:    NewRouterLocalConfig(routerGeneralParams),
 			BatchersLocalConfig:  NewBatchersLocalConfigPerParty(party.ID, party.BatchersEndpoints, cryptoBaseDir, configBaseDir),

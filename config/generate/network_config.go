@@ -7,9 +7,12 @@ import (
 
 // Network describes an Arma network deployment by collecting all endpoints of nodes per party.
 // These endpoints are required to the generation of the local and the shared config.
+// UseTLSRouter and UseTLSAssembler indicate whether the connection between a client to a router and an assembler is a none|TLS|mTLS.
 // This is typically used in a test environment.
 type Network struct {
-	Parties []Party `yaml:"Parties"`
+	Parties         []Party `yaml:"Parties"`
+	UseTLSRouter    string  `yaml:"UseTLSRouter"`
+	UseTLSAssembler string  `yaml:"UseTLSAssembler"`
 }
 
 type Party struct {

@@ -17,7 +17,7 @@ func TestSharedConfigGeneration(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 1.
-	networkConfig := testutil.GenerateNetworkConfig(t)
+	networkConfig := testutil.GenerateNetworkConfig(t, "none", "none")
 
 	// 2.
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)

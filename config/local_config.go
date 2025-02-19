@@ -58,12 +58,12 @@ type GeneralConfig struct {
 }
 
 type TLSConfigYaml struct {
-	Enabled            bool     `yaml:"Enabled,omitempty"`            // Require server-side TLS
-	PrivateKey         string   `yaml:"PrivateKey,omitempty"`         // The file location of the private key of the server TLS certificate.
-	Certificate        string   `yaml:"Certificate,omitempty"`        // The file location of the server TLS certificate.
-	RootCAs            []string `yaml:"RootCAs,omitempty"`            // A list of additional file locations for root certificates used for verifying certificates of other nodes during outbound connections.
-	ClientAuthRequired bool     `yaml:"ClientAuthRequired,omitempty"` // Require client certificates / mutual TLS for inbound connections
-	ClientRootCAs      []string `yaml:"ClientRootCAs,omitempty"`      // A list of additional file location for root certificates used for verifying certificates of client connections. relevant for Assembler and Consensus
+	Enabled            bool     `yaml:"Enabled"`                 // Require server-side TLS
+	PrivateKey         string   `yaml:"PrivateKey,omitempty"`    // The file location of the private key of the server TLS certificate.
+	Certificate        string   `yaml:"Certificate,omitempty"`   // The file location of the server TLS certificate.
+	RootCAs            []string `yaml:"RootCAs,omitempty"`       // A list of additional file locations for root certificates used for verifying certificates of other nodes during outbound connections.
+	ClientAuthRequired bool     `yaml:"ClientAuthRequired"`      // Require client certificates / mutual TLS for inbound connections
+	ClientRootCAs      []string `yaml:"ClientRootCAs,omitempty"` // A list of additional file location for root certificates used for verifying certificates of client connections. relevant for Assembler and Consensus
 }
 
 // Bootstrap configures how to obtain the bootstrap configuration.

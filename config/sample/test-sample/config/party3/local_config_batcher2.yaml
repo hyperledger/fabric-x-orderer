@@ -8,6 +8,7 @@ General:
         Certificate: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher2/tls-cert.pem
         RootCAs:
             - /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/tlsca/cacert.pem
+        ClientAuthRequired: false
     Keepalive:
         ClientInterval: 1m0s
         ClientTimeout: 20s
