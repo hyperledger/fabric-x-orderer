@@ -25,13 +25,13 @@ type txindexInfo struct {
 	loc  *locPointer
 }
 
-func serializeBlock(block *common.Block) ([]byte, *serializedBlockInfo) {
+func serializeBlock(block *common.Block, indexedTXs bool) ([]byte, *serializedBlockInfo) {
 	var buf []byte
 	info := &serializedBlockInfo{}
 	info.blockHeader = block.Header
 	info.metadata = block.Metadata
 	buf = addHeaderBytes(block.Header, buf)
-	info.txOffsets, buf = addDataBytesAndConstructTxIndexInfo(block.Data, buf)
+	info.txOffsets, buf = addDataBytesAndConstructTxIndexInfo(block.Data, buf, indexedTXs)
 	buf = addMetadataBytes(block.Metadata, buf)
 	return buf, info
 }
@@ -43,7 +43,8 @@ func deserializeBlock(serializedBlockBytes []byte) (*common.Block, error) {
 	if block.Header, err = extractHeader(b); err != nil {
 		return nil, err
 	}
-	if block.Data, _, err = extractData(b); err != nil {
+	// We don't care about TX index info here, only block data.
+	if block.Data, _, err = extractData(b, false); err != nil {
 		return nil, err
 	}
 	if block.Metadata, err = extractMetadata(b); err != nil {
@@ -60,7 +61,7 @@ func extractSerializedBlockInfo(serializedBlockBytes []byte) (*serializedBlockIn
 	if err != nil {
 		return nil, err
 	}
-	_, info.txOffsets, err = extractData(b)
+	_, info.txOffsets, err = extractData(b, true)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +73,18 @@ func extractSerializedBlockInfo(serializedBlockBytes []byte) (*serializedBlockIn
 	return info, nil
 }
 
+func extractSerializedBlockHeader(serializedBlockBytes []byte) (*common.BlockHeader, error) {
+	info := &serializedBlockInfo{}
+	var err error
+	b := newBuffer(serializedBlockBytes)
+	info.blockHeader, err = extractHeader(b)
+	if err != nil {
+		return nil, err
+	}
+
+	return info.blockHeader, nil
+}
+
 func addHeaderBytes(blockHeader *common.BlockHeader, buf []byte) []byte {
 	buf = protowire.AppendVarint(buf, blockHeader.Number)
 	buf = protowire.AppendBytes(buf, blockHeader.DataHash)
@@ -79,16 +92,21 @@ func addHeaderBytes(blockHeader *common.BlockHeader, buf []byte) []byte {
 	return buf
 }
 
-func addDataBytesAndConstructTxIndexInfo(blockData *common.BlockData, buf []byte) ([]*txindexInfo, []byte) {
+func addDataBytesAndConstructTxIndexInfo(blockData *common.BlockData, buf []byte, indexedTXs bool) ([]*txindexInfo, []byte) {
 	var txOffsets []*txindexInfo
 
 	buf = protowire.AppendVarint(buf, uint64(len(blockData.Data)))
 	for _, txEnvelopeBytes := range blockData.Data {
 		offset := len(buf)
-		txid, err := protoutil.GetOrComputeTxIDFromEnvelope(txEnvelopeBytes)
-		if err != nil {
-			logger.Warningf("error while extracting txid from tx envelope bytes during serialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
-				err)
+		var txid string
+		var err error
+		// In the orderer TXs are not indexed, so there is no point in unmarshalling the envelope and computing the txid.
+		if indexedTXs {
+			txid, err = protoutil.GetOrComputeTxIDFromEnvelope(txEnvelopeBytes)
+			if err != nil {
+				logger.Warningf("error while extracting txid from tx envelope bytes during serialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
+					err)
+			}
 		}
 		buf = protowire.AppendBytes(buf, txEnvelopeBytes)
 		idxInfo := &txindexInfo{txID: txid, loc: &locPointer{offset, len(buf) - offset}}
@@ -130,7 +148,7 @@ func extractHeader(buf *buffer) (*common.BlockHeader, error) {
 	return header, nil
 }
 
-func extractData(buf *buffer) (*common.BlockData, []*txindexInfo, error) {
+func extractData(buf *buffer, indexedTXs bool) (*common.BlockData, []*txindexInfo, error) {
 	data := &common.BlockData{}
 	var txOffsets []*txindexInfo
 	var numItems uint64
@@ -146,9 +164,12 @@ func extractData(buf *buffer) (*common.BlockData, []*txindexInfo, error) {
 		if txEnvBytes, err = buf.DecodeRawBytes(false); err != nil {
 			return nil, nil, errors.Wrap(err, "error decoding the transaction envelope")
 		}
-		if txid, err = protoutil.GetOrComputeTxIDFromEnvelope(txEnvBytes); err != nil {
-			logger.Warningf("error while extracting txid from tx envelope bytes during deserialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
-				err)
+		// In the orderer TXs are not indexed, so there is no point in unmarshalling the envelope and computing the txid.
+		if indexedTXs {
+			if txid, err = protoutil.GetOrComputeTxIDFromEnvelope(txEnvBytes); err != nil {
+				logger.Warningf("error while extracting txid from tx envelope bytes during deserialization of block. Ignoring this error as this is caused by a malformed transaction. Error:%s",
+					err)
+			}
 		}
 		data.Data = append(data.Data, txEnvBytes)
 		idxInfo := &txindexInfo{txID: txid, loc: &locPointer{txOffset, buf.GetBytesConsumed() - txOffset}}

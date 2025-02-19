@@ -259,7 +259,7 @@ func assertRecordedHeight(t *testing.T, ledgerDir, expectedRecordedHt string) {
 func testutilEstimateTotalSizeOnDisk(t *testing.T, blocks []*common.Block) int {
 	size := 0
 	for _, block := range blocks {
-		by, _ := serializeBlock(block)
+		by, _ := serializeBlock(block, false)
 		blockBytesSize := len(by)
 		encodedLen := protowire.AppendVarint(nil, uint64(blockBytesSize))
 		size += blockBytesSize + len(encodedLen)

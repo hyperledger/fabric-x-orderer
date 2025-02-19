@@ -125,11 +125,13 @@ func retrieveFirstBlockNumFromFile(rootDir string, fileNum int) (uint64, error) 
 	if err != nil {
 		return 0, err
 	}
-	blockInfo, err := extractSerializedBlockInfo(bb)
+
+	h, err := extractSerializedBlockHeader(bb)
 	if err != nil {
 		return 0, err
 	}
-	return blockInfo.blockHeader.Number, nil
+
+	return h.Number, nil
 }
 
 func retrieveLastFileSuffix(rootDir string) (int, error) {

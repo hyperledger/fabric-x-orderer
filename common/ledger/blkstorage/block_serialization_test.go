@@ -38,7 +38,7 @@ func TestBlockSerialization(t *testing.T) {
 		}),
 	})
 
-	bb, _ := serializeBlock(block)
+	bb, _ := serializeBlock(block, false)
 	deserializedBlock, err := deserializeBlock(bb)
 	require.NoError(t, err)
 	require.Equal(t, block, deserializedBlock)
@@ -87,7 +87,7 @@ func TestSerializedBlockInfo(t *testing.T) {
 }
 
 func testSerializedBlockInfo(t *testing.T, block *common.Block, c *testutilTxIDComputator) {
-	bb, info := serializeBlock(block)
+	bb, info := serializeBlock(block, true)
 	infoFromBB, err := extractSerializedBlockInfo(bb)
 	require.NoError(t, err)
 	require.Equal(t, info, infoFromBB)

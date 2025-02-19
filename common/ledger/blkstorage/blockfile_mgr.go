@@ -299,7 +299,8 @@ func (mgr *blockfileMgr) addBlock(block *common.Block) error {
 			bcInfo.CurrentBlockHash, block.Header.PreviousHash,
 		)
 	}
-	blockBytes, info := serializeBlock(block)
+	// In the orderer we do not index TXs, so we don't need to compute TX IDs.
+	blockBytes, info := serializeBlock(block, mgr.index.isAttributeIndexed(IndexableAttrTxID))
 	blockHash := protoutil.BlockHeaderHash(block.Header)
 	// Get the location / offset where each transaction starts in the block and where the block ends
 	txOffsets := info.txOffsets
@@ -579,11 +580,8 @@ func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.B
 	if err != nil {
 		return nil, err
 	}
-	info, err := extractSerializedBlockInfo(blockBytes)
-	if err != nil {
-		return nil, err
-	}
-	return info.blockHeader, nil
+
+	return extractSerializedBlockHeader(blockBytes)
 }
 
 func (mgr *blockfileMgr) retrieveBlocks(startNum uint64) (*blocksItr, error) {

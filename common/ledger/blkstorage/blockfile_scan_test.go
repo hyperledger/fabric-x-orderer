@@ -39,7 +39,7 @@ func TestBlockFileScanSmallTxOnly(t *testing.T) {
 	require.Equal(t, len(blocks), numBlocks)
 	require.Equal(t, fileSize, endOffsetLastBlock)
 
-	expectedLastBlockBytes, _ := serializeBlock(blocks[len(blocks)-1])
+	expectedLastBlockBytes, _ := serializeBlock(blocks[len(blocks)-1], false)
 	require.Equal(t, expectedLastBlockBytes, lastBlockBytes)
 }
 
@@ -70,6 +70,6 @@ func TestBlockFileScanSmallTxLastTxIncomplete(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(blocks)-1, numBlocks)
 
-	expectedLastBlockBytes, _ := serializeBlock(blocks[len(blocks)-2])
+	expectedLastBlockBytes, _ := serializeBlock(blocks[len(blocks)-2], false)
 	require.Equal(t, expectedLastBlockBytes, lastBlockBytes)
 }
