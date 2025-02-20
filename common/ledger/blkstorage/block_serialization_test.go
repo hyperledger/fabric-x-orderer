@@ -8,6 +8,7 @@ package blkstorage
 
 import (
 	"testing"
+	"time"
 
 	"arma/common/ledger/testutil"
 
@@ -126,4 +127,74 @@ func (c *testutilTxIDComputator) computeExpectedTxID(txNum int, txEnvBytes []byt
 
 func (c *testutilTxIDComputator) reset() {
 	c.malformedTxNums = map[int]struct{}{}
+}
+
+func Test_SerializeBlockSpeed(t *testing.T) {
+	nTXs := 1000
+	txSize := 256
+	N := int64(100)
+
+	t.Logf("No.-TXs=%d, TX-size=%d; ", nTXs, txSize)
+
+	t.Run("serialize", func(t *testing.T) {
+		block := testutil.ConstructTestBlock(t, 0, nTXs, txSize)
+
+		for _, indexedTXs := range []bool{true, false} {
+			t1 := time.Now()
+
+			for i := int64(0); i < N; i++ {
+				block.Header.Number = uint64(i)
+				bb, info := serializeBlock(block, indexedTXs)
+				require.NotNil(t, bb)
+				require.NotNil(t, info)
+			}
+			d := time.Duration(time.Since(t1).Nanoseconds() / N)
+			t.Logf("Duration: %s; serializeBlock (indexedTXs = %t)", d, indexedTXs)
+		}
+	})
+
+	t.Run("deserialize", func(t *testing.T) {
+		block := testutil.ConstructTestBlock(t, 0, nTXs, txSize)
+
+		bb, _ := serializeBlock(block, false)
+		t1 := time.Now()
+
+		for i := int64(0); i < N; i++ {
+			b1, err := deserializeBlock(bb)
+			require.NoError(t, err)
+			require.NotNil(t, b1)
+		}
+		d := time.Duration(time.Since(t1).Nanoseconds() / N)
+		t.Logf("Duration: %s; deserializeBlock ", d)
+	})
+
+	t.Run("extract info", func(t *testing.T) {
+		block := testutil.ConstructTestBlock(t, 0, nTXs, txSize)
+
+		bb, _ := serializeBlock(block, false)
+		t1 := time.Now()
+
+		for i := int64(0); i < N; i++ {
+			b1, err := extractSerializedBlockInfo(bb)
+			require.NoError(t, err)
+			require.NotNil(t, b1)
+		}
+		d := time.Duration(time.Since(t1).Nanoseconds() / N)
+		t.Logf("Duration: %s; extractSerializedBlockInfo", d)
+	})
+
+	t.Run("extract header", func(t *testing.T) {
+		block := testutil.ConstructTestBlock(t, 0, nTXs, txSize)
+
+		bb, _ := serializeBlock(block, false)
+		t1 := time.Now()
+
+		for i := int64(0); i < N; i++ {
+			b1, err := extractSerializedBlockHeader(bb)
+			require.NoError(t, err)
+			require.NotNil(t, b1)
+		}
+		d := time.Duration(time.Since(t1).Nanoseconds() / N)
+		t.Logf("Duration: %s; extractSerializedBlockHeader ", d)
+	})
 }
