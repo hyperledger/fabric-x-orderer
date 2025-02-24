@@ -46,6 +46,8 @@ func (n *naiveIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
 	}
 }
 
+func (n *naiveIndex) Stop() {}
+
 type naiveBatchAttestation struct {
 	primary types.PartyID
 	seq     types.BatchSequence
@@ -147,6 +149,10 @@ func (n naiveAssemblerLedger) Append(batch core.Batch, orderingInfo interface{})
 		orderingInfo: orderingInfo.(uint64),
 	}
 	n <- noba
+}
+
+func (n naiveAssemblerLedger) Close() {
+	close(n)
 }
 
 func TestNaive(t *testing.T) {

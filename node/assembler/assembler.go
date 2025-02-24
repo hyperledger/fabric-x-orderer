@@ -23,9 +23,11 @@ const (
 )
 
 type Assembler struct {
-	assembler core.Assembler
-	logger    types.Logger
-	ds        delivery.DeliverService
+	assembler    core.Assembler
+	logger       types.Logger
+	ds           delivery.DeliverService
+	prefetcher   PrefetcherController
+	baReplicator delivery.ConsensusBringer
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -41,15 +43,32 @@ func (a *Assembler) GetTxCount() uint64 {
 	return a.assembler.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
 }
 
-func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block, logger types.Logger) *Assembler {
+func (a *Assembler) Stop() {
+	a.prefetcher.Stop()
+	a.assembler.Index.Stop()
+	a.assembler.WaitTermination()
+	a.assembler.Ledger.Close()
+	a.baReplicator.Stop()
+}
+
+func NewDefaultAssembler(
+	logger types.Logger,
+	config config.AssemblerNodeConfig,
+	genesisBlock *common.Block,
+	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
+	prefetchIndexFactory PrefetchIndexerFactory,
+	prefetcherFactory PrefetcherFactory,
+	batchBringerFactory BatchBringerFactory,
+	consensusBringerFactory delivery.ConsensusBringerFactory,
+) *Assembler {
 	logger.Infof("Creating assembler, party: %d, address: %s, with genesis block: %t", config.PartyId, config.ListenAddress, genesisBlock != nil)
 
-	al, err := node_ledger.NewAssemblerLedger(logger, config.Directory)
+	al, err := assemblerLedgerFactory.Create(logger, config.Directory)
 	if err != nil {
 		logger.Panicf("Failed creating assembler: %v", err)
 	}
 
-	if al.Ledger.Height() == 0 {
+	if al.LedgerReader().Height() == 0 {
 		if genesisBlock == nil {
 			genesisBlock = utils.EmptyGenesisBlock("arma")
 		}
@@ -64,6 +83,18 @@ func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block,
 		logger.Panicf("Failed fetching batch frontier: %v", err)
 	}
 
+	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, evictionTtl, maxSizeBytes, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{})
+	if err != nil {
+		logger.Panicf("Failed creating index: %v", err)
+	}
+
+	baReplicator := consensusBringerFactory.Create(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, logger)
+
+	br := batchBringerFactory.Create(batchFrontier, config, logger)
+
+	prefetcher := prefetcherFactory.Create(shardIds, partyIds, index, br, logger)
+	prefetcher.Start()
+
 	lastOrderingInfo, err := al.LastOrderingInfo()
 	if err != nil {
 		logger.Panicf("Failed fetching last ordering info: %v", err)
@@ -72,18 +103,6 @@ func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block,
 	if lastOrderingInfo != nil {
 		lastDecisionNum = lastOrderingInfo.DecisionNum + 1
 	}
-
-	index := NewPrefetchIndex(shardIds, partyIds, logger, evictionTtl, maxSizeBytes, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{})
-	if err != nil {
-		logger.Panicf("Failed creating index: %v", err)
-	}
-
-	baReplicator := delivery.NewConsensusReplicator(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, logger)
-
-	br := NewBatchFetcher(batchFrontier, config, logger)
-
-	prefetcher := NewPrefetcher(shardIds, partyIds, index, br, logger)
-	prefetcher.Start()
 
 	assembler := &Assembler{
 		ds: make(delivery.DeliverService),
@@ -97,13 +116,28 @@ func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block,
 			ShardCount:                        len(config.Shards),
 			StartingDesicion:                  lastDecisionNum,
 		},
-		logger: logger,
+		logger:       logger,
+		prefetcher:   prefetcher,
+		baReplicator: baReplicator,
 	}
 
 	// TODO: we do not need multiple ledgers in the assembler
-	assembler.ds["arma"] = al.Ledger
+	assembler.ds["arma"] = al.LedgerReader()
 
 	assembler.assembler.Run()
 
 	return assembler
+}
+
+func NewAssembler(config config.AssemblerNodeConfig, genesisBlock *common.Block, logger types.Logger) *Assembler {
+	return NewDefaultAssembler(
+		logger,
+		config,
+		genesisBlock,
+		&node_ledger.DefaultAssemblerLedgerFactory{},
+		&DefaultPrefetchIndexerFactory{},
+		&DefaultPrefetcherFactory{},
+		&DefaultBatchBringerFactory{},
+		&delivery.DefaultConsensusBringerFactory{},
+	)
 }

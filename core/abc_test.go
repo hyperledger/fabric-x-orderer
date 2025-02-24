@@ -56,6 +56,8 @@ func (n naiveBlockLedger) Append(batch core.Batch, orderingInfo interface{}) {
 	}
 }
 
+func (n naiveBlockLedger) Close() {}
+
 type shardCommitter struct {
 	sr      *shardReplicator
 	shardID uint16

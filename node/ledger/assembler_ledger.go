@@ -19,6 +19,28 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
+//go:generate counterfeiter -o ./mocks/assembler_ledger.go . AssemblerLedgerReaderWriter
+type AssemblerLedgerReaderWriter interface {
+	GetTxCount() uint64
+	Append(batch core.Batch, orderingInfo interface{})
+	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
+	LastOrderingInfo() (*state.OrderingInformation, error)
+	LedgerReader() blockledger.Reader
+	BatchFrontier(shards []types.ShardID, parties []types.PartyID, scanTimeout time.Duration) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error)
+	Close()
+}
+
+//go:generate counterfeiter -o ./mocks/assembler_ledger_factory.go . AssemblerLedgerFactory
+type AssemblerLedgerFactory interface {
+	Create(logger types.Logger, ledgerPath string) (AssemblerLedgerReaderWriter, error)
+}
+
+type DefaultAssemblerLedgerFactory struct{}
+
+func (f *DefaultAssemblerLedgerFactory) Create(logger types.Logger, ledgerPath string) (AssemblerLedgerReaderWriter, error) {
+	return NewAssemblerLedger(logger, ledgerPath)
+}
+
 type AssemblerLedger struct {
 	Logger               types.Logger
 	Ledger               blockledger.ReadWriter
@@ -207,6 +229,10 @@ func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum ty
 	if err := l.Ledger.Append(configBlock); err != nil {
 		panic(err)
 	}
+}
+
+func (l *AssemblerLedger) LedgerReader() blockledger.Reader {
+	return l.Ledger
 }
 
 // LastOrderingInfo returns the ordering information from the last block.

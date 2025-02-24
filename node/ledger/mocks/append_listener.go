@@ -23,10 +23,9 @@ func (fake *FakeAppendListener) OnAppend(arg1 *common.Block) {
 	fake.onAppendArgsForCall = append(fake.onAppendArgsForCall, struct {
 		arg1 *common.Block
 	}{arg1})
-	stub := fake.OnAppendStub
 	fake.recordInvocation("OnAppend", []interface{}{arg1})
 	fake.onAppendMutex.Unlock()
-	if stub != nil {
+	if fake.OnAppendStub != nil {
 		fake.OnAppendStub(arg1)
 	}
 }

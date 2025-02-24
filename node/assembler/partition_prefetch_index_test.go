@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"arma/common/types"
+	"arma/common/utils"
 	"arma/core"
 	"arma/node/assembler"
 	"arma/node/assembler/mocks"
@@ -224,7 +225,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		require.NoError(t, test.partitionPrefetchIndex.Put(putBatch))
 		go func() {
 			_, err := test.partitionPrefetchIndex.PopOrWait(popBatchId)
-			if !errors.Is(err, assembler.ErrOperationCancelled) {
+			if !errors.Is(err, utils.ErrOperationCancelled) {
 				t.Error("PopOrWait should have waited")
 			}
 		}()
@@ -245,7 +246,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		require.NoError(t, test.partitionPrefetchIndex.Put(putBatch))
 		go func() {
 			_, err := test.partitionPrefetchIndex.PopOrWait(popBatchId)
-			if !errors.Is(err, assembler.ErrOperationCancelled) {
+			if !errors.Is(err, utils.ErrOperationCancelled) {
 				t.Error("PopOrWait should have waited")
 			}
 		}()
@@ -339,7 +340,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 			defer wg.Done()
 			// put seq 6
 			err := test.partitionPrefetchIndex.Put(batches[4])
-			if !errors.Is(err, assembler.ErrOperationCancelled) {
+			if !errors.Is(err, utils.ErrOperationCancelled) {
 				t.Error("PopOrWait should have waited")
 			}
 		}()
@@ -568,8 +569,8 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		_, err2 := test.partitionPrefetchIndex.PopOrWait(batchId)
 
 		// Assert
-		require.ErrorIs(t, err1, assembler.ErrOperationCancelled)
-		require.ErrorIs(t, err2, assembler.ErrOperationCancelled)
+		require.ErrorIs(t, err1, utils.ErrOperationCancelled)
+		require.ErrorIs(t, err2, utils.ErrOperationCancelled)
 	})
 
 	t.Run("WaitingPutShouldReturnProperErrorWhenPrefetchIndexStops", func(t *testing.T) {
@@ -594,8 +595,8 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		// Assert
 		require.NoError(t, errs[0])
 		require.NoError(t, errs[1])
-		require.ErrorIs(t, errs[2], assembler.ErrOperationCancelled)
-		require.ErrorIs(t, errs[3], assembler.ErrOperationCancelled)
+		require.ErrorIs(t, errs[2], utils.ErrOperationCancelled)
+		require.ErrorIs(t, errs[3], utils.ErrOperationCancelled)
 	})
 }
 

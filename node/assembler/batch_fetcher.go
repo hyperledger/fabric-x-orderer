@@ -29,6 +29,17 @@ type BatchBringer interface {
 	Stop()
 }
 
+//go:generate counterfeiter -o ./mocks/batch_fetcher_factory.go . BatchBringerFactory
+type BatchBringerFactory interface {
+	Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) BatchBringer
+}
+
+type DefaultBatchBringerFactory struct{}
+
+func (f *DefaultBatchBringerFactory) Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config config.AssemblerNodeConfig, logger types.Logger) BatchBringer {
+	return NewBatchFetcher(initialBatchFrontier, config, logger)
+}
+
 type BatchFetcher struct {
 	initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence
 	config               config.AssemblerNodeConfig
@@ -192,6 +203,8 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (core.Batch, error) {
 		return nil, fmt.Errorf("failed finding shard %d within config: %v", batchID.Shard(), br.config.Shards)
 	}
 
+	// canceling ctx will not cancel br.cancelCtx,
+	// canceling br.cancelCtx will cancel ctx.
 	ctx, cancelFunc := context.WithCancel(br.cancelCtx)
 	res := make(chan core.Batch, len(shardInfo.Batchers))
 

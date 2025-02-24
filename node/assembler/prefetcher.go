@@ -7,6 +7,23 @@ import (
 	"arma/common/types"
 )
 
+//go:generate counterfeiter -o ./mocks/prefetcher_controller.go . PrefetcherController
+type PrefetcherController interface {
+	Start()
+	Stop()
+}
+
+//go:generate counterfeiter -o ./mocks/prefetcher_factory.go . PrefetcherFactory
+type PrefetcherFactory interface {
+	Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger types.Logger) PrefetcherController
+}
+
+type DefaultPrefetcherFactory struct{}
+
+func (f *DefaultPrefetcherFactory) Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger types.Logger) PrefetcherController {
+	return NewPrefetcher(shards, parties, prefetchIndex, batchFetcher, logger)
+}
+
 type Prefetcher struct {
 	logger              types.Logger
 	prefetchIndex       PrefetchIndexer
@@ -44,12 +61,12 @@ func (p *Prefetcher) Start() {
 	for _, shard := range p.shards {
 		for _, party := range p.parties {
 			// after the first pull, this value will be updated
-			go p.handleReplication(ShardPrimary{Shard: shard, Primary: party})
 			p.wg.Add(1)
+			go p.handleReplication(ShardPrimary{Shard: shard, Primary: party})
 		}
 	}
-	go p.handleBatchRequests()
 	p.wg.Add(1)
+	go p.handleBatchRequests()
 }
 
 // Stops the prefetcher.

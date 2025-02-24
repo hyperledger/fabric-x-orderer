@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"arma/common/types"
+	"arma/common/utils"
 	"arma/core"
 	"arma/node/assembler"
 	"arma/node/assembler/mocks"
@@ -171,7 +172,7 @@ func TestPrefetchIndex_PopOrWait(t *testing.T) {
 		defer test.finish()
 		batch := testutil.CreateMockBatch(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
-		expectedErr := assembler.ErrOperationCancelled
+		expectedErr := utils.ErrOperationCancelled
 		batchPartitionIndexer.PopOrWaitReturns(nil, expectedErr)
 
 		// Act
@@ -211,7 +212,7 @@ func runTestsForPutOps(
 		defer test.finish()
 		batch := testutil.CreateMockBatch(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
-		expectedErr := assembler.ErrOperationCancelled
+		expectedErr := utils.ErrOperationCancelled
 		putMockReturns(batchPartitionIndexer, expectedErr)
 
 		// Act

@@ -21,6 +21,44 @@ type PrefetchIndexer interface {
 	Stop()
 }
 
+//go:generate counterfeiter -o ./mocks/prefetch_index_factory.go . PrefetchIndexerFactory
+type PrefetchIndexerFactory interface {
+	Create(
+		shards []types.ShardID,
+		parties []types.PartyID,
+		logger types.Logger,
+		defaultTtl time.Duration,
+		maxPartitionSizeBytes int,
+		timerFactory TimerFactory,
+		batchCacheFactory BatchCacheFactory,
+		partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
+	) PrefetchIndexer
+}
+
+type DefaultPrefetchIndexerFactory struct{}
+
+func (f *DefaultPrefetchIndexerFactory) Create(
+	shards []types.ShardID,
+	parties []types.PartyID,
+	logger types.Logger,
+	defaultTtl time.Duration,
+	maxPartitionSizeBytes int,
+	timerFactory TimerFactory,
+	batchCacheFactory BatchCacheFactory,
+	partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
+) PrefetchIndexer {
+	return NewPrefetchIndex(
+		shards,
+		parties,
+		logger,
+		defaultTtl,
+		maxPartitionSizeBytes,
+		timerFactory,
+		batchCacheFactory,
+		partitionPrefetchIndexerFactory,
+	)
+}
+
 type PrefetchIndex struct {
 	logger           types.Logger
 	partitionToIndex map[ShardPrimary]PartitionPrefetchIndexer

@@ -2,9 +2,12 @@ package core
 
 import (
 	"encoding/hex"
+	"errors"
+	"sync"
 	"time"
 
 	"arma/common/types"
+	"arma/common/utils"
 )
 
 //go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation
@@ -49,10 +52,12 @@ type BatchReplicator interface {
 type AssemblerIndex interface {
 	PopOrWait(batchId types.BatchID) (Batch, error)
 	Put(batch Batch) error
+	Stop()
 }
 
 type AssemblerLedgerWriter interface {
 	Append(batch Batch, orderingInfo interface{})
+	Close()
 }
 
 type OrderedBatchAttestationReplicator interface {
@@ -68,17 +73,27 @@ type Assembler struct {
 	Index                             AssemblerIndex
 	Shards                            []types.ShardID
 	StartingDesicion                  types.DecisionNum
+	runningWG                         sync.WaitGroup
 }
 
 func (a *Assembler) Run() {
 	// TODO we need to be able to stop these goroutines when we stop the assembler server
 	for _, shardID := range a.Shards {
+		a.runningWG.Add(1)
 		go a.fetchBatchesFromShard(shardID)
 	}
+	a.runningWG.Add(1)
 	go a.processOrderedBatchAttestations()
 }
 
+// Core Assebler stops by the node Assebler when the channels for batches and BAs are closed.
+// This methods only waits for the core go routines to finish.
+func (a *Assembler) WaitTermination() {
+	a.runningWG.Wait()
+}
+
 func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
+	defer a.runningWG.Done()
 	a.Logger.Infof("Starting to fetch batches from shard: %d", shardID)
 
 	batchCh := a.Replicator.Replicate(shardID)
@@ -91,6 +106,7 @@ func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
 }
 
 func (a *Assembler) processOrderedBatchAttestations() {
+	defer a.runningWG.Done()
 	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
 	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate(a.StartingDesicion)
@@ -108,22 +124,28 @@ func (a *Assembler) processOrderedBatchAttestations() {
 		}
 
 		t1 := time.Now()
-		batch := a.collateAttestationWithBatch(oba.BatchAttestation())
+		batch, err := a.collateAttestationWithBatch(oba.BatchAttestation())
+		if err != nil {
+			if errors.Is(err, utils.ErrOperationCancelled) {
+				a.Logger.Warnf("Collating Attestation with batch %v was cancelled.", oba.BatchAttestation())
+				break
+			}
+			a.Logger.Panicf("Something went wrong while fetching the batch %v", oba.BatchAttestation())
+		}
 		a.Logger.Infof("Located batch for digest %s within %v", ShortDigestString(oba.BatchAttestation().Digest()), time.Since(t1))
 		a.Ledger.Append(batch, oba.OrderingInfo())
 	}
-
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
 }
 
-func (a *Assembler) collateAttestationWithBatch(ba BatchAttestation) Batch {
+func (a *Assembler) collateAttestationWithBatch(ba BatchAttestation) (Batch, error) {
 	t1 := time.Now()
 	batch, err := a.Index.PopOrWait(ba)
 	if err != nil {
-		a.Logger.Panicf("Something went wrong while fetching the batch %v", ba)
+		return nil, err
 	}
 	a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), ShortDigestString(ba.Digest()), time.Since(t1))
-	return batch
+	return batch, nil
 }
 
 // ShortDigestString provides a short string from a potentially long (32B) digest.

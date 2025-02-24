@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"arma/common/types"
+	"arma/common/utils"
 	"arma/core"
 )
 
@@ -197,7 +198,7 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, 
 	// while not exists, wait
 	for {
 		if pi.cancellationContext.Err() != nil {
-			return nil, ErrOperationCancelled
+			return nil, utils.ErrOperationCancelled
 		}
 		batch, err := pi.removeUnsafe(batchId)
 		if err != nil && !errors.Is(err, ErrBatchDoesNotExist) {
@@ -251,7 +252,7 @@ func (pi *PartitionPrefetchIndex) Put(batch core.Batch) error {
 	pi.lastPutSeqRequest = batch.Seq()
 	for pi.cache.SizeBytes()+batchSize > pi.maxSizeBytes {
 		if pi.cancellationContext.Err() != nil {
-			return ErrOperationCancelled
+			return utils.ErrOperationCancelled
 		}
 		if pi.maxPoppedCallSeq < batch.Seq() {
 			// we are prefetching too fast, wait for the batches in the index to be used
@@ -322,4 +323,14 @@ func (pi *PartitionPrefetchIndex) removeUnsafe(batchId types.BatchID) (core.Batc
 func (bs *PartitionPrefetchIndex) Stop() {
 	bs.cancelContextFunc()
 	bs.stateCond.Broadcast()
+	// Stop all the timers
+	bs.stateCond.L.Lock()
+	for {
+		batchAndTimer := bs.sequenceHeap.Pop()
+		if batchAndTimer == nil {
+			break
+		}
+		batchAndTimer.Value.Stop()
+	}
+	bs.stateCond.L.Unlock()
 }
