@@ -27,8 +27,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/Shopify/sarama => github.com/IBM/sarama v1.43.1
-
 require (
 	github.com/IBM/idemix v0.0.2-0.20240913182345-72941a5f41cd // indirect
 	github.com/IBM/idemix/bccsp/schemes/aries v0.0.0-20240913182345-72941a5f41cd // indirect

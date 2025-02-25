@@ -122,10 +122,8 @@ github.com/hyperledger/fabric/common/capabilities
 github.com/hyperledger/fabric/common/cauthdsl
 github.com/hyperledger/fabric/common/channelconfig
 github.com/hyperledger/fabric/common/configtx
-github.com/hyperledger/fabric/common/configtx/test
 github.com/hyperledger/fabric/common/crypto
 github.com/hyperledger/fabric/common/deliver
-github.com/hyperledger/fabric/common/deliver/mock
 github.com/hyperledger/fabric/common/deliverclient
 github.com/hyperledger/fabric/common/genesis
 github.com/hyperledger/fabric/common/ledger
@@ -136,26 +134,17 @@ github.com/hyperledger/fabric/common/ledger/dataformat
 github.com/hyperledger/fabric/common/ledger/snapshot
 github.com/hyperledger/fabric/common/ledger/util
 github.com/hyperledger/fabric/common/ledger/util/leveldbhelper
-github.com/hyperledger/fabric/common/metadata
 github.com/hyperledger/fabric/common/policies
 github.com/hyperledger/fabric/common/policydsl
 github.com/hyperledger/fabric/common/util
 github.com/hyperledger/fabric/common/viperutil
 github.com/hyperledger/fabric/core/config
-github.com/hyperledger/fabric/core/config/configtest
-github.com/hyperledger/fabric/internal/configtxgen/encoder
-github.com/hyperledger/fabric/internal/configtxgen/encoder/fakes
-github.com/hyperledger/fabric/internal/configtxgen/genesisconfig
-github.com/hyperledger/fabric/internal/configtxgen/metadata
-github.com/hyperledger/fabric/internal/configtxlator/update
 github.com/hyperledger/fabric/internal/fileutil
 github.com/hyperledger/fabric/internal/pkg/identity
 github.com/hyperledger/fabric/internal/pkg/txflags
-github.com/hyperledger/fabric/internal/test
 github.com/hyperledger/fabric/msp
 github.com/hyperledger/fabric/msp/cache
 github.com/hyperledger/fabric/msp/mgmt
-github.com/hyperledger/fabric/msp/mgmt/testtools
 github.com/hyperledger/fabric/orderer/common/filerepo
 github.com/hyperledger/fabric/protoutil
 # github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2
@@ -514,4 +503,3 @@ gopkg.in/yaml.v3
 ## explicit; go 1.17
 rsc.io/tmplfunc
 rsc.io/tmplfunc/internal/parse
-# github.com/Shopify/sarama => github.com/IBM/sarama v1.43.1
