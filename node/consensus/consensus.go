@@ -242,7 +242,7 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 	reqID := c.RequestID(req)
 
 	if ce.Complaint != nil {
-		return reqID, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, toBeSignedComplaint(ce.Complaint), ce.Complaint.Signature)
+		return reqID, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
 		return reqID, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else {

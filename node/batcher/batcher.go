@@ -70,6 +70,7 @@ type Batcher struct {
 	stopChan chan struct{}
 
 	primaryLock         sync.Mutex
+	term                uint64
 	primaryID           types.PartyID
 	primaryClientStream protos.AckService_NotifyAckClient
 }
@@ -111,11 +112,12 @@ func (b *Batcher) replicateState() {
 		case state := <-stateChan:
 			b.stateRef.Store(state)
 			b.stateChan <- state
-			primaryID := b.getPrimaryID(state)
+			primaryID, term := b.getPrimaryIDAndTerm(state)
 			b.primaryLock.Lock()
-			if b.primaryID != primaryID {
+			if b.primaryID != primaryID { // TODO better to check term change?
 				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
 				b.primaryID = primaryID
+				b.term = term
 				b.primaryClientStream = nil
 			}
 			b.primaryLock.Unlock()
@@ -283,7 +285,7 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 	initState := computeZeroState(config)
 	b.stateRef.Store(&initState)
 
-	b.primaryID = b.getPrimaryID(&initState)
+	b.primaryID, b.term = b.getPrimaryIDAndTerm(&initState)
 
 	b.indexTLSCerts()
 
@@ -308,8 +310,9 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 			return digest[:]
 		},
 		RequestInspector: b,
-		TotalOrderBAF:    b.broadcastEvent,
-		AckBAF:           b.sendAck,
+		TotalOrderBAF:    b.SendBAF, // TODO make interface
+		AckBAF:           b.sendAck, // TODO make interface
+		Complainer:       b,
 	}
 
 	return b
@@ -332,12 +335,12 @@ func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPo
 	opts.RequestMaxBytes = config.RequestMaxBytes
 	opts.SubmitTimeout = config.BatchTimeout
 
-	opts.OnFirstStrikeTimeout = func(key []byte) {
+	opts.OnFirstStrikeTimeout = func(req []byte) { // TODO turn into interface
 		// TODO send tx to primary
-		b.logger.Warnf("First strike timeout occurred on request %s", b.RequestID(key))
+		b.logger.Warnf("First strike timeout occurred on request %s", b.RequestID(req))
 	}
-	opts.OnSecondStrikeTimeout = func() {
-		// TODO complain
+	opts.OnSecondStrikeTimeout = func() { // TODO turn into interface
+		b.Complain() // TODO add complaint reason
 		b.logger.Warnf("Second strike timeout occurred")
 	}
 
@@ -374,7 +377,7 @@ func (b *Batcher) GetPrimaryID() types.PartyID {
 	return b.primaryID
 }
 
-func (b *Batcher) getPrimaryID(state *core.State) types.PartyID {
+func (b *Batcher) getPrimaryIDAndTerm(state *core.State) (types.PartyID, uint64) {
 	term := uint64(math.MaxUint64)
 	for _, shard := range state.Shards {
 		if shard.Shard == b.config.ShardId {
@@ -390,7 +393,19 @@ func (b *Batcher) getPrimaryID(state *core.State) types.PartyID {
 
 	primaryID := b.batchers[primaryIndex].PartyID
 
-	return primaryID
+	return primaryID, term
+}
+
+func (b *Batcher) createComplaint() *core.Complaint {
+	b.primaryLock.Lock()
+	term := b.term
+	b.primaryLock.Unlock()
+	c, err := CreateComplaint(b.privateKey, b.config.PartyId, b.config.ShardId, term)
+	if err != nil {
+		b.logger.Panicf("Failed creating complaint: %v", err)
+	}
+
+	return c
 }
 
 func computeZeroState(config node_config.BatcherNodeConfig) core.State {
@@ -499,21 +514,29 @@ func (b *Batcher) ackStreamFactory(primary types.PartyID) (protos.AckService_Not
 	return stream, nil
 }
 
-func (b *Batcher) broadcastEvent(baf core.BatchAttestationFragment) {
+func (b *Batcher) Complain() {
+	b.broadcastControlEvent(core.ControlEvent{Complaint: b.createComplaint()})
+}
+
+func (b *Batcher) SendBAF(baf core.BatchAttestationFragment) {
+	b.broadcastControlEvent(core.ControlEvent{BAF: baf})
+}
+
+func (b *Batcher) broadcastControlEvent(ce core.ControlEvent) {
 	for _, sender := range b.controlEventSenders {
-		b.sendBAF(baf, sender) // TODO make sure somehow we sent to 2f+1, and retry if not
+		b.sendControlEvent(ce, sender) // TODO make sure somehow we sent to 2f+1, and retry if not
 	}
 }
 
-func (b *Batcher) sendBAF(baf core.BatchAttestationFragment, sender ConsenterControlEventSender) {
+func (b *Batcher) sendControlEvent(ce core.ControlEvent, sender ConsenterControlEventSender) {
 	t1 := time.Now()
 
 	defer func() {
-		b.logger.Infof("Sending BAF took %v", time.Since(t1))
+		b.logger.Infof("Sending control event took %v", time.Since(t1))
 	}()
 
-	if err := sender.SendControlEvent(core.ControlEvent{BAF: baf}); err != nil {
-		b.logger.Errorf("Failed sending batch attestation fragment; err: %v", err)
+	if err := sender.SendControlEvent(ce); err != nil {
+		b.logger.Errorf("Failed sending control event; err: %v", err)
 		// TODO do something when sending fails
 	}
 }
@@ -524,10 +547,26 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
+func CreateComplaint(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, term uint64) (*core.Complaint, error) {
+	c := &core.Complaint{
+		ShardTerm: core.ShardTerm{Shard: shard, Term: term},
+		Signer:    id,
+		Signature: nil,
+	}
+	signer := crypto.ECDSASigner(*sk)       // TODO maybe use a different signer
+	sig, err := signer.Sign(c.ToBeSigned()) // TODO add a signer interface
+	if err != nil {
+		return nil, err
+	}
+	c.Signature = sig
+
+	return c, nil
+}
+
 func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (core.BatchAttestationFragment, error) {
 	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, 0, nil)
-	signer := crypto.ECDSASigner(*sk) // TODO maybe use a different signer
-	sig, err := signer.Sign(baf.ToBeSigned())
+	signer := crypto.ECDSASigner(*sk)         // TODO maybe use a different signer
+	sig, err := signer.Sign(baf.ToBeSigned()) // TODO add a signer interface
 	if err != nil {
 		return nil, err
 	}

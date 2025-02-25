@@ -272,6 +272,15 @@ func (c *Complaint) FromBytes(bytes []byte) error {
 	return nil
 }
 
+func (c *Complaint) ToBeSigned() []byte {
+	toBeSignedComplaint := Complaint{
+		ShardTerm: c.ShardTerm,
+		Signer:    c.Signer,
+		Signature: nil,
+	}
+	return toBeSignedComplaint.Bytes()
+}
+
 type ControlEvent struct {
 	BAF       BatchAttestationFragment
 	Complaint *Complaint

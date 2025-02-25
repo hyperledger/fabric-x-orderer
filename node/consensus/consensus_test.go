@@ -423,19 +423,19 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 	signer1 := crypto.ECDSASigner(*sks[0])
 	complaint1 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 1}
-	sig, err := signer1.Sign(toBeSignedComplaint(complaint1))
+	sig, err := signer1.Sign(complaint1.ToBeSigned())
 	require.NoError(t, err)
 	complaint1.Signature = sig
 
 	signer2 := crypto.ECDSASigner(*sks[1])
 	complaint2 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 2}
-	sig, err = signer2.Sign(toBeSignedComplaint(complaint2))
+	sig, err = signer2.Sign(complaint2.ToBeSigned())
 	require.NoError(t, err)
 	complaint2.Signature = sig
 
 	signer3 := crypto.ECDSASigner(*sks[2])
 	complaint3 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 3}
-	sig, err = signer3.Sign(toBeSignedComplaint(complaint3))
+	sig, err = signer3.Sign(complaint3.ToBeSigned())
 	require.NoError(t, err)
 	complaint3.Signature = sig
 

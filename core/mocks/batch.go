@@ -67,15 +67,16 @@ func (fake *FakeBatch) Digest() []byte {
 	ret, specificReturn := fake.digestReturnsOnCall[len(fake.digestArgsForCall)]
 	fake.digestArgsForCall = append(fake.digestArgsForCall, struct {
 	}{})
+	stub := fake.DigestStub
+	fakeReturns := fake.digestReturns
 	fake.recordInvocation("Digest", []interface{}{})
 	fake.digestMutex.Unlock()
-	if fake.DigestStub != nil {
-		return fake.DigestStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.digestReturns
 	return fakeReturns.result1
 }
 
@@ -119,15 +120,16 @@ func (fake *FakeBatch) Primary() types.PartyID {
 	ret, specificReturn := fake.primaryReturnsOnCall[len(fake.primaryArgsForCall)]
 	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct {
 	}{})
+	stub := fake.PrimaryStub
+	fakeReturns := fake.primaryReturns
 	fake.recordInvocation("Primary", []interface{}{})
 	fake.primaryMutex.Unlock()
-	if fake.PrimaryStub != nil {
-		return fake.PrimaryStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.primaryReturns
 	return fakeReturns.result1
 }
 
@@ -171,15 +173,16 @@ func (fake *FakeBatch) Requests() types.BatchedRequests {
 	ret, specificReturn := fake.requestsReturnsOnCall[len(fake.requestsArgsForCall)]
 	fake.requestsArgsForCall = append(fake.requestsArgsForCall, struct {
 	}{})
+	stub := fake.RequestsStub
+	fakeReturns := fake.requestsReturns
 	fake.recordInvocation("Requests", []interface{}{})
 	fake.requestsMutex.Unlock()
-	if fake.RequestsStub != nil {
-		return fake.RequestsStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.requestsReturns
 	return fakeReturns.result1
 }
 
@@ -223,15 +226,16 @@ func (fake *FakeBatch) Seq() types.BatchSequence {
 	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
 	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
 	}{})
+	stub := fake.SeqStub
+	fakeReturns := fake.seqReturns
 	fake.recordInvocation("Seq", []interface{}{})
 	fake.seqMutex.Unlock()
-	if fake.SeqStub != nil {
-		return fake.SeqStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.seqReturns
 	return fakeReturns.result1
 }
 
@@ -275,15 +279,16 @@ func (fake *FakeBatch) Shard() types.ShardID {
 	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
 	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
 	}{})
+	stub := fake.ShardStub
+	fakeReturns := fake.shardReturns
 	fake.recordInvocation("Shard", []interface{}{})
 	fake.shardMutex.Unlock()
-	if fake.ShardStub != nil {
-		return fake.ShardStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.shardReturns
 	return fakeReturns.result1
 }
 

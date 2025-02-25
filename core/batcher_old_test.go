@@ -58,11 +58,13 @@ func (r *naiveReplication) Stop() {
 	atomic.StoreInt32(&r.stopped, 0x1)
 }
 
-func (r *naiveReplication) Append(_ arma_types.PartyID, _ uint64, bytes []byte) {
+func (r *naiveReplication) Append(node arma_types.PartyID, seq uint64, bytes []byte) {
 	for _, s := range r.subscribers {
 		var reqs arma_types.BatchedRequests
 		reqs.Deserialize(bytes)
 		s <- &naiveBatch{
+			node:     node,
+			seq:      arma_types.BatchSequence(seq),
 			requests: reqs,
 		}
 	}
@@ -380,6 +382,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		Threshold:        2,
 		Ledger:           &noopLedger{},
 		StateProvider:    &mocks.FakeStateProvider{},
+		Complainer:       &mocks.FakeComplainer{},
 	}
 
 	return b

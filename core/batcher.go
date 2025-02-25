@@ -45,6 +45,11 @@ type StateProvider interface {
 	GetLatestStateChan() <-chan *State
 }
 
+//go:generate counterfeiter -o mocks/complainer.go . Complainer
+type Complainer interface {
+	Complain()
+}
+
 type BatchLedgerWriter interface {
 	Append(types.PartyID, uint64, []byte)
 }
@@ -78,9 +83,10 @@ type Batcher struct {
 	Ledger           BatchLedger
 	BatchPuller      BatchPuller
 	StateProvider    StateProvider
-	AttestBatch      func(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) BatchAttestationFragment
-	TotalOrderBAF    func(BatchAttestationFragment)
-	AckBAF           func(seq types.BatchSequence, to types.PartyID) // TODO turn into interface
+	AttestBatch      func(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) BatchAttestationFragment // TODO turn into interface
+	TotalOrderBAF    func(BatchAttestationFragment)                                                                                    // TODO turn into interface
+	AckBAF           func(seq types.BatchSequence, to types.PartyID)                                                                   // TODO turn into interface
+	Complainer       Complainer
 	MemPool          MemPool
 	running          sync.WaitGroup
 	stopChan         chan struct{}
@@ -280,33 +286,36 @@ func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
 func (b *Batcher) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
-	out := b.BatchPuller.PullBatches(b.primary)
-	defer func() {
-		b.BatchPuller.Stop()
-		b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
-	}()
-
 	for {
-		var batch Batch
-		select {
-		case batch = <-out:
-		case newTerm := <-b.termChan:
-			b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
-			return
-		case <-b.stopChan:
-			return
+		out := b.BatchPuller.PullBatches(b.primary)
+		for {
+			var batch Batch
+			select {
+			case batch = <-out:
+			case newTerm := <-b.termChan:
+				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+				b.BatchPuller.Stop()
+				return
+			case <-b.stopChan:
+				b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
+				b.BatchPuller.Stop()
+				return
+			}
+			if err := b.verifyBatch(batch); err != nil {
+				b.Logger.Warnf("Secondary batcher %d (shard %d) sending a complaint (primary %d); verify batch err: %v", b.ID, b.Shard, b.primary, err)
+				b.Complainer.Complain()
+				b.BatchPuller.Stop()
+				break // TODO maybe add backoff
+			}
+			requests := batch.Requests()
+			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
+			b.Ledger.Append(b.primary, uint64(b.seq), requests.Serialize())
+			b.removeRequests(requests)
+			baf := b.AttestBatch(b.seq, b.primary, b.Shard, b.Digest(requests))
+			b.sendBAF(baf)
+			b.AckBAF(baf.Seq(), b.primary)
+			b.seq++
 		}
-		if err := b.verifyBatch(batch); err != nil {
-			// TODO complain
-			b.Logger.Warnf("Secondary batch %d (shard %d) sending a complaint (primary %d); verify batch err: %v", b.ID, b.Shard, b.primary, err)
-		}
-		requests := batch.Requests()
-		b.Ledger.Append(b.primary, uint64(b.seq), requests.Serialize())
-		b.removeRequests(requests)
-		baf := b.AttestBatch(b.seq, b.primary, b.Shard, b.Digest(requests))
-		b.sendBAF(baf)
-		b.AckBAF(baf.Seq(), b.primary)
-		b.seq++
 	}
 }
 
