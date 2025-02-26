@@ -3,8 +3,9 @@ package generate
 import (
 	"fmt"
 
+	"arma/config/protos"
+
 	"arma/common/utils"
-	"arma/config"
 )
 
 // SharedConfig holds the initial configuration that will be used to bootstrap new nodes.
@@ -15,7 +16,7 @@ type SharedConfig struct {
 	BatchingConfig  BatchingConfig  `yaml:"Batching,omitempty"`
 }
 
-func LoadSharedConfig(filePath string) (*config.SharedConfig, error) {
+func LoadSharedConfig(filePath string) (*protos.SharedConfig, error) {
 	sharedConfigYaml, err := loadSharedConfigYAML(filePath)
 	if err != nil {
 		return nil, err
@@ -43,8 +44,8 @@ func loadSharedConfigYAML(filePath string) (*SharedConfig, error) {
 }
 
 // parseSharedConfigYaml converts the shared config yaml representation to the config.SharedConfig representation, in which the paths are replaced by certificates.
-func parseSharedConfigYaml(sharedConfigYaml *SharedConfig) (*config.SharedConfig, error) {
-	var partiesConfig []*config.PartyConfig
+func parseSharedConfigYaml(sharedConfigYaml *SharedConfig) (*protos.SharedConfig, error) {
+	var partiesConfig []*protos.PartyConfig
 
 	for _, partyConfig := range sharedConfigYaml.PartiesConfig {
 		caCerts, tlsCACerts, err := loadCACerts(partyConfig.CACerts, partyConfig.TLSCACerts)
@@ -72,7 +73,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfig) (*config.SharedConfig
 			return nil, err
 		}
 
-		pc := &config.PartyConfig{
+		pc := &protos.PartyConfig{
 			PartyID:         uint32(partyConfig.PartyID),
 			CACerts:         caCerts,
 			TLSCACerts:      tlsCACerts,
@@ -84,9 +85,9 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfig) (*config.SharedConfig
 		partiesConfig = append(partiesConfig, pc)
 	}
 
-	sharedConfig := config.SharedConfig{
+	sharedConfig := protos.SharedConfig{
 		PartiesConfig: partiesConfig,
-		ConsensusConfig: &config.ConsensusConfig{SmartBFTConfig: &config.SmartBFTConfig{
+		ConsensusConfig: &protos.ConsensusConfig{SmartBFTConfig: &protos.SmartBFTConfig{
 			RequestBatchMaxInterval:   uint32(sharedConfigYaml.ConsensusConfig.BFTConfig.RequestBatchMaxInterval),
 			RequestForwardTimeout:     uint32(sharedConfigYaml.ConsensusConfig.BFTConfig.RequestForwardTimeout),
 			RequestComplainTimeout:    uint32(sharedConfigYaml.ConsensusConfig.BFTConfig.RequestComplainTimeout),
@@ -99,9 +100,9 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfig) (*config.SharedConfig
 			RequestPoolSize:           uint32(sharedConfigYaml.ConsensusConfig.BFTConfig.RequestPoolSize),
 			LeaderHeartbeatCount:      uint32(sharedConfigYaml.ConsensusConfig.BFTConfig.LeaderHeartbeatCount),
 		}},
-		BatchingConfig: &config.BatchingConfig{
+		BatchingConfig: &protos.BatchingConfig{
 			BatchTimeout: uint32(sharedConfigYaml.BatchingConfig.BatchTimeout),
-			BatchSize: &config.BatchSize{
+			BatchSize: &protos.BatchSize{
 				MaxMessageCount:   sharedConfigYaml.BatchingConfig.BatchSize.MaxMessageCount,
 				AbsoluteMaxBytes:  sharedConfigYaml.BatchingConfig.BatchSize.AbsoluteMaxBytes,
 				PreferredMaxBytes: sharedConfigYaml.BatchingConfig.BatchSize.PreferredMaxBytes,
@@ -133,20 +134,20 @@ func loadCACerts(caCertsPaths []string, tlsCACertsPaths []string) ([][]byte, [][
 	return caCerts, TLSCACerts, nil
 }
 
-func loadRouterConfig(host string, port uint32, tlsCertPath string) (*config.RouterNodeConfig, error) {
+func loadRouterConfig(host string, port uint32, tlsCertPath string) (*protos.RouterNodeConfig, error) {
 	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read router tls cert failed, err: %v", err)
 	}
-	return &config.RouterNodeConfig{
+	return &protos.RouterNodeConfig{
 		Host:    host,
 		Port:    port,
 		TlsCert: TLSCert,
 	}, nil
 }
 
-func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*config.BatcherNodeConfig, error) {
-	var batchersConfig []*config.BatcherNodeConfig
+func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*protos.BatcherNodeConfig, error) {
+	var batchersConfig []*protos.BatcherNodeConfig
 
 	for _, batcher := range batchersConfigYaml {
 		TLSCert, err := utils.ReadPem(batcher.TLSCert)
@@ -158,7 +159,7 @@ func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*config.Batch
 		if err != nil {
 			return nil, fmt.Errorf("load shared config failed, read batcher public key failed, err: %v", err)
 		}
-		batcherConfig := &config.BatcherNodeConfig{
+		batcherConfig := &protos.BatcherNodeConfig{
 			ShardID:   uint32(batcher.ShardID),
 			Host:      batcher.Host,
 			Port:      batcher.Port,
@@ -170,7 +171,7 @@ func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*config.Batch
 	return batchersConfig, nil
 }
 
-func loadConsenterConfig(host string, port uint32, tlsCertPath string, pubKeyPath string) (*config.ConsenterNodeConfig, error) {
+func loadConsenterConfig(host string, port uint32, tlsCertPath string, pubKeyPath string) (*protos.ConsenterNodeConfig, error) {
 	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read consenster tls cert failed, err: %v", err)
@@ -180,7 +181,7 @@ func loadConsenterConfig(host string, port uint32, tlsCertPath string, pubKeyPat
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read consenster public key failed, err: %v", err)
 	}
-	return &config.ConsenterNodeConfig{
+	return &protos.ConsenterNodeConfig{
 		Host:      host,
 		Port:      port,
 		PublicKey: pubKey,
@@ -188,12 +189,12 @@ func loadConsenterConfig(host string, port uint32, tlsCertPath string, pubKeyPat
 	}, nil
 }
 
-func loadAssemblerConfig(host string, port uint32, tlsCertPath string) (*config.AssemblerNodeConfig, error) {
+func loadAssemblerConfig(host string, port uint32, tlsCertPath string) (*protos.AssemblerNodeConfig, error) {
 	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read assembler tls cert failed, err: %v", err)
 	}
-	return &config.AssemblerNodeConfig{
+	return &protos.AssemblerNodeConfig{
 		Host:    host,
 		Port:    port,
 		TlsCert: TLSCert,

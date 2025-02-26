@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = "arma/config";
+option go_package = "arma/config/protos";
 
 // SharedConfig holds the initial configuration that will be used to bootstrap new nodes.
 // This configuration is common to all Arma nodes.
