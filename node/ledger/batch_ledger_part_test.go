@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"

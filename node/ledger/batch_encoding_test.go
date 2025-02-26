@@ -6,8 +6,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/assert"
 
-	"arma/common/types"
-	"arma/node/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
 	"github.com/stretchr/testify/require"
 )

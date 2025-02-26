@@ -2,8 +2,8 @@
 package mocks
 
 import (
-	"arma/common/types"
-	"arma/node/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 	"sync"
 )
 

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"arma/internal/cryptogen/ca"
-	"arma/internal/cryptogen/msp"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/ca"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/msp"
 
 	fabricmsp "github.com/hyperledger/fabric/msp"
 	"github.com/stretchr/testify/require"

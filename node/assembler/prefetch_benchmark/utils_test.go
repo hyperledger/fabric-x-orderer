@@ -3,7 +3,7 @@ package prefetch_benchmark_test
 import (
 	"math/rand"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 const PREFETCH_STRESS_TEST_MEMORY_FACTOR = 100

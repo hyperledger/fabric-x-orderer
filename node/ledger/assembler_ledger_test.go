@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"arma/common/types"
-	"arma/common/utils"
-	"arma/core"
-	"arma/node/consensus/state"
-	node_ledger "arma/node/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
+	node_ledger "github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"

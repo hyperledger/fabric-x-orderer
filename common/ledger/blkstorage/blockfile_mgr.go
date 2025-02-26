@@ -13,8 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"arma/common/ledger/util/leveldbhelper"
-	"arma/internal/fileutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/util/leveldbhelper"
+	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

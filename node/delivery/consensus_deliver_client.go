@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"time"
 
-	"arma/common/types"
-	"arma/core"
-	"arma/node/comm"
-	"arma/node/config"
-	"arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 
 	"github.com/pkg/errors"
 

@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"hash/crc64"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 type Router struct {

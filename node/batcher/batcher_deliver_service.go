@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"arma/common/types"
-	"arma/node/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

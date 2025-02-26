@@ -3,9 +3,9 @@ package generate
 import (
 	"fmt"
 
-	"arma/config/protos"
+	"github.ibm.com/decentralized-trust-research/arma/config/protos"
 
-	"arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 )
 
 // SharedConfig holds the initial configuration that will be used to bootstrap new nodes.

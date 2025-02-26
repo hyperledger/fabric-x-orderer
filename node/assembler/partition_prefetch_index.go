@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"arma/common/types"
-	"arma/common/utils"
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 )
 
 const (

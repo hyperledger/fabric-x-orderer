@@ -1,8 +1,8 @@
 package state
 
 import (
-	arma_types "arma/common/types"
-	"arma/core"
+	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 )
 
 type BAFDeserializer struct{}

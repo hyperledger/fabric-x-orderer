@@ -1,4 +1,4 @@
-module arma
+module github.ibm.com/decentralized-trust-research/arma
 
 go 1.23.4
 

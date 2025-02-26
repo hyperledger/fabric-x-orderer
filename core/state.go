@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"slices"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 type Rule func(*State, types.Logger, ...ControlEvent)

@@ -4,9 +4,9 @@ import (
 	"os"
 	"testing"
 
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
-	"arma/config/generate"
+	"github.ibm.com/decentralized-trust-research/arma/config/generate"
 
 	"github.com/stretchr/testify/require"
 )

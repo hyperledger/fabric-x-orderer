@@ -11,7 +11,7 @@ import (
 	"sync"
 	"syscall"
 
-	"arma/internal/fileutil"
+	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/pkg/errors"

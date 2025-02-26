@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"arma/common/types"
-	"arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 )
 
 //go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation

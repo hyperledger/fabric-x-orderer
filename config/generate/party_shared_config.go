@@ -1,6 +1,6 @@
 package generate
 
-import "arma/common/types"
+import "github.ibm.com/decentralized-trust-research/arma/common/types"
 
 type PartyConfig struct {
 	// the identity of the party, type unit16, id > 0

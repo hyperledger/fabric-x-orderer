@@ -1,9 +1,9 @@
 package batcher
 
 import (
-	"arma/common/types"
-	node_config "arma/node/config"
-	"arma/node/delivery"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	node_config "github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
 )
 
 //go:generate counterfeiter -o mocks/consensus_state_replicator_creator.go . ConsensusStateReplicatorCreator

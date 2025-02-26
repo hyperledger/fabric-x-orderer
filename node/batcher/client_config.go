@@ -3,8 +3,8 @@ package batcher
 import (
 	"time"
 
-	"arma/node/comm"
-	"arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
 )
 
 func clientConfig(TLSPrivateKeyFile config.RawBytes, TLSCertificateFile config.RawBytes, TlsCACert []config.RawBytes) comm.ClientConfig {

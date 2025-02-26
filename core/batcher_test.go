@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	arma_types "arma/common/types"
-	"arma/core"
-	"arma/core/mocks"
-	"arma/testutil"
+	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/core/mocks"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 )

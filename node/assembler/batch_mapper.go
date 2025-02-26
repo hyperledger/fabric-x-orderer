@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 type batchWithValue[K types.BatchID, V any] struct {

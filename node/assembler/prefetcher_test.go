@@ -3,11 +3,11 @@ package assembler_test
 import (
 	"testing"
 
-	"arma/common/types"
-	"arma/core"
-	"arma/node/assembler"
-	assembler_mocks "arma/node/assembler/mocks"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
+	assembler_mocks "github.ibm.com/decentralized-trust-research/arma/node/assembler/mocks"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 )

@@ -3,9 +3,9 @@ package ledger_test
 import (
 	"testing"
 
-	"arma/node/consensus/state"
-	"arma/node/ledger"
-	"arma/node/ledger/mocks"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger/mocks"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/stretchr/testify/require"

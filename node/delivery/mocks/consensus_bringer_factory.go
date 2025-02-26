@@ -2,9 +2,9 @@
 package mocks
 
 import (
-	"arma/common/types"
-	"arma/node/config"
-	"arma/node/delivery"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
 	"sync"
 )
 

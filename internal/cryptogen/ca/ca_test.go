@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"arma/internal/cryptogen/ca"
-	"arma/internal/cryptogen/csp"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/ca"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/csp"
 
 	"github.com/stretchr/testify/require"
 )

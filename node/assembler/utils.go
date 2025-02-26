@@ -3,9 +3,9 @@ package assembler
 import (
 	"fmt"
 
-	"arma/common/types"
-	"arma/core"
-	"arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
 )
 
 func partiesFromAssemblerConfig(config config.AssemblerNodeConfig) []types.PartyID {

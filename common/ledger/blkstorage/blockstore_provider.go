@@ -9,9 +9,9 @@ package blkstorage
 import (
 	"os"
 
-	"arma/common/ledger/dataformat"
-	"arma/common/ledger/util/leveldbhelper"
-	"arma/internal/fileutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/dataformat"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/util/leveldbhelper"
+	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"

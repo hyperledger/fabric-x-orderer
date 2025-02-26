@@ -3,9 +3,9 @@ package config
 import (
 	"fmt"
 
-	"arma/common/types"
-	"arma/common/utils"
-	"arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 )
 
 // NodeLocalConfig controls the configuration of an Arma node.

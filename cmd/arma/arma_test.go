@@ -12,12 +12,12 @@ import (
 	"sync"
 	"testing"
 
-	"arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 
 	"github.com/hyperledger/fabric/protoutil"
 
-	"arma/node/comm/tlsgen"
-	"arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

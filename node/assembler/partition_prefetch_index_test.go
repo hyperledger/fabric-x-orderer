@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"arma/common/types"
-	"arma/common/utils"
-	"arma/core"
-	"arma/node/assembler"
-	"arma/node/assembler/mocks"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler/mocks"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 )

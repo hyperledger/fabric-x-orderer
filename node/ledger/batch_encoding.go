@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"

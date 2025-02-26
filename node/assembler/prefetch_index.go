@@ -3,8 +3,8 @@ package assembler
 import (
 	"time"
 
-	"arma/common/types"
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 )
 
 // TODO: move to config

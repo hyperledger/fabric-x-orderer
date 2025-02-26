@@ -4,8 +4,8 @@ import (
 	"net"
 	"testing"
 
-	"arma/common/types"
-	"arma/config/generate"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/config/generate"
 
 	"github.com/stretchr/testify/require"
 )

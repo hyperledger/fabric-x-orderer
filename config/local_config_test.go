@@ -5,11 +5,11 @@ import (
 	"path"
 	"testing"
 
-	"arma/cmd/armageddon"
-	"arma/common/utils"
-	"arma/config"
-	"arma/config/generate"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/config"
+	"github.ibm.com/decentralized-trust-research/arma/config/generate"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 )

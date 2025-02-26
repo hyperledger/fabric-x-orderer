@@ -2,8 +2,8 @@
 package mocks
 
 import (
-	"arma/common/types"
-	"arma/node/assembler"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"sync"
 	"time"
 )

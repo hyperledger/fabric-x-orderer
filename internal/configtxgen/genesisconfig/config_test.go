@@ -9,7 +9,7 @@ package genesisconfig
 import (
 	"testing"
 
-	arma_testutil "arma/testutil/fabric"
+	arma_testutil "github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft"
 	"github.com/hyperledger/fabric/common/viperutil"

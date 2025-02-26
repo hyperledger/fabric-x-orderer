@@ -3,10 +3,10 @@ package core_test
 import (
 	"testing"
 
-	"arma/common/types"
-	"arma/core"
-	"arma/node/consensus/state"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/assert"
 )

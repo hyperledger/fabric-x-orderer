@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
-	protos "arma/node/protos/comm"
-	commMocks "arma/node/protos/comm/mocks"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	commMocks "github.ibm.com/decentralized-trust-research/arma/node/protos/comm/mocks"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

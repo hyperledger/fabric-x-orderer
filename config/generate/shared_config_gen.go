@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 )

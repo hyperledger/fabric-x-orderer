@@ -5,11 +5,11 @@ import (
 	"os"
 	"testing"
 
-	genconfig "arma/config/generate"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 
 	"github.com/stretchr/testify/require"
 )

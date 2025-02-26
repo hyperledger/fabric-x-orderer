@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
-	"arma/common/ledger/testutil"
-	"arma/internal/fileutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"

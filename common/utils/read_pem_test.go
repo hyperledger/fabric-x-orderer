@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"arma/testutil/tlsgen"
+	"github.ibm.com/decentralized-trust-research/arma/testutil/tlsgen"
 
 	"github.com/stretchr/testify/require"
 )

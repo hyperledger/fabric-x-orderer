@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 	"sync"
 )
 

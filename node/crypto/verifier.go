@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 type ShardPartyKey struct {

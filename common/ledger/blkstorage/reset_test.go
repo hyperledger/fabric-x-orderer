@@ -11,7 +11,7 @@ import (
 	"path"
 	"testing"
 
-	"arma/common/ledger/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

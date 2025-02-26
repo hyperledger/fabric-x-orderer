@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"arma/common/utils"
-	genconfig "arma/config/generate"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
-	"arma/common/types"
-	nodeconfig "arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
@@ -46,7 +46,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -99,7 +99,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -163,7 +163,7 @@ func TestLoadStepsFails(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -192,7 +192,7 @@ func TestLoadStepsFails(t *testing.T) {
 	txsSent := "10000"
 	txSize := "64"
 
-	armageddonBinary, err := gexec.BuildWithEnvironment("arma/cmd/armageddon/main", []string{"GOPRIVATE=github.ibm.com"})
+	armageddonBinary, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/armageddon/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armageddonBinary)
 	cmd := exec.Command(armageddonBinary, "load", "--config", userConfigPath, "--transactions", txsSent, "--rate", rates, "--txSize", txSize)
@@ -224,7 +224,7 @@ func TestLoadAndReceive(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -317,7 +317,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 

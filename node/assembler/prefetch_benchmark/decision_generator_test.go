@@ -3,7 +3,7 @@ package prefetch_benchmark_test
 import (
 	"time"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 func generateDecisions(logger types.Logger, batchesChan <-chan types.BatchID, decisionsPerSecond float64, maxBatchesPerDecision int, monitor *statsMonitor) <-chan []types.BatchID {

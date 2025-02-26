@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 )
 
 func main() {

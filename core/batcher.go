@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 
 	"github.com/pkg/errors"
 )

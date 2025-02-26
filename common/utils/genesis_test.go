@@ -9,7 +9,7 @@ package utils_test
 import (
 	"testing"
 
-	"arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"

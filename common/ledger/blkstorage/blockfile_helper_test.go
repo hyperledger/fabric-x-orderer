@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"arma/common/ledger/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protowire"

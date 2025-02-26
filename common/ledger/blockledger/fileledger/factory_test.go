@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"arma/common/ledger/blockledger/fileledger/mock"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger/fileledger/mock"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric/orderer/common/filerepo"

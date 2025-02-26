@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"testing"
 
-	"arma/internal/cryptogen/metadata"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/metadata"
 
 	"github.com/stretchr/testify/require"
 )

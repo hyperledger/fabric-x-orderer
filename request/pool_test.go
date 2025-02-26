@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/assert"
 )

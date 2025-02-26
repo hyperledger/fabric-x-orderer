@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arma/common/types"
-	"arma/core"
-	"arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

@@ -9,7 +9,7 @@ package blkstorage
 import (
 	"os"
 
-	"arma/internal/fileutil"
+	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
 
 	"github.com/pkg/errors"
 )

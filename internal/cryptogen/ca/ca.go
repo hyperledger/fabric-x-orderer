@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"arma/internal/cryptogen/csp"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/csp"
 
 	"github.com/pkg/errors"
 )

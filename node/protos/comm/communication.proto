@@ -1,7 +1,7 @@
 
 syntax = "proto3";
 
-option go_package = "arma/node/protos";
+option go_package = "github.ibm.com/decentralized-trust-research/arma/node/protos/comm";
 
 package comm;
 

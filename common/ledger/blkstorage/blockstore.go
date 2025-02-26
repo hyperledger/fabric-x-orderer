@@ -9,9 +9,9 @@ package blkstorage
 import (
 	"time"
 
-	"arma/common/ledger"
-	"arma/common/ledger/snapshot"
-	"arma/common/ledger/util/leveldbhelper"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/snapshot"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/util/leveldbhelper"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"

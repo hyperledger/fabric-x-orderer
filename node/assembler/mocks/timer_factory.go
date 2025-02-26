@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	"arma/node/assembler"
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"sync"
 	"time"
 )

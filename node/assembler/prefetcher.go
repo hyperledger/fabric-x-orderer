@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 //go:generate counterfeiter -o ./mocks/prefetcher_controller.go . PrefetcherController

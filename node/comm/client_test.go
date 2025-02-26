@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"arma/node/comm"
-	testgrpc "arma/node/comm/testdata/grpc"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	testgrpc "github.ibm.com/decentralized-trust-research/arma/node/comm/testdata/grpc"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"

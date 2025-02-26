@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 
 	"gopkg.in/yaml.v3"
 )

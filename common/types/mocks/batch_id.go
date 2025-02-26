@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"sync"
 )
 

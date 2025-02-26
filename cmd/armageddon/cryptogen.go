@@ -12,10 +12,10 @@ import (
 	"os"
 	"path/filepath"
 
-	genconfig "arma/config/generate"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 
-	"arma/common/types"
-	"arma/internal/cryptogen/ca"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/ca"
 )
 
 // GenerateCryptoConfig provides all crypto material of Arma network, divided into parties and written to files in a folder structure.

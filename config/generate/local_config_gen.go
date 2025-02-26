@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 
-	"arma/common/types"
-	"arma/config"
-	"arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 )
 
 const (

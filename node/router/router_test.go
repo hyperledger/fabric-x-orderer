@@ -11,13 +11,13 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 
-	"arma/common/types"
-	"arma/node/comm"
-	"arma/node/comm/tlsgen"
-	"arma/node/config"
-	protos "arma/node/protos/comm"
-	"arma/node/router"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/router"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

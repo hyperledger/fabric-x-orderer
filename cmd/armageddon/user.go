@@ -3,8 +3,8 @@ package armageddon
 import (
 	"fmt"
 
-	"arma/common/utils"
-	genconfig "arma/config/generate"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 )
 
 // UserConfig holds the user information needed for connection to routers and assemblers

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"arma/core"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 )

@@ -9,9 +9,9 @@ import (
 
 	"google.golang.org/grpc/connectivity"
 
-	"arma/common/types"
-	"arma/node/comm"
-	protos "arma/node/protos/comm"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 
 	"google.golang.org/grpc"
 )

@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"arma/internal/cryptogen/metadata-vars"
+	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/metadata-vars"
 )
 
 // This code originates from hyperledger fabric project. Source: https://github.com/hyperledger/fabric/blob/main/internal/cryptogen/metadata/metadata.go

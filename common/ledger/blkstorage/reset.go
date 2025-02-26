@@ -12,7 +12,7 @@ import (
 	"path"
 	"strconv"
 
-	"arma/internal/fileutil"
+	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
 )
 
 // ResetBlockStore drops the block storage index and truncates the blocks files for all channels/ledgers to genesis blocks

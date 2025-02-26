@@ -2,10 +2,10 @@
 package mocks
 
 import (
-	"arma/common/types"
-	"arma/core"
-	"arma/node/consensus/state"
-	"arma/node/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 	"sync"
 	"time"
 

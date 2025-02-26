@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"arma/common/types"
-	protos "arma/node/protos/comm"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 )
 
 type stream struct {

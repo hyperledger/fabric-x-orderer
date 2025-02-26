@@ -3,9 +3,9 @@ package assembler_test
 import (
 	"testing"
 
-	"arma/common/types"
-	"arma/node/assembler"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 )

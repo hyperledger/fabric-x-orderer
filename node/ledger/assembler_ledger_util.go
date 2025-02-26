@@ -3,8 +3,8 @@ package ledger
 import (
 	"encoding/binary"
 
-	"arma/common/types"
-	"arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

@@ -3,9 +3,9 @@ package batcher
 import (
 	"context"
 
-	"arma/core"
-	"arma/node/config"
-	protos "arma/node/protos/comm"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 
 	"github.com/pkg/errors"
 )

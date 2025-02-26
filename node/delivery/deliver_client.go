@@ -6,8 +6,8 @@ import (
 	"math"
 	"time"
 
-	"arma/common/types"
-	"arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"

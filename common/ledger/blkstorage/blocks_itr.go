@@ -9,7 +9,7 @@ package blkstorage
 import (
 	"sync"
 
-	"arma/common/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger"
 )
 
 // blocksItr - an iterator for iterating over a sequence of blocks

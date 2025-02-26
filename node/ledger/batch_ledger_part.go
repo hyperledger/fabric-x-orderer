@@ -3,8 +3,8 @@ package ledger
 import (
 	"fmt"
 
-	"arma/common/types"
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"

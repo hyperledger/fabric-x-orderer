@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"arma/common/types"
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 
 	"github.com/pkg/errors"
 )

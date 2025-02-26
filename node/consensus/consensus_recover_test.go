@@ -3,8 +3,8 @@ package consensus_test
 import (
 	"testing"
 
-	"arma/node/comm/tlsgen"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"

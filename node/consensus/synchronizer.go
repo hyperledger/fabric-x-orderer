@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	arma_types "arma/common/types"
-	"arma/node/comm"
-	"arma/node/consensus/state"
-	"arma/node/delivery"
+	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

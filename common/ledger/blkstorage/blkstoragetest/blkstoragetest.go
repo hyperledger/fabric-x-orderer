@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"arma/common/ledger/blkstorage"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

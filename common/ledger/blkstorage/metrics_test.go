@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"arma/common/ledger/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/metricsfakes"

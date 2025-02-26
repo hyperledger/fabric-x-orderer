@@ -7,12 +7,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"arma/common/types"
-	"arma/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
-	"arma/node/comm"
-	"arma/node/comm/tlsgen"
-	protos "arma/node/protos/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 
 	"github.com/stretchr/testify/require"
 )

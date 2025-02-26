@@ -4,9 +4,9 @@ import (
 	"crypto/sha256"
 	"testing"
 
-	"arma/common/types"
-	types_mocks "arma/common/types/mocks"
-	core_mocks "arma/core/mocks"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	types_mocks "github.ibm.com/decentralized-trust-research/arma/common/types/mocks"
+	core_mocks "github.ibm.com/decentralized-trust-research/arma/core/mocks"
 
 	"github.com/stretchr/testify/require"
 )

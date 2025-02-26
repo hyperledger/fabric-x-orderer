@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"unicode/utf8"
 
-	"arma/common/ledger/snapshot"
-	"arma/common/ledger/util"
-	"arma/common/ledger/util/leveldbhelper"
-	"arma/internal/pkg/txflags"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/snapshot"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/util"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/util/leveldbhelper"
+	"github.ibm.com/decentralized-trust-research/arma/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"

@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	protos "arma/node/protos/comm"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"context"
 	"sync"
 

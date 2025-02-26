@@ -1,8 +1,8 @@
 package state
 
 import (
-	"arma/common/types"
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 )

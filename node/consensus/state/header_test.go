@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/core"
 
 	"github.com/stretchr/testify/require"
 )

@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arma/common/types"
-	"arma/core"
-	"arma/node"
-	"arma/node/config"
-	protos "arma/node/protos/comm"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"

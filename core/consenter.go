@@ -3,7 +3,7 @@ package core
 import (
 	"slices"
 
-	"arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 type TotalOrder interface {

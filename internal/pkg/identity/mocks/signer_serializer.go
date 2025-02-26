@@ -2,7 +2,7 @@
 package mocks
 
 import (
-	"arma/internal/pkg/identity"
+	"github.ibm.com/decentralized-trust-research/arma/internal/pkg/identity"
 	"sync"
 )
 

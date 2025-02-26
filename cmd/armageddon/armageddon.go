@@ -22,12 +22,12 @@ import (
 	"sync"
 	"time"
 
-	genconfig "arma/config/generate"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 
-	"arma/common/types"
-	"arma/node/comm"
-	"arma/node/comm/tlsgen"
-	nodeconfig "arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
+	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 
 	"github.com/alecthomas/kingpin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

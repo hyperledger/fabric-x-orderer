@@ -13,9 +13,9 @@ import (
 	"sort"
 	"testing"
 
-	"arma/common/ledger/snapshot"
-	"arma/common/ledger/testutil"
-	"arma/internal/pkg/txflags"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/snapshot"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
+	"github.ibm.com/decentralized-trust-research/arma/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"

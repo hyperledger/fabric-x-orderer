@@ -7,8 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package fileledger
 
 import (
-	"arma/common/ledger"
-	"arma/common/ledger/blockledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"

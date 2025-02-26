@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"arma/common/ledger/snapshot"
-	"arma/common/ledger/testutil"
-	commonledgerutil "arma/common/ledger/util"
-	"arma/internal/pkg/txflags"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/snapshot"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
+	commonledgerutil "github.ibm.com/decentralized-trust-research/arma/common/ledger/util"
+	"github.ibm.com/decentralized-trust-research/arma/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"arma/node/comm"
-	"arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"

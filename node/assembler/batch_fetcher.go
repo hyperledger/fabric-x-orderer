@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"arma/common/types"
-	"arma/core"
-	"arma/node/comm"
-	"arma/node/config"
-	"arma/node/delivery"
-	"arma/node/ledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"

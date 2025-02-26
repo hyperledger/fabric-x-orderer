@@ -1,6 +1,6 @@
 package testutil
 
-import "arma/config"
+import "github.ibm.com/decentralized-trust-research/arma/config"
 
 func CreateTestRouterLocalConfig() *config.NodeLocalConfig {
 	routerLocalConfig := &config.NodeLocalConfig{
