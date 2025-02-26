@@ -2,17 +2,16 @@
 package mocks
 
 import (
-	"arma/common/types"
 	"arma/core"
 	"arma/node/delivery"
 	"sync"
 )
 
 type FakeConsensusBringer struct {
-	ReplicateStub        func(types.DecisionNum) <-chan core.OrderedBatchAttestation
+	ReplicateStub        func(core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation
 	replicateMutex       sync.RWMutex
 	replicateArgsForCall []struct {
-		arg1 types.DecisionNum
+		arg1 core.AssemblerConsensusPosition
 	}
 	replicateReturns struct {
 		result1 <-chan core.OrderedBatchAttestation
@@ -38,11 +37,11 @@ type FakeConsensusBringer struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusBringer) Replicate(arg1 types.DecisionNum) <-chan core.OrderedBatchAttestation {
+func (fake *FakeConsensusBringer) Replicate(arg1 core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation {
 	fake.replicateMutex.Lock()
 	ret, specificReturn := fake.replicateReturnsOnCall[len(fake.replicateArgsForCall)]
 	fake.replicateArgsForCall = append(fake.replicateArgsForCall, struct {
-		arg1 types.DecisionNum
+		arg1 core.AssemblerConsensusPosition
 	}{arg1})
 	fake.recordInvocation("Replicate", []interface{}{arg1})
 	fake.replicateMutex.Unlock()
@@ -62,13 +61,13 @@ func (fake *FakeConsensusBringer) ReplicateCallCount() int {
 	return len(fake.replicateArgsForCall)
 }
 
-func (fake *FakeConsensusBringer) ReplicateCalls(stub func(types.DecisionNum) <-chan core.OrderedBatchAttestation) {
+func (fake *FakeConsensusBringer) ReplicateCalls(stub func(core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = stub
 }
 
-func (fake *FakeConsensusBringer) ReplicateArgsForCall(i int) types.DecisionNum {
+func (fake *FakeConsensusBringer) ReplicateArgsForCall(i int) core.AssemblerConsensusPosition {
 	fake.replicateMutex.RLock()
 	defer fake.replicateMutex.RUnlock()
 	argsForCall := fake.replicateArgsForCall[i]

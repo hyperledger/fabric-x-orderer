@@ -26,7 +26,7 @@ const (
 //go:generate counterfeiter -o ./mocks/consensus_bringer.go . ConsensusBringer
 type ConsensusBringer interface {
 	ReplicateState() <-chan *core.State
-	Replicate(seq types.DecisionNum) <-chan core.OrderedBatchAttestation
+	Replicate(position core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation
 	Stop()
 }
 
@@ -103,7 +103,7 @@ func (cr *ConsensusReplicator) ReplicateState() <-chan *core.State {
 	return res
 }
 
-func (cr *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.OrderedBatchAttestation {
+func (cr *ConsensusReplicator) Replicate(position core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation {
 	endpoint := func() string {
 		return cr.endpoint
 	}
@@ -113,7 +113,7 @@ func (cr *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.Orde
 			common.HeaderType_DELIVER_SEEK_INFO,
 			"consensus",
 			nil,
-			NextSeekInfo(uint64(seq)),
+			NextSeekInfo(uint64(position.DecisionNum)),
 			int32(0),
 			uint64(0),
 			nil,
@@ -151,6 +151,13 @@ func (cr *ConsensusReplicator) Replicate(seq types.DecisionNum) <-chan core.Orde
 				},
 			}
 			cr.logger.Debugf("AvailableBatchOrdered: %+v", abo)
+			// During recovery, this condition addresses scenarios where a partially committed decision exists in the ledger.
+			// For instance, if a decision comprising three batches was interrupted after committing two, only the outstanding third batch should be reprocessed.
+			// This prevents redundant batch processing and potential errors upon resumption.
+			if abo.OrderingInformation.DecisionNum == position.DecisionNum && abo.OrderingInformation.BatchIndex < position.BatchIndex {
+				cr.logger.Debugf("AvailableBatchOrdered %+v is skipped, requested batch index was %d, but current is %d", abo, position.BatchIndex, abo.OrderingInformation.BatchIndex)
+				return
+			}
 
 			res <- abo
 		}

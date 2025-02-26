@@ -8,6 +8,7 @@ import (
 	"arma/common/utils"
 	"arma/core"
 	"arma/node/config"
+	"arma/node/consensus/state"
 	"arma/node/delivery"
 	node_ledger "arma/node/ledger"
 
@@ -21,6 +22,18 @@ const (
 	ledgerScanTimeout = 5 * time.Second
 	evictionTtl       = time.Hour
 )
+
+func NewInitialAssemblerConsensusPosition(oi *state.OrderingInformation) core.AssemblerConsensusPosition {
+	if oi.BatchIndex != oi.BatchCount-1 {
+		return core.AssemblerConsensusPosition{
+			DecisionNum: oi.DecisionNum,
+			BatchIndex:  oi.BatchIndex + 1,
+		}
+	}
+	return core.AssemblerConsensusPosition{
+		DecisionNum: oi.DecisionNum + 1,
+	}
+}
 
 type Assembler struct {
 	assembler    core.Assembler
@@ -99,10 +112,6 @@ func NewDefaultAssembler(
 	if err != nil {
 		logger.Panicf("Failed fetching last ordering info: %v", err)
 	}
-	var lastDecisionNum types.DecisionNum
-	if lastOrderingInfo != nil {
-		lastDecisionNum = lastOrderingInfo.DecisionNum + 1
-	}
 
 	assembler := &Assembler{
 		ds: make(delivery.DeliverService),
@@ -114,7 +123,7 @@ func NewDefaultAssembler(
 			Logger:                            logger,
 			Ledger:                            al,
 			ShardCount:                        len(config.Shards),
-			StartingDesicion:                  lastDecisionNum,
+			InitialDecisionPosition:           NewInitialAssemblerConsensusPosition(lastOrderingInfo),
 		},
 		logger:       logger,
 		prefetcher:   prefetcher,

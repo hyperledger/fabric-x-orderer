@@ -18,7 +18,7 @@ import (
 
 type naiveOrderedBatchAttestationReplicator chan core.OrderedBatchAttestation
 
-func (n naiveOrderedBatchAttestationReplicator) Replicate(u types.DecisionNum) <-chan core.OrderedBatchAttestation {
+func (n naiveOrderedBatchAttestationReplicator) Replicate(u core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation {
 	return n
 }
 

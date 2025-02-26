@@ -172,7 +172,7 @@ func (at *assemblerTest) StartAssembler() {
 	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, l types.Logger) delivery.ConsensusBringer {
 		return at.consensusBringerMock
 	})
-	at.consensusBringerMock.ReplicateCalls(func(dn types.DecisionNum) <-chan core.OrderedBatchAttestation {
+	at.consensusBringerMock.ReplicateCalls(func(acp core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation {
 		return at.consensusBAChan
 	})
 
@@ -193,11 +193,6 @@ func (at *assemblerTest) StartAssembler() {
 		batchBringerFactoryMock,
 		consensusBringerFactoryMock,
 	)
-
-	// if len(at.expecedLedgerBA) == 0 {
-	// 	// send genesis block to the assembler
-	// 	at.SendBAToAssembler(at.orderedBatchAttestationCreator.prevBa)
-	// }
 }
 
 func TestAssembler_StartAndThenStopShouldOnlyWriteGenesisBlockToLedger(t *testing.T) {
@@ -251,4 +246,33 @@ func TestAssembler_StopCallsAllSubcomponents(t *testing.T) {
 	require.Equal(t, 1, test.consensusBringerMock.StopCallCount())
 	require.Equal(t, 1, test.prefetcherMock.StopCallCount())
 	require.Equal(t, 1, test.ledgerMock.CloseCallCount())
+}
+
+func TestAssembler_RecoveryWhenmPartialDecisionWrittenToLedger(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	test := setupAssemblerTest(t, shards, parties, parties[0])
+	test.StartAssembler()
+	batches := []core.Batch{
+		testutil.CreateMockBatch(1, 1, 1, []int{1}),
+		testutil.CreateMockBatch(1, 1, 2, []int{1}),
+	}
+
+	// Act
+	test.SendBAToAssembler(test.orderedBatchAttestationCreator.Append(batches[0], 1, 0, 2))
+	test.SendBatchToAssembler(batches[0])
+	require.Eventually(t, func() bool {
+		return test.ledgerMock.AppendCallCount() == 1
+	}, eventuallyTimeout, eventuallyTick)
+	test.StopAssembler()
+	test.StartAssembler()
+
+	// Assert
+	require.Eventually(t, func() bool {
+		return test.consensusBringerMock.ReplicateCallCount() == 2
+	}, eventuallyTimeout, eventuallyTick)
+	position := test.consensusBringerMock.ReplicateArgsForCall(1)
+	require.Equal(t, types.DecisionNum(1), position.DecisionNum)
+	require.Equal(t, 1, position.BatchIndex)
 }
