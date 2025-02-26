@@ -30,7 +30,7 @@ clean-binary:
 .PHONY: protos
 protos: 
 	@echo "Compiling non-API protos..."
-	(cd node && bash ./scripts/compile_protos.sh)
+	(bash ./scripts/compile_protos.sh)
 
 .PHONY: linter-extra
 linter-extra: check-deps

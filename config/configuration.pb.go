@@ -2,16 +2,15 @@
 // versions:
 // 	protoc-gen-go v1.33.0
 // 	protoc        v4.24.4
-// source: protos/configuration.proto
+// source: config/configuration.proto
 
 package config
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -36,7 +35,7 @@ type SharedConfig struct {
 func (x *SharedConfig) Reset() {
 	*x = SharedConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[0]
+		mi := &file_config_configuration_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -49,7 +48,7 @@ func (x *SharedConfig) String() string {
 func (*SharedConfig) ProtoMessage() {}
 
 func (x *SharedConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[0]
+	mi := &file_config_configuration_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62,7 +61,7 @@ func (x *SharedConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SharedConfig.ProtoReflect.Descriptor instead.
 func (*SharedConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{0}
+	return file_config_configuration_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *SharedConfig) GetPartiesConfig() []*PartyConfig {
@@ -111,7 +110,7 @@ type PartyConfig struct {
 func (x *PartyConfig) Reset() {
 	*x = PartyConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[1]
+		mi := &file_config_configuration_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -124,7 +123,7 @@ func (x *PartyConfig) String() string {
 func (*PartyConfig) ProtoMessage() {}
 
 func (x *PartyConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[1]
+	mi := &file_config_configuration_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -137,7 +136,7 @@ func (x *PartyConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartyConfig.ProtoReflect.Descriptor instead.
 func (*PartyConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{1}
+	return file_config_configuration_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *PartyConfig) GetPartyID() uint32 {
@@ -205,7 +204,7 @@ type RouterNodeConfig struct {
 func (x *RouterNodeConfig) Reset() {
 	*x = RouterNodeConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[2]
+		mi := &file_config_configuration_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -218,7 +217,7 @@ func (x *RouterNodeConfig) String() string {
 func (*RouterNodeConfig) ProtoMessage() {}
 
 func (x *RouterNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[2]
+	mi := &file_config_configuration_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -231,7 +230,7 @@ func (x *RouterNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouterNodeConfig.ProtoReflect.Descriptor instead.
 func (*RouterNodeConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{2}
+	return file_config_configuration_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RouterNodeConfig) GetHost() string {
@@ -275,7 +274,7 @@ type BatcherNodeConfig struct {
 func (x *BatcherNodeConfig) Reset() {
 	*x = BatcherNodeConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[3]
+		mi := &file_config_configuration_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -288,7 +287,7 @@ func (x *BatcherNodeConfig) String() string {
 func (*BatcherNodeConfig) ProtoMessage() {}
 
 func (x *BatcherNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[3]
+	mi := &file_config_configuration_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -301,7 +300,7 @@ func (x *BatcherNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatcherNodeConfig.ProtoReflect.Descriptor instead.
 func (*BatcherNodeConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{3}
+	return file_config_configuration_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *BatcherNodeConfig) GetShardID() uint32 {
@@ -357,7 +356,7 @@ type ConsenterNodeConfig struct {
 func (x *ConsenterNodeConfig) Reset() {
 	*x = ConsenterNodeConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[4]
+		mi := &file_config_configuration_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -370,7 +369,7 @@ func (x *ConsenterNodeConfig) String() string {
 func (*ConsenterNodeConfig) ProtoMessage() {}
 
 func (x *ConsenterNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[4]
+	mi := &file_config_configuration_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -383,7 +382,7 @@ func (x *ConsenterNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsenterNodeConfig.ProtoReflect.Descriptor instead.
 func (*ConsenterNodeConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{4}
+	return file_config_configuration_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ConsenterNodeConfig) GetHost() string {
@@ -430,7 +429,7 @@ type AssemblerNodeConfig struct {
 func (x *AssemblerNodeConfig) Reset() {
 	*x = AssemblerNodeConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[5]
+		mi := &file_config_configuration_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -443,7 +442,7 @@ func (x *AssemblerNodeConfig) String() string {
 func (*AssemblerNodeConfig) ProtoMessage() {}
 
 func (x *AssemblerNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[5]
+	mi := &file_config_configuration_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -456,7 +455,7 @@ func (x *AssemblerNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssemblerNodeConfig.ProtoReflect.Descriptor instead.
 func (*AssemblerNodeConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{5}
+	return file_config_configuration_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AssemblerNodeConfig) GetHost() string {
@@ -492,7 +491,7 @@ type ConsensusConfig struct {
 func (x *ConsensusConfig) Reset() {
 	*x = ConsensusConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[6]
+		mi := &file_config_configuration_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -505,7 +504,7 @@ func (x *ConsensusConfig) String() string {
 func (*ConsensusConfig) ProtoMessage() {}
 
 func (x *ConsensusConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[6]
+	mi := &file_config_configuration_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -518,7 +517,7 @@ func (x *ConsensusConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsensusConfig.ProtoReflect.Descriptor instead.
 func (*ConsensusConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{6}
+	return file_config_configuration_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ConsensusConfig) GetSmartBFTConfig() *SmartBFTConfig {
@@ -560,7 +559,7 @@ type SmartBFTConfig struct {
 func (x *SmartBFTConfig) Reset() {
 	*x = SmartBFTConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[7]
+		mi := &file_config_configuration_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -573,7 +572,7 @@ func (x *SmartBFTConfig) String() string {
 func (*SmartBFTConfig) ProtoMessage() {}
 
 func (x *SmartBFTConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[7]
+	mi := &file_config_configuration_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -586,7 +585,7 @@ func (x *SmartBFTConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SmartBFTConfig.ProtoReflect.Descriptor instead.
 func (*SmartBFTConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{7}
+	return file_config_configuration_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SmartBFTConfig) GetRequestBatchMaxInterval() uint32 {
@@ -680,7 +679,7 @@ type BatchingConfig struct {
 func (x *BatchingConfig) Reset() {
 	*x = BatchingConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[8]
+		mi := &file_config_configuration_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -693,7 +692,7 @@ func (x *BatchingConfig) String() string {
 func (*BatchingConfig) ProtoMessage() {}
 
 func (x *BatchingConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[8]
+	mi := &file_config_configuration_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -706,7 +705,7 @@ func (x *BatchingConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchingConfig.ProtoReflect.Descriptor instead.
 func (*BatchingConfig) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{8}
+	return file_config_configuration_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *BatchingConfig) GetBatchTimeout() uint32 {
@@ -747,7 +746,7 @@ type BatchSize struct {
 func (x *BatchSize) Reset() {
 	*x = BatchSize{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_protos_configuration_proto_msgTypes[9]
+		mi := &file_config_configuration_proto_msgTypes[9]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -760,7 +759,7 @@ func (x *BatchSize) String() string {
 func (*BatchSize) ProtoMessage() {}
 
 func (x *BatchSize) ProtoReflect() protoreflect.Message {
-	mi := &file_protos_configuration_proto_msgTypes[9]
+	mi := &file_config_configuration_proto_msgTypes[9]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -773,7 +772,7 @@ func (x *BatchSize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchSize.ProtoReflect.Descriptor instead.
 func (*BatchSize) Descriptor() ([]byte, []int) {
-	return file_protos_configuration_proto_rawDescGZIP(), []int{9}
+	return file_config_configuration_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *BatchSize) GetMaxMessageCount() uint32 {
@@ -797,10 +796,10 @@ func (x *BatchSize) GetPreferredMaxBytes() uint32 {
 	return 0
 }
 
-var File_protos_configuration_proto protoreflect.FileDescriptor
+var File_config_configuration_proto protoreflect.FileDescriptor
 
-var file_protos_configuration_proto_rawDesc = []byte{
-	0x0a, 0x1a, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
+var file_config_configuration_proto_rawDesc = []byte{
+	0x0a, 0x1a, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
 	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xb7, 0x01, 0x0a,
 	0x0c, 0x53, 0x68, 0x61, 0x72, 0x65, 0x64, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x32, 0x0a,
 	0x0d, 0x50, 0x61, 0x72, 0x74, 0x69, 0x65, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x01,
@@ -920,24 +919,24 @@ var file_protos_configuration_proto_rawDesc = []byte{
 	0x78, 0x42, 0x79, 0x74, 0x65, 0x73, 0x12, 0x2c, 0x0a, 0x11, 0x50, 0x72, 0x65, 0x66, 0x65, 0x72,
 	0x72, 0x65, 0x64, 0x4d, 0x61, 0x78, 0x42, 0x79, 0x74, 0x65, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28,
 	0x0d, 0x52, 0x11, 0x50, 0x72, 0x65, 0x66, 0x65, 0x72, 0x72, 0x65, 0x64, 0x4d, 0x61, 0x78, 0x42,
-	0x79, 0x74, 0x65, 0x73, 0x42, 0x12, 0x5a, 0x10, 0x61, 0x72, 0x6d, 0x61, 0x2f, 0x6e, 0x6f, 0x64,
-	0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x79, 0x74, 0x65, 0x73, 0x42, 0x0d, 0x5a, 0x0b, 0x61, 0x72, 0x6d, 0x61, 0x2f, 0x63, 0x6f, 0x6e,
+	0x66, 0x69, 0x67, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
-	file_protos_configuration_proto_rawDescOnce sync.Once
-	file_protos_configuration_proto_rawDescData = file_protos_configuration_proto_rawDesc
+	file_config_configuration_proto_rawDescOnce sync.Once
+	file_config_configuration_proto_rawDescData = file_config_configuration_proto_rawDesc
 )
 
-func file_protos_configuration_proto_rawDescGZIP() []byte {
-	file_protos_configuration_proto_rawDescOnce.Do(func() {
-		file_protos_configuration_proto_rawDescData = protoimpl.X.CompressGZIP(file_protos_configuration_proto_rawDescData)
+func file_config_configuration_proto_rawDescGZIP() []byte {
+	file_config_configuration_proto_rawDescOnce.Do(func() {
+		file_config_configuration_proto_rawDescData = protoimpl.X.CompressGZIP(file_config_configuration_proto_rawDescData)
 	})
-	return file_protos_configuration_proto_rawDescData
+	return file_config_configuration_proto_rawDescData
 }
 
-var file_protos_configuration_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
-var file_protos_configuration_proto_goTypes = []interface{}{
+var file_config_configuration_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_config_configuration_proto_goTypes = []interface{}{
 	(*SharedConfig)(nil),        // 0: SharedConfig
 	(*PartyConfig)(nil),         // 1: PartyConfig
 	(*RouterNodeConfig)(nil),    // 2: RouterNodeConfig
@@ -949,7 +948,7 @@ var file_protos_configuration_proto_goTypes = []interface{}{
 	(*BatchingConfig)(nil),      // 8: BatchingConfig
 	(*BatchSize)(nil),           // 9: BatchSize
 }
-var file_protos_configuration_proto_depIdxs = []int32{
+var file_config_configuration_proto_depIdxs = []int32{
 	1, // 0: SharedConfig.PartiesConfig:type_name -> PartyConfig
 	6, // 1: SharedConfig.ConsensusConfig:type_name -> ConsensusConfig
 	8, // 2: SharedConfig.BatchingConfig:type_name -> BatchingConfig
@@ -966,13 +965,13 @@ var file_protos_configuration_proto_depIdxs = []int32{
 	0, // [0:9] is the sub-list for field type_name
 }
 
-func init() { file_protos_configuration_proto_init() }
-func file_protos_configuration_proto_init() {
-	if File_protos_configuration_proto != nil {
+func init() { file_config_configuration_proto_init() }
+func file_config_configuration_proto_init() {
+	if File_config_configuration_proto != nil {
 		return
 	}
 	if !protoimpl.UnsafeEnabled {
-		file_protos_configuration_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*SharedConfig); i {
 			case 0:
 				return &v.state
@@ -984,7 +983,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*PartyConfig); i {
 			case 0:
 				return &v.state
@@ -996,7 +995,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*RouterNodeConfig); i {
 			case 0:
 				return &v.state
@@ -1008,7 +1007,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*BatcherNodeConfig); i {
 			case 0:
 				return &v.state
@@ -1020,7 +1019,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ConsenterNodeConfig); i {
 			case 0:
 				return &v.state
@@ -1032,7 +1031,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*AssemblerNodeConfig); i {
 			case 0:
 				return &v.state
@@ -1044,7 +1043,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ConsensusConfig); i {
 			case 0:
 				return &v.state
@@ -1056,7 +1055,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*SmartBFTConfig); i {
 			case 0:
 				return &v.state
@@ -1068,7 +1067,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*BatchingConfig); i {
 			case 0:
 				return &v.state
@@ -1080,7 +1079,7 @@ func file_protos_configuration_proto_init() {
 				return nil
 			}
 		}
-		file_protos_configuration_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
+		file_config_configuration_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*BatchSize); i {
 			case 0:
 				return &v.state
@@ -1097,18 +1096,18 @@ func file_protos_configuration_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: file_protos_configuration_proto_rawDesc,
+			RawDescriptor: file_config_configuration_proto_rawDesc,
 			NumEnums:      0,
 			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_protos_configuration_proto_goTypes,
-		DependencyIndexes: file_protos_configuration_proto_depIdxs,
-		MessageInfos:      file_protos_configuration_proto_msgTypes,
+		GoTypes:           file_config_configuration_proto_goTypes,
+		DependencyIndexes: file_config_configuration_proto_depIdxs,
+		MessageInfos:      file_config_configuration_proto_msgTypes,
 	}.Build()
-	File_protos_configuration_proto = out.File
-	file_protos_configuration_proto_rawDesc = nil
-	file_protos_configuration_proto_goTypes = nil
-	file_protos_configuration_proto_depIdxs = nil
+	File_config_configuration_proto = out.File
+	file_config_configuration_proto_rawDesc = nil
+	file_config_configuration_proto_goTypes = nil
+	file_config_configuration_proto_depIdxs = nil
 }
