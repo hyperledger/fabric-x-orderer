@@ -1,4 +1,4 @@
-package generate
+package config
 
 import (
 	"fmt"
@@ -8,14 +8,15 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 )
 
-// SharedConfig holds the initial configuration that will be used to bootstrap new nodes.
+// SharedConfigYaml holds the initial configuration that will be used to bootstrap new nodes.
 // This configuration is common to all Arma nodes.
-type SharedConfig struct {
+type SharedConfigYaml struct {
 	PartiesConfig   []PartyConfig   `yaml:"Parties,omitempty"`
 	ConsensusConfig ConsensusConfig `yaml:"Consensus,omitempty"`
 	BatchingConfig  BatchingConfig  `yaml:"Batching,omitempty"`
 }
 
+// LoadSharedConfig reads the shared config yaml and translate it to the proto shared config.
 func LoadSharedConfig(filePath string) (*protos.SharedConfig, error) {
 	sharedConfigYaml, err := loadSharedConfigYAML(filePath)
 	if err != nil {
@@ -29,12 +30,12 @@ func LoadSharedConfig(filePath string) (*protos.SharedConfig, error) {
 }
 
 // loadSharedConfigYAML reads the boostrap/shared_config.yaml file.
-func loadSharedConfigYAML(filePath string) (*SharedConfig, error) {
+func loadSharedConfigYAML(filePath string) (*SharedConfigYaml, error) {
 	if filePath == "" {
 		return nil, fmt.Errorf("cannot load shared configuration, path: %s is empty", filePath)
 	}
 
-	sharedConfigYaml := SharedConfig{}
+	sharedConfigYaml := SharedConfigYaml{}
 	err := utils.ReadFromYAML(&sharedConfigYaml, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot load shared configuration, failed reading config yaml, err: %s", err)
@@ -44,7 +45,7 @@ func loadSharedConfigYAML(filePath string) (*SharedConfig, error) {
 }
 
 // parseSharedConfigYaml converts the shared config yaml representation to the config.SharedConfig representation, in which the paths are replaced by certificates.
-func parseSharedConfigYaml(sharedConfigYaml *SharedConfig) (*protos.SharedConfig, error) {
+func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*protos.SharedConfig, error) {
 	var partiesConfig []*protos.PartyConfig
 
 	for _, partyConfig := range sharedConfigYaml.PartiesConfig {

@@ -1,4 +1,4 @@
-package generate_test
+package config_test
 
 import (
 	"crypto/x509"
@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
@@ -45,7 +46,7 @@ func TestSharedConfigLoading(t *testing.T) {
 	require.NotNil(t, networkSharedConfig)
 
 	// 4.
-	sharedConfig, err := generate.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
+	sharedConfig, err := config.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
 	require.NoError(t, err)
 	require.NotNil(t, sharedConfig)
 	require.NotNil(t, sharedConfig.BatchingConfig)

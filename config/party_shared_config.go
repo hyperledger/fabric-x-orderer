@@ -1,4 +1,4 @@
-package generate
+package config
 
 import "github.ibm.com/decentralized-trust-research/arma/common/types"
 

@@ -8,7 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 )
 
-// NodeLocalConfig controls the configuration of an Arma node.
+// NodeLocalConfig controls the local configuration of an Arma node.
 // The relevant information will be filled corresponding to the specific node type.
 // Every time a node starts, it is expected to load this file.
 type NodeLocalConfig struct {
@@ -26,6 +26,13 @@ type NodeLocalConfig struct {
 	ConsensusParams *ConsensusParams `yaml:"Consensus,omitempty"`
 	// AssemblerParams controls Assembler specific params. For Router, Batcher or Consensus nodes this field is expected to be empty
 	AssemblerParams *AssemblerParams `yaml:"Assembler,omitempty"`
+}
+
+// LocalConfig saves the node local config and the TLS and cluster settings with embedded crypto (not paths).
+type LocalConfig struct {
+	NodeLocalConfig *NodeLocalConfig
+	TLSConfig       *TLSConfig
+	ClusterConfig   *Cluster
 }
 
 type GeneralConfig struct {
@@ -184,25 +191,30 @@ type Cluster struct {
 	ReplicationPolicy string
 }
 
-func Load(filePath string) (*NodeLocalConfig, *TLSConfig, *Cluster, error) {
+// LoadLocalConfig reads the local config yaml and certs and returns the local configuration.
+func LoadLocalConfig(filePath string) (*LocalConfig, error) {
 	nodeLocalConfig, err := LoadLocalConfigYaml(filePath)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
+		return nil, fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
 	}
 
 	tlsConfig, err := loadTLSCryptoConfig(&nodeLocalConfig.GeneralConfig.TLSConfig)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot load local tls config, err: %s", err)
+		return nil, fmt.Errorf("cannot load local tls config, err: %s", err)
 	}
 
 	// load cluster crypto config return cluster config with empty fields except for the consenter node
 	var clusterConfig *Cluster
 	clusterConfig, err = loadClusterCryptoConfig(&nodeLocalConfig.GeneralConfig.Cluster)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
+		return nil, fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
 	}
 
-	return nodeLocalConfig, tlsConfig, clusterConfig, nil
+	return &LocalConfig{
+		NodeLocalConfig: nodeLocalConfig,
+		TLSConfig:       tlsConfig,
+		ClusterConfig:   clusterConfig,
+	}, nil
 }
 
 func LoadLocalConfigYaml(filePath string) (*NodeLocalConfig, error) {

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/config"
 
 	"github.ibm.com/decentralized-trust-research/arma/core"
 
@@ -19,7 +20,8 @@ const (
 	LocalConfigDirPermission = 0o755
 )
 
-func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string, outputBaseDir string) (*SharedConfig, error) {
+// CreateArmaSharedConfig creates a bootstrap directory that includes the shared config yaml file.
+func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string, outputBaseDir string) (*config.SharedConfigYaml, error) {
 	sharedConfig := createNetworkSharedConfig(network, networkLocalConfig, cryptoBaseDir)
 
 	outputPath := filepath.Join(outputBaseDir, "bootstrap")
@@ -35,17 +37,17 @@ func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 	return &sharedConfig, nil
 }
 
-func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) SharedConfig {
-	sharedConfig := SharedConfig{
+func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) config.SharedConfigYaml {
+	sharedConfig := config.SharedConfigYaml{
 		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
-		ConsensusConfig: ConsensusConfig{BFTConfig: createConsensusBFTConfig()},
+		ConsensusConfig: config.ConsensusConfig{BFTConfig: createConsensusBFTConfig()},
 		BatchingConfig:  createBatchingConfig(),
 	}
 	return sharedConfig
 }
 
-func createConsensusBFTConfig() SmartBFTConfig {
-	smartBFTConfig := SmartBFTConfig{
+func createConsensusBFTConfig() config.SmartBFTConfig {
+	smartBFTConfig := config.SmartBFTConfig{
 		RequestBatchMaxInterval:   types.DefaultConfig.RequestBatchMaxInterval,
 		RequestForwardTimeout:     types.DefaultConfig.RequestForwardTimeout,
 		RequestComplainTimeout:    types.DefaultConfig.RequestComplainTimeout,
@@ -61,10 +63,10 @@ func createConsensusBFTConfig() SmartBFTConfig {
 	return smartBFTConfig
 }
 
-func createBatchingConfig() BatchingConfig {
-	return BatchingConfig{
+func createBatchingConfig() config.BatchingConfig {
+	return config.BatchingConfig{
 		BatchTimeout: core.DefaultBatchTimeout,
-		BatchSize: BatchSize{
+		BatchSize: config.BatchSize{
 			MaxMessageCount:   DefaultMaxMessageCount,
 			AbsoluteMaxBytes:  DefaultAbsoluteMaxBytes,
 			PreferredMaxBytes: DefaultPreferredMaxBytes,
@@ -72,23 +74,23 @@ func createBatchingConfig() BatchingConfig {
 	}
 }
 
-func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) []PartyConfig {
-	partiesConfig := make([]PartyConfig, len(network.Parties))
+func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) []config.PartyConfig {
+	partiesConfig := make([]config.PartyConfig, len(network.Parties))
 
 	for i, party := range network.Parties {
 		partyPath := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID))
 
 		partyLocalConfig := networkLocalConfig.PartiesLocalConfig[i]
 
-		routerConfig := RouterNodeConfig{
+		routerConfig := config.RouterNodeConfig{
 			Host:    partyLocalConfig.RouterLocalConfig.GeneralConfig.ListenAddress,
 			Port:    partyLocalConfig.RouterLocalConfig.GeneralConfig.ListenPort,
 			TLSCert: partyLocalConfig.RouterLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
-		var batchersConfig []BatcherNodeConfig
+		var batchersConfig []config.BatcherNodeConfig
 		for j := range party.BatchersEndpoints {
-			batcherConfig := BatcherNodeConfig{
+			batcherConfig := config.BatcherNodeConfig{
 				ShardID:   partyLocalConfig.BatchersLocalConfig[j].BatcherParams.ShardID,
 				Host:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenAddress,
 				Port:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenPort,
@@ -98,21 +100,21 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 			batchersConfig = append(batchersConfig, batcherConfig)
 		}
 
-		consenterConfig := ConsenterNodeConfig{
+		consenterConfig := config.ConsenterNodeConfig{
 			Host:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenAddress,
 			Port:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenPort,
 			PublicKey: filepath.Join(partyPath, "consenter", "signing-cert.pem"),
 			TLSCert:   partyLocalConfig.ConsenterLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
-		assemblerConfig := AssemblerNodeConfig{
+		assemblerConfig := config.AssemblerNodeConfig{
 			Host:    partyLocalConfig.AssemblerLocalConfig.GeneralConfig.ListenAddress,
 			Port:    partyLocalConfig.AssemblerLocalConfig.GeneralConfig.ListenPort,
 			TLSCert: partyLocalConfig.AssemblerLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
 		orgDir := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID))
-		partyConfig := PartyConfig{
+		partyConfig := config.PartyConfig{
 			PartyID:         party.ID,
 			CACerts:         []string{filepath.Join(orgDir, "ca", "ca-cert.pem")},
 			TLSCACerts:      []string{filepath.Join(orgDir, "tlsca", "tlsca-cert.pem")},
