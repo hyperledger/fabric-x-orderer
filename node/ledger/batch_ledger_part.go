@@ -3,13 +3,13 @@ package ledger
 import (
 	"fmt"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger/fileledger"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )

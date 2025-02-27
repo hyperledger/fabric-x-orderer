@@ -3,11 +3,11 @@ package ledger
 import (
 	"slices"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/pkg/errors"
 )
 

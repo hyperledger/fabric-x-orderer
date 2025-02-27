@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"testing"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/stretchr/testify/require"
 )
 

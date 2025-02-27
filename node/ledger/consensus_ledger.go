@@ -4,14 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger/fileledger"
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )

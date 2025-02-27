@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/deliver"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
+
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"

@@ -2,15 +2,16 @@
 package mocks
 
 import (
+	"sync"
+	"time"
+
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
-	"sync"
-	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
 )
 
 type FakeAssemblerLedgerReaderWriter struct {

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
 	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/core"
@@ -26,7 +27,6 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
 )
