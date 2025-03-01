@@ -15,8 +15,8 @@ type UserConfig struct {
 	RouterEndpoints    []string `yaml:"RouterEndpoints,omitempty"`
 	AssemblerEndpoints []string `yaml:"AssemblerEndpoints,omitempty"`
 	TLSCACerts         [][]byte `yaml:"TLSCACerts,omitempty"`
-	UseTLSRouter       string   `yaml:"UseTLS,omitempty"`
-	UseTLSAssembler    string   `yaml:"UseTLS,omitempty"`
+	UseTLSRouter       string   `yaml:"UseTLSRouter,omitempty"`
+	UseTLSAssembler    string   `yaml:"UseTLSAssembler,omitempty"`
 }
 
 func NewUserConfig(privateKeyPath string, tlsCertPath string, tlsCACerts [][]byte, network *genconfig.Network, useTLSRouter string, useTLSAssembler string) (*UserConfig, error) {
