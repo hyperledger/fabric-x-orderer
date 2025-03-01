@@ -2,9 +2,13 @@ package config_test
 
 import (
 	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/pkg/errors"
 
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
@@ -56,28 +60,41 @@ func TestSharedConfigLoading(t *testing.T) {
 
 	// check that all certificates are valid x509 certificates
 	for _, partyConfig := range sharedConfig.PartiesConfig {
-		cert, err := x509.ParseCertificate(partyConfig.RouterConfig.TlsCert)
+		cert, err := parsex509Cert(partyConfig.RouterConfig.TlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 
 		for _, batcher := range partyConfig.BatchersConfig {
-			cert, err = x509.ParseCertificate(batcher.TlsCert)
+			cert, err = parsex509Cert(batcher.TlsCert)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
-			cert, err = x509.ParseCertificate(batcher.PublicKey)
+			cert, err = parsex509Cert(batcher.PublicKey)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
 		}
 
-		cert, err = x509.ParseCertificate(partyConfig.ConsenterConfig.TlsCert)
+		cert, err = parsex509Cert(partyConfig.ConsenterConfig.TlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
-		cert, err = x509.ParseCertificate(partyConfig.ConsenterConfig.PublicKey)
+		cert, err = parsex509Cert(partyConfig.ConsenterConfig.PublicKey)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 
-		cert, err = x509.ParseCertificate(partyConfig.AssemblerConfig.TlsCert)
+		cert, err = parsex509Cert(partyConfig.AssemblerConfig.TlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 	}
+}
+
+func parsex509Cert(certBytes []byte) (*x509.Certificate, error) {
+	pbl, _ := pem.Decode(certBytes)
+	if pbl == nil || pbl.Bytes == nil {
+		return nil, errors.Errorf("no pem content for cert")
+	}
+	if pbl.Type != "CERTIFICATE" && pbl.Type != "PRIVATE KEY" {
+		return nil, errors.Errorf("unexpected pem type, got a %s", strings.ToLower(pbl.Type))
+	}
+
+	cert, err := x509.ParseCertificate(pbl.Bytes)
+	return cert, err
 }

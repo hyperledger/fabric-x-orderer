@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,8 +17,10 @@ func TestReadPemFile(t *testing.T) {
 	require.Error(t, err)
 
 	// reading an existing file which is not a PEM file
-	_, err = ReadPem("/dev/null")
-	require.Error(t, err)
+	data, err := ReadPem("/dev/null")
+	require.NoError(t, err)
+	pbl, _ := pem.Decode(data)
+	require.Nil(t, pbl)
 
 	// reading a valid pem
 	dir := t.TempDir()
