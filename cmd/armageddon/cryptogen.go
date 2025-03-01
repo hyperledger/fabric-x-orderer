@@ -68,6 +68,9 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		return err
 	}
 
+	// collect all node IPs as they are includes as SANs when generating TLS certificates.
+	nodesIPs := getNodeIPs(network)
+
 	// create crypto material for each party's nodes and write the crypto into files
 	for _, party := range network.Parties {
 		// choose a TLS CA and a signing CA of the party
@@ -79,47 +82,47 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 
 		// create crypto material for each party's nodes
 		// TLS crypto for router
-		err = createTLSCertKeyPairForNode(tlsCA, dir, party.RouterEndpoint, "router", party.ID)
+		err = createTLSCertKeyPairForNode(tlsCA, dir, party.RouterEndpoint, "router", party.ID, nodesIPs)
 		if err != nil {
 			return err
 		}
 
 		// TLS crypto for consenter
-		err = createTLSCertKeyPairForNode(tlsCA, dir, party.ConsenterEndpoint, "consenter", party.ID)
+		err = createTLSCertKeyPairForNode(tlsCA, dir, party.ConsenterEndpoint, "consenter", party.ID, nodesIPs)
 		if err != nil {
 			return err
 		}
 
 		// TLS crypto for assembler
-		err = createTLSCertKeyPairForNode(tlsCA, dir, party.AssemblerEndpoint, "assembler", party.ID)
+		err = createTLSCertKeyPairForNode(tlsCA, dir, party.AssemblerEndpoint, "assembler", party.ID, nodesIPs)
 		if err != nil {
 			return err
 		}
 
 		// TLS crypto for batchers
 		for j, batcherEndpoint := range party.BatchersEndpoints {
-			err = createTLSCertKeyPairForNode(tlsCA, dir, batcherEndpoint, fmt.Sprintf("batcher%d", j+1), party.ID)
+			err = createTLSCertKeyPairForNode(tlsCA, dir, batcherEndpoint, fmt.Sprintf("batcher%d", j+1), party.ID, nodesIPs)
 			if err != nil {
 				return err
 			}
 		}
 
 		// TLS crypto for user
-		err = createUserTLSCertKeyPair(tlsCA, dir, party.ID)
+		err = createUserTLSCertKeyPair(tlsCA, dir, party.ID, nil)
 		if err != nil {
 			return err
 		}
 
 		// signing crypto for batchers
 		for j, batcherEndpoint := range party.BatchersEndpoints {
-			err = createSignCertAndPrivateKeyForNode(signCA, dir, batcherEndpoint, fmt.Sprintf("batcher%d", j+1), party.ID)
+			err = createSignCertAndPrivateKeyForNode(signCA, dir, batcherEndpoint, fmt.Sprintf("batcher%d", j+1), party.ID, nil)
 			if err != nil {
 				return err
 			}
 		}
 
 		// signing crypto to consenter
-		err = createSignCertAndPrivateKeyForNode(signCA, dir, party.ConsenterEndpoint, "consenter", party.ID)
+		err = createSignCertAndPrivateKeyForNode(signCA, dir, party.ConsenterEndpoint, "consenter", party.ID, nil)
 		if err != nil {
 			return err
 		}
@@ -154,7 +157,7 @@ func createCAsPerParty(dir string, network *genconfig.Network) (map[types.PartyI
 }
 
 // createTLSCertKeyPairForNode creates a TLS cert,key pair signed by a corresponding CA for an Arma node and write them into files.
-func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role string, partyID types.PartyID) error {
+func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role string, partyID types.PartyID, nodesIPs []string) error {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("err: %s, failed creating private key for "+role+" node %s", err, endpoint)
@@ -164,7 +167,7 @@ func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role st
 		return fmt.Errorf("err: %s, failed marshaling private key for "+role+" node %s", err, endpoint)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role), "tls", nil, nil, getPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role), "tls", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
 		x509.ExtKeyUsageClientAuth,
 		x509.ExtKeyUsageServerAuth,
 	})
@@ -176,7 +179,7 @@ func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role st
 }
 
 // createUserTLSCertKeyPair creates a TLS cert,key pair signed by a corresponding CA for a user.
-func createUserTLSCertKeyPair(ca *ca.CA, dir string, partyID types.PartyID) error {
+func createUserTLSCertKeyPair(ca *ca.CA, dir string, partyID types.PartyID, nodesIPs []string) error {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("err: %s, failed creating private key for user party %d", err, partyID)
@@ -186,7 +189,7 @@ func createUserTLSCertKeyPair(ca *ca.CA, dir string, partyID types.PartyID) erro
 		return fmt.Errorf("err: %s, failed marshaling private key for user for party %d", err, partyID)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users"), "user-tls", nil, nil, getPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users"), "user-tls", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageKeyEncipherment|x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{
 		x509.ExtKeyUsageClientAuth,
 		x509.ExtKeyUsageServerAuth,
 	})
@@ -199,7 +202,7 @@ func createUserTLSCertKeyPair(ca *ca.CA, dir string, partyID types.PartyID) erro
 
 // createSignCertAndPrivateKeyForNode creates a signed certificate with a corresponding private key used for signing and write them into files.
 // Cert and private key for signing are used only by the batchers and the consenters.
-func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, role string, partyID types.PartyID) error {
+func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, role string, partyID types.PartyID, nodesIPs []string) error {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("err: %s, failed creating private key for "+role+" node %s", err, endpoint)
@@ -209,7 +212,7 @@ func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, 
 		return fmt.Errorf("err: %s, failed marshaling private key for "+role+" node %s", err, endpoint)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role), "signing", nil, nil, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role), "signing", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "signingPrivateKey.pem"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
@@ -284,4 +287,17 @@ func getPublicKey(priv crypto.PrivateKey) crypto.PublicKey {
 	default:
 		panic("unsupported key algorithm")
 	}
+}
+
+func getNodeIPs(network *genconfig.Network) []string {
+	var nodeIPs []string
+	for _, party := range network.Parties {
+		nodeIPs = append(nodeIPs, trimPortFromEndpoint(party.RouterEndpoint))
+		for _, batcherEndpoint := range party.BatchersEndpoints {
+			nodeIPs = append(nodeIPs, trimPortFromEndpoint(batcherEndpoint))
+		}
+		nodeIPs = append(nodeIPs, trimPortFromEndpoint(party.ConsenterEndpoint))
+		nodeIPs = append(nodeIPs, trimPortFromEndpoint(party.AssemblerEndpoint))
+	}
+	return nodeIPs
 }
