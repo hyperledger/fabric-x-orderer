@@ -9,10 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/config/protos"
-
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/config/protos"
 	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 
 	"github.com/pkg/errors"
@@ -114,8 +113,10 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 }
 
 func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeConfig {
+	partySharedConfig := getPartyConfigFromSharedConfigByPartyID(config.SharedConfig, config.LocalConfig.NodeLocalConfig.PartyID)
+
 	var tlsCACertsCollection []nodeconfig.RawBytes
-	for _, ca := range config.SharedConfig.PartiesConfig[config.LocalConfig.NodeLocalConfig.PartyID-1].TLSCACerts {
+	for _, ca := range partySharedConfig.TLSCACerts {
 		tlsCACertsCollection = append(tlsCACertsCollection, ca)
 	}
 
@@ -128,8 +129,8 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		Shards:             config.ExtractShards(),
 		Consenter: nodeconfig.ConsenterInfo{
 			PartyID:    config.LocalConfig.NodeLocalConfig.PartyID,
-			Endpoint:   config.SharedConfig.PartiesConfig[config.LocalConfig.NodeLocalConfig.PartyID-1].ConsenterConfig.Host + ":" + strconv.Itoa(int(config.SharedConfig.PartiesConfig[config.LocalConfig.NodeLocalConfig.PartyID-1].ConsenterConfig.Port)),
-			PublicKey:  config.SharedConfig.PartiesConfig[config.LocalConfig.NodeLocalConfig.PartyID-1].ConsenterConfig.PublicKey,
+			Endpoint:   partySharedConfig.ConsenterConfig.Host + ":" + strconv.Itoa(int(partySharedConfig.ConsenterConfig.Port)),
+			PublicKey:  partySharedConfig.ConsenterConfig.PublicKey,
 			TLSCACerts: tlsCACertsCollection,
 		},
 		UseTLS: config.LocalConfig.TLSConfig.Enabled,
@@ -159,25 +160,7 @@ func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {
 
 			var pemPublicKey []byte
 			if block.Type == "CERTIFICATE" {
-				cert, err := x509.ParseCertificate(block.Bytes)
-				if err != nil {
-					panic(fmt.Sprintf("Failed parsing batcher signing certificate: %v", err))
-				}
-
-				pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
-				if !ok {
-					panic(fmt.Sprintf("Failed parsing batcher public key: %v", err))
-				}
-
-				publicKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
-				if err != nil {
-					panic(fmt.Sprintf("Failed marshaling batcher public key: %v", err))
-				}
-
-				pemPublicKey = pem.EncodeToMemory(&pem.Block{
-					Type:  "PUBLIC KEY",
-					Bytes: publicKeyBytes,
-				})
+				pemPublicKey = blockToPublicKey(block)
 			}
 
 			if block.Type == "PUBLIC KEY" {
@@ -226,25 +209,7 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 
 		var pemPublicKey []byte
 		if block.Type == "CERTIFICATE" {
-			cert, err := x509.ParseCertificate(block.Bytes)
-			if err != nil {
-				panic(fmt.Sprintf("Failed parsing consenter signing certificate: %v", err))
-			}
-
-			pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
-			if !ok {
-				panic(fmt.Sprintf("Failed parsing consenter public key: %v", err))
-			}
-
-			publicKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
-			if err != nil {
-				panic(fmt.Sprintf("Failed marshaling consenter public key: %v", err))
-			}
-
-			pemPublicKey = pem.EncodeToMemory(&pem.Block{
-				Type:  "PUBLIC KEY",
-				Bytes: publicKeyBytes,
-			})
+			pemPublicKey = blockToPublicKey(block)
 		}
 
 		if block.Type == "PUBLIC KEY" {
@@ -261,4 +226,37 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 	}
 
 	return consenters
+}
+
+func blockToPublicKey(block *pem.Block) []byte {
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		panic(fmt.Sprintf("Failed parsing consenter signing certificate: %v", err))
+	}
+
+	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		panic(fmt.Sprintf("Failed parsing consenter public key: %v", err))
+	}
+
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed marshaling consenter public key: %v", err))
+	}
+
+	pemPublicKey := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyBytes,
+	})
+
+	return pemPublicKey
+}
+
+func getPartyConfigFromSharedConfigByPartyID(sharedConfig *protos.SharedConfig, partyID types.PartyID) *protos.PartyConfig {
+	for _, partyConfig := range sharedConfig.PartiesConfig {
+		if partyConfig.PartyID == uint32(partyID) {
+			return partyConfig
+		}
+	}
+	return nil
 }
