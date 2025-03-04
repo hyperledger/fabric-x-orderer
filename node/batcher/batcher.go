@@ -495,12 +495,20 @@ func (b *Batcher) sendReq(req []byte) {
 	}
 }
 
-func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) { // TODO remove the unused parameter
+func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
 	t1 := time.Now()
 
 	defer func() {
 		b.logger.Debugf("Sending ack took %v", time.Since(t1))
 	}()
+
+	b.primaryLock.Lock()
+	if to != b.primaryID {
+		b.logger.Warnf("Trying to send ack to %d while primary is %d", to, b.primaryID)
+		b.primaryLock.Unlock()
+		return
+	}
+	b.primaryLock.Unlock()
 
 	ackStream, _, err := b.getStreamsToPrimary()
 	if err != nil {
