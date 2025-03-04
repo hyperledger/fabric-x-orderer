@@ -45,6 +45,15 @@ message AckResponse {
   string error = 1;
 }
 
-service AckService {
-  rpc NotifyAck(stream Ack) returns (stream EventResponse);
+message FwdRequest {
+  bytes request = 1;
+}
+
+message FwdRequestResponse {
+  string error = 1;
+}
+
+service BatcherControlService {
+  rpc NotifyAck(stream Ack) returns (stream AckResponse);
+  rpc FwdRequestStream(stream FwdRequest) returns (stream FwdRequestResponse);
 }

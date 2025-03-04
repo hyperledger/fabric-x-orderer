@@ -126,7 +126,7 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 		srv := node.CreateGRPCBatcher(conf)
 
 		protos.RegisterRequestTransmitServer(srv.Server(), batcher)
-		protos.RegisterAckServiceServer(srv.Server(), batcher)
+		protos.RegisterBatcherControlServiceServer(srv.Server(), batcher)
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), batcher)
 
 		go func() {

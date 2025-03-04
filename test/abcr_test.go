@@ -332,7 +332,7 @@ func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInf
 			batchers = append(batchers, batcher)
 			lock.Unlock()
 			protos.RegisterRequestTransmitServer(batcherNodes[i].Server(), batcher)
-			protos.RegisterAckServiceServer(batcherNodes[i].Server(), batcher)
+			protos.RegisterBatcherControlServiceServer(batcherNodes[i].Server(), batcher)
 			orderer.RegisterAtomicBroadcastServer(batcherNodes[i].Server(), batcher)
 			go batcherNodes[i].Start()
 			t.Log("Batcher gRPC service listening on", batcherNodes[i].Address())

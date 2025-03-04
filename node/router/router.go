@@ -38,7 +38,9 @@ type Router struct {
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
 	clientHost := node.ExtractCertificateFromContext(stream.Context())
-	r.logger.Debugf("Client %s connected", clientHost)
+	if clientHost != nil {
+		r.logger.Debugf("Client %s connected", clientHost.Raw)
+	}
 
 	r.init()
 

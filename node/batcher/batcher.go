@@ -69,10 +69,12 @@ type Batcher struct {
 	stopOnce sync.Once
 	stopChan chan struct{}
 
-	primaryLock         sync.Mutex
-	term                uint64
-	primaryID           types.PartyID
-	primaryClientStream protos.AckService_NotifyAckClient
+	primaryLock sync.Mutex
+	term        uint64
+	primaryID   types.PartyID
+	ackStream   protos.BatcherControlService_NotifyAckClient
+	reqStream   protos.BatcherControlService_FwdRequestStreamClient
+	cancelFunc  context.CancelFunc
 }
 
 func (b *Batcher) Run() {
@@ -94,6 +96,7 @@ func (b *Batcher) Stop() {
 		<-b.stateChan // drain state channel
 	}
 	b.Net.Stop()
+	b.cleanupPrimaryStreams()
 	b.Ledger.Close()
 	b.running.Wait()
 }
@@ -118,7 +121,7 @@ func (b *Batcher) replicateState() {
 				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
 				b.primaryID = primaryID
 				b.term = term
-				b.primaryClientStream = nil
+				b.cleanupPrimaryStreams()
 			}
 			b.primaryLock.Unlock()
 		case <-b.stopChan:
@@ -223,15 +226,47 @@ func (b *Batcher) sendResponses(stream protos.RequestTransmit_SubmitStreamServer
 	}
 }
 
-func (b *Batcher) NotifyAck(stream protos.AckService_NotifyAckServer) error {
-	cert := node.ExtractCertificateFromContext(stream.Context())
+func (b *Batcher) extractBatcherFromContext(c context.Context) (types.PartyID, error) {
+	cert := node.ExtractCertificateFromContext(c)
 	if cert == nil {
-		return errors.New("access denied; could not extract certificate from context")
+		return 0, errors.New("access denied; could not extract certificate from context")
 	}
 
-	from, exists := b.batcherCerts2IDs[string(cert)]
+	from, exists := b.batcherCerts2IDs[string(cert.Raw)]
 	if !exists {
-		return errors.New("access denied; unknown certificate")
+		return 0, errors.Errorf("access denied; unknown certificate; %s", node.CertificateToString(cert))
+	}
+
+	return from, nil
+}
+
+func (b *Batcher) FwdRequestStream(stream protos.BatcherControlService_FwdRequestStreamServer) error {
+	from, err := b.extractBatcherFromContext(stream.Context())
+	if err != nil {
+		return errors.Errorf("Could not extract batcher from context; err %v", err)
+	}
+	b.logger.Infof("Starting to handle fwd requests from batcher %d", from)
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		b.logger.Debugf("Calling submit request from batcher %d", from)
+		// TODO verify request before submitting
+		if err := b.batcher.Submit(msg.Request); err != nil {
+			b.logger.Infof("Failed to submit request from batcher %d; err: %v", from, err)
+		}
+	}
+}
+
+func (b *Batcher) NotifyAck(stream protos.BatcherControlService_NotifyAckServer) error {
+	from, err := b.extractBatcherFromContext(stream.Context())
+	if err != nil {
+		return errors.Errorf("Could not extract batcher from context; err %v", err)
 	}
 
 	b.logger.Infof("Starting to handle acks from batcher %d", from)
@@ -336,12 +371,12 @@ func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPo
 	opts.SubmitTimeout = config.BatchTimeout
 
 	opts.OnFirstStrikeTimeout = func(req []byte) { // TODO turn into interface
-		// TODO send tx to primary
-		b.logger.Warnf("First strike timeout occurred on request %s", b.RequestID(req))
+		b.logger.Debugf("First strike timeout occurred on request %s", b.RequestID(req))
+		b.sendReq(req)
 	}
 	opts.OnSecondStrikeTimeout = func() { // TODO turn into interface
-		b.Complain() // TODO add complaint reason
 		b.logger.Warnf("Second strike timeout occurred")
+		b.Complain() // TODO add complaint reason
 	}
 
 	return request.NewPool(b.logger, b, opts)
@@ -436,51 +471,85 @@ func batchersFromConfig(config node_config.BatcherNodeConfig) []node_config.Batc
 	return batchers
 }
 
-func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
+func (b *Batcher) sendReq(req []byte) {
+	t1 := time.Now()
+
+	defer func() {
+		b.logger.Debugf("Sending req took %v", time.Since(t1))
+	}()
+
+	_, reqStream, err := b.getStreamsToPrimary()
+	if err != nil {
+		b.primaryLock.Lock()
+		b.logger.Errorf("Failed getting stream to primary %d for reqs; error: %v", b.primaryID, err)
+		b.cleanupPrimaryStreams()
+		b.primaryLock.Unlock()
+		return
+	}
+
+	if err := reqStream.Send(&protos.FwdRequest{Request: req}); err != nil {
+		b.primaryLock.Lock()
+		b.logger.Errorf("Failed sending req (ID: %s) to primary %d; error: %v", b.RequestID(req), b.primaryID, err)
+		b.cleanupPrimaryStreams()
+		b.primaryLock.Unlock()
+	}
+}
+
+func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) { // TODO remove the unused parameter
 	t1 := time.Now()
 
 	defer func() {
 		b.logger.Debugf("Sending ack took %v", time.Since(t1))
 	}()
 
-	stream, err := b.getStreamToPrimaryForAck()
+	ackStream, _, err := b.getStreamsToPrimary()
 	if err != nil {
-		b.logger.Errorf("Failed getting stream to primary for ack; error: %v", err)
+		b.primaryLock.Lock()
+		b.logger.Errorf("Failed getting stream to primary %d for ack; error: %v", b.primaryID, err)
+		b.cleanupPrimaryStreams()
+		b.primaryLock.Unlock()
 		return
 	}
 
-	if err := stream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)}); err != nil {
+	if err := ackStream.Send(&protos.Ack{Shard: uint32(b.config.ShardId), Seq: uint64(seq)}); err != nil {
 		b.primaryLock.Lock()
 		b.logger.Errorf("Failed sending ack to primary %d; error: %v", b.primaryID, err)
-		b.primaryClientStream = nil
+		b.cleanupPrimaryStreams()
 		b.primaryLock.Unlock()
 	}
 }
 
-func (b *Batcher) getStreamToPrimaryForAck() (protos.AckService_NotifyAckClient, error) {
+func (b *Batcher) getStreamsToPrimary() (protos.BatcherControlService_NotifyAckClient, protos.BatcherControlService_FwdRequestStreamClient, error) {
 	b.primaryLock.Lock()
-	for b.primaryClientStream == nil {
+	for b.ackStream == nil || b.reqStream == nil {
 		primary := b.primaryID
+		var c context.Context
+		c, b.cancelFunc = context.WithCancel(context.Background())
 		b.primaryLock.Unlock()
 
-		primaryStream, err := b.ackStreamFactory(primary)
+		ackStream, reqStream, err := b.primaryStreamsFactory(primary, c)
 		if err != nil {
-			return nil, errors.Errorf("Failed connecting to primary %d; error: %v", primary, err)
+			b.primaryLock.Lock()
+			b.cleanupPrimaryStreams()
+			b.primaryLock.Unlock()
+			return nil, nil, errors.Errorf("Failed connecting to primary %d; error: %v", primary, err)
 		}
 
 		b.primaryLock.Lock()
 		if primary != b.primaryID { // if primary changed again then reconnect
-			b.primaryClientStream = nil
+			b.cleanupPrimaryStreams()
 			continue
 		}
-		b.primaryClientStream = primaryStream
+		b.ackStream = ackStream
+		b.reqStream = reqStream
 	}
-	stream := b.primaryClientStream
+	ackStream := b.ackStream
+	reqStream := b.reqStream
 	b.primaryLock.Unlock()
-	return stream, nil
+	return ackStream, reqStream, nil
 }
 
-func (b *Batcher) ackStreamFactory(primary types.PartyID) (protos.AckService_NotifyAckClient, error) {
+func (b *Batcher) primaryStreamsFactory(primary types.PartyID, c context.Context) (protos.BatcherControlService_NotifyAckClient, protos.BatcherControlService_FwdRequestStreamClient, error) {
 	primaryEndpoint := ""
 	var primaryTLSCACerts []node_config.RawBytes
 	for _, batcher := range b.batchers {
@@ -494,24 +563,38 @@ func (b *Batcher) ackStreamFactory(primary types.PartyID) (protos.AckService_Not
 
 	if primaryEndpoint == "" {
 		b.logger.Panicf("Could not find primaryID %d of shard %d within %v", primary, b.config.ShardId, b.batchers)
-		return nil, errors.Errorf("Could not find primaryID %d of shard %d within %v", primary, b.config.ShardId, b.batchers)
+		return nil, nil, errors.Errorf("Could not find primaryID %d of shard %d within %v", primary, b.config.ShardId, b.batchers)
 	}
 
 	cc := clientConfig(b.config.TLSPrivateKeyFile, b.config.TLSCertificateFile, primaryTLSCACerts)
 
 	conn, err := cc.Dial(primaryEndpoint)
 	if err != nil {
-		return nil, errors.Errorf("Failed connecting to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
+		return nil, nil, errors.Errorf("Failed connecting to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
 	}
 
-	primaryClient := protos.NewAckServiceClient(conn)
+	primaryClient := protos.NewBatcherControlServiceClient(conn)
 
-	stream, err := primaryClient.NotifyAck(context.Background())
+	ackStream, err := primaryClient.NotifyAck(c)
 	if err != nil {
-		return nil, errors.Errorf("Failed creating ack stream to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
+		return nil, nil, errors.Errorf("Failed creating ack stream to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
 	}
-	b.logger.Debugf("Created ack stream to primary (party ID = %d)", primary)
-	return stream, nil
+
+	reqStream, err := primaryClient.FwdRequestStream(c)
+	if err != nil {
+		return nil, nil, errors.Errorf("Failed creating req stream to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
+	}
+
+	b.logger.Debugf("Created streams to primary (party ID = %d)", primary)
+	return ackStream, reqStream, nil
+}
+
+func (b *Batcher) cleanupPrimaryStreams() {
+	if b.cancelFunc != nil {
+		b.cancelFunc()
+	}
+	b.ackStream = nil
+	b.reqStream = nil
 }
 
 func (b *Batcher) Complain() {

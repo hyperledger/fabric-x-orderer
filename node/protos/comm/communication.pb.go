@@ -362,6 +362,100 @@ func (x *AckResponse) GetError() string {
 	return ""
 }
 
+type FwdRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Request []byte `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+}
+
+func (x *FwdRequest) Reset() {
+	*x = FwdRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_node_protos_comm_communication_proto_msgTypes[6]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *FwdRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FwdRequest) ProtoMessage() {}
+
+func (x *FwdRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_node_protos_comm_communication_proto_msgTypes[6]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FwdRequest.ProtoReflect.Descriptor instead.
+func (*FwdRequest) Descriptor() ([]byte, []int) {
+	return file_node_protos_comm_communication_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *FwdRequest) GetRequest() []byte {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+type FwdRequestResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Error string `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+}
+
+func (x *FwdRequestResponse) Reset() {
+	*x = FwdRequestResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_node_protos_comm_communication_proto_msgTypes[7]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *FwdRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FwdRequestResponse) ProtoMessage() {}
+
+func (x *FwdRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_node_protos_comm_communication_proto_msgTypes[7]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FwdRequestResponse.ProtoReflect.Descriptor instead.
+func (*FwdRequestResponse) Descriptor() ([]byte, []int) {
+	return file_node_protos_comm_communication_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *FwdRequestResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_node_protos_comm_communication_proto protoreflect.FileDescriptor
 
 var file_node_protos_comm_communication_proto_rawDesc = []byte{
@@ -392,28 +486,38 @@ var file_node_protos_comm_communication_proto_rawDesc = []byte{
 	0x0d, 0x52, 0x05, 0x73, 0x68, 0x61, 0x72, 0x64, 0x12, 0x10, 0x0a, 0x03, 0x73, 0x65, 0x71, 0x18,
 	0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x03, 0x73, 0x65, 0x71, 0x22, 0x23, 0x0a, 0x0b, 0x41, 0x63,
 	0x6b, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x65, 0x72, 0x72,
-	0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x32,
-	0x79, 0x0a, 0x0f, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x54, 0x72, 0x61, 0x6e, 0x73, 0x6d,
-	0x69, 0x74, 0x12, 0x2d, 0x0a, 0x06, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x12, 0x0d, 0x2e, 0x63,
-	0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f,
-	0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x12, 0x37, 0x0a, 0x0c, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x53, 0x74, 0x72, 0x65, 0x61,
-	0x6d, 0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
-	0x1a, 0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x32, 0x40, 0x0a, 0x09, 0x43, 0x6f,
-	0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x12, 0x33, 0x0a, 0x0b, 0x4e, 0x6f, 0x74, 0x69, 0x66,
-	0x79, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x12, 0x0b, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76,
-	0x65, 0x6e, 0x74, 0x1a, 0x13, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x32, 0x3d, 0x0a, 0x0a,
-	0x41, 0x63, 0x6b, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x2f, 0x0a, 0x09, 0x4e, 0x6f,
+	0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x22,
+	0x26, 0x0a, 0x0a, 0x46, 0x77, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x18, 0x0a,
+	0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07,
+	0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x2a, 0x0a, 0x12, 0x46, 0x77, 0x64, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14, 0x0a,
+	0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72,
+	0x72, 0x6f, 0x72, 0x32, 0x79, 0x0a, 0x0f, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x54, 0x72,
+	0x61, 0x6e, 0x73, 0x6d, 0x69, 0x74, 0x12, 0x2d, 0x0a, 0x06, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74,
+	0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
+	0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x37, 0x0a, 0x0c, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x53,
+	0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x0d, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x53, 0x75, 0x62, 0x6d,
+	0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x32, 0x40,
+	0x0a, 0x09, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x12, 0x33, 0x0a, 0x0b, 0x4e,
+	0x6f, 0x74, 0x69, 0x66, 0x79, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x12, 0x0b, 0x2e, 0x63, 0x6f, 0x6d,
+	0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x1a, 0x13, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45,
+	0x76, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01,
+	0x32, 0x8a, 0x01, 0x0a, 0x15, 0x42, 0x61, 0x74, 0x63, 0x68, 0x65, 0x72, 0x43, 0x6f, 0x6e, 0x74,
+	0x72, 0x6f, 0x6c, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x2d, 0x0a, 0x09, 0x4e, 0x6f,
 	0x74, 0x69, 0x66, 0x79, 0x41, 0x63, 0x6b, 0x12, 0x09, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x41,
-	0x63, 0x6b, 0x1a, 0x13, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x42, 0x43, 0x5a, 0x41, 0x67,
-	0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x69, 0x62, 0x6d, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x64, 0x65,
-	0x63, 0x65, 0x6e, 0x74, 0x72, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x64, 0x2d, 0x74, 0x72, 0x75, 0x73,
-	0x74, 0x2d, 0x72, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2f, 0x61, 0x72, 0x6d, 0x61, 0x2f,
-	0x6e, 0x6f, 0x64, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x6d, 0x6d,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x63, 0x6b, 0x1a, 0x11, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x41, 0x63, 0x6b, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x12, 0x42, 0x0a, 0x10, 0x46, 0x77, 0x64,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x53, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x10, 0x2e,
+	0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x46, 0x77, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
+	0x18, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x2e, 0x46, 0x77, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x28, 0x01, 0x30, 0x01, 0x42, 0x43, 0x5a,
+	0x41, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x69, 0x62, 0x6d, 0x2e, 0x63, 0x6f, 0x6d, 0x2f,
+	0x64, 0x65, 0x63, 0x65, 0x6e, 0x74, 0x72, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x64, 0x2d, 0x74, 0x72,
+	0x75, 0x73, 0x74, 0x2d, 0x72, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2f, 0x61, 0x72, 0x6d,
+	0x61, 0x2f, 0x6e, 0x6f, 0x64, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x63, 0x6f,
+	0x6d, 0x6d, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -428,26 +532,30 @@ func file_node_protos_comm_communication_proto_rawDescGZIP() []byte {
 	return file_node_protos_comm_communication_proto_rawDescData
 }
 
-var file_node_protos_comm_communication_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_node_protos_comm_communication_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_node_protos_comm_communication_proto_goTypes = []interface{}{
-	(*SubmitResponse)(nil), // 0: comm.SubmitResponse
-	(*Request)(nil),        // 1: comm.Request
-	(*EventResponse)(nil),  // 2: comm.EventResponse
-	(*Event)(nil),          // 3: comm.Event
-	(*Ack)(nil),            // 4: comm.Ack
-	(*AckResponse)(nil),    // 5: comm.AckResponse
+	(*SubmitResponse)(nil),     // 0: comm.SubmitResponse
+	(*Request)(nil),            // 1: comm.Request
+	(*EventResponse)(nil),      // 2: comm.EventResponse
+	(*Event)(nil),              // 3: comm.Event
+	(*Ack)(nil),                // 4: comm.Ack
+	(*AckResponse)(nil),        // 5: comm.AckResponse
+	(*FwdRequest)(nil),         // 6: comm.FwdRequest
+	(*FwdRequestResponse)(nil), // 7: comm.FwdRequestResponse
 }
 var file_node_protos_comm_communication_proto_depIdxs = []int32{
 	1, // 0: comm.RequestTransmit.Submit:input_type -> comm.Request
 	1, // 1: comm.RequestTransmit.SubmitStream:input_type -> comm.Request
 	3, // 2: comm.Consensus.NotifyEvent:input_type -> comm.Event
-	4, // 3: comm.AckService.NotifyAck:input_type -> comm.Ack
-	0, // 4: comm.RequestTransmit.Submit:output_type -> comm.SubmitResponse
-	0, // 5: comm.RequestTransmit.SubmitStream:output_type -> comm.SubmitResponse
-	2, // 6: comm.Consensus.NotifyEvent:output_type -> comm.EventResponse
-	2, // 7: comm.AckService.NotifyAck:output_type -> comm.EventResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
+	4, // 3: comm.BatcherControlService.NotifyAck:input_type -> comm.Ack
+	6, // 4: comm.BatcherControlService.FwdRequestStream:input_type -> comm.FwdRequest
+	0, // 5: comm.RequestTransmit.Submit:output_type -> comm.SubmitResponse
+	0, // 6: comm.RequestTransmit.SubmitStream:output_type -> comm.SubmitResponse
+	2, // 7: comm.Consensus.NotifyEvent:output_type -> comm.EventResponse
+	5, // 8: comm.BatcherControlService.NotifyAck:output_type -> comm.AckResponse
+	7, // 9: comm.BatcherControlService.FwdRequestStream:output_type -> comm.FwdRequestResponse
+	5, // [5:10] is the sub-list for method output_type
+	0, // [0:5] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -531,6 +639,30 @@ func file_node_protos_comm_communication_proto_init() {
 				return nil
 			}
 		}
+		file_node_protos_comm_communication_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*FwdRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_node_protos_comm_communication_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*FwdRequestResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -538,7 +670,7 @@ func file_node_protos_comm_communication_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_node_protos_comm_communication_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
@@ -805,88 +937,124 @@ var _Consensus_serviceDesc = grpc.ServiceDesc{
 	Metadata: "node/protos/comm/communication.proto",
 }
 
-// AckServiceClient is the client API for AckService service.
+// BatcherControlServiceClient is the client API for BatcherControlService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
-type AckServiceClient interface {
-	NotifyAck(ctx context.Context, opts ...grpc.CallOption) (AckService_NotifyAckClient, error)
+type BatcherControlServiceClient interface {
+	NotifyAck(ctx context.Context, opts ...grpc.CallOption) (BatcherControlService_NotifyAckClient, error)
+	FwdRequestStream(ctx context.Context, opts ...grpc.CallOption) (BatcherControlService_FwdRequestStreamClient, error)
 }
 
-type ackServiceClient struct {
+type batcherControlServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAckServiceClient(cc grpc.ClientConnInterface) AckServiceClient {
-	return &ackServiceClient{cc}
+func NewBatcherControlServiceClient(cc grpc.ClientConnInterface) BatcherControlServiceClient {
+	return &batcherControlServiceClient{cc}
 }
 
-func (c *ackServiceClient) NotifyAck(ctx context.Context, opts ...grpc.CallOption) (AckService_NotifyAckClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_AckService_serviceDesc.Streams[0], "/comm.AckService/NotifyAck", opts...)
+func (c *batcherControlServiceClient) NotifyAck(ctx context.Context, opts ...grpc.CallOption) (BatcherControlService_NotifyAckClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_BatcherControlService_serviceDesc.Streams[0], "/comm.BatcherControlService/NotifyAck", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &ackServiceNotifyAckClient{stream}
+	x := &batcherControlServiceNotifyAckClient{stream}
 	return x, nil
 }
 
-type AckService_NotifyAckClient interface {
+type BatcherControlService_NotifyAckClient interface {
 	Send(*Ack) error
-	Recv() (*EventResponse, error)
+	Recv() (*AckResponse, error)
 	grpc.ClientStream
 }
 
-type ackServiceNotifyAckClient struct {
+type batcherControlServiceNotifyAckClient struct {
 	grpc.ClientStream
 }
 
-func (x *ackServiceNotifyAckClient) Send(m *Ack) error {
+func (x *batcherControlServiceNotifyAckClient) Send(m *Ack) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *ackServiceNotifyAckClient) Recv() (*EventResponse, error) {
-	m := new(EventResponse)
+func (x *batcherControlServiceNotifyAckClient) Recv() (*AckResponse, error) {
+	m := new(AckResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// AckServiceServer is the server API for AckService service.
-type AckServiceServer interface {
-	NotifyAck(AckService_NotifyAckServer) error
+func (c *batcherControlServiceClient) FwdRequestStream(ctx context.Context, opts ...grpc.CallOption) (BatcherControlService_FwdRequestStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_BatcherControlService_serviceDesc.Streams[1], "/comm.BatcherControlService/FwdRequestStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &batcherControlServiceFwdRequestStreamClient{stream}
+	return x, nil
 }
 
-// UnimplementedAckServiceServer can be embedded to have forward compatible implementations.
-type UnimplementedAckServiceServer struct {
+type BatcherControlService_FwdRequestStreamClient interface {
+	Send(*FwdRequest) error
+	Recv() (*FwdRequestResponse, error)
+	grpc.ClientStream
 }
 
-func (*UnimplementedAckServiceServer) NotifyAck(AckService_NotifyAckServer) error {
+type batcherControlServiceFwdRequestStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *batcherControlServiceFwdRequestStreamClient) Send(m *FwdRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *batcherControlServiceFwdRequestStreamClient) Recv() (*FwdRequestResponse, error) {
+	m := new(FwdRequestResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// BatcherControlServiceServer is the server API for BatcherControlService service.
+type BatcherControlServiceServer interface {
+	NotifyAck(BatcherControlService_NotifyAckServer) error
+	FwdRequestStream(BatcherControlService_FwdRequestStreamServer) error
+}
+
+// UnimplementedBatcherControlServiceServer can be embedded to have forward compatible implementations.
+type UnimplementedBatcherControlServiceServer struct {
+}
+
+func (*UnimplementedBatcherControlServiceServer) NotifyAck(BatcherControlService_NotifyAckServer) error {
 	return status.Errorf(codes.Unimplemented, "method NotifyAck not implemented")
 }
-
-func RegisterAckServiceServer(s *grpc.Server, srv AckServiceServer) {
-	s.RegisterService(&_AckService_serviceDesc, srv)
+func (*UnimplementedBatcherControlServiceServer) FwdRequestStream(BatcherControlService_FwdRequestStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method FwdRequestStream not implemented")
 }
 
-func _AckService_NotifyAck_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(AckServiceServer).NotifyAck(&ackServiceNotifyAckServer{stream})
+func RegisterBatcherControlServiceServer(s *grpc.Server, srv BatcherControlServiceServer) {
+	s.RegisterService(&_BatcherControlService_serviceDesc, srv)
 }
 
-type AckService_NotifyAckServer interface {
-	Send(*EventResponse) error
+func _BatcherControlService_NotifyAck_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BatcherControlServiceServer).NotifyAck(&batcherControlServiceNotifyAckServer{stream})
+}
+
+type BatcherControlService_NotifyAckServer interface {
+	Send(*AckResponse) error
 	Recv() (*Ack, error)
 	grpc.ServerStream
 }
 
-type ackServiceNotifyAckServer struct {
+type batcherControlServiceNotifyAckServer struct {
 	grpc.ServerStream
 }
 
-func (x *ackServiceNotifyAckServer) Send(m *EventResponse) error {
+func (x *batcherControlServiceNotifyAckServer) Send(m *AckResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *ackServiceNotifyAckServer) Recv() (*Ack, error) {
+func (x *batcherControlServiceNotifyAckServer) Recv() (*Ack, error) {
 	m := new(Ack)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -894,14 +1062,46 @@ func (x *ackServiceNotifyAckServer) Recv() (*Ack, error) {
 	return m, nil
 }
 
-var _AckService_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "comm.AckService",
-	HandlerType: (*AckServiceServer)(nil),
+func _BatcherControlService_FwdRequestStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BatcherControlServiceServer).FwdRequestStream(&batcherControlServiceFwdRequestStreamServer{stream})
+}
+
+type BatcherControlService_FwdRequestStreamServer interface {
+	Send(*FwdRequestResponse) error
+	Recv() (*FwdRequest, error)
+	grpc.ServerStream
+}
+
+type batcherControlServiceFwdRequestStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *batcherControlServiceFwdRequestStreamServer) Send(m *FwdRequestResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *batcherControlServiceFwdRequestStreamServer) Recv() (*FwdRequest, error) {
+	m := new(FwdRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+var _BatcherControlService_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "comm.BatcherControlService",
+	HandlerType: (*BatcherControlServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "NotifyAck",
-			Handler:       _AckService_NotifyAck_Handler,
+			Handler:       _BatcherControlService_NotifyAck_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "FwdRequestStream",
+			Handler:       _BatcherControlService_FwdRequestStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

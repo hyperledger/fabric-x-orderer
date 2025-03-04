@@ -193,7 +193,7 @@ func TestBatcherRun(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 }
 
-func TestBatcherComplain(t *testing.T) {
+func TestBatcherComplainAndReqFwd(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4
 	ca, err := tlsgen.NewCA()
@@ -271,6 +271,21 @@ func TestBatcherComplain(t *testing.T) {
 		return batchers[0].Ledger.Height(2) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
 
+	for i := 0; i < numParties; i++ {
+		require.Equal(t, types.PartyID(2), batchers[i].GetPrimaryID())
+	}
+
+	// submit another request only to a secondary
+	req4 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req4, uint64(4))
+	batchers[2].Submit(context.Background(), &protos.Request{Payload: req4})
+
+	// after a timeout the request is forwarded
+	require.Eventually(t, func() bool {
+		return batchers[1].Ledger.Height(2) == uint64(2) && batchers[2].Ledger.Height(2) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// still same primary
 	for i := 0; i < numParties; i++ {
 		require.Equal(t, types.PartyID(2), batchers[i].GetPrimaryID())
 	}
@@ -365,7 +380,7 @@ func grpcRegisterAndStart(b *batcher.Batcher, n *node) {
 	gRPCServer := n.Server()
 
 	protos.RegisterRequestTransmitServer(gRPCServer, b)
-	protos.RegisterAckServiceServer(gRPCServer, b)
+	protos.RegisterBatcherControlServiceServer(gRPCServer, b)
 	orderer.RegisterAtomicBroadcastServer(gRPCServer, b)
 
 	go func() {

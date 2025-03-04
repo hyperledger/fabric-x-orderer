@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"os"
@@ -181,7 +182,7 @@ func CreateGRPCBatcher(conf config.BatcherNodeConfig) *comm.GRPCServer {
 	return srv
 }
 
-func ExtractCertificateFromContext(ctx context.Context) []byte { // TODO add unit test
+func ExtractCertificateFromContext(ctx context.Context) *x509.Certificate { // TODO add unit test
 	pr, extracted := peer.FromContext(ctx)
 	if !extracted {
 		return nil
@@ -205,5 +206,9 @@ func ExtractCertificateFromContext(ctx context.Context) []byte { // TODO add uni
 		return nil
 	}
 
-	return certs[0].Raw
+	return certs[0]
+}
+
+func CertificateToString(c *x509.Certificate) string {
+	return fmt.Sprintf("Version: %d; Issuer: %s; Subject: %s", c.Version, c.Issuer.String(), c.Subject.String())
 }
