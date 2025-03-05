@@ -2,9 +2,10 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/core"
 	"context"
 	"sync"
+
+	"github.ibm.com/decentralized-trust-research/arma/core"
 )
 
 type FakeMemPool struct {

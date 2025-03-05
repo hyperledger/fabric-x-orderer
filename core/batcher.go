@@ -50,6 +50,14 @@ type Complainer interface {
 	Complain()
 }
 
+// BatchAcker sends an ack over a specific batch
+//
+//go:generate counterfeiter -o mocks/batch_acker.go . BatchAcker
+
+type BatchAcker interface {
+	Ack(seq types.BatchSequence, to types.PartyID)
+}
+
 type BatchLedgerWriter interface {
 	Append(types.PartyID, uint64, []byte)
 }
@@ -85,7 +93,7 @@ type Batcher struct {
 	StateProvider    StateProvider
 	AttestBatch      func(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) BatchAttestationFragment // TODO turn into interface
 	TotalOrderBAF    func(BatchAttestationFragment)                                                                                    // TODO turn into interface
-	AckBAF           func(seq types.BatchSequence, to types.PartyID)                                                                   // TODO turn into interface
+	BatchAcker       BatchAcker
 	Complainer       Complainer
 	MemPool          MemPool
 	running          sync.WaitGroup
@@ -313,7 +321,7 @@ func (b *Batcher) runSecondary() {
 			b.removeRequests(requests)
 			baf := b.AttestBatch(b.seq, b.primary, b.Shard, b.Digest(requests))
 			b.sendBAF(baf)
-			b.AckBAF(baf.Seq(), b.primary)
+			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
 		}
 	}

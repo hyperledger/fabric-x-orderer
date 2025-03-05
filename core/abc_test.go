@@ -206,10 +206,8 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 			shardID: uint16(i),
 			sr:      replicator,
 		}
-		batcher := batchers[i]
-		batcher.AckBAF = func(seq arma_types.BatchSequence, to arma_types.PartyID) {
-			batchers[to].HandleAck(seq, batcher.ID)
-		}
+		acker := &acker{from: arma_types.PartyID(i), batchers: batchers}
+		batchers[i].BatchAcker = acker
 		batchers[i].Ledger = sc
 		batchers[i].BatchPuller = nil
 		batchers[i].N = state.N

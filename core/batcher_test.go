@@ -607,7 +607,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
 		},
 		TotalOrderBAF: func(core.BatchAttestationFragment) {},
-		AckBAF:        func(seq arma_types.BatchSequence, to arma_types.PartyID) {},
+		BatchAcker:    &mocks.FakeBatchAcker{},
 		MemPool:       &mocks.FakeMemPool{},
 	}
 

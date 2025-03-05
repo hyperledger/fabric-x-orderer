@@ -2,9 +2,10 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
-	"sync"
 )
 
 type FakeBatchLedger struct {

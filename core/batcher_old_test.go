@@ -111,6 +111,15 @@ func (nb *naiveBatch) Requests() arma_types.BatchedRequests {
 	return nb.requests
 }
 
+type acker struct {
+	from     arma_types.PartyID
+	batchers []*core.Batcher
+}
+
+func (a *acker) Ack(seq arma_types.BatchSequence, to arma_types.PartyID) {
+	a.batchers[to].HandleAck(seq, arma_types.PartyID(a.from))
+}
+
 func BenchmarkBatcherNetwork(b *testing.B) {
 	n := 4
 	batchers, commit := createBenchBatchers(b, n)
@@ -196,11 +205,9 @@ func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan core.Batc
 	}
 
 	for i := 0; i < n; i++ {
-		from := i
 		batchers[i].TotalOrderBAF = func(core.BatchAttestationFragment) {}
-		batchers[i].AckBAF = func(seq arma_types.BatchSequence, to arma_types.PartyID) {
-			batchers[to].HandleAck(seq, arma_types.PartyID(from))
-		}
+		acker := &acker{from: arma_types.PartyID(i), batchers: batchers}
+		batchers[i].BatchAcker = acker
 	}
 	return batchers, commit
 }
@@ -257,7 +264,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
-		b.AckBAF = func(_ arma_types.BatchSequence, _ arma_types.PartyID) {} // no ack will be received by the primary
+		b.BatchAcker = &mocks.FakeBatchAcker{} // no ack will be received by the primary
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 2,
@@ -333,11 +340,9 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	}
 
 	for i := 0; i < n; i++ {
-		from := i
 		batchers[i].TotalOrderBAF = func(core.BatchAttestationFragment) {}
-		batchers[i].AckBAF = func(seq arma_types.BatchSequence, to arma_types.PartyID) {
-			batchers[to].HandleAck(seq, arma_types.PartyID(from))
-		}
+		acker := &acker{from: arma_types.PartyID(i), batchers: batchers}
+		batchers[i].BatchAcker = acker
 	}
 	return batchers, commit
 }

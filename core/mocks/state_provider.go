@@ -2,8 +2,9 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/core"
 	"sync"
+
+	"github.ibm.com/decentralized-trust-research/arma/core"
 )
 
 type FakeStateProvider struct {

@@ -346,7 +346,7 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 		},
 		RequestInspector: b,
 		TotalOrderBAF:    b.SendBAF, // TODO make interface
-		AckBAF:           b.sendAck, // TODO make interface
+		BatchAcker:       b,
 		Complainer:       b,
 	}
 
@@ -495,7 +495,7 @@ func (b *Batcher) sendReq(req []byte) {
 	}
 }
 
-func (b *Batcher) sendAck(seq types.BatchSequence, to types.PartyID) {
+func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 	t1 := time.Now()
 
 	defer func() {
