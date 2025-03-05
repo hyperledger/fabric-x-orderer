@@ -509,7 +509,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			numPending:             0,
 		},
 		{
-			name: "two blocks plus pending and two complaint",
+			name: "two blocks plus pending and one complaint",
 			initialAppContext: state.BlockHeader{
 				Number:   0,
 				PrevHash: make([]byte, 32),
@@ -518,10 +518,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}, {Complaint: complaint3}, {Complaint: complaint2}},
+			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}, {Complaint: complaint2}},
 			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1, baf124id3p1s2},
 			numPending:             1,
-			numComplaints:          2,
+			numComplaints:          1,
 		},
 		{
 			name: "block with different context and term change",

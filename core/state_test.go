@@ -173,7 +173,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 func TestPrimaryRotateDueToComplaints(t *testing.T) {
 	state := core.State{
 		N:          4,
-		Quorum:     2,
+		Threshold:  2,
 		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
 		ShardCount: 2,
 		Complaints: []core.Complaint{
