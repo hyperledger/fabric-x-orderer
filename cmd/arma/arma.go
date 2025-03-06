@@ -7,7 +7,10 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/arma/node"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
@@ -15,11 +18,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus"
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/router"
-
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
@@ -36,16 +34,14 @@ const (
 	DirOverrideEnvName = "DIRECTORY"
 )
 
-var (
-	help = map[string]string{
-		"router":    "run a router node",
-		"assembler": "run an assembler node",
-		"batcher":   "run a batcher node",
-		"consensus": "run a consensus node",
-	}
+var help = map[string]string{
+	"router":    "run a router node",
+	"assembler": "run an assembler node",
+	"batcher":   "run a batcher node",
+	"consensus": "run a consensus node",
+}
 
-	logger = flogging.MustGetLogger("arma")
-)
+var testLogger *flogging.FabricLogger
 
 type CLI struct {
 	app         *kingpin.Application
@@ -60,7 +56,7 @@ func (cli *CLI) Command(name, help string, onCmd func(configFile *os.File)) {
 
 func (cli *CLI) configureNodesCommands() {
 	for name, f := range map[string]func(configFile *os.File){
-		"router":    launchRouter(cli.stop, loadConfig, logger),
+		"router":    launchRouter(cli.stop, loadConfig),
 		"assembler": launchAssembler(cli.stop, loadConfigAndGenesis),
 		"batcher":   launchBatcher(cli.stop, loadConfig),
 		"consensus": launchConsensus(cli.stop, loadConfigAndGenesis),
@@ -76,7 +72,13 @@ func launchAssembler(
 	return func(configFile *os.File) {
 		configContent, genesisBlock := loadConfigAndGenesis(configFile)
 		conf := parseAssemblerConfig(configContent)
-		assembler := assembler.NewAssembler(conf, genesisBlock, logger)
+		var assemblerLogger *flogging.FabricLogger
+		if testLogger != nil {
+			assemblerLogger = testLogger
+		} else {
+			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
+		}
+		assembler := assembler.NewAssembler(conf, genesisBlock, assemblerLogger)
 
 		srv := node.CreateGRPCAssembler(conf)
 
@@ -87,7 +89,7 @@ func launchAssembler(
 			close(stop)
 		}()
 
-		logger.Infof("Assembler listening on %s", srv.Address())
+		assemblerLogger.Infof("Assembler listening on %s", srv.Address())
 	}
 }
 
@@ -98,7 +100,15 @@ func launchConsensus(
 	return func(configFile *os.File) {
 		configContent, genesisBlock := loadConfigAndGenesis(configFile)
 		conf := parseConsensusConfig(configContent)
-		consensus := consensus.CreateConsensus(conf, genesisBlock, logger)
+		var consenterLogger *flogging.FabricLogger
+		if testLogger != nil {
+			consenterLogger = testLogger
+		} else {
+			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", conf.PartyId))
+		}
+
+		consensus := consensus.CreateConsensus(conf, genesisBlock, consenterLogger)
+
 		defer consensus.Start()
 
 		srv := node.CreateGRPCConsensus(conf)
@@ -112,7 +122,7 @@ func launchConsensus(
 			close(stop)
 		}()
 
-		logger.Infof("Consensus listening on %s", srv.Address())
+		consenterLogger.Infof("Consensus listening on %s", srv.Address())
 	}
 }
 
@@ -120,7 +130,13 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseBatcherConfig(configContent)
-		batcher := batcher.CreateBatcher(conf, logger, nil, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
+		var batcherLogger *flogging.FabricLogger
+		if testLogger != nil {
+			batcherLogger = testLogger
+		} else {
+			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", conf.PartyId, conf.ShardId))
+		}
+		batcher := batcher.CreateBatcher(conf, batcherLogger, nil, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
 		defer batcher.Run()
 
 		srv := node.CreateGRPCBatcher(conf)
@@ -134,15 +150,21 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 			close(stop)
 		}()
 
-		logger.Infof("Batcher listening on %s", srv.Address())
+		batcherLogger.Infof("Batcher listening on %s", srv.Address())
 	}
 }
 
-func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byte, logger types.Logger) func(configFile *os.File) {
+func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byte) func(configFile *os.File) {
 	return func(configFile *os.File) {
 		configContent := loadConfig(configFile)
 		conf := parseRouterConfig(configContent)
-		router := router.NewRouter(conf, logger)
+		var routerLogger *flogging.FabricLogger
+		if testLogger != nil {
+			routerLogger = testLogger
+		} else {
+			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", conf.PartyID))
+		}
+		router := router.NewRouter(conf, routerLogger)
 
 		srv := node.CreateGRPCRouter(conf)
 
@@ -154,7 +176,7 @@ func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byt
 			close(stop)
 		}()
 
-		logger.Infof("Router listening on %s", srv.Address())
+		routerLogger.Infof("Router listening on %s", srv.Address())
 	}
 }
 

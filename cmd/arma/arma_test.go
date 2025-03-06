@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 
 	"github.com/hyperledger/fabric/protoutil"
@@ -26,6 +28,7 @@ import (
 )
 
 func TestRouter(t *testing.T) {
+	testLogger = flogging.MustGetLogger("arma")
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 
@@ -48,15 +51,15 @@ func TestRouter(t *testing.T) {
 	}, configPath)
 	require.NoError(t, err)
 
-	originalLogger := logger
+	originalLogger := testLogger
 	defer func() {
-		logger = originalLogger
+		testLogger = originalLogger
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Router listening on [::]:6022" {
 			wg.Done()
 		}
@@ -69,6 +72,7 @@ func TestRouter(t *testing.T) {
 }
 
 func TestAssembler(t *testing.T) {
+	testLogger = flogging.MustGetLogger("arma")
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 
@@ -91,15 +95,15 @@ func TestAssembler(t *testing.T) {
 	}, configPath)
 	require.NoError(t, err)
 
-	originalLogger := logger
+	originalLogger := testLogger
 	defer func() {
-		logger = originalLogger
+		testLogger = originalLogger
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Assembler listening on [::]:6023" {
 			wg.Done()
 		}
@@ -112,6 +116,7 @@ func TestAssembler(t *testing.T) {
 }
 
 func TestAssemblerWithBlock(t *testing.T) {
+	testLogger = flogging.MustGetLogger("arma")
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 
@@ -141,15 +146,15 @@ func TestAssemblerWithBlock(t *testing.T) {
 	err = os.WriteFile(blockPath, blockBytes, 0o600)
 	require.NoError(t, err)
 
-	originalLogger := logger
+	originalLogger := testLogger
 	defer func() {
-		logger = originalLogger
+		testLogger = originalLogger
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Assembler listening on 127.0.0.1:6043" {
 			wg.Done()
 		}
@@ -162,6 +167,7 @@ func TestAssemblerWithBlock(t *testing.T) {
 }
 
 func TestBatcher(t *testing.T) {
+	testLogger = flogging.MustGetLogger("arma")
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 
@@ -200,15 +206,15 @@ func TestBatcher(t *testing.T) {
 	}, configPath)
 	require.NoError(t, err)
 
-	originalLogger := logger
+	originalLogger := testLogger
 	defer func() {
-		logger = originalLogger
+		testLogger = originalLogger
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Batcher listening on [::]:6024" {
 			wg.Done()
 		}
@@ -221,6 +227,7 @@ func TestBatcher(t *testing.T) {
 }
 
 func TestConsensus(t *testing.T) {
+	testLogger = flogging.MustGetLogger("arma")
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 
@@ -260,15 +267,15 @@ func TestConsensus(t *testing.T) {
 	}, configPath)
 	require.NoError(t, err)
 
-	originalLogger := logger
+	originalLogger := testLogger
 	defer func() {
-		logger = originalLogger
+		testLogger = originalLogger
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Consensus listening on [::]:6025" {
 			wg.Done()
 		}
@@ -281,6 +288,7 @@ func TestConsensus(t *testing.T) {
 }
 
 func TestConsensusWithBlock(t *testing.T) {
+	testLogger = flogging.MustGetLogger("arma")
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 
@@ -327,15 +335,15 @@ func TestConsensusWithBlock(t *testing.T) {
 	err = os.WriteFile(blockPath, blockBytes, 0o600)
 	require.NoError(t, err)
 
-	originalLogger := logger
+	originalLogger := testLogger
 	defer func() {
-		logger = originalLogger
+		testLogger = originalLogger
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	logger = logger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 		if entry.Message == "Consensus listening on 127.0.0.1:6045" {
 			wg.Done()
 		}
