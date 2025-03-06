@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
@@ -258,6 +259,10 @@ func initialStateFromConfig(config config.ConsenterNodeConfig) *core.State {
 			Term:  0,
 		})
 	}
+
+	sort.Slice(initState.Shards, func(i, j int) bool {
+		return int(initState.Shards[i].Shard) < int(initState.Shards[j].Shard)
+	})
 
 	// TODO set right initial app context
 	initialAppContext := &state.BlockHeader{
