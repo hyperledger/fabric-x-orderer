@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 type Semaphore interface {
@@ -19,7 +20,7 @@ type Semaphore interface {
 type PendingStore struct {
 	ReqIDGCInterval       time.Duration
 	ReqIDLifetime         time.Duration
-	Logger                Logger
+	Logger                types.Logger
 	Inspector             RequestInspector
 	FirstStrikeThreshold  time.Duration
 	SecondStrikeThreshold time.Duration

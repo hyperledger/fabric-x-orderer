@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 type BatchStore struct {
@@ -12,7 +14,7 @@ type BatchStore struct {
 	onDelete          func(key string)
 	batchMaxSize      uint32
 	batchMaxSizeBytes uint32
-	logger            Logger
+	logger            types.Logger
 	keys2Batches      sync.Map
 	lock              sync.RWMutex
 	signal            sync.Cond
@@ -62,7 +64,7 @@ func (b *batch) Prune(f func(key, value any) error) {
 	b.m.Range(delFunc)
 }
 
-func NewBatchStore(batchMaxSize uint32, batchMaxSizeBytes uint32, onDelete func(string), logger Logger) *BatchStore {
+func NewBatchStore(batchMaxSize uint32, batchMaxSizeBytes uint32, onDelete func(string), logger types.Logger) *BatchStore {
 	bs := &BatchStore{
 		currentBatch:      &batch{},
 		onDelete:          onDelete,

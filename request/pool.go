@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -15,14 +16,6 @@ const (
 	defaultSubmitTimeout = 10 * time.Second // for unit tests only
 	defaultMaxBytes      = 100 * 1024       // default max request size would be of size 100Kb
 )
-
-type Logger interface {
-	Debugf(template string, args ...interface{})
-	Infof(template string, args ...interface{})
-	Errorf(template string, args ...interface{})
-	Warnf(template string, args ...interface{})
-	Panicf(template string, args ...interface{})
-}
 
 // RequestInspector extracts the id of a given request.
 type RequestInspector interface {
@@ -36,7 +29,7 @@ type RequestInspector interface {
 type Pool struct {
 	lock            sync.RWMutex
 	pending         *PendingStore
-	logger          Logger
+	logger          types.Logger
 	inspector       RequestInspector
 	options         PoolOptions
 	batchStore      *BatchStore
@@ -66,7 +59,7 @@ type PoolOptions struct {
 }
 
 // NewPool constructs a new requests pool
-func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool {
+func NewPool(logger types.Logger, inspector RequestInspector, options PoolOptions) *Pool {
 	// TODO check pool options
 
 	if options.SubmitTimeout == 0 {
@@ -86,7 +79,7 @@ func NewPool(log Logger, inspector RequestInspector, options PoolOptions) *Pool 
 	}
 
 	rp := &Pool{
-		logger:    log,
+		logger:    logger,
 		inspector: inspector,
 		semaphore: semaphore.NewWeighted(int64(options.MaxSize)),
 		options:   options,
