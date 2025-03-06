@@ -69,6 +69,7 @@ type RouterNodeConfig struct {
 	NumOfConnectionsForBatcher    int
 	NumOfgRPCStreamsPerConnection int
 	UseTLS                        bool
+	ClientAuthRequired            bool
 }
 
 type AssemblerNodeConfig struct {
@@ -79,9 +80,10 @@ type AssemblerNodeConfig struct {
 	Directory          string
 	ListenAddress      string
 	// Shared config
-	Shards    []ShardInfo
-	Consenter ConsenterInfo
-	UseTLS    bool
+	Shards             []ShardInfo
+	Consenter          ConsenterInfo
+	UseTLS             bool
+	ClientAuthRequired bool
 }
 
 type BatcherNodeConfig struct {
