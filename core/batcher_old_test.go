@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/core/mocks"
 	"github.ibm.com/decentralized-trust-research/arma/request"
+	request_mocks "github.ibm.com/decentralized-trust-research/arma/request/mocks"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
@@ -216,19 +217,23 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	sugaredLogger := testutil.CreateBenchmarkLogger(b, int(nodeID))
 
 	requestInspector := &reqInspector{}
+
+	striker := &request_mocks.FakeStriker{}
+	striker.OnFirstStrikeTimeoutStub = func(b []byte) {
+		sugaredLogger.Info("OnFirstStrikeTimeout")
+	}
+	striker.OnSecondStrikeTimeoutStub = func() {
+		sugaredLogger.Warn("OnSecondStrikeTimeout")
+	}
+
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
 		FirstStrikeThreshold:  time.Second * 10,
 		SecondStrikeThreshold: time.Minute / 2,
-		OnFirstStrikeTimeout: func([]byte) {
-			sugaredLogger.Info("OnFirstStrikeTimeout")
-		},
-		OnSecondStrikeTimeout: func() {
-			sugaredLogger.Warn("OnSecondStrikeTimeout")
-		},
-		BatchMaxSize:      10000,
-		MaxSize:           1000 * 100,
-		AutoRemoveTimeout: time.Minute / 2,
-		SubmitTimeout:     time.Second * 10,
+		Striker:               striker,
+		BatchMaxSize:          10000,
+		MaxSize:               1000 * 100,
+		AutoRemoveTimeout:     time.Minute / 2,
+		SubmitTimeout:         time.Second * 10,
 	})
 
 	bafCreator := &mocks.FakeBAFCreator{}
@@ -265,6 +270,13 @@ func TestBatchersStopSecondaries(t *testing.T) {
 
 	var secondStrikeCount uint32
 
+	striker := &request_mocks.FakeStriker{}
+	striker.OnFirstStrikeTimeoutStub = func(b []byte) {
+	}
+	striker.OnSecondStrikeTimeoutStub = func() {
+		atomic.AddUint32(&secondStrikeCount, 1)
+	}
+
 	batchers, _ := createBatchers(t, n)
 	for _, b := range batchers {
 		b.BatchAcker = &mocks.FakeBatchAcker{} // no ack will be received by the primary
@@ -275,10 +287,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 			MaxSize:               100 * 1000,
 			AutoRemoveTimeout:     time.Minute / 2,
 			SubmitTimeout:         time.Second * 10,
-			OnFirstStrikeTimeout:  func([]byte) {},
-			OnSecondStrikeTimeout: func() {
-				atomic.AddUint32(&secondStrikeCount, 1)
-			},
+			Striker:               striker,
 		})
 		b.MemPool = pool
 		b.Start()
@@ -353,20 +362,23 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *core.Batcher {
 	sugaredLogger := testutil.CreateLogger(t, int(nodeID))
 
+	striker := &request_mocks.FakeStriker{}
+	striker.OnFirstStrikeTimeoutStub = func(b []byte) {
+		sugaredLogger.Info("OnFirstStrikeTimeout")
+	}
+	striker.OnSecondStrikeTimeoutStub = func() {
+		sugaredLogger.Warn("OnSecondStrikeTimeout")
+	}
+
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
 		FirstStrikeThreshold:  time.Second * 10,
 		SecondStrikeThreshold: time.Minute / 2,
-		OnFirstStrikeTimeout: func([]byte) {
-			sugaredLogger.Info("OnFirstStrikeTimeout")
-		},
-		OnSecondStrikeTimeout: func() {
-			sugaredLogger.Warn("OnSecondStrikeTimeout")
-		},
-		BatchMaxSize:      10000,
-		MaxSize:           1000 * 100,
-		AutoRemoveTimeout: time.Minute / 2,
-		SubmitTimeout:     time.Second * 10,
+		Striker:               striker,
+		BatchMaxSize:          10000,
+		MaxSize:               1000 * 100,
+		AutoRemoveTimeout:     time.Minute / 2,
+		SubmitTimeout:         time.Second * 10,
 	})
 
 	bafCreator := &mocks.FakeBAFCreator{}

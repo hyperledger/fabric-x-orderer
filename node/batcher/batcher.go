@@ -369,17 +369,18 @@ func (b *Batcher) createMemPool(config node_config.BatcherNodeConfig) core.MemPo
 	opts.BatchMaxSize = config.BatchMaxSize
 	opts.RequestMaxBytes = config.RequestMaxBytes
 	opts.SubmitTimeout = config.BatchTimeout
-
-	opts.OnFirstStrikeTimeout = func(req []byte) { // TODO turn into interface
-		b.logger.Debugf("First strike timeout occurred on request %s", b.RequestID(req))
-		b.sendReq(req)
-	}
-	opts.OnSecondStrikeTimeout = func() { // TODO turn into interface
-		b.logger.Warnf("Second strike timeout occurred")
-		b.Complain() // TODO add complaint reason
-	}
-
+	opts.Striker = b
 	return request.NewPool(b.logger, b, opts)
+}
+
+func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
+	b.logger.Debugf("First strike timeout occurred on request %s", b.RequestID(req))
+	b.sendReq(req)
+}
+
+func (b *Batcher) OnSecondStrikeTimeout() {
+	b.logger.Warnf("Second strike timeout occurred")
+	b.Complain() // TODO add complaint reason
 }
 
 func createSigner(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {

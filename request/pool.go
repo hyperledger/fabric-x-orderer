@@ -23,6 +23,14 @@ type RequestInspector interface {
 	RequestID(req []byte) string
 }
 
+//go:generate counterfeiter -o mocks/striker.go . Striker
+
+// Striker defines the actions taken after timeouts occur
+type Striker interface {
+	OnFirstStrikeTimeout([]byte)
+	OnSecondStrikeTimeout()
+}
+
 // Pool implements requests pool, maintains pool of given size provided during
 // construction. In case there are more incoming request than the given size it will
 // block during submit until there will be space to submit new ones.
@@ -51,10 +59,9 @@ type PoolOptions struct {
 	BatchMaxSizeBytes     uint32
 	RequestMaxBytes       uint64
 	SubmitTimeout         time.Duration
-	OnFirstStrikeTimeout  func([]byte)
 	FirstStrikeThreshold  time.Duration
-	OnSecondStrikeTimeout func()
 	SecondStrikeThreshold time.Duration
+	Striker               Striker
 	AutoRemoveTimeout     time.Duration
 }
 
@@ -111,8 +118,8 @@ func (rp *Pool) createPendingStore() *PendingStore {
 			rp.semaphore.Release(1)
 		},
 		Epoch:                time.Second,
-		FirstStrikeCallback:  rp.options.OnFirstStrikeTimeout,
-		SecondStrikeCallback: rp.options.OnSecondStrikeTimeout,
+		FirstStrikeCallback:  rp.options.Striker.OnFirstStrikeTimeout,
+		SecondStrikeCallback: rp.options.Striker.OnSecondStrikeTimeout,
 	}
 }
 
