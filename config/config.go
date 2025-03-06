@@ -65,6 +65,7 @@ func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig 
 		NumOfConnectionsForBatcher:    config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
 		NumOfgRPCStreamsPerConnection: config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
 		UseTLS:                        config.LocalConfig.TLSConfig.Enabled,
+		ClientAuthRequired:            config.LocalConfig.TLSConfig.ClientAuthRequired,
 	}
 	return routerConfig
 }
@@ -133,7 +134,8 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 			PublicKey:  partySharedConfig.ConsenterConfig.PublicKey,
 			TLSCACerts: tlsCACertsCollection,
 		},
-		UseTLS: config.LocalConfig.TLSConfig.Enabled,
+		UseTLS:             config.LocalConfig.TLSConfig.Enabled,
+		ClientAuthRequired: config.LocalConfig.TLSConfig.ClientAuthRequired,
 	}
 	return assemblerConfig
 }
