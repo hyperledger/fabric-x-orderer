@@ -205,7 +205,7 @@ func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan core.Batc
 	}
 
 	for i := 0; i < n; i++ {
-		batchers[i].TotalOrderBAF = func(core.BatchAttestationFragment) {}
+		batchers[i].BAFSender = &mocks.FakeBAFSender{}
 		acker := &acker{from: arma_types.PartyID(i), batchers: batchers}
 		batchers[i].BatchAcker = acker
 	}
@@ -231,13 +231,16 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		SubmitTimeout:     time.Second * 10,
 	})
 
+	bafCreator := &mocks.FakeBAFCreator{}
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
+	})
+
 	batcher := &core.Batcher{
-		N:        uint16(len(batchers)),
-		Batchers: batchers,
-		Shard:    arma_types.ShardID(shardID),
-		AttestBatch: func(seq arma_types.BatchSequence, primary arma_types.PartyID, shard arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
-			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
-		},
+		N:          uint16(len(batchers)),
+		Batchers:   batchers,
+		Shard:      arma_types.ShardID(shardID),
+		BAFCreator: bafCreator,
 		Digest: func(data [][]byte) []byte {
 			h := sha256.New()
 			for _, d := range data {
@@ -340,7 +343,7 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	}
 
 	for i := 0; i < n; i++ {
-		batchers[i].TotalOrderBAF = func(core.BatchAttestationFragment) {}
+		batchers[i].BAFSender = &mocks.FakeBAFSender{}
 		acker := &acker{from: arma_types.PartyID(i), batchers: batchers}
 		batchers[i].BatchAcker = acker
 	}
@@ -366,13 +369,16 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		SubmitTimeout:     time.Second * 10,
 	})
 
+	bafCreator := &mocks.FakeBAFCreator{}
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
+	})
+
 	b := &core.Batcher{
-		N:        uint16(len(batchers)),
-		Batchers: batchers,
-		Shard:    arma_types.ShardID(shardID),
-		AttestBatch: func(seq arma_types.BatchSequence, primary arma_types.PartyID, shard arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
-			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
-		},
+		N:          uint16(len(batchers)),
+		Batchers:   batchers,
+		Shard:      arma_types.ShardID(shardID),
+		BAFCreator: bafCreator,
 		Digest: func(data [][]byte) []byte {
 			h := sha256.New()
 			for _, d := range data {

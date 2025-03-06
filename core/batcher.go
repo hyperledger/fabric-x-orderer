@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"slices"
 	"sync"
@@ -50,12 +49,25 @@ type Complainer interface {
 	Complain()
 }
 
-// BatchAcker sends an ack over a specific batch
-//
 //go:generate counterfeiter -o mocks/batch_acker.go . BatchAcker
 
+// BatchAcker sends an ack over a specific batch
 type BatchAcker interface {
 	Ack(seq types.BatchSequence, to types.PartyID)
+}
+
+//go:generate counterfeiter -o mocks/baf_sender.go . BAFSender
+
+// BAFSender sends the baf to the consenters
+type BAFSender interface {
+	SendBAF(baf BatchAttestationFragment)
+}
+
+//go:generate counterfeiter -o mocks/baf_creator.go . BAFCreator
+
+// BAFCreator creates a baf
+type BAFCreator interface {
+	CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) BatchAttestationFragment
 }
 
 type BatchLedgerWriter interface {
@@ -91,8 +103,8 @@ type Batcher struct {
 	Ledger           BatchLedger
 	BatchPuller      BatchPuller
 	StateProvider    StateProvider
-	AttestBatch      func(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) BatchAttestationFragment // TODO turn into interface
-	TotalOrderBAF    func(BatchAttestationFragment)                                                                                    // TODO turn into interface
+	BAFCreator       BAFCreator
+	BAFSender        BAFSender
 	BatchAcker       BatchAcker
 	Complainer       Complainer
 	MemPool          MemPool
@@ -255,11 +267,11 @@ func (b *Batcher) runPrimary() {
 			break
 		}
 
-		baf := b.AttestBatch(b.seq, b.ID, b.Shard, digest)
+		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest)
 
 		b.Ledger.Append(b.ID, uint64(b.seq), serializedBatch)
 
-		b.sendBAF(baf)
+		b.BAFSender.SendBAF(baf)
 
 		b.ackerLock.RLock()
 		b.acker.HandleAck(b.seq, b.ID)
@@ -279,16 +291,6 @@ func (b *Batcher) removeRequests(batch types.BatchedRequests) {
 		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
 	}
 	b.MemPool.RemoveRequests(reqInfos...)
-}
-
-func (b *Batcher) sendBAF(baf BatchAttestationFragment) {
-	if len(baf.Digest()) != 32 {
-		panic(fmt.Sprintf("programming error: tried to send BAF with digest of size %d", len(baf.Digest())))
-	}
-
-	b.Logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
-
-	b.TotalOrderBAF(baf)
 }
 
 func (b *Batcher) runSecondary() {
@@ -319,8 +321,8 @@ func (b *Batcher) runSecondary() {
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			b.Ledger.Append(b.primary, uint64(b.seq), requests.Serialize())
 			b.removeRequests(requests)
-			baf := b.AttestBatch(b.seq, b.primary, b.Shard, b.Digest(requests))
-			b.sendBAF(baf)
+			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, b.Digest(requests))
+			b.BAFSender.SendBAF(baf)
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
 		}

@@ -35,6 +35,15 @@ func (n naiveTotalOrder) SubmitRequest(req []byte) error {
 	return nil
 }
 
+type bafSender struct {
+	totalOrder *naiveTotalOrder
+}
+
+func (s *bafSender) SendBAF(baf core.BatchAttestationFragment) {
+	ba := arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), baf.Signer(), nil, 0, nil)
+	s.totalOrder.SubmitRequest((&core.ControlEvent{BAF: ba}).Bytes())
+}
+
 type naiveblock struct {
 	seq         uint64
 	batch       core.Batch
@@ -191,10 +200,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	for shardID := 0; shardID < shardCount; shardID++ {
 		batcher := createTestBatcher(t, arma_types.ShardID(shardID), arma_types.PartyID(shardID), parties)
 		batcher.Logger = logger
-		batcher.TotalOrderBAF = func(baf core.BatchAttestationFragment) {
-			ba := arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), baf.Signer(), nil, 0, nil)
-			totalOrder.SubmitRequest((&core.ControlEvent{BAF: ba}).Bytes())
-		}
+		batcher.BAFSender = &bafSender{totalOrder: &totalOrder}
 		batcher.Threshold = 1
 		batchers = append(batchers, batcher)
 	}

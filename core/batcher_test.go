@@ -590,6 +590,11 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		return h.Sum(nil)
 	}
 
+	bafCreator := &mocks.FakeBAFCreator{}
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
+	})
+
 	batcher := &core.Batcher{
 		Batchers:         batchers,
 		BatchTimeout:     0,
@@ -603,12 +608,10 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		Ledger:           &mocks.FakeBatchLedger{},
 		BatchPuller:      &mocks.FakeBatchPuller{},
 		StateProvider:    &mocks.FakeStateProvider{},
-		AttestBatch: func(seq arma_types.BatchSequence, primary arma_types.PartyID, shard arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
-			return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
-		},
-		TotalOrderBAF: func(core.BatchAttestationFragment) {},
-		BatchAcker:    &mocks.FakeBatchAcker{},
-		MemPool:       &mocks.FakeMemPool{},
+		BAFCreator:       bafCreator,
+		BAFSender:        &mocks.FakeBAFSender{},
+		BatchAcker:       &mocks.FakeBatchAcker{},
+		MemPool:          &mocks.FakeMemPool{},
 	}
 
 	return batcher

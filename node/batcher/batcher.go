@@ -327,25 +327,25 @@ func NewBatcher(logger types.Logger, config node_config.BatcherNodeConfig, ledge
 	f := (initState.N - 1) / 3
 
 	b.batcher = &core.Batcher{
-		Batchers:      getBatchersIDs(b.batchers),
-		BatchPuller:   bp,
-		Threshold:     int(f + 1),
-		N:             initState.N,
-		BatchTimeout:  time.Millisecond * 500,
-		Ledger:        ledger,
-		MemPool:       b.createMemPool(config),
-		AttestBatch:   b.attestBatch,
-		StateProvider: b,
-		ID:            config.PartyId,
-		Shard:         config.ShardId,
-		Logger:        logger,
+		Batchers:     getBatchersIDs(b.batchers),
+		BatchPuller:  bp,
+		Threshold:    int(f + 1),
+		N:            initState.N,
+		BatchTimeout: time.Millisecond * 500,
+		Ledger:       ledger,
+		MemPool:      b.createMemPool(config),
+		ID:           config.PartyId,
+		Shard:        config.ShardId,
+		Logger:       logger,
 		Digest: func(data [][]byte) []byte {
 			batch := types.BatchedRequests(data)
 			digest := sha256.Sum256(batch.Serialize())
 			return digest[:]
 		},
+		StateProvider:    b,
 		RequestInspector: b,
-		TotalOrderBAF:    b.SendBAF, // TODO make interface
+		BAFCreator:       b,
+		BAFSender:        b,
 		BatchAcker:       b,
 		Complainer:       b,
 	}
@@ -397,7 +397,7 @@ func createSigner(logger types.Logger, signingPrivateKey node_config.RawBytes) *
 	return sk.(*ecdsa.PrivateKey)
 }
 
-func (b *Batcher) attestBatch(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
+func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
 	baf, err := CreateBAF(b.privateKey, b.config.PartyId, shard, digest, primary, seq)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
@@ -610,6 +610,7 @@ func (b *Batcher) Complain() {
 }
 
 func (b *Batcher) SendBAF(baf core.BatchAttestationFragment) {
+	b.logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
 	b.broadcastControlEvent(core.ControlEvent{BAF: baf})
 }
 
