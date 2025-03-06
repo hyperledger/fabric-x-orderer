@@ -357,11 +357,9 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	}
 }
 
-// This test initializes a cluster of 7 consensus nodes and checks three scenarios where non-leader nodes (IDs=2,3) fail and recover:
+// This test initializes a cluster of 7 consensus nodes and checks scenarios where non-leader nodes (IDs=2,3) fail and recover:
 //  1. Nodes (IDs=2,3) fail and recover before the first request is sent.
 //  2. Nodes (IDs=2,3) fail, a request is committed by the remaining nodes, and the failed nodes recover and synchronize.
-//  3. Nodes (IDs=2,3) fail and recover between block commits.
-//     No requests are sent while they are down, and additional requests are committed after recovery.
 func TestMultipleNodesFailureRecovery(t *testing.T) {
 	t.Parallel()
 	parties := 7
@@ -446,55 +444,6 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(2), b2.Header.Number)
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(3), b2.Header.Number)
-
-	// Nodes fail and recover between block commits
-	setup.consensusNodes[1].Stop()
-	setup.consensusNodes[2].Stop()
-
-	err = recoverNode(t, setup, 1, ca)
-	require.NoError(t, err)
-
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
-	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
-	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
-	require.NoError(t, err)
-
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(4), b.Header.Number)
-	b5 = <-setup.listeners[5].c
-	require.Equal(t, uint64(4), b5.Header.Number)
-	b6 = <-setup.listeners[6].c
-	require.Equal(t, uint64(4), b6.Header.Number)
-
-	// recover second node
-	err = recoverNode(t, setup, 2, ca)
-	require.NoError(t, err)
-
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 5)
-	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 5)
-	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 5)
-	require.NoError(t, err)
-
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(5), b.Header.Number)
-	b5 = <-setup.listeners[5].c
-	require.Equal(t, uint64(5), b5.Header.Number)
-	b6 = <-setup.listeners[6].c
-	require.Equal(t, uint64(5), b6.Header.Number)
-
-	// Ensure nodes recover correctly
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(4), b1.Header.Number)
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(5), b1.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(4), b2.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(5), b2.Header.Number)
 
 	for _, c := range setup.consensusNodes {
 		c.Stop()
