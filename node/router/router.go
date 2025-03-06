@@ -218,18 +218,6 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	return prepareRequestResponse(&response), nil
 }
 
-// func (r *Router) sendFeedbackAtomicBroadcast(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, errors chan response) {
-// 	for {
-// 		select {
-// 		case <-exit:
-// 			return
-// 		case response := <-errors:
-// 			resp := prepareAtomicBroadcastResponse(&response)
-// 			stream.Send(resp)
-// 		}
-// 	}
-// }
-
 func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, errors chan Response) {
 	for {
 		select {
@@ -241,17 +229,6 @@ func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitS
 		}
 	}
 }
-
-// func prepareAtomicBroadcastResponse(response *response) *orderer.BroadcastResponse {
-// 	resp := &orderer.BroadcastResponse{}
-// 	if response.SubmitResponse != nil {
-// 		resp.Status = common.Status_SUCCESS
-// 	} else { // It's an error
-// 		resp.Status = common.Status_INTERNAL_SERVER_ERROR
-// 		resp.Info = response.Error
-// 	}
-// 	return resp
-// }
 
 func prepareRequestResponse(response *Response) *protos.SubmitResponse {
 	resp := &protos.SubmitResponse{

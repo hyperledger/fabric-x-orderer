@@ -316,14 +316,3 @@ func (sr *ShardRouter) initConnPoolAndStreamsOnce() {
 		}
 	})
 }
-
-// func (sr *ShardRouter) getConnByIndex(connIndex int) *grpc.ClientConn {
-// 	sr.lock.RLock()
-// 	defer sr.lock.RUnlock()
-
-// 	conn := sr.connPool[connIndex]
-// 	if conn == nil {
-// 		return nil
-// 	}
-// 	return conn
-// }
