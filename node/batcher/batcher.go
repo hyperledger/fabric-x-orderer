@@ -45,6 +45,11 @@ type StateReplicator interface {
 	ReplicateState() <-chan *core.State
 }
 
+// Signer signs messages
+type Signer interface {
+	Sign([]byte) ([]byte, error)
+}
+
 type Net interface {
 	Stop()
 }
@@ -61,6 +66,7 @@ type Batcher struct {
 	config                *node_config.BatcherNodeConfig
 	batchers              []node_config.BatcherInfo
 	privateKey            *ecdsa.PrivateKey
+	signer                Signer
 
 	stateRef  atomic.Value
 	stateChan chan *core.State
@@ -296,10 +302,13 @@ func (b *Batcher) indexTLSCerts() {
 }
 
 func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
+	privateKey := createPrivateKey(logger, config.SigningPrivateKey)
+
 	b := &Batcher{
 		batcherDeliverService: ds,
 		stateReplicator:       sr,
-		privateKey:            createSigner(logger, config.SigningPrivateKey),
+		privateKey:            privateKey,
+		signer:                crypto.ECDSASigner(*privateKey),
 		logger:                logger,
 		Net:                   net,
 		Ledger:                ledger,
@@ -383,7 +392,7 @@ func (b *Batcher) OnSecondStrikeTimeout() {
 	b.Complain() // TODO add complaint reason
 }
 
-func createSigner(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {
+func createPrivateKey(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {
 	bl, _ := pem.Decode(signingPrivateKey)
 
 	if bl == nil || bl.Bytes == nil {
@@ -399,7 +408,7 @@ func createSigner(logger types.Logger, signingPrivateKey node_config.RawBytes) *
 }
 
 func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
-	baf, err := CreateBAF(b.privateKey, b.config.PartyId, shard, digest, primary, seq)
+	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -436,7 +445,7 @@ func (b *Batcher) createComplaint() *core.Complaint {
 	b.primaryLock.Lock()
 	term := b.term
 	b.primaryLock.Unlock()
-	c, err := CreateComplaint(b.privateKey, b.config.PartyId, b.config.ShardId, term)
+	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term)
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
 	}
@@ -640,14 +649,13 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func CreateComplaint(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, term uint64) (*core.Complaint, error) {
+func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64) (*core.Complaint, error) {
 	c := &core.Complaint{
 		ShardTerm: core.ShardTerm{Shard: shard, Term: term},
 		Signer:    id,
 		Signature: nil,
 	}
-	signer := crypto.ECDSASigner(*sk)       // TODO maybe use a different signer
-	sig, err := signer.Sign(c.ToBeSigned()) // TODO add a signer interface
+	sig, err := signer.Sign(c.ToBeSigned())
 	if err != nil {
 		return nil, err
 	}
@@ -656,10 +664,9 @@ func CreateComplaint(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID
 	return c, nil
 }
 
-func CreateBAF(sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (core.BatchAttestationFragment, error) {
+func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (core.BatchAttestationFragment, error) {
 	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, 0, nil)
-	signer := crypto.ECDSASigner(*sk)         // TODO maybe use a different signer
-	sig, err := signer.Sign(baf.ToBeSigned()) // TODO add a signer interface
+	sig, err := signer.Sign(baf.ToBeSigned())
 	if err != nil {
 		return nil, err
 	}

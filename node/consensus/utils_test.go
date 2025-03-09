@@ -17,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus"
+	"github.ibm.com/decentralized-trust-research/arma/node/crypto"
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
@@ -242,7 +243,7 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 
 // helper function to create and submit a request for testing
 func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence) error {
-	baf, err := batcher.CreateBAF(sk, id, shard, digest, primary, sequence)
+	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence)
 	if err != nil {
 		return err
 	}
