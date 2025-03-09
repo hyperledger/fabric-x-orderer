@@ -16,11 +16,15 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/config"
 
 	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 
@@ -303,6 +307,37 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating shared config: %s", err)
 		os.Exit(-1)
+	}
+
+	sharedConfig, err := config.LoadSharedConfig(filepath.Join(*outputDir, "bootstrap", "shared_config.yaml"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	// generate user config yaml file for each party
+	// user will be able to connect to each of the routers and assemblers only if it receives for each router the CA that signed the certificate of that router.
+	// therefore, the CA created per party must be collected for each party, to which the router is associated.
+	var tlsCACertsBytesPartiesCollection [][]byte
+	for _, party := range sharedConfig.PartiesConfig {
+		tlsCACertsBytesPartiesCollection = append(tlsCACertsBytesPartiesCollection, party.TLSCACerts...)
+	}
+
+	for i := range sharedConfig.PartiesConfig {
+		userTLSPrivateKeyPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user-key.pem")
+		userTLSCertPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user-tls-cert.pem")
+
+		userConfig, err := NewUserConfig(userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating user config: %s", err)
+			os.Exit(-1)
+		}
+
+		err = utils.WriteToYAML(userConfig, filepath.Join(*outputDir, "config", fmt.Sprintf("party%d", i+1), "user_config.yaml"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating user config yaml: %s", err)
+			os.Exit(-1)
+		}
 	}
 }
 
