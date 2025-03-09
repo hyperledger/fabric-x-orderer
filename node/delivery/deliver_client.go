@@ -51,7 +51,7 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 }
 
 func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
-	logger.Infof("Assembler pulling from: %s", channel)
+	logger.Infof("Started pulling from: %s", channel)
 	for {
 		time.Sleep(time.Second)
 
