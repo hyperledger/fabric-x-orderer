@@ -40,7 +40,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -80,7 +80,7 @@ func TestArmageddonWithTLSWithNoSampleConfigPathFlag(t *testing.T) {
 
 	// 2.
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// 3.
 	// compile arma
@@ -122,7 +122,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -175,7 +175,7 @@ func TestLoadStepsFails(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -225,7 +225,7 @@ func TestLoadAndReceive(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -278,7 +278,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -321,7 +321,7 @@ func TestArmageddonSharedConfigProtoFromSharedConfigYAML(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	sharedConfigYAMLPath := filepath.Join(dir, "bootstrap", "shared_config.yaml")
@@ -358,7 +358,7 @@ func TestArmageddonCreateBlockFromSharedConfigYAML(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	sharedConfigYAMLPath := filepath.Join(dir, "bootstrap", "shared_config.yaml")
@@ -382,7 +382,7 @@ func TestArmageddonGenerateNewConfig(t *testing.T) {
 	// 2.
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	err = checkConfigDir(dir)

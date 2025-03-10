@@ -9,13 +9,9 @@ package armageddon
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/binary"
 	"encoding/csv"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"math"
@@ -38,13 +34,10 @@ import (
 	"github.com/alecthomas/kingpin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
-	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
@@ -90,54 +83,6 @@ func init() {
 
 var logger = flogging.MustGetLogger("armageddon")
 
-type NetworkCryptoConfig struct {
-	// map from party to its crypto config
-	PartyToCryptoConfig map[types.PartyID]CryptoConfigPerParty
-}
-
-type CryptoConfigPerParty struct {
-	CAs                   []tlsgen.CA
-	AssemblerCertKeyPair  *tlsgen.CertKeyPair
-	ConsenterCertsAndKeys CertsAndKeys
-	RouterCertKeyPair     *tlsgen.CertKeyPair
-	// map from batcher's endpoint to its (cert,key) Pair
-	BatchersCertsAndKeys map[string]CertsAndKeys
-	UserInfo             UserInfo
-}
-
-// UserInfo holds the user information needed for connection to routers and assemblers
-// Note: a user will be created for each party. One of the users will be chosen as a grpc client that sends tx to all router and receives blocks from the assemblers.
-type UserInfo struct {
-	TLSPrivateKeyFile  nodeconfig.RawBytes
-	TLSCertificateFile nodeconfig.RawBytes
-	RouterEndpoints    []string
-	AssemblerEndpoints []string
-	TLSCACerts         []nodeconfig.RawBytes
-	UseTLS             bool
-}
-
-type CertsAndKeys struct {
-	TLSCertKeyPair *tlsgen.CertKeyPair
-	PrivateKey     []byte
-	PublicKey      []byte
-}
-
-type NetworkConfig struct {
-	PartiesConfig []PartyConfig
-}
-
-type PartyConfig struct {
-	RouterConfig    nodeconfig.RouterNodeConfig
-	BatchersConfig  []nodeconfig.BatcherNodeConfig
-	ConsenterConfig nodeconfig.ConsenterNodeConfig
-	AssemblerConfig nodeconfig.AssemblerNodeConfig
-}
-
-type SharedConfig struct {
-	Shards     []nodeconfig.ShardInfo
-	Consenters []nodeconfig.ConsenterInfo
-}
-
 type protectedMap struct {
 	keyValMap map[string]bool
 	mutex     sync.Mutex
@@ -169,7 +114,6 @@ type CLI struct {
 	genConfigFile    **os.File
 	sampleConfigPath *string
 	useTLS           *bool
-	version          *int
 	// submit command flags
 	userConfigFile **os.File
 	transactions   *int // transactions is the number of txs to be sent
@@ -207,7 +151,6 @@ func (cli *CLI) configureCommands() {
 	cli.outputDir = gen.Flag("output", "The output directory in which to place config files").Default("arma-config").String()
 	cli.genConfigFile = gen.Flag("config", "The configuration template to use").File()
 	cli.useTLS = gen.Flag("useTLS", "Defines if the connection between a client to a router and an assembler is a TLS one or not").Bool()
-	cli.version = gen.Flag("version", "The version of the configuration, for old config set version to 1, for new config set version to 2").Default("2").Int()
 	cli.sampleConfigPath = gen.Flag("sampleConfigPath", "The path to the sample config files").String()
 	commands["generate"] = gen
 
@@ -257,16 +200,8 @@ func (cli *CLI) Run(args []string) {
 
 	// "generate" command
 	case cli.commands["generate"].FullCommand():
-		if *cli.version == 1 {
-			generate(cli.genConfigFile, cli.outputDir, cli.useTLS)
-		} else if *cli.version == 2 {
-			generateConfigAndCrypto(cli.genConfigFile, cli.outputDir, cli.sampleConfigPath)
-			logger.Infof("Configuration material was created successfully in %s", *cli.outputDir)
-
-		} else {
-			fmt.Fprintf(os.Stderr, "Invalid version: %d", *cli.version)
-			os.Exit(-1)
-		}
+		generateConfigAndCrypto(cli.genConfigFile, cli.outputDir, cli.sampleConfigPath)
+		logger.Infof("Configuration material was created successfully in %s", *cli.outputDir)
 
 	// "showtemplate" command
 	case cli.commands["showtemplate"].FullCommand():
@@ -357,29 +292,6 @@ func sharedConfigToBlock(sharedConfig *protos.SharedConfig, sharedConfigYaml *co
 		fmt.Fprintf(os.Stderr, "Error creation bootstrap config block: %s", err)
 		os.Exit(-1)
 	}
-}
-
-// generate is generating configuration files in the old format.
-func generate(genConfigFile **os.File, outputDir *string, useTLS *bool) {
-	// get config file content given as argument
-	networkConfigFileContent, err := getConfigFileContent(genConfigFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
-		os.Exit(-1)
-	}
-
-	// create crypto config material for each party
-	networkCryptoConfig := createNetworkCryptoConfig(networkConfigFileContent, useTLS)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating network crypto config: %s", err)
-		os.Exit(-1)
-	}
-
-	// parse the file and use the crypto material to create the network config
-	networkConfig := parseNetworkConfig(networkConfigFileContent, networkCryptoConfig, useTLS)
-
-	// create config material for each party in a folder structure
-	createConfigMaterial(networkConfig, networkCryptoConfig, outputDir)
 }
 
 // generateConfigAndCrypto is generating the crypto material and the configuration files in the new format.
@@ -476,384 +388,6 @@ func getConfigFileContent(genConfigFile **os.File) (*genconfig.Network, error) {
 	}
 
 	return &network, nil
-}
-
-func createNetworkCryptoConfig(network *genconfig.Network, useTLS *bool) *NetworkCryptoConfig {
-	// collect router and assembler endpoints, required for defining a user for each party
-	var routerEndpoints []string
-	var assemblerEndpoints []string
-	for _, party := range network.Parties {
-		routerEndpoints = append(routerEndpoints, party.RouterEndpoint)
-		assemblerEndpoints = append(assemblerEndpoints, party.AssemblerEndpoint)
-	}
-
-	// create CA for each party
-	partiesCAs := make(map[types.PartyID][]tlsgen.CA)
-	var tlsCACertsBytesPartiesCollection []nodeconfig.RawBytes
-	for _, party := range network.Parties {
-		// create CA for the party
-		// NOTE: a party can have several CA's, meanwhile armageddon creates only one CA for each party.
-		ca, err := tlsgen.NewCA()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed creating CA for party %d", err, party.ID)
-			os.Exit(2)
-		}
-		partiesCAs[party.ID] = []tlsgen.CA{ca}
-		// user will be able to connect to each of the routers only if it receives for each router the CA that signed the certificate of that router.
-		// therefore, the CA created per party must be collected for each party, to which the router is associated.
-		tlsCACertsBytesPartiesCollection = append(tlsCACertsBytesPartiesCollection, ca.CertBytes())
-	}
-
-	partyToCryptoConfig := make(map[types.PartyID]CryptoConfigPerParty)
-
-	for _, party := range network.Parties {
-		// ca's of the party
-		listOfCAs := partiesCAs[party.ID]
-		ca := listOfCAs[0]
-
-		// create crypto material for each party's nodes
-		// crypto for assembler
-		assemblerCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(party.AssemblerEndpoint))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for assembler node", err)
-			os.Exit(2)
-		}
-
-		// crypto for consenter
-		// (cert,key) pair for consenter
-		consenterCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(party.ConsenterEndpoint))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for consenter node", err)
-			os.Exit(2)
-		}
-
-		// private and public key for consenter
-		privateKeyConsenter, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed creating private key for consenter node %s", err, party.ConsenterEndpoint)
-			os.Exit(2)
-		}
-		privateKeyBytesConsenter, err := x509.MarshalPKCS8PrivateKey(privateKeyConsenter)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed marshaling private key for consenter node %s", err, party.ConsenterEndpoint)
-			os.Exit(2)
-		}
-		privateKeyPEMConsenter := pem.EncodeToMemory(&pem.Block{
-			Bytes: privateKeyBytesConsenter, Type: "PRIVATE KEY",
-		})
-
-		publicKeyConsenter := privateKeyConsenter.PublicKey
-		publicKeyBytesConsenter, err := x509.MarshalPKIXPublicKey(&publicKeyConsenter)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed marshaling public key for consenter node %s", err, party.ConsenterEndpoint)
-			os.Exit(2)
-		}
-		publicKeyPEMConsenter := pem.EncodeToMemory(&pem.Block{
-			Bytes: publicKeyBytesConsenter, Type: "PUBLIC KEY",
-		})
-
-		consenterCertsAndKeys := CertsAndKeys{
-			TLSCertKeyPair: consenterCertKeyPair,
-			PrivateKey:     privateKeyPEMConsenter,
-			PublicKey:      publicKeyPEMConsenter,
-		}
-
-		// crypto for router
-		routerCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(party.RouterEndpoint))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for assembler node", err)
-			os.Exit(2)
-		}
-
-		// crypto for batchers
-		batcherEndpointToCertsAndKeys := make(map[string]CertsAndKeys)
-		for _, batcherEndpoint := range party.BatchersEndpoints {
-			// (cert,key) pair for a batcher
-			batcherCertKeyPair, err := ca.NewServerCertKeyPair(trimPortFromEndpoint(batcherEndpoint))
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for batcher node %s", err, batcherEndpoint)
-				os.Exit(2)
-			}
-
-			// private and public key for a batcher
-			privateKeyBatcher, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "err: %s, failed creating private key for batcher node %s", err, batcherEndpoint)
-				os.Exit(2)
-			}
-			privateKeyBytesBatcher, err := x509.MarshalPKCS8PrivateKey(privateKeyBatcher)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "err: %s, failed marshaling private key for batcher node %s", err, batcherEndpoint)
-				os.Exit(2)
-			}
-			privateKeyPEMBatcher := pem.EncodeToMemory(&pem.Block{
-				Bytes: privateKeyBytesBatcher, Type: "PRIVATE KEY",
-			})
-
-			publicKeyBatcher := privateKeyBatcher.PublicKey
-			publicKeyBytesBatcher, err := x509.MarshalPKIXPublicKey(&publicKeyBatcher)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "err: %s, failed marshaling public key for batcher node %s", err, batcherEndpoint)
-				os.Exit(2)
-			}
-			publicKeyPEMBatcher := pem.EncodeToMemory(&pem.Block{
-				Bytes: publicKeyBytesBatcher, Type: "PUBLIC KEY",
-			})
-
-			batcherEndpointToCertsAndKeys[batcherEndpoint] = CertsAndKeys{
-				TLSCertKeyPair: batcherCertKeyPair,
-				PrivateKey:     privateKeyPEMBatcher,
-				PublicKey:      publicKeyPEMBatcher,
-			}
-		}
-
-		// crypto for user
-		// (cert, key) pair for user
-		userTlsCertKayPair, err := ca.NewClientCertKeyPair()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "err: %s, failed creating (cert,key) pair for the user of party %d", err, party.ID)
-			os.Exit(2)
-		}
-
-		userInfo := UserInfo{
-			TLSPrivateKeyFile:  userTlsCertKayPair.Key,
-			TLSCertificateFile: userTlsCertKayPair.Cert,
-			RouterEndpoints:    routerEndpoints,
-			AssemblerEndpoints: assemblerEndpoints,
-			TLSCACerts:         tlsCACertsBytesPartiesCollection,
-			UseTLS:             *useTLS,
-		}
-
-		partyCryptoConfig := CryptoConfigPerParty{
-			CAs:                   listOfCAs,
-			AssemblerCertKeyPair:  assemblerCertKeyPair,
-			ConsenterCertsAndKeys: consenterCertsAndKeys,
-			RouterCertKeyPair:     routerCertKeyPair,
-			BatchersCertsAndKeys:  batcherEndpointToCertsAndKeys,
-			UserInfo:              userInfo,
-		}
-		partyToCryptoConfig[party.ID] = partyCryptoConfig
-	}
-
-	networkCryptoConfig := &NetworkCryptoConfig{
-		PartyToCryptoConfig: partyToCryptoConfig,
-	}
-
-	return networkCryptoConfig
-}
-
-func parseNetworkConfig(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig, useTLS *bool) *NetworkConfig {
-	// construct shared config
-	sharedConfig := constructSharedConfig(network, networkCryptoConfig)
-
-	var partiesConfig []PartyConfig
-
-	for _, party := range network.Parties {
-		partyConfig := PartyConfig{
-			RouterConfig:    constructRouterNodeConfigPerParty(party.ID, sharedConfig.Shards, networkCryptoConfig.PartyToCryptoConfig[party.ID].RouterCertKeyPair, trimHostFromEndpoint(party.RouterEndpoint), useTLS),
-			BatchersConfig:  constructBatchersNodeConfigPerParty(party.ID, party.BatchersEndpoints, sharedConfig, networkCryptoConfig.PartyToCryptoConfig[party.ID].BatchersCertsAndKeys),
-			ConsenterConfig: constructConsenterNodeConfigPerParty(party.ID, sharedConfig, networkCryptoConfig.PartyToCryptoConfig[party.ID].ConsenterCertsAndKeys, trimHostFromEndpoint(party.ConsenterEndpoint)),
-			AssemblerConfig: constructAssemblerNodeConfigPerParty(party.ID, sharedConfig.Shards, party.ConsenterEndpoint, networkCryptoConfig, trimHostFromEndpoint(party.AssemblerEndpoint), useTLS),
-		}
-		partiesConfig = append(partiesConfig, partyConfig)
-	}
-
-	networkConfig := &NetworkConfig{
-		PartiesConfig: partiesConfig,
-	}
-
-	return networkConfig
-}
-
-func constructRouterNodeConfigPerParty(partyID types.PartyID, shards []nodeconfig.ShardInfo, certKeyPair *tlsgen.CertKeyPair, port string, useTLS *bool) nodeconfig.RouterNodeConfig {
-	return nodeconfig.RouterNodeConfig{
-		ListenAddress:                 "0.0.0.0:" + port,
-		PartyID:                       partyID,
-		TLSCertificateFile:            certKeyPair.Cert,
-		TLSPrivateKeyFile:             certKeyPair.Key,
-		Shards:                        shards,
-		NumOfConnectionsForBatcher:    10,
-		NumOfgRPCStreamsPerConnection: 5,
-		UseTLS:                        *useTLS,
-	}
-}
-
-func constructBatchersNodeConfigPerParty(partyId types.PartyID, batcherEndpoints []string, sharedConfig SharedConfig, batchersCertsAndKeys map[string]CertsAndKeys) []nodeconfig.BatcherNodeConfig {
-	var batchers []nodeconfig.BatcherNodeConfig
-	for i, batcherEndpoint := range batcherEndpoints {
-		batcherCertsAndKeys := batchersCertsAndKeys[batcherEndpoint]
-		batcher := nodeconfig.BatcherNodeConfig{
-			ListenAddress:      "0.0.0.0:" + trimHostFromEndpoint(batcherEndpoint),
-			Shards:             sharedConfig.Shards,
-			Consenters:         sharedConfig.Consenters,
-			Directory:          "",
-			PartyId:            partyId,
-			ShardId:            types.ShardID(i + 1),
-			TLSPrivateKeyFile:  batcherCertsAndKeys.TLSCertKeyPair.Key,
-			TLSCertificateFile: batcherCertsAndKeys.TLSCertKeyPair.Cert,
-			SigningPrivateKey:  batcherCertsAndKeys.PrivateKey,
-		}
-
-		batchers = append(batchers, batcher)
-	}
-	return batchers
-}
-
-func constructConsenterNodeConfigPerParty(partyId types.PartyID, sharedConfig SharedConfig, consenterCertsAndKeys CertsAndKeys, port string) nodeconfig.ConsenterNodeConfig {
-	return nodeconfig.ConsenterNodeConfig{
-		ListenAddress:      "0.0.0.0:" + port,
-		Shards:             sharedConfig.Shards,
-		Consenters:         sharedConfig.Consenters,
-		Directory:          "",
-		PartyId:            partyId,
-		TLSPrivateKeyFile:  consenterCertsAndKeys.TLSCertKeyPair.Key,
-		TLSCertificateFile: consenterCertsAndKeys.TLSCertKeyPair.Cert,
-		SigningPrivateKey:  consenterCertsAndKeys.PrivateKey,
-	}
-}
-
-func constructAssemblerNodeConfigPerParty(partyId types.PartyID, shards []nodeconfig.ShardInfo, consenterEndpoint string, networkCryptoConfig *NetworkCryptoConfig, port string, useTLS *bool) nodeconfig.AssemblerNodeConfig {
-	partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[partyId]
-	var tlsCACertsCollection []nodeconfig.RawBytes
-	for _, ca := range partyCryptoConfig.CAs {
-		tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
-	}
-
-	return nodeconfig.AssemblerNodeConfig{
-		ListenAddress:      "0.0.0.0:" + port,
-		TLSPrivateKeyFile:  partyCryptoConfig.AssemblerCertKeyPair.Key,
-		TLSCertificateFile: partyCryptoConfig.AssemblerCertKeyPair.Cert,
-		PartyId:            partyId,
-		Directory:          "",
-		Shards:             shards,
-		Consenter: nodeconfig.ConsenterInfo{
-			PartyID:    partyId,
-			Endpoint:   consenterEndpoint,
-			PublicKey:  partyCryptoConfig.ConsenterCertsAndKeys.PublicKey,
-			TLSCACerts: tlsCACertsCollection,
-		},
-		UseTLS: *useTLS,
-	}
-}
-
-func constructShards(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig) []nodeconfig.ShardInfo {
-	// construct a map that maps between shardId and batchers
-	shardToBatchers := make(map[types.ShardID][]nodeconfig.BatcherInfo)
-	for _, party := range network.Parties {
-		for idx, batcherEndpoint := range party.BatchersEndpoints {
-			shardId := types.ShardID(idx + 1)
-
-			partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[party.ID]
-			var tlsCACertsCollection []nodeconfig.RawBytes
-			for _, ca := range partyCryptoConfig.CAs {
-				tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
-			}
-			batcherCertsAndKeys := partyCryptoConfig.BatchersCertsAndKeys[batcherEndpoint]
-
-			batcher := nodeconfig.BatcherInfo{
-				PartyID:    party.ID,
-				Endpoint:   batcherEndpoint,
-				TLSCACerts: tlsCACertsCollection,
-				PublicKey:  batcherCertsAndKeys.PublicKey,
-				TLSCert:    batcherCertsAndKeys.TLSCertKeyPair.Cert,
-			}
-			shardToBatchers[shardId] = append(shardToBatchers[shardId], batcher)
-		}
-	}
-
-	// build Shards from the map
-	var shards []nodeconfig.ShardInfo
-	for shardId, batchers := range shardToBatchers {
-		shardInfo := nodeconfig.ShardInfo{
-			ShardId:  shardId,
-			Batchers: batchers,
-		}
-		shards = append(shards, shardInfo)
-	}
-
-	return shards
-}
-
-func constructConsenters(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig) []nodeconfig.ConsenterInfo {
-	var consenters []nodeconfig.ConsenterInfo
-	for _, party := range network.Parties {
-		partyCryptoConfig := networkCryptoConfig.PartyToCryptoConfig[party.ID]
-		var tlsCACertsCollection []nodeconfig.RawBytes
-		for _, ca := range partyCryptoConfig.CAs {
-			tlsCACertsCollection = append(tlsCACertsCollection, ca.CertBytes())
-		}
-		consenterCertsAndKeys := partyCryptoConfig.ConsenterCertsAndKeys
-
-		consenterInfo := nodeconfig.ConsenterInfo{
-			PartyID:    party.ID,
-			Endpoint:   party.ConsenterEndpoint,
-			PublicKey:  consenterCertsAndKeys.PublicKey,
-			TLSCACerts: tlsCACertsCollection,
-		}
-		consenters = append(consenters, consenterInfo)
-	}
-	return consenters
-}
-
-func constructSharedConfig(network *genconfig.Network, networkCryptoConfig *NetworkCryptoConfig) SharedConfig {
-	shards := constructShards(network, networkCryptoConfig)
-	consenters := constructConsenters(network, networkCryptoConfig)
-
-	return SharedConfig{
-		Shards:     shards,
-		Consenters: consenters,
-	}
-}
-
-func createConfigMaterial(networkConfig *NetworkConfig, networkCryptoConfig *NetworkCryptoConfig, outputDir *string) {
-	for i, partyConfig := range networkConfig.PartiesConfig {
-		rootDir := path.Join(*outputDir, fmt.Sprintf("Party%d", i+1))
-		os.MkdirAll(rootDir, 0o755)
-
-		configPath := path.Join(rootDir, "router_node_config.yaml")
-		err := nodeconfig.NodeConfigToYAML(partyConfig.RouterConfig, configPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error creating router node config yaml file, err: %v", err)
-			os.Exit(1)
-		}
-
-		for j, batcherConfig := range partyConfig.BatchersConfig {
-			configPath = path.Join(rootDir, fmt.Sprintf("batcher_node_%d_config.yaml", j+1))
-			err = nodeconfig.NodeConfigToYAML(batcherConfig, configPath)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error creating batcher node %d config yaml file, err: %v", j, err)
-				os.Exit(1)
-			}
-		}
-
-		configPath = path.Join(rootDir, "consenter_node_config.yaml")
-		err = nodeconfig.NodeConfigToYAML(partyConfig.ConsenterConfig, configPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error creating consenter node config yaml file, err: %v", err)
-			os.Exit(1)
-		}
-
-		configPath = path.Join(rootDir, "assembler_node_config.yaml")
-		err = nodeconfig.NodeConfigToYAML(partyConfig.AssemblerConfig, configPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error creating assembler node config yaml file, err: %v", err)
-			os.Exit(1)
-		}
-
-		userInfo := networkCryptoConfig.PartyToCryptoConfig[types.PartyID(i+1)].UserInfo
-		configPath = path.Join(rootDir, "user_config.yaml")
-		uca, err := yaml.Marshal(&userInfo)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error marshaling user config yaml file, err: %v", err)
-			os.Exit(1)
-		}
-
-		err = os.WriteFile(configPath, uca, 0o644)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error writing user config yaml file, err: %v", err)
-			os.Exit(1)
-		}
-	}
 }
 
 func showtemplate() {
@@ -995,18 +529,6 @@ func trimPortFromEndpoint(endpoint string) string {
 			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
 		}
 		return host
-	}
-
-	return endpoint
-}
-
-func trimHostFromEndpoint(endpoint string) string {
-	if strings.Contains(endpoint, ":") {
-		_, port, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		return port
 	}
 
 	return endpoint

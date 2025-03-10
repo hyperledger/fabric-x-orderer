@@ -195,7 +195,7 @@ func setup(t *testing.T, offset int) string {
 	CreateNetworkWithDefaultPorts(t, configPath, offset)
 
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
 	return dir
 }
 
