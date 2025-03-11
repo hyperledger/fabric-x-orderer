@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	rand2 "math/rand"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -94,7 +95,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 }
 
 func createRouter(shardIDs []types.ShardID,
-	batcherEndpoints []string,
+	batcherEndpoints map[types.ShardID]string,
 	batcherRootCAs map[types.ShardID][][]byte,
 	tlsCert []byte,
 	tlsKey []byte,
@@ -120,8 +121,8 @@ func createRouter(shardIDs []types.ShardID,
 		shardIDs:     shardIDs,
 	}
 
-	for i, shardId := range shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[i], batcherRootCAs[shardId], tlsCert, tlsKey, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection)
+	for _, shardId := range shardIDs {
+		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], tlsCert, tlsKey, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection)
 	}
 
 	go func() {
@@ -259,8 +260,10 @@ func createTraceID(rand *rand2.Rand) []byte {
 }
 
 func NewRouter(config *config.RouterNodeConfig, logger types.Logger) *Router {
+	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
-	var batcherEndpoints []string
+	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
+	batcherEndpoints := make(map[types.ShardID]string)
 	tlsCAsOfBatchers := make(map[types.ShardID][][]byte)
 	for _, shard := range config.Shards {
 		shardIDs = append(shardIDs, shard.ShardId)
@@ -268,7 +271,7 @@ func NewRouter(config *config.RouterNodeConfig, logger types.Logger) *Router {
 			if config.PartyID != batcher.PartyID {
 				continue
 			}
-			batcherEndpoints = append(batcherEndpoints, batcher.Endpoint)
+			batcherEndpoints[shard.ShardId] = batcher.Endpoint
 			var tlsCAsOfBatcher [][]byte
 			for _, rawTLSCA := range batcher.TLSCACerts {
 				tlsCAsOfBatcher = append(tlsCAsOfBatcher, rawTLSCA)
@@ -277,6 +280,11 @@ func NewRouter(config *config.RouterNodeConfig, logger types.Logger) *Router {
 			tlsCAsOfBatchers[shard.ShardId] = tlsCAsOfBatcher
 		}
 	}
+
+	sort.Slice(shardIDs, func(i, j int) bool {
+		return int(shardIDs[i]) < int(shardIDs[j])
+	})
+
 	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.NumOfConnectionsForBatcher, config.NumOfgRPCStreamsPerConnection)
 	r.init()
 	return r
