@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"time"
 
@@ -189,6 +190,10 @@ func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {
 		}
 		shards = append(shards, shardInfo)
 	}
+
+	sort.Slice(shards, func(i, j int) bool {
+		return int(shards[i].ShardId) < int(shards[j].ShardId)
+	})
 
 	return shards
 }
