@@ -193,6 +193,7 @@ func (r *Router) initRand() *rand2.Rand {
 func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 	shardIndex, reqID := r.router.Map(req.Payload)
 	shardId := r.shardIDs[shardIndex]
+	r.logger.Debugf("request %x is mapped to shard %d", req.Payload, shardId)
 	router, exists := r.shardRouters[shardId]
 	if !exists {
 		r.logger.Panicf("Mapped request %d to a non existent shard", shardId)
