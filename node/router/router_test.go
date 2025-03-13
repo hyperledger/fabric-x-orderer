@@ -35,6 +35,15 @@ type routerTestSetup struct {
 	clientConn *grpc.ClientConn
 }
 
+func (r *routerTestSetup) Close() {
+	r.clientConn.Close()
+	r.router.Stop()
+
+	for _, batcher := range r.batchers {
+		batcher.server.Stop()
+	}
+}
+
 func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int) *routerTestSetup {
 	// create a CA that issues a certificate for the router and the batchers
 	ca, err := tlsgen.NewCA()
@@ -71,13 +80,14 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int)
 // 2. send 10 requests by client to router
 // 3. check that the batcher received the expected number of requests
 func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
-	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	defer testSetup.Close()
 
-	err := submitStreamRequests(routerTestSetup.clientConn, 10)
+	err := submitStreamRequests(testSetup.clientConn, 10)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(10)
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(10)
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
@@ -86,33 +96,35 @@ func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
 // 2. send a request by client to router
 // 3. check that the batcher received one request
 func TestStubBatcherReceivesClientRouterSingleRequest(t *testing.T) {
-	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	defer testSetup.Close()
 
-	err := submitRequest(routerTestSetup.clientConn)
+	err := submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(1)
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(1)
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func TestClientRouterFailsToSendRequestOnBatcherServerStop(t *testing.T) {
 	t.Skip()
 	// TODO: check if the reason for error is the connectivity to batcher
-	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	defer testSetup.Close()
 
 	// send request, should succeed
-	err := submitRequest(routerTestSetup.clientConn)
+	err := submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		return routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(1)
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(1)
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// stop the batcher and send request, expect to error
-	routerTestSetup.batchers[0].Stop()
-	err = submitRequest(routerTestSetup.clientConn)
+	testSetup.batchers[0].Stop()
+	err = submitRequest(testSetup.clientConn)
 	require.NotNil(t, err)
-	require.EqualError(t, err, "receiving response with error: could not establish stream to "+routerTestSetup.batchers[0].server.Address())
+	require.EqualError(t, err, "receiving response with error: could not establish stream to "+testSetup.batchers[0].server.Address())
 }
 
 // Scenario:
@@ -120,13 +132,14 @@ func TestClientRouterFailsToSendRequestOnBatcherServerStop(t *testing.T) {
 // 2. send a request by client to router
 // 3. check that a batcher received one request
 func TestClientRouterSubmitSingleRequestAgainstMultipleBatchers(t *testing.T) {
-	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), 2)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 2)
+	defer testSetup.Close()
 
-	err := submitRequest(routerTestSetup.clientConn)
+	err := submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return (routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(1) && routerTestSetup.batchers[1].ReceivedMessageCount() == uint32(0)) || (routerTestSetup.batchers[0].ReceivedMessageCount() == uint32(0) && routerTestSetup.batchers[1].ReceivedMessageCount() == uint32(1))
+		return (testSetup.batchers[0].ReceivedMessageCount() == uint32(1) && testSetup.batchers[1].ReceivedMessageCount() == uint32(0)) || (testSetup.batchers[0].ReceivedMessageCount() == uint32(0) && testSetup.batchers[1].ReceivedMessageCount() == uint32(1))
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
@@ -136,15 +149,16 @@ func TestClientRouterSubmitSingleRequestAgainstMultipleBatchers(t *testing.T) {
 // 3. check that the batchers received the expected number of requests
 func TestClientRouterSubmitStreamRequestsAgainstMultipleBatchers(t *testing.T) {
 	numOfShards := 2
-	routerTestSetup := createRouterTestSetup(t, types.PartyID(1), numOfShards)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), numOfShards)
+	defer testSetup.Close()
 
-	err := submitStreamRequests(routerTestSetup.clientConn, 10)
+	err := submitStreamRequests(testSetup.clientConn, 10)
 	require.NoError(t, err)
 
 	recvCond := func() uint32 {
 		receivedTxCount := uint32(0)
 		for i := 0; i < numOfShards; i++ {
-			receivedTxCount += routerTestSetup.batchers[i].ReceivedMessageCount()
+			receivedTxCount += testSetup.batchers[i].ReceivedMessageCount()
 		}
 		return receivedTxCount
 	}
