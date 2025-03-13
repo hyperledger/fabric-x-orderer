@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"math"
 	"testing"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
@@ -67,6 +68,7 @@ func TestComplaintSerialization(t *testing.T) {
 		},
 		Signer:    3,
 		Signature: []byte{4},
+		Reason:    "abc",
 	}
 
 	var c2 core.Complaint
@@ -75,6 +77,25 @@ func TestComplaintSerialization(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, c, c2)
+
+	// check with no reason
+	c.Reason = ""
+	err = c2.FromBytes(c.Bytes())
+	assert.NoError(t, err)
+	assert.Equal(t, c, c2)
+
+	// check with long reason
+	longReason := make([]byte, 2*math.MaxUint16)
+	c.Reason = string(longReason)
+	err = c2.FromBytes(c.Bytes())
+	assert.NoError(t, err)
+
+	shorterReason := make([]byte, math.MaxUint16)
+	assert.Equal(t, string(shorterReason), c2.Reason)
+
+	assert.Equal(t, c.Signer, c2.Signer)
+	assert.Equal(t, c.ShardTerm, c2.ShardTerm)
+	assert.Equal(t, c.Signature, c2.Signature)
 }
 
 func TestControlEventSerialization(t *testing.T) {

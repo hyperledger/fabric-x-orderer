@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"slices"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
@@ -245,10 +246,15 @@ type Complaint struct {
 	ShardTerm
 	Signer    types.PartyID
 	Signature []byte
+	Reason    string
 }
 
 func (c *Complaint) Bytes() []byte {
-	buff := make([]byte, 12+len(c.Signature))
+	reasonLen := len([]byte(c.Reason))
+	if reasonLen > math.MaxUint16 {
+		reasonLen = math.MaxUint16
+	}
+	buff := make([]byte, 16+len(c.Signature)+reasonLen)
 	var pos int
 	binary.BigEndian.PutUint16(buff, uint16(c.Shard))
 	pos += 2
@@ -256,19 +262,27 @@ func (c *Complaint) Bytes() []byte {
 	pos += 8
 	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Signer))
 	pos += 2
-	copy(buff[pos:], c.Signature)
+	binary.BigEndian.PutUint16(buff[pos:], uint16(len(c.Signature)))
+	pos += 2
+	copy(buff[pos:pos+len(c.Signature)], c.Signature)
+	pos += len(c.Signature)
+	binary.BigEndian.PutUint16(buff[pos:], uint16(reasonLen))
+	pos += 2
+	copy(buff[pos:pos+reasonLen], []byte(c.Reason))
 	return buff
 }
 
 func (c *Complaint) FromBytes(bytes []byte) error {
-	if len(bytes) <= 12 {
-		return fmt.Errorf("input too small (%d <= 12)", len(bytes))
+	if len(bytes) <= 16 {
+		return fmt.Errorf("input too small (%d <= 16)", len(bytes))
 	}
-
 	c.Shard = types.ShardID(binary.BigEndian.Uint16(bytes))
-	c.Term = binary.BigEndian.Uint64(bytes[2:])
-	c.Signer = types.PartyID(binary.BigEndian.Uint16(bytes[10:]))
-	c.Signature = bytes[12:]
+	c.Term = binary.BigEndian.Uint64(bytes[2:10])
+	c.Signer = types.PartyID(binary.BigEndian.Uint16(bytes[10:12]))
+	sigSize := binary.BigEndian.Uint16(bytes[12:14])
+	c.Signature = bytes[14 : 14+sigSize]
+	rSize := binary.BigEndian.Uint16(bytes[14+sigSize : 14+sigSize+2])
+	c.Reason = string(bytes[14+int(sigSize)+2 : 14+int(sigSize)+2+int(rSize)])
 	return nil
 }
 
@@ -277,6 +291,7 @@ func (c *Complaint) ToBeSigned() []byte {
 		ShardTerm: c.ShardTerm,
 		Signer:    c.Signer,
 		Signature: nil,
+		Reason:    c.Reason,
 	}
 	return toBeSignedComplaint.Bytes()
 }

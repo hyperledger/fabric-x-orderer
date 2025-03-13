@@ -8,23 +8,25 @@ import (
 )
 
 type FakeComplainer struct {
-	ComplainStub        func()
+	ComplainStub        func(string)
 	complainMutex       sync.RWMutex
 	complainArgsForCall []struct {
+		arg1 string
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeComplainer) Complain() {
+func (fake *FakeComplainer) Complain(arg1 string) {
 	fake.complainMutex.Lock()
 	fake.complainArgsForCall = append(fake.complainArgsForCall, struct {
-	}{})
+		arg1 string
+	}{arg1})
 	stub := fake.ComplainStub
-	fake.recordInvocation("Complain", []interface{}{})
+	fake.recordInvocation("Complain", []interface{}{arg1})
 	fake.complainMutex.Unlock()
 	if stub != nil {
-		fake.ComplainStub()
+		fake.ComplainStub(arg1)
 	}
 }
 
@@ -34,10 +36,17 @@ func (fake *FakeComplainer) ComplainCallCount() int {
 	return len(fake.complainArgsForCall)
 }
 
-func (fake *FakeComplainer) ComplainCalls(stub func()) {
+func (fake *FakeComplainer) ComplainCalls(stub func(string)) {
 	fake.complainMutex.Lock()
 	defer fake.complainMutex.Unlock()
 	fake.ComplainStub = stub
+}
+
+func (fake *FakeComplainer) ComplainArgsForCall(i int) string {
+	fake.complainMutex.RLock()
+	defer fake.complainMutex.RUnlock()
+	argsForCall := fake.complainArgsForCall[i]
+	return argsForCall.arg1
 }
 
 func (fake *FakeComplainer) Invocations() map[string][][]interface{} {

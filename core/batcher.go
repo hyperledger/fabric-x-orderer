@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"slices"
 	"sync"
@@ -46,7 +47,7 @@ type StateProvider interface {
 
 //go:generate counterfeiter -o mocks/complainer.go . Complainer
 type Complainer interface {
-	Complain()
+	Complain(string)
 }
 
 //go:generate counterfeiter -o mocks/batch_acker.go . BatchAcker
@@ -313,7 +314,7 @@ func (b *Batcher) runSecondary() {
 			}
 			if err := b.verifyBatch(batch); err != nil {
 				b.Logger.Warnf("Secondary batcher %d (shard %d) sending a complaint (primary %d); verify batch err: %v", b.ID, b.Shard, b.primary, err)
-				b.Complainer.Complain()
+				b.Complainer.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; primary %d; term %d; verify batch err: %v", b.ID, b.Shard, b.primary, atomic.LoadUint64(&b.term), err))
 				b.BatchPuller.Stop()
 				break // TODO maybe add backoff
 			}

@@ -389,7 +389,7 @@ func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
 
 func (b *Batcher) OnSecondStrikeTimeout() {
 	b.logger.Warnf("Second strike timeout occurred")
-	b.Complain() // TODO add complaint reason
+	b.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; second strike timeout occurred", b.config.PartyId, b.config.ShardId))
 }
 
 func createPrivateKey(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {
@@ -441,11 +441,11 @@ func (b *Batcher) getPrimaryIDAndTerm(state *core.State) (types.PartyID, uint64)
 	return primaryID, term
 }
 
-func (b *Batcher) createComplaint() *core.Complaint {
+func (b *Batcher) createComplaint(reason string) *core.Complaint {
 	b.primaryLock.Lock()
 	term := b.term
 	b.primaryLock.Unlock()
-	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term)
+	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, reason)
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
 	}
@@ -615,8 +615,8 @@ func (b *Batcher) cleanupPrimaryStreams() {
 	b.reqStream = nil
 }
 
-func (b *Batcher) Complain() {
-	b.broadcastControlEvent(core.ControlEvent{Complaint: b.createComplaint()})
+func (b *Batcher) Complain(reason string) {
+	b.broadcastControlEvent(core.ControlEvent{Complaint: b.createComplaint(reason)})
 }
 
 func (b *Batcher) SendBAF(baf core.BatchAttestationFragment) {
@@ -649,11 +649,12 @@ func (b *Batcher) RequestID(req []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64) (*core.Complaint, error) {
+func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, reason string) (*core.Complaint, error) {
 	c := &core.Complaint{
 		ShardTerm: core.ShardTerm{Shard: shard, Term: term},
 		Signer:    id,
 		Signature: nil,
+		Reason:    reason,
 	}
 	sig, err := signer.Sign(c.ToBeSigned())
 	if err != nil {
