@@ -100,7 +100,7 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 }
 
 func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, handleBlock func(block *common.Block)) {
-	logger.Infof("Assembler pulling blocks from: %s", channel)
+	logger.Infof("Started pulling blocks from: %s", channel)
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
@@ -131,7 +131,7 @@ func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadc
 
 // PullOne will pull a single block, as specified in the request.
 func PullOne(context context.Context, channel string, logger types.Logger, endpointToPullFrom string, requestEnvelope *common.Envelope, cc comm.ClientConfig) (*common.Block, error) {
-	logger.Infof("Assembler pulling one from: %s", channel)
+	logger.Infof("Started pulling one from: %s", channel)
 	for {
 		select {
 		case <-context.Done():
