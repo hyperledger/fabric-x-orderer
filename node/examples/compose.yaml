@@ -32,31 +32,31 @@ services:
 
   consenter.p1:
     <<: *consenter
-    command: consensus --config=arma-config/Party1/consenter_node_config.yaml
+    command: consensus --config=tmp/arma-sample/config/party1/local_config_consenter.yaml
     hostname: consensus.p1
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p2:
     <<: *consenter
-    command: consensus --config=arma-config/Party2/consenter_node_config.yaml
+    command: consensus --config=tmp/arma-sample/config/party2/local_config_consenter.yaml
     hostname: consensus.p2
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p3:
     <<: *consenter
-    command: consensus --config=arma-config/Party3/consenter_node_config.yaml
+    command: consensus --config=tmp/arma-sample/config/party3/local_config_consenter.yaml
     hostname: consensus.p3
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p4:
     <<: *consenter
-    command: consensus --config=arma-config/Party4/consenter_node_config.yaml
+    command: consensus --config=tmp/arma-sample/config/party4/local_config_consenter.yaml
     hostname: consensus.p4
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   consenter_stage:
     <<: *stage
@@ -70,59 +70,59 @@ services:
 
   batcher1.p1:
     <<: *batcher
-    command: batcher --config=arma-config/Party1/batcher_node_1_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party1/local_config_batcher1.yaml
     hostname: batcher1.p1
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher2.p1:
     <<: *batcher
-    command: batcher --config=arma-config/Party1/batcher_node_2_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party1/local_config_batcher2.yaml
     hostname: batcher2.p1
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher1.p2:
     <<: *batcher
-    command: batcher --config=arma-config/Party2/batcher_node_1_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party2/local_config_batcher1.yaml
     hostname: batcher1.p2
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher2.p2:
     <<: *batcher
-    command: batcher --config=arma-config/Party2/batcher_node_2_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party2/local_config_batcher2.yaml
     hostname: batcher2.p2
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher1.p3:
     <<: *batcher
-    command: batcher --config=arma-config/Party3/batcher_node_1_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party3/local_config_batcher1.yaml
     hostname: batcher1.p3
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher2.p3:
     <<: *batcher
-    command: batcher --config=arma-config/Party3/batcher_node_2_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party3/local_config_batcher2.yaml
     hostname: batcher2.p3
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher1.p4:
     <<: *batcher
-    command: batcher --config=arma-config/Party4/batcher_node_1_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party4/local_config_batcher1.yaml
     hostname: batcher1.p4
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher2.p4:
     <<: *batcher
-    command: batcher --config=arma-config/Party4/batcher_node_2_config.yaml
+    command: batcher --config=tmp/arma-sample/config/party4/local_config_batcher2.yaml
     hostname: batcher2.p4
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   batcher_stage:
     <<: *stage
@@ -140,27 +140,27 @@ services:
 
   assembler.p1:
     <<: *assembler
-    command: assembler --config=arma-config/Party1/assembler_node_config.yaml
+    command: assembler --config=tmp/arma-sample/config/party1/local_config_assembler.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p2:
     <<: *assembler
-    command: assembler --config=arma-config/Party2/assembler_node_config.yaml
+    command: assembler --config=tmp/arma-sample/config/party2/local_config_assembler.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p3:
     <<: *assembler
-    command: assembler --config=arma-config/Party3/assembler_node_config.yaml
+    command: assembler --config=tmp/arma-sample/config/party3/local_config_assembler.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p4:
     <<: *assembler
-    command: assembler --config=arma-config/Party4/assembler_node_config.yaml
+    command: assembler --config=tmp/arma-sample/config/party4/local_config_assembler.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   assembler_stage:
     <<: *stage
@@ -174,24 +174,24 @@ services:
 
   router.p1:
     <<: *router
-    command: router --config=arma-config/Party1/router_node_config.yaml
+    command: router --config=tmp/arma-sample/config/party1/local_config_router.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   router.p2:
     <<: *router
-    command: router --config=arma-config/Party2/router_node_config.yaml
+    command: router --config=tmp/arma-sample/config/party2/local_config_router.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   router.p3:
     <<: *router
-    command: router --config=arma-config/Party3/router_node_config.yaml
+    command: router --config=tmp/arma-sample/config/party3/local_config_router.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample
 
   router.p4:
     <<: *router
-    command: router --config=arma-config/Party4/router_node_config.yaml
+    command: router --config=tmp/arma-sample/config/party4/local_config_router.yaml
     volumes:
-      - /tmp/arma-sample/arma-config:/arma-config
+      - /tmp/arma-sample:/tmp/arma-sample

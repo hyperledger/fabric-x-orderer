@@ -8,11 +8,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 
-	"github.ibm.com/decentralized-trust-research/arma/core"
-
 	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 )
 
+// TODO: config default config params
 const (
 	DefaultMaxMessageCount   = 1000
 	DefaultAbsoluteMaxBytes  = 10 * 1024 * 1024
@@ -64,13 +63,14 @@ func createConsensusBFTConfig() config.SmartBFTConfig {
 }
 
 func createBatchingConfig() config.BatchingConfig {
+	// TODO: add batching config
 	return config.BatchingConfig{
-		BatchTimeout: core.DefaultBatchTimeout,
-		BatchSize: config.BatchSize{
-			MaxMessageCount:   DefaultMaxMessageCount,
-			AbsoluteMaxBytes:  DefaultAbsoluteMaxBytes,
-			PreferredMaxBytes: DefaultPreferredMaxBytes,
-		},
+		//BatchTimeout: core.DefaultBatchTimeout,
+		//BatchSize: config.BatchSize{
+		//	MaxMessageCount:   DefaultMaxMessageCount,
+		//	AbsoluteMaxBytes:  DefaultAbsoluteMaxBytes,
+		//	PreferredMaxBytes: DefaultPreferredMaxBytes,
+		//},
 	}
 }
 

@@ -1,4 +1,4 @@
-package armageddon_test
+package testutils
 
 import (
 	"fmt"
@@ -17,13 +17,10 @@ import (
 )
 
 // EditDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
-func EditDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
-	dir, err := os.MkdirTemp("", "Directory_"+fmt.Sprint(name))
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string) {
 	nodeConfig := readNodeConfigFromYaml(t, path)
-	nodeConfig.FileStore.Path = dir
-	err = nodeconfig.NodeConfigToYAML(nodeConfig, path)
+	nodeConfig.FileStore.Path = storagePath
+	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
 	require.NoError(t, err)
 }
 

@@ -755,7 +755,7 @@ func printVersion() {
 	fmt.Printf("Armageddon version is: %+v\n", bi.Main.Version)
 }
 
-func getUserConfigFileContent(userConfigFile **os.File) (*UserInfo, error) {
+func readUserConfig(userConfigFile **os.File) (*UserConfig, error) {
 	var configFileContent string
 	if *userConfigFile != nil {
 		data, err := io.ReadAll(*userConfigFile)
@@ -769,7 +769,7 @@ func getUserConfigFileContent(userConfigFile **os.File) (*UserInfo, error) {
 		os.Exit(1)
 	}
 
-	userConfig := UserInfo{}
+	userConfig := UserConfig{}
 	err := yaml.Unmarshal([]byte(configFileContent), &userConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error Unmarshalling YAML: %s", err)
@@ -789,7 +789,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	}
 
 	// get user config file content given as argument
-	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
+	userConfig, err := readUserConfig(userConfigFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
@@ -804,7 +804,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	var waitForTxToBeSentAndReceived sync.WaitGroup
 	waitForTxToBeSentAndReceived.Add(2)
 	go func() {
-		sendTxToRouters(userConfigFileContent, *transactions, *rate, *txSize, txsMap)
+		sendTxToRouters(userConfig, *transactions, *rate, *txSize, txsMap)
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
@@ -812,7 +812,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	var numOfBlocks int
 	var txDelayTimes float64
 	go func() {
-		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfigFileContent, txsMap, *transactions)
+		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfig, txsMap, *transactions)
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
@@ -834,7 +834,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	}
 
 	// get user config file content given as argument
-	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
+	userConfig, err := readUserConfig(userConfigFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
@@ -851,7 +851,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	// send txs to the routers
 	for i := 0; i < len(rates); i++ {
 		start := time.Now()
-		sendTxToRouters(userConfigFileContent, *transactions, converted_rates[i], *txSize, nil)
+		sendTxToRouters(userConfig, *transactions, converted_rates[i], *txSize, nil)
 		elapsed := time.Since(start)
 		reportLoadResults(*transactions, elapsed, *txSize)
 	}
@@ -860,14 +860,14 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 // receive command pull blocks from the assembler and report statistics
 func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *string, expectedNumOfTxs *int) {
 	// get user config file content given as argument
-	userConfigFileContent, err := getUserConfigFileContent(userConfigFile)
+	userConfig, err := readUserConfig(userConfigFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
 	}
 
 	// pull blocks from the assembler and report statistics to statistics.csv file
-	pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs)
+	pullBlocksFromAssemblerAndCollectStatistics(userConfig, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs)
 	fmt.Printf("Receive command finished, statistics can be found in: %v\n", path.Join(*receiveOutputDir, "statistics.csv"))
 }
 
@@ -904,18 +904,14 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 	}
 }
 
-func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
-	var serverRootCAs [][]byte
-	for _, rawBytes := range userConfigFileContent.TLSCACerts {
-		byteSlice := []byte(rawBytes)
-		serverRootCAs = append(serverRootCAs, byteSlice)
-	}
-
+func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
 	var gRPCRouterClientsConn []*grpc.ClientConn
 	var streams []ab.AtomicBroadcast_BroadcastClient
 
+	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
+
 	// create gRPC clients and streams to the routers
-	for i := 0; i < len(userConfigFileContent.RouterEndpoints); i++ {
+	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
 		// create a gRPC connection to the router
 		gRPCRouterClient := comm.ClientConfig{
 			KaOpts: comm.KeepaliveOptions{
@@ -923,16 +919,16 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 				ClientTimeout:  time.Hour,
 			},
 			SecOpts: comm.SecureOptions{
-				Key:               userConfigFileContent.TLSPrivateKeyFile,
-				Certificate:       userConfigFileContent.TLSCertificateFile,
-				RequireClientCert: true,
-				UseTLS:            userConfigFileContent.UseTLS,
+				Key:               userConfig.TLSPrivateKey,
+				Certificate:       userConfig.TLSCertificate,
+				RequireClientCert: userConfig.UseTLSRouter == "mTLS",
+				UseTLS:            userConfig.UseTLSRouter != "none",
 				ServerRootCAs:     serverRootCAs,
 			},
 			DialTimeout: time.Second * 5,
 		}
 
-		gRPCRouterClientConn, err := gRPCRouterClient.Dial(userConfigFileContent.RouterEndpoints[i])
+		gRPCRouterClientConn, err := gRPCRouterClient.Dial(userConfig.RouterEndpoints[i])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to router %d: %v", i+1, err)
 			os.Exit(3)
@@ -1013,14 +1009,11 @@ func sendTxToRouters(userConfigFileContent *UserInfo, numOfTxs int, rate int, tx
 	}
 }
 
-func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int) {
+func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int) {
 	// choose randomly the first assembler
 	i := pullFromPartyId - 1
-	var serverRootCAs [][]byte
-	for _, rawBytes := range userConfigFileContent.TLSCACerts {
-		byteSlice := []byte(rawBytes)
-		serverRootCAs = append(serverRootCAs, byteSlice)
-	}
+
+	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
 	gRPCAssemblerClient := comm.ClientConfig{
@@ -1029,10 +1022,10 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo
 			ClientTimeout:  time.Hour,
 		},
 		SecOpts: comm.SecureOptions{
-			Key:               userConfigFileContent.TLSPrivateKeyFile,
-			Certificate:       userConfigFileContent.TLSCertificateFile,
-			RequireClientCert: true,
-			UseTLS:            userConfigFileContent.UseTLS,
+			Key:               userConfig.TLSPrivateKey,
+			Certificate:       userConfig.TLSCertificate,
+			RequireClientCert: userConfig.UseTLSAssembler == "mTLS",
+			UseTLS:            userConfig.UseTLSAssembler != "none",
 			ServerRootCAs:     serverRootCAs,
 		},
 		DialTimeout: time.Second * 5,
@@ -1055,7 +1048,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfigFileContent *UserInfo
 
 	var stream ab.AtomicBroadcast_DeliverClient
 	var gRPCAssemblerClientConn *grpc.ClientConn
-	endpointToPullFrom := userConfigFileContent.AssemblerEndpoints[i]
+	endpointToPullFrom := userConfig.AssemblerEndpoints[i]
 
 	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
 	if err != nil {
@@ -1345,14 +1338,10 @@ func writeStatisticsToCSV(file *os.File, statistic Statistics, timeIntervalToSam
 	}
 }
 
-func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
+func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
 	// choose randomly the first assembler
 	i := 0
-	var serverRootCAs [][]byte
-	for _, rawBytes := range userConfigFileContent.TLSCACerts {
-		byteSlice := []byte(rawBytes)
-		serverRootCAs = append(serverRootCAs, byteSlice)
-	}
+	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
 	gRPCAssemblerClient := comm.ClientConfig{
@@ -1361,10 +1350,10 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 			ClientTimeout:  time.Hour,
 		},
 		SecOpts: comm.SecureOptions{
-			Key:               userConfigFileContent.TLSPrivateKeyFile,
-			Certificate:       userConfigFileContent.TLSCertificateFile,
-			RequireClientCert: true,
-			UseTLS:            userConfigFileContent.UseTLS,
+			Key:               userConfig.TLSPrivateKey,
+			Certificate:       userConfig.TLSCertificate,
+			RequireClientCert: userConfig.UseTLSAssembler == "mTLS",
+			UseTLS:            userConfig.UseTLSAssembler != "none",
 			ServerRootCAs:     serverRootCAs,
 		},
 		DialTimeout: time.Second * 5,
@@ -1387,7 +1376,7 @@ func receiveResponseFromAssembler(userConfigFileContent *UserInfo, txsMap *prote
 
 	var stream ab.AtomicBroadcast_DeliverClient
 	var gRPCAssemblerClientConn *grpc.ClientConn
-	endpointToPullFrom := userConfigFileContent.AssemblerEndpoints[i]
+	endpointToPullFrom := userConfig.AssemblerEndpoints[i]
 
 	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
 	if err != nil {

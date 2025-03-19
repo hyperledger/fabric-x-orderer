@@ -27,3 +27,5 @@ Parties:
     BatchersEndpoints:
       - "batcher1.p4:6024"
       - "batcher2.p4:6024"
+UseTLSRouter: "none"
+UseTLSAssembler: "none"

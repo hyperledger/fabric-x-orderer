@@ -11,28 +11,20 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
+	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/node"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus"
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/router"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"gopkg.in/yaml.v3"
 )
 
 func init() {
-	// flogging.ActivateSpec("error")
 	grpclog.SetLoggerV2(&silentLogger{})
 }
-
-var DirOverride = os.Getenv(DirOverrideEnvName)
-
-const (
-	DirOverrideEnvName = "DIRECTORY"
-)
 
 var help = map[string]string{
 	"router":    "run a router node",
@@ -56,9 +48,9 @@ func (cli *CLI) Command(name, help string, onCmd func(configFile *os.File)) {
 
 func (cli *CLI) configureNodesCommands() {
 	for name, f := range map[string]func(configFile *os.File){
-		"router":    launchRouter(cli.stop, loadConfig),
+		"router":    launchRouter(cli.stop),
 		"assembler": launchAssembler(cli.stop, loadConfigAndGenesis),
-		"batcher":   launchBatcher(cli.stop, loadConfig),
+		"batcher":   launchBatcher(cli.stop),
 		"consensus": launchConsensus(cli.stop, loadConfigAndGenesis),
 	} {
 		cli.Command(name, help[name], f)
@@ -67,11 +59,12 @@ func (cli *CLI) configureNodesCommands() {
 
 func launchAssembler(
 	stop chan struct{},
-	loadConfigAndGenesis func(configFile *os.File) ([]byte, *common.Block),
+	loadConfigAndGenesis func(configFile *os.File) (*config.Configuration, *common.Block),
 ) func(configFile *os.File) {
 	return func(configFile *os.File) {
 		configContent, genesisBlock := loadConfigAndGenesis(configFile)
-		conf := parseAssemblerConfig(configContent)
+		conf := configContent.ExtractAssemblerConfig()
+
 		var assemblerLogger *flogging.FabricLogger
 		if testLogger != nil {
 			assemblerLogger = testLogger
@@ -95,11 +88,12 @@ func launchAssembler(
 
 func launchConsensus(
 	stop chan struct{},
-	loadConfigAndGenesis func(configFile *os.File) ([]byte, *common.Block),
+	loadConfigAndGenesis func(configFile *os.File) (*config.Configuration, *common.Block),
 ) func(configFile *os.File) {
 	return func(configFile *os.File) {
 		configContent, genesisBlock := loadConfigAndGenesis(configFile)
-		conf := parseConsensusConfig(configContent)
+		conf := configContent.ExtractConsenterConfig()
+
 		var consenterLogger *flogging.FabricLogger
 		if testLogger != nil {
 			consenterLogger = testLogger
@@ -126,16 +120,21 @@ func launchConsensus(
 	}
 }
 
-func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []byte) func(configFile *os.File) {
+func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent := loadConfig(configFile)
-		conf := parseBatcherConfig(configContent)
+		config, err := config.ReadConfig(configFile.Name())
+		if err != nil {
+			panic(fmt.Sprintf("error launching batcher, err: %s", err))
+		}
+		conf := config.ExtractBatcherConfig()
+
 		var batcherLogger *flogging.FabricLogger
 		if testLogger != nil {
 			batcherLogger = testLogger
 		} else {
 			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", conf.PartyId, conf.ShardId))
 		}
+
 		batcher := batcher.CreateBatcher(conf, batcherLogger, nil, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
 		defer batcher.Run()
 
@@ -154,16 +153,21 @@ func launchBatcher(stop chan struct{}, loadConfig func(configFile *os.File) []by
 	}
 }
 
-func launchRouter(stop chan struct{}, loadConfig func(configFile *os.File) []byte) func(configFile *os.File) {
+func launchRouter(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent := loadConfig(configFile)
-		conf := parseRouterConfig(configContent)
+		config, err := config.ReadConfig(configFile.Name())
+		if err != nil {
+			panic(fmt.Sprintf("error launching router, err: %s", err))
+		}
+		conf := config.ExtractRouterConfig()
+
 		var routerLogger *flogging.FabricLogger
 		if testLogger != nil {
 			routerLogger = testLogger
 		} else {
 			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", conf.PartyID))
 		}
+
 		router := router.NewRouter(conf, routerLogger)
 
 		srv := node.CreateGRPCRouter(conf)
@@ -208,38 +212,24 @@ func NewCLI() *CLI {
 	return cli
 }
 
-func loadConfig(configFile *os.File) []byte {
-	stat, err := configFile.Stat()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed opening file %s: %v \n", configFile.Name(), err)
-		os.Exit(2)
-	}
-
-	content := make([]byte, stat.Size())
-	_, err = io.ReadFull(configFile, content)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed reading file%s: %v \n", configFile.Name(), err)
-		os.Exit(2)
-	}
-
-	return content
-}
-
-func loadConfigAndGenesis(configFile *os.File) ([]byte, *common.Block) {
-	content := loadConfig(configFile)
-
+func loadConfigAndGenesis(configFile *os.File) (*config.Configuration, *common.Block) {
 	absConfigFileName, err := filepath.Abs(configFile.Name())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed extracting absolute path from file %s: %v \n", configFile.Name(), err)
 		os.Exit(2)
 	}
+	config, err := config.ReadConfig(absConfigFileName)
+	if err != nil {
+		panic(fmt.Sprintf("error reading local config, err: %s", err))
+	}
+
 	configPath, _ := filepath.Split(absConfigFileName)
 	blockFileName := path.Join(configPath, "genesis.block")
 	statBlock, err := os.Stat(blockFileName)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Fprintf(os.Stdout, "genesis block file does not exist in config path: %s (ignoring) \n", configPath)
-			return content, nil
+			return config, nil
 		} else {
 			fmt.Fprintf(os.Stderr, "failed stat file %s: %v \n", blockFileName, err)
 			os.Exit(2)
@@ -249,7 +239,7 @@ func loadConfigAndGenesis(configFile *os.File) ([]byte, *common.Block) {
 	blockFile, err := os.Open(blockFileName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "can not open genesis block file from: %s (ignoring): %v \n", blockFileName, err)
-		return content, nil
+		return config, nil
 	}
 
 	genesisBlockBytes := make([]byte, statBlock.Size())
@@ -265,63 +255,7 @@ func loadConfigAndGenesis(configFile *os.File) ([]byte, *common.Block) {
 		os.Exit(2)
 	}
 
-	return content, block
-}
-
-func parseRouterConfig(rawConfig []byte) *config.RouterNodeConfig {
-	var conf config.RouterNodeConfig
-	err := yaml.Unmarshal(rawConfig, &conf)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing router config: %v \n", err)
-		os.Exit(2)
-	}
-
-	return &conf
-}
-
-func parseAssemblerConfig(rawConfig []byte) *config.AssemblerNodeConfig {
-	var conf config.AssemblerNodeConfig
-	err := yaml.Unmarshal(rawConfig, &conf)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing assembler config: %v \n", err)
-		os.Exit(2)
-	}
-
-	if DirOverride != "" {
-		conf.Directory = DirOverride
-	}
-
-	return &conf
-}
-
-func parseBatcherConfig(rawConfig []byte) *config.BatcherNodeConfig {
-	var conf config.BatcherNodeConfig
-	err := yaml.Unmarshal(rawConfig, &conf)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing batcher config: %v \n", err)
-		os.Exit(2)
-	}
-
-	if DirOverride != "" {
-		conf.Directory = DirOverride
-	}
-
-	return &conf
-}
-
-func parseConsensusConfig(rawConfig []byte) *config.ConsenterNodeConfig {
-	var conf config.ConsenterNodeConfig
-	err := yaml.Unmarshal(rawConfig, &conf)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing consensus config: %v \n", err)
-		os.Exit(2)
-	}
-
-	if DirOverride != "" {
-		conf.Directory = DirOverride
-	}
-
-	return &conf
+	return config, block
 }
 
 type silentLogger struct{}

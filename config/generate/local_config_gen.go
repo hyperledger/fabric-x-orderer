@@ -214,9 +214,11 @@ func NewRouterLocalConfig(routerGeneralParams GeneralConfigParams) *config.NodeL
 	return &config.NodeLocalConfig{
 		PartyID:       routerGeneralParams.partyID,
 		GeneralConfig: NewGeneralConfig(routerGeneralParams),
+		FileStore:     &config.FileStore{},
+		// TODO: default params
 		RouterParams: &config.RouterParams{
-			NumberOfConnectionsPerBatcher: DefaultNumberOfConnectionsPerBatcher,
-			NumberOfStreamsPerConnection:  DefaultNumberOfStreamsPerConnection,
+			NumberOfConnectionsPerBatcher: 10,
+			NumberOfStreamsPerConnection:  5,
 		},
 	}
 }

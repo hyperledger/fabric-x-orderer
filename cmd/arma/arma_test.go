@@ -1,359 +1,38 @@
 package arma
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/pem"
+	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
+
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-
 	"github.com/hyperledger/fabric/protoutil"
-
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/config"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-func TestRouter(t *testing.T) {
-	testLogger = flogging.MustGetLogger("arma")
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-
-	defer os.RemoveAll(dir)
-
-	configPath := filepath.Join(dir, "config.yaml")
-
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	err = config.NodeConfigToYAML(config.RouterNodeConfig{
-		TLSPrivateKeyFile:  ckp.Key,
-		TLSCertificateFile: ckp.Cert,
-		PartyID:            1,
-		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{Endpoint: "127.0.0.1:80", PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}},
-		UseTLS:             true,
-	}, configPath)
-	require.NoError(t, err)
-
-	originalLogger := testLogger
-	defer func() {
-		testLogger = originalLogger
-	}()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if entry.Message == "Router listening on [::]:6022" {
-			wg.Done()
-		}
-		return nil
-	}))
-
-	cli := NewCLI()
-	cli.Run([]string{"router", "--config", configPath})
-	wg.Wait()
-}
-
-func TestAssembler(t *testing.T) {
-	testLogger = flogging.MustGetLogger("arma")
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-
-	defer os.RemoveAll(dir)
-
-	configPath := filepath.Join(dir, "config.yaml")
-
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	err = config.NodeConfigToYAML(config.AssemblerNodeConfig{
-		PartyId:            1,
-		Directory:          dir,
-		TLSPrivateKeyFile:  ckp.Key,
-		TLSCertificateFile: ckp.Cert,
-		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}},
-	}, configPath)
-	require.NoError(t, err)
-
-	originalLogger := testLogger
-	defer func() {
-		testLogger = originalLogger
-	}()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if entry.Message == "Assembler listening on [::]:6023" {
-			wg.Done()
-		}
-		return nil
-	}))
-
-	cli := NewCLI()
-	cli.Run([]string{"assembler", "--config", configPath})
-	wg.Wait()
-}
-
-func TestAssemblerWithBlock(t *testing.T) {
-	testLogger = flogging.MustGetLogger("arma")
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-
-	defer os.RemoveAll(dir)
-
-	configPath := filepath.Join(dir, "config.yaml")
-
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	err = config.NodeConfigToYAML(config.AssemblerNodeConfig{
-		PartyId:            1,
-		Directory:          dir,
-		TLSPrivateKeyFile:  ckp.Key,
-		TLSCertificateFile: ckp.Cert,
-		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: []config.BatcherInfo{{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}}}}},
-		ListenAddress:      "127.0.0.1:6043",
-	}, configPath)
-	require.NoError(t, err)
-
-	block := utils.EmptyGenesisBlock("arma")
-	blockBytes := protoutil.MarshalOrPanic(block)
-	blockPath := filepath.Join(dir, "genesis.block")
-	err = os.WriteFile(blockPath, blockBytes, 0o600)
-	require.NoError(t, err)
-
-	originalLogger := testLogger
-	defer func() {
-		testLogger = originalLogger
-	}()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if entry.Message == "Assembler listening on 127.0.0.1:6043" {
-			wg.Done()
-		}
-		return nil
-	}))
-
-	cli := NewCLI()
-	cli.Run([]string{"assembler", "--config", configPath})
-	wg.Wait()
-}
-
-func TestBatcher(t *testing.T) {
-	testLogger = flogging.MustGetLogger("arma")
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-
-	defer os.RemoveAll(dir)
-
-	configPath := filepath.Join(dir, "config.yaml")
-
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
-	require.NoError(t, err)
-
-	err = config.NodeConfigToYAML(config.BatcherNodeConfig{
-		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: keyBytes}),
-		ShardId:            1,
-		PartyId:            1,
-		Directory:          dir,
-		TLSPrivateKeyFile:  ckp.Key,
-		TLSCertificateFile: ckp.Cert,
-		Consenters: []config.ConsenterInfo{
-			{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"}, {PartyID: 2, TLSCACerts: []config.RawBytes{ca.CertBytes()}, Endpoint: "noroute:80"},
-		},
-		Shards: []config.ShardInfo{
-			{ShardId: 1, Batchers: []config.BatcherInfo{
-				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
-				{PartyID: 2, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, Endpoint: "127.0.0.1:80"},
-			}},
-		},
-	}, configPath)
-	require.NoError(t, err)
-
-	originalLogger := testLogger
-	defer func() {
-		testLogger = originalLogger
-	}()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if entry.Message == "Batcher listening on [::]:6024" {
-			wg.Done()
-		}
-		return nil
-	}))
-
-	cli := NewCLI()
-	cli.Run([]string{"batcher", "--config", configPath})
-	wg.Wait()
-}
-
-func TestConsensus(t *testing.T) {
-	testLogger = flogging.MustGetLogger("arma")
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-
-	defer os.RemoveAll(dir)
-
-	configPath := filepath.Join(dir, "config.yaml")
-
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
-	require.NoError(t, err)
-
-	pkBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
-	require.NoError(t, err)
-
-	err = config.NodeConfigToYAML(config.ConsenterNodeConfig{
-		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: keyBytes}),
-		PartyId:            1,
-		Directory:          dir,
-		TLSPrivateKeyFile:  ckp.Key,
-		TLSCertificateFile: ckp.Cert,
-		Consenters: []config.ConsenterInfo{
-			{PartyID: 1, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
-		},
-		Shards: []config.ShardInfo{
-			{ShardId: 1, Batchers: []config.BatcherInfo{
-				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
-			}},
-		},
-	}, configPath)
-	require.NoError(t, err)
-
-	originalLogger := testLogger
-	defer func() {
-		testLogger = originalLogger
-	}()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if entry.Message == "Consensus listening on [::]:6025" {
-			wg.Done()
-		}
-		return nil
-	}))
-
-	cli := NewCLI()
-	cli.Run([]string{"consensus", "--config", configPath})
-	wg.Wait()
-}
-
-func TestConsensusWithBlock(t *testing.T) {
-	testLogger = flogging.MustGetLogger("arma")
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-
-	defer os.RemoveAll(dir)
-
-	configPath := filepath.Join(dir, "config.yaml")
-
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
-	require.NoError(t, err)
-
-	pkBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
-	require.NoError(t, err)
-
-	err = config.NodeConfigToYAML(config.ConsenterNodeConfig{
-		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: keyBytes}),
-		PartyId:            1,
-		Directory:          dir,
-		TLSPrivateKeyFile:  ckp.Key,
-		TLSCertificateFile: ckp.Cert,
-		Consenters: []config.ConsenterInfo{
-			{PartyID: 1, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
-		},
-		Shards: []config.ShardInfo{
-			{ShardId: 1, Batchers: []config.BatcherInfo{
-				{PartyID: 1, TLSCACerts: []config.RawBytes{ca.CertBytes()}, TLSCert: ckp.Cert, PublicKey: pem.EncodeToMemory(&pem.Block{Bytes: pkBytes})},
-			}},
-		},
-		ListenAddress: "127.0.0.1:6045",
-	}, configPath)
-	require.NoError(t, err)
-
-	block := utils.EmptyGenesisBlock("arma")
-	blockBytes := protoutil.MarshalOrPanic(block)
-	blockPath := filepath.Join(dir, "genesis.block")
-	err = os.WriteFile(blockPath, blockBytes, 0o600)
-	require.NoError(t, err)
-
-	originalLogger := testLogger
-	defer func() {
-		testLogger = originalLogger
-	}()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if entry.Message == "Consensus listening on 127.0.0.1:6045" {
-			wg.Done()
-		}
-		return nil
-	}))
-
-	cli := NewCLI()
-	cli.Run([]string{"consensus", "--config", configPath})
-	wg.Wait()
-}
+const (
+	RouterBaseListenPort    = 6022
+	AssemblerBaseListenPort = 6032
+	BatcherBaseListenPort   = 6042
+	ConsensusBaseListenPort = 6052
+)
 
 func TestCLI(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
@@ -378,4 +57,279 @@ func TestCLI(t *testing.T) {
 		assert.Equal(t, []byte("the little fox jumped over the lazy dog"), content)
 	})
 	cli.Run([]string{"test", "--config", fPath})
+}
+
+func TestLaunchArmaNode(t *testing.T) {
+	dir := setup(t, 1)
+	defer os.RemoveAll(dir)
+
+	t.Run("TestRouter", func(t *testing.T) {
+		testLogger = flogging.MustGetLogger("arma")
+
+		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "router")
+		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		err := editBatchersInSharedConfig(dir, 4, 2)
+		require.NoError(t, err)
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+			if strings.Contains(entry.Message, "Router listening on") {
+				wg.Done()
+			}
+			return nil
+		}))
+
+		cli := NewCLI()
+		cli.Run([]string{"router", "--config", configPath})
+		wg.Wait()
+	})
+
+	t.Run("TestBatcher", func(t *testing.T) {
+		testLogger = flogging.MustGetLogger("arma")
+
+		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "batcher1")
+		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		err := editConsentersInSharedConfig(dir, 4)
+		require.NoError(t, err)
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+			if strings.Contains(entry.Message, "Batcher listening on") {
+				wg.Done()
+			}
+			return nil
+		}))
+
+		cli := NewCLI()
+		cli.Run([]string{"batcher", "--config", configPath})
+		wg.Wait()
+	})
+
+	t.Run("TestConsensus", func(t *testing.T) {
+		testLogger = flogging.MustGetLogger("arma")
+
+		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "consenter")
+		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+			if strings.Contains(entry.Message, "Consensus listening on") {
+				wg.Done()
+			}
+			return nil
+		}))
+
+		cli := NewCLI()
+		cli.Run([]string{"consensus", "--config", configPath})
+		wg.Wait()
+	})
+
+	t.Run("TestAssembler", func(t *testing.T) {
+		testLogger = flogging.MustGetLogger("arma")
+
+		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "assembler")
+		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+			if strings.Contains(entry.Message, "Assembler listening on") {
+				wg.Done()
+			}
+			return nil
+		}))
+
+		cli := NewCLI()
+		cli.Run([]string{"assembler", "--config", configPath})
+		wg.Wait()
+	})
+}
+
+func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
+	dir := setup(t, 50)
+	defer os.RemoveAll(dir)
+
+	t.Run("TestConsensusWithBlock", func(t *testing.T) {
+		testLogger = flogging.MustGetLogger("arma")
+
+		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "consenter")
+		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+
+		block := utils.EmptyGenesisBlock("arma")
+		blockBytes := protoutil.MarshalOrPanic(block)
+		// where the block should be written in the new config? currently the node checks the "config/party" dir.
+		blockPath := filepath.Join(dir, "config", "party1", "genesis.block")
+		err := os.WriteFile(blockPath, blockBytes, 0o600)
+		require.NoError(t, err)
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+			if strings.Contains(entry.Message, "Consensus listening on") {
+				wg.Done()
+			}
+			return nil
+		}))
+
+		cli := NewCLI()
+		cli.Run([]string{"consensus", "--config", configPath})
+		wg.Wait()
+	})
+
+	t.Run("TestAssemblerWithBlock", func(t *testing.T) {
+		testLogger = flogging.MustGetLogger("arma")
+
+		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "assembler")
+		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+
+		block := utils.EmptyGenesisBlock("arma")
+		blockBytes := protoutil.MarshalOrPanic(block)
+		// where the block should be written in the new config? currently the node checks the "config/party" dir.
+		blockPath := filepath.Join(dir, "config", "party1", "genesis.block")
+		err := os.WriteFile(blockPath, blockBytes, 0o600)
+		require.NoError(t, err)
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
+			if strings.Contains(entry.Message, "Assembler listening on") {
+				wg.Done()
+			}
+			return nil
+		}))
+
+		cli := NewCLI()
+		cli.Run([]string{"assembler", "--config", configPath})
+		wg.Wait()
+	})
+}
+
+func setup(t *testing.T, offset int) string {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	CreateNetworkWithDefaultPorts(t, configPath, offset)
+
+	armageddon := armageddon.NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	return dir
+}
+
+// editBatchersInSharedConfig edits the endpoints of all batchers in the shared config file to fake endpoints.
+// By replacing the endpoints of batchers we effectively allow the router to run without connection dependencies.
+func editBatchersInSharedConfig(dir string, parties int, shards int) error {
+	for i := 0; i < parties; i++ {
+		for j := 0; j < shards; j++ {
+			path := filepath.Join(dir, "bootstrap", "shared_config.yaml")
+			sharedConfigYaml := config.SharedConfigYaml{}
+			err := utils.ReadFromYAML(&sharedConfigYaml, path)
+			if err != nil {
+				return fmt.Errorf("cannot load shared configuration, failed reading config yaml, err: %s", err)
+			}
+			sharedConfigYaml.PartiesConfig[i].BatchersConfig[j].Host = "127.0.0.1"
+			sharedConfigYaml.PartiesConfig[i].BatchersConfig[j].Port = 80
+			err = utils.WriteToYAML(&sharedConfigYaml, path)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// editBatchersInSharedConfig edits the endpoints of all consenters in the shared config file to fake endpoints.
+// By replacing the endpoints of consenters we effectively allow the batcher to run without connection dependencies.
+func editConsentersInSharedConfig(dir string, parties int) error {
+	for i := 0; i < parties; i++ {
+		path := filepath.Join(dir, "bootstrap", "shared_config.yaml")
+		sharedConfigYaml := config.SharedConfigYaml{}
+		err := utils.ReadFromYAML(&sharedConfigYaml, path)
+		if err != nil {
+			return fmt.Errorf("cannot load shared configuration, failed reading config yaml, err: %s", err)
+		}
+		sharedConfigYaml.PartiesConfig[i].ConsenterConfig.Host = "127.0.0.1"
+		sharedConfigYaml.PartiesConfig[i].ConsenterConfig.Port = 80
+		err = utils.WriteToYAML(&sharedConfigYaml, path)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func CreateNetworkWithDefaultPorts(t *testing.T, path string, offset int) {
+	var parties []genconfig.Party
+
+	for i := 0; i < 4; i++ {
+		assemblerPort := AssemblerBaseListenPort + i + offset
+		consenterPort := ConsensusBaseListenPort + i + offset
+		routerPort := RouterBaseListenPort + i + offset
+		batcher1Port := BatcherBaseListenPort + i + offset
+		batcher2Port := BatcherBaseListenPort + i + 4 + offset
+
+		party := genconfig.Party{
+			ID:                types.PartyID(i + 1),
+			AssemblerEndpoint: "127.0.0.1:" + strconv.Itoa(assemblerPort),
+			ConsenterEndpoint: "127.0.0.1:" + strconv.Itoa(consenterPort),
+			RouterEndpoint:    "127.0.0.1:" + strconv.Itoa(routerPort),
+			BatchersEndpoints: []string{"127.0.0.1:" + strconv.Itoa(batcher1Port), "127.0.0.1:" + strconv.Itoa(batcher2Port)},
+		}
+
+		parties = append(parties, party)
+	}
+
+	network := genconfig.Network{
+		Parties:         parties,
+		UseTLSRouter:    "none",
+		UseTLSAssembler: "none",
+	}
+
+	err := utils.WriteToYAML(network, path)
+	require.NoError(t, err)
 }

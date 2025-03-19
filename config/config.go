@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
@@ -86,11 +85,12 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
 		SigningPrivateKey:  signingPrivateKey,
-		MemPoolMaxSize:     1000 * 1000, // TODO: add to config
-		BatchMaxSize:       config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
-		BatchMaxBytes:      config.SharedConfig.BatchingConfig.BatchSize.AbsoluteMaxBytes, // TODO: check param relation RequestMaxBytes < BatchMaxBytes
-		RequestMaxBytes:    1024 * 1024,                                                   // TODO: add to config
-		BatchTimeout:       time.Duration(config.SharedConfig.BatchingConfig.BatchTimeout),
+		// TODO: config batching params
+		// MemPoolMaxSize:
+		// BatchMaxSize:
+		// BatchMaxBytes:
+		// RequestMaxBytes:
+		// BatchTimeout:
 	}
 	return batcherConfig
 }
@@ -109,7 +109,8 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
 		SigningPrivateKey:  signingPrivateKey,
-		BatchTimeout:       time.Duration(config.SharedConfig.BatchingConfig.BatchTimeout),
+		// TODO: config timeout
+		// BatchTimeout:
 	}
 	return consenterConfig
 }

@@ -1,4 +1,4 @@
-package armageddon
+package armageddon_test
 
 import (
 	"fmt"
@@ -12,18 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
-
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
-
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
 
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 // Scenario:
@@ -38,11 +32,11 @@ func TestArmageddonWithTLS(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := generateInputConfigFileForArmageddon(t, configPath)
+	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
 
 	// 2.
-	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "1"})
+	armageddon := armageddon.NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
 
 	// 3.
 	// compile arma
@@ -70,7 +64,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 	}
 
 	// 4.
-	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "500"
 	txs := "1000"
 	txSize := "32"
@@ -91,11 +85,11 @@ func TestLoadStepsAndReceive(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := generateInputConfigFileForArmageddon(t, configPath)
+	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
 
 	// 2.
-	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "1"})
+	armageddon := armageddon.NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "2"})
 
 	// 3.
 	// compile arma
@@ -123,7 +117,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	}
 
 	// 4. + 5.
-	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rates := "500 1000"
 	txsSent := "5000"
 	txsRec := "10000"
@@ -155,11 +149,11 @@ func TestLoadStepsFails(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := generateInputConfigFileForArmageddon(t, configPath)
+	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
 
 	// 2.
-	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS"})
+	armageddon := armageddon.NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
 
 	// 3.
 	// compile arma
@@ -187,7 +181,7 @@ func TestLoadStepsFails(t *testing.T) {
 	}
 
 	// 4. + 5.
-	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rates := "BOOM"
 	txsSent := "10000"
 	txSize := "64"
@@ -216,11 +210,11 @@ func TestLoadAndReceive(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := generateInputConfigFileForArmageddon(t, configPath)
+	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
 
 	// 2.
-	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS"})
+	armageddon := armageddon.NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
 
 	// 3.
 	// compile arma
@@ -248,7 +242,7 @@ func TestLoadAndReceive(t *testing.T) {
 	}
 
 	// 4. + 5.
-	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "500"
 	txs := "10000"
 	txSize := "64"
@@ -269,25 +263,31 @@ func TestLoadAndReceive(t *testing.T) {
 
 func runArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}, listeners map[string]net.Listener) []*gexec.Session {
 	nodes := map[string][]string{
-		"router":    {"router_node_config.yaml"},
-		"batcher":   {"batcher_node_1_config.yaml", "batcher_node_2_config.yaml"},
-		"consensus": {"consenter_node_config.yaml"},
-		"assembler": {"assembler_node_config.yaml"},
+		"router":    {"local_config_router.yaml"},
+		"batcher":   {"local_config_batcher1.yaml", "local_config_batcher2.yaml"},
+		"consensus": {"local_config_consenter.yaml"},
+		"assembler": {"local_config_assembler.yaml"},
 	}
 
 	var sessions []*gexec.Session
 	for _, nodeType := range []string{"consensus", "batcher", "router", "assembler"} {
 		for i := 0; i < 4; i++ {
-			partyDir := path.Join(dir, fmt.Sprintf("Party%d", i+1))
+			partyDir := path.Join(dir, "config", fmt.Sprintf("party%d", i+1))
 			for j := 0; j < len(nodes[nodeType]); j++ {
 				nodeConfigPath := path.Join(partyDir, nodes[nodeType][j])
-				editDirectoryInNodeConfigYAML(t, nodeType, nodeConfigPath)
 				var nodeTypeL string
 				if nodeType == "batcher" {
 					nodeTypeL = fmt.Sprintf("batcher%d", j+1)
 				} else {
 					nodeTypeL = nodeType
 				}
+
+				storagePath := path.Join(dir, "storage", fmt.Sprintf("party%d", i+1), nodeTypeL)
+				err := os.MkdirAll(storagePath, 0o755)
+				require.NoError(t, err)
+
+				testutils.EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
+
 				listener := listeners[fmt.Sprintf("Party%d"+nodeTypeL, i+1)]
 				sess := runNode(t, nodeType, armaBinaryPath, nodeConfigPath, readyChan, listener)
 				sessions = append(sessions, sess)
@@ -309,11 +309,11 @@ func TestArmageddonNonTLS(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := generateInputConfigFileForArmageddon(t, configPath)
+	listeners := testutils.CreateNetwork(t, configPath, 4, "none", "none")
 
 	// 2.
-	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "1"})
+	armageddon := armageddon.NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
 
 	// 3.
 	// compile arma
@@ -341,7 +341,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 	}
 
 	// 4.
-	userConfigPath := path.Join(dir, fmt.Sprintf("Party%d", 1), "user_config.yaml")
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "500"
 	txs := "1000"
 	txSize := "32"
@@ -366,103 +366,6 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	return sess
 }
 
-// generateInputConfigFileForArmageddon create a config.yaml file which is the input to armageddon generate command.
-// the configuration includes 4 parties and 2 batchers for each party.
-func generateInputConfigFileForArmageddon(t *testing.T, path string) map[string]net.Listener {
-	var parties []genconfig.Party
-	listeners := make(map[string]net.Listener)
-	for i := 0; i < 4; i++ {
-		assemblerPort, lla := testutil.GetAvailablePort(t)
-		consenterPort, llc := testutil.GetAvailablePort(t)
-		routerPort, llr := testutil.GetAvailablePort(t)
-		batcher1Port, llb1 := testutil.GetAvailablePort(t)
-		batcher2Port, llb2 := testutil.GetAvailablePort(t)
-
-		party := genconfig.Party{
-			ID:                types.PartyID(i + 1),
-			AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
-			ConsenterEndpoint: "127.0.0.1:" + consenterPort,
-			RouterEndpoint:    "127.0.0.1:" + routerPort,
-			BatchersEndpoints: []string{"127.0.0.1:" + batcher1Port, "127.0.0.1:" + batcher2Port},
-		}
-
-		parties = append(parties, party)
-		listeners[fmt.Sprintf("Party%drouter", i+1)] = llr
-		listeners[fmt.Sprintf("Party%dbatcher1", i+1)] = llb1
-		listeners[fmt.Sprintf("Party%dbatcher2", i+1)] = llb2
-		listeners[fmt.Sprintf("Party%dconsensus", i+1)] = llc
-		listeners[fmt.Sprintf("Party%dassembler", i+1)] = lla
-	}
-
-	network := genconfig.Network{
-		Parties:         parties,
-		UseTLSRouter:    "none",
-		UseTLSAssembler: "none",
-	}
-
-	err := utils.WriteToYAML(network, path)
-	require.NoError(t, err)
-
-	return listeners
-}
-
-// func readRouterNodeConfigFromYaml(t *testing.T, path string) *config.RouterNodeConfig {
-// 	configBytes, err := os.ReadFile(path)
-// 	require.NoError(t, err)
-// 	routerConfig := config.RouterNodeConfig{}
-// 	err = yaml.Unmarshal(configBytes, &routerConfig)
-// 	require.NoError(t, err)
-// 	return &routerConfig
-// }
-
-func readAssemblerNodeConfigFromYaml(t *testing.T, path string) *nodeconfig.AssemblerNodeConfig {
-	configBytes, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assemblerConfig := nodeconfig.AssemblerNodeConfig{}
-	err = yaml.Unmarshal(configBytes, &assemblerConfig)
-	require.NoError(t, err)
-	return &assemblerConfig
-}
-
-func readConsenterNodeConfigFromYaml(t *testing.T, path string) *nodeconfig.ConsenterNodeConfig {
-	configBytes, err := os.ReadFile(path)
-	require.NoError(t, err)
-	consenterConfig := nodeconfig.ConsenterNodeConfig{}
-	err = yaml.Unmarshal(configBytes, &consenterConfig)
-	require.NoError(t, err)
-	return &consenterConfig
-}
-
-func readBatcherNodeConfigFromYaml(t *testing.T, path string) *nodeconfig.BatcherNodeConfig {
-	configBytes, err := os.ReadFile(path)
-	require.NoError(t, err)
-	batcherConfig := nodeconfig.BatcherNodeConfig{}
-	err = yaml.Unmarshal(configBytes, &batcherConfig)
-	require.NoError(t, err)
-	return &batcherConfig
-}
-
-// editDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
-func editDirectoryInNodeConfigYAML(t *testing.T, name string, path string) {
-	dir, err := os.MkdirTemp("", "Directory_"+fmt.Sprint(name))
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
-	switch name {
-	case "batcher":
-		batcherConfig := readBatcherNodeConfigFromYaml(t, path)
-		batcherConfig.Directory = dir
-		nodeconfig.NodeConfigToYAML(batcherConfig, path)
-	case "consensus":
-		consenterConfig := readConsenterNodeConfigFromYaml(t, path)
-		consenterConfig.Directory = dir
-		nodeconfig.NodeConfigToYAML(consenterConfig, path)
-	case "assembler":
-		assemblerConfig := readAssemblerNodeConfigFromYaml(t, path)
-		assemblerConfig.Directory = dir
-		nodeconfig.NodeConfigToYAML(assemblerConfig, path)
-	}
-}
-
 // Scenario:
 // 1. Create a config YAML file to be an input to armageddon
 // 2. Run armageddon generate command to create crypto material and config files
@@ -474,11 +377,11 @@ func TestArmageddonGenerateNewConfig(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	generateInputConfigFileForArmageddon(t, configPath)
+	testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
 
 	// 2.
-	armageddon := NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "2"})
+	armageddon := armageddon.NewCLI()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
 
 	// 3.
 	err = checkConfigDir(dir)
