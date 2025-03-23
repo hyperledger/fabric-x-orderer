@@ -3,9 +3,7 @@ package batcher
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -55,18 +53,19 @@ type Net interface {
 }
 
 type Batcher struct {
-	batcherDeliverService *BatcherDeliverService
-	stateReplicator       StateReplicator
-	logger                types.Logger
-	batcher               *core.Batcher
-	batcherCerts2IDs      map[string]types.PartyID
-	controlEventSenders   []ConsenterControlEventSender
-	Net                   Net
-	Ledger                *node_ledger.BatchLedgerArray
-	config                *node_config.BatcherNodeConfig
-	batchers              []node_config.BatcherInfo
-	privateKey            *ecdsa.PrivateKey
-	signer                Signer
+	requestsInspectorVerifier *RequestsInspectorVerifier
+	batcherDeliverService     *BatcherDeliverService
+	stateReplicator           StateReplicator
+	logger                    types.Logger
+	batcher                   *core.Batcher
+	batcherCerts2IDs          map[string]types.PartyID
+	controlEventSenders       []ConsenterControlEventSender
+	Net                       Net
+	Ledger                    *node_ledger.BatchLedgerArray
+	config                    *node_config.BatcherNodeConfig
+	batchers                  []node_config.BatcherInfo
+	privateKey                *ecdsa.PrivateKey
+	signer                    Signer
 
 	stateRef  atomic.Value
 	stateChan chan *core.State
@@ -123,7 +122,7 @@ func (b *Batcher) replicateState() {
 			b.stateChan <- state
 			primaryID, term := b.getPrimaryIDAndTerm(state)
 			b.primaryLock.Lock()
-			if b.primaryID != primaryID { // TODO better to check term change?
+			if b.primaryID != primaryID {
 				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
 				b.primaryID = primaryID
 				b.term = term
@@ -161,6 +160,10 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 
 	var resp protos.SubmitResponse
 	resp.TraceId = traceId
+	if err := b.requestsInspectorVerifier.VerifyRequest(rawReq); err != nil {
+		// TODO make sure the router verifies the request
+		b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
+	}
 	if err := b.batcher.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
 	}
@@ -205,6 +208,10 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 		var resp protos.SubmitResponse
 		resp.TraceId = traceId
 
+		if err := b.requestsInspectorVerifier.VerifyRequest(rawReq); err != nil {
+			// TODO make sure the router verifies the request
+			b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
+		}
 		if err := b.batcher.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
 		}
@@ -262,7 +269,9 @@ func (b *Batcher) FwdRequestStream(stream protos.BatcherControlService_FwdReques
 			return err
 		}
 		b.logger.Debugf("Calling submit request from batcher %d", from)
-		// TODO verify request before submitting
+		if err := b.requestsInspectorVerifier.VerifyRequest(msg.Request); err != nil {
+			b.logger.Infof("Failed verifying request before submitting from batcher %d; err: %v", from, err)
+		}
 		if err := b.batcher.Submit(msg.Request); err != nil {
 			b.logger.Infof("Failed to submit request from batcher %d; err: %v", from, err)
 		}
@@ -303,17 +312,18 @@ func (b *Batcher) indexTLSCerts() {
 
 func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
 	privateKey := createPrivateKey(logger, config.SigningPrivateKey)
-
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config.ShardId, config.GetShardsIDs(), config.BatchMaxSize, config.BatchMaxBytes, config.RequestMaxBytes, &NoopClientRequestVerifier{})
 	b := &Batcher{
-		batcherDeliverService: ds,
-		stateReplicator:       sr,
-		privateKey:            privateKey,
-		signer:                crypto.ECDSASigner(*privateKey),
-		logger:                logger,
-		Net:                   net,
-		Ledger:                ledger,
-		batcherCerts2IDs:      make(map[string]types.PartyID),
-		config:                config,
+		requestsInspectorVerifier: requestsIDAndVerifier,
+		batcherDeliverService:     ds,
+		stateReplicator:           sr,
+		privateKey:                privateKey,
+		signer:                    crypto.ECDSASigner(*privateKey),
+		logger:                    logger,
+		Net:                       net,
+		Ledger:                    ledger,
+		batcherCerts2IDs:          make(map[string]types.PartyID),
+		config:                    config,
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
@@ -350,12 +360,13 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 			batch := types.BatchedRequests(data)
 			return batch.Digest()
 		},
-		StateProvider:    b,
-		RequestInspector: b,
-		BAFCreator:       b,
-		BAFSender:        b,
-		BatchAcker:       b,
-		Complainer:       b,
+		StateProvider:           b,
+		RequestInspector:        b.requestsInspectorVerifier,
+		BAFCreator:              b,
+		BAFSender:               b,
+		BatchAcker:              b,
+		Complainer:              b,
+		BatchedRequestsVerifier: b.requestsInspectorVerifier,
 	}
 
 	return b
@@ -378,11 +389,11 @@ func (b *Batcher) createMemPool(config *node_config.BatcherNodeConfig) core.MemP
 	opts.RequestMaxBytes = config.RequestMaxBytes
 	opts.SubmitTimeout = config.BatchTimeout
 	opts.Striker = b
-	return request.NewPool(b.logger, b, opts)
+	return request.NewPool(b.logger, b.requestsInspectorVerifier, opts)
 }
 
 func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
-	b.logger.Debugf("First strike timeout occurred on request %s", b.RequestID(req))
+	b.logger.Debugf("First strike timeout occurred on request %s", b.requestsInspectorVerifier.RequestID(req))
 	b.sendReq(req)
 }
 
@@ -498,7 +509,7 @@ func (b *Batcher) sendReq(req []byte) {
 
 	if err := reqStream.Send(&protos.FwdRequest{Request: req}); err != nil {
 		b.primaryLock.Lock()
-		b.logger.Errorf("Failed sending req (ID: %s) to primary %d; error: %v", b.RequestID(req), b.primaryID, err)
+		b.logger.Errorf("Failed sending req (ID: %s) to primary %d; error: %v", b.requestsInspectorVerifier.RequestID(req), b.primaryID, err)
 		b.cleanupPrimaryStreams()
 		b.primaryLock.Unlock()
 	}
@@ -640,12 +651,6 @@ func (b *Batcher) sendControlEvent(ce core.ControlEvent, sender ConsenterControl
 		b.logger.Errorf("Failed sending control event; err: %v", err)
 		// TODO do something when sending fails
 	}
-}
-
-func (b *Batcher) RequestID(req []byte) string {
-	// TODO maybe calculate the request ID differently
-	digest := sha256.Sum256(req)
-	return hex.EncodeToString(digest[:])
 }
 
 func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, reason string) (*core.Complaint, error) {

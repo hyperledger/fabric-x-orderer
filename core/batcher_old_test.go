@@ -250,13 +250,14 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 			}
 			return h.Sum(nil)
 		},
-		RequestInspector: requestInspector,
-		Logger:           sugaredLogger,
-		MemPool:          pool,
-		ID:               arma_types.PartyID(nodeID),
-		Threshold:        2,
-		Ledger:           &noopLedger{},
-		StateProvider:    &mocks.FakeStateProvider{},
+		RequestInspector:        requestInspector,
+		Logger:                  sugaredLogger,
+		MemPool:                 pool,
+		ID:                      arma_types.PartyID(nodeID),
+		Threshold:               2,
+		Ledger:                  &noopLedger{},
+		StateProvider:           &mocks.FakeStateProvider{},
+		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 	}
 
 	return batcher
@@ -392,14 +393,15 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 			batch := arma_types.BatchedRequests(data)
 			return batch.Digest()
 		},
-		RequestInspector: requestInspector,
-		Logger:           sugaredLogger,
-		MemPool:          pool,
-		ID:               nodeID,
-		Threshold:        2,
-		Ledger:           &noopLedger{},
-		StateProvider:    &mocks.FakeStateProvider{},
-		Complainer:       &mocks.FakeComplainer{},
+		RequestInspector:        requestInspector,
+		Logger:                  sugaredLogger,
+		MemPool:                 pool,
+		ID:                      nodeID,
+		Threshold:               2,
+		Ledger:                  &noopLedger{},
+		StateProvider:           &mocks.FakeStateProvider{},
+		Complainer:              &mocks.FakeComplainer{},
+		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 	}
 
 	return b

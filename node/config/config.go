@@ -101,7 +101,7 @@ type BatcherNodeConfig struct {
 	MemPoolMaxSize     uint64
 	BatchMaxSize       uint32
 	BatchMaxBytes      uint32
-	RequestMaxBytes    uint64
+	RequestMaxBytes    uint64 // TODO how can this be uint64 when BatchMaxBytes is uint32?
 	BatchTimeout       time.Duration
 }
 

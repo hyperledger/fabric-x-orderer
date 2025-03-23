@@ -50,6 +50,13 @@ type Complainer interface {
 	Complain(string)
 }
 
+//go:generate counterfeiter -o mocks/batched_requests_verifier.go . BatchedRequestsVerifier
+
+// BatchedRequestsVerifier verifies batched requests
+type BatchedRequestsVerifier interface {
+	VerifyBatchedRequests(types.BatchedRequests) error
+}
+
 //go:generate counterfeiter -o mocks/batch_acker.go . BatchAcker
 
 // BatchAcker sends an ack over a specific batch
@@ -92,34 +99,35 @@ var (
 )
 
 type Batcher struct {
-	Batchers         []types.PartyID
-	BatchTimeout     time.Duration
-	Digest           func([][]byte) []byte // TODO remove the use of this function pointer and use BatchedRequests.Digest() directly.
-	RequestInspector RequestInspector
-	ID               types.PartyID
-	Shard            types.ShardID
-	Threshold        int
-	N                uint16
-	Logger           types.Logger
-	Ledger           BatchLedger
-	BatchPuller      BatchPuller
-	StateProvider    StateProvider
-	BAFCreator       BAFCreator
-	BAFSender        BAFSender
-	BatchAcker       BatchAcker
-	Complainer       Complainer
-	MemPool          MemPool
-	running          sync.WaitGroup
-	stopChan         chan struct{}
-	stopOnce         sync.Once
-	stopCtx          context.Context
-	cancelBatch      func()
-	primary          types.PartyID
-	seq              types.BatchSequence
-	term             uint64
-	termChan         chan uint64
-	ackerLock        sync.RWMutex
-	acker            SeqAcker
+	Batchers                []types.PartyID
+	BatchTimeout            time.Duration
+	Digest                  func([][]byte) []byte // TODO remove the use of this function pointer and use BatchedRequests.Digest() directly.
+	RequestInspector        RequestInspector
+	ID                      types.PartyID
+	Shard                   types.ShardID
+	Threshold               int
+	N                       uint16
+	Logger                  types.Logger
+	Ledger                  BatchLedger
+	BatchPuller             BatchPuller
+	StateProvider           StateProvider
+	BAFCreator              BAFCreator
+	BAFSender               BAFSender
+	BatchAcker              BatchAcker
+	Complainer              Complainer
+	BatchedRequestsVerifier BatchedRequestsVerifier
+	MemPool                 MemPool
+	running                 sync.WaitGroup
+	stopChan                chan struct{}
+	stopOnce                sync.Once
+	stopCtx                 context.Context
+	cancelBatch             func()
+	primary                 types.PartyID
+	seq                     types.BatchSequence
+	term                    uint64
+	termChan                chan uint64
+	ackerLock               sync.RWMutex
+	acker                   SeqAcker
 }
 
 func (b *Batcher) Start() {
@@ -330,7 +338,7 @@ func (b *Batcher) runSecondary() {
 	}
 }
 
-func (b *Batcher) verifyBatch(batch Batch) error {
+func (b *Batcher) verifyBatch(batch Batch) error { // TODO testing
 	if batch.Primary() != b.primary {
 		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
 	}
@@ -346,6 +354,8 @@ func (b *Batcher) verifyBatch(batch Batch) error {
 	if !slices.Equal(batch.Digest(), b.Digest(batch.Requests())) {
 		return errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), b.Digest(batch.Requests()))
 	}
-	// TODO verify requests
+	if err := b.BatchedRequestsVerifier.VerifyBatchedRequests(batch.Requests()); err != nil {
+		return errors.Errorf("failed verifying requests for batch seq %d; err: %v", b.seq, err)
+	}
 	return nil
 }

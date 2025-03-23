@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 func TestRouterNodeConfigToYaml(t *testing.T) {
@@ -127,4 +128,12 @@ func TestAssemblerNodeConfigToYaml(t *testing.T) {
 	err = NodeConfigFromYAML(&ancFromYAML, path)
 	require.NoError(t, err)
 	require.Equal(t, ancFromYAML, *anc)
+}
+
+func TestShardsIDsFromBatcherConfig(t *testing.T) {
+	shards := []ShardInfo{{ShardId: 1}, {ShardId: 3}, {ShardId: 2}, {ShardId: 4}}
+	bnc := &BatcherNodeConfig{
+		Shards: shards,
+	}
+	require.Equal(t, []types.ShardID{1, 2, 3, 4}, bnc.GetShardsIDs())
 }
