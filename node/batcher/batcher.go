@@ -387,7 +387,7 @@ func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
 }
 
 func (b *Batcher) OnSecondStrikeTimeout() {
-	b.logger.Warnf("Second strike timeout occurred")
+	b.logger.Warnf("Second strike timeout occurred; sending a complaint")
 	b.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; second strike timeout occurred", b.config.PartyId, b.config.ShardId))
 }
 
@@ -448,7 +448,7 @@ func (b *Batcher) createComplaint(reason string) *core.Complaint {
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
 	}
-
+	b.logger.Infof("Created complaint with term %d and reason %s", term, reason)
 	return c
 }
 
