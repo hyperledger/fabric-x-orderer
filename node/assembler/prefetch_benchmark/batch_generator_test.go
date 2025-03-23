@@ -3,7 +3,6 @@ package prefetch_benchmark_test
 import (
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
 )
 
 type batchGenerator struct {
@@ -26,18 +25,16 @@ func newBatchGenerator(txInBatch, txSize int) *batchGenerator {
 	}
 	return &batchGenerator{
 		emptyRequests:         emptyRequests,
-		emptyRequestsDigest:   testutil.CalculateDigest(emptyRequests),
+		emptyRequestsDigest:   emptyRequests.Digest(),
 		specialRequests:       specialRequests,
-		specialRequestsDigest: testutil.CalculateDigest(specialRequests),
+		specialRequestsDigest: specialRequests.Digest(),
 	}
 }
 
-func (bg *batchGenerator) GenerateBatch(shardId types.ShardID, primaryId types.PartyID, seq types.BatchSequence, regularDigest bool) core.Batch {
+func (bg *batchGenerator) GenerateBatch(shardId types.ShardID, primaryId types.PartyID, seq types.BatchSequence, regular bool) core.Batch {
 	requests := bg.specialRequests
-	digest := bg.specialRequestsDigest
-	if !regularDigest {
+	if !regular {
 		requests = bg.emptyRequests
-		digest = bg.emptyRequestsDigest
 	}
-	return types.NewSimpleBatch(seq, shardId, primaryId, requests, digest)
+	return types.NewSimpleBatch(seq, shardId, primaryId, requests)
 }

@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"crypto/sha256"
 	"testing"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
@@ -39,17 +38,12 @@ func CreateMockBatch(shard types.ShardID, primary types.PartyID, seq types.Batch
 	return CreateMockBatchWithRequests(shard, primary, seq, requests)
 }
 
-func CalculateDigest(requests types.BatchedRequests) []byte {
-	digest := sha256.Sum256(requests.Serialize())
-	return digest[:]
-}
-
 func CreateMockBatchWithRequests(shard types.ShardID, primary types.PartyID, seq types.BatchSequence, requests types.BatchedRequests) *core_mocks.FakeBatch {
 	batch := &core_mocks.FakeBatch{}
 	batch.ShardReturns(shard)
 	batch.PrimaryReturns(primary)
 	batch.SeqReturns(seq)
-	batch.DigestReturns(CalculateDigest(requests))
+	batch.DigestReturns(requests.Digest())
 	batch.RequestsReturns(requests)
 	return batch
 }

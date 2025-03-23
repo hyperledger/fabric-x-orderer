@@ -348,8 +348,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		Logger:       logger,
 		Digest: func(data [][]byte) []byte {
 			batch := types.BatchedRequests(data)
-			digest := sha256.Sum256(batch.Serialize())
-			return digest[:]
+			return batch.Digest()
 		},
 		StateProvider:    b,
 		RequestInspector: b,

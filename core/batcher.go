@@ -94,7 +94,7 @@ var (
 type Batcher struct {
 	Batchers         []types.PartyID
 	BatchTimeout     time.Duration
-	Digest           func([][]byte) []byte
+	Digest           func([][]byte) []byte // TODO remove the use of this function pointer and use BatchedRequests.Digest() directly.
 	RequestInspector RequestInspector
 	ID               types.PartyID
 	Shard            types.ShardID
@@ -270,7 +270,7 @@ func (b *Batcher) runPrimary() {
 
 		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest)
 
-		b.Ledger.Append(b.ID, uint64(b.seq), serializedBatch)
+		b.Ledger.Append(b.ID, uint64(b.seq), serializedBatch) // TODO change to accept BatchedRequests
 
 		b.BAFSender.SendBAF(baf)
 
@@ -320,7 +320,7 @@ func (b *Batcher) runSecondary() {
 			}
 			requests := batch.Requests()
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
-			b.Ledger.Append(b.primary, uint64(b.seq), requests.Serialize())
+			b.Ledger.Append(b.primary, uint64(b.seq), requests.Serialize()) // TODO change ledger API to accept BatchedRequests
 			b.removeRequests(requests)
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, b.Digest(requests))
 			b.BAFSender.SendBAF(baf)

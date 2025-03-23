@@ -73,7 +73,7 @@ func (bla *BatchLedgerArray) Height(partyID types.PartyID) uint64 {
 	return part.Height()
 }
 
-func (bla *BatchLedgerArray) Append(partyID types.PartyID, seq uint64, batchBytes []byte) {
+func (bla *BatchLedgerArray) Append(partyID types.PartyID, seq uint64, batchBytes []byte) { // TODO change the API to accept a BatchedRequests
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)

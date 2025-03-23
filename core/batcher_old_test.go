@@ -93,11 +93,8 @@ func (nb *naiveBatch) Primary() arma_types.PartyID {
 }
 
 func (nb *naiveBatch) Digest() []byte {
-	h := sha256.New()
-	for _, req := range nb.Requests() {
-		h.Write(req)
-	}
-	return h.Sum(nil)
+	br := arma_types.BatchedRequests(nb.requests)
+	return br.Digest()
 }
 
 func (nb *naiveBatch) Shard() arma_types.ShardID {
@@ -389,19 +386,16 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	b := &core.Batcher{
 		N:          uint16(len(batchers)),
 		Batchers:   batchers,
-		Shard:      arma_types.ShardID(shardID),
+		Shard:      shardID,
 		BAFCreator: bafCreator,
 		Digest: func(data [][]byte) []byte {
-			h := sha256.New()
-			for _, d := range data {
-				h.Write(d)
-			}
-			return h.Sum(nil)
+			batch := arma_types.BatchedRequests(data)
+			return batch.Digest()
 		},
 		RequestInspector: requestInspector,
 		Logger:           sugaredLogger,
 		MemPool:          pool,
-		ID:               arma_types.PartyID(nodeID),
+		ID:               nodeID,
 		Threshold:        2,
 		Ledger:           &noopLedger{},
 		StateProvider:    &mocks.FakeStateProvider{},

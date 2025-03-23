@@ -8,8 +8,14 @@ type SimpleBatch struct {
 	digest   []byte
 }
 
-func NewSimpleBatch(seq BatchSequence, shard ShardID, primary PartyID, requests BatchedRequests, digest []byte) *SimpleBatch {
-	return &SimpleBatch{seq: seq, shard: shard, primary: primary, requests: requests, digest: digest}
+func NewSimpleBatch(seq BatchSequence, shard ShardID, primary PartyID, requests BatchedRequests) *SimpleBatch {
+	return &SimpleBatch{
+		seq:      seq,
+		shard:    shard,
+		primary:  primary,
+		requests: requests,
+		digest:   requests.Digest(),
+	}
 }
 
 func (sb *SimpleBatch) Digest() []byte            { return sb.digest }

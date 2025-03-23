@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"strconv"
@@ -62,8 +61,15 @@ func (b *FabricBatch) Seq() types.BatchSequence {
 	return types.BatchSequence((*common.Block)(b).GetHeader().GetNumber())
 }
 
-func NewFabricBatchFromRaw(partyID types.PartyID, shardID types.ShardID, seq uint64, batchBytes []byte, prevHash []byte) (*FabricBatch, error) {
+func NewFabricBatchFromRaw(
+	partyID types.PartyID,
+	shardID types.ShardID,
+	seq uint64,
+	batchBytes []byte, // TODO change API to accept BatchedRequests
+	prevHash []byte,
+) (*FabricBatch, error) {
 	var batchedRequests types.BatchedRequests
+	// TODO avoid this
 	if err := batchedRequests.Deserialize(batchBytes); err != nil {
 		return nil, err
 	}
@@ -72,13 +78,11 @@ func NewFabricBatchFromRaw(partyID types.PartyID, shardID types.ShardID, seq uin
 	binary.BigEndian.PutUint16(buff[:2], uint16(partyID))
 	binary.BigEndian.PutUint16(buff[2:], uint16(shardID))
 
-	digest := sha256.Sum256(batchBytes)
-
 	block := &common.Block{
 		Header: &common.BlockHeader{
 			Number:       seq,
 			PreviousHash: prevHash,
-			DataHash:     digest[:],
+			DataHash:     batchedRequests.Digest(),
 		},
 		Data: &common.BlockData{
 			Data: batchedRequests,
