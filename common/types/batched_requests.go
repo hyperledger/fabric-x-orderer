@@ -67,6 +67,20 @@ func (br *BatchedRequests) Deserialize(bytes []byte) error {
 	return nil
 }
 
+// SizeBytes counts the cumulative size of the requests.
+// A `nil` and empty slice returns 0.
+func (br *BatchedRequests) SizeBytes() int64 {
+	if br == nil {
+		return 0
+	}
+
+	s := int64(0)
+	for _, r := range *br {
+		s += int64(len(r))
+	}
+	return s
+}
+
 // Digest calculates a sha256 digest on a safe representation of the BatchedRequests.
 // This is equivalent to BatchRequestsDataHashWithSerialize, yet faster, and consumes less extra memory.
 func (br *BatchedRequests) Digest() []byte {

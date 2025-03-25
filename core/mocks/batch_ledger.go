@@ -9,12 +9,12 @@ import (
 )
 
 type FakeBatchLedger struct {
-	AppendStub        func(types.PartyID, uint64, []byte)
+	AppendStub        func(types.PartyID, types.BatchSequence, types.BatchedRequests)
 	appendMutex       sync.RWMutex
 	appendArgsForCall []struct {
 		arg1 types.PartyID
-		arg2 uint64
-		arg3 []byte
+		arg2 types.BatchSequence
+		arg3 types.BatchedRequests
 	}
 	HeightStub        func(types.PartyID) uint64
 	heightMutex       sync.RWMutex
@@ -43,20 +43,15 @@ type FakeBatchLedger struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchLedger) Append(arg1 types.PartyID, arg2 uint64, arg3 []byte) {
-	var arg3Copy []byte
-	if arg3 != nil {
-		arg3Copy = make([]byte, len(arg3))
-		copy(arg3Copy, arg3)
-	}
+func (fake *FakeBatchLedger) Append(arg1 types.PartyID, arg2 types.BatchSequence, arg3 types.BatchedRequests) {
 	fake.appendMutex.Lock()
 	fake.appendArgsForCall = append(fake.appendArgsForCall, struct {
 		arg1 types.PartyID
-		arg2 uint64
-		arg3 []byte
-	}{arg1, arg2, arg3Copy})
+		arg2 types.BatchSequence
+		arg3 types.BatchedRequests
+	}{arg1, arg2, arg3})
 	stub := fake.AppendStub
-	fake.recordInvocation("Append", []interface{}{arg1, arg2, arg3Copy})
+	fake.recordInvocation("Append", []interface{}{arg1, arg2, arg3})
 	fake.appendMutex.Unlock()
 	if stub != nil {
 		fake.AppendStub(arg1, arg2, arg3)
@@ -69,13 +64,13 @@ func (fake *FakeBatchLedger) AppendCallCount() int {
 	return len(fake.appendArgsForCall)
 }
 
-func (fake *FakeBatchLedger) AppendCalls(stub func(types.PartyID, uint64, []byte)) {
+func (fake *FakeBatchLedger) AppendCalls(stub func(types.PartyID, types.BatchSequence, types.BatchedRequests)) {
 	fake.appendMutex.Lock()
 	defer fake.appendMutex.Unlock()
 	fake.AppendStub = stub
 }
 
-func (fake *FakeBatchLedger) AppendArgsForCall(i int) (types.PartyID, uint64, []byte) {
+func (fake *FakeBatchLedger) AppendArgsForCall(i int) (types.PartyID, types.BatchSequence, types.BatchedRequests) {
 	fake.appendMutex.RLock()
 	defer fake.appendMutex.RUnlock()
 	argsForCall := fake.appendArgsForCall[i]

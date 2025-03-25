@@ -28,7 +28,7 @@ func (ri *reqInspector) RequestID(req []byte) string {
 
 type noopLedger struct{}
 
-func (*noopLedger) Append(_ arma_types.PartyID, _ uint64, _ []byte) {
+func (*noopLedger) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
 }
 
 func (*noopLedger) Height(partyID arma_types.PartyID) uint64 {
@@ -59,14 +59,12 @@ func (r *naiveReplication) Stop() {
 	atomic.StoreInt32(&r.stopped, 0x1)
 }
 
-func (r *naiveReplication) Append(node arma_types.PartyID, seq uint64, bytes []byte) {
+func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
 	for _, s := range r.subscribers {
-		var reqs arma_types.BatchedRequests
-		reqs.Deserialize(bytes)
 		s <- &naiveBatch{
-			node:     node,
-			seq:      arma_types.BatchSequence(seq),
-			requests: reqs,
+			node:     partyID,
+			seq:      arma_types.BatchSequence(batchSeq),
+			requests: batchedRequests,
 		}
 	}
 }
@@ -239,17 +237,10 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	})
 
 	batcher := &core.Batcher{
-		N:          uint16(len(batchers)),
-		Batchers:   batchers,
-		Shard:      arma_types.ShardID(shardID),
-		BAFCreator: bafCreator,
-		Digest: func(data [][]byte) []byte {
-			h := sha256.New()
-			for _, d := range data {
-				h.Write(d)
-			}
-			return h.Sum(nil)
-		},
+		N:                       uint16(len(batchers)),
+		Batchers:                batchers,
+		Shard:                   arma_types.ShardID(shardID),
+		BAFCreator:              bafCreator,
 		RequestInspector:        requestInspector,
 		Logger:                  sugaredLogger,
 		MemPool:                 pool,
@@ -385,14 +376,10 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	})
 
 	b := &core.Batcher{
-		N:          uint16(len(batchers)),
-		Batchers:   batchers,
-		Shard:      shardID,
-		BAFCreator: bafCreator,
-		Digest: func(data [][]byte) []byte {
-			batch := arma_types.BatchedRequests(data)
-			return batch.Digest()
-		},
+		N:                       uint16(len(batchers)),
+		Batchers:                batchers,
+		Shard:                   shardID,
+		BAFCreator:              bafCreator,
 		RequestInspector:        requestInspector,
 		Logger:                  sugaredLogger,
 		MemPool:                 pool,

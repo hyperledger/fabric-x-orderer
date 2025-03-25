@@ -32,7 +32,7 @@ func TestBatchLedgerPart(t *testing.T) {
 
 	for seq := uint64(0); seq < 10; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
-		part.Append(seq, batchedRequests.Serialize())
+		part.Append(types.BatchSequence(seq), batchedRequests)
 		require.Equal(t, seq+1, part.Height())
 		batch := part.RetrieveBatchByNumber(seq)
 		require.NotNil(t, batch)
@@ -61,7 +61,7 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 
 	for seq := uint64(0); seq < 10; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
-		part.Append(seq, batchedRequests.Serialize())
+		part.Append(types.BatchSequence(seq), batchedRequests)
 	}
 
 	ledger := part.Ledger()

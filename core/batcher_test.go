@@ -1,7 +1,6 @@
 package core_test
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"testing"
 	"time"
@@ -75,7 +74,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
-	batch.DigestReturns(batcher.Digest(reqs))
+	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -148,7 +147,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	batch.PrimaryReturns(2)
 	batch.SeqReturns(0)
 	batch.RequestsReturns(reqs)
-	batch.DigestReturns(batcher.Digest(reqs))
+	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -233,7 +232,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
-	batch.DigestReturns(batcher.Digest(reqs))
+	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -314,7 +313,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
-	batch.DigestReturns(batcher.Digest(reqs))
+	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -529,7 +528,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(2)
 	batch.RequestsReturns(reqs)
-	batch.DigestReturns(batcher.Digest(reqs))
+	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan core.Batch)
@@ -582,14 +581,6 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 }
 
 func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger arma_types.Logger) *core.Batcher {
-	digestFunc := func(data [][]byte) []byte {
-		h := sha256.New()
-		for _, d := range data {
-			h.Write(d)
-		}
-		return h.Sum(nil)
-	}
-
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
@@ -598,7 +589,6 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 	batcher := &core.Batcher{
 		Batchers:                batchers,
 		BatchTimeout:            0,
-		Digest:                  digestFunc,
 		RequestInspector:        &mocks.FakeRequestInspector{},
 		ID:                      batcherID,
 		Shard:                   shardID,

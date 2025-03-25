@@ -64,11 +64,10 @@ func newBatchLedgerPart(
 
 // Append adds a batch to the end of the ledger chain.
 // The `seq` must match the expected block number (i.e. Height()).
-// The raw batch bytes `batchBytes` must be able to decode to core.BatchedRequests.
-func (b *BatchLedgerPart) Append(seq uint64, batchBytes []byte) { // TODO change the API to accept a BatchedRequests
-	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, len(batchBytes), b.primaryPartyID)
+func (b *BatchLedgerPart) Append(seq types.BatchSequence, batchedRequests types.BatchedRequests) {
+	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, batchedRequests.SizeBytes(), b.primaryPartyID)
 
-	block, _ := NewFabricBatchFromRaw(b.primaryPartyID, b.shardID, seq, batchBytes, b.prevHash)
+	block, _ := NewFabricBatchFromRequests(b.primaryPartyID, b.shardID, seq, batchedRequests, b.prevHash)
 
 	// Note: We do this only because we reuse the Fabric ledger, we don't really need a hash chain here.
 	b.prevHash = protoutil.BlockHeaderHash(block.Header)

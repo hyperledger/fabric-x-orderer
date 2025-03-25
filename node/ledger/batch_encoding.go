@@ -61,26 +61,20 @@ func (b *FabricBatch) Seq() types.BatchSequence {
 	return types.BatchSequence((*common.Block)(b).GetHeader().GetNumber())
 }
 
-func NewFabricBatchFromRaw(
+func NewFabricBatchFromRequests(
 	partyID types.PartyID,
 	shardID types.ShardID,
-	seq uint64,
-	batchBytes []byte, // TODO change API to accept BatchedRequests
+	seq types.BatchSequence,
+	batchedRequests types.BatchedRequests,
 	prevHash []byte,
-) (*FabricBatch, error) {
-	var batchedRequests types.BatchedRequests
-	// TODO avoid this
-	if err := batchedRequests.Deserialize(batchBytes); err != nil {
-		return nil, err
-	}
-
+) (*FabricBatch, error) { // TODO remove the error
 	buff := make([]byte, 4)
 	binary.BigEndian.PutUint16(buff[:2], uint16(partyID))
 	binary.BigEndian.PutUint16(buff[2:], uint16(shardID))
 
 	block := &common.Block{
 		Header: &common.BlockHeader{
-			Number:       seq,
+			Number:       uint64(seq),
 			PreviousHash: prevHash,
 			DataHash:     batchedRequests.Digest(),
 		},

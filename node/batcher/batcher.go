@@ -346,20 +346,16 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	f := (initState.N - 1) / 3
 
 	b.batcher = &core.Batcher{
-		Batchers:     getBatchersIDs(b.batchers),
-		BatchPuller:  bp,
-		Threshold:    int(f + 1),
-		N:            initState.N,
-		BatchTimeout: time.Millisecond * 500,
-		Ledger:       ledger,
-		MemPool:      b.createMemPool(config),
-		ID:           config.PartyId,
-		Shard:        config.ShardId,
-		Logger:       logger,
-		Digest: func(data [][]byte) []byte {
-			batch := types.BatchedRequests(data)
-			return batch.Digest()
-		},
+		Batchers:                getBatchersIDs(b.batchers),
+		BatchPuller:             bp,
+		Threshold:               int(f + 1),
+		N:                       initState.N,
+		BatchTimeout:            time.Millisecond * 500,
+		Ledger:                  ledger,
+		MemPool:                 b.createMemPool(config),
+		ID:                      config.PartyId,
+		Shard:                   config.ShardId,
+		Logger:                  logger,
 		StateProvider:           b,
 		RequestInspector:        b.requestsInspectorVerifier,
 		BAFCreator:              b,

@@ -15,9 +15,8 @@ func TestAssemblerBlockMetadataToFromBytes(t *testing.T) {
 	batchedRequests := types.BatchedRequests{
 		[]byte("tx1-1"), []byte("tx2"),
 	}
-	batchBytes := batchedRequests.Serialize()
 
-	fb, err := node_ledger.NewFabricBatchFromRaw(1, 2, 3, batchBytes, []byte("bogus"))
+	fb, err := node_ledger.NewFabricBatchFromRequests(1, 2, 3, batchedRequests, []byte("bogus"))
 	assert.NoError(t, err)
 
 	oi := &state.OrderingInformation{

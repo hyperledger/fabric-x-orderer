@@ -143,3 +143,20 @@ func Benchmark_Digest(b *testing.B) {
 		}
 	})
 }
+
+func TestBatchedRequests_SizeBytes(t *testing.T) {
+	var brp *BatchedRequests
+	assert.Equal(t, int64(0), brp.SizeBytes())
+
+	var br BatchedRequests
+	assert.Equal(t, int64(0), br.SizeBytes())
+
+	br1 := BatchedRequests([][]byte{{}, {}})
+	assert.Equal(t, int64(0), br1.SizeBytes())
+
+	br2 := BatchedRequests([][]byte{{1, 2}, {4, 5, 6}})
+	assert.Equal(t, int64(5), br2.SizeBytes())
+
+	br3 := BatchedRequests([][]byte{{1, 2}, {4, 5, 6}, {7}, {}})
+	assert.Equal(t, int64(6), br3.SizeBytes())
+}

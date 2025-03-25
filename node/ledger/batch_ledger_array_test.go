@@ -43,7 +43,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, seq, batchedRequests.Serialize())
+			a.Append(pID, types.BatchSequence(seq), batchedRequests)
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -73,7 +73,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, seq, batchedRequests.Serialize())
+			a.Append(pID, types.BatchSequence(seq), batchedRequests)
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -97,7 +97,7 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 	for _, pID := range parties {
 		part := a.Part(pID)
 		for seq := uint64(0); seq < 10; seq++ {
-			part.Append(seq, batchedRequests.Serialize())
+			part.Append(types.BatchSequence(seq), batchedRequests)
 			require.Equal(t, seq+1, part.Height())
 			batch := part.RetrieveBatchByNumber(seq)
 			require.NotNil(t, batch)

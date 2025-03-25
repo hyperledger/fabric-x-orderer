@@ -72,12 +72,10 @@ type shardCommitter struct {
 	shardID uint16
 }
 
-func (s *shardCommitter) Append(party arma_types.PartyID, _ uint64, rawBatch []byte) {
-	var reqs arma_types.BatchedRequests
-	reqs.Deserialize(rawBatch)
+func (s *shardCommitter) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
 	nb := &naiveBatch{
-		requests: reqs,
-		node:     party,
+		requests: batchedRequests,
+		node:     partyID,
 	}
 
 	s.sr.subscribers[s.shardID] <- nb

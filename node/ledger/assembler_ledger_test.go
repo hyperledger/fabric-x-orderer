@@ -274,7 +274,6 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.Orde
 		batchedRequests := types.BatchedRequests{
 			[]byte{1, 2, 3, 4, byte(n)}, []byte{5, 6, 7, 8, byte(n)},
 		}
-		batchBytes := batchedRequests.Serialize()
 
 		// deal a batch on every shard
 		sIdx := n % 8
@@ -286,8 +285,8 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.Orde
 		seq := seqArray[sIdx][pIdx]
 		seqArray[sIdx][pIdx] = seq + 1
 
-		fb, err := node_ledger.NewFabricBatchFromRaw(
-			party, shard, seq, batchBytes, nil)
+		fb, err := node_ledger.NewFabricBatchFromRequests(
+			party, shard, types.BatchSequence(seq), batchedRequests, nil)
 		require.NoError(t, err)
 
 		transactionCount += len(batchedRequests)

@@ -79,7 +79,7 @@ type BAFCreator interface {
 }
 
 type BatchLedgerWriter interface {
-	Append(types.PartyID, uint64, []byte)
+	Append(partyID types.PartyID, batchSeq types.BatchSequence, batchedRequests types.BatchedRequests)
 }
 
 type BatchLedgeReader interface {
@@ -101,7 +101,6 @@ var (
 type Batcher struct {
 	Batchers                []types.PartyID
 	BatchTimeout            time.Duration
-	Digest                  func([][]byte) []byte // TODO remove the use of this function pointer and use BatchedRequests.Digest() directly.
 	RequestInspector        RequestInspector
 	ID                      types.PartyID
 	Shard                   types.ShardID
@@ -250,7 +249,6 @@ func (b *Batcher) runPrimary() {
 	var digest []byte
 
 	for {
-		var serializedBatch []byte
 		for {
 			b.ackerLock.RLock()
 			ch := b.acker.WaitForSecondaries(b.seq)
@@ -270,15 +268,14 @@ func (b *Batcher) runPrimary() {
 				continue
 			}
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
-			digest = b.Digest(currentBatch)
-			serializedBatch = currentBatch.Serialize()
+			digest = currentBatch.Digest()
 			cancel()
 			break
 		}
 
 		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest)
 
-		b.Ledger.Append(b.ID, uint64(b.seq), serializedBatch) // TODO change to accept BatchedRequests
+		b.Ledger.Append(b.ID, b.seq, currentBatch)
 
 		b.BAFSender.SendBAF(baf)
 
@@ -328,9 +325,9 @@ func (b *Batcher) runSecondary() {
 			}
 			requests := batch.Requests()
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
-			b.Ledger.Append(b.primary, uint64(b.seq), requests.Serialize()) // TODO change ledger API to accept BatchedRequests
+			b.Ledger.Append(b.primary, b.seq, requests)
 			b.removeRequests(requests)
-			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, b.Digest(requests))
+			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
 			b.BAFSender.SendBAF(baf)
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
@@ -351,8 +348,9 @@ func (b *Batcher) verifyBatch(batch Batch) error { // TODO testing
 	if len(batch.Requests()) == 0 {
 		return errors.Errorf("empty batch")
 	}
-	if !slices.Equal(batch.Digest(), b.Digest(batch.Requests())) {
-		return errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), b.Digest(batch.Requests()))
+	br := batch.Requests()
+	if !slices.Equal(batch.Digest(), br.Digest()) {
+		return errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), br.Digest())
 	}
 	if err := b.BatchedRequestsVerifier.VerifyBatchedRequests(batch.Requests()); err != nil {
 		return errors.Errorf("failed verifying requests for batch seq %d; err: %v", b.seq, err)
