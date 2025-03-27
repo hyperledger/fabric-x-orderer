@@ -61,8 +61,7 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func createRouters(t *testing.T, num int, batcherInfos []config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID) ([]*router.Router, []*config.RouterNodeConfig) {
-	var configs []*config.RouterNodeConfig
+func createRouters(t *testing.T, num int, batcherInfos []config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID) []*router.Router {
 	var routers []*router.Router
 	for i := 0; i < num; i++ {
 		l := testutil.CreateLogger(t, i)
@@ -80,13 +79,12 @@ func createRouters(t *testing.T, num int, batcherInfos []config.BatcherInfo, ca 
 			}},
 			UseTLS: true,
 		}
-		configs = append(configs, config)
 
 		router := router.NewRouter(config, l)
 		routers = append(routers, router)
 	}
 
-	return routers, configs
+	return routers
 }
 
 func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo) ([]*consensus.Consensus, func()) {

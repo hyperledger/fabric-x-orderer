@@ -31,16 +31,15 @@ func init() {
 }
 
 type routerTestSetup struct {
-	ca           tlsgen.CA
-	routerServer *comm.GRPCServer
-	batchers     []*stubBatcher
-	clientConn   *grpc.ClientConn
-	router       *router.Router
+	ca         tlsgen.CA
+	batchers   []*stubBatcher
+	clientConn *grpc.ClientConn
+	router     *router.Router
 }
 
 func (r *routerTestSetup) Close() {
+	r.router.Stop()
 	r.clientConn.Close()
-	r.routerServer.Stop()
 
 	for _, batcher := range r.batchers {
 		batcher.server.Stop()
@@ -65,17 +64,16 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int)
 	}
 
 	// create and start router
-	routerServer, router := createAndStartRouter(t, partyID, ca, batchers)
+	router := createAndStartRouter(t, partyID, ca, batchers)
 
 	// create a client to the router
-	conn := createClientConnToRouter(t, ca, routerServer)
+	conn := createClientConnToRouter(t, ca, router)
 
 	return &routerTestSetup{
-		ca:           ca,
-		routerServer: routerServer,
-		batchers:     batchers,
-		clientConn:   conn,
-		router:       router,
+		ca:         ca,
+		batchers:   batchers,
+		clientConn: conn,
+		router:     router,
 	}
 }
 
@@ -316,20 +314,8 @@ func submitRequest(conn *grpc.ClientConn) error {
 	return nil
 }
 
-func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher) (*comm.GRPCServer, *router.Router) {
+func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher) *router.Router {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	srv, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: ckp.Cert,
-			Key:         ckp.Key,
-		},
-	})
 	require.NoError(t, err)
 
 	logger := testutil.CreateLogger(t, 0)
@@ -340,29 +326,22 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		shards = append(shards, config.ShardInfo{ShardId: types.ShardID(j + 1), Batchers: []config.BatcherInfo{{PartyID: 1, Endpoint: batchers[j].server.Address(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}}})
 	}
 
-	config := &config.RouterNodeConfig{
+	conf := &config.RouterNodeConfig{
 		PartyID:            partyID,
 		TLSCertificateFile: ckp.Cert,
+		UseTLS:             true,
 		TLSPrivateKeyFile:  ckp.Key,
-		ListenAddress:      srv.Address(),
+		ListenAddress:      "127.0.0.1:0",
 		Shards:             shards,
 	}
-	router := router.NewRouter(config, logger)
 
-	protos.RegisterRequestTransmitServer(srv.Server(), router)
-	ab.RegisterAtomicBroadcastServer(srv.Server(), router)
+	r := router.NewRouter(conf, logger)
+	r.StartRouterService()
 
-	go func() {
-		err := srv.Start()
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	return srv, router
+	return r
 }
 
-func createClientConnToRouter(t *testing.T, ca tlsgen.CA, routerServer *comm.GRPCServer) *grpc.ClientConn {
+func createClientConnToRouter(t *testing.T, ca tlsgen.CA, router *router.Router) *grpc.ClientConn {
 	cc := comm.ClientConfig{
 		SecOpts: comm.SecureOptions{
 			UseTLS:        true,
@@ -372,7 +351,7 @@ func createClientConnToRouter(t *testing.T, ca tlsgen.CA, routerServer *comm.GRP
 		AsyncConnect: false,
 	}
 
-	conn, err := cc.Dial(routerServer.Address())
+	conn, err := cc.Dial(router.Address())
 	require.NoError(t, err)
 	return conn
 }

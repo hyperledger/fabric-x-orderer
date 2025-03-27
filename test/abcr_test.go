@@ -44,14 +44,10 @@ func TestABCR(t *testing.T) {
 	_, _, _, clean = createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId)
 	defer clean()
 
-	routers, configs := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId)
+	routers := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId)
 
-	for i, rConf := range configs {
-		gRPC := node2.CreateGRPCRouter(rConf)
-		orderer.RegisterAtomicBroadcastServer(gRPC.Server(), routers[i])
-		go func() {
-			gRPC.Start()
-		}()
+	for i := range routers {
+		routers[i].StartRouterService()
 	}
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")

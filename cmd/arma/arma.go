@@ -167,20 +167,15 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		} else {
 			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", conf.PartyID))
 		}
-
-		router := router.NewRouter(conf, routerLogger)
-
-		srv := node.CreateGRPCRouter(conf)
-
-		protos.RegisterRequestTransmitServer(srv.Server(), router)
-		orderer.RegisterAtomicBroadcastServer(srv.Server(), router)
+		r := router.NewRouter(conf, routerLogger)
+		ch := r.StartRouterService()
 
 		go func() {
-			srv.Start()
+			<-ch
 			close(stop)
 		}()
 
-		routerLogger.Infof("Router listening on %s", srv.Address())
+		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), conf.PartyID)
 	}
 }
 

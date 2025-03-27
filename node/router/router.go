@@ -9,6 +9,7 @@ import (
 	"math"
 	rand2 "math/rand"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,14 +28,106 @@ const (
 	defaultRouter2batcherStreamsPerConn = 20
 )
 
+type Net interface {
+	Stop()
+	Address() string
+}
+
 type Router struct {
-	router       core.Router
-	shardRouters map[types.ShardID]*ShardRouter
-	TLSCert      []byte
-	TLSKey       []byte
-	logger       types.Logger
-	shardIDs     []types.ShardID
-	incoming     uint64
+	router           core.Router
+	net              Net
+	shardRouters     map[types.ShardID]*ShardRouter
+	logger           types.Logger
+	shardIDs         []types.ShardID
+	incoming         uint64
+	routerNodeConfig *config.RouterNodeConfig
+}
+
+func NewRouter(config *config.RouterNodeConfig, logger types.Logger) *Router {
+	// shardIDs is an array of all shard ids
+	var shardIDs []types.ShardID
+	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
+	batcherEndpoints := make(map[types.ShardID]string)
+	tlsCAsOfBatchers := make(map[types.ShardID][][]byte)
+	for _, shard := range config.Shards {
+		shardIDs = append(shardIDs, shard.ShardId)
+		for _, batcher := range shard.Batchers {
+			if config.PartyID != batcher.PartyID {
+				continue
+			}
+			batcherEndpoints[shard.ShardId] = batcher.Endpoint
+			var tlsCAsOfBatcher [][]byte
+			for _, rawTLSCA := range batcher.TLSCACerts {
+				tlsCAsOfBatcher = append(tlsCAsOfBatcher, rawTLSCA)
+			}
+
+			tlsCAsOfBatchers[shard.ShardId] = tlsCAsOfBatcher
+		}
+	}
+
+	sort.Slice(shardIDs, func(i, j int) bool {
+		return int(shardIDs[i]) < int(shardIDs[j])
+	})
+
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.NumOfConnectionsForBatcher, config.NumOfgRPCStreamsPerConnection)
+	r.init()
+	r.routerNodeConfig = config
+	return r
+}
+
+func (r *Router) StartRouterService() chan struct{} {
+	srv := node.CreateGRPCRouter(r.routerNodeConfig)
+
+	protos.RegisterRequestTransmitServer(srv.Server(), r)
+	orderer.RegisterAtomicBroadcastServer(srv.Server(), r)
+
+	var waitForGRPCServerStarted sync.WaitGroup
+
+	stop := make(chan struct{})
+	waitForGRPCServerStarted.Add(1)
+
+	go func() {
+		waitForGRPCServerStarted.Done()
+		err := srv.Start()
+		if err != nil {
+			panic(err)
+		}
+		close(stop)
+	}()
+
+	waitForGRPCServerStarted.Wait()
+
+	r.net = srv
+
+	return stop
+}
+
+func (r *Router) Address() string {
+	if r.net == nil {
+		return ""
+	}
+
+	return r.net.Address()
+}
+
+func (r *Router) Stop() {
+	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
+
+	r.net.Stop()
+
+	if r.shardRouters == nil {
+		return
+	}
+
+	for _, sr := range r.shardRouters {
+		if sr.connPool != nil {
+			for _, con := range sr.connPool {
+				sr.lock.RLock()
+				con.Close()
+				sr.lock.RUnlock()
+			}
+		}
+	}
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
@@ -94,15 +187,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID,
-	batcherEndpoints map[types.ShardID]string,
-	batcherRootCAs map[types.ShardID][][]byte,
-	tlsCert []byte,
-	tlsKey []byte,
-	logger types.Logger,
-	numOfConnectionsForBatcher int,
-	numOfgRPCStreamsPerConnection int,
-) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, tlsCert, tlsKey []byte, logger types.Logger, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection int) *Router {
 	if numOfConnectionsForBatcher == 0 {
 		numOfConnectionsForBatcher = defaultRouter2batcherConnPoolSize
 	}
@@ -258,35 +343,4 @@ func createTraceID(rand *rand2.Rand) []byte {
 	binary.BigEndian.PutUint64(trace, uint64(n1))
 	binary.BigEndian.PutUint64(trace[8:], uint64(n2))
 	return trace
-}
-
-func NewRouter(config *config.RouterNodeConfig, logger types.Logger) *Router {
-	// shardIDs is an array of all shard ids
-	var shardIDs []types.ShardID
-	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
-	batcherEndpoints := make(map[types.ShardID]string)
-	tlsCAsOfBatchers := make(map[types.ShardID][][]byte)
-	for _, shard := range config.Shards {
-		shardIDs = append(shardIDs, shard.ShardId)
-		for _, batcher := range shard.Batchers {
-			if config.PartyID != batcher.PartyID {
-				continue
-			}
-			batcherEndpoints[shard.ShardId] = batcher.Endpoint
-			var tlsCAsOfBatcher [][]byte
-			for _, rawTLSCA := range batcher.TLSCACerts {
-				tlsCAsOfBatcher = append(tlsCAsOfBatcher, rawTLSCA)
-			}
-
-			tlsCAsOfBatchers[shard.ShardId] = tlsCAsOfBatcher
-		}
-	}
-
-	sort.Slice(shardIDs, func(i, j int) bool {
-		return int(shardIDs[i]) < int(shardIDs[j])
-	})
-
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.NumOfConnectionsForBatcher, config.NumOfgRPCStreamsPerConnection)
-	r.init()
-	return r
 }
