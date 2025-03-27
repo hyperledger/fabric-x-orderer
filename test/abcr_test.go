@@ -2,13 +2,6 @@
 package test
 
 import (
-	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/binary"
-	"encoding/pem"
 	"fmt"
 	"os"
 	"runtime"
@@ -16,15 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	node2 "github.ibm.com/decentralized-trust-research/arma/node"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
-	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/consensus"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/router"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
@@ -39,25 +27,24 @@ func TestABCR(t *testing.T) {
 
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
+	numParties := 4
 
-	batcherInfos, consenterInfos, batcherNodes, consenterNodes := createConsentersAndBatchers(t, ca)
+	batcherNodes, batcherInfos := createBatcherNodesAndInfo(t, ca, numParties)
+	consenterNodes, consenterInfos := createConsenterNodesAndInfo(t, ca, numParties)
+
 	for i := 0; i < 4; i++ {
 		t.Logf("batcher: %v, %s", batcherInfos[i], batcherNodes[i].ToString())
 	}
 
 	shards := []config.ShardInfo{{ShardId: 1, Batchers: batcherInfos}}
 
-	_, clean := createConsenters(t, consenterNodes, consenterInfos, shards)
+	_, clean := createConsenters(t, numParties, consenterNodes, consenterInfos, shards)
 	defer clean()
 
-	batchers := createBatchers(t, batcherNodes, shards, consenterInfos)
+	_, _, _, clean = createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId)
+	defer clean()
 
-	routers, configs := createRouters(t, batcherInfos, ca)
-
-	for _, b := range batchers {
-		b.Run()
-		defer b.Stop()
-	}
+	routers, configs := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId)
 
 	for i, rConf := range configs {
 		gRPC := node2.CreateGRPCRouter(rConf)
@@ -208,220 +195,3 @@ func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembl
 // 	defer sb.lock.Unlock()
 // 	return sb.Buffer.String()
 // }
-
-func sendTxn(workerID int, txnNum int, routers []*router.Router) {
-	txn := make([]byte, 32)
-	binary.BigEndian.PutUint64(txn, uint64(txnNum))
-	binary.BigEndian.PutUint16(txn[30:], uint16(workerID))
-
-	for routerId := 0; routerId < 4; routerId++ {
-		routers[routerId].Submit(context.Background(), &protos.Request{Payload: txn})
-	}
-}
-
-func createRouters(t *testing.T, batcherInfos []config.BatcherInfo, ca tlsgen.CA) ([]*router.Router, []*config.RouterNodeConfig) {
-	var configs []*config.RouterNodeConfig
-	var routers []*router.Router
-	for i := 0; i < 4; i++ {
-		l := testutil.CreateLogger(t, i)
-		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
-		require.NoError(t, err)
-		config := &config.RouterNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			TLSPrivateKeyFile:  kp.Key,
-			TLSCertificateFile: kp.Cert,
-			PartyID:            types.PartyID(i + 1),
-			Shards: []config.ShardInfo{{
-				ShardId:  1,
-				Batchers: batcherInfos,
-			}},
-			UseTLS: true,
-		}
-		configs = append(configs, config)
-		router := router.NewRouter(config, l)
-		routers = append(routers, router)
-	}
-	return routers, configs
-}
-
-func createConsenters(t *testing.T, consenterNodes []*node, consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo) ([]*consensus.Consensus, func()) {
-	var consensuses []*consensus.Consensus
-
-	var cleans []func()
-
-	for i := 0; i < 4; i++ {
-
-		gRPCServer := consenterNodes[i].Server()
-
-		partyID := types.PartyID(i + 1)
-
-		logger := testutil.CreateLogger(t, int(partyID))
-
-		sk, err := x509.MarshalPKCS8PrivateKey(consenterNodes[i].sk)
-		require.NoError(t, err)
-
-		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-consenter%d", t.Name(), i+1))
-		require.NoError(t, err)
-
-		cleans = append(cleans, func() {
-			defer os.RemoveAll(dir)
-		})
-
-		conf := &config.ConsenterNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			Shards:             shardInfo,
-			Consenters:         consenterInfos,
-			PartyId:            partyID,
-			TLSPrivateKeyFile:  consenterNodes[i].TLSKey,
-			TLSCertificateFile: consenterNodes[i].TLSCert,
-			SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-			Directory:          dir,
-		}
-
-		c := consensus.CreateConsensus(conf, nil, logger)
-		c.Net = consenterNodes[i].GRPCServer
-
-		consensuses = append(consensuses, c)
-		protos.RegisterConsensusServer(gRPCServer, c)
-		orderer.RegisterAtomicBroadcastServer(gRPCServer, c.DeliverService)
-		orderer.RegisterClusterNodeServiceServer(gRPCServer, c)
-		go consenterNodes[i].Start()
-		err = c.Start()
-		require.NoError(t, err)
-		t.Log("Consenter gRPC service listening on", consenterNodes[i].Address())
-	}
-
-	return consensuses, func() {
-		for i, clean := range cleans {
-			clean()
-			consensuses[i].Stop()
-		}
-	}
-}
-
-func createBatchers(t *testing.T, batcherNodes []*node, shards []config.ShardInfo, consenterInfos []config.ConsenterInfo) []*batcher.Batcher {
-	var batchers []*batcher.Batcher
-	var lock sync.Mutex
-	var wg sync.WaitGroup
-	wg.Add(4)
-
-	for i := 0; i < 4; i++ {
-		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-batcher%d", t.Name(), i+1))
-		require.NoError(t, err)
-
-		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
-		require.NoError(t, err)
-
-		batcherConf := &config.BatcherNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			Shards:             shards,
-			ShardId:            1,
-			PartyId:            types.PartyID(i + 1),
-			Consenters:         consenterInfos,
-			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
-			TLSCertificateFile: batcherNodes[i].TLSCert,
-			SigningPrivateKey:  config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
-			Directory:          dir,
-		}
-
-		go func(i int) {
-			defer wg.Done()
-
-			batcher := batcher.CreateBatcher(batcherConf, testutil.CreateLogger(t, i+1), batcherNodes[i], &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
-			lock.Lock()
-			batchers = append(batchers, batcher)
-			lock.Unlock()
-			protos.RegisterRequestTransmitServer(batcherNodes[i].Server(), batcher)
-			protos.RegisterBatcherControlServiceServer(batcherNodes[i].Server(), batcher)
-			orderer.RegisterAtomicBroadcastServer(batcherNodes[i].Server(), batcher)
-			go batcherNodes[i].Start()
-			t.Log("Batcher gRPC service listening on", batcherNodes[i].Address())
-		}(i)
-	}
-
-	wg.Wait()
-
-	return batchers
-}
-
-func createConsentersAndBatchers(t *testing.T, ca tlsgen.CA) ([]config.BatcherInfo, []config.ConsenterInfo, []*node, []*node) {
-	batcherNodes := createNodes(t, ca)
-	consenterNodes := createNodes(t, ca)
-
-	var batchers []config.BatcherInfo
-	for i := 0; i < 4; i++ {
-		batchers = append(batchers, config.BatcherInfo{
-			PartyID:    types.PartyID(i + 1),
-			Endpoint:   batcherNodes[i].Address(),
-			TLSCert:    batcherNodes[i].TLSCert,
-			TLSCACerts: []config.RawBytes{ca.CertBytes()},
-			PublicKey:  batcherNodes[i].pk,
-		})
-	}
-
-	var consenters []config.ConsenterInfo
-	for i := 0; i < 4; i++ {
-		consenters = append(consenters, config.ConsenterInfo{
-			PartyID:    types.PartyID(i + 1),
-			Endpoint:   consenterNodes[i].Address(),
-			TLSCACerts: []config.RawBytes{ca.CertBytes()},
-			PublicKey:  consenterNodes[i].pk,
-		})
-	}
-	return batchers, consenters, batcherNodes, consenterNodes
-}
-
-func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
-	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	rawPK, err := x509.MarshalPKIXPublicKey(&sk.PublicKey)
-	require.NoError(t, err)
-	return sk, rawPK
-}
-
-func createNodes(t *testing.T, ca tlsgen.CA) []*node {
-	var result []*node
-
-	var sks []*ecdsa.PrivateKey
-	var pks []config.RawBytes
-
-	for i := 0; i < 4; i++ {
-		sk, rawPK := keygen(t)
-		sks = append(sks, sk)
-		pks = append(pks, pem.EncodeToMemory(&pem.Block{Bytes: rawPK, Type: "PUBLIC KEY"}))
-
-	}
-
-	for i := 0; i < 4; i++ {
-		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
-		require.NoError(t, err)
-
-		srv, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{
-			SecOpts: comm.SecureOptions{
-				ClientRootCAs:     [][]byte{ca.CertBytes()},
-				Key:               kp.Key,
-				Certificate:       kp.Cert,
-				RequireClientCert: true,
-				UseTLS:            true,
-				ServerRootCAs:     [][]byte{ca.CertBytes()},
-			},
-		})
-		require.NoError(t, err)
-
-		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i]})
-	}
-	return result
-}
-
-type node struct {
-	*comm.GRPCServer
-	TLSCert []byte
-	TLSKey  []byte
-	sk      *ecdsa.PrivateKey
-	pk      config.RawBytes
-}
-
-func (n *node) ToString() string {
-	return fmt.Sprintf("GRPC.Address: %s", n.GRPCServer.Address())
-}
