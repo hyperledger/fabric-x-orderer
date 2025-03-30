@@ -13,19 +13,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-)
-
-const (
-	defaultRouter2batcherConnPoolSize   = 10
-	defaultRouter2batcherStreamsPerConn = 20
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/config"
+	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node"
+	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
+	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 )
 
 type Net interface {
@@ -40,10 +35,10 @@ type Router struct {
 	logger           types.Logger
 	shardIDs         []types.ShardID
 	incoming         uint64
-	routerNodeConfig *config.RouterNodeConfig
+	routerNodeConfig *nodeconfig.RouterNodeConfig
 }
 
-func NewRouter(config *config.RouterNodeConfig, logger types.Logger) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -189,11 +184,11 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 
 func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, tlsCert, tlsKey []byte, logger types.Logger, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection int) *Router {
 	if numOfConnectionsForBatcher == 0 {
-		numOfConnectionsForBatcher = defaultRouter2batcherConnPoolSize
+		numOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
 
 	if numOfgRPCStreamsPerConnection == 0 {
-		numOfgRPCStreamsPerConnection = defaultRouter2batcherStreamsPerConn
+		numOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
 	}
 
 	r := &Router{

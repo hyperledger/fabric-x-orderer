@@ -17,13 +17,12 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 )
 
+// TODO: these params should be removed
 const (
-	DefaultMaxRecvMsgSize                = 100 * 1024 * 1024
-	DefaultMaxSendMsgSize                = 100 * 1024 * 1024
-	DefaultSendBufferSize                = 2000
-	DefaultPrefetchBufferMemoryMB        = 1024
-	DefaultNumberOfConnectionsPerBatcher = 10
-	DefaultNumberOfStreamsPerConnection  = 20
+	DefaultMaxRecvMsgSize         = 100 * 1024 * 1024
+	DefaultMaxSendMsgSize         = 100 * 1024 * 1024
+	DefaultSendBufferSize         = 2000
+	DefaultPrefetchBufferMemoryMB = 1024
 )
 
 var (
@@ -211,15 +210,12 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 }
 
 func NewRouterLocalConfig(routerGeneralParams GeneralConfigParams) *config.NodeLocalConfig {
+	params := config.DefaultRouterParams
 	return &config.NodeLocalConfig{
 		PartyID:       routerGeneralParams.partyID,
 		GeneralConfig: NewGeneralConfig(routerGeneralParams),
 		FileStore:     &config.FileStore{},
-		// TODO: default params
-		RouterParams: &config.RouterParams{
-			NumberOfConnectionsPerBatcher: 10,
-			NumberOfStreamsPerConnection:  5,
-		},
+		RouterParams:  &params,
 	}
 }
 
