@@ -39,27 +39,10 @@ func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) config.SharedConfigYaml {
 	sharedConfig := config.SharedConfigYaml{
 		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
-		ConsensusConfig: config.ConsensusConfig{BFTConfig: createConsensusBFTConfig()},
+		ConsensusConfig: config.ConsensusConfig{BFTConfig: types.DefaultConfig},
 		BatchingConfig:  createBatchingConfig(),
 	}
 	return sharedConfig
-}
-
-func createConsensusBFTConfig() config.SmartBFTConfig {
-	smartBFTConfig := config.SmartBFTConfig{
-		RequestBatchMaxInterval:   types.DefaultConfig.RequestBatchMaxInterval,
-		RequestForwardTimeout:     types.DefaultConfig.RequestForwardTimeout,
-		RequestComplainTimeout:    types.DefaultConfig.RequestComplainTimeout,
-		RequestAutoRemoveTimeout:  types.DefaultConfig.RequestAutoRemoveTimeout,
-		ViewChangeResendInterval:  types.DefaultConfig.ViewChangeResendInterval,
-		ViewChangeTimeout:         types.DefaultConfig.ViewChangeTimeout,
-		LeaderHeartbeatTimeout:    types.DefaultConfig.LeaderHeartbeatTimeout,
-		CollectTimeout:            types.DefaultConfig.CollectTimeout,
-		IncomingMessageBufferSize: types.DefaultConfig.IncomingMessageBufferSize,
-		RequestPoolSize:           types.DefaultConfig.RequestPoolSize,
-		LeaderHeartbeatCount:      types.DefaultConfig.LeaderHeartbeatCount,
-	}
-	return smartBFTConfig
 }
 
 func createBatchingConfig() config.BatchingConfig {

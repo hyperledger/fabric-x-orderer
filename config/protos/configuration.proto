@@ -75,33 +75,71 @@ message ConsensusConfig {
 }
 
 message SmartBFTConfig {
-  // RequestBatchMaxInterval is the maximal time interval a request batch can wait before it is proposed. A request batch is accumulating requests until `RequestBatchMaxInterval` had elapsed from the time the batch was first created (i.e. the time the first request was added to it), or until it is of count `RequestBatchMaxCount`, or it reaches `RequestBatchMaxBytes`, whichever occurs first.
-  uint32 RequestBatchMaxInterval = 1;
-  // RequestForwardTimeout is started from the moment a request is submitted, and defines the interval after which a request is forwarded to the leader.
-  uint32 RequestForwardTimeout = 2;
-  // RequestComplainTimeout is started when `RequestForwardTimeout` expires, and defines the interval after which the node complains about the view leader.
-  uint32 RequestComplainTimeout= 3;
-  // RequestAutoRemoveTimeout is started when `RequestComplainTimeout` expires, and defines the interval after which a request is removed (dropped) from the request pool.
-  uint32 RequestAutoRemoveTimeout = 4;
-  // ViewChangeResendInterval defines the interval after which the ViewChange message is resent.
-  uint32 ViewChangeResendInterval = 5;
-  // ViewChangeTimeout is started when a node first receives a quorum of `ViewChange` messages, and defines the interval after which the node will try to initiate a view change with a higher view number.
-  uint32 ViewChangeTimeout = 6;
- // LeaderHeartbeatTimeout is the interval after which, if nodes do not receive a "sign of life" from the leader, they complain about the current leader and try to initiate a view change. A sign of life is either a heartbeat or a message from the leader.
-  uint32 LeaderHeartbeatTimeout = 7;
-  // CollectTimeout is the interval after which the node stops listening to `StateTransferResponse` messages, stops collecting information about view metadata from remote nodes.
-  uint32 CollectTimeout = 8;
+  // RequestBatchMaxCount is the maximal number of requests in a batch.
+  // A request batch that reaches this count is proposed immediately.
+  uint64 RequestBatchMaxCount = 1;
+  // RequestBatchMaxBytes is the maximal total size of requests in a batch, in bytes.
+  // This is also the maximal size of a request. A request batch that reaches this size is proposed immediately.
+  uint64 RequestBatchMaxBytes = 2;
+  // RequestBatchMaxInterval is the maximal time interval a request batch can wait before it is proposed.
+  // A request batch is accumulating requests until `RequestBatchMaxInterval` had elapsed from the time the batch was
+  // first created (i.e. the time the first request was added to it), or until it is of count `RequestBatchMaxCount`,
+  // or it reaches `RequestBatchMaxBytes`, whichever occurs first.
+  string RequestBatchMaxInterval = 3;
   // IncomingMessageBufferSize is the size of the buffer holding incoming messages before they are processed (maximal number of messages).
-  uint32 IncomingMessageBufferSize = 9;
-  // RequestPoolSize is the number of pending requests retained by the node. The `RequestPoolSize` is recommended to be at least double (x2) the `RequestBatchMaxCount`. This cannot be changed dynamically and the node must be restarted to pick up the change.
-  uint32 RequestPoolSize = 10;
-  // LeaderHeartbeatCount is the number of heartbeats per `LeaderHeartbeatTimeout` that the leader should emit. The heartbeat-interval is equal to: `LeaderHeartbeatTimeout/LeaderHeartbeatCount`.
-  uint32 LeaderHeartbeatCount = 11;
+  uint64 IncomingMessageBufferSize = 4;
+  // RequestPoolSize is the number of pending requests retained by the node.
+  // The `RequestPoolSize` is recommended to be at least double (x2) the `RequestBatchMaxCount`.
+  // This cannot be changed dynamically and the node must be restarted to pick up the change.
+  uint64 RequestPoolSize = 5;
+  // RequestForwardTimeout is started from the moment a request is submitted, and defines the interval after which a
+  // request is forwarded to the leader.
+  string RequestForwardTimeout = 6;
+  // RequestComplainTimeout is started when `RequestForwardTimeout` expires, and defines the interval after which the
+  // node complains about the view leader.
+  string RequestComplainTimeout= 7;
+  // RequestAutoRemoveTimeout is started when `RequestComplainTimeout` expires, and defines the interval after which
+  // a request is removed (dropped) from the request pool.
+  string RequestAutoRemoveTimeout = 8;
+  // ViewChangeResendInterval defines the interval after which the ViewChange message is resent.
+  string ViewChangeResendInterval = 9;
+  // ViewChangeTimeout is started when a node first receives a quorum of `ViewChange` messages, and defines the
+  // interval after which the node will try to initiate a view change with a higher view number.
+  string ViewChangeTimeout = 10;
+ // LeaderHeartbeatTimeout is the interval after which, if nodes do not receive a "sign of life" from the leader,
+  // they complain about the current leader and try to initiate a view change. A sign of life is either a heartbeat
+  // or a message from the leader.
+  string LeaderHeartbeatTimeout = 11;
+  // LeaderHeartbeatCount is the number of heartbeats per `LeaderHeartbeatTimeout` that the leader should emit.
+  // The heartbeat-interval is equal to: `LeaderHeartbeatTimeout/LeaderHeartbeatCount`.
+  uint64 LeaderHeartbeatCount = 12;
+  // NumOfTicksBehindBeforeSyncing is the number of follower ticks where the follower is behind the leader
+  // by one sequence before starting a sync
+  uint64 NumOfTicksBehindBeforeSyncing = 13;
+  // CollectTimeout is the interval after which the node stops listening to `StateTransferResponse` messages,
+  // stops collecting information about view metadata from remote nodes.
+  string CollectTimeout = 14;
+  // SyncOnStart is a flag indicating whether a sync is required on startup.
+  bool SyncOnStart = 15;
+  // SpeedUpViewChange is a flag indicating whether a node waits for only f+1 view change messages to join
+  // the view change (hence speeds up the view change process), or it waits for a quorum before joining.
+  // Waiting only for f+1 is considered less safe.
+  bool SpeedUpViewChange = 16;
+  // LeaderRotation is a flag indicating whether leader rotation is active.
+  bool LeaderRotation = 17;
+  // DecisionsPerLeader is the number of decisions reached by a leader before there is a leader rotation.
+  uint64 DecisionsPerLeader = 18;
+  // RequestMaxBytes total allowed size of a single request.
+  uint64 RequestMaxBytes = 19;
+  // RequestPoolSubmitTimeout the total amount of time a client can wait for the submission of a single
+  // request into the request pool.
+  string RequestPoolSubmitTimeout = 20;
+
 }
 
 message BatchingConfig {
   // BatchTimeout is the amount of time to wait before creating a batch.
-  uint32 BatchTimeout = 1;
+  string BatchTimeout = 1;
   // BatchSize controls the number of messages batched into a block and defines limits on a batch size.
   BatchSize BatchSize = 2;
 }
