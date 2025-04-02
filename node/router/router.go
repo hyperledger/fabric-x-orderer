@@ -64,9 +64,8 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 		return int(shardIDs[i]) < int(shardIDs[j])
 	})
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.NumOfConnectionsForBatcher, config.NumOfgRPCStreamsPerConnection)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config, logger)
 	r.init()
-	r.routerNodeConfig = config
 	return r
 }
 
@@ -182,13 +181,13 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, tlsCert, tlsKey []byte, logger types.Logger, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection int) *Router {
-	if numOfConnectionsForBatcher == 0 {
-		numOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
+	if rconfig.NumOfConnectionsForBatcher == 0 {
+		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
 
-	if numOfgRPCStreamsPerConnection == 0 {
-		numOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
+	if rconfig.NumOfgRPCStreamsPerConnection == 0 {
+		rconfig.NumOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
 	}
 
 	r := &Router{
@@ -196,13 +195,14 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 			Logger:     logger,
 			ShardCount: uint16(len(shardIDs)),
 		},
-		shardRouters: make(map[types.ShardID]*ShardRouter),
-		logger:       logger,
-		shardIDs:     shardIDs,
+		shardRouters:     make(map[types.ShardID]*ShardRouter),
+		logger:           logger,
+		shardIDs:         shardIDs,
+		routerNodeConfig: rconfig,
 	}
 
 	for _, shardId := range shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], tlsCert, tlsKey, numOfConnectionsForBatcher, numOfgRPCStreamsPerConnection)
+		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection)
 	}
 
 	go func() {
