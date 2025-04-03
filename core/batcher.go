@@ -335,7 +335,7 @@ func (b *Batcher) runSecondary() {
 	}
 }
 
-func (b *Batcher) verifyBatch(batch Batch) error { // TODO testing
+func (b *Batcher) verifyBatch(batch Batch) error {
 	if batch.Primary() != b.primary {
 		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
 	}

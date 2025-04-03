@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
 	"time"
 
@@ -578,6 +579,93 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 
 	require.Equal(t, 11, ledger.AppendCallCount())
 	require.Equal(t, 10, pool.NextRequestsCallCount())
+}
+
+func TestVerifyBatch(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 2
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	verifier := &mocks.FakeBatchedRequestsVerifier{}
+	verifier.VerifyBatchedRequestsReturns(nil)
+	secondaryBatcher.BatchedRequestsVerifier = verifier
+	complainer := &mocks.FakeComplainer{}
+	secondaryBatcher.Complainer = complainer
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(arma_types.BatchedRequests, 1)
+	reqs = append(reqs, req)
+
+	batch := &mocks.FakeBatch{}
+	batch.PrimaryReturns(1)
+	batch.RequestsReturns(reqs)
+	batch.DigestReturns(reqs.Digest())
+
+	batchPuller := &mocks.FakeBatchPuller{}
+	batchChan := make(chan core.Batch)
+	batchPuller.PullBatchesReturns(batchChan)
+	secondaryBatcher.BatchPuller = batchPuller
+
+	ledger := &mocks.FakeBatchLedger{}
+	secondaryBatcher.Ledger = ledger
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batch.PrimaryReturns(2)
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+	batch.PrimaryReturns(1)
+
+	batch.ShardReturns(1)
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+	batch.ShardReturns(0)
+
+	batch.SeqReturns(2)
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 3
+	}, 10*time.Second, 10*time.Millisecond)
+	batch.SeqReturns(1)
+
+	batch.RequestsReturns(nil)
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 4
+	}, 10*time.Second, 10*time.Millisecond)
+	batch.RequestsReturns(reqs)
+
+	batch.DigestReturns([]byte{1})
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 5
+	}, 10*time.Second, 10*time.Millisecond)
+	batch.DigestReturns(reqs.Digest())
+
+	verifier.VerifyBatchedRequestsReturns(errors.New(""))
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 6
+	}, 10*time.Second, 10*time.Millisecond)
+	verifier.VerifyBatchedRequestsReturns(nil)
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger arma_types.Logger) *core.Batcher {
