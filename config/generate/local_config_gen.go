@@ -189,8 +189,8 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 		MaxRecvMsgSize:    DefaultMaxRecvMsgSize,
 		MaxSendMsgSize:    DefaultMaxSendMsgSize,
 		Bootstrap: config.Bootstrap{
-			Method: "yaml",
-			File:   filepath.Join(generalConfigParams.configBaseDir, "bootstrap", "shared_config.yaml"),
+			Method: "block",
+			File:   filepath.Join(generalConfigParams.configBaseDir, "bootstrap", "bootstrap.block"),
 		},
 		LocalMSPDir: filepath.Join(partyPath, nodeRole, "msp"),
 		LocalMSPID:  "OrdererOrg",

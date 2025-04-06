@@ -653,3 +653,19 @@ Profiles:
                       Admins:
                           Type: Signature
                           Rule: "OR('SampleOrg.member')"
+    SampleFabricX:
+        <<: *ChannelDefaults
+        Consortium: SampleConsortium
+        Orderer:
+            <<: *OrdererDefaults
+            OrdererType: arma
+            BatchSize:
+                MaxMessageCount: 5000
+                AbsoluteMaxBytes: 10 MB
+            Organizations:
+                - <<: *SampleOrg
+        Application:
+            <<: *ApplicationDefaults
+            MetaNamespaceVerificationKeyPath: path/to/MetaNamespaceVerification.key
+            Organizations:
+                - <<: *SampleOrg

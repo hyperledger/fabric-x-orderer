@@ -1,0 +1,20 @@
+package generate_test
+
+import (
+	"testing"
+
+	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
+
+	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/arma/config/generate"
+)
+
+func TestCreateGenesisBlock(t *testing.T) {
+	dir := t.TempDir()
+
+	sharedConfigYaml, sharedConfigPath := testutils.PrepareSharedConfigBinary(t, dir)
+
+	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigPath)
+	require.NoError(t, err)
+	require.NotNil(t, block)
+}

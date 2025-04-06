@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config/protos"
 	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/pkg/errors"
 )
@@ -30,7 +31,10 @@ func ReadConfig(configFilePath string) (*Configuration, error) {
 	}
 
 	var err error
-	conf := &Configuration{}
+	conf := &Configuration{
+		LocalConfig:  &LocalConfig{},
+		SharedConfig: &protos.SharedConfig{},
+	}
 
 	conf.LocalConfig, err = LoadLocalConfig(configFilePath)
 	if err != nil {
@@ -44,10 +48,23 @@ func ReadConfig(configFilePath string) (*Configuration, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to read the shared configuration from: %s", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
 			}
+		} else {
+			return nil, errors.Wrapf(err, "failed to read shared config, path is empty")
 		}
 	case "block":
-		// TODO: complete when block is ready
-		return nil, errors.Errorf("not implemented yet")
+		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
+			consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+			if err != nil {
+				return nil, err
+			}
+
+			err = proto.Unmarshal(consensusMetaData, conf.SharedConfig)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
+			}
+		} else {
+			return nil, errors.Wrapf(err, "failed to read a cofig block, path is empty")
+		}
 	default:
 		return nil, errors.Errorf("bootstrap method %s is invalid", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method)
 	}

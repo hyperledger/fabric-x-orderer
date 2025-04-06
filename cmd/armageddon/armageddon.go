@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 
@@ -303,7 +305,7 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string) {
 	}
 
 	// generate shared config yaml file
-	_, err = genconfig.CreateArmaSharedConfig(*networkConfig, networkLocalConfig, *outputDir, *outputDir)
+	sharedConfigYaml, err := genconfig.CreateArmaSharedConfig(*networkConfig, networkLocalConfig, *outputDir, *outputDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating shared config: %s", err)
 		os.Exit(-1)
@@ -312,6 +314,25 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string) {
 	sharedConfig, err := config.LoadSharedConfig(filepath.Join(*outputDir, "bootstrap", "shared_config.yaml"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	sharedConfigBytes, err := proto.Marshal(sharedConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error marshaling shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	sharedConfigBinaryPath := filepath.Join(*outputDir, "bootstrap", "shared_config.bin")
+	err = os.WriteFile(sharedConfigBinaryPath, sharedConfigBytes, 0o644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing the shared config binary: %s", err)
+		os.Exit(-1)
+	}
+
+	_, err = genconfig.CreateGenesisBlock(filepath.Join(*outputDir, "bootstrap"), sharedConfigYaml, sharedConfigBinaryPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creation bootstrap config block: %s", err)
 		os.Exit(-1)
 	}
 

@@ -4,15 +4,18 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
 )
 
@@ -70,4 +73,38 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, useTLSRouter str
 	require.NoError(t, err)
 
 	return listeners
+}
+
+// PrepareSharedConfigBinary generates a shared configuration and writes the encoded configuration to a file.
+// The function return the path to the file and the shared config in the yaml format.
+// This function is used in testing only.
+func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYaml, string) {
+	networkConfig := testutil.GenerateNetworkConfig(t, "none", "none")
+	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	require.NoError(t, err)
+
+	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(networkConfig, dir, dir)
+	require.NoError(t, err)
+	require.NotNil(t, networkLocalConfig)
+
+	// 3.
+	networkSharedConfig, err := genconfig.CreateArmaSharedConfig(networkConfig, networkLocalConfig, dir, dir)
+	require.NoError(t, err)
+	require.NotNil(t, networkSharedConfig)
+
+	sharedConfig, err := config.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
+	require.NoError(t, err)
+	require.NotNil(t, sharedConfig)
+	require.NotNil(t, sharedConfig.BatchingConfig)
+	require.NotNil(t, sharedConfig.ConsensusConfig)
+	require.NotNil(t, sharedConfig.PartiesConfig)
+	require.Equal(t, len(sharedConfig.PartiesConfig), len(networkConfig.Parties))
+
+	sharedConfigBytes, err := proto.Marshal(sharedConfig)
+	require.NoError(t, err)
+	sharedConfigPath := filepath.Join(dir, "bootstrap", "shared_config.bin")
+	err = os.WriteFile(sharedConfigPath, sharedConfigBytes, 0o644)
+	require.NoError(t, err)
+
+	return networkSharedConfig, sharedConfigPath
 }

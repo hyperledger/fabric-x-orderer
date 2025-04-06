@@ -4,6 +4,11 @@ go:
 services:
   - docker
 
+before_install:
+  - export GO111MODULE=on
+  - export GOPRIVATE=github.ibm.com
+  - git config --global url."https://${GITHUB_USER}:${GITHUB_TOKEN}@github.ibm.com".insteadOf "https://github.ibm.com"
+
 jobs:
   include:
     - stage: "Basic Checks"
