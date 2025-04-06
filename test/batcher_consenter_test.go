@@ -72,7 +72,6 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	batchers0[0].Stop()
 
 	// Submit request to other batchers in shard 0
-	// TODO: req should have been batched after the new primary was elected, but it disappears
 	req = make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(3))
 	batchers0[1].Submit(context.Background(), &protos.Request{Payload: req})
@@ -83,6 +82,11 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 		return batchers0[1].GetPrimaryID() == types.PartyID(2) && batchers0[2].GetPrimaryID() == types.PartyID(2)
 	}, 100*time.Second, 1000*time.Millisecond)
 
+	// Verify the new primary created a batch in shard 0
+	require.Eventually(t, func() bool {
+		return batchers0[1].Ledger.Height(2) == uint64(1) && batchers0[2].Ledger.Height(2) == uint64(1)
+	}, 30*time.Second, 100*time.Millisecond)
+
 	// Submit a request to primary of shard 1
 	req = make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(7))
@@ -91,15 +95,6 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	// Verify the batchers created a batch in shard 1
 	require.Eventually(t, func() bool {
 		return batchers1[0].Ledger.Height(2) == uint64(2) && batchers1[1].Ledger.Height(2) == uint64(2)
-	}, 30*time.Second, 100*time.Millisecond)
-
-	// Submit and verify request with new primary in shard 0
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(5))
-	batchers0[1].Submit(context.Background(), &protos.Request{Payload: req})
-
-	require.Eventually(t, func() bool {
-		return batchers0[1].Ledger.Height(2) == uint64(1) && batchers0[2].Ledger.Height(2) == uint64(1)
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Recover old primary in shard 0

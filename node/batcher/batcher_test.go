@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/grpclog"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestBatcherRun(t *testing.T) {
@@ -256,14 +257,15 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 		return batchers[1].GetPrimaryID() == types.PartyID(2) && batchers[2].GetPrimaryID() == types.PartyID(2)
 	}, 30*time.Second, 10*time.Millisecond)
 
-	// submit another request to new primary
-	req3 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req3, uint64(3))
-	batchers[1].Submit(context.Background(), &protos.Request{Payload: req3})
-
 	require.Eventually(t, func() bool {
 		return batchers[1].Ledger.Height(2) == uint64(1) && batchers[2].Ledger.Height(2) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
+
+	// make sure req2 did not disappear
+	require.Equal(t, 1, len(batchers[1].Ledger.RetrieveBatchByNumber(2, 0).Requests()))
+	rawReq, err := proto.Marshal(&protos.Request{Payload: req2})
+	require.NoError(t, err)
+	require.Equal(t, rawReq, batchers[1].Ledger.RetrieveBatchByNumber(2, 0).Requests()[0])
 
 	// now recover old primary
 	batchers[0] = recoverBatcher(t, ca, loggers[0], configs[0], srs[0], eventSenders[0], batcherNodes[0], stateChannels[0], termChangeState)
@@ -276,9 +278,9 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	}
 
 	// submit another request only to a secondary
-	req4 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req4, uint64(4))
-	batchers[2].Submit(context.Background(), &protos.Request{Payload: req4})
+	req3 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req3, uint64(4))
+	batchers[2].Submit(context.Background(), &protos.Request{Payload: req3})
 
 	// after a timeout the request is forwarded
 	require.Eventually(t, func() bool {
