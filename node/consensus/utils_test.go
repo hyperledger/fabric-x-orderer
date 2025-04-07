@@ -11,11 +11,12 @@ import (
 	"testing"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	config "github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus"
 	"github.ibm.com/decentralized-trust-research/arma/node/crypto"
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
@@ -33,7 +34,7 @@ type node struct {
 	TLSCert []byte
 	TLSKey  []byte
 	sk      *ecdsa.PrivateKey
-	pk      config.RawBytes
+	pk      nodeconfig.RawBytes
 }
 
 type storageListener struct {
@@ -46,12 +47,12 @@ func (l *storageListener) OnAppend(block *common.Block) {
 
 type consensusTestSetup struct {
 	consenterNodes []*node
-	consentersInfo []config.ConsenterInfo
+	consentersInfo []nodeconfig.ConsenterInfo
 	batcherNodes   []*node
-	batchersInfo   []config.BatcherInfo
+	batchersInfo   []nodeconfig.BatcherInfo
 	consensusNodes []*consensus.Consensus
 	loggers        []*zap.SugaredLogger
-	configs        []*config.ConsenterNodeConfig
+	configs        []*nodeconfig.ConsenterNodeConfig
 	listeners      []*storageListener
 }
 
@@ -81,7 +82,7 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int, addr string) []*node {
 	var result []*node
 
 	var sks []*ecdsa.PrivateKey
-	var pks []config.RawBytes
+	var pks []nodeconfig.RawBytes
 
 	for i := 0; i < num; i++ {
 		sk, rawPK := keygen(t)
@@ -102,33 +103,33 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int, addr string) []*node {
 	return result
 }
 
-func createBatchersInfo(num int, nodes []*node, ca tlsgen.CA) []config.BatcherInfo {
-	var batchersInfo []config.BatcherInfo
+func createBatchersInfo(num int, nodes []*node, ca tlsgen.CA) []nodeconfig.BatcherInfo {
+	var batchersInfo []nodeconfig.BatcherInfo
 	for i := 0; i < num; i++ {
-		batchersInfo = append(batchersInfo, config.BatcherInfo{
+		batchersInfo = append(batchersInfo, nodeconfig.BatcherInfo{
 			PartyID:    types.PartyID(i + 1),
 			Endpoint:   nodes[i].Address(),
 			TLSCert:    nodes[i].TLSCert,
-			TLSCACerts: []config.RawBytes{ca.CertBytes()},
+			TLSCACerts: []nodeconfig.RawBytes{ca.CertBytes()},
 			PublicKey:  nodes[i].pk,
 		})
 	}
 	return batchersInfo
 }
 
-func createConsentersInfo(num int, nodes []*node, ca tlsgen.CA) []config.ConsenterInfo {
-	var consentersInfo []config.ConsenterInfo
+func createConsentersInfo(num int, nodes []*node, ca tlsgen.CA) []nodeconfig.ConsenterInfo {
+	var consentersInfo []nodeconfig.ConsenterInfo
 	for i := 0; i < num; i++ {
 		consentersInfo = append(consentersInfo, createConsenterInfo(types.PartyID(i+1), nodes[i], ca))
 	}
 	return consentersInfo
 }
 
-func createConsenterInfo(partyID types.PartyID, n *node, ca tlsgen.CA) config.ConsenterInfo {
-	return config.ConsenterInfo{
+func createConsenterInfo(partyID types.PartyID, n *node, ca tlsgen.CA) nodeconfig.ConsenterInfo {
+	return nodeconfig.ConsenterInfo{
 		PartyID:    partyID,
 		Endpoint:   n.Address(),
-		TLSCACerts: []config.RawBytes{ca.CertBytes()},
+		TLSCACerts: []nodeconfig.RawBytes{ca.CertBytes()},
 		PublicKey:  n.pk,
 	}
 }
@@ -141,7 +142,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int) consensusTes
 
 	var consensusNodes []*consensus.Consensus
 	var loggers []*zap.SugaredLogger
-	var configs []*config.ConsenterNodeConfig
+	var configs []*nodeconfig.ConsenterNodeConfig
 	var listeners []*storageListener
 
 	for i := 0; i < numParties; i++ {
@@ -196,20 +197,24 @@ func grpcRegisterAndStart(c *consensus.Consensus, n *node) {
 	}()
 }
 
-func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []config.ConsenterInfo, batchersInfo []config.BatcherInfo) *config.ConsenterNodeConfig {
+func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodeconfig.ConsenterInfo, batchersInfo []nodeconfig.BatcherInfo) *nodeconfig.ConsenterNodeConfig {
 	sk, err := x509.MarshalPKCS8PrivateKey(n.sk)
 	if err != nil {
 		panic(err)
 	}
 
-	return &config.ConsenterNodeConfig{
-		Shards:             []config.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
+	BFTConfig := config.DefaultArmaBFTConfig()
+	BFTConfig.SelfID = uint64(partyID)
+
+	return &nodeconfig.ConsenterNodeConfig{
+		Shards:             []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
 		Consenters:         consentersInfo,
 		PartyId:            partyID,
 		TLSPrivateKeyFile:  n.TLSKey,
 		TLSCertificateFile: n.TLSCert,
 		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
 		Directory:          dir,
+		BFTConfig:          BFTConfig,
 	}
 }
 

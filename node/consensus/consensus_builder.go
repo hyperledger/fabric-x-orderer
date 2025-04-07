@@ -58,7 +58,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, genesisBlock *common.Bloc
 	c := &Consensus{
 		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
 		Config:         conf,
-		BFTConfig:      createBFTconfig(conf),
+		BFTConfig:      conf.BFTConfig,
 		Arma: &core.Consenter{
 			State:           initialState,
 			DB:              badb,
@@ -74,7 +74,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, genesisBlock *common.Bloc
 		Signer:       buildSigner(conf, logger),
 	}
 
-	c.BFT = createBFT(c, metadata, lastProposal, lastSigs)
+	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
 	setupComm(c)
 	c.Synchronizer = createSynchronizer(consLedger, c)
 	c.BFT.Synchronizer = c.Synchronizer
@@ -96,8 +96,13 @@ func buildSigner(conf *config.ConsenterNodeConfig, logger arma_types.Logger) Sig
 	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }
 
-func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *types.Proposal, lastSigs []types.Signature) *consensus.Consensus {
-	bftWAL, walInitState, err := wal.InitializeAndReadAll(c.Logger, filepath.Join(c.Config.Directory, "wal"), wal.DefaultOptions())
+func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *types.Proposal, lastSigs []types.Signature, walPath string) *consensus.Consensus {
+	walDir := walPath
+	if walDir == "" {
+		walDir = filepath.Join(c.Config.Directory, "wal")
+	}
+
+	bftWAL, walInitState, err := wal.InitializeAndReadAll(c.Logger, walDir, wal.DefaultOptions())
 	if err != nil {
 		c.Logger.Panicf("Failed creating BFT WAL: %v", err)
 	}
@@ -159,19 +164,6 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 	}()
 
 	return synchronizer
-}
-
-func createBFTconfig(conf *config.ConsenterNodeConfig) types.Configuration {
-	config := types.DefaultConfig
-	config.RequestBatchMaxInterval = time.Millisecond * 500
-	if conf.BatchTimeout != 0 {
-		config.RequestBatchMaxInterval = conf.BatchTimeout
-	}
-	config.RequestForwardTimeout = time.Second * 10
-	config.SelfID = uint64(conf.PartyId)
-	config.DecisionsPerLeader = 0
-	config.LeaderRotation = false
-	return config
 }
 
 func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger arma_types.Logger) crypto.ECDSAVerifier {

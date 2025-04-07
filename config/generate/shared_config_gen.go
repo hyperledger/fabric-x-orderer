@@ -7,8 +7,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config"
-
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 )
 
 // TODO: config default config params
@@ -39,7 +37,7 @@ func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) config.SharedConfigYaml {
 	sharedConfig := config.SharedConfigYaml{
 		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
-		ConsensusConfig: config.ConsensusConfig{BFTConfig: types.DefaultConfig},
+		ConsensusConfig: config.ConsensusConfig{BFTConfig: config.DefaultArmaBFTConfig()},
 		BatchingConfig:  createBatchingConfig(),
 	}
 	return sharedConfig

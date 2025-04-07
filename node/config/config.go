@@ -7,6 +7,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 
+	bft "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -116,7 +117,8 @@ type ConsenterNodeConfig struct {
 	TLSPrivateKeyFile  RawBytes
 	TLSCertificateFile RawBytes
 	SigningPrivateKey  RawBytes
-	BatchTimeout       time.Duration
+	WALDir             string
+	BFTConfig          bft.Configuration
 }
 
 func NodeConfigToYAML(config interface{}, path string) error {

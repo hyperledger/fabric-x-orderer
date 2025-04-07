@@ -239,11 +239,12 @@ func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []st
 }
 
 func NewConsensusLocalConfig(consensusGeneralParams GeneralConfigParams) *config.NodeLocalConfig {
+	fileStorePath := "/var/dec-trust/production/orderer/store"
 	return &config.NodeLocalConfig{
 		PartyID:         consensusGeneralParams.partyID,
 		GeneralConfig:   NewGeneralConfig(consensusGeneralParams),
-		FileStore:       &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		ConsensusParams: &config.ConsensusParams{WALDir: "/var/dec-trust/production/orderer/store/smartbft/wal"},
+		FileStore:       &config.FileStore{Path: fileStorePath},
+		ConsensusParams: &config.ConsensusParams{WALDir: config.DefaultConsenterNodeConfigParams(fileStorePath).WALDir},
 	}
 }
 

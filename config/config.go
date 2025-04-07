@@ -8,14 +8,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"time"
 
+	bft "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config/protos"
 	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 	"google.golang.org/protobuf/proto"
-
-	"github.com/pkg/errors"
 )
 
 // Configuration holds the complete configuration of a database node.
@@ -72,6 +73,56 @@ func ReadConfig(configFilePath string) (*Configuration, error) {
 	return conf, nil
 }
 
+func (config *Configuration) GetBFTConfig(partyID types.PartyID) (bft.Configuration, error) {
+	smartBFTConfigFetchedFromSharedConfig := config.SharedConfig.ConsensusConfig.SmartBFTConfig
+
+	var err error
+	var BFTConfig bft.Configuration
+
+	if BFTConfig.RequestBatchMaxInterval, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.RequestBatchMaxInterval); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option RequestBatchMaxInterval")
+	}
+	if BFTConfig.RequestForwardTimeout, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.RequestForwardTimeout); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option RequestForwardTimeout")
+	}
+	if BFTConfig.RequestComplainTimeout, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.RequestComplainTimeout); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option RequestComplainTimeout")
+	}
+	if BFTConfig.RequestAutoRemoveTimeout, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.RequestAutoRemoveTimeout); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option RequestAutoRemoveTimeout")
+	}
+	if BFTConfig.ViewChangeResendInterval, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.ViewChangeResendInterval); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option ViewChangeResendInterval")
+	}
+	if BFTConfig.ViewChangeTimeout, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.ViewChangeTimeout); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option ViewChangeTimeout")
+	}
+	if BFTConfig.LeaderHeartbeatTimeout, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.LeaderHeartbeatTimeout); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option LeaderHeartbeatTimeout")
+	}
+	if BFTConfig.CollectTimeout, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.CollectTimeout); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option CollectTimeout")
+	}
+	if BFTConfig.RequestPoolSubmitTimeout, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.RequestPoolSubmitTimeout); err != nil {
+		return BFTConfig, errors.Wrap(err, "bad config metadata option RequestPoolSubmitTimeout")
+	}
+
+	BFTConfig.SelfID = uint64(partyID)
+	BFTConfig.RequestBatchMaxCount = smartBFTConfigFetchedFromSharedConfig.RequestBatchMaxCount
+	BFTConfig.RequestBatchMaxBytes = smartBFTConfigFetchedFromSharedConfig.RequestBatchMaxBytes
+	BFTConfig.IncomingMessageBufferSize = smartBFTConfigFetchedFromSharedConfig.IncomingMessageBufferSize
+	BFTConfig.RequestPoolSize = smartBFTConfigFetchedFromSharedConfig.RequestPoolSize
+	BFTConfig.LeaderHeartbeatCount = smartBFTConfigFetchedFromSharedConfig.LeaderHeartbeatCount
+	BFTConfig.NumOfTicksBehindBeforeSyncing = smartBFTConfigFetchedFromSharedConfig.NumOfTicksBehindBeforeSyncing
+	BFTConfig.SyncOnStart = smartBFTConfigFetchedFromSharedConfig.SyncOnStart
+	BFTConfig.SpeedUpViewChange = smartBFTConfigFetchedFromSharedConfig.SpeedUpViewChange
+	BFTConfig.LeaderRotation = smartBFTConfigFetchedFromSharedConfig.LeaderRotation
+	BFTConfig.DecisionsPerLeader = smartBFTConfigFetchedFromSharedConfig.DecisionsPerLeader
+	BFTConfig.RequestMaxBytes = smartBFTConfigFetchedFromSharedConfig.RequestMaxBytes
+
+	return BFTConfig, nil
+}
+
 func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig {
 	routerConfig := &nodeconfig.RouterNodeConfig{
 		PartyID:                       config.LocalConfig.NodeLocalConfig.PartyID,
@@ -117,6 +168,10 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 	if err != nil {
 		panic(err)
 	}
+	BFTConfig, err := config.GetBFTConfig(config.LocalConfig.NodeLocalConfig.PartyID)
+	if err != nil {
+		panic(err)
+	}
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
 		Shards:             config.ExtractShards(),
 		Consenters:         config.ExtractConsenters(),
@@ -126,8 +181,8 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
 		SigningPrivateKey:  signingPrivateKey,
-		// TODO: config timeout
-		// BatchTimeout:
+		WALDir:             DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
+		BFTConfig:          BFTConfig,
 	}
 	return consenterConfig
 }
