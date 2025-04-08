@@ -7,7 +7,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger/mocks"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,9 +21,9 @@ func TestConsensusLedger(t *testing.T) {
 	require.Error(t, err)
 
 	h1 := &state.Header{Num: 0}
-	bytes := state.DecisionToBytes(types.Proposal{
+	bytes := state.DecisionToBytes(smartbft_types.Proposal{
 		Header: h1.Serialize(),
-	}, make([]types.Signature, 1))
+	}, make([]smartbft_types.Signature, 1))
 	require.NotNil(t, bytes)
 	l.Append(bytes)
 	require.Equal(t, uint64(1), l.Height())
@@ -34,9 +34,9 @@ func TestConsensusLedger(t *testing.T) {
 	l.RegisterAppendListener(listener)
 
 	h2 := &state.Header{Num: 1}
-	bytes = state.DecisionToBytes(types.Proposal{
+	bytes = state.DecisionToBytes(smartbft_types.Proposal{
 		Header: h2.Serialize(),
-	}, make([]types.Signature, 1))
+	}, make([]smartbft_types.Signature, 1))
 	require.NotNil(t, bytes)
 	l.Append(bytes)
 	require.Equal(t, uint64(2), l.Height())
@@ -63,9 +63,9 @@ func TestConsensusLedger(t *testing.T) {
 	l.RegisterAppendListener(listener)
 
 	h3 := &state.Header{Num: 2}
-	bytes = state.DecisionToBytes(types.Proposal{
+	bytes = state.DecisionToBytes(smartbft_types.Proposal{
 		Header: h3.Serialize(),
-	}, make([]types.Signature, 1))
+	}, make([]smartbft_types.Signature, 1))
 	require.NotNil(t, bytes)
 	l.Append(bytes)
 	require.Equal(t, uint64(3), l.Height())

@@ -21,7 +21,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -274,7 +274,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	}
 
 	c := &Consensus{
-		BFTConfig:    types.DefaultConfig,
+		BFTConfig:    smartbft_types.DefaultConfig,
 		Logger:       l,
 		Signer:       signer,
 		SigVerifier:  verifier,
@@ -331,7 +331,7 @@ func initializeStateAndMetadata(t *testing.T, initState *core.State, ledger *led
 			},
 			Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, make([]byte, 32)),
 		}
-		genesisProposal := types.Proposal{
+		genesisProposal := smartbft_types.Proposal{
 			Header: (&state.Header{
 				AvailableBlocks: []state.AvailableBlock{genesisBlock},
 				State:           initState,
@@ -731,7 +731,7 @@ func TestVerifyProposal(t *testing.T) {
 	// 1. no error
 	t.Log("no error")
 
-	proposal := types.Proposal{
+	proposal := smartbft_types.Proposal{
 		Header:   header.Serialize(),
 		Payload:  brs.Serialize(),
 		Metadata: mBytes,
@@ -818,7 +818,7 @@ func TestVerifyProposal(t *testing.T) {
 }
 
 func verifyProposalRequireError(t *testing.T, c *Consensus, header, payload, metadata []byte) {
-	proposal := types.Proposal{
+	proposal := smartbft_types.Proposal{
 		Header:   header,
 		Payload:  payload,
 		Metadata: metadata,
@@ -880,7 +880,7 @@ func TestSignProposal(t *testing.T) {
 	}
 
 	c := &Consensus{
-		BFTConfig:   types.Configuration{SelfID: 1},
+		BFTConfig:   smartbft_types.Configuration{SelfID: 1},
 		Arma:        consenter,
 		State:       &initialState,
 		Logger:      logger,
@@ -888,7 +888,7 @@ func TestSignProposal(t *testing.T) {
 		Signer:      crypto.ECDSASigner(*sks[0]),
 	}
 
-	proposal := types.Proposal{}
+	proposal := smartbft_types.Proposal{}
 
 	require.Panics(t, func() {
 		c.SignProposal(proposal, nil)

@@ -10,18 +10,18 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
 type synchronizer struct {
-	deliver                  func(proposal types.Proposal, signatures []types.Signature)
+	deliver                  func(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature)
 	pruneRequestsFromMemPool func([]byte)
 	getBlock                 func(seq uint64) *common.Block
 	getHeight                func() uint64
 	CurrentNodes             []uint64
-	BFTConfig                types.Configuration
+	BFTConfig                smartbft_types.Configuration
 	logger                   arma_types.Logger
 	endpoint                 func() string
 	cc                       comm.ClientConfig
@@ -91,7 +91,7 @@ func (s *synchronizer) memStoreTooBig() bool {
 	return len(s.memStore) > 100
 }
 
-func (s *synchronizer) Sync() types.SyncResponse {
+func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 	height := s.currentHeight()
 
 	lastSeqInLedger := height - 1
@@ -135,12 +135,12 @@ func (s *synchronizer) Sync() types.SyncResponse {
 		s.logger.Panicf("Failed parsing block we pulled: %v", err)
 	}
 
-	return types.SyncResponse{
-		Reconfig: types.ReconfigSync{
+	return smartbft_types.SyncResponse{
+		Reconfig: smartbft_types.ReconfigSync{
 			CurrentConfig: s.BFTConfig,
 			CurrentNodes:  s.CurrentNodes,
 		},
-		Latest: types.Decision{Proposal: proposal, Signatures: signatures},
+		Latest: smartbft_types.Decision{Proposal: proposal, Signatures: signatures},
 	}
 }
 

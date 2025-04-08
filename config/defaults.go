@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 )
 
 var DefaultRouterParams = RouterParams{
@@ -16,8 +16,8 @@ var DefaultConsenterNodeConfigParams = func(dir string) *ConsensusParams {
 	return &ConsensusParams{WALDir: filepath.Join(dir, "wal")}
 }
 
-var DefaultArmaBFTConfig = func() types.Configuration {
-	config := types.DefaultConfig
+var DefaultArmaBFTConfig = func() smartbft_types.Configuration {
+	config := smartbft_types.DefaultConfig
 
 	config.RequestBatchMaxInterval = time.Millisecond * 500
 	config.RequestForwardTimeout = time.Second * 10

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft"
@@ -199,21 +199,21 @@ var genesisDefaults = TopLevel{
 			},
 		},
 		SmartBFT: &smartbft.Options{
-			RequestBatchMaxCount:      types.DefaultConfig.RequestBatchMaxCount,
-			RequestBatchMaxBytes:      types.DefaultConfig.RequestBatchMaxBytes,
-			RequestBatchMaxInterval:   types.DefaultConfig.RequestBatchMaxInterval.String(),
-			IncomingMessageBufferSize: types.DefaultConfig.IncomingMessageBufferSize,
-			RequestPoolSize:           types.DefaultConfig.RequestPoolSize,
-			RequestForwardTimeout:     types.DefaultConfig.RequestForwardTimeout.String(),
-			RequestComplainTimeout:    types.DefaultConfig.RequestComplainTimeout.String(),
-			RequestAutoRemoveTimeout:  types.DefaultConfig.RequestAutoRemoveTimeout.String(),
-			ViewChangeResendInterval:  types.DefaultConfig.ViewChangeResendInterval.String(),
-			ViewChangeTimeout:         types.DefaultConfig.ViewChangeTimeout.String(),
-			LeaderHeartbeatTimeout:    types.DefaultConfig.LeaderHeartbeatTimeout.String(),
-			LeaderHeartbeatCount:      types.DefaultConfig.LeaderHeartbeatCount,
-			CollectTimeout:            types.DefaultConfig.CollectTimeout.String(),
-			SyncOnStart:               types.DefaultConfig.SyncOnStart,
-			SpeedUpViewChange:         types.DefaultConfig.SpeedUpViewChange,
+			RequestBatchMaxCount:      smartbft_types.DefaultConfig.RequestBatchMaxCount,
+			RequestBatchMaxBytes:      smartbft_types.DefaultConfig.RequestBatchMaxBytes,
+			RequestBatchMaxInterval:   smartbft_types.DefaultConfig.RequestBatchMaxInterval.String(),
+			IncomingMessageBufferSize: smartbft_types.DefaultConfig.IncomingMessageBufferSize,
+			RequestPoolSize:           smartbft_types.DefaultConfig.RequestPoolSize,
+			RequestForwardTimeout:     smartbft_types.DefaultConfig.RequestForwardTimeout.String(),
+			RequestComplainTimeout:    smartbft_types.DefaultConfig.RequestComplainTimeout.String(),
+			RequestAutoRemoveTimeout:  smartbft_types.DefaultConfig.RequestAutoRemoveTimeout.String(),
+			ViewChangeResendInterval:  smartbft_types.DefaultConfig.ViewChangeResendInterval.String(),
+			ViewChangeTimeout:         smartbft_types.DefaultConfig.ViewChangeTimeout.String(),
+			LeaderHeartbeatTimeout:    smartbft_types.DefaultConfig.LeaderHeartbeatTimeout.String(),
+			LeaderHeartbeatCount:      smartbft_types.DefaultConfig.LeaderHeartbeatCount,
+			CollectTimeout:            smartbft_types.DefaultConfig.CollectTimeout.String(),
+			SyncOnStart:               smartbft_types.DefaultConfig.SyncOnStart,
+			SpeedUpViewChange:         smartbft_types.DefaultConfig.SpeedUpViewChange,
 		},
 	},
 }

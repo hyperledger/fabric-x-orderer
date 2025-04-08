@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	bft "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
@@ -73,11 +73,11 @@ func ReadConfig(configFilePath string) (*Configuration, error) {
 	return conf, nil
 }
 
-func (config *Configuration) GetBFTConfig(partyID types.PartyID) (bft.Configuration, error) {
+func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types.Configuration, error) {
 	smartBFTConfigFetchedFromSharedConfig := config.SharedConfig.ConsensusConfig.SmartBFTConfig
 
 	var err error
-	var BFTConfig bft.Configuration
+	var BFTConfig smartbft_types.Configuration
 
 	if BFTConfig.RequestBatchMaxInterval, err = time.ParseDuration(smartBFTConfigFetchedFromSharedConfig.RequestBatchMaxInterval); err != nil {
 		return BFTConfig, errors.Wrap(err, "bad config metadata option RequestBatchMaxInterval")

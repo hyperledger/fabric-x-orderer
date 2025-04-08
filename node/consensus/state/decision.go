@@ -5,7 +5,7 @@ import (
 	"encoding/asn1"
 	"encoding/binary"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 )
 
 type asn1Signature struct {
@@ -14,7 +14,7 @@ type asn1Signature struct {
 	Msg   []byte
 }
 
-func DecisionToBytes(proposal types.Proposal, signatures []types.Signature) []byte {
+func DecisionToBytes(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) []byte {
 	sigBuff := bytes.Buffer{}
 
 	for _, sig := range signatures {
@@ -40,36 +40,36 @@ func DecisionToBytes(proposal types.Proposal, signatures []types.Signature) []by
 	return buff
 }
 
-func BytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error) {
+func BytesToDecision(rawBytes []byte) (smartbft_types.Proposal, []smartbft_types.Signature, error) {
 	buff := bytes.NewBuffer(rawBytes)
 	headerSize := make([]byte, 4)
 	if _, err := buff.Read(headerSize); err != nil {
-		return types.Proposal{}, nil, err
+		return smartbft_types.Proposal{}, nil, err
 	}
 
 	payloadSize := make([]byte, 4)
 	if _, err := buff.Read(payloadSize); err != nil {
-		return types.Proposal{}, nil, err
+		return smartbft_types.Proposal{}, nil, err
 	}
 
 	metadataSize := make([]byte, 4)
 	if _, err := buff.Read(metadataSize); err != nil {
-		return types.Proposal{}, nil, err
+		return smartbft_types.Proposal{}, nil, err
 	}
 
 	header := make([]byte, binary.BigEndian.Uint32(headerSize))
 	if _, err := buff.Read(header); err != nil {
-		return types.Proposal{}, nil, err
+		return smartbft_types.Proposal{}, nil, err
 	}
 
 	payload := make([]byte, binary.BigEndian.Uint32(payloadSize))
 	if _, err := buff.Read(payload); err != nil {
-		return types.Proposal{}, nil, err
+		return smartbft_types.Proposal{}, nil, err
 	}
 
 	metadata := make([]byte, binary.BigEndian.Uint32(metadataSize))
 	if _, err := buff.Read(metadata); err != nil {
-		return types.Proposal{}, nil, err
+		return smartbft_types.Proposal{}, nil, err
 	}
 
 	proposalSize := 4*3 + len(header) + len(payload) + len(metadata)
@@ -77,10 +77,10 @@ func BytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error)
 	signatureBuff := make([]byte, len(rawBytes)-proposalSize)
 
 	if _, err := buff.Read(signatureBuff); err != nil {
-		return types.Proposal{}, nil, err
+		return smartbft_types.Proposal{}, nil, err
 	}
 
-	var sigs []types.Signature
+	var sigs []smartbft_types.Signature
 
 	var pos int
 	for pos < len(signatureBuff) {
@@ -88,17 +88,17 @@ func BytesToDecision(rawBytes []byte) (types.Proposal, []types.Signature, error)
 		pos += 2
 		sig := asn1Signature{}
 		if _, err := asn1.Unmarshal(signatureBuff[pos:pos+sigSize], &sig); err != nil {
-			return types.Proposal{}, nil, err
+			return smartbft_types.Proposal{}, nil, err
 		}
 		pos += sigSize
-		sigs = append(sigs, types.Signature{
+		sigs = append(sigs, smartbft_types.Signature{
 			Msg:   sig.Msg,
 			Value: sig.Value,
 			ID:    uint64(sig.ID),
 		})
 	}
 
-	return types.Proposal{
+	return smartbft_types.Proposal{
 		Header:   header,
 		Payload:  payload,
 		Metadata: metadata,

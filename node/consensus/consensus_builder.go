@@ -24,7 +24,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -96,7 +96,7 @@ func buildSigner(conf *config.ConsenterNodeConfig, logger arma_types.Logger) Sig
 	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }
 
-func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *types.Proposal, lastSigs []types.Signature, walPath string) *consensus.Consensus {
+func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *consensus.Consensus {
 	walDir := walPath
 	if walDir == "" {
 		walDir = filepath.Join(c.Config.Directory, "wal")
@@ -130,7 +130,7 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *types
 
 func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchronizer {
 	synchronizer := &synchronizer{
-		deliver: func(proposal types.Proposal, signatures []types.Signature) {
+		deliver: func(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) {
 			c.Deliver(proposal, signatures)
 		},
 		getHeight: func() uint64 {
@@ -203,7 +203,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *types.Proposal, []types.Signature) {
+func getInitialStateAndMetadata(config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature) {
 	height := ledger.Height()
 	if height == 0 {
 		initState := initialStateFromConfig(config)
@@ -287,7 +287,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *core.State, ledge
 	lastBlockHeader.Digest = genesisDigest
 	initState.AppContext = lastBlockHeader.Bytes()
 
-	genesisProposal := types.Proposal{
+	genesisProposal := smartbft_types.Proposal{
 		Payload: protoutil.MarshalOrPanic(genesisBlock), // TODO create a correct payload
 		Header: (&state.Header{
 			AvailableBlocks: genesisBlocks,

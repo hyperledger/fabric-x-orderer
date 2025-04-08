@@ -20,7 +20,7 @@ import (
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/pkg/errors"
@@ -65,7 +65,7 @@ type Consensus struct {
 	SigVerifier  SigVerifier
 	Signer       Signer
 	CurrentNodes []uint64
-	BFTConfig    types.Configuration
+	BFTConfig    smartbft_types.Configuration
 	BFT          *consensus.Consensus
 	Storage      Storage
 	BADB         *badb.BatchAttestationDB
@@ -140,7 +140,7 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 
 // VerifyProposal verifies the given proposal and returns the included requests' info
 // (from SmartBFT API)
-func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo, error) {
+func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft_types.RequestInfo, error) {
 	if proposal.Header == nil || proposal.Metadata == nil || proposal.Payload == nil {
 		return nil, errors.New("proposal has a nil header or metadata or payload")
 	}
@@ -217,7 +217,7 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
 
-	reqInfos := make([]types.RequestInfo, 0, len(batch))
+	reqInfos := make([]smartbft_types.RequestInfo, 0, len(batch))
 	for _, rawReq := range batch {
 		reqID, err := c.VerifyRequest(rawReq)
 		if err != nil {
@@ -232,11 +232,11 @@ func (c *Consensus) VerifyProposal(proposal types.Proposal) ([]types.RequestInfo
 
 // VerifyRequest verifies the given request and returns its info
 // (from SmartBFT API)
-func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
+func (c *Consensus) VerifyRequest(req []byte) (smartbft_types.RequestInfo, error) {
 	var ce core.ControlEvent
 	bafd := &state.BAFDeserializer{}
 	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
-		return types.RequestInfo{}, err
+		return smartbft_types.RequestInfo{}, err
 	}
 
 	reqID := c.RequestID(req)
@@ -246,20 +246,20 @@ func (c *Consensus) VerifyRequest(req []byte) (types.RequestInfo, error) {
 	} else if ce.BAF != nil {
 		return reqID, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else {
-		return types.RequestInfo{}, fmt.Errorf("empty control event")
+		return smartbft_types.RequestInfo{}, fmt.Errorf("empty control event")
 	}
 }
 
 // VerifyConsenterSig verifies the signature for the given proposal
 // It returns the auxiliary data in the signature
 // (from SmartBFT API)
-func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Proposal) ([]byte, error) {
+func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop smartbft_types.Proposal) ([]byte, error) {
 	var values [][]byte
 	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
 		return nil, err
 	}
 
-	if err := c.VerifySignature(types.Signature{
+	if err := c.VerifySignature(smartbft_types.Signature{
 		Value: values[0],
 		Msg:   []byte(prop.Digest()),
 		ID:    signature.ID,
@@ -273,7 +273,7 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 	}
 
 	for i, bh := range hdr.AvailableBlocks {
-		if err := c.VerifySignature(types.Signature{
+		if err := c.VerifySignature(smartbft_types.Signature{
 			Value: values[i+1],
 			Msg:   bh.Header.Bytes(),
 			ID:    signature.ID,
@@ -287,7 +287,7 @@ func (c *Consensus) VerifyConsenterSig(signature types.Signature, prop types.Pro
 
 // VerifySignature verifies the signature
 // (from SmartBFT API)
-func (c *Consensus) VerifySignature(signature types.Signature) error {
+func (c *Consensus) VerifySignature(signature smartbft_types.Signature) error {
 	return c.SigVerifier.VerifySignature(arma_types.PartyID(signature.ID), arma_types.ShardIDConsensus, signature.Msg, signature.Value)
 }
 
@@ -299,12 +299,12 @@ func (c *Consensus) VerificationSequence() uint64 {
 
 // RequestsFromProposal returns from the given proposal the included requests' info
 // (from SmartBFT API)
-func (c *Consensus) RequestsFromProposal(proposal types.Proposal) []types.RequestInfo {
+func (c *Consensus) RequestsFromProposal(proposal smartbft_types.Proposal) []smartbft_types.RequestInfo {
 	var batch arma_types.BatchedRequests
 	if err := batch.Deserialize(proposal.Payload); err != nil {
 		panic("failed deserializing proposal payload")
 	}
-	reqInfos := make([]types.RequestInfo, 0, len(batch))
+	reqInfos := make([]smartbft_types.RequestInfo, 0, len(batch))
 	for _, rawReq := range batch {
 		reqID, err := c.VerifyRequest(rawReq)
 		if err != nil {
@@ -336,19 +336,19 @@ func (c *Consensus) Sign(msg []byte) []byte {
 
 // RequestID returns info about the given request
 // (from SmartBFT API)
-func (c *Consensus) RequestID(req []byte) types.RequestInfo {
+func (c *Consensus) RequestID(req []byte) smartbft_types.RequestInfo {
 	var ce core.ControlEvent
 	bafd := &state.BAFDeserializer{}
 	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
-		return types.RequestInfo{}
+		return smartbft_types.RequestInfo{}
 	}
 
 	if ce.Complaint == nil && ce.BAF == nil {
 		c.Logger.Warnf("Empty control event")
-		return types.RequestInfo{}
+		return smartbft_types.RequestInfo{}
 	}
 
-	return types.RequestInfo{
+	return smartbft_types.RequestInfo{
 		ID:       ce.ID(),
 		ClientID: ce.SignerID(),
 	}
@@ -356,7 +356,7 @@ func (c *Consensus) RequestID(req []byte) types.RequestInfo {
 
 // SignProposal signs on the given proposal and returns a composite Signature
 // (from SmartBFT API)
-func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signature {
+func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *smartbft_types.Signature {
 	var requests arma_types.BatchedRequests
 	if err := requests.Deserialize(proposal.Payload); err != nil {
 		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
@@ -395,7 +395,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 		c.Logger.Panicf("Failed marshaling signatures: %v", err)
 	}
 
-	return &types.Signature{
+	return &smartbft_types.Signature{
 		// the Msg is defined by VerifyConsenterSig
 		Value: sigsRaw,
 		ID:    c.BFTConfig.SelfID,
@@ -404,7 +404,7 @@ func (c *Consensus) SignProposal(proposal types.Proposal, _ []byte) *types.Signa
 
 // AssembleProposal creates a proposal which includes the given requests (when permitting) and metadata
 // (from SmartBFT API)
-func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.Proposal {
+func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
 	c.stateLock.Lock()
 	newState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
@@ -446,7 +446,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 
 	reqs := arma_types.BatchedRequests(requests)
 
-	return types.Proposal{
+	return smartbft_types.Proposal{
 		Header: (&state.Header{
 			AvailableBlocks: availableBlocks,
 			State:           newState,
@@ -461,7 +461,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) types.P
 // After the call returns we assume that this proposal is stored in persistent memory.
 // It returns whether this proposal was a reconfiguration and the current config.
 // (from SmartBFT API)
-func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signature) types.Reconfig {
+func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) smartbft_types.Reconfig {
 	rawDecision := state.DecisionToBytes(proposal, signatures)
 
 	hdr := &state.Header{}
@@ -489,7 +489,7 @@ func (c *Consensus) Deliver(proposal types.Proposal, signatures []types.Signatur
 	c.State = hdr.State
 	c.stateLock.Unlock()
 
-	return types.Reconfig{
+	return smartbft_types.Reconfig{
 		CurrentNodes:  c.CurrentNodes,
 		CurrentConfig: c.BFTConfig,
 	}
