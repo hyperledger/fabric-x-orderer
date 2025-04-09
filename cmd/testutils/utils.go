@@ -4,9 +4,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/onsi/gomega/gbytes"
+	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
@@ -107,4 +112,58 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 	require.NoError(t, err)
 
 	return networkSharedConfig, sharedConfigPath
+}
+
+func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener) *gexec.Session {
+	listener.Close()
+	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
+	require.NotNil(t, cmd)
+
+	sess, err := gexec.Start(cmd, os.Stdout, os.Stderr)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		match, err := gbytes.Say("listening on").Match(sess.Err)
+		require.NoError(t, err)
+		return match
+	}, 60*time.Second, 10*time.Millisecond)
+
+	readyChan <- struct{}{}
+	return sess
+}
+
+func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}, listeners map[string]net.Listener) []*gexec.Session {
+	nodes := map[string][]string{
+		"router":    {"local_config_router.yaml"},
+		"batcher":   {"local_config_batcher1.yaml", "local_config_batcher2.yaml"},
+		"consensus": {"local_config_consenter.yaml"},
+		"assembler": {"local_config_assembler.yaml"},
+	}
+
+	var sessions []*gexec.Session
+	for _, nodeType := range []string{"consensus", "batcher", "router", "assembler"} {
+		for i := 0; i < 4; i++ {
+			partyDir := path.Join(dir, "config", fmt.Sprintf("party%d", i+1))
+			for j := 0; j < len(nodes[nodeType]); j++ {
+				nodeConfigPath := path.Join(partyDir, nodes[nodeType][j])
+				var nodeTypeL string
+				if nodeType == "batcher" {
+					nodeTypeL = fmt.Sprintf("batcher%d", j+1)
+				} else {
+					nodeTypeL = nodeType
+				}
+
+				storagePath := path.Join(dir, "storage", fmt.Sprintf("party%d", i+1), nodeTypeL)
+				err := os.MkdirAll(storagePath, 0o755)
+				require.NoError(t, err)
+
+				EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
+
+				listener := listeners[fmt.Sprintf("Party%d"+nodeTypeL, i+1)]
+				sess := runNode(t, nodeType, armaBinaryPath, nodeConfigPath, readyChan, listener)
+				sessions = append(sessions, sess)
+			}
+		}
+	}
+	return sessions
 }
