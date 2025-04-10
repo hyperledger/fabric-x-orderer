@@ -9,7 +9,6 @@ import (
 	"math"
 	rand2 "math/rand"
 	"sort"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -69,27 +68,21 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 	return r
 }
 
-func (r *Router) StartRouterService() chan struct{} {
+func (r *Router) StartRouterService() <-chan struct{} {
 	srv := node.CreateGRPCRouter(r.routerNodeConfig)
 
 	protos.RegisterRequestTransmitServer(srv.Server(), r)
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), r)
 
-	var waitForGRPCServerStarted sync.WaitGroup
-
 	stop := make(chan struct{})
-	waitForGRPCServerStarted.Add(1)
 
 	go func() {
-		waitForGRPCServerStarted.Done()
 		err := srv.Start()
 		if err != nil {
 			panic(err)
 		}
 		close(stop)
 	}()
-
-	waitForGRPCServerStarted.Wait()
 
 	r.net = srv
 

@@ -38,15 +38,20 @@ type routerTestSetup struct {
 }
 
 func (r *routerTestSetup) Close() {
-	r.router.Stop()
-	r.clientConn.Close()
+	if r.router != nil {
+		r.router.Stop()
+	}
+
+	if r.clientConn != nil {
+		r.clientConn.Close()
+	}
 
 	for _, batcher := range r.batchers {
 		batcher.server.Stop()
 	}
 }
 
-func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int) *routerTestSetup {
+func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int, useTLS bool, clientAuthRequired bool) *routerTestSetup {
 	// create a CA that issues a certificate for the router and the batchers
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -64,29 +69,29 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int)
 	}
 
 	// create and start router
-	router := createAndStartRouter(t, partyID, ca, batchers)
-
-	// create a client to the router
-	conn := createClientConnToRouter(t, ca, router)
+	router := createAndStartRouter(t, partyID, ca, batchers, useTLS, clientAuthRequired)
 
 	return &routerTestSetup{
-		ca:         ca,
-		batchers:   batchers,
-		clientConn: conn,
-		router:     router,
+		ca:       ca,
+		batchers: batchers,
+		router:   router,
 	}
 }
 
 // Scenario:
 // 1. start a client, router and stub batcher
 // 2. submit 10 requests by client to router
-// 3. brodcast 10 requests by client to router
+// 3. broadcast 10 requests by client to router
 // 4. check that the batcher received the expected number of requests
 func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
-	testSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
 	defer testSetup.Close()
 
-	err := submitStreamRequests(testSetup.clientConn, 10)
+	err = submitStreamRequests(testSetup.clientConn, 10)
 	require.NoError(t, err)
 
 	err = submitBroadcastRequests(testSetup.clientConn, 10)
@@ -100,13 +105,17 @@ func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
 // Scenario:
 // 1. start a client, router and stub batcher
 // 2. submit a request by client to router
-// 3. brodcast a request by client to router
+// 3. broadcast a request by client to router
 // 4. check that the batcher received one request
 func TestStubBatcherReceivesClientRouterSingleRequest(t *testing.T) {
-	testSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
 	defer testSetup.Close()
 
-	err := submitRequest(testSetup.clientConn)
+	err = submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 
 	err = submitBroadcastRequests(testSetup.clientConn, 1)
@@ -120,11 +129,15 @@ func TestStubBatcherReceivesClientRouterSingleRequest(t *testing.T) {
 func TestClientRouterFailsToSendRequestOnBatcherServerStop(t *testing.T) {
 	t.Skip()
 	// TODO: check if the reason for error is the connectivity to batcher
-	testSetup := createRouterTestSetup(t, types.PartyID(1), 1)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
 	defer testSetup.Close()
 
 	// send request, should succeed
-	err := submitRequest(testSetup.clientConn)
+	err = submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(1)
@@ -142,10 +155,14 @@ func TestClientRouterFailsToSendRequestOnBatcherServerStop(t *testing.T) {
 // 2. send a request by client to router
 // 3. check that a batcher received one request
 func TestClientRouterSubmitSingleRequestAgainstMultipleBatchers(t *testing.T) {
-	testSetup := createRouterTestSetup(t, types.PartyID(1), 2)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 2, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
 	defer testSetup.Close()
 
-	err := submitRequest(testSetup.clientConn)
+	err = submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -159,10 +176,14 @@ func TestClientRouterSubmitSingleRequestAgainstMultipleBatchers(t *testing.T) {
 // 3. check that the batchers received the expected number of requests
 func TestClientRouterSubmitStreamRequestsAgainstMultipleBatchers(t *testing.T) {
 	numOfShards := 2
-	testSetup := createRouterTestSetup(t, types.PartyID(1), numOfShards)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), numOfShards, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
 	defer testSetup.Close()
 
-	err := submitStreamRequests(testSetup.clientConn, 10)
+	err = submitStreamRequests(testSetup.clientConn, 10)
 	require.NoError(t, err)
 
 	recvCond := func() uint32 {
@@ -178,12 +199,20 @@ func TestClientRouterSubmitStreamRequestsAgainstMultipleBatchers(t *testing.T) {
 	}, 60*time.Second, 10*time.Millisecond)
 }
 
+// Scenario:
+// 1. start a client, router and 2 stub batchers
+// 2. broadcast 10 requests by client to router
+// 3. check that the batchers received all the requests
 func TestClientRouterBroadcastRequestsAgainstMultipleBatchers(t *testing.T) {
 	numOfShards := 2
-	testSetup := createRouterTestSetup(t, types.PartyID(1), numOfShards)
+	testSetup := createRouterTestSetup(t, types.PartyID(1), numOfShards, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
 	defer testSetup.Close()
 
-	err := submitBroadcastRequests(testSetup.clientConn, 10)
+	err = submitBroadcastRequests(testSetup.clientConn, 10)
 	require.NoError(t, err)
 
 	recvCond := func() uint32 {
@@ -197,6 +226,22 @@ func TestClientRouterBroadcastRequestsAgainstMultipleBatchers(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return recvCond() == uint32(10)
 	}, 60*time.Second, 10*time.Millisecond)
+}
+
+func createServerTLSClientConnection(testSetup *routerTestSetup, ca tlsgen.CA) error {
+	cc := comm.ClientConfig{
+		SecOpts: comm.SecureOptions{
+			UseTLS:        true,
+			ServerRootCAs: [][]byte{ca.CertBytes()},
+		},
+		DialTimeout:  time.Second,
+		AsyncConnect: false,
+	}
+
+	var err error
+	testSetup.clientConn, err = cc.Dial(testSetup.router.Address())
+
+	return err
 }
 
 func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) error {
@@ -314,7 +359,7 @@ func submitRequest(conn *grpc.ClientConn) error {
 	return nil
 }
 
-func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher) *router.Router {
+func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher, useTLS bool, clientAuthRequired bool) *router.Router {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
@@ -329,9 +374,10 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	conf := &config.RouterNodeConfig{
 		PartyID:            partyID,
 		TLSCertificateFile: ckp.Cert,
-		UseTLS:             true,
+		UseTLS:             useTLS,
 		TLSPrivateKeyFile:  ckp.Key,
 		ListenAddress:      "127.0.0.1:0",
+		ClientAuthRequired: clientAuthRequired,
 		Shards:             shards,
 	}
 
@@ -339,19 +385,4 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	r.StartRouterService()
 
 	return r
-}
-
-func createClientConnToRouter(t *testing.T, ca tlsgen.CA, router *router.Router) *grpc.ClientConn {
-	cc := comm.ClientConfig{
-		SecOpts: comm.SecureOptions{
-			UseTLS:        true,
-			ServerRootCAs: [][]byte{ca.CertBytes()},
-		},
-		DialTimeout:  time.Second,
-		AsyncConnect: false,
-	}
-
-	conn, err := cc.Dial(router.Address())
-	require.NoError(t, err)
-	return conn
 }
