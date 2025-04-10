@@ -28,15 +28,16 @@ func (fake *FakeStateReplicator) ReplicateState() <-chan *core.State {
 	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
 	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
 	}{})
+	stub := fake.ReplicateStateStub
+	fakeReturns := fake.replicateStateReturns
 	fake.recordInvocation("ReplicateState", []interface{}{})
 	fake.replicateStateMutex.Unlock()
-	if fake.ReplicateStateStub != nil {
-		return fake.ReplicateStateStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.replicateStateReturns
 	return fakeReturns.result1
 }
 

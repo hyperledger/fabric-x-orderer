@@ -3,9 +3,11 @@ package batcher_test
 import (
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
+	"github.ibm.com/decentralized-trust-research/arma/node/batcher/mocks"
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 	"google.golang.org/protobuf/proto"
@@ -13,7 +15,7 @@ import (
 
 func TestRequestsInspectAndVerify(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
-	verifier := batcher.NewRequestsInspectorVerifier(logger, types.ShardID(1), []types.ShardID{1, 2}, 3, 10, 10, &batcher.NoopClientRequestVerifier{})
+	verifier := batcher.NewRequestsInspectorVerifier(logger, types.ShardID(1), []types.ShardID{1, 2}, 3, 10, 10, &batcher.NoopClientRequestVerifier{}, nil)
 
 	t.Run("empty request ID", func(t *testing.T) {
 		emptyReq := []byte{}
@@ -100,4 +102,32 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		reqs = append(reqs, rawReq1)
 		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "too big")
 	})
+}
+
+func TestRequestVerificationStopEarly(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	reqVerifier := &mocks.FakeRequestVerifier{}
+
+	verifier := batcher.NewRequestsInspectorVerifier(logger, types.ShardID(1), []types.ShardID{1, 2}, 500, 1000, 1000, &batcher.NoopClientRequestVerifier{}, reqVerifier)
+
+	reqs := make([][]byte, 100)
+	for i := 0; i < 100; i++ {
+		rawReq, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
+		require.NoError(t, err)
+		reqs[i] = rawReq
+	}
+
+	reqVerifier.VerifyRequestReturns(nil)
+
+	require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+
+	require.Equal(t, 100, reqVerifier.VerifyRequestCallCount())
+
+	reqVerifier.VerifyRequestReturns(errors.New("error"))
+
+	require.Error(t, verifier.VerifyBatchedRequests(reqs))
+
+	require.Less(t, reqVerifier.VerifyRequestCallCount(), 200)
+	t.Log(reqVerifier.VerifyRequestCallCount())
 }

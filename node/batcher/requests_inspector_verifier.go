@@ -14,8 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// RequestsVerifier verifies requests
-
+// ClientRequestVerifier verifies a single client's requests (signatures)
 type ClientRequestVerifier interface {
 	VerifyClientRequest(req []byte) error
 }
@@ -26,31 +25,38 @@ func (v *NoopClientRequestVerifier) VerifyClientRequest(req []byte) error {
 	return nil
 }
 
-type RequestsVerifier interface {
+//go:generate counterfeiter -o mocks/request_verifier.go . RequestVerifier
+
+// RequestVerifier verifies a single request (format and signatures)
+type RequestVerifier interface {
 	VerifyRequest(req []byte) error
-	core.BatchedRequestsVerifier
 }
 
 type RequestsInspectorVerifier struct {
-	requestMaxBytes uint64
-	batchMaxBytes   uint32
-	batchMaxSize    uint32
-	shards          []types.ShardID
-	shardID         types.ShardID
-	logger          types.Logger
-	mapper          *core.Router // TODO make this into an interface?
-	requestVerifier ClientRequestVerifier
+	requestMaxBytes       uint64
+	batchMaxBytes         uint32
+	batchMaxSize          uint32
+	shards                []types.ShardID
+	shardID               types.ShardID
+	logger                types.Logger
+	mapper                *core.Router // TODO make this into an interface?
+	requestClientVerifier ClientRequestVerifier
+	requestVerifier       RequestVerifier
 }
 
-func NewRequestsInspectorVerifier(logger types.Logger, shardID types.ShardID, shards []types.ShardID, batchMaxSize uint32, batchMaxBytes uint32, requestMaxBytes uint64, requestVerifier ClientRequestVerifier) *RequestsInspectorVerifier {
+func NewRequestsInspectorVerifier(logger types.Logger, shardID types.ShardID, shards []types.ShardID, batchMaxSize uint32, batchMaxBytes uint32, requestMaxBytes uint64, clientRequestVerifier ClientRequestVerifier, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
 	riv := &RequestsInspectorVerifier{
-		logger:          logger,
-		shardID:         shardID,
-		shards:          shards,
-		batchMaxSize:    batchMaxSize,
-		batchMaxBytes:   batchMaxBytes,
-		requestMaxBytes: requestMaxBytes,
-		requestVerifier: requestVerifier,
+		logger:                logger,
+		shardID:               shardID,
+		shards:                shards,
+		batchMaxSize:          batchMaxSize,
+		batchMaxBytes:         batchMaxBytes,
+		requestMaxBytes:       requestMaxBytes,
+		requestClientVerifier: clientRequestVerifier,
+		requestVerifier:       requestVerifier,
+	}
+	if requestVerifier == nil {
+		riv.requestVerifier = riv
 	}
 	riv.mapper = &core.Router{Logger: riv.logger, ShardCount: uint16(len(riv.shards))}
 	return riv
@@ -89,7 +95,7 @@ func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequ
 				if workerID != j%numWorkers {
 					continue
 				}
-				if err := r.VerifyRequest(reqs[j]); err != nil {
+				if err := r.requestVerifier.VerifyRequest(reqs[j]); err != nil {
 					return errors.Errorf("failed verifying request in index %d; req ID: %s; err: %v", j, r.RequestID(reqs[j]), err)
 				}
 			}
@@ -123,7 +129,7 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 			return errors.Errorf("request maps to shard %d but our shard is %d; request ID %s", r.shards[shardIndex], r.shardID, reqID)
 		}
 	}
-	if err := r.requestVerifier.VerifyClientRequest(req); err != nil { // TODO actually verify the request (for example client's signature)
+	if err := r.requestClientVerifier.VerifyClientRequest(req); err != nil { // TODO actually verify the request (for example client's signature)
 		return errors.Errorf("failed verifying request with id: %s; err: %v", reqID, err)
 	}
 	return nil
