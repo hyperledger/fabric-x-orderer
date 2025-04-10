@@ -1,26 +1,38 @@
-package request
+package request_test
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/arma/request"
+	"github.ibm.com/decentralized-trust-research/arma/request/mocks"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func BenchmarkPending(b *testing.B) {
-	sugaredLogger := testutil.CreateBenchmarkLogger(b, 0)
+type reqInspector struct{}
+
+func (ri *reqInspector) RequestID(req []byte) string {
+	digest := sha256.Sum256(req)
+	return hex.EncodeToString(digest[:])
+}
+
+func TestPending(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
 	requestInspector := &reqInspector{}
 
 	start := time.Now()
 	ticker := time.NewTicker(time.Millisecond * 100)
 
-	ps := &PendingStore{
+	ps := &request.PendingStore{
 		ReqIDLifetime:   time.Second * 10,
 		ReqIDGCInterval: time.Second,
 		Logger:          sugaredLogger,
@@ -41,7 +53,7 @@ func BenchmarkPending(b *testing.B) {
 	ps.Start()
 
 	workerNum := runtime.NumCPU()
-	workPerWorker := 100000
+	workPerWorker := 1000
 
 	var submittedCount uint32
 
@@ -89,7 +101,7 @@ func BenchmarkPending(b *testing.B) {
 		}
 	}
 
-	assert.Equal(b, uint32(workerNum*workPerWorker), atomic.LoadUint32(&submittedCount))
+	assert.Equal(t, uint32(workerNum*workPerWorker), atomic.LoadUint32(&submittedCount))
 }
 
 func TestGetAll(t *testing.T) {
@@ -99,7 +111,7 @@ func TestGetAll(t *testing.T) {
 	start := time.Now()
 	ticker := time.NewTicker(time.Millisecond * 100)
 
-	ps := &PendingStore{
+	ps := &request.PendingStore{
 		ReqIDLifetime:   time.Second * 10,
 		ReqIDGCInterval: time.Second,
 		Logger:          sugaredLogger,
@@ -132,4 +144,52 @@ func TestGetAll(t *testing.T) {
 	ps.Close()
 	all := ps.GetAllRequests(uint64(count))
 	assert.Equal(t, count, len(all))
+}
+
+func TestBasicStrikes(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+	requestInspector := &reqInspector{}
+
+	start := time.Now()
+	ticker := time.NewTicker(time.Millisecond * 100)
+
+	striker := &mocks.FakeStriker{}
+
+	ps := &request.PendingStore{
+		ReqIDLifetime:   time.Second * 10,
+		ReqIDGCInterval: time.Second,
+		Logger:          sugaredLogger,
+		StartTime:       start,
+		Time:            ticker.C,
+		Epoch:           time.Millisecond * 200,
+		Inspector:       requestInspector,
+		OnDelete:        func(key string) {},
+		FirstStrikeCallback: func(b []byte) {
+			striker.OnFirstStrikeTimeout(b)
+		},
+		FirstStrikeThreshold: 500 * time.Millisecond,
+		SecondStrikeCallback: func() {
+			striker.OnSecondStrikeTimeout()
+		},
+		SecondStrikeThreshold: time.Second,
+	}
+
+	ps.Init()
+	ps.Start()
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	require.NoError(t, ps.Submit(req))
+
+	require.Eventually(t, func() bool {
+		return striker.OnFirstStrikeTimeoutCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return striker.OnSecondStrikeTimeoutCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	ps.Close()
+	all := ps.GetAllRequests(10)
+	require.Equal(t, 1, len(all))
 }

@@ -1,7 +1,6 @@
 package request
 
 import (
-	"context"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -10,12 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
-
-type Semaphore interface {
-	Acquire(ctx context.Context, n int64) error
-
-	Release(n int64)
-}
 
 type PendingStore struct {
 	ReqIDGCInterval       time.Duration
@@ -190,7 +183,7 @@ func (ps *PendingStore) checkFirstStrike(now time.Time) {
 	var buckets []*bucket
 
 	for _, bucket := range ps.buckets {
-		if !bucket.firstStrikeTimestamp.IsZero() {
+		if !bucket.getFirstStrikeTimestamp().IsZero() {
 			continue
 		}
 
@@ -216,11 +209,11 @@ func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 	var detectedCensorship bool
 
 	for _, bucket := range ps.buckets {
-		if bucket.firstStrikeTimestamp.IsZero() {
+		if bucket.getFirstStrikeTimestamp().IsZero() {
 			continue
 		}
 
-		if now.Sub(bucket.firstStrikeTimestamp) <= ps.SecondStrikeThreshold {
+		if now.Sub(bucket.getFirstStrikeTimestamp()) <= ps.SecondStrikeThreshold {
 			continue
 		}
 
@@ -285,7 +278,7 @@ func (ps *PendingStore) removeRequest(reqID string, now time.Time) {
 		return
 	}
 
-	bucket.Delete(reqID)
+	bucket.delete(reqID)
 
 	ps.OnDelete(reqID)
 }
@@ -301,7 +294,7 @@ func (ps *PendingStore) Prune(predicate func([]byte) error) {
 		if predicate(request.([]byte)) == nil {
 			return true
 		}
-		b.Delete(reqID)
+		b.delete(reqID)
 		ps.OnDelete(reqID)
 		return true
 	})
@@ -318,7 +311,7 @@ func (ps *PendingStore) Submit(request []byte) error {
 	// In such a case, wait for a new un-sealed bucket to replace the current bucket.
 	for {
 		currentBucket := ps.currentBucket.Load().(*bucket)
-		if !currentBucket.TryInsert(reqID, request) {
+		if !currentBucket.tryInsert(reqID, request) {
 			continue
 		}
 		return nil
@@ -352,81 +345,4 @@ func (ps *PendingStore) GetAllRequests(max uint64) [][]byte {
 	})
 
 	return requests
-}
-
-type bucket struct {
-	id                   uint64
-	reqID2Bucket         *sync.Map
-	size                 uint32
-	lock                 sync.RWMutex
-	lastTimestamp        time.Time
-	firstStrikeTimestamp time.Time
-	zeroTime             time.Time
-	requests             sync.Map
-	processedTimestamp   time.Time
-}
-
-func newBucket(reqID2Bucket *sync.Map, id uint64) *bucket {
-	return &bucket{reqID2Bucket: reqID2Bucket, id: id}
-}
-
-func (b *bucket) isDummyBucket() bool {
-	return b.id == 0
-}
-
-func (b *bucket) getSize() uint32 {
-	return atomic.LoadUint32(&b.size)
-}
-
-func (b *bucket) seal(now time.Time) *bucket {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-
-	b.lastTimestamp = now
-
-	return newBucket(b.reqID2Bucket, b.id+1)
-}
-
-func (b *bucket) resetTimestamp(t time.Time) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-
-	b.lastTimestamp = t
-	b.firstStrikeTimestamp = b.zeroTime
-}
-
-func (b *bucket) setFirstStrikeTimestamp(t time.Time) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-
-	b.firstStrikeTimestamp = t
-}
-
-func (b *bucket) TryInsert(reqID string, request []byte) bool {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
-
-	if !b.lastTimestamp.IsZero() {
-		return false
-	}
-
-	if _, existed := b.reqID2Bucket.LoadOrStore(reqID, b); existed {
-		return true
-	}
-	b.requests.Store(reqID, request)
-	atomic.AddUint32(&b.size, 1)
-
-	return true
-}
-
-func (b *bucket) Delete(reqID string) bool {
-	_, existed := b.requests.LoadAndDelete(reqID)
-	if !existed {
-		return false
-	}
-
-	b.reqID2Bucket.Delete(reqID)
-
-	atomic.AddUint32(&b.size, ^uint32(0))
-	return true
 }
