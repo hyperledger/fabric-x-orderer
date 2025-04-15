@@ -9,19 +9,20 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 )
 
-// ClientRequestVerifier verifies a single client's requests (signatures)
-type ClientRequestVerifier interface {
-	VerifyClientRequest(req []byte) error
+// ClientRequestSigVerifier verifies a single client's requests (signatures)
+type ClientRequestSigVerifier interface {
+	VerifyClientRequestSig(req []byte) error
 }
 
-type NoopClientRequestVerifier struct{}
+type NoopClientRequestSigVerifier struct{}
 
-func (v *NoopClientRequestVerifier) VerifyClientRequest(req []byte) error {
+func (v *NoopClientRequestSigVerifier) VerifyClientRequestSig(req []byte) error {
 	return nil
 }
 
@@ -33,27 +34,27 @@ type RequestVerifier interface {
 }
 
 type RequestsInspectorVerifier struct {
-	requestMaxBytes       uint64
-	batchMaxBytes         uint32
-	batchMaxSize          uint32
-	shards                []types.ShardID
-	shardID               types.ShardID
-	logger                types.Logger
-	mapper                *core.Router // TODO make this into an interface?
-	requestClientVerifier ClientRequestVerifier
-	requestVerifier       RequestVerifier
+	requestMaxBytes          uint64
+	batchMaxBytes            uint32
+	batchMaxSize             uint32
+	shards                   []types.ShardID
+	shardID                  types.ShardID
+	logger                   types.Logger
+	mapper                   *core.Router // TODO make this into an interface?
+	requestClientSigVerifier ClientRequestSigVerifier
+	requestVerifier          RequestVerifier
 }
 
-func NewRequestsInspectorVerifier(logger types.Logger, shardID types.ShardID, shards []types.ShardID, batchMaxSize uint32, batchMaxBytes uint32, requestMaxBytes uint64, clientRequestVerifier ClientRequestVerifier, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
+func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNodeConfig, clientRequestVerifier ClientRequestSigVerifier, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
 	riv := &RequestsInspectorVerifier{
-		logger:                logger,
-		shardID:               shardID,
-		shards:                shards,
-		batchMaxSize:          batchMaxSize,
-		batchMaxBytes:         batchMaxBytes,
-		requestMaxBytes:       requestMaxBytes,
-		requestClientVerifier: clientRequestVerifier,
-		requestVerifier:       requestVerifier,
+		logger:                   logger,
+		shardID:                  config.ShardId,
+		shards:                   config.GetShardsIDs(),
+		batchMaxSize:             config.BatchMaxSize,
+		batchMaxBytes:            config.BatchMaxBytes,
+		requestMaxBytes:          config.RequestMaxBytes,
+		requestClientSigVerifier: clientRequestVerifier,
+		requestVerifier:          requestVerifier,
 	}
 	if requestVerifier == nil {
 		riv.requestVerifier = riv
@@ -129,7 +130,7 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 			return errors.Errorf("request maps to shard %d but our shard is %d; request ID %s", r.shards[shardIndex], r.shardID, reqID)
 		}
 	}
-	if err := r.requestClientVerifier.VerifyClientRequest(req); err != nil { // TODO actually verify the request (for example client's signature)
+	if err := r.requestClientSigVerifier.VerifyClientRequestSig(req); err != nil { // TODO actually verify the request (for example client's signature)
 		return errors.Errorf("failed verifying request with id: %s; err: %v", reqID, err)
 	}
 	return nil

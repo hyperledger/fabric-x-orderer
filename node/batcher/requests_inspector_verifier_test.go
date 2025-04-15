@@ -5,9 +5,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher/mocks"
+	"github.ibm.com/decentralized-trust-research/arma/node/config"
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 	"google.golang.org/protobuf/proto"
@@ -15,7 +15,14 @@ import (
 
 func TestRequestsInspectAndVerify(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
-	verifier := batcher.NewRequestsInspectorVerifier(logger, types.ShardID(1), []types.ShardID{1, 2}, 3, 10, 10, &batcher.NoopClientRequestVerifier{}, nil)
+	config := &config.BatcherNodeConfig{
+		ShardId:         1,
+		Shards:          []config.ShardInfo{{ShardId: 1}, {ShardId: 2}},
+		BatchMaxSize:    3,
+		BatchMaxBytes:   10,
+		RequestMaxBytes: 10,
+	}
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, &batcher.NoopClientRequestSigVerifier{}, nil)
 
 	t.Run("empty request ID", func(t *testing.T) {
 		emptyReq := []byte{}
@@ -106,10 +113,16 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 
 func TestRequestVerificationStopEarly(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
-
+	config := &config.BatcherNodeConfig{
+		ShardId:         1,
+		Shards:          []config.ShardInfo{{ShardId: 1}, {ShardId: 2}},
+		BatchMaxSize:    500,
+		BatchMaxBytes:   1000,
+		RequestMaxBytes: 1000,
+	}
 	reqVerifier := &mocks.FakeRequestVerifier{}
 
-	verifier := batcher.NewRequestsInspectorVerifier(logger, types.ShardID(1), []types.ShardID{1, 2}, 500, 1000, 1000, &batcher.NoopClientRequestVerifier{}, reqVerifier)
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, &batcher.NoopClientRequestSigVerifier{}, reqVerifier)
 
 	reqs := make([][]byte, 100)
 	for i := 0; i < 100; i++ {

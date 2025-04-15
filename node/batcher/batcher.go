@@ -312,7 +312,7 @@ func (b *Batcher) indexTLSCerts() {
 
 func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
 	privateKey := createPrivateKey(logger, config.SigningPrivateKey)
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config.ShardId, config.GetShardsIDs(), config.BatchMaxSize, config.BatchMaxBytes, config.RequestMaxBytes, &NoopClientRequestVerifier{}, nil)
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, &NoopClientRequestSigVerifier{}, nil)
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
 		batcherDeliverService:     ds,
