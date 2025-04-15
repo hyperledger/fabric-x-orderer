@@ -45,6 +45,7 @@ func setupPrefetchIndexTest(t *testing.T) *prefetchIndexTestVars {
 		testutil.CreateLogger(t, 1),
 		time.Nanosecond,
 		-1,
+		1000,
 		nil,
 		nil,
 		partitionPrefetchIndexerFactory,

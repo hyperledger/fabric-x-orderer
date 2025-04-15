@@ -19,9 +19,6 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-// TODO: move to config
-const defaultReplicationChanSize = 100
-
 //go:generate counterfeiter -o ./mocks/batch_fetcher.go . BatchBringer
 type BatchBringer interface {
 	Replicate(shardID types.ShardID) <-chan core.Batch
@@ -99,7 +96,7 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 
 	br.logger.Infof("Assembler %d Replicate from shard %d, batcher endpoint: %s, batcher party: %d", br.config.PartyId, shardID, batcherToPullFrom.Endpoint, batcherToPullFrom.PartyID)
 
-	res := make(chan core.Batch, defaultReplicationChanSize)
+	res := make(chan core.Batch, br.config.ReplicationChannelSize)
 
 	var partyPullerWg sync.WaitGroup
 

@@ -2,7 +2,6 @@ package assembler
 
 import (
 	"fmt"
-	"time"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
@@ -14,13 +13,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-)
-
-// TODO: move to config
-const (
-	maxSizeBytes      = 1 * 1024 * 1024 * 1024 // 1GB
-	ledgerScanTimeout = 5 * time.Second
-	evictionTtl       = time.Hour
 )
 
 func NewInitialAssemblerConsensusPosition(oi *state.OrderingInformation) core.AssemblerConsensusPosition {
@@ -91,12 +83,12 @@ func NewDefaultAssembler(
 	shardIds := shardsFromAssemblerConfig(config)
 	partyIds := partiesFromAssemblerConfig(config)
 
-	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, ledgerScanTimeout)
+	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, config.RestartLedgerScanTimeout)
 	if err != nil {
 		logger.Panicf("Failed fetching batch frontier: %v", err)
 	}
 
-	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, evictionTtl, maxSizeBytes, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{})
+	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, config.PrefetchEvictionTtl, config.PrefetchBufferMemoryBytes, config.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{})
 	if err != nil {
 		logger.Panicf("Failed creating index: %v", err)
 	}

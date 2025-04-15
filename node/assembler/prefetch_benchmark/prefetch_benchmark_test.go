@@ -31,6 +31,7 @@ type benchTestParams struct {
 	indexDefaultTtl            time.Duration
 	statsInterval              time.Duration
 	indexMaxPartitionSizeBytes int
+	requestChannelSize         int
 }
 
 type prefetcherBenchmarkSetup struct {
@@ -118,6 +119,7 @@ func createPrefetcherBenchmarkSetup(
 		testutil.CreateLoggerForModule(t, "Assembler Prefetch Index", logLevel),
 		params.indexDefaultTtl,
 		params.indexMaxPartitionSizeBytes,
+		params.requestChannelSize,
 		timerFactoryMock,
 		&assembler.DefaultBatchCacheFactory{},
 		&assembler.DefaultPartitionPrefetchIndexerFactory{},
@@ -224,6 +226,7 @@ func TestPrefetchMechanismBenchmark(t *testing.T) {
 			indexDefaultTtl:            time.Hour,
 			statsInterval:              time.Second,
 			indexMaxPartitionSizeBytes: 1 * 1024 * 1024 * 1024, // 1GB
+			requestChannelSize:         1000,
 		}
 		runPrefetchMechanismBenchmark(t, params)
 	})
@@ -244,6 +247,7 @@ func TestPrefetchMechanismBenchmark(t *testing.T) {
 			indexDefaultTtl:            time.Hour,
 			statsInterval:              time.Second,
 			indexMaxPartitionSizeBytes: 1 * 1024 * 1024 * 1024, // 1GB
+			requestChannelSize:         1000,
 		}
 		runPrefetchMechanismBenchmark(t, params)
 	})
@@ -264,6 +268,7 @@ func TestPrefetchMechanismBenchmark(t *testing.T) {
 			indexDefaultTtl:            time.Hour,
 			statsInterval:              time.Second,
 			indexMaxPartitionSizeBytes: 1 * 1024 * 1024 * 1024, // 1GB
+			requestChannelSize:         1000,
 		}
 		runPrefetchMechanismBenchmark(t, params)
 	})

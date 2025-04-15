@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
@@ -164,8 +165,12 @@ type BatcherParams struct {
 }
 
 type AssemblerParams struct {
-	// PrefetchBufferMemoryMB is the size of the buffer that is used to store prefetched batches from the Batchers
-	PrefetchBufferMemoryMB int `yaml:"PrefetchBufferMemoryMB,omitempty"`
+	// PrefetchBufferMemoryBytes is the size of the buffer that is used to store prefetched batches from the Batchers
+	PrefetchBufferMemoryBytes int           `yaml:"PrefetchBufferMemoryBytes,omitempty"`
+	RestartLedgerScanTimeout  time.Duration `yaml:"RestartLedgerScanTimeout,omitempty"`
+	PrefetchEvictionTtl       time.Duration `yaml:"PrefetchEvictionTtl,omitempty"`
+	ReplicationChannelSize    int           `yaml:"ReplicationChannelSize,omitempty"`
+	BatchRequestsChannelSize  int           `yaml:"BatchRequestsChannelSize,omitempty"`
 }
 
 type TLSConfig struct {

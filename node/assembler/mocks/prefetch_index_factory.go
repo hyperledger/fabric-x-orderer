@@ -10,7 +10,7 @@ import (
 )
 
 type FakePrefetchIndexerFactory struct {
-	CreateStub        func([]types.ShardID, []types.PartyID, types.Logger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, assembler.PartitionPrefetchIndexerFactory) assembler.PrefetchIndexer
+	CreateStub        func([]types.ShardID, []types.PartyID, types.Logger, time.Duration, int, int, assembler.TimerFactory, assembler.BatchCacheFactory, assembler.PartitionPrefetchIndexerFactory) assembler.PrefetchIndexer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 []types.ShardID
@@ -18,9 +18,10 @@ type FakePrefetchIndexerFactory struct {
 		arg3 types.Logger
 		arg4 time.Duration
 		arg5 int
-		arg6 assembler.TimerFactory
-		arg7 assembler.BatchCacheFactory
-		arg8 assembler.PartitionPrefetchIndexerFactory
+		arg6 int
+		arg7 assembler.TimerFactory
+		arg8 assembler.BatchCacheFactory
+		arg9 assembler.PartitionPrefetchIndexerFactory
 	}
 	createReturns struct {
 		result1 assembler.PrefetchIndexer
@@ -32,7 +33,7 @@ type FakePrefetchIndexerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakePrefetchIndexerFactory) Create(arg1 []types.ShardID, arg2 []types.PartyID, arg3 types.Logger, arg4 time.Duration, arg5 int, arg6 assembler.TimerFactory, arg7 assembler.BatchCacheFactory, arg8 assembler.PartitionPrefetchIndexerFactory) assembler.PrefetchIndexer {
+func (fake *FakePrefetchIndexerFactory) Create(arg1 []types.ShardID, arg2 []types.PartyID, arg3 types.Logger, arg4 time.Duration, arg5 int, arg6 int, arg7 assembler.TimerFactory, arg8 assembler.BatchCacheFactory, arg9 assembler.PartitionPrefetchIndexerFactory) assembler.PrefetchIndexer {
 	var arg1Copy []types.ShardID
 	if arg1 != nil {
 		arg1Copy = make([]types.ShardID, len(arg1))
@@ -51,14 +52,15 @@ func (fake *FakePrefetchIndexerFactory) Create(arg1 []types.ShardID, arg2 []type
 		arg3 types.Logger
 		arg4 time.Duration
 		arg5 int
-		arg6 assembler.TimerFactory
-		arg7 assembler.BatchCacheFactory
-		arg8 assembler.PartitionPrefetchIndexerFactory
-	}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6, arg7, arg8})
-	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6, arg7, arg8})
+		arg6 int
+		arg7 assembler.TimerFactory
+		arg8 assembler.BatchCacheFactory
+		arg9 assembler.PartitionPrefetchIndexerFactory
+	}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6, arg7, arg8, arg9})
+	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6, arg7, arg8, arg9})
 	fake.createMutex.Unlock()
 	if fake.CreateStub != nil {
-		return fake.CreateStub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
+		return fake.CreateStub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
 	}
 	if specificReturn {
 		return ret.result1
@@ -73,17 +75,17 @@ func (fake *FakePrefetchIndexerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakePrefetchIndexerFactory) CreateCalls(stub func([]types.ShardID, []types.PartyID, types.Logger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, assembler.PartitionPrefetchIndexerFactory) assembler.PrefetchIndexer) {
+func (fake *FakePrefetchIndexerFactory) CreateCalls(stub func([]types.ShardID, []types.PartyID, types.Logger, time.Duration, int, int, assembler.TimerFactory, assembler.BatchCacheFactory, assembler.PartitionPrefetchIndexerFactory) assembler.PrefetchIndexer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakePrefetchIndexerFactory) CreateArgsForCall(i int) ([]types.ShardID, []types.PartyID, types.Logger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, assembler.PartitionPrefetchIndexerFactory) {
+func (fake *FakePrefetchIndexerFactory) CreateArgsForCall(i int) ([]types.ShardID, []types.PartyID, types.Logger, time.Duration, int, int, assembler.TimerFactory, assembler.BatchCacheFactory, assembler.PartitionPrefetchIndexerFactory) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8, argsForCall.arg9
 }
 
 func (fake *FakePrefetchIndexerFactory) CreateReturns(result1 assembler.PrefetchIndexer) {

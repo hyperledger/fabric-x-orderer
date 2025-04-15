@@ -132,7 +132,7 @@ func CreateTestAssemblerLocalConfig() *config.NodeLocalConfig {
 			LogSpec: "info",
 		},
 		FileStore:       &config.FileStore{Path: "path/to/file_store"},
-		AssemblerParams: &config.AssemblerParams{PrefetchBufferMemoryMB: 10},
+		AssemblerParams: &config.AssemblerParams{PrefetchBufferMemoryBytes: 10},
 	}
 	return assemblerLocalConfig
 }

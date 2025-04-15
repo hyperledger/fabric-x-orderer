@@ -30,4 +30,8 @@ General:
 FileStore:
     Location: /var/dec-trust/store
 Assembler:
-    PrefetchBufferMemoryMB: 1024
+    PrefetchBufferMemoryBytes: 1073741824
+    LedgerScanTimeout: 5s
+    EvictionTtl: 1h
+    ReplicationChannelSize: 100
+    BatchRequestsChannelSize: 1000

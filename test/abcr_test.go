@@ -57,14 +57,20 @@ func TestABCR(t *testing.T) {
 	require.NoError(t, err)
 
 	assemblerConf := &config.AssemblerNodeConfig{
-		ListenAddress:      "0.0.0.0:0",
-		PartyId:            1,
-		TLSPrivateKeyFile:  ckp.Key,
-		TLSCertificateFile: ckp.Cert,
-		Shards:             shards,
-		Consenter:          consenterInfos[0],
-		Directory:          assemblerDir,
-		UseTLS:             true,
+		TLSPrivateKeyFile:         ckp.Key,
+		TLSCertificateFile:        ckp.Cert,
+		PartyId:                   1,
+		Directory:                 assemblerDir,
+		ListenAddress:             "0.0.0.0:0",
+		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024, // 1GB
+		RestartLedgerScanTimeout:  5 * time.Second,
+		PrefetchEvictionTtl:       time.Hour,
+		ReplicationChannelSize:    100,
+		BatchRequestsChannelSize:  1000,
+		Shards:                    shards,
+		Consenter:                 consenterInfos[0],
+		UseTLS:                    true,
+		ClientAuthRequired:        false,
 	}
 
 	aLogger := testutil.CreateLogger(t, 1)

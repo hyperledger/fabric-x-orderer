@@ -75,11 +75,16 @@ type RouterNodeConfig struct {
 
 type AssemblerNodeConfig struct {
 	// Private config
-	TLSPrivateKeyFile  RawBytes
-	TLSCertificateFile RawBytes
-	PartyId            types.PartyID
-	Directory          string
-	ListenAddress      string
+	TLSPrivateKeyFile         RawBytes
+	TLSCertificateFile        RawBytes
+	PartyId                   types.PartyID
+	Directory                 string
+	ListenAddress             string
+	PrefetchBufferMemoryBytes int
+	RestartLedgerScanTimeout  time.Duration
+	PrefetchEvictionTtl       time.Duration
+	ReplicationChannelSize    int
+	BatchRequestsChannelSize  int
 	// Shared config
 	Shards             []ShardInfo
 	Consenter          ConsenterInfo

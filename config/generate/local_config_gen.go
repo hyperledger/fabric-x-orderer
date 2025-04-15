@@ -19,10 +19,9 @@ import (
 
 // TODO: these params should be removed
 const (
-	DefaultMaxRecvMsgSize         = 100 * 1024 * 1024
-	DefaultMaxSendMsgSize         = 100 * 1024 * 1024
-	DefaultSendBufferSize         = 2000
-	DefaultPrefetchBufferMemoryMB = 1024
+	DefaultMaxRecvMsgSize = 100 * 1024 * 1024
+	DefaultMaxSendMsgSize = 100 * 1024 * 1024
+	DefaultSendBufferSize = 2000
 )
 
 var (
@@ -249,11 +248,12 @@ func NewConsensusLocalConfig(consensusGeneralParams GeneralConfigParams) *config
 }
 
 func NewAssemblerLocalConfig(assemblerGeneralParams GeneralConfigParams) *config.NodeLocalConfig {
+	params := config.DefaultAssemblerParams
 	return &config.NodeLocalConfig{
 		PartyID:         assemblerGeneralParams.partyID,
 		GeneralConfig:   NewGeneralConfig(assemblerGeneralParams),
 		FileStore:       &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		AssemblerParams: &config.AssemblerParams{PrefetchBufferMemoryMB: DefaultPrefetchBufferMemoryMB},
+		AssemblerParams: &params,
 	}
 }
 

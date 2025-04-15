@@ -196,12 +196,17 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 	}
 
 	assemblerConfig := &nodeconfig.AssemblerNodeConfig{
-		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
-		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
-		PartyId:            config.LocalConfig.NodeLocalConfig.PartyID,
-		Directory:          config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:      config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
-		Shards:             config.ExtractShards(),
+		TLSPrivateKeyFile:         config.LocalConfig.TLSConfig.PrivateKey,
+		TLSCertificateFile:        config.LocalConfig.TLSConfig.Certificate,
+		PartyId:                   config.LocalConfig.NodeLocalConfig.PartyID,
+		Directory:                 config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		ListenAddress:             config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		PrefetchBufferMemoryBytes: config.LocalConfig.NodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes,
+		RestartLedgerScanTimeout:  config.LocalConfig.NodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout,
+		PrefetchEvictionTtl:       config.LocalConfig.NodeLocalConfig.AssemblerParams.PrefetchEvictionTtl,
+		ReplicationChannelSize:    config.LocalConfig.NodeLocalConfig.AssemblerParams.ReplicationChannelSize,
+		BatchRequestsChannelSize:  config.LocalConfig.NodeLocalConfig.AssemblerParams.BatchRequestsChannelSize,
+		Shards:                    config.ExtractShards(),
 		Consenter: nodeconfig.ConsenterInfo{
 			PartyID:    config.LocalConfig.NodeLocalConfig.PartyID,
 			Endpoint:   partySharedConfig.ConsenterConfig.Host + ":" + strconv.Itoa(int(partySharedConfig.ConsenterConfig.Port)),

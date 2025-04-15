@@ -93,7 +93,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		consensusBringerMock:           &delivery_mocks.FakeConsensusBringer{},
 	}
 	assemblerEndpoint := "assembler"
-	consenterEndpoint := "concenter"
+	consenterEndpoint := "consenter"
 
 	shardsInfo := []config.ShardInfo{}
 	batcherInfo := []config.BatcherInfo{}
@@ -109,19 +109,25 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		})
 	}
 	test.nodeConfig = &config.AssemblerNodeConfig{
-		TLSPrivateKeyFile:  generateRandomBytes(t, 16),
-		TLSCertificateFile: generateRandomBytes(t, 16),
-		PartyId:            test.party,
-		Directory:          test.ledgerDir,
-		ListenAddress:      assemblerEndpoint,
-		UseTLS:             true,
+		TLSPrivateKeyFile:         generateRandomBytes(t, 16),
+		TLSCertificateFile:        generateRandomBytes(t, 16),
+		PartyId:                   test.party,
+		Directory:                 test.ledgerDir,
+		ListenAddress:             assemblerEndpoint,
+		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024, // 1GB
+		RestartLedgerScanTimeout:  5 * time.Second,
+		PrefetchEvictionTtl:       time.Hour,
+		ReplicationChannelSize:    100,
+		BatchRequestsChannelSize:  1000,
+		Shards:                    shardsInfo,
 		Consenter: config.ConsenterInfo{
 			PartyID:    myParty,
 			Endpoint:   consenterEndpoint,
 			PublicKey:  generateRandomBytes(t, 16),
 			TLSCACerts: []config.RawBytes{generateRandomBytes(t, 16)},
 		},
-		Shards: shardsInfo,
+		UseTLS:             true,
+		ClientAuthRequired: false,
 	}
 
 	return test
@@ -247,7 +253,7 @@ func TestAssembler_StopCallsAllSubcomponents(t *testing.T) {
 	require.Equal(t, 1, test.ledgerMock.CloseCallCount())
 }
 
-func TestAssembler_RecoveryWhenmPartialDecisionWrittenToLedger(t *testing.T) {
+func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	// Arrange
 	shards := []types.ShardID{1, 2}
 	parties := []types.PartyID{1, 2, 3}

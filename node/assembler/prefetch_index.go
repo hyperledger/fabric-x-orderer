@@ -7,11 +7,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/core"
 )
 
-// TODO: move to config
-const (
-	defaultRequestChanSize = 1_000
-)
-
 //go:generate counterfeiter -o ./mocks/prefetch_index.go . PrefetchIndexer
 type PrefetchIndexer interface {
 	PopOrWait(batchId types.BatchID) (core.Batch, error)
@@ -29,6 +24,7 @@ type PrefetchIndexerFactory interface {
 		logger types.Logger,
 		defaultTtl time.Duration,
 		maxPartitionSizeBytes int,
+		requestChannelSize int,
 		timerFactory TimerFactory,
 		batchCacheFactory BatchCacheFactory,
 		partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
@@ -43,6 +39,7 @@ func (f *DefaultPrefetchIndexerFactory) Create(
 	logger types.Logger,
 	defaultTtl time.Duration,
 	maxPartitionSizeBytes int,
+	requestChannelSize int,
 	timerFactory TimerFactory,
 	batchCacheFactory BatchCacheFactory,
 	partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
@@ -53,6 +50,7 @@ func (f *DefaultPrefetchIndexerFactory) Create(
 		logger,
 		defaultTtl,
 		maxPartitionSizeBytes,
+		requestChannelSize,
 		timerFactory,
 		batchCacheFactory,
 		partitionPrefetchIndexerFactory,
@@ -71,6 +69,7 @@ func NewPrefetchIndex(
 	logger types.Logger,
 	defaultTtl time.Duration,
 	maxPartitionSizeBytes int,
+	requestChannelSize int,
 	timerFactory TimerFactory,
 	batchCacheFactory BatchCacheFactory,
 	partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
@@ -78,7 +77,7 @@ func NewPrefetchIndex(
 	pi := &PrefetchIndex{
 		logger:           logger,
 		partitionToIndex: make(map[ShardPrimary]PartitionPrefetchIndexer, len(shards)*len(parties)),
-		batchRequestChan: make(chan types.BatchID, defaultRequestChanSize),
+		batchRequestChan: make(chan types.BatchID, requestChannelSize),
 	}
 	for _, shardId := range shards {
 		for _, partyId := range parties {
