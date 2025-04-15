@@ -162,6 +162,11 @@ type ConsensusParams struct {
 type BatcherParams struct {
 	// ShardID specifies the shard id to which the Batcher is associated
 	ShardID types.ShardID `yaml:"ShardID,omitempty"`
+	// BatchSequenceGap is the maximal distance the primary allows between his own current batch sequence and the secondaries sequence.
+	// The secondaries send acknowledgments over each batch to the primary, the primary collects these acknowledgments
+	// and waits until at least a threshold of secondaries is not too far behind (batch sequence distance is less than a gap)
+	// before the primary continues on to the next batch.
+	BatchSequenceGap uint64 `yaml:"BatchSequenceGap,omitempty"`
 }
 
 type AssemblerParams struct {

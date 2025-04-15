@@ -31,4 +31,7 @@ FileStore:
 Batcher:
   # ShardID a unique identifier for each Arma shard; uint16, MaxUint16> id >0.
   ShardID: 1
+  # Gap is the maximal distance the primary allows between his own current batch sequence and the secondaries sequence.
+  # The secondaries send acknowledgments over each batch to the primary, the primary collects these acknowledgments and waits until at least a threshold of secondaries are not too far behind (batch sequence distance is less than a gap) before the primary continues on to the next batch.
+  BatchSequenceGap: 10
   

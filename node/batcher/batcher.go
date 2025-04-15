@@ -363,6 +363,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		BatchAcker:              b,
 		Complainer:              b,
 		BatchedRequestsVerifier: b.requestsInspectorVerifier,
+		BatchSequenceGap:        config.BatchSequenceGap,
 	}
 
 	return b

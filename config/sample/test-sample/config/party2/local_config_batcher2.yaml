@@ -31,3 +31,4 @@ FileStore:
     Location: /var/dec-trust/store
 Batcher:
     ShardID: 2
+    BatchSequenceGap: 10

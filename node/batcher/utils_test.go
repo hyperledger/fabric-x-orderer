@@ -110,6 +110,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 			SigningPrivateKey:  config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
 			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
 			TLSCertificateFile: batcherNodes[i].TLSCert,
+			BatchSequenceGap:   types.BatchSequence(10),
 		}
 		configs = append(configs, conf)
 

@@ -223,7 +223,10 @@ func createBatcherLocalConfig(batcherGeneralParams GeneralConfigParams) *config.
 		PartyID:       batcherGeneralParams.partyID,
 		GeneralConfig: NewGeneralConfig(batcherGeneralParams),
 		FileStore:     &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		BatcherParams: &config.BatcherParams{ShardID: batcherGeneralParams.shardID},
+		BatcherParams: &config.BatcherParams{
+			ShardID:          batcherGeneralParams.shardID,
+			BatchSequenceGap: config.DefaultBatcherParams.BatchSequenceGap,
+		},
 	}
 }
 

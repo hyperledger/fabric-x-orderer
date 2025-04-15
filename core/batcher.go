@@ -93,10 +93,7 @@ type BatchLedger interface {
 	BatchLedgeReader
 }
 
-var (
-	gap                 = types.BatchSequence(10)
-	DefaultBatchTimeout = time.Millisecond * 500
-)
+var DefaultBatchTimeout = time.Millisecond * 500
 
 type Batcher struct {
 	Batchers                []types.PartyID
@@ -116,6 +113,7 @@ type Batcher struct {
 	Complainer              Complainer
 	BatchedRequestsVerifier BatchedRequestsVerifier
 	MemPool                 MemPool
+	BatchSequenceGap        types.BatchSequence
 	running                 sync.WaitGroup
 	stopChan                chan struct{}
 	stopOnce                sync.Once
@@ -241,7 +239,7 @@ func (b *Batcher) runPrimary() {
 	}()
 
 	b.ackerLock.Lock()
-	b.acker = NewAcker(b.seq, gap, b.N, uint16(b.Threshold), b.Logger)
+	b.acker = NewAcker(b.seq, b.BatchSequenceGap, b.N, uint16(b.Threshold), b.Logger)
 	b.ackerLock.Unlock()
 	b.MemPool.Restart(true)
 

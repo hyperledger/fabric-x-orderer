@@ -57,11 +57,11 @@ func (a *Acker) HandleAck(seq types.BatchSequence, from types.PartyID) {
 	defer a.lock.Unlock()
 
 	if seq < a.confirmedSeq {
-		a.logger.Debugf("Received message on sequence %d but we expect sequence %d to %d", seq, a.confirmedSeq, a.confirmedSeq+gap)
+		a.logger.Debugf("Received message on sequence %d but we expect sequence %d to %d", seq, a.confirmedSeq, a.confirmedSeq+a.gap)
 		return
 	}
 
-	if seq-a.confirmedSeq > gap {
+	if seq-a.confirmedSeq > a.gap {
 		a.logger.Warnf("Received message on sequence %d but our confirmed sequence is only at %d", seq, a.confirmedSeq)
 		return
 	}

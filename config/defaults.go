@@ -12,6 +12,10 @@ var DefaultRouterParams = RouterParams{
 	NumberOfStreamsPerConnection:  5,
 }
 
+var DefaultBatcherParams = BatcherParams{
+	BatchSequenceGap: 10,
+}
+
 var DefaultConsenterNodeConfigParams = func(dir string) *ConsensusParams {
 	return &ConsensusParams{WALDir: filepath.Join(dir, "wal")}
 }

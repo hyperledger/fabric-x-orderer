@@ -159,6 +159,7 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 		// BatchMaxBytes:
 		// RequestMaxBytes:
 		// BatchTimeout:
+		BatchSequenceGap: types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
 	}
 	return batcherConfig
 }

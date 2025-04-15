@@ -109,6 +109,7 @@ type BatcherNodeConfig struct {
 	BatchMaxBytes      uint32
 	RequestMaxBytes    uint64 // TODO how can this be uint64 when BatchMaxBytes is uint32?
 	BatchTimeout       time.Duration
+	BatchSequenceGap   types.BatchSequence
 }
 
 type ConsenterNodeConfig struct {
