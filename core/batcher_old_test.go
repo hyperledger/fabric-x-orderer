@@ -224,12 +224,11 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
 		FirstStrikeThreshold:  time.Second * 10,
 		SecondStrikeThreshold: time.Minute / 2,
-		Striker:               striker,
 		BatchMaxSize:          10000,
 		MaxSize:               1000 * 100,
 		AutoRemoveTimeout:     time.Minute / 2,
 		SubmitTimeout:         time.Second * 10,
-	})
+	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
@@ -277,8 +276,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 			MaxSize:               100 * 1000,
 			AutoRemoveTimeout:     time.Minute / 2,
 			SubmitTimeout:         time.Second * 10,
-			Striker:               striker,
-		})
+		}, striker)
 		b.MemPool = pool
 		b.Start()
 	}
@@ -364,12 +362,11 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
 		FirstStrikeThreshold:  time.Second * 10,
 		SecondStrikeThreshold: time.Minute / 2,
-		Striker:               striker,
 		BatchMaxSize:          10000,
 		MaxSize:               1000 * 100,
 		AutoRemoveTimeout:     time.Minute / 2,
 		SubmitTimeout:         time.Second * 10,
-	})
+	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {

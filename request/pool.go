@@ -40,6 +40,7 @@ type Pool struct {
 	logger          types.Logger
 	inspector       RequestInspector
 	options         PoolOptions
+	striker         Striker
 	batchStore      *BatchStore
 	semaphore       *semaphore.Weighted
 	closed          uint32
@@ -61,12 +62,11 @@ type PoolOptions struct {
 	SubmitTimeout         time.Duration
 	FirstStrikeThreshold  time.Duration
 	SecondStrikeThreshold time.Duration
-	Striker               Striker
 	AutoRemoveTimeout     time.Duration
 }
 
 // NewPool constructs a new requests pool
-func NewPool(logger types.Logger, inspector RequestInspector, options PoolOptions) *Pool {
+func NewPool(logger types.Logger, inspector RequestInspector, options PoolOptions, striker Striker) *Pool {
 	// TODO check pool options
 
 	if options.SubmitTimeout == 0 {
@@ -90,6 +90,7 @@ func NewPool(logger types.Logger, inspector RequestInspector, options PoolOption
 		inspector: inspector,
 		semaphore: semaphore.NewWeighted(int64(options.MaxSize)),
 		options:   options,
+		striker:   striker,
 	}
 
 	rp.start()
@@ -118,8 +119,8 @@ func (rp *Pool) createPendingStore() *PendingStore {
 			rp.semaphore.Release(1)
 		},
 		Epoch:                time.Second,
-		FirstStrikeCallback:  rp.options.Striker.OnFirstStrikeTimeout,
-		SecondStrikeCallback: rp.options.Striker.OnSecondStrikeTimeout,
+		FirstStrikeCallback:  rp.striker.OnFirstStrikeTimeout,
+		SecondStrikeCallback: rp.striker.OnSecondStrikeTimeout,
 	}
 }
 

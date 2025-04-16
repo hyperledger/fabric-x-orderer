@@ -48,8 +48,7 @@ func BenchmarkRequestPool(b *testing.B) {
 		MaxSize:               1000 * 100,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	secondaryPool := NewPool(sugaredLogger, requestInspector, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
@@ -59,8 +58,7 @@ func BenchmarkRequestPool(b *testing.B) {
 		MaxSize:               1000 * 100,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	primaryPool.Restart(true)
 	secondaryPool.Restart(false)
@@ -139,8 +137,7 @@ func TestRestartPool(t *testing.T) {
 		MaxSize:               1000,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	pool.Restart(true)
 
@@ -207,8 +204,7 @@ func TestBasicBatching(t *testing.T) {
 		MaxSize:               3,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	pool.Restart(true)
 
@@ -248,8 +244,7 @@ func TestBasicBatching(t *testing.T) {
 		MaxSize:               3,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	pool.Restart(true)
 
@@ -271,8 +266,7 @@ func TestBasicBatching(t *testing.T) {
 		MaxSize:               3,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	pool.Restart(true)
 
@@ -297,8 +291,7 @@ func TestBasicBatchingWhileSubmitting(t *testing.T) {
 		MaxSize:               300,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	pool.Restart(true)
 
@@ -343,8 +336,7 @@ func TestBasicBatchingTimeout(t *testing.T) {
 		MaxSize:               200,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	pool.Restart(true)
 
@@ -374,8 +366,7 @@ func TestBasicPrune(t *testing.T) {
 		MaxSize:               10,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
-		Striker:               &striker{},
-	})
+	}, &striker{})
 
 	pool.Restart(true)
 

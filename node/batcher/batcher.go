@@ -385,8 +385,7 @@ func (b *Batcher) createMemPool(config *node_config.BatcherNodeConfig) core.MemP
 	opts.BatchMaxSize = config.BatchMaxSize
 	opts.RequestMaxBytes = config.RequestMaxBytes
 	opts.SubmitTimeout = config.BatchTimeout
-	opts.Striker = b
-	return request.NewPool(b.logger, b.requestsInspectorVerifier, opts)
+	return request.NewPool(b.logger, b.requestsInspectorVerifier, opts, b)
 }
 
 func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
