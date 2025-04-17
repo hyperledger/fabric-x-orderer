@@ -238,6 +238,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	batcher := &core.Batcher{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
+		BatchTimeout:            time.Millisecond * 500,
 		Shard:                   arma_types.ShardID(shardID),
 		BAFCreator:              bafCreator,
 		RequestInspector:        requestInspector,
@@ -376,6 +377,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	b := &core.Batcher{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
+		BatchTimeout:            time.Millisecond * 500,
 		Shard:                   shardID,
 		BAFCreator:              bafCreator,
 		RequestInspector:        requestInspector,

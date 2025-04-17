@@ -38,3 +38,9 @@ var DefaultArmaBFTConfig = func() smartbft_types.Configuration {
 
 	return config
 }
+
+var DefaultBatchingConfig = BatchingConfig{
+	// TODO: add batch size to batching config
+	BatchTimeout: time.Millisecond * 500,
+	BatchSize:    BatchSize{},
+}

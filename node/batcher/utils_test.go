@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"testing"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
@@ -110,6 +111,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 			SigningPrivateKey:  config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
 			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
 			TLSCertificateFile: batcherNodes[i].TLSCert,
+			BatchTimeout:       time.Millisecond * 500,
 			BatchSequenceGap:   types.BatchSequence(10),
 		}
 		configs = append(configs, conf)

@@ -676,7 +676,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 
 	batcher := &core.Batcher{
 		Batchers:                batchers,
-		BatchTimeout:            0,
+		BatchTimeout:            time.Millisecond * 500,
 		RequestInspector:        &mocks.FakeRequestInspector{},
 		ID:                      batcherID,
 		Shard:                   shardID,

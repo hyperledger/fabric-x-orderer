@@ -141,8 +141,14 @@ func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig 
 func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfig {
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "../", "signingPrivateKey.pem"))
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
 	}
+
+	var batchTimeout time.Duration
+	if batchTimeout, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeout); err != nil {
+		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
+	}
+
 	batcherConfig := &nodeconfig.BatcherNodeConfig{
 		Shards:             config.ExtractShards(),
 		Consenters:         config.ExtractConsenters(),
@@ -158,7 +164,7 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 		// BatchMaxSize:
 		// BatchMaxBytes:
 		// RequestMaxBytes:
-		// BatchTimeout:
+		BatchTimeout:     batchTimeout,
 		BatchSequenceGap: types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
 	}
 	return batcherConfig
@@ -167,11 +173,11 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeConfig {
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "../", "signingPrivateKey.pem"))
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
 	BFTConfig, err := config.GetBFTConfig(config.LocalConfig.NodeLocalConfig.PartyID)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
 		Shards:             config.ExtractShards(),

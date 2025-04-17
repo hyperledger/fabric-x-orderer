@@ -44,15 +44,7 @@ func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocal
 }
 
 func createBatchingConfig() config.BatchingConfig {
-	// TODO: add batching config
-	return config.BatchingConfig{
-		//BatchTimeout: core.DefaultBatchTimeout,
-		//BatchSize: config.BatchSize{
-		//	MaxMessageCount:   DefaultMaxMessageCount,
-		//	AbsoluteMaxBytes:  DefaultAbsoluteMaxBytes,
-		//	PreferredMaxBytes: DefaultPreferredMaxBytes,
-		//},
-	}
+	return config.DefaultBatchingConfig
 }
 
 func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) []config.PartyConfig {

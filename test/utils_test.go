@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	config "github.ibm.com/decentralized-trust-research/arma/config"
 
@@ -170,6 +171,7 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			TLSCertificateFile: batcherNodes[i].TLSCert,
 			SigningPrivateKey:  nodeconfig.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
 			Directory:          dir,
+			BatchTimeout:       time.Millisecond * 500,
 			BatchSequenceGap:   types.BatchSequence(10),
 		}
 		configs = append(configs, batcherConf)

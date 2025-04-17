@@ -93,8 +93,6 @@ type BatchLedger interface {
 	BatchLedgeReader
 }
 
-var DefaultBatchTimeout = time.Millisecond * 500
-
 type Batcher struct {
 	Batchers                []types.PartyID
 	BatchTimeout            time.Duration
@@ -128,10 +126,6 @@ type Batcher struct {
 }
 
 func (b *Batcher) Start() {
-	if b.BatchTimeout == 0 {
-		b.BatchTimeout = DefaultBatchTimeout
-	}
-
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.termChan = make(chan uint64, 1)

@@ -350,7 +350,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		BatchPuller:             bp,
 		Threshold:               int(f + 1),
 		N:                       initState.N,
-		BatchTimeout:            time.Millisecond * 500,
+		BatchTimeout:            config.BatchTimeout,
 		Ledger:                  ledger,
 		MemPool:                 b.createMemPool(config),
 		ID:                      config.PartyId,
@@ -384,6 +384,7 @@ func (b *Batcher) createMemPool(config *node_config.BatcherNodeConfig) core.MemP
 	opts.MaxSize = config.MemPoolMaxSize
 	opts.BatchMaxSize = config.BatchMaxSize
 	opts.RequestMaxBytes = config.RequestMaxBytes
+	// TODO: SubmitTimeout is not equal to BatchTimeout, update with config
 	opts.SubmitTimeout = config.BatchTimeout
 	return request.NewPool(b.logger, b.requestsInspectorVerifier, opts, b)
 }
@@ -708,6 +709,7 @@ func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net
 	return batcher
 }
 
+// TODO: BatchTimeout is not equal to SubmitTimeout, set correct defaults
 func maybeSetDefaultConfig(conf *node_config.BatcherNodeConfig) *node_config.BatcherNodeConfig {
 	for {
 		switch {
