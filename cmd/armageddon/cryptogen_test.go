@@ -1,17 +1,15 @@
-package armageddon
+package armageddon_test
 
 import (
 	"net"
 	"os"
 	"testing"
 
-	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
-
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
-
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 )
 
 func TestGenerateCryptoConfig(t *testing.T) {
@@ -20,7 +18,7 @@ func TestGenerateCryptoConfig(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	networkConfig := prepareNetworkConfig(t)
-	err = GenerateCryptoConfig(networkConfig, dir)
+	err = armageddon.GenerateCryptoConfig(networkConfig, dir)
 	require.NoError(t, err)
 }
 

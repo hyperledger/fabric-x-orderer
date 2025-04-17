@@ -1,13 +1,16 @@
 package testutil
 
 import (
+	"fmt"
 	"net"
+	"os"
+	"path"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/config/generate"
-
-	"github.com/stretchr/testify/require"
 )
 
 // GenerateNetworkConfig create a network config which collects the enpoints of nodes per party.
@@ -45,4 +48,15 @@ func GenerateNetworkConfig(t *testing.T, useTLSRouter string, useTLSAssembler st
 	}
 
 	return network
+}
+
+// GetUserConfig returns the armageddon generated user config object of a given party, for testing.
+func GetUserConfig(baseDir string, partyID types.PartyID) (*armageddon.UserConfig, error) {
+	userConfigPath := path.Join(baseDir, "config", fmt.Sprintf("party%d", partyID), "user_config.yaml")
+	f, err := os.Open(userConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return armageddon.ReadUserConfig(&f)
 }

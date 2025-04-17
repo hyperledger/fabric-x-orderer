@@ -23,24 +23,20 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	"github.ibm.com/decentralized-trust-research/arma/config"
-
-	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
-
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
-	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
-
 	"github.com/alecthomas/kingpin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.ibm.com/decentralized-trust-research/arma/config"
+	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
+	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
+	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
 )
 
@@ -776,7 +772,7 @@ func printVersion() {
 	fmt.Printf("Armageddon version is: %+v\n", bi.Main.Version)
 }
 
-func readUserConfig(userConfigFile **os.File) (*UserConfig, error) {
+func ReadUserConfig(userConfigFile **os.File) (*UserConfig, error) {
 	var configFileContent string
 	if *userConfigFile != nil {
 		data, err := io.ReadAll(*userConfigFile)
@@ -810,7 +806,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	}
 
 	// get user config file content given as argument
-	userConfig, err := readUserConfig(userConfigFile)
+	userConfig, err := ReadUserConfig(userConfigFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
@@ -855,7 +851,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	}
 
 	// get user config file content given as argument
-	userConfig, err := readUserConfig(userConfigFile)
+	userConfig, err := ReadUserConfig(userConfigFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
@@ -881,7 +877,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 // receive command pull blocks from the assembler and report statistics
 func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *string, expectedNumOfTxs *int) {
 	// get user config file content given as argument
-	userConfig, err := readUserConfig(userConfigFile)
+	userConfig, err := ReadUserConfig(userConfigFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
