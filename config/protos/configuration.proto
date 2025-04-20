@@ -138,10 +138,12 @@ message SmartBFTConfig {
 }
 
 message BatchingConfig {
-  // BatchTimeout is the amount of time to wait before creating a batch.
-  string BatchTimeout = 1;
+  // BatchTimeout controls the timeouts on a batch.
+  BatchTimeouts BatchTimeouts = 1;
   // BatchSize controls the number of messages batched into a block and defines limits on a batch size.
   BatchSize BatchSize = 2;
+  // RequestMaxBytes is the maximal number of bytes allowed in a request.
+  uint64 RequestMaxBytes = 3;
 }
 
 message BatchSize {
@@ -159,4 +161,18 @@ message BatchSize {
   // If a message larger than the preferred max bytes is received, then its batch will contain only that message.
   // Because messages may be larger than preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed the preferred max bytes, but will always contain exactly one transaction.
   uint32 PreferredMaxBytes = 3;
+}
+
+message BatchTimeouts {
+  // BatchCreationTimeout is the amount of time to wait before creating a batch.
+  string BatchCreationTimeout = 1;
+  // FirstStrikeThreshold defines the maximum time a request can remain in the memory pool without being batched.
+  // After this duration, the request is forwarded to the primary batcher by the secondary batcher.
+  string FirstStrikeThreshold = 2;
+  // SecondStrikeThreshold defines the maximum duration that can pass following the FirstStrikeThreshold.
+  // If this timeout is reached, a complaint is sent to the consensus layer, suspecting primary censorship of the request.
+  string SecondStrikeThreshold = 3;
+  // AutoRemoveTimeout defines the maximum time a request can stay in the memory pool after the second threshold is reached.
+  // If this timeout is reached, the request is removed from the pool.
+  string AutoRemoveTimeout = 4;
 }

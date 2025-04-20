@@ -14,6 +14,8 @@ var DefaultRouterParams = RouterParams{
 
 var DefaultBatcherParams = BatcherParams{
 	BatchSequenceGap: 10,
+	MemPoolMaxSize:   1000 * 1000,
+	SubmitTimeout:    time.Millisecond * 500,
 }
 
 var DefaultConsenterNodeConfigParams = func(dir string) *ConsensusParams {
@@ -40,7 +42,16 @@ var DefaultArmaBFTConfig = func() smartbft_types.Configuration {
 }
 
 var DefaultBatchingConfig = BatchingConfig{
-	// TODO: add batch size to batching config
-	BatchTimeout: time.Millisecond * 500,
-	BatchSize:    BatchSize{},
+	BatchTimeouts: BatchTimeouts{
+		BatchCreationTimeout:  time.Millisecond * 500,
+		FirstStrikeThreshold:  10 * time.Second,
+		SecondStrikeThreshold: 10 * time.Second,
+		AutoRemoveTimeout:     10 * time.Second,
+	},
+	BatchSize: BatchSize{
+		MaxMessageCount:   1000 * 10,
+		AbsoluteMaxBytes:  1024 * 1024 * 10,
+		PreferredMaxBytes: 0,
+	},
+	RequestMaxBytes: 1024 * 1024,
 }

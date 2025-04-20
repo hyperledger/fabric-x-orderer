@@ -167,6 +167,10 @@ type BatcherParams struct {
 	// and waits until at least a threshold of secondaries is not too far behind (batch sequence distance is less than a gap)
 	// before the primary continues on to the next batch.
 	BatchSequenceGap uint64 `yaml:"BatchSequenceGap,omitempty"`
+	// MemPoolMaxSize is the maximal number of requests to permit in the requests pool.
+	MemPoolMaxSize uint64 `yaml:"MemPoolMaxSize,omitempty"`
+	// SubmitTimeout the total amount of time a client can wait for the submission of a single request into the request pool.
+	SubmitTimeout time.Duration `yaml:"SubmitTimeout,omitempty"`
 }
 
 type AssemblerParams struct {

@@ -222,12 +222,14 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	}
 
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
+		MaxSize:               1000 * 100,
+		BatchMaxSize:          10000,
+		BatchMaxSizeBytes:     100000,
+		RequestMaxBytes:       1024 * 100,
+		SubmitTimeout:         time.Second * 10,
 		FirstStrikeThreshold:  time.Second * 10,
 		SecondStrikeThreshold: time.Minute / 2,
-		BatchMaxSize:          10000,
-		MaxSize:               1000 * 100,
 		AutoRemoveTimeout:     time.Minute / 2,
-		SubmitTimeout:         time.Second * 10,
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
@@ -271,12 +273,14 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	for _, b := range batchers {
 		b.BatchAcker = &mocks.FakeBatchAcker{} // no ack will be received by the primary
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
+			MaxSize:               100 * 1000,
+			BatchMaxSize:          100, // batch can't include all requests
+			BatchMaxSizeBytes:     100000,
+			RequestMaxBytes:       1024 * 100,
+			SubmitTimeout:         time.Second * 10,
 			FirstStrikeThreshold:  time.Second * 1,
 			SecondStrikeThreshold: time.Second * 2,
-			BatchMaxSize:          100, // batch can't include all requests
-			MaxSize:               100 * 1000,
 			AutoRemoveTimeout:     time.Minute / 2,
-			SubmitTimeout:         time.Second * 10,
 		}, striker)
 		b.MemPool = pool
 		b.Start()
@@ -361,12 +365,14 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 
 	requestInspector := &reqInspector{}
 	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
+		MaxSize:               1000 * 100,
+		BatchMaxSize:          10000,
+		BatchMaxSizeBytes:     100000,
+		RequestMaxBytes:       1024 * 100,
+		SubmitTimeout:         time.Second * 10,
 		FirstStrikeThreshold:  time.Second * 10,
 		SecondStrikeThreshold: time.Minute / 2,
-		BatchMaxSize:          10000,
-		MaxSize:               1000 * 100,
 		AutoRemoveTimeout:     time.Minute / 2,
-		SubmitTimeout:         time.Second * 10,
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}

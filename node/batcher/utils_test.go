@@ -103,16 +103,24 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
 		conf := &config.BatcherNodeConfig{
-			Shards:             []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
-			Consenters:         consentersInfo,
-			Directory:          t.TempDir(),
-			PartyId:            parties[i],
-			ShardId:            shardID,
-			SigningPrivateKey:  config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
-			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
-			TLSCertificateFile: batcherNodes[i].TLSCert,
-			BatchTimeout:       time.Millisecond * 500,
-			BatchSequenceGap:   types.BatchSequence(10),
+			Shards:                []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
+			Consenters:            consentersInfo,
+			Directory:             t.TempDir(),
+			PartyId:               parties[i],
+			ShardId:               shardID,
+			SigningPrivateKey:     config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
+			TLSPrivateKeyFile:     batcherNodes[i].TLSKey,
+			TLSCertificateFile:    batcherNodes[i].TLSCert,
+			MemPoolMaxSize:        1000000,
+			BatchMaxSize:          10000,
+			BatchMaxBytes:         1024 * 1024 * 10,
+			RequestMaxBytes:       1024 * 1024,
+			SubmitTimeout:         time.Millisecond * 500,
+			FirstStrikeThreshold:  10 * time.Second,
+			SecondStrikeThreshold: 10 * time.Second,
+			AutoRemoveTimeout:     10 * time.Second,
+			BatchCreationTimeout:  time.Millisecond * 500,
+			BatchSequenceGap:      types.BatchSequence(10),
 		}
 		configs = append(configs, conf)
 

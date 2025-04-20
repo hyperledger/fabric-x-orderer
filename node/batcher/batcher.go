@@ -350,7 +350,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		BatchPuller:             bp,
 		Threshold:               int(f + 1),
 		N:                       initState.N,
-		BatchTimeout:            config.BatchTimeout,
+		BatchTimeout:            config.BatchCreationTimeout,
 		Ledger:                  ledger,
 		MemPool:                 b.createMemPool(config),
 		ID:                      config.PartyId,
@@ -379,13 +379,17 @@ func getBatchersIDs(batchers []node_config.BatcherInfo) []types.PartyID {
 }
 
 func (b *Batcher) createMemPool(config *node_config.BatcherNodeConfig) core.MemPool {
-	opts := defaultBatcherMemPoolOpts
-	opts.BatchMaxSizeBytes = config.BatchMaxBytes
-	opts.MaxSize = config.MemPoolMaxSize
-	opts.BatchMaxSize = config.BatchMaxSize
-	opts.RequestMaxBytes = config.RequestMaxBytes
-	// TODO: SubmitTimeout is not equal to BatchTimeout, update with config
-	opts.SubmitTimeout = config.BatchTimeout
+	opts := request.PoolOptions{
+		MaxSize:               config.MemPoolMaxSize,
+		BatchMaxSize:          config.BatchMaxSize,
+		BatchMaxSizeBytes:     config.BatchMaxBytes,
+		RequestMaxBytes:       config.RequestMaxBytes,
+		SubmitTimeout:         config.SubmitTimeout,
+		FirstStrikeThreshold:  config.FirstStrikeThreshold,
+		SecondStrikeThreshold: config.SecondStrikeThreshold,
+		AutoRemoveTimeout:     config.AutoRemoveTimeout,
+	}
+
 	return request.NewPool(b.logger, b.requestsInspectorVerifier, opts, b)
 }
 
@@ -678,8 +682,6 @@ func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []by
 }
 
 func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator) *Batcher {
-	conf = maybeSetDefaultConfig(conf)
-
 	var parties []types.PartyID
 	for shIdx, sh := range conf.Shards {
 		if sh.ShardId != conf.ShardId {
@@ -707,24 +709,4 @@ func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net
 	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), senderCreator, net)
 
 	return batcher
-}
-
-// TODO: BatchTimeout is not equal to SubmitTimeout, set correct defaults
-func maybeSetDefaultConfig(conf *node_config.BatcherNodeConfig) *node_config.BatcherNodeConfig {
-	for {
-		switch {
-		case conf.BatchMaxSize == 0:
-			conf.BatchMaxSize = defaultBatcherMemPoolOpts.BatchMaxSize
-		case conf.BatchTimeout == 0:
-			conf.BatchTimeout = defaultBatcherMemPoolOpts.SubmitTimeout
-		case conf.RequestMaxBytes == 0:
-			conf.RequestMaxBytes = defaultBatcherMemPoolOpts.RequestMaxBytes
-		case conf.BatchMaxBytes == 0:
-			conf.BatchMaxBytes = defaultBatcherMemPoolOpts.BatchMaxSizeBytes
-		case conf.MemPoolMaxSize == 0:
-			conf.MemPoolMaxSize = defaultBatcherMemPoolOpts.MaxSize
-		default:
-			return conf
-		}
-	}
 }

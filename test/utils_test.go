@@ -162,18 +162,27 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		require.NoError(t, err)
 
 		batcherConf := &nodeconfig.BatcherNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			Shards:             shards,
-			ShardId:            shardID,
-			PartyId:            types.PartyID(i + 1),
-			Consenters:         consenterInfos,
-			TLSPrivateKeyFile:  batcherNodes[i].TLSKey,
-			TLSCertificateFile: batcherNodes[i].TLSCert,
-			SigningPrivateKey:  nodeconfig.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
-			Directory:          dir,
-			BatchTimeout:       time.Millisecond * 500,
-			BatchSequenceGap:   types.BatchSequence(10),
+			ListenAddress:         "0.0.0.0:0",
+			Shards:                shards,
+			ShardId:               shardID,
+			PartyId:               types.PartyID(i + 1),
+			Consenters:            consenterInfos,
+			TLSPrivateKeyFile:     batcherNodes[i].TLSKey,
+			TLSCertificateFile:    batcherNodes[i].TLSCert,
+			SigningPrivateKey:     nodeconfig.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
+			Directory:             dir,
+			MemPoolMaxSize:        1000000,
+			BatchMaxSize:          10000,
+			BatchMaxBytes:         1024 * 1024 * 10,
+			RequestMaxBytes:       1024 * 1024,
+			SubmitTimeout:         time.Millisecond * 500,
+			FirstStrikeThreshold:  time.Second * 10,
+			SecondStrikeThreshold: time.Second * 10,
+			AutoRemoveTimeout:     time.Second * 10,
+			BatchCreationTimeout:  time.Millisecond * 500,
+			BatchSequenceGap:      types.BatchSequence(10),
 		}
+
 		configs = append(configs, batcherConf)
 
 		logger := testutil.CreateLogger(t, i+int(shardID)*10)

@@ -135,6 +135,7 @@ func TestRestartPool(t *testing.T) {
 		BatchMaxSize:          10,
 		BatchMaxSizeBytes:     10 * 32,
 		MaxSize:               1000,
+		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
@@ -202,6 +203,7 @@ func TestBasicBatching(t *testing.T) {
 		BatchMaxSize:          1,
 		BatchMaxSizeBytes:     2048,
 		MaxSize:               3,
+		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
@@ -242,6 +244,7 @@ func TestBasicBatching(t *testing.T) {
 		BatchMaxSize:          2,
 		BatchMaxSizeBytes:     2048,
 		MaxSize:               3,
+		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
@@ -264,6 +267,7 @@ func TestBasicBatching(t *testing.T) {
 		BatchMaxSize:          3,
 		BatchMaxSizeBytes:     uint32(len(byteReq3) + len(byteReq4)),
 		MaxSize:               3,
+		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
@@ -289,6 +293,7 @@ func TestBasicBatchingWhileSubmitting(t *testing.T) {
 		BatchMaxSize:          100,
 		BatchMaxSizeBytes:     5000,
 		MaxSize:               300,
+		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
@@ -334,6 +339,7 @@ func TestBasicBatchingTimeout(t *testing.T) {
 		BatchMaxSize:          100,
 		BatchMaxSizeBytes:     5000,
 		MaxSize:               200,
+		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
@@ -364,6 +370,7 @@ func TestBasicPrune(t *testing.T) {
 		BatchMaxSize:          10,
 		BatchMaxSizeBytes:     1000,
 		MaxSize:               10,
+		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})

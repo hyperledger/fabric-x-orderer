@@ -113,12 +113,18 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*protos.SharedCo
 			},
 		},
 		BatchingConfig: &protos.BatchingConfig{
-			BatchTimeout: sharedConfigYaml.BatchingConfig.BatchTimeout.String(),
+			BatchTimeouts: &protos.BatchTimeouts{
+				BatchCreationTimeout:  sharedConfigYaml.BatchingConfig.BatchTimeouts.BatchCreationTimeout.String(),
+				FirstStrikeThreshold:  sharedConfigYaml.BatchingConfig.BatchTimeouts.FirstStrikeThreshold.String(),
+				SecondStrikeThreshold: sharedConfigYaml.BatchingConfig.BatchTimeouts.SecondStrikeThreshold.String(),
+				AutoRemoveTimeout:     sharedConfigYaml.BatchingConfig.BatchTimeouts.AutoRemoveTimeout.String(),
+			},
 			BatchSize: &protos.BatchSize{
 				MaxMessageCount:   sharedConfigYaml.BatchingConfig.BatchSize.MaxMessageCount,
 				AbsoluteMaxBytes:  sharedConfigYaml.BatchingConfig.BatchSize.AbsoluteMaxBytes,
 				PreferredMaxBytes: sharedConfigYaml.BatchingConfig.BatchSize.PreferredMaxBytes,
 			},
+			RequestMaxBytes: sharedConfigYaml.BatchingConfig.RequestMaxBytes,
 		},
 	}
 	return &sharedConfig, nil

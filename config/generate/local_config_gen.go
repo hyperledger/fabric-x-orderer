@@ -226,6 +226,8 @@ func createBatcherLocalConfig(batcherGeneralParams GeneralConfigParams) *config.
 		BatcherParams: &config.BatcherParams{
 			ShardID:          batcherGeneralParams.shardID,
 			BatchSequenceGap: config.DefaultBatcherParams.BatchSequenceGap,
+			MemPoolMaxSize:   config.DefaultBatcherParams.MemPoolMaxSize,
+			SubmitTimeout:    config.DefaultBatcherParams.SubmitTimeout,
 		},
 	}
 }

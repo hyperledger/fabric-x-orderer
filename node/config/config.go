@@ -99,17 +99,21 @@ type BatcherNodeConfig struct {
 	Directory     string
 	ListenAddress string
 	// Private config
-	PartyId            types.PartyID
-	ShardId            types.ShardID
-	TLSPrivateKeyFile  RawBytes
-	TLSCertificateFile RawBytes
-	SigningPrivateKey  RawBytes
-	MemPoolMaxSize     uint64
-	BatchMaxSize       uint32
-	BatchMaxBytes      uint32
-	RequestMaxBytes    uint64 // TODO how can this be uint64 when BatchMaxBytes is uint32?
-	BatchTimeout       time.Duration
-	BatchSequenceGap   types.BatchSequence
+	PartyId               types.PartyID
+	ShardId               types.ShardID
+	TLSPrivateKeyFile     RawBytes
+	TLSCertificateFile    RawBytes
+	SigningPrivateKey     RawBytes
+	MemPoolMaxSize        uint64
+	BatchMaxSize          uint32
+	BatchMaxBytes         uint32
+	RequestMaxBytes       uint64 // TODO how can this be uint64 when BatchMaxBytes is uint32?
+	SubmitTimeout         time.Duration
+	FirstStrikeThreshold  time.Duration
+	SecondStrikeThreshold time.Duration
+	AutoRemoveTimeout     time.Duration
+	BatchCreationTimeout  time.Duration
+	BatchSequenceGap      types.BatchSequence
 }
 
 type ConsenterNodeConfig struct {

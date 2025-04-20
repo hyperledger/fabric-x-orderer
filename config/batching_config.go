@@ -3,10 +3,12 @@ package config
 import "time"
 
 type BatchingConfig struct {
-	// BatchTimeout is the amount of time to wait before creating a batch.
-	BatchTimeout time.Duration `yaml:"BatchTimeout,omitempty"`
+	// BatchTimeouts controls the timeouts on a batch.
+	BatchTimeouts BatchTimeouts `yaml:"BatchTimeouts,omitempty"`
 	// BatchSize controls the number of messages batched into a block and defines limits on a batch size.
 	BatchSize BatchSize `yaml:"BatchSize,omitempty"`
+	// RequestMaxBytes is the maximal number of bytes allowed in a request.
+	RequestMaxBytes uint64 `yaml:"RequestMaxBytes,omitempty"`
 }
 
 type BatchSize struct {
@@ -25,5 +27,20 @@ type BatchSize struct {
 	// If a message larger than the preferred max bytes is received, then its batch will contain only that message.
 	// Because messages may be larger than preferred max bytes (up to AbsoluteMaxBytes),
 	// some batches may exceed the preferred max bytes, but will always contain exactly one transaction.
+	// NOTE: this field is not in use yet.
 	PreferredMaxBytes uint32 `yaml:"PreferredMaxBytes,omitempty"`
+}
+
+type BatchTimeouts struct {
+	// BatchCreationTimeout is the amount of time to wait before creating a batch.
+	BatchCreationTimeout time.Duration `yaml:"BatchCreationTimeout,omitempty"`
+	// FirstStrikeThreshold defines the maximum time a request can remain in the memory pool without being batched.
+	// After this duration, the request is forwarded to the primary batcher by the secondary batcher.
+	FirstStrikeThreshold time.Duration `yaml:"FirstStrikeThreshold,omitempty"`
+	// SecondStrikeThreshold defines the maximum duration that can pass following the FirstStrikeThreshold.
+	// If this timeout is reached, a complaint is sent to the consensus layer, suspecting primary censorship of the request.
+	SecondStrikeThreshold time.Duration `yaml:"SecondStrikeThreshold,omitempty"`
+	// AutoRemoveTimeout defines the maximum time a request can stay in the memory pool after the second threshold is reached.
+	// If this timeout is reached, the request is removed from the pool.
+	AutoRemoveTimeout time.Duration `yaml:"AutoRemoveTimeout,omitempty"`
 }

@@ -12,11 +12,6 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
-const (
-	defaultSubmitTimeout = 10 * time.Second // for unit tests only
-	defaultMaxBytes      = 100 * 1024       // default max request size would be of size 100Kb
-)
-
 // RequestInspector extracts the id of a given request.
 type RequestInspector interface {
 	// RequestID returns the id of the given request.
@@ -67,24 +62,6 @@ type PoolOptions struct {
 
 // NewPool constructs a new requests pool
 func NewPool(logger types.Logger, inspector RequestInspector, options PoolOptions, striker Striker) *Pool {
-	// TODO check pool options
-
-	if options.SubmitTimeout == 0 {
-		options.SubmitTimeout = defaultSubmitTimeout
-	}
-	if options.BatchMaxSize == 0 {
-		options.BatchMaxSize = 1000
-	}
-	if options.BatchMaxSizeBytes == 0 {
-		options.BatchMaxSizeBytes = 100000
-	}
-	if options.MaxSize == 0 {
-		options.MaxSize = 10000
-	}
-	if options.RequestMaxBytes == 0 {
-		options.RequestMaxBytes = defaultMaxBytes
-	}
-
 	rp := &Pool{
 		logger:    logger,
 		inspector: inspector,

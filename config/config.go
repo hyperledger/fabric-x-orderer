@@ -144,11 +144,6 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
 	}
 
-	var batchTimeout time.Duration
-	if batchTimeout, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeout); err != nil {
-		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
-	}
-
 	batcherConfig := &nodeconfig.BatcherNodeConfig{
 		Shards:             config.ExtractShards(),
 		Consenters:         config.ExtractConsenters(),
@@ -159,14 +154,30 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
 		SigningPrivateKey:  signingPrivateKey,
-		// TODO: config batching params
-		// MemPoolMaxSize:
-		// BatchMaxSize:
-		// BatchMaxBytes:
-		// RequestMaxBytes:
-		BatchTimeout:     batchTimeout,
-		BatchSequenceGap: types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
+		MemPoolMaxSize:     config.LocalConfig.NodeLocalConfig.BatcherParams.MemPoolMaxSize,
+		BatchMaxSize:       config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
+		BatchMaxBytes:      config.SharedConfig.BatchingConfig.BatchSize.AbsoluteMaxBytes,
+		RequestMaxBytes:    config.SharedConfig.BatchingConfig.RequestMaxBytes,
+		SubmitTimeout:      config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
+		BatchSequenceGap:   types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
 	}
+
+	if batcherConfig.FirstStrikeThreshold, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.FirstStrikeThreshold); err != nil {
+		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config, bad config metadata option FirstStrikeThreshold, err: %s", err))
+	}
+
+	if batcherConfig.SecondStrikeThreshold, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.SecondStrikeThreshold); err != nil {
+		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config, bad config metadata option SecondStrikeThreshold, err: %s", err))
+	}
+
+	if batcherConfig.AutoRemoveTimeout, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.AutoRemoveTimeout); err != nil {
+		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config, bad config metadata option AutoRemoveTimeout, err: %s", err))
+	}
+
+	if batcherConfig.BatchCreationTimeout, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.BatchCreationTimeout); err != nil {
+		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config, bad config metadata option BatchCreationTimeout, err: %s", err))
+	}
+
 	return batcherConfig
 }
 
