@@ -9,20 +9,12 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/config"
 )
 
-// TODO: config default config params
-const (
-	DefaultMaxMessageCount   = 1000
-	DefaultAbsoluteMaxBytes  = 10 * 1024 * 1024
-	DefaultPreferredMaxBytes = 2 * 1024 * 1024
-	LocalConfigDirPermission = 0o755
-)
-
 // CreateArmaSharedConfig creates a bootstrap directory that includes the shared config yaml file.
 func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string, outputBaseDir string) (*config.SharedConfigYaml, error) {
 	sharedConfig := createNetworkSharedConfig(network, networkLocalConfig, cryptoBaseDir)
 
 	outputPath := filepath.Join(outputBaseDir, "bootstrap")
-	err := os.MkdirAll(outputPath, LocalConfigDirPermission)
+	err := os.MkdirAll(outputPath, 0o755)
 	if err != nil {
 		return nil, err
 	}

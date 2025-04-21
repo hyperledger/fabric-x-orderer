@@ -27,17 +27,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var defaultBatcherMemPoolOpts = request.PoolOptions{
-	AutoRemoveTimeout:     time.Second * 10,
-	BatchMaxSize:          1000 * 10,
-	BatchMaxSizeBytes:     1024 * 1024 * 10,
-	MaxSize:               1000 * 1000,
-	FirstStrikeThreshold:  time.Second * 10,
-	SecondStrikeThreshold: time.Second * 10,
-	SubmitTimeout:         time.Second * 10,
-	RequestMaxBytes:       1024 * 1024,
-}
-
 //go:generate counterfeiter -o mocks/state_replicator.go . StateReplicator
 type StateReplicator interface {
 	ReplicateState() <-chan *core.State

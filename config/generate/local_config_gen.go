@@ -17,7 +17,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 )
 
-// TODO: these params should be removed
 const (
 	DefaultMaxRecvMsgSize = 100 * 1024 * 1024
 	DefaultMaxSendMsgSize = 100 * 1024 * 1024
