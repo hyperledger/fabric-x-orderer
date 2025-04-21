@@ -151,14 +151,17 @@ Consensus:
 
 # Batching carries config parameters that need to be uniform across all nodes that generate and validate batches (blocks).
 Batching:
-  # Batch Timeout: The amount of time to wait before creating a batch.
-  BatchTimeout: 500ms
-
+  # BatchTimeouts controls the timeouts on a batch.
+  BatchTimeouts:
+    BatchCreationTimeout: 500ms
+    FirstStrikeThreshold: 10s
+    SecondStrikeThreshold: 10s
+    AutoRemoveTimeout: 10s
   # Batch Size: Controls the number of messages batched into a block.
   BatchSize:
     # Max Message Count: The maximum number of messages to permit in a
     # batch.  No block will contain more than this number of messages.
-    MaxMessageCount: 1000
+    MaxMessageCount: 10000
 
     # Absolute Max Bytes: The absolute maximum number of bytes allowed for
     # the serialized messages in a batch. The maximum block size is this value
@@ -167,7 +170,7 @@ Batching:
     # this value will be rejected by ordering.
     # It is recommended not to exceed 49 MB, given the default grpc max message size of 100 MB
     # configured on orderer and peer nodes (and allowing for message expansion during communication).
-    AbsoluteMaxBytes: 10 MB
+    AbsoluteMaxBytes: 10485760
 
     # Preferred Max Bytes: The preferred maximum number of bytes allowed
     # for the serialized messages in a batch. Roughly, this field may be considered
@@ -180,4 +183,7 @@ Batching:
     # will contain only that message.  Because messages may be larger than
     # preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed
     # the preferred max bytes, but will always contain exactly one transaction.
+    # NOTE: this field is not in use yet.
     PreferredMaxBytes: 2 MB
+  # RequestMaxBytes is the maximal number of bytes allowed in a request.
+  RequestMaxBytes: 1048576

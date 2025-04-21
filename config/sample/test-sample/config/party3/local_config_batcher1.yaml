@@ -32,3 +32,5 @@ FileStore:
 Batcher:
     ShardID: 1
     BatchSequenceGap: 10
+    MemPoolMaxSize: 1000000
+    SubmitTimeout: 500ms
