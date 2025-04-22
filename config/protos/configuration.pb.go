@@ -770,11 +770,11 @@ type BatchingConfig struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// BatchTimeout controls the timeouts on a batch.
+	// BatchTimeouts controls the timeouts of a batch.
 	BatchTimeouts *BatchTimeouts `protobuf:"bytes,1,opt,name=BatchTimeouts,proto3" json:"BatchTimeouts,omitempty"`
 	// BatchSize controls the number of messages batched into a block and defines limits on a batch size.
 	BatchSize *BatchSize `protobuf:"bytes,2,opt,name=BatchSize,proto3" json:"BatchSize,omitempty"`
-	// RequestMaxBytes is the maximal number of bytes allowed in a request.
+	// RequestMaxBytes is the maximal request size in bytes.
 	RequestMaxBytes uint64 `protobuf:"varint,3,opt,name=RequestMaxBytes,proto3" json:"RequestMaxBytes,omitempty"`
 }
 
@@ -849,6 +849,7 @@ type BatchSize struct {
 	// If adding a new message to the batch would cause the batch to exceed the preferred max bytes, then the current batch is closed and written to a block, and a new batch containing the new message is created.
 	// If a message larger than the preferred max bytes is received, then its batch will contain only that message.
 	// Because messages may be larger than preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed the preferred max bytes, but will always contain exactly one transaction.
+	// *** NOTE: This field is not in use. ***
 	PreferredMaxBytes uint32 `protobuf:"varint,3,opt,name=PreferredMaxBytes,proto3" json:"PreferredMaxBytes,omitempty"`
 }
 
@@ -910,7 +911,7 @@ type BatchTimeouts struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// BatchCreationTimeout is the amount of time to wait before creating a batch.
+	// BatchCreationTimeout is the time a batch can wait before it is created.
 	BatchCreationTimeout string `protobuf:"bytes,1,opt,name=BatchCreationTimeout,proto3" json:"BatchCreationTimeout,omitempty"`
 	// FirstStrikeThreshold defines the maximum time a request can remain in the memory pool without being batched.
 	// After this duration, the request is forwarded to the primary batcher by the secondary batcher.
@@ -920,6 +921,7 @@ type BatchTimeouts struct {
 	SecondStrikeThreshold string `protobuf:"bytes,3,opt,name=SecondStrikeThreshold,proto3" json:"SecondStrikeThreshold,omitempty"`
 	// AutoRemoveTimeout defines the maximum time a request can stay in the memory pool after the second threshold is reached.
 	// If this timeout is reached, the request is removed from the pool.
+	// NOTE: This timeout's intended purpose is not implemented and is used for GC by the memory pool.
 	AutoRemoveTimeout string `protobuf:"bytes,4,opt,name=AutoRemoveTimeout,proto3" json:"AutoRemoveTimeout,omitempty"`
 }
 

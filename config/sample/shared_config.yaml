@@ -151,11 +151,19 @@ Consensus:
 
 # Batching carries config parameters that need to be uniform across all nodes that generate and validate batches (blocks).
 Batching:
-  # BatchTimeouts controls the timeouts on a batch.
+  # BatchTimeouts controls the timeouts of a batch.
   BatchTimeouts:
+    # BatchCreationTimeout is the time a batch can wait before it is created.
     BatchCreationTimeout: 500ms
+    # FirstStrikeThreshold defines the maximum time a request can remain in the memory pool without being batched.
+    # After this duration, the request is forwarded to the primary batcher by the secondary batcher.
     FirstStrikeThreshold: 10s
+    # SecondStrikeThreshold defines the maximum duration that can pass following the FirstStrikeThreshold.
+    # If this timeout is reached, a complaint is sent to the consensus layer, suspecting primary censorship of the request.
     SecondStrikeThreshold: 10s
+    # AutoRemoveTimeout defines the maximum time a request can stay in the memory pool after the second threshold is reached.
+    # If this timeout is reached, the request is removed from the pool.
+    # NOTE: This timeout's intended purpose is not implemented and is used for GC by the memory pool.
     AutoRemoveTimeout: 10s
   # Batch Size: Controls the number of messages batched into a block.
   BatchSize:
@@ -170,6 +178,7 @@ Batching:
     # this value will be rejected by ordering.
     # It is recommended not to exceed 49 MB, given the default grpc max message size of 100 MB
     # configured on orderer and peer nodes (and allowing for message expansion during communication).
+    # For example AbsoluteMaxBytes can be set to 1024 * 1024 * 10 which is 10MB and equals to 10485760.
     AbsoluteMaxBytes: 10485760
 
     # Preferred Max Bytes: The preferred maximum number of bytes allowed
@@ -183,7 +192,7 @@ Batching:
     # will contain only that message.  Because messages may be larger than
     # preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed
     # the preferred max bytes, but will always contain exactly one transaction.
-    # NOTE: this field is not in use yet.
+    # *** NOTE: This field is not in use. ***
     PreferredMaxBytes: 2 MB
   # RequestMaxBytes is the maximal number of bytes allowed in a request.
   RequestMaxBytes: 1048576
