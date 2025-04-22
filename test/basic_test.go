@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,8 +86,8 @@ func TestSubmitAndReceive(t *testing.T) {
 	// Pull some block from the middle and count them
 	startBlock := uint64(3)
 	endBlock := uint64(5)
-	totalTxs := 0
-	totalBlocks := 0
+	totalTxs := uint64(0)
+	totalBlocks := uint64(0)
 
 	uc, err := testutil.GetUserConfig(dir, 1)
 	assert.NoError(t, err)
@@ -101,8 +102,8 @@ func TestSubmitAndReceive(t *testing.T) {
 			return errors.New("nil block header")
 		}
 
-		totalTxs += len(block.GetData().GetData())
-		totalBlocks++
+		atomic.AddUint64(&totalTxs, uint64(len(block.GetData().GetData())))
+		atomic.AddUint64(&totalBlocks, uint64(1))
 		return nil
 	}
 
@@ -111,8 +112,20 @@ func TestSubmitAndReceive(t *testing.T) {
 
 	err = dc.PullBlocks(toCtx, 1, startBlock, endBlock, handler)
 	assert.NoError(t, err)
-	assert.Equal(t, 3, totalBlocks)
-	assert.True(t, totalTxs >= 3)
+	assert.Equal(t, uint64(3), atomic.LoadUint64(&totalBlocks))
+	assert.True(t, atomic.LoadUint64(&totalTxs) >= 3)
 
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
+
+	// Pull more block, then cancel
+	startBlock = uint64(5)
+	endBlock = uint64(1000)
+	atomic.StoreUint64(&totalTxs, 0)
+	atomic.StoreUint64(&totalBlocks, 0)
+
+	toCtx2, toCancel2 := context.WithTimeout(context.Background(), 1*time.Second)
+	defer toCancel2()
+	err = dc.PullBlocks(toCtx2, 1, startBlock, endBlock, handler)
+	assert.EqualError(t, err, "cancelled pull from assembler: 1; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing")
+	t.Logf("Finished pull and cancel: %d, %d", totalBlocks, totalTxs)
 }

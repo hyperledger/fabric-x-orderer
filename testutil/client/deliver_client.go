@@ -36,12 +36,17 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 		return errors.Wrapf(err, "failed to create client to assembler: %d", assemblerId)
 	}
 
+	cleanUp := func() {
+		_ = client.CloseSend()
+		_ = gRPCAssemblerClientConn.Close()
+	}
+
 	stopChan := make(chan error)
 
 	var waitToFinish sync.WaitGroup
 	waitToFinish.Add(1)
 
-	// pull blocks from the assembler
+	// pull blocks from the assembler, this goroutine only receives from the stream
 	go func() {
 		for {
 			block, err := pullBlock(client, gRPCAssemblerClientConn)
@@ -55,8 +60,6 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 			err = handler(block)
 			if err != nil {
 				fmt.Printf("Failed to handle block: %s \n", err.Error())
-				client.CloseSend()
-				gRPCAssemblerClientConn.Close()
 				stopChan <- err
 				close(stopChan)
 				return
@@ -71,9 +74,11 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 
 	select {
 	case <-ctx.Done():
-		_ = client.CloseSend()
-		return errors.Errorf("cancelled pull from assembler: %d", assemblerId)
+		cleanUp() // we call cleanUp here so that the goroutine would exit.
+		errCanceled := <-stopChan
+		return errors.Errorf("cancelled pull from assembler: %d; pull ended: %s", assemblerId, errCanceled)
 	case err := <-stopChan:
+		defer cleanUp()
 		if err != nil {
 			return errors.Wrapf(err, "failed to pull from assembler: %d", assemblerId)
 		}
@@ -146,16 +151,12 @@ func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, assemblerI
 func pullBlock(client ab.AtomicBroadcast_DeliverClient, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
 	resp, err := client.Recv()
 	if err != nil {
-		client.CloseSend()
-		gRPCAssemblerClientConn.Close()
 		return nil, errors.Wrap(err, "failed to receive a deliver response")
 	}
 
 	block := resp.GetBlock()
 
 	if block == nil {
-		client.CloseSend()
-		gRPCAssemblerClientConn.Close()
 		return nil, fmt.Errorf("received a non block message: %v", resp)
 	}
 
