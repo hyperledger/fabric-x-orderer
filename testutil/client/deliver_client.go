@@ -49,7 +49,7 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 	// pull blocks from the assembler, this goroutine only receives from the stream
 	go func() {
 		for {
-			block, err := pullBlock(client, gRPCAssemblerClientConn)
+			block, err := pullBlock(client)
 			if err != nil {
 				fmt.Printf("Failed to pull block: %s \n", err.Error())
 				stopChan <- err
@@ -148,7 +148,7 @@ func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, assemblerI
 	return client, gRPCAssemblerClientConn, nil
 }
 
-func pullBlock(client ab.AtomicBroadcast_DeliverClient, gRPCAssemblerClientConn *grpc.ClientConn) (*common.Block, error) {
+func pullBlock(client ab.AtomicBroadcast_DeliverClient) (*common.Block, error) {
 	resp, err := client.Recv()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to receive a deliver response")

@@ -45,7 +45,7 @@ func readNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 func CreateNetwork(t *testing.T, path string, numOfParties int, useTLSRouter string, useTLSAssembler string) map[string]net.Listener {
 	var parties []genconfig.Party
 	listeners := make(map[string]net.Listener)
-	for i := 0; i < numOfParties; i++ {
+	for i := range numOfParties {
 		assemblerPort, lla := testutil.GetAvailablePort(t)
 		consenterPort, llc := testutil.GetAvailablePort(t)
 		routerPort, llr := testutil.GetAvailablePort(t)
@@ -132,7 +132,63 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	return sess
 }
 
-func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}, listeners map[string]net.Listener) []*gexec.Session {
+type ArmaNetwork struct {
+	armaNodes map[string][][]*ArmaNodeInfo
+}
+
+type ArmaNodeInfo struct {
+	session        *gexec.Session
+	NodeConfigPath string
+	NodeType       string
+	Listener       net.Listener
+	ArmaBinaryPath string
+}
+
+func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType string, partyIdx int, nodeInfo *ArmaNodeInfo) {
+	if nodeType == "batcher" && len(armaNetwork.armaNodes["batcher"]) > partyIdx {
+		armaNetwork.armaNodes["batcher"][partyIdx] = append(armaNetwork.armaNodes["batcher"][partyIdx], nodeInfo)
+	} else {
+		armaNetwork.armaNodes[nodeType] = append(armaNetwork.armaNodes[nodeType], []*ArmaNodeInfo{nodeInfo})
+	}
+}
+
+func (armaNetwork *ArmaNetwork) Stop() {
+	for k := range armaNetwork.armaNodes {
+		for i := range armaNetwork.armaNodes[k] {
+			for j := range armaNetwork.armaNodes[k][i] {
+				armaNetwork.armaNodes[k][i][j].StopArmaNode()
+			}
+		}
+	}
+}
+
+func (armaNetwork *ArmaNetwork) GetAssembler(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
+	require.True(t, int(partyID) > 0)
+	require.True(t, len(armaNetwork.armaNodes["assembler"]) >= int(partyID))
+	return armaNetwork.armaNodes["assembler"][partyID-1][0]
+}
+
+func (armaNetwork *ArmaNetwork) GetRouter(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
+	require.True(t, int(partyID) > 0)
+	require.True(t, len(armaNetwork.armaNodes["router"]) >= int(partyID))
+	return armaNetwork.armaNodes["router"][partyID-1][0]
+}
+
+func (armaNetwork *ArmaNetwork) GetConsenter(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
+	require.True(t, int(partyID) > 0)
+	require.True(t, len(armaNetwork.armaNodes["consensus"]) >= int(partyID))
+	return armaNetwork.armaNodes["consensus"][partyID-1][0]
+}
+
+func (armaNetwork *ArmaNetwork) GeBatcher(t *testing.T, partyID types.PartyID, shardID types.ShardID) *ArmaNodeInfo {
+	require.True(t, int(partyID) > 0)
+	require.True(t, int(shardID) > 0)
+	require.True(t, len(armaNetwork.armaNodes["batcher"]) >= int(partyID))
+	require.True(t, len(armaNetwork.armaNodes["batcher"][partyID-1]) >= int(shardID))
+	return armaNetwork.armaNodes["batcher"][partyID-1][shardID-1]
+}
+
+func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}, listeners map[string]net.Listener) *ArmaNetwork {
 	nodes := map[string][]string{
 		"router":    {"local_config_router.yaml"},
 		"batcher":   {"local_config_batcher1.yaml", "local_config_batcher2.yaml"},
@@ -140,11 +196,19 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		"assembler": {"local_config_assembler.yaml"},
 	}
 
-	var sessions []*gexec.Session
+	armaNetwork := ArmaNetwork{
+		armaNodes: map[string][][]*ArmaNodeInfo{
+			"consensus": {},
+			"batcher":   {},
+			"router":    {},
+			"assembler": {},
+		},
+	}
+
 	for _, nodeType := range []string{"consensus", "batcher", "router", "assembler"} {
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			partyDir := path.Join(dir, "config", fmt.Sprintf("party%d", i+1))
-			for j := 0; j < len(nodes[nodeType]); j++ {
+			for j := range nodes[nodeType] {
 				nodeConfigPath := path.Join(partyDir, nodes[nodeType][j])
 				var nodeTypeL string
 				if nodeType == "batcher" {
@@ -159,11 +223,36 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 
 				EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
 
-				listener := listeners[fmt.Sprintf("Party%d"+nodeTypeL, i+1)]
+				nodeName := fmt.Sprintf("Party%d"+nodeTypeL, i+1)
+				listener := listeners[nodeName]
 				sess := runNode(t, nodeType, armaBinaryPath, nodeConfigPath, readyChan, listener)
-				sessions = append(sessions, sess)
+				armaNetwork.AddArmaNode(nodeType, i, &ArmaNodeInfo{session: sess, NodeConfigPath: nodeConfigPath, NodeType: nodeType, Listener: listener, ArmaBinaryPath: armaBinaryPath})
 			}
 		}
 	}
-	return sessions
+	return &armaNetwork
+}
+
+func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}) {
+	require.FileExists(t, armaNodeInfo.NodeConfigPath)
+	nodeConfig := readNodeConfigFromYaml(t, armaNodeInfo.NodeConfigPath)
+	storagePath := nodeConfig.FileStore.Path
+	require.DirExists(t, storagePath)
+
+	armaNodeInfo.session = runNode(t, armaNodeInfo.NodeType, armaNodeInfo.ArmaBinaryPath, armaNodeInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener)
+}
+
+func (armaNodeInfo *ArmaNodeInfo) StopArmaNode() {
+	<-armaNodeInfo.session.Kill().Exited
+}
+
+func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time.Duration) {
+	startTimeout := time.After(duration * time.Second)
+	for range waitFor {
+		select {
+		case <-readyChan:
+		case <-startTimeout:
+			require.Fail(t, "arma nodes failed to start in time")
+		}
+	}
 }

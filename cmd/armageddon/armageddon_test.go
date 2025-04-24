@@ -45,12 +45,8 @@ func TestArmageddonWithTLS(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	sessions := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
-	defer func() {
-		for i := range sessions {
-			sessions[i].Kill()
-		}
-	}()
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	defer armaNetwork.Stop()
 
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
@@ -98,12 +94,8 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	sessions := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
-	defer func() {
-		for i := range sessions {
-			sessions[i].Kill()
-		}
-	}()
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	defer armaNetwork.Stop()
 
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
@@ -162,12 +154,8 @@ func TestLoadStepsFails(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	sessions := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
-	defer func() {
-		for i := range sessions {
-			sessions[i].Kill()
-		}
-	}()
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	defer armaNetwork.Stop()
 
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
@@ -223,12 +211,8 @@ func TestLoadAndReceive(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	sessions := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
-	defer func() {
-		for i := range sessions {
-			sessions[i].Kill()
-		}
-	}()
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	defer armaNetwork.Stop()
 
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
@@ -286,12 +270,8 @@ func TestArmageddonNonTLS(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	sessions := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
-	defer func() {
-		for i := range sessions {
-			sessions[i].Kill()
-		}
-	}()
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	defer armaNetwork.Stop()
 
 	startTimeout := time.After(10 * time.Second)
 	for i := 0; i < 20; i++ {
