@@ -32,6 +32,10 @@ func GetDevConfigDir() string {
 	return path
 }
 
+func SafeGetDevConfigDir() (string, error) {
+	return gomodDevConfigDir()
+}
+
 func gomodDevConfigDir() (string, error) {
 	buf := bytes.NewBuffer(nil)
 	cmd := exec.Command("go", "env", "GOMOD")

@@ -13,16 +13,15 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/arma/config"
-	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen/genesisconfig"
 )
 
 // CreateGenesisBlock creates a config block and writes it to a file under dir/bootstrap.block
 // This function is used for testing only.
-func CreateGenesisBlock(dir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string) (*common.Block, error) {
+func CreateGenesisBlock(dir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string, sampleConfigPath string) (*common.Block, error) {
 	// Generate Profile
-	profile, err := CreateProfile(dir, sharedConfigYaml, sharedConfigPath)
+	profile, err := CreateProfile(dir, sharedConfigYaml, sharedConfigPath, sampleConfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +44,7 @@ func CreateGenesisBlock(dir string, sharedConfigYaml *config.SharedConfigYaml, s
 	return genesisBlock, nil
 }
 
-func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string) (*genesisconfig.Profile, error) {
+func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string, sampleConfigPath string) (*genesisconfig.Profile, error) {
 	// collect relevant shared configuration
 	var consenterMapping []*genesisconfig.Consenter
 	var routerAndAssemblerEndpoints []string
@@ -66,7 +65,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	}
 
 	// load SampleFabricX profile
-	profile := genesisconfig.Load(genesisconfig.SampleFabricX, fabric.GetDevConfigDir())
+	profile := genesisconfig.Load(genesisconfig.SampleFabricX, sampleConfigPath)
 
 	// update profile with some more relevant orderer information
 	profile.Orderer.Arma.LoadFromPath = sharedConfigPath

@@ -4,12 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
-
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/config/generate"
 	"github.ibm.com/decentralized-trust-research/arma/config/protos"
+	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -17,8 +17,7 @@ func TestReadGenesisBlock(t *testing.T) {
 	dir := t.TempDir()
 
 	sharedConfigYaml, sharedConfigBinaryPath := testutils.PrepareSharedConfigBinary(t, dir)
-
-	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigBinaryPath)
+	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
 	require.NoError(t, err)
 	require.NotNil(t, block)
 

@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
+
 	"github.com/alecthomas/kingpin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -151,10 +153,11 @@ type CLI struct {
 	app      *kingpin.Application
 	commands map[string]*kingpin.CmdClause
 	// generate command flags
-	outputDir     *string
-	genConfigFile **os.File
-	useTLS        *bool
-	version       *int
+	outputDir        *string
+	genConfigFile    **os.File
+	sampleConfigPath *string
+	useTLS           *bool
+	version          *int
 	// submit command flags
 	userConfigFile **os.File
 	transactions   *int // transactions is the number of txs to be sent
@@ -186,6 +189,7 @@ func (cli *CLI) configureCommands() {
 	cli.genConfigFile = gen.Flag("config", "The configuration template to use").File()
 	cli.useTLS = gen.Flag("useTLS", "Defines if the connection between a client to a router and an assembler is a TLS one or not").Bool()
 	cli.version = gen.Flag("version", "The version of the configuration, for old config set version to 1, for new config set version to 2").Default("1").Int()
+	cli.sampleConfigPath = gen.Flag("sampleConfigPath", "The path to the sample config files").String()
 	commands["generate"] = gen
 
 	showtemplate := cli.app.Command("showtemplate", "Show the default configuration template needed to build Arma config material")
@@ -227,7 +231,7 @@ func (cli *CLI) Run(args []string) {
 		if *cli.version == 1 {
 			generate(cli.genConfigFile, cli.outputDir, cli.useTLS)
 		} else if *cli.version == 2 {
-			generateConfigAndCrypto(cli.genConfigFile, cli.outputDir)
+			generateConfigAndCrypto(cli.genConfigFile, cli.outputDir, cli.sampleConfigPath)
 		} else {
 			fmt.Fprintf(os.Stderr, "Invalid version: %d", *cli.version)
 			os.Exit(-1)
@@ -278,7 +282,16 @@ func generate(genConfigFile **os.File, outputDir *string, useTLS *bool) {
 }
 
 // generateConfigAndCrypto is generating the crypto material and the configuration files in the new format.
-func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string) {
+func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleConfigPath *string) {
+	if *sampleConfigPath == "" {
+		if path, err := fabric.SafeGetDevConfigDir(); err == nil && path != "" {
+			*sampleConfigPath = path
+		} else {
+			fmt.Fprintf(os.Stderr, "Configuration generation failed because the required sampleConfigPath flag was not provided, and setting a default value for it was unsuccessful: %s", err)
+			os.Exit(-1)
+		}
+	}
+
 	// get config file content given as argument
 	networkConfig, err := getConfigFileContent(genConfigFile)
 	if err != nil {
@@ -326,7 +339,7 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string) {
 		os.Exit(-1)
 	}
 
-	_, err = genconfig.CreateGenesisBlock(filepath.Join(*outputDir, "bootstrap"), sharedConfigYaml, sharedConfigBinaryPath)
+	_, err = genconfig.CreateGenesisBlock(filepath.Join(*outputDir, "bootstrap"), sharedConfigYaml, sharedConfigBinaryPath, *sampleConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creation bootstrap config block: %s", err)
 		os.Exit(-1)

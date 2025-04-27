@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
+
 	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
 
@@ -24,6 +26,54 @@ import (
 // 3. Run arma with the generated config files to run each of the nodes for all parties
 // 4. Run armageddon submit command to make 1000 txs, send txs to all routers at a specified rate and pull blocks from some assembler to observe that txs appear in some block
 func TestArmageddonWithTLS(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+
+	// 2.
+	armageddon := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, 20)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	defer armaNetwork.Stop()
+
+	startTimeout := time.After(10 * time.Second)
+	for i := 0; i < 20; i++ {
+		select {
+		case <-readyChan:
+		case <-startTimeout:
+			require.Fail(t, "arma nodes failed to start in time")
+		}
+	}
+
+	// 4.
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
+	rate := "500"
+	txs := "1000"
+	txSize := "32"
+	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
+}
+
+// Scenario:
+// 1. Create a config YAML file to be an input to armageddon
+// 2. Run armageddon generate command to create config files in a folder structure with a TLS connection between client and router and assembler, a sampleConfigPath is missing
+// 3. Run arma with the generated config files to run each of the nodes for all parties
+// 4. Run armageddon submit command to make 1000 txs, send txs to all routers at a specified rate and pull blocks from some assembler to observe that txs appear in some block
+func TestArmageddonWithTLSWithNoSampleConfigPathFlag(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
@@ -83,7 +133,8 @@ func TestLoadStepsAndReceive(t *testing.T) {
 
 	// 2.
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "2"})
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--useTLS", "--version", "2", "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -143,7 +194,8 @@ func TestLoadStepsFails(t *testing.T) {
 
 	// 2.
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -200,7 +252,8 @@ func TestLoadAndReceive(t *testing.T) {
 
 	// 2.
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -259,7 +312,8 @@ func TestArmageddonNonTLS(t *testing.T) {
 
 	// 2.
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	// compile arma
@@ -305,7 +359,8 @@ func TestArmageddonGenerateNewConfig(t *testing.T) {
 
 	// 2.
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
 
 	// 3.
 	err = checkConfigDir(dir)
