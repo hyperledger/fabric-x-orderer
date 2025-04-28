@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
 
@@ -32,7 +31,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -48,17 +47,10 @@ func TestArmageddonWithTLS(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(10 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
+	testutils.WaitReady(t, readyChan, 20, 10)
 
 	// 4.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
@@ -80,7 +72,7 @@ func TestArmageddonWithTLSWithNoSampleConfigPathFlag(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -95,17 +87,10 @@ func TestArmageddonWithTLSWithNoSampleConfigPathFlag(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(10 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
+	testutils.WaitReady(t, readyChan, 20, 10)
 
 	// 4.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
@@ -129,7 +114,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -145,18 +130,10 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(10 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
-
+	testutils.WaitReady(t, readyChan, 20, 10)
 	// 4. + 5.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rates := "500 1000"
@@ -190,7 +167,7 @@ func TestLoadStepsFails(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -206,18 +183,10 @@ func TestLoadStepsFails(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(10 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
-
+	testutils.WaitReady(t, readyChan, 20, 10)
 	// 4. + 5.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rates := "BOOM"
@@ -248,7 +217,7 @@ func TestLoadAndReceive(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -264,17 +233,10 @@ func TestLoadAndReceive(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(10 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
+	testutils.WaitReady(t, readyChan, 20, 10)
 
 	// 4. + 5.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
@@ -308,7 +270,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "none", "none")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "none", "none")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -324,17 +286,10 @@ func TestArmageddonNonTLS(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(10 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
+	testutils.WaitReady(t, readyChan, 20, 10)
 
 	// 4.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
@@ -355,7 +310,7 @@ func TestArmageddonGenerateNewConfig(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()

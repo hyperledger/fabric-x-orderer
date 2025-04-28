@@ -26,8 +26,8 @@ import (
 // 1. Create a config YAML file to be an input to armageddon
 // 2. Run armageddon generate command to create config files in a folder structure
 // 3. Run arma with the generated config files to run each of the nodes for all parties
-// 4. Submit 1000 txs to all routers at a specified rate
-// 5. In parallel, pull blocks from the assembler and report results
+// 4. Run armageddon submit command to make 10000 txs and send them to all routers at a specified rate
+// 5. In parallel, run armageddon receive command to pull blocks from the assembler and report results
 func TestSubmitAndReceive(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -35,7 +35,7 @@ func TestSubmitAndReceive(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddonCLI := armageddon.NewCLI()
@@ -51,7 +51,7 @@ func TestSubmitAndReceive(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
 	startTimeout := time.After(10 * time.Second)

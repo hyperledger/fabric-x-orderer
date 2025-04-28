@@ -41,7 +41,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, "TLS", "TLS")
+	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -56,7 +56,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
 	defer armaNetwork.Stop()
 

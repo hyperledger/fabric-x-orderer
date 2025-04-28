@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -22,6 +24,13 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	Router    string = "router"
+	Batcher   string = "batcher"
+	Consensus string = "consensus"
+	Assembler string = "assembler"
 )
 
 // EditDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
@@ -42,30 +51,45 @@ func readNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 }
 
 // CreateNetwork creates a config.yaml file with the network configuration. This file is the input for armageddon generate command.
-func CreateNetwork(t *testing.T, path string, numOfParties int, useTLSRouter string, useTLSAssembler string) map[string]net.Listener {
+func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[string]*ArmaNodeInfo {
 	var parties []genconfig.Party
-	listeners := make(map[string]net.Listener)
-	for i := range numOfParties {
+	netInfo := make(map[string]*ArmaNodeInfo)
+	for i := 0; i < numOfParties; i++ {
 		assemblerPort, lla := testutil.GetAvailablePort(t)
 		consenterPort, llc := testutil.GetAvailablePort(t)
 		routerPort, llr := testutil.GetAvailablePort(t)
-		batcher1Port, llb1 := testutil.GetAvailablePort(t)
-		batcher2Port, llb2 := testutil.GetAvailablePort(t)
+		var llbs []net.Listener
+		var batchersEndpoints []string
+
+		for n := 0; n < numOfBatcherShards; n++ {
+			batcherPort, llb := testutil.GetAvailablePort(t)
+			llbs = append(llbs, llb)
+			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
+		}
 
 		party := genconfig.Party{
 			ID:                types.PartyID(i + 1),
 			AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
 			ConsenterEndpoint: "127.0.0.1:" + consenterPort,
 			RouterEndpoint:    "127.0.0.1:" + routerPort,
-			BatchersEndpoints: []string{"127.0.0.1:" + batcher1Port, "127.0.0.1:" + batcher2Port},
+			BatchersEndpoints: batchersEndpoints,
 		}
 
 		parties = append(parties, party)
-		listeners[fmt.Sprintf("Party%drouter", i+1)] = llr
-		listeners[fmt.Sprintf("Party%dbatcher1", i+1)] = llb1
-		listeners[fmt.Sprintf("Party%dbatcher2", i+1)] = llb2
-		listeners[fmt.Sprintf("Party%dconsensus", i+1)] = llc
-		listeners[fmt.Sprintf("Party%dassembler", i+1)] = lla
+
+		nodeName := fmt.Sprintf("Party%drouter", i+1)
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1)}
+
+		for j, b := range llbs {
+			nodeName = fmt.Sprintf("Party%dbatcher%d", i+1, j+1)
+			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1)}
+		}
+
+		nodeName = fmt.Sprintf("Party%dconsensus", i+1)
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1)}
+
+		nodeName = fmt.Sprintf("Party%dassembler", i+1)
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1)}
 	}
 
 	network := genconfig.Network{
@@ -77,7 +101,7 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, useTLSRouter str
 	err := utils.WriteToYAML(network, path)
 	require.NoError(t, err)
 
-	return listeners
+	return netInfo
 }
 
 // PrepareSharedConfigBinary generates a shared configuration and writes the encoded configuration to a file.
@@ -132,123 +156,59 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	return sess
 }
 
-type ArmaNetwork struct {
-	armaNodes map[string][][]*ArmaNodeInfo
-}
-
-type ArmaNodeInfo struct {
-	session        *gexec.Session
-	NodeConfigPath string
-	NodeType       string
-	Listener       net.Listener
-	ArmaBinaryPath string
-}
-
-func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType string, partyIdx int, nodeInfo *ArmaNodeInfo) {
-	if nodeType == "batcher" && len(armaNetwork.armaNodes["batcher"]) > partyIdx {
-		armaNetwork.armaNodes["batcher"][partyIdx] = append(armaNetwork.armaNodes["batcher"][partyIdx], nodeInfo)
-	} else {
-		armaNetwork.armaNodes[nodeType] = append(armaNetwork.armaNodes[nodeType], []*ArmaNodeInfo{nodeInfo})
+func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}, netInfo map[string]*ArmaNodeInfo) *ArmaNetwork {
+	nodes := map[string]string{
+		Router:    "local_config_router",
+		Batcher:   "local_config_batcher",
+		Consensus: "local_config_consenter",
+		Assembler: "local_config_assembler",
 	}
-}
 
-func (armaNetwork *ArmaNetwork) Stop() {
-	for k := range armaNetwork.armaNodes {
-		for i := range armaNetwork.armaNodes[k] {
-			for j := range armaNetwork.armaNodes[k][i] {
-				armaNetwork.armaNodes[k][i][j].StopArmaNode()
-			}
-		}
+	nodeNames := make([]string, 0, len(netInfo))
+	for n := range netInfo {
+		nodeNames = append(nodeNames, n)
 	}
-}
 
-func (armaNetwork *ArmaNetwork) GetAssembler(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
-	require.True(t, int(partyID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["assembler"]) >= int(partyID))
-	return armaNetwork.armaNodes["assembler"][partyID-1][0]
-}
-
-func (armaNetwork *ArmaNetwork) GetRouter(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
-	require.True(t, int(partyID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["router"]) >= int(partyID))
-	return armaNetwork.armaNodes["router"][partyID-1][0]
-}
-
-func (armaNetwork *ArmaNetwork) GetConsenter(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
-	require.True(t, int(partyID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["consensus"]) >= int(partyID))
-	return armaNetwork.armaNodes["consensus"][partyID-1][0]
-}
-
-func (armaNetwork *ArmaNetwork) GeBatcher(t *testing.T, partyID types.PartyID, shardID types.ShardID) *ArmaNodeInfo {
-	require.True(t, int(partyID) > 0)
-	require.True(t, int(shardID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["batcher"]) >= int(partyID))
-	require.True(t, len(armaNetwork.armaNodes["batcher"][partyID-1]) >= int(shardID))
-	return armaNetwork.armaNodes["batcher"][partyID-1][shardID-1]
-}
-
-func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}, listeners map[string]net.Listener) *ArmaNetwork {
-	nodes := map[string][]string{
-		"router":    {"local_config_router.yaml"},
-		"batcher":   {"local_config_batcher1.yaml", "local_config_batcher2.yaml"},
-		"consensus": {"local_config_consenter.yaml"},
-		"assembler": {"local_config_assembler.yaml"},
-	}
+	sort.Strings(nodeNames)
 
 	armaNetwork := ArmaNetwork{
 		armaNodes: map[string][][]*ArmaNodeInfo{
-			"consensus": {},
-			"batcher":   {},
-			"router":    {},
-			"assembler": {},
+			Router:    {},
+			Batcher:   {},
+			Consensus: {},
+			Assembler: {},
 		},
 	}
 
-	for _, nodeType := range []string{"consensus", "batcher", "router", "assembler"} {
-		for i := range 4 {
-			partyDir := path.Join(dir, "config", fmt.Sprintf("party%d", i+1))
-			for j := range nodes[nodeType] {
-				nodeConfigPath := path.Join(partyDir, nodes[nodeType][j])
-				var nodeTypeL string
-				if nodeType == "batcher" {
-					nodeTypeL = fmt.Sprintf("batcher%d", j+1)
-				} else {
-					nodeTypeL = nodeType
-				}
+	for _, nodeName := range nodeNames {
+		netNode := netInfo[nodeName]
 
-				storagePath := path.Join(dir, "storage", fmt.Sprintf("party%d", i+1), nodeTypeL)
-				err := os.MkdirAll(storagePath, 0o755)
-				require.NoError(t, err)
-
-				EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
-
-				nodeName := fmt.Sprintf("Party%d"+nodeTypeL, i+1)
-				listener := listeners[nodeName]
-				sess := runNode(t, nodeType, armaBinaryPath, nodeConfigPath, readyChan, listener)
-				armaNetwork.AddArmaNode(nodeType, i, &ArmaNodeInfo{session: sess, NodeConfigPath: nodeConfigPath, NodeType: nodeType, Listener: listener, ArmaBinaryPath: armaBinaryPath})
-			}
+		shardId := ""
+		if netNode.ShardId != 0 {
+			shardId = strconv.FormatUint(uint64(netNode.ShardId), 10)
 		}
+
+		partyId := fmt.Sprintf("party%d", netNode.PartyId)
+
+		partyDir := path.Join(dir, "config", partyId)
+		nodeConfigPath := path.Join(partyDir, nodes[netNode.NodeType]+shardId+".yaml")
+
+		storagePath := path.Join(dir, "storage", partyId, netNode.NodeType+shardId)
+		err := os.MkdirAll(storagePath, 0o755)
+		require.NoError(t, err)
+
+		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
+		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
+		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
+		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
+
 	return &armaNetwork
-}
-
-func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}) {
-	require.FileExists(t, armaNodeInfo.NodeConfigPath)
-	nodeConfig := readNodeConfigFromYaml(t, armaNodeInfo.NodeConfigPath)
-	storagePath := nodeConfig.FileStore.Path
-	require.DirExists(t, storagePath)
-
-	armaNodeInfo.session = runNode(t, armaNodeInfo.NodeType, armaNodeInfo.ArmaBinaryPath, armaNodeInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener)
-}
-
-func (armaNodeInfo *ArmaNodeInfo) StopArmaNode() {
-	<-armaNodeInfo.session.Kill().Exited
 }
 
 func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time.Duration) {
 	startTimeout := time.After(duration * time.Second)
-	for range waitFor {
+	for i := 0; i < waitFor; i++ {
 		select {
 		case <-readyChan:
 		case <-startTimeout:
