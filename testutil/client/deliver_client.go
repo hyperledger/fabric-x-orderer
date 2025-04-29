@@ -11,7 +11,7 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 	"google.golang.org/grpc"

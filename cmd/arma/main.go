@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.ibm.com/decentralized-trust-research/arma/cmd/arma"
+	arma "github.ibm.com/decentralized-trust-research/arma/node/server"
 )
 
 func main() {

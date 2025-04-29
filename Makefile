@@ -20,8 +20,8 @@ check-deps:
 .PHONY: binary
 binary:
 	mkdir -p ./bin
-	go build -o ./bin/arma ./cmd/arma/main
-	go build -o ./bin/armageddon ./cmd/armageddon/main
+	go build -o ./bin/arma ./cmd/arma
+	go build -o ./bin/armageddon ./cmd/armageddon
 
 .PHONY: clean-binary
 clean-binary:

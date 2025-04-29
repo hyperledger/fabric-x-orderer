@@ -16,8 +16,8 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 	"github.ibm.com/decentralized-trust-research/arma/testutil/client"
 )
@@ -26,7 +26,7 @@ import (
 // 1. Create a config YAML file to be an input to armageddon
 // 2. Run armageddon generate command to create config files in a folder structure
 // 3. Run arma with the generated config files to run each of the nodes for all parties
-// 4. Run armageddon submit command to make 10000 txs and send them to all routers at a specified rate
+// 4. Run armageddon submit command to make 1000 txs and send them to all routers at a specified rate
 // 5. In parallel, run armageddon receive command to pull blocks from the assembler and report results
 func TestSubmitAndReceive(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
@@ -43,7 +43,7 @@ func TestSubmitAndReceive(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotEmpty(t, armaBinaryPath)
 	defer os.RemoveAll(armaBinaryPath)
@@ -54,14 +54,7 @@ func TestSubmitAndReceive(t *testing.T) {
 	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(10 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
+	testutils.WaitReady(t, readyChan, 20, 10)
 
 	// 4. + 5.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")

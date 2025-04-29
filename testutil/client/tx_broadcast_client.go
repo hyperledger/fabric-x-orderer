@@ -8,7 +8,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 )
 

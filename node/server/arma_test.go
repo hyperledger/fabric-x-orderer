@@ -18,7 +18,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config"

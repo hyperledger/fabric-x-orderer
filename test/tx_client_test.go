@@ -12,8 +12,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/stretchr/testify/require"
@@ -38,7 +38,7 @@ func TestTxClientSend(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 

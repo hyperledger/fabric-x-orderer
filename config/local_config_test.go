@@ -5,7 +5,7 @@ import (
 	"path"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/config/generate"

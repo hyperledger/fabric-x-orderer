@@ -13,7 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/config/generate"
 
 	"github.com/stretchr/testify/require"

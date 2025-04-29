@@ -18,8 +18,8 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 	"github.ibm.com/decentralized-trust-research/arma/testutil/client"
@@ -49,7 +49,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma/main", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
