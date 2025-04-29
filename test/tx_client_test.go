@@ -12,7 +12,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
 	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
@@ -30,7 +29,7 @@ func TestTxClientSend(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutils.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	listeners := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
 	require.NoError(t, err)
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -45,7 +44,7 @@ func TestTxClientSend(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
 	defer armaNetwork.Stop()
 
 	startTimeout := time.After(30 * time.Second)

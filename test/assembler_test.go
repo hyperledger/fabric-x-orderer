@@ -18,7 +18,6 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
 	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
@@ -41,7 +40,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutils.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -56,11 +55,11 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan struct{}, 20)
-	armaNetwork := testutils.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
 	defer armaNetwork.Stop()
 
-	testutils.WaitReady(t, readyChan, 20, 10)
+	testutil.WaitReady(t, readyChan, 20, 10)
 
 	// 4.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
@@ -94,7 +93,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	// 7 + 8.
 	nodeToRestart.RestartArmaNode(t, readyChan)
 
-	testutils.WaitReady(t, readyChan, 1, 10)
+	testutil.WaitReady(t, readyChan, 1, 10)
 
 	totalTxs := uint64(0)
 	totalBlocks := uint64(0)

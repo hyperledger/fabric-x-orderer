@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/cmd/testutils"
+	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 
@@ -68,7 +68,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "router")
-		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
 
@@ -97,7 +97,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "batcher1")
-		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
 		err := editConsentersInSharedConfig(dir, 4)
 		require.NoError(t, err)
 
@@ -126,7 +126,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "consenter")
-		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
 
 		originalLogger := testLogger
 		defer func() {
@@ -153,7 +153,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assembler")
-		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
 
 		originalLogger := testLogger
 		defer func() {
@@ -185,7 +185,7 @@ func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "consenter")
-		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
 
 		block := utils.EmptyGenesisBlock("arma")
 		blockBytes := protoutil.MarshalOrPanic(block)
@@ -219,7 +219,7 @@ func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assembler")
-		testutils.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
 
 		block := utils.EmptyGenesisBlock("arma")
 		blockBytes := protoutil.MarshalOrPanic(block)

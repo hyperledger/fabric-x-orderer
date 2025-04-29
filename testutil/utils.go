@@ -1,4 +1,4 @@
-package testutils
+package testutil
 
 import (
 	"fmt"
@@ -21,7 +21,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
 	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
 )
@@ -55,14 +54,14 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 	var parties []genconfig.Party
 	netInfo := make(map[string]*ArmaNodeInfo)
 	for i := 0; i < numOfParties; i++ {
-		assemblerPort, lla := testutil.GetAvailablePort(t)
-		consenterPort, llc := testutil.GetAvailablePort(t)
-		routerPort, llr := testutil.GetAvailablePort(t)
+		assemblerPort, lla := GetAvailablePort(t)
+		consenterPort, llc := GetAvailablePort(t)
+		routerPort, llr := GetAvailablePort(t)
 		var llbs []net.Listener
 		var batchersEndpoints []string
 
 		for n := 0; n < numOfBatcherShards; n++ {
-			batcherPort, llb := testutil.GetAvailablePort(t)
+			batcherPort, llb := GetAvailablePort(t)
 			llbs = append(llbs, llb)
 			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
 		}
@@ -108,7 +107,7 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 // The function return the path to the file and the shared config in the yaml format.
 // This function is used in testing only.
 func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYaml, string) {
-	networkConfig := testutil.GenerateNetworkConfig(t, "none", "none")
+	networkConfig := GenerateNetworkConfig(t, "none", "none")
 	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 
