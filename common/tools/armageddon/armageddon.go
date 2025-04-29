@@ -188,7 +188,7 @@ func (cli *CLI) configureCommands() {
 	cli.outputDir = gen.Flag("output", "The output directory in which to place config files").Default("arma-config").String()
 	cli.genConfigFile = gen.Flag("config", "The configuration template to use").File()
 	cli.useTLS = gen.Flag("useTLS", "Defines if the connection between a client to a router and an assembler is a TLS one or not").Bool()
-	cli.version = gen.Flag("version", "The version of the configuration, for old config set version to 1, for new config set version to 2").Default("1").Int()
+	cli.version = gen.Flag("version", "The version of the configuration, for old config set version to 1, for new config set version to 2").Default("2").Int()
 	cli.sampleConfigPath = gen.Flag("sampleConfigPath", "The path to the sample config files").String()
 	commands["generate"] = gen
 
