@@ -2,6 +2,7 @@ package batcher
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -25,13 +26,22 @@ func (b *ControlEventBroadcaster) BroadcastControlEvent(ctx context.Context, ce 
 
 	for {
 		var failed []ConsenterControlEventSender
+		var failedMu sync.Mutex
+		var wg sync.WaitGroup
 
 		for _, sender := range retrySenders {
-			// TODO: Add goroutines for sending control events
-			if err := b.sendControlEvent(ce, sender); err != nil {
-				failed = append(failed, sender)
-			}
+			wg.Add(1)
+			go func(s ConsenterControlEventSender) {
+				defer wg.Done()
+				if err := b.sendControlEvent(ce, s); err != nil {
+					failedMu.Lock()
+					failed = append(failed, s)
+					failedMu.Unlock()
+				}
+			}(sender)
 		}
+
+		wg.Wait()
 
 		if len(b.senders)-len(failed) >= b.threshold {
 			b.logger.Infof("Control event sent to quorum (%d out of %d)", len(b.senders)-len(failed), len(b.senders))
