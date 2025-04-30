@@ -269,6 +269,7 @@ func (b *Batcher) runPrimary() {
 
 		b.Ledger.Append(b.ID, b.seq, currentBatch)
 
+		// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 		b.BAFSender.SendBAF(baf)
 
 		b.ackerLock.RLock()
@@ -311,6 +312,7 @@ func (b *Batcher) runSecondary() {
 			}
 			if err := b.verifyBatch(batch); err != nil {
 				b.Logger.Warnf("Secondary batcher %d (shard %d) sending a complaint (primary %d); verify batch err: %v", b.ID, b.Shard, b.primary, err)
+				// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 				b.Complainer.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; primary %d; term %d; verify batch err: %v", b.ID, b.Shard, b.primary, atomic.LoadUint64(&b.term), err))
 				b.BatchPuller.Stop()
 				break // TODO maybe add backoff
@@ -320,6 +322,7 @@ func (b *Batcher) runSecondary() {
 			b.Ledger.Append(b.primary, b.seq, requests)
 			b.removeRequests(requests)
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
+			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 			b.BAFSender.SendBAF(baf)
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++

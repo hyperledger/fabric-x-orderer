@@ -138,7 +138,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 	}
 }
 
-func createConsenterStub(t *testing.T, consenterNodes []*node, num int) ([]*stubConsenter, func()) {
+func createConsenterStubs(t *testing.T, consenterNodes []*node, num int) ([]*stubConsenter, func()) {
 	var stubConsenters []*stubConsenter
 
 	for i := 0; i < num; i++ {

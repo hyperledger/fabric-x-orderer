@@ -49,6 +49,7 @@ type Batcher struct {
 	batcher                   *core.Batcher
 	batcherCerts2IDs          map[string]types.PartyID
 	controlEventSenders       []ConsenterControlEventSender
+	controlEventBroadcaster   *ControlEventBroadcaster
 	Net                       Net
 	Ledger                    *node_ledger.BatchLedgerArray
 	config                    *node_config.BatcherNodeConfig
@@ -63,12 +64,14 @@ type Batcher struct {
 	stopOnce sync.Once
 	stopChan chan struct{}
 
-	primaryLock sync.Mutex
-	term        uint64
-	primaryID   types.PartyID
-	ackStream   protos.BatcherControlService_NotifyAckClient
-	reqStream   protos.BatcherControlService_FwdRequestStreamClient
-	cancelFunc  context.CancelFunc
+	primaryLock     sync.Mutex
+	term            uint64
+	primaryID       types.PartyID
+	ackStream       protos.BatcherControlService_NotifyAckClient
+	reqStream       protos.BatcherControlService_FwdRequestStreamClient
+	cancelFunc      context.CancelFunc
+	ctxBroadcast    context.Context
+	cancelBroadcast context.CancelFunc
 }
 
 func (b *Batcher) Run() {
@@ -85,6 +88,7 @@ func (b *Batcher) Run() {
 func (b *Batcher) Stop() {
 	b.logger.Infof("Stopping batcher node")
 	b.stopOnce.Do(func() { close(b.stopChan) })
+	b.cancelBroadcast()
 	b.batcher.Stop()
 	for len(b.stateChan) > 0 {
 		<-b.stateChan // drain state channel
@@ -333,6 +337,9 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	b.indexTLSCerts()
 
 	f := (initState.N - 1) / 3
+
+	b.ctxBroadcast, b.cancelBroadcast = context.WithCancel(context.Background())
+	b.controlEventBroadcaster = NewControlEventBroadcaster(b.controlEventSenders, int(initState.N), int(f), 100*time.Millisecond, 10*time.Second, b.logger)
 
 	b.batcher = &core.Batcher{
 		Batchers:                getBatchersIDs(b.batchers),
@@ -616,30 +623,15 @@ func (b *Batcher) cleanupPrimaryStreams() {
 }
 
 func (b *Batcher) Complain(reason string) {
-	b.broadcastControlEvent(core.ControlEvent{Complaint: b.createComplaint(reason)})
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(b.ctxBroadcast, core.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
+		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
+	}
 }
 
 func (b *Batcher) SendBAF(baf core.BatchAttestationFragment) {
 	b.logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
-	b.broadcastControlEvent(core.ControlEvent{BAF: baf})
-}
-
-func (b *Batcher) broadcastControlEvent(ce core.ControlEvent) {
-	for _, sender := range b.controlEventSenders {
-		b.sendControlEvent(ce, sender) // TODO make sure somehow we sent to 2f+1, and retry if not
-	}
-}
-
-func (b *Batcher) sendControlEvent(ce core.ControlEvent, sender ConsenterControlEventSender) {
-	t1 := time.Now()
-
-	defer func() {
-		b.logger.Infof("Sending control event took %v", time.Since(t1))
-	}()
-
-	if err := sender.SendControlEvent(ce); err != nil {
-		b.logger.Errorf("Failed sending control event; err: %v", err)
-		// TODO do something when sending fails
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(b.ctxBroadcast, core.ControlEvent{BAF: baf}); err != nil {
+		b.logger.Errorf("Failed to broadcast batch attestation fragment; err: %v", err)
 	}
 }
 

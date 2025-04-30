@@ -30,7 +30,7 @@ func TestBatcherRun(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStub(t, consenterNodes, numParties)
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
 	defer clean()
 
 	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
@@ -198,7 +198,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStub(t, consenterNodes, numParties)
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
 	defer clean()
 
 	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
@@ -286,5 +286,90 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	// still same primary
 	for i := 0; i < numParties; i++ {
 		require.Equal(t, types.PartyID(2), batchers[i].GetPrimaryID())
+	}
+}
+
+func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	// submit the first request and verify it was received
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[1].BAFCount() == 1*numParties && stubConsenters[2].BAFCount() == 1*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// stop one consenter – quorum (3/4) is still valid
+	stubConsenters[0].Stop()
+
+	// submit the second request
+	req = make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(2))
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(2) && batchers[1].Ledger.Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[2].BAFCount() == 2*numParties && stubConsenters[3].BAFCount() == 2*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// now stop another consenter – quorum (2/4) is not enough
+	stubConsenters[1].Stop()
+
+	// submit another request, batch will be created but waiting for quorum
+	req = make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(3))
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(3) && batchers[1].Ledger.Height(1) == uint64(3)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[2].BAFCount() == 3*numParties && stubConsenters[3].BAFCount() == 3*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// submit a fourth request – batcher should wait until the previous batch reaches quorum
+	req = make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(4))
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+
+	time.Sleep(5 * time.Second)
+
+	// verify the batcher did not create a new batch
+	require.Equal(t, uint64(3), batchers[0].Ledger.Height(1))
+
+	// recover one consenter – quorum (3/4) is available again
+	stubConsenters[0].Restart()
+
+	// verify the batcher created the fourth batch
+	require.Eventually(t, func() bool {
+		return stubConsenters[2].BAFCount() == 4*numParties && stubConsenters[3].BAFCount() == 4*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	for i := 0; i < numParties; i++ {
+		require.Equal(t, uint64(4), batchers[i].Ledger.Height(1))
 	}
 }
