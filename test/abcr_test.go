@@ -74,9 +74,10 @@ func TestABCR(t *testing.T) {
 	}
 
 	aLogger := testutil.CreateLogger(t, 1)
-	assembler := assembler.NewAssembler(assemblerConf, nil, aLogger)
 
 	assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
+	assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, nil, aLogger)
+
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 
 	go func() {

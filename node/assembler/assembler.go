@@ -27,12 +27,17 @@ func NewInitialAssemblerConsensusPosition(oi *state.OrderingInformation) core.As
 	}
 }
 
+type NetStopper interface {
+	Stop()
+}
+
 type Assembler struct {
 	assembler    core.Assembler
 	logger       types.Logger
 	ds           delivery.DeliverService
 	prefetcher   PrefetcherController
 	baReplicator delivery.ConsensusBringer
+	netStopper   NetStopper
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -49,6 +54,7 @@ func (a *Assembler) GetTxCount() uint64 {
 }
 
 func (a *Assembler) Stop() {
+	a.netStopper.Stop()
 	a.prefetcher.Stop()
 	a.assembler.Index.Stop()
 	a.assembler.WaitTermination()
@@ -58,6 +64,7 @@ func (a *Assembler) Stop() {
 
 func NewDefaultAssembler(
 	logger types.Logger,
+	net NetStopper,
 	config *config.AssemblerNodeConfig,
 	genesisBlock *common.Block,
 	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
@@ -118,6 +125,7 @@ func NewDefaultAssembler(
 			InitialDecisionPosition:           NewInitialAssemblerConsensusPosition(lastOrderingInfo),
 		},
 		logger:       logger,
+		netStopper:   net,
 		prefetcher:   prefetcher,
 		baReplicator: baReplicator,
 	}
@@ -130,9 +138,10 @@ func NewDefaultAssembler(
 	return assembler
 }
 
-func NewAssembler(config *config.AssemblerNodeConfig, genesisBlock *common.Block, logger types.Logger) *Assembler {
+func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, genesisBlock *common.Block, logger types.Logger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
+		net,
 		config,
 		genesisBlock,
 		&node_ledger.DefaultAssemblerLedgerFactory{},

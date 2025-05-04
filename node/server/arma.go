@@ -1,16 +1,21 @@
 package arma
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
+	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/node"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
@@ -20,6 +25,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/router"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
+)
+
+const (
+	TerminationGracePeriod = 10
 )
 
 func init() {
@@ -57,6 +66,37 @@ func (cli *CLI) configureNodesCommands() {
 	}
 }
 
+type NodeStopper interface {
+	Stop()
+}
+
+func stopNode(node NodeStopper, logger types.Logger, nodeAddr string) {
+	signalChan := make(chan os.Signal, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	signal.Notify(signalChan, syscall.SIGTERM)
+
+	go func() {
+		<-signalChan
+
+		go func() {
+			node.Stop()
+			cancel()
+		}()
+
+		logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
+
+		select {
+		case <-time.After(TerminationGracePeriod * time.Second):
+			logger.Infof("graceful shutdown: timeout expired")
+			cancel()
+			os.Exit(0)
+		case <-ctx.Done():
+			logger.Infof("graceful shutdown: success")
+			return
+		}
+	}()
+}
+
 func launchAssembler(
 	stop chan struct{},
 	loadConfigAndGenesis func(configFile *os.File) (*config.Configuration, *common.Block),
@@ -71,9 +111,9 @@ func launchAssembler(
 		} else {
 			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
 		}
-		assembler := assembler.NewAssembler(conf, genesisBlock, assemblerLogger)
 
 		srv := node.CreateGRPCAssembler(conf)
+		assembler := assembler.NewAssembler(conf, srv, genesisBlock, assemblerLogger)
 
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
 
@@ -81,6 +121,8 @@ func launchAssembler(
 			_ = srv.Start()
 			close(stop)
 		}()
+
+		stopNode(assembler, assemblerLogger, srv.Address())
 
 		assemblerLogger.Infof("Assembler listening on %s", srv.Address())
 	}
@@ -106,6 +148,7 @@ func launchConsensus(
 		defer consensus.Start()
 
 		srv := node.CreateGRPCConsensus(conf)
+		consensus.Net = srv
 
 		protos.RegisterConsensusServer(srv.Server(), consensus)
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), consensus.DeliverService)
@@ -115,6 +158,8 @@ func launchConsensus(
 			srv.Start()
 			close(stop)
 		}()
+
+		stopNode(consensus, consenterLogger, srv.Address())
 
 		consenterLogger.Infof("Consensus listening on %s", srv.Address())
 	}
@@ -135,10 +180,10 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", conf.PartyId, conf.ShardId))
 		}
 
-		batcher := batcher.CreateBatcher(conf, batcherLogger, nil, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
-		defer batcher.Run()
-
 		srv := node.CreateGRPCBatcher(conf)
+
+		batcher := batcher.CreateBatcher(conf, batcherLogger, srv, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
+		defer batcher.Run()
 
 		protos.RegisterRequestTransmitServer(srv.Server(), batcher)
 		protos.RegisterBatcherControlServiceServer(srv.Server(), batcher)
@@ -148,6 +193,8 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			srv.Start()
 			close(stop)
 		}()
+
+		stopNode(batcher, batcherLogger, srv.Address())
 
 		batcherLogger.Infof("Batcher listening on %s", srv.Address())
 	}
@@ -175,6 +222,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
+		stopNode(r, routerLogger, r.Address())
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), conf.PartyID)
 	}
 }

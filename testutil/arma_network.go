@@ -45,6 +45,16 @@ func (armaNetwork *ArmaNetwork) Stop() {
 	}
 }
 
+func (armaNetwork *ArmaNetwork) Kill() {
+	for k := range armaNetwork.armaNodes {
+		for i := range armaNetwork.armaNodes[k] {
+			for j := range armaNetwork.armaNodes[k][i] {
+				armaNetwork.armaNodes[k][i][j].KillArmaNode()
+			}
+		}
+	}
+}
+
 func (armaNetwork *ArmaNetwork) GetAssembler(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
 	require.True(t, len(armaNetwork.armaNodes["assembler"]) >= int(partyID))
@@ -82,5 +92,9 @@ func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan s
 }
 
 func (armaNodeInfo *ArmaNodeInfo) StopArmaNode() {
+	<-armaNodeInfo.RunInfo.Session.Terminate().Exited
+}
+
+func (armaNodeInfo *ArmaNodeInfo) KillArmaNode() {
 	<-armaNodeInfo.RunInfo.Session.Kill().Exited
 }

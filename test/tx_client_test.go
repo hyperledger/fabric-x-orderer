@@ -47,14 +47,8 @@ func TestTxClientSend(t *testing.T) {
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
 	defer armaNetwork.Stop()
 
-	startTimeout := time.After(30 * time.Second)
-	for i := 0; i < 20; i++ {
-		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
-		}
-	}
+	testutil.WaitReady(t, readyChan, 20, 10)
+
 	// 4. Send To Routers
 	uc, err := testutil.GetUserConfig(dir, 1)
 	assert.NoError(t, err)

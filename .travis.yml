@@ -26,7 +26,7 @@ jobs:
       name: "Unit Tests"
       script: 
         - set -e
-        - go test -race ./...
+        - go test -race -timeout 20m ./...
     - stage: "Tests"
       name: "Armageddon Test"
       script:

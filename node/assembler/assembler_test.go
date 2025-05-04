@@ -42,6 +42,10 @@ type assemblerTest struct {
 	consensusBringerMock           *delivery_mocks.FakeConsensusBringer
 }
 
+type dummyAssemblerStopper struct{}
+
+func (d *dummyAssemblerStopper) Stop() {}
+
 func generateRandomBytes(t *testing.T, size int) []byte {
 	b := make([]byte, size)
 	_, err := rand.Read(b)
@@ -190,6 +194,7 @@ func (at *assemblerTest) StartAssembler() {
 
 	at.assembler = assembler.NewDefaultAssembler(
 		at.logger,
+		&dummyAssemblerStopper{},
 		at.nodeConfig,
 		nil,
 		ledgerFactory,
