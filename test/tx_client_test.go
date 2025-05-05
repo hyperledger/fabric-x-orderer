@@ -12,11 +12,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
-
-	"github.com/stretchr/testify/require"
-
 	"github.ibm.com/decentralized-trust-research/arma/testutil/client"
 )
 
@@ -54,6 +52,7 @@ func TestTxClientSend(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, uc)
 	broadcastClient = client.NewBroadCastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
 	require.NoError(t, err)
 	for i := 0; i < totalTxNumber; i++ {
 		txContent := prepareTx(i, 100, []byte("sessionNumber"))
@@ -81,9 +80,8 @@ func TestTxClientSend(t *testing.T) {
 		return nil
 	}
 	dc.PullBlocks(cnx, 1, startBlock, endBlock, handler)
-	defer broadcastClient.Stop()
 	assert.Equal(t, totalTxNumber+1, totalTxs)
-
+	assert.True(t, totalBlocks > 2)
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
 }
 
