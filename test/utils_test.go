@@ -127,8 +127,8 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			BFTConfig:          BFTConfig,
 		}
 
-		c := consensus.CreateConsensus(conf, nil, logger)
-		c.Net = consenterNodes[i].GRPCServer
+		net := consenterNodes[i].GRPCServer
+		c := consensus.CreateConsensus(conf, net, nil, logger)
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)

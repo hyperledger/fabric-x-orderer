@@ -32,7 +32,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, genesisBlock *common.Block, logger arma_types.Logger) *Consensus {
+func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *common.Block, logger arma_types.Logger) *Consensus {
 	logger.Infof("Creating consensus, party: %d, address: %s, with genesis block: %t", conf.PartyId, conf.ListenAddress, genesisBlock != nil)
 
 	var currentNodes []uint64
@@ -57,6 +57,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, genesisBlock *common.Bloc
 
 	c := &Consensus{
 		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
+		Net:            net,
 		Config:         conf,
 		BFTConfig:      conf.BFTConfig,
 		Arma: &core.Consenter{

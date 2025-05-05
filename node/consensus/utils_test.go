@@ -156,7 +156,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int) consensusTes
 		conf := makeConf(dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
 
-		c := consensus.CreateConsensus(conf, nil, logger)
+		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, nil, logger)
 		grpcRegisterAndStart(c, consenterNodes[i])
 
 		listener := &storageListener{c: make(chan *common.Block, 100)}
@@ -182,7 +182,6 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int) consensusTes
 }
 
 func grpcRegisterAndStart(c *consensus.Consensus, n *node) {
-	c.Net = n.GRPCServer
 	gRPCServer := n.Server()
 
 	protos.RegisterConsensusServer(gRPCServer, c)
@@ -219,20 +218,21 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 }
 
 func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsgen.CA) error {
-	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], nil, setup.loggers[nodeIndex])
-
 	newConsenterNode := &node{
 		TLSCert: setup.consenterNodes[nodeIndex].TLSCert,
 		TLSKey:  setup.consenterNodes[nodeIndex].TLSKey,
 		sk:      setup.consenterNodes[nodeIndex].sk,
 		pk:      setup.consenterNodes[nodeIndex].pk,
 	}
+
 	var err error
 	newConsenterNode.GRPCServer, err = newGRPCServer(setup.consenterNodes[nodeIndex].Address(), ca, &tlsgen.CertKeyPair{
 		Key:  setup.consenterNodes[nodeIndex].TLSKey,
 		Cert: setup.consenterNodes[nodeIndex].TLSCert,
 	})
 	require.NoError(t, err)
+
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, nil, setup.loggers[nodeIndex])
 
 	grpcRegisterAndStart(setup.consensusNodes[nodeIndex], newConsenterNode)
 

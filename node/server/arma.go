@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/node"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
@@ -28,7 +27,7 @@ import (
 )
 
 const (
-	TerminationGracePeriod = 10
+	TerminationGracePeriod = 10 * time.Second
 )
 
 func init() {
@@ -70,7 +69,7 @@ type NodeStopper interface {
 	Stop()
 }
 
-func stopNode(node NodeStopper, logger types.Logger, nodeAddr string) {
+func stopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr string) {
 	signalChan := make(chan os.Signal, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	signal.Notify(signalChan, syscall.SIGTERM)
@@ -86,12 +85,13 @@ func stopNode(node NodeStopper, logger types.Logger, nodeAddr string) {
 		logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
 
 		select {
-		case <-time.After(TerminationGracePeriod * time.Second):
-			logger.Infof("graceful shutdown: timeout expired")
+		case <-time.After(TerminationGracePeriod):
+			logger.Infof("Graceful shutdown: timeout expired")
+			logger.Zap().Sync()
 			cancel()
 			os.Exit(0)
 		case <-ctx.Done():
-			logger.Infof("graceful shutdown: success")
+			logger.Infof("Graceful shutdown: success")
 			return
 		}
 	}()
@@ -122,7 +122,7 @@ func launchAssembler(
 			close(stop)
 		}()
 
-		stopNode(assembler, assemblerLogger, srv.Address())
+		stopSignalListen(assembler, assemblerLogger, srv.Address())
 
 		assemblerLogger.Infof("Assembler listening on %s", srv.Address())
 	}
@@ -143,12 +143,10 @@ func launchConsensus(
 			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", conf.PartyId))
 		}
 
-		consensus := consensus.CreateConsensus(conf, genesisBlock, consenterLogger)
+		srv := node.CreateGRPCConsensus(conf)
+		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, consenterLogger)
 
 		defer consensus.Start()
-
-		srv := node.CreateGRPCConsensus(conf)
-		consensus.Net = srv
 
 		protos.RegisterConsensusServer(srv.Server(), consensus)
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), consensus.DeliverService)
@@ -159,7 +157,7 @@ func launchConsensus(
 			close(stop)
 		}()
 
-		stopNode(consensus, consenterLogger, srv.Address())
+		stopSignalListen(consensus, consenterLogger, srv.Address())
 
 		consenterLogger.Infof("Consensus listening on %s", srv.Address())
 	}
@@ -194,7 +192,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		stopNode(batcher, batcherLogger, srv.Address())
+		stopSignalListen(batcher, batcherLogger, srv.Address())
 
 		batcherLogger.Infof("Batcher listening on %s", srv.Address())
 	}
@@ -222,7 +220,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		stopNode(r, routerLogger, r.Address())
+		stopSignalListen(r, routerLogger, r.Address())
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), conf.PartyID)
 	}
 }
