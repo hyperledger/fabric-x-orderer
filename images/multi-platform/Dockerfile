@@ -13,11 +13,10 @@ COPY . .
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 
-RUN go build -o ./bin/arma ./cmd/arma/main/main.go
-RUN go build -o ./bin/armageddon ./cmd/armageddon/main/main.go
+RUN make binary
 
 # At this point building of the application should be done
-FROM registry.access.redhat.com/ubi9/ubi-micro:9.4 AS prod
+FROM registry.access.redhat.com/ubi9/ubi-micro:9.5 AS prod
 
 WORKDIR /
 COPY --from=builder /src/bin/arma /usr/local/bin/arma
