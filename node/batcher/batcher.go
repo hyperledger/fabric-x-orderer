@@ -64,14 +64,12 @@ type Batcher struct {
 	stopOnce sync.Once
 	stopChan chan struct{}
 
-	primaryLock     sync.Mutex
-	term            uint64
-	primaryID       types.PartyID
-	ackStream       protos.BatcherControlService_NotifyAckClient
-	reqStream       protos.BatcherControlService_FwdRequestStreamClient
-	cancelFunc      context.CancelFunc
-	ctxBroadcast    context.Context
-	cancelBroadcast context.CancelFunc
+	primaryLock sync.Mutex
+	term        uint64
+	primaryID   types.PartyID
+	ackStream   protos.BatcherControlService_NotifyAckClient
+	reqStream   protos.BatcherControlService_FwdRequestStreamClient
+	cancelFunc  context.CancelFunc
 }
 
 func (b *Batcher) Run() {
@@ -88,7 +86,7 @@ func (b *Batcher) Run() {
 func (b *Batcher) Stop() {
 	b.logger.Infof("Stopping batcher node")
 	b.stopOnce.Do(func() { close(b.stopChan) })
-	b.cancelBroadcast()
+	b.controlEventBroadcaster.Stop()
 	b.batcher.Stop()
 	for len(b.stateChan) > 0 {
 		<-b.stateChan // drain state channel
@@ -338,8 +336,8 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 
 	f := (initState.N - 1) / 3
 
-	b.ctxBroadcast, b.cancelBroadcast = context.WithCancel(context.Background())
-	b.controlEventBroadcaster = NewControlEventBroadcaster(b.controlEventSenders, int(initState.N), int(f), 100*time.Millisecond, 10*time.Second, b.logger)
+	ctxBroadcast, cancelBroadcast := context.WithCancel(context.Background())
+	b.controlEventBroadcaster = NewControlEventBroadcaster(b.controlEventSenders, int(initState.N), int(f), 100*time.Millisecond, 10*time.Second, b.logger, ctxBroadcast, cancelBroadcast)
 
 	b.batcher = &core.Batcher{
 		Batchers:                getBatchersIDs(b.batchers),
@@ -623,14 +621,14 @@ func (b *Batcher) cleanupPrimaryStreams() {
 }
 
 func (b *Batcher) Complain(reason string) {
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(b.ctxBroadcast, core.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(core.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
 }
 
 func (b *Batcher) SendBAF(baf core.BatchAttestationFragment) {
 	b.logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(b.ctxBroadcast, core.ControlEvent{BAF: baf}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(core.ControlEvent{BAF: baf}); err != nil {
 		b.logger.Errorf("Failed to broadcast batch attestation fragment; err: %v", err)
 	}
 }

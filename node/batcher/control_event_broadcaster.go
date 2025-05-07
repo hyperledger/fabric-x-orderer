@@ -18,9 +18,11 @@ type ControlEventBroadcaster struct {
 	minRetryInterval time.Duration
 	maxRetryDelay    time.Duration
 	logger           types.Logger
+	ctx              context.Context
+	cancelFunc       context.CancelFunc
 }
 
-func (b *ControlEventBroadcaster) BroadcastControlEvent(ctx context.Context, ce core.ControlEvent) error {
+func (b *ControlEventBroadcaster) BroadcastControlEvent(ce core.ControlEvent) error {
 	retrySenders := b.senders
 	delay := b.minRetryInterval
 
@@ -57,10 +59,10 @@ func (b *ControlEventBroadcaster) BroadcastControlEvent(ctx context.Context, ce 
 
 		timer := time.NewTimer(delay)
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			timer.Stop()
 			b.logger.Errorf("broadcast cancelled")
-			return errors.Errorf("broadcast was cancelled: %v", ctx.Err())
+			return errors.Errorf("broadcast was cancelled: %v", b.ctx.Err())
 		case <-timer.C:
 		}
 
@@ -83,7 +85,7 @@ func (b *ControlEventBroadcaster) sendControlEvent(ce core.ControlEvent, sender 
 	return nil
 }
 
-func NewControlEventBroadcaster(senders []ConsenterControlEventSender, n int, f int, minRetryInterval time.Duration, maxRetryDelay time.Duration, logger types.Logger) *ControlEventBroadcaster {
+func NewControlEventBroadcaster(senders []ConsenterControlEventSender, n int, f int, minRetryInterval time.Duration, maxRetryDelay time.Duration, logger types.Logger, ctx context.Context, cancelFunc context.CancelFunc) *ControlEventBroadcaster {
 	return &ControlEventBroadcaster{
 		senders:          senders,
 		n:                n,
@@ -92,5 +94,11 @@ func NewControlEventBroadcaster(senders []ConsenterControlEventSender, n int, f 
 		minRetryInterval: minRetryInterval,
 		maxRetryDelay:    maxRetryDelay,
 		logger:           logger,
+		ctx:              ctx,
+		cancelFunc:       cancelFunc,
 	}
+}
+
+func (b *ControlEventBroadcaster) Stop() {
+	b.cancelFunc()
 }
