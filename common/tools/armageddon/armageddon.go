@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/arma/config/protos"
+
 	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
 
 	"github.com/alecthomas/kingpin"
@@ -173,6 +175,10 @@ type CLI struct {
 	receiveExpectedNumOfTxs *int
 	receiveOutputDir        *string
 	pullFromPartyId         *int
+	// createBlock command flags
+	sharedConfigYamlPath             *string
+	blockDir                         *string
+	sampleConfigPathForBlockCreation *string
 }
 
 func NewCLI() *CLI {
@@ -210,7 +216,6 @@ func (cli *CLI) configureCommands() {
 	cli.loadTransactions = load.Flag("transactions", "The number of transactions to be sent").Int()
 	cli.loadRate = load.Flag("rate", "The rate specifies the number of transactions per second to be sent as one or more rate numbers separated by space").String()
 	cli.loadTxSize = load.Flag("txSize", "The required transaction size in bytes").Int()
-
 	commands["load"] = load
 
 	receive := cli.app.Command("receive", "Pull txs from some assembler and report statistics")
@@ -219,6 +224,12 @@ func (cli *CLI) configureCommands() {
 	cli.receiveOutputDir = receive.Flag("output", "The output directory in which to place statistics file").Default(".").String()
 	cli.pullFromPartyId = receive.Flag("pullFromPartyId", "The party id of the assembler to pull blocks from").Int()
 	commands["receive"] = receive
+
+	createBlock := cli.app.Command("createBlock", "Create a block and a shared config binary from a shared configuration YAML file")
+	cli.sharedConfigYamlPath = createBlock.Flag("sharedConfigYaml", "The path to the shared configuration YAML file").String()
+	cli.blockDir = createBlock.Flag("output", "The output directory in which to place the block and the shared config binary").String()
+	cli.sampleConfigPathForBlockCreation = createBlock.Flag("sampleConfigPathForBlockCreation", "The path to the sample config files used by the configtxgen tool").String()
+	commands["createBlock"] = createBlock
 
 	cli.commands = commands
 }
@@ -252,9 +263,45 @@ func (cli *CLI) Run(args []string) {
 	// "load" command
 	case cli.commands["load"].FullCommand():
 		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize)
+
 	// "receive" command
 	case cli.commands["receive"].FullCommand():
 		receive(cli.receiveUserConfigFile, cli.pullFromPartyId, cli.receiveOutputDir, cli.receiveExpectedNumOfTxs)
+
+	// "createBlock" command
+	case cli.commands["createBlock"].FullCommand():
+		createBlock(cli.sharedConfigYamlPath, cli.blockDir, cli.sampleConfigPathForBlockCreation)
+	}
+}
+
+func createBlock(sharedConfigYamlPath *string, outputDir *string, sampleConfigPath *string) {
+	sharedConfig, sharedConfigYaml, err := config.LoadSharedConfig(*sharedConfigYamlPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	sharedConfigToBlock(sharedConfig, sharedConfigYaml, outputDir, sampleConfigPath)
+}
+
+func sharedConfigToBlock(sharedConfig *protos.SharedConfig, sharedConfigYaml *config.SharedConfigYaml, outputDir *string, sampleConfigPath *string) {
+	sharedConfigBytes, err := proto.Marshal(sharedConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error marshaling shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	sharedConfigBinaryPath := filepath.Join(*outputDir, "shared_config.bin")
+	err = os.WriteFile(sharedConfigBinaryPath, sharedConfigBytes, 0o644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing the shared config binary: %s", err)
+		os.Exit(-1)
+	}
+
+	_, err = genconfig.CreateGenesisBlock(*outputDir, sharedConfigYaml, sharedConfigBinaryPath, *sampleConfigPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creation bootstrap config block: %s", err)
+		os.Exit(-1)
 	}
 }
 
@@ -320,30 +367,14 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 		os.Exit(-1)
 	}
 
-	sharedConfig, err := config.LoadSharedConfig(filepath.Join(*outputDir, "bootstrap", "shared_config.yaml"))
+	sharedConfig, _, err := config.LoadSharedConfig(filepath.Join(*outputDir, "bootstrap", "shared_config.yaml"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)
 		os.Exit(-1)
 	}
 
-	sharedConfigBytes, err := proto.Marshal(sharedConfig)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling shared config: %s", err)
-		os.Exit(-1)
-	}
-
-	sharedConfigBinaryPath := filepath.Join(*outputDir, "bootstrap", "shared_config.bin")
-	err = os.WriteFile(sharedConfigBinaryPath, sharedConfigBytes, 0o644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing the shared config binary: %s", err)
-		os.Exit(-1)
-	}
-
-	_, err = genconfig.CreateGenesisBlock(filepath.Join(*outputDir, "bootstrap"), sharedConfigYaml, sharedConfigBinaryPath, *sampleConfigPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creation bootstrap config block: %s", err)
-		os.Exit(-1)
-	}
+	blockDir := filepath.Join(*outputDir, "bootstrap")
+	sharedConfigToBlock(sharedConfig, sharedConfigYaml, &blockDir, sampleConfigPath)
 
 	// generate user config yaml file for each party
 	// user will be able to connect to each of the routers and assemblers only if it receives for each router the CA that signed the certificate of that router.

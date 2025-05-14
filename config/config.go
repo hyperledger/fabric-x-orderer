@@ -50,7 +50,7 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 	switch conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method {
 	case "yaml":
 		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
-			conf.SharedConfig, err = LoadSharedConfig(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+			conf.SharedConfig, _, err = LoadSharedConfig(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
 			if err != nil {
 				return nil, nil, errors.Wrapf(err, "failed to read the shared configuration from: %s", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
 			}

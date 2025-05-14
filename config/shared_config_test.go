@@ -50,7 +50,7 @@ func TestSharedConfigLoading(t *testing.T) {
 	require.NotNil(t, networkSharedConfig)
 
 	// 4.
-	sharedConfig, err := config.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
+	sharedConfig, _, err := config.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
 	require.NoError(t, err)
 	require.NotNil(t, sharedConfig)
 	require.NotNil(t, sharedConfig.BatchingConfig)

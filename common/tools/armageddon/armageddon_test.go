@@ -300,6 +300,53 @@ func TestArmageddonNonTLS(t *testing.T) {
 // Scenario:
 // 1. Create a config YAML file to be an input to armageddon
 // 2. Run armageddon generate command to create crypto material and config files
+// 3. Check that createBlock command creates the expected output
+func TestArmageddonBlockCreationFromSharedConfigYAML(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	blockDir := filepath.Join(dir, "block")
+	err = os.MkdirAll(blockDir, 0o755)
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+
+	// 2.
+	armageddon := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	sharedConfigYAMLPath := filepath.Join(dir, "bootstrap", "shared_config.yaml")
+	armageddon.Run([]string{"createBlock", "--sharedConfigYaml", sharedConfigYAMLPath, "--output", blockDir, "--sampleConfigPathForBlockCreation", sampleConfigPath})
+	err = checkBlockDir(blockDir)
+	require.NoError(t, err)
+}
+
+func checkBlockDir(outputDir string) error {
+	filePath := filepath.Join(outputDir, "shared_config.bin")
+	if !fileExists(filePath) {
+		return fmt.Errorf("missing file: %s\n", filePath)
+	}
+
+	filePath = filepath.Join(outputDir, "bootstrap.block")
+	if !fileExists(filePath) {
+		return fmt.Errorf("missing file: %s\n", filePath)
+	}
+
+	filePath = filepath.Join(outputDir, "metaNamespaceVerificationKeyPath.pem")
+	if !fileExists(filePath) {
+		return fmt.Errorf("missing file: %s\n", filePath)
+	}
+
+	return nil
+}
+
+// Scenario:
+// 1. Create a config YAML file to be an input to armageddon
+// 2. Run armageddon generate command to create crypto material and config files
 // 3. Check that all required material was generated in the expected structure
 func TestArmageddonGenerateNewConfig(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())

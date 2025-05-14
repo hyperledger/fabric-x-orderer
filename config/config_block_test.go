@@ -35,7 +35,7 @@ func TestReadGenesisBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	sharedConfigYamlPath := filepath.Join(dir, "bootstrap", "shared_config.yaml")
-	actualSharedConfig, err := config.LoadSharedConfig(sharedConfigYamlPath)
+	actualSharedConfig, _, err := config.LoadSharedConfig(sharedConfigYamlPath)
 	require.NoError(t, err)
 
 	proto.Equal(&sharedConfigFromBlock, actualSharedConfig)

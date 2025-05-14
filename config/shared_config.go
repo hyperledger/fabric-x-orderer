@@ -17,16 +17,16 @@ type SharedConfigYaml struct {
 }
 
 // LoadSharedConfig reads the shared config yaml and translate it to the proto shared config.
-func LoadSharedConfig(filePath string) (*protos.SharedConfig, error) {
+func LoadSharedConfig(filePath string) (*protos.SharedConfig, *SharedConfigYaml, error) {
 	sharedConfigYaml, err := loadSharedConfigYAML(filePath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sharedConfig, err := parseSharedConfigYaml(sharedConfigYaml)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return sharedConfig, nil
+	return sharedConfig, sharedConfigYaml, nil
 }
 
 // loadSharedConfigYAML reads the boostrap/shared_config.yaml file.
