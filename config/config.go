@@ -5,12 +5,16 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
+
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
@@ -26,9 +30,9 @@ type Configuration struct {
 }
 
 // ReadConfig reads the configurations from the config file and returns it. The configuration includes both local and shared.
-func ReadConfig(configFilePath string) (*Configuration, error) {
+func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 	if configFilePath == "" {
-		return nil, errors.New("path to the configuration file is empty")
+		return nil, nil, errors.New("path to the configuration file is empty")
 	}
 
 	var err error
@@ -39,38 +43,49 @@ func ReadConfig(configFilePath string) (*Configuration, error) {
 
 	conf.LocalConfig, err = LoadLocalConfig(configFilePath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	var genesisBlock *common.Block
 	switch conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method {
 	case "yaml":
 		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
 			conf.SharedConfig, err = LoadSharedConfig(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to read the shared configuration from: %s", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+				return nil, nil, errors.Wrapf(err, "failed to read the shared configuration from: %s", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
 			}
 		} else {
-			return nil, errors.Wrapf(err, "failed to read shared config, path is empty")
+			return nil, nil, errors.Wrapf(err, "failed to read shared config, path is empty")
 		}
 	case "block":
 		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
-			consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+			blockPath := conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File
+			data, err := os.ReadFile(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
 			if err != nil {
-				return nil, err
+				return nil, nil, fmt.Errorf("could not read block %s", blockPath)
+			}
+			genesisBlock, err := protoutil.UnmarshalBlock(data)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error unmarshalling to block: %s", err)
+			}
+
+			consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(genesisBlock)
+			if err != nil {
+				return nil, nil, err
 			}
 
 			err = proto.Unmarshal(consensusMetaData, conf.SharedConfig)
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
+				return nil, nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
 			}
 		} else {
-			return nil, errors.Wrapf(err, "failed to read a cofig block, path is empty")
+			return nil, nil, errors.Wrapf(err, "failed to read a cofig block, path is empty")
 		}
 	default:
-		return nil, errors.Errorf("bootstrap method %s is invalid", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method)
+		return nil, nil, errors.Errorf("bootstrap method %s is invalid", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method)
 	}
 
-	return conf, nil
+	return conf, genesisBlock, nil
 }
 
 func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types.Configuration, error) {

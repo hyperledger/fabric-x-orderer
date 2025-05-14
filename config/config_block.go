@@ -5,16 +5,11 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
 )
 
 // ReadSharedConfigFromBootstrapConfigBlock reads the shared configuration which is encoded in the consensus metadata in a block.
-func ReadSharedConfigFromBootstrapConfigBlock(path string) ([]byte, error) {
-	configBlock, err := configtxgen.ReadBlock(path)
-	if err != nil {
-		return nil, err
-	}
+func ReadSharedConfigFromBootstrapConfigBlock(configBlock *common.Block) ([]byte, error) {
 	consensusMetadata, err := ReadConsensusMetadataFromConfigBlock(configBlock)
 	if err != nil {
 		return nil, err

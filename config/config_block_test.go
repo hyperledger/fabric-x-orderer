@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
+
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/config/generate"
@@ -22,7 +24,10 @@ func TestReadGenesisBlock(t *testing.T) {
 	require.NotNil(t, block)
 
 	blockPath := filepath.Join(dir, "bootstrap.block")
-	consensusMetaData, err := config.ReadSharedConfigFromBootstrapConfigBlock(blockPath)
+	configBlock, err := configtxgen.ReadBlock(blockPath)
+	require.NoError(t, err)
+	require.NotNil(t, configBlock)
+	consensusMetaData, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock)
 	require.NoError(t, err)
 
 	var sharedConfigFromBlock protos.SharedConfig

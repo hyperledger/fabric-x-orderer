@@ -3,10 +3,8 @@ package arma
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
-	"path"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -14,7 +12,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/node"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
@@ -165,7 +162,7 @@ func launchConsensus(
 
 func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		config, err := config.ReadConfig(configFile.Name())
+		config, _, err := config.ReadConfig(configFile.Name())
 		if err != nil {
 			panic(fmt.Sprintf("error launching batcher, err: %s", err))
 		}
@@ -200,7 +197,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 
 func launchRouter(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		config, err := config.ReadConfig(configFile.Name())
+		config, _, err := config.ReadConfig(configFile.Name())
 		if err != nil {
 			panic(fmt.Sprintf("error launching router, err: %s", err))
 		}
@@ -259,41 +256,9 @@ func loadConfigAndGenesis(configFile *os.File) (*config.Configuration, *common.B
 		fmt.Fprintf(os.Stderr, "failed extracting absolute path from file %s: %v \n", configFile.Name(), err)
 		os.Exit(2)
 	}
-	config, err := config.ReadConfig(absConfigFileName)
+	config, block, err := config.ReadConfig(absConfigFileName)
 	if err != nil {
 		panic(fmt.Sprintf("error reading local config, err: %s", err))
-	}
-
-	configPath, _ := filepath.Split(absConfigFileName)
-	blockFileName := path.Join(configPath, "genesis.block")
-	statBlock, err := os.Stat(blockFileName)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Fprintf(os.Stdout, "genesis block file does not exist in config path: %s (ignoring) \n", configPath)
-			return config, nil
-		} else {
-			fmt.Fprintf(os.Stderr, "failed stat file %s: %v \n", blockFileName, err)
-			os.Exit(2)
-		}
-	}
-
-	blockFile, err := os.Open(blockFileName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "can not open genesis block file from: %s (ignoring): %v \n", blockFileName, err)
-		return config, nil
-	}
-
-	genesisBlockBytes := make([]byte, statBlock.Size())
-	_, err = io.ReadFull(blockFile, genesisBlockBytes)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed reading file %s: %v \n", blockFile.Name(), err)
-		os.Exit(2)
-	}
-
-	block, err := protoutil.UnmarshalBlock(genesisBlockBytes)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed unmarshalling block %s: %v \n", blockFile.Name(), err)
-		os.Exit(2)
 	}
 
 	return config, block
