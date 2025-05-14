@@ -78,12 +78,6 @@ Currently, transactions are not verified by Arma, and do not need to be signed b
 pass as is to the scalable committer which is in charge of verifying their validity in terms of structure, semantics, and
 signatures.
 
-## Install
-
-TODO
-
-
-
 ## Run
 
 Arma is composed of 4 types of servers: `router`, `batcher`, `consensus` and `assembler`; also known as "server roles".
@@ -109,21 +103,14 @@ To start a server use the arma CLI tool:
 Each server role expects a config file, specified in the command line (mandatory).
 For more details please refer to [arma-deployment](deployment/README.md).
 
-### Starting with an external genesis block
+### Starting with a genesis block
 
-Each server may be given an optional external genesis block, which must be on the same path as the config file and be called `genesis.block`.
-For example, if an assembler is started like so:
-   ```bash
-   ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
-   ```
+The local configuration of each node points to the location of the genesis block.  
+That way, when a node starts up, it bootstraps from the genesis block and extract its shared configuration. 
 
-It will look for a genesis block here: `arma-config/Party1/genesis.block`.
+NOTE: All parties and all servers must be given the same genesis block.
+If a genesis block is not found, Arma will fail to start.
 
-All parties and all servers must be given the same genesis block.
-If a genesis block is not found, Arma will start with an empty config block.
-
-*NOTE*: This is a temporary feature, as Arma is planned to migrate to a "Fabric-style" configuration.
-Furthermore, at this point the genesis block is not read by Arma at all, it is only served to client of the delivery service as block 0.
 
 ## Configuration and deployment
 
@@ -132,8 +119,7 @@ For more information about deployment of Arma, please refer to [arma-deployment]
 
 
 ## Tools
-
-TODO
+Armageddon is a command-line tool that provides a simple way to config an ARMA network, for more information please refer to [armageddon](cmd/armageddon/README.md).
 
 
 ## Development Environment 

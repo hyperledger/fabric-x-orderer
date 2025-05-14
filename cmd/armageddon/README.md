@@ -49,19 +49,83 @@ Running
 `./bin/armageddon generate --config=config.yaml --output=arma-config --sampleConfigPath=ARMA/testutil/fabric/sampleconfig` involves:
 1) Reading the configuration template that includes the nodes addresses and whether we are running a non/TLS/mTLS connection between client and routers and assemblers. 
 2) Generating crypto material.
-3) Generating the local and the shared configuration for all nodes.   
+3) Generating the local and the shared configuration for all nodes.  
 
+###
+This command creates an `arma-config` directory, which contains the following subdirectories:
+   * config - the local configuration of each node, for more details see [local configuration](#local-configuration).
+   * bootstrap - the shared configuration of each node, for more details see [shared configuration](#shared-configuration).
+   * crypto - the crypto material for all ARMA nodes, for more details see [crypto](#crypto).
 
-The configuration files generated in step 3 are classified into two types:  
+##
+<a id="crypto"></a>
+Crypto:  
+The folder structure of the crypto material is:  
 
-1) Local configuration:  
+````
+arma-config
+└── crypto
+	└── ordererOrganizations
+	    └── org{partyID}
+	        ├── ca
+	        ├── tlsca
+	        ├── msp
+	        │   └── admincerts (ignored)
+	        ├── orderers
+	        │   └── party{partyID}
+	        │       ├── router
+	        │       ├── batcher1
+	        │       ├── batcher2
+	        │       ├── ...
+	        │       ├── batcher{shards}
+	        │       ├── consenter
+	        │       └── assembler
+	        └── users
+````
+##
+For each party i, all cryptographic materials for party{i} are located under `arma-config/crypto/ordererOrganizations/org{i}`
+For example, all cryptographic materials for party1 are located under `arma-config/crypto/ordererOrganizations/org1`:
+   - The Certificate Authority (CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/ca`.
+   - The TLS Certificate Authority (TLS CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/tlsca`.
+   - Each node within party1 has its own TLS certificates and keys located in `arma-config/crypto/ordererOrganizations/org1/orderers/party1/{node}`. For batchers and cosenters nodes a signing certificate with a corresponding key are generated. 
+   - TLS certificate and key for user of party1 is stored in `arma-config/crypto/ordererOrganizations/org1/users`.
+NOTE: A fake CA is created for each party.
+
+###
+<a id="local-configuration"></a>
+Local configuration:  
 The local configuration is created for each party for each node and holds node-specific details that are necessary for the node's operation and accessible only to that particular node.  
-The local configuration is organized in a folder structure divided into parties.  
-For example, see `ARMA/config/sample/test-sample/config`.
-The local configuration specifies the location and format (YAML or block) of the shared configuration, with "block" being the default format.  
-The local configuration generation involves creating for each party a `user_config.yaml` is that includes all necessary details that an ARMA user needs.
+The local configuration is organized in a folder structure divided into parties, each party includes YAML files for every node in that party:
+````
+arma-config
+└── config
+   ├── party1
+   │   ├── local_config_assembler.yaml
+   │   ├── local_config_batcher1.yaml
+   │   ├── local_config_batcher2.yaml
+   │   ├── local_config_consenter.yaml
+   │   ├── local_config_router.yaml
+   │   ├── user_config.yaml
+   ├── party2
+   ├── party3
+   ├── party4
+````
+For example, see `ARMA/config/sample/test-sample/config`.  
 
-3) Shared configuration:  
+The local configuration generation involves creating for each party a `user_config.yaml` that includes all necessary details that an ARMA user needs.  
+
+The local configuration specifies the location and format (YAML or block) of the shared configuration, with "block" being the default format, i.e. the local configuration points to the location of the config block where the shared configuration is encoded.  
+Here’s how it appears in the local config YAML file:
+````
+General:
+   Bootstrap:
+      Method: block
+      File: /var/folders/dec-trust/arma-config/bootstrap/bootstrap.block
+````
+
+###
+<a id="shared-configuration"></a>
+Shared configuration:  
 The shared configuration contains essential information that is uniformly applied across multiple ARMA nodes, ensuring they all operate with the same fundamental settings.  
 For example, see `ARMA/config/sample/test-sample/bootstrap`. This directory includes:
    - shared_config.yaml, which contains paths to certificates and keys.
@@ -157,3 +221,36 @@ Running
 
 NOTE:
 It is recommended to run the `receive` command first to start waiting for blocks and then run `load` to send transactions.
+
+##
+### createBlock Command
+1. Run from `ARMA` root folder.
+2. Run: `./bin/armageddon createBlock [args]`.
+
+   Replace `[args]` with corresponding flags.
+
+###
+##### Flags
+| Flags                              | Description                                                                                                                                                           |
+|------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sharedConfigYaml`                 | The absolute or relative path of the shared configuration YAML file                                                                                                   |
+| `output`                           | The absolute or relative path to which the config block will be saved. If missing the config block will be saved under `arma-config`                                  |
+| `sampleConfigPathForBlockCreation` | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
+
+
+###
+##### Example:
+
+Running
+`./bin/armageddon createBlock --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config ----sampleConfigPathForBlockCreation=sampleConfigPath` involves:
+1) Reading the shared configuration.
+2) Creating the following files under the output directory:
+   1) `shared_config.bin`.
+   2) `bootstrap.block`. The `shared_config.bin` is embed in the `bootstrap.block`.
+   3) `metaNamespaceVerificationKeyPath.pem` which is embed in the `bootstrap.block`.
+  
+For more details on the structure of the config block, see [config block](#config-block).
+##
+<a id="config-block"></a>
+### Config block
+// TODO: add details
