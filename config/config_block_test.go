@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package config_test
 
 import (
+	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
+	"os"
 	"path/filepath"
 	"testing"
-
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/config"
@@ -30,9 +30,11 @@ func TestReadGenesisBlock(t *testing.T) {
 	require.NotNil(t, block)
 
 	blockPath := filepath.Join(dir, "bootstrap.block")
-	configBlock, err := configtxgen.ReadBlock(blockPath)
+	data, err := os.ReadFile(blockPath)
 	require.NoError(t, err)
-	require.NotNil(t, configBlock)
+	configBlock, err := protoutil.UnmarshalBlock(data)
+	require.NoError(t, err)
+	require.NotNil(t, block)
 	consensusMetaData, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock)
 	require.NoError(t, err)
 
