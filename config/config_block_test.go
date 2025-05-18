@@ -7,10 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package config_test
 
 import (
-	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/config"

@@ -281,6 +281,11 @@ func (cli *CLI) Run(args []string) {
 }
 
 func createBlock(sharedConfigYamlPath *string, outputDir *string, sampleConfigPath *string) {
+	if *outputDir == "" {
+		fmt.Fprintf(os.Stderr, "Error creating block, outputDir is missing")
+		os.Exit(-1)
+	}
+
 	sharedConfig, sharedConfigYaml, err := config.LoadSharedConfig(*sharedConfigYamlPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)

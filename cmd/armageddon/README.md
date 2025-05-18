@@ -234,7 +234,7 @@ It is recommended to run the `receive` command first to start waiting for blocks
 | Flags                              | Description                                                                                                                                                           |
 |------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `sharedConfigYaml`                 | The absolute or relative path of the shared configuration YAML file                                                                                                   |
-| `output`                           | The absolute or relative path to which the config block will be saved. If missing the config block will be saved under `arma-config`                                  |
+| `output`                           | The absolute or relative path to which the config block will be saved.                                                                                                |
 | `sampleConfigPathForBlockCreation` | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
 
 
@@ -242,12 +242,12 @@ It is recommended to run the `receive` command first to start waiting for blocks
 ##### Example:
 
 Running
-`./bin/armageddon createBlock --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config ----sampleConfigPathForBlockCreation=sampleConfigPath` involves:
+`./bin/armageddon createBlock --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config --sampleConfigPathForBlockCreation=sampleConfigPath` involves:
 1) Reading the shared configuration.
 2) Creating the following files under the output directory:
    1) `shared_config.bin`.
    2) `bootstrap.block`. The `shared_config.bin` is embed in the `bootstrap.block`.
-   3) `metaNamespaceVerificationKeyPath.pem` which is embed in the `bootstrap.block`.
+   3) `metaNamespaceVerificationKeyPath.pem` which is embedded in the `bootstrap.block`.
   
 For more details on the structure of the config block, see [config block](#config-block).
 ##
