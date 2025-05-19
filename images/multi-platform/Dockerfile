@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.23.4 AS builder
+FROM docker.io/library/golang:1.24.3 AS builder
 
 # If you need to access github.ibm.com for the build
 # RUN apt update

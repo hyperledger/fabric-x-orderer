@@ -902,7 +902,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	}
 	converted_rates := make([]int, len(rates))
 	for i := 0; i < len(rates); i++ {
-		fmt.Printf(rates[i])
+		fmt.Print(rates[i])
 		converted_rates[i], err = strconv.Atoi(rates[i])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "rate is not valid: %s", err)

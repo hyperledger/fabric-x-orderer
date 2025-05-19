@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-ARG GO_VER=1.23.4
+ARG GO_VER=1.24.3
 ARG PROTOC_VER=1.5.4
 ARG PROTOTOOL_VER=1.10.0
 
