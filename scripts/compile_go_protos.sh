@@ -1,4 +1,9 @@
 #!/bin/sh
+#
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
 proto_files="\
  node/protos/comm/communication.proto \

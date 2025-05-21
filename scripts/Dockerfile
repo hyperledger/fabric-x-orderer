@@ -1,6 +1,7 @@
 # Copyright the Hyperledger Fabric contributors. All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
+#
 
 ARG GO_VER=1.24.3
 ARG PROTOC_VER=1.5.4

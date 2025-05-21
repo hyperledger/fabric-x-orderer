@@ -1,3 +1,8 @@
+# Copyright IBM Corp All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 # This makefile defines the following targets
 
 #   - check-deps: check for vendored dependencies that are no longer used

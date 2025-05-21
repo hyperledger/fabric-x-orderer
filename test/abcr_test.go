@@ -1,3 +1,9 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
 // package test contains integration tests.
 package test
 

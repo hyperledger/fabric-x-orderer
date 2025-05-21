@@ -1,3 +1,8 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ARG GO_VERSION=1.24.3
 ARG BASE_IMAGE=alpine
 
