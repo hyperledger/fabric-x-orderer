@@ -9,12 +9,9 @@ package batcher
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"math"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,10 +20,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node"
 	node_config "github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/crypto"
 	node_ledger "github.ibm.com/decentralized-trust-research/arma/node/ledger"
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
-	"github.ibm.com/decentralized-trust-research/arma/request"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/pkg/errors"
@@ -295,104 +290,6 @@ func (b *Batcher) NotifyAck(stream protos.BatcherControlService_NotifyAckServer)
 	}
 }
 
-func (b *Batcher) indexTLSCerts() {
-	for _, batcher := range b.batchers {
-		rawTLSCert := batcher.TLSCert
-		bl, _ := pem.Decode(rawTLSCert)
-		if bl == nil || bl.Bytes == nil {
-			b.logger.Panicf("Failed decoding TLS certificate of batcher %d from PEM", batcher.PartyID)
-		}
-
-		b.batcherCerts2IDs[string(bl.Bytes)] = batcher.PartyID
-	}
-}
-
-func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
-	privateKey := createPrivateKey(logger, config.SigningPrivateKey)
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, &NoopClientRequestSigVerifier{}, nil)
-	b := &Batcher{
-		requestsInspectorVerifier: requestsIDAndVerifier,
-		batcherDeliverService:     ds,
-		stateReplicator:           sr,
-		privateKey:                privateKey,
-		signer:                    crypto.ECDSASigner(*privateKey),
-		logger:                    logger,
-		Net:                       net,
-		Ledger:                    ledger,
-		batcherCerts2IDs:          make(map[string]types.PartyID),
-		config:                    config,
-	}
-
-	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
-	for i, consenterInfo := range config.Consenters {
-		b.controlEventSenders[i] = senderCreator.CreateConsenterControlEventSender(config.TLSPrivateKeyFile, config.TLSCertificateFile, consenterInfo)
-	}
-
-	b.batchers = batchersFromConfig(config)
-	if len(b.batchers) == 0 {
-		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", config.ShardId, config.Shards)
-	}
-
-	initState := computeZeroState(config)
-	b.stateRef.Store(&initState)
-
-	b.primaryID, b.term = b.getPrimaryIDAndTerm(&initState)
-
-	b.indexTLSCerts()
-
-	f := (initState.N - 1) / 3
-
-	ctxBroadcast, cancelBroadcast := context.WithCancel(context.Background())
-	b.controlEventBroadcaster = NewControlEventBroadcaster(b.controlEventSenders, int(initState.N), int(f), 100*time.Millisecond, 10*time.Second, b.logger, ctxBroadcast, cancelBroadcast)
-
-	b.batcher = &core.Batcher{
-		Batchers:                getBatchersIDs(b.batchers),
-		BatchPuller:             bp,
-		Threshold:               int(f + 1),
-		N:                       initState.N,
-		BatchTimeout:            config.BatchCreationTimeout,
-		Ledger:                  ledger,
-		MemPool:                 b.createMemPool(config),
-		ID:                      config.PartyId,
-		Shard:                   config.ShardId,
-		Logger:                  logger,
-		StateProvider:           b,
-		RequestInspector:        b.requestsInspectorVerifier,
-		BAFCreator:              b,
-		BAFSender:               b,
-		BatchAcker:              b,
-		Complainer:              b,
-		BatchedRequestsVerifier: b.requestsInspectorVerifier,
-		BatchSequenceGap:        config.BatchSequenceGap,
-	}
-
-	return b
-}
-
-func getBatchersIDs(batchers []node_config.BatcherInfo) []types.PartyID {
-	var parties []types.PartyID
-	for _, batcher := range batchers {
-		parties = append(parties, batcher.PartyID)
-	}
-
-	return parties
-}
-
-func (b *Batcher) createMemPool(config *node_config.BatcherNodeConfig) core.MemPool {
-	opts := request.PoolOptions{
-		MaxSize:               config.MemPoolMaxSize,
-		BatchMaxSize:          config.BatchMaxSize,
-		BatchMaxSizeBytes:     config.BatchMaxBytes,
-		RequestMaxBytes:       config.RequestMaxBytes,
-		SubmitTimeout:         config.SubmitTimeout,
-		FirstStrikeThreshold:  config.FirstStrikeThreshold,
-		SecondStrikeThreshold: config.SecondStrikeThreshold,
-		AutoRemoveTimeout:     config.AutoRemoveTimeout,
-	}
-
-	return request.NewPool(b.logger, b.requestsInspectorVerifier, opts, b)
-}
-
 func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
 	b.logger.Debugf("First strike timeout occurred on request %s", b.requestsInspectorVerifier.RequestID(req))
 	b.sendReq(req)
@@ -401,21 +298,6 @@ func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
 func (b *Batcher) OnSecondStrikeTimeout() {
 	b.logger.Warnf("Second strike timeout occurred; sending a complaint")
 	b.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; second strike timeout occurred", b.config.PartyId, b.config.ShardId))
-}
-
-func createPrivateKey(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {
-	bl, _ := pem.Decode(signingPrivateKey)
-
-	if bl == nil || bl.Bytes == nil {
-		logger.Panicf("Signing key is not a valid PEM")
-	}
-
-	sk, err := x509.ParsePKCS8PrivateKey(bl.Bytes)
-	if err != nil {
-		logger.Panicf("Signing key is not a valid PKCS8 private key: %v", err)
-	}
-
-	return sk.(*ecdsa.PrivateKey)
 }
 
 func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
@@ -462,34 +344,6 @@ func (b *Batcher) createComplaint(reason string) *core.Complaint {
 	}
 	b.logger.Infof("Created complaint with term %d and reason %s", term, reason)
 	return c
-}
-
-func computeZeroState(config *node_config.BatcherNodeConfig) core.State {
-	var state core.State
-	for _, shard := range config.Shards {
-		state.Shards = append(state.Shards, core.ShardTerm{
-			Shard: shard.ShardId,
-		})
-	}
-
-	state.N = uint16(len(config.Consenters))
-
-	return state
-}
-
-func batchersFromConfig(config *node_config.BatcherNodeConfig) []node_config.BatcherInfo {
-	var batchers []node_config.BatcherInfo
-	for _, shard := range config.Shards {
-		if shard.ShardId == config.ShardId {
-			batchers = shard.Batchers
-		}
-	}
-
-	sort.Slice(batchers, func(i, j int) bool {
-		return int(batchers[i].PartyID) < int(batchers[j].PartyID)
-	})
-
-	return batchers
 }
 
 func (b *Batcher) sendReq(req []byte) {
@@ -664,34 +518,4 @@ func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []by
 	baf.SetSignature(sig)
 
 	return baf, nil
-}
-
-func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator) *Batcher {
-	var parties []types.PartyID
-	for shIdx, sh := range conf.Shards {
-		if sh.ShardId != conf.ShardId {
-			continue
-		}
-
-		for _, b := range conf.Shards[shIdx].Batchers {
-			parties = append(parties, b.PartyID)
-		}
-		break
-	}
-
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(conf.ShardId, conf.PartyId, parties, conf.Directory, logger)
-	if err != nil {
-		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
-	}
-
-	deliveryService := &BatcherDeliverService{
-		LedgerArray: ledgerArray,
-		Logger:      logger,
-	}
-
-	bp := NewBatchPuller(conf, ledgerArray, logger)
-
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), senderCreator, net)
-
-	return batcher
 }
