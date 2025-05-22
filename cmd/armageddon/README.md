@@ -223,9 +223,9 @@ NOTE:
 It is recommended to run the `receive` command first to start waiting for blocks and then run `load` to send transactions.
 
 ##
-### createBlock Command
+### createSharedConfigProto Command
 1. Run from `ARMA` root folder.
-2. Run: `./bin/armageddon createBlock [args]`.
+2. Run: `./bin/armageddon createSharedConfigProto [args]`.
 
    Replace `[args]` with corresponding flags.
 
@@ -235,20 +235,16 @@ It is recommended to run the `receive` command first to start waiting for blocks
 |------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `sharedConfigYaml`                 | The absolute or relative path of the shared configuration YAML file                                                                                                   |
 | `output`                           | The absolute or relative path to which the config block will be saved.                                                                                                |
-| `sampleConfigPathForBlockCreation` | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
 
 
 ###
 ##### Example:
 
 Running
-`./bin/armageddon createBlock --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config --sampleConfigPathForBlockCreation=sampleConfigPath` involves:
+`./bin/armageddon createSharedConfigProto --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config` involves:
 1) Reading the shared configuration.
-2) Creating the following files under the output directory:
-   1) `shared_config.bin`.
-   2) `bootstrap.block`. The `shared_config.bin` is embed in the `bootstrap.block`.
-   3) `metaNamespaceVerificationKeyPath.pem` which is embedded in the `bootstrap.block`.
-  
+2) Creating `shared_config.binpb` and write it under the output directory.
+   
 For more details on the structure of the config block, see [config block](#config-block).
 ##
 <a id="config-block"></a>

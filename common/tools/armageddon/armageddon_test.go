@@ -306,11 +306,11 @@ func TestArmageddonNonTLS(t *testing.T) {
 // Scenario:
 // 1. Create a config YAML file to be an input to armageddon
 // 2. Run armageddon generate command to create crypto material and config files
-// 3. Check that createBlock command creates the expected output
-func TestArmageddonBlockCreationFromSharedConfigYAML(t *testing.T) {
+// 3. Check that createSharedConfigProto command creates the expected output
+func TestArmageddonSharedConfigProtoFromSharedConfigYAML(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	blockDir := filepath.Join(dir, "block")
+	blockDir := filepath.Join(dir, "sharedConfig")
 	err = os.MkdirAll(blockDir, 0o755)
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
@@ -326,23 +326,13 @@ func TestArmageddonBlockCreationFromSharedConfigYAML(t *testing.T) {
 
 	// 3.
 	sharedConfigYAMLPath := filepath.Join(dir, "bootstrap", "shared_config.yaml")
-	armageddon.Run([]string{"createBlock", "--sharedConfigYaml", sharedConfigYAMLPath, "--output", blockDir, "--sampleConfigPathForBlockCreation", sampleConfigPath})
-	err = checkBlockDir(blockDir)
+	armageddon.Run([]string{"createSharedConfigProto", "--sharedConfigYaml", sharedConfigYAMLPath, "--output", blockDir})
+	err = checkSharedConfigDir(blockDir)
 	require.NoError(t, err)
 }
 
-func checkBlockDir(outputDir string) error {
-	filePath := filepath.Join(outputDir, "shared_config.bin")
-	if !fileExists(filePath) {
-		return fmt.Errorf("missing file: %s\n", filePath)
-	}
-
-	filePath = filepath.Join(outputDir, "bootstrap.block")
-	if !fileExists(filePath) {
-		return fmt.Errorf("missing file: %s\n", filePath)
-	}
-
-	filePath = filepath.Join(outputDir, "metaNamespaceVerificationKeyPath.pem")
+func checkSharedConfigDir(outputDir string) error {
+	filePath := filepath.Join(outputDir, "shared_config.binpb")
 	if !fileExists(filePath) {
 		return fmt.Errorf("missing file: %s\n", filePath)
 	}
