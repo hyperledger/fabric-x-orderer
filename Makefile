@@ -11,6 +11,7 @@
 #   - clean-binary: removes all contents of the ./bin directory
 #   - protos: generate all protobuf artifacts based on .proto files
 #   - linter-extra: runs extra lint checks on new changes since 'main'
+#   - check-license: checks files for Apache license header
 
 .PHONY: linter
 linter: check-deps
@@ -42,3 +43,8 @@ linter-extra: check-deps
 	@echo "LINT-Extra: Running code checks.."
 	@! golangci-lint run --color=always --sort-results --new-from-rev=main 2>&1 | tee /dev/tty | grep -qE "(gofmt|goimports|misspell|whitespace|gocritic)" || \
 	echo "\nRun 'golangci-lint run --fix --new-from-rev=main' to fix issues"
+
+.PHONY: check-license
+check-license: 
+	@echo "Checking license headers..."
+	@./scripts/check_license.sh

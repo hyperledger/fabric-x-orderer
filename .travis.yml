@@ -1,3 +1,7 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 language: go
 go:
   - 1.24.3
@@ -19,6 +23,7 @@ jobs:
         - go install github.com/golang/protobuf/protoc-gen-go@latest
       script:
         - set -e
+        - make check-license
         - make linter
         - make check-deps
         - bash ./scripts/check_protos.sh
