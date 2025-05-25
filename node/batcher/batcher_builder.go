@@ -90,8 +90,11 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	ctxBroadcast, cancelBroadcast := context.WithCancel(context.Background())
 	b.controlEventBroadcaster = NewControlEventBroadcaster(b.controlEventSenders, int(initState.N), int(f), 100*time.Millisecond, 10*time.Second, b.logger, ctxBroadcast, cancelBroadcast)
 
+	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, config.ShardId, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
+	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
+
 	b.batcher = &core.Batcher{
-		Batchers:                getBatchersIDs(b.batchers),
+		Batchers:                GetBatchersIDs(b.batchers),
 		BatchPuller:             bp,
 		Threshold:               int(f + 1),
 		N:                       initState.N,
@@ -185,13 +188,4 @@ func indexTLSCerts(batchers []node_config.BatcherInfo, logger types.Logger) map[
 	}
 
 	return batcherCertToID
-}
-
-func getBatchersIDs(batchers []node_config.BatcherInfo) []types.PartyID {
-	var parties []types.PartyID
-	for _, batcher := range batchers {
-		parties = append(parties, batcher.PartyID)
-	}
-
-	return parties
 }
