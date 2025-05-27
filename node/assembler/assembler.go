@@ -13,25 +13,12 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
 	node_ledger "github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 )
-
-func NewInitialAssemblerConsensusPosition(oi *state.OrderingInformation) core.AssemblerConsensusPosition {
-	if oi.BatchIndex != oi.BatchCount-1 {
-		return core.AssemblerConsensusPosition{
-			DecisionNum: oi.DecisionNum,
-			BatchIndex:  oi.BatchIndex + 1,
-		}
-	}
-	return core.AssemblerConsensusPosition{
-		DecisionNum: oi.DecisionNum + 1,
-	}
-}
 
 type NetStopper interface {
 	Stop()
@@ -106,17 +93,12 @@ func NewDefaultAssembler(
 		logger.Panicf("Failed creating index: %v", err)
 	}
 
-	baReplicator := consensusBringerFactory.Create(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, logger)
+	baReplicator := consensusBringerFactory.Create(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, al, logger)
 
 	br := batchBringerFactory.Create(batchFrontier, config, logger)
 
 	prefetcher := prefetcherFactory.Create(shardIds, partyIds, index, br, logger)
 	prefetcher.Start()
-
-	lastOrderingInfo, err := al.LastOrderingInfo()
-	if err != nil {
-		logger.Panicf("Failed fetching last ordering info: %v", err)
-	}
 
 	assembler := &Assembler{
 		ds: make(delivery.DeliverService),
@@ -128,7 +110,6 @@ func NewDefaultAssembler(
 			Logger:                            logger,
 			Ledger:                            al,
 			ShardCount:                        len(config.Shards),
-			InitialDecisionPosition:           NewInitialAssemblerConsensusPosition(lastOrderingInfo),
 		},
 		logger:       logger,
 		netStopper:   net,

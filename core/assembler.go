@@ -72,7 +72,7 @@ type AssemblerConsensusPosition struct {
 }
 
 type OrderedBatchAttestationReplicator interface {
-	Replicate(AssemblerConsensusPosition) <-chan OrderedBatchAttestation
+	Replicate() <-chan OrderedBatchAttestation
 }
 
 type Assembler struct {
@@ -83,7 +83,6 @@ type Assembler struct {
 	Replicator                        BatchReplicator
 	Index                             AssemblerIndex
 	Shards                            []types.ShardID
-	InitialDecisionPosition           AssemblerConsensusPosition
 	runningWG                         sync.WaitGroup
 }
 
@@ -120,7 +119,7 @@ func (a *Assembler) processOrderedBatchAttestations() {
 	defer a.runningWG.Done()
 	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
-	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate(a.InitialDecisionPosition)
+	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate()
 	for oba := range orderedBatchAttestations {
 		a.Logger.Infof("Received ordered batch attestation with BatchID primary=%d, shard=%d, seq=%d; digest %s",
 			oba.BatchAttestation().Primary(), oba.BatchAttestation().Shard(), oba.BatchAttestation().Seq(),

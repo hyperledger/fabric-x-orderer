@@ -184,10 +184,10 @@ func (at *assemblerTest) StartAssembler() {
 	})
 
 	consensusBringerFactoryMock := &delivery_mocks.FakeConsensusBringerFactory{}
-	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, l types.Logger) delivery.ConsensusBringer {
+	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l types.Logger) delivery.ConsensusBringer {
 		return at.consensusBringerMock
 	})
-	at.consensusBringerMock.ReplicateCalls(func(acp core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation {
+	at.consensusBringerMock.ReplicateCalls(func() <-chan core.OrderedBatchAttestation {
 		return at.consensusBAChan
 	})
 
@@ -288,7 +288,4 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return test.consensusBringerMock.ReplicateCallCount() == 2
 	}, eventuallyTimeout, eventuallyTick)
-	position := test.consensusBringerMock.ReplicateArgsForCall(1)
-	require.Equal(t, types.DecisionNum(1), position.DecisionNum)
-	require.Equal(t, 1, position.BatchIndex)
 }

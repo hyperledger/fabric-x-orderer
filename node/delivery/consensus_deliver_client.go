@@ -16,6 +16,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
 	"github.com/pkg/errors"
 
@@ -32,23 +33,24 @@ const (
 //go:generate counterfeiter -o ./mocks/consensus_bringer.go . ConsensusBringer
 type ConsensusBringer interface {
 	ReplicateState() <-chan *core.State
-	Replicate(position core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation
+	Replicate() <-chan core.OrderedBatchAttestation
 	Stop()
 }
 
 //go:generate counterfeiter -o ./mocks/consensus_bringer_factory.go . ConsensusBringerFactory
 type ConsensusBringerFactory interface {
-	Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger) ConsensusBringer
+	Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) ConsensusBringer
 }
 
 type DefaultConsensusBringerFactory struct{}
 
-func (f *DefaultConsensusBringerFactory) Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger) ConsensusBringer {
-	return NewConsensusReplicator(tlsCACerts, tlsKey, tlsCert, endpoint, logger)
+func (f *DefaultConsensusBringerFactory) Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) ConsensusBringer {
+	return NewConsensusReplicator(tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, logger)
 }
 
 // ConsensusReplicator replicates decisions from consensus and allows the consumption of `core.state` or `core.BatchAttestation` objects.
 type ConsensusReplicator struct {
+	assemblerLedger ledger.AssemblerLedgerReaderWriter // TODO instead of using AssemblerLedgerReaderWriter define a more general interface to read the last block
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
@@ -57,16 +59,17 @@ type ConsensusReplicator struct {
 	ctxCancelFunc   context.CancelFunc
 }
 
-func NewConsensusReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger) *ConsensusReplicator {
+func NewConsensusReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) *ConsensusReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	baReplicator := &ConsensusReplicator{
-		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
-		endpoint:      endpoint,
-		logger:        logger,
-		tlsKey:        tlsKey,
-		tlsCert:       tlsCert,
-		cancelCtx:     ctx,
-		ctxCancelFunc: cancelFunc,
+		assemblerLedger: assemblerLedger,
+		cc:              clientConfig(tlsCACerts, tlsKey, tlsCert),
+		endpoint:        endpoint,
+		logger:          logger,
+		tlsKey:          tlsKey,
+		tlsCert:         tlsCert,
+		cancelCtx:       ctx,
+		ctxCancelFunc:   cancelFunc,
 	}
 	return baReplicator
 }
@@ -109,12 +112,17 @@ func (cr *ConsensusReplicator) ReplicateState() <-chan *core.State {
 	return res
 }
 
-func (cr *ConsensusReplicator) Replicate(position core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation {
+func (cr *ConsensusReplicator) Replicate() <-chan core.OrderedBatchAttestation {
 	endpoint := func() string {
 		return cr.endpoint
 	}
 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		lastOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
+		if err != nil {
+			cr.logger.Panicf("Failed fetching last ordering info: %v", err)
+		}
+		position := createAssemblerConsensusPosition(lastOrderingInfo)
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			"consensus",
@@ -132,6 +140,12 @@ func (cr *ConsensusReplicator) Replicate(position core.AssemblerConsensusPositio
 	}
 
 	res := make(chan core.OrderedBatchAttestation, replicateChanSize)
+
+	initOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
+	if err != nil {
+		cr.logger.Panicf("Failed fetching last ordering info: %v", err)
+	}
+	initPosition := createAssemblerConsensusPosition(initOrderingInfo)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header, sigs, err2 := extractHeaderAndSigsFromBlock(block)
@@ -160,8 +174,8 @@ func (cr *ConsensusReplicator) Replicate(position core.AssemblerConsensusPositio
 			// During recovery, this condition addresses scenarios where a partially committed decision exists in the ledger.
 			// For instance, if a decision comprising three batches was interrupted after committing two, only the outstanding third batch should be reprocessed.
 			// This prevents redundant batch processing and potential errors upon resumption.
-			if abo.OrderingInformation.DecisionNum == position.DecisionNum && abo.OrderingInformation.BatchIndex < position.BatchIndex {
-				cr.logger.Debugf("AvailableBatchOrdered %+v is skipped, requested batch index was %d, but current is %d", abo, position.BatchIndex, abo.OrderingInformation.BatchIndex)
+			if abo.OrderingInformation.DecisionNum == initPosition.DecisionNum && abo.OrderingInformation.BatchIndex < initPosition.BatchIndex {
+				cr.logger.Debugf("AvailableBatchOrdered %+v is skipped, requested batch index was %d, but current is %d", abo, initPosition.BatchIndex, abo.OrderingInformation.BatchIndex)
 				return
 			}
 
@@ -256,4 +270,16 @@ func clientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.Cli
 		DialTimeout: time.Second * 5,
 	}
 	return cc
+}
+
+func createAssemblerConsensusPosition(oi *state.OrderingInformation) core.AssemblerConsensusPosition {
+	if oi.BatchIndex != oi.BatchCount-1 {
+		return core.AssemblerConsensusPosition{
+			DecisionNum: oi.DecisionNum,
+			BatchIndex:  oi.BatchIndex + 1,
+		}
+	}
+	return core.AssemblerConsensusPosition{
+		DecisionNum: oi.DecisionNum + 1,
+	}
 }

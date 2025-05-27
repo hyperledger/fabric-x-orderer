@@ -66,10 +66,9 @@ func TestCLI(t *testing.T) {
 }
 
 func TestLaunchArmaNode(t *testing.T) {
-	dir := setup(t, 1)
-	defer os.RemoveAll(dir)
-
 	t.Run("TestRouter", func(t *testing.T) {
+		dir := setup(t, 1)
+		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
@@ -99,6 +98,8 @@ func TestLaunchArmaNode(t *testing.T) {
 	})
 
 	t.Run("TestBatcher", func(t *testing.T) {
+		dir := setup(t, 1)
+		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
@@ -128,6 +129,8 @@ func TestLaunchArmaNode(t *testing.T) {
 	})
 
 	t.Run("TestConsensus", func(t *testing.T) {
+		dir := setup(t, 1)
+		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
@@ -155,6 +158,8 @@ func TestLaunchArmaNode(t *testing.T) {
 	})
 
 	t.Run("TestAssembler", func(t *testing.T) {
+		dir := setup(t, 1)
+		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
@@ -183,10 +188,10 @@ func TestLaunchArmaNode(t *testing.T) {
 }
 
 func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
-	dir := setup(t, 50)
-	defer os.RemoveAll(dir)
-
 	t.Run("TestConsensusWithBlock", func(t *testing.T) {
+		dir := setup(t, 50)
+		defer os.RemoveAll(dir)
+
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
@@ -221,6 +226,8 @@ func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
 	})
 
 	t.Run("TestAssemblerWithBlock", func(t *testing.T) {
+		dir := setup(t, 50)
+		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
@@ -256,7 +263,7 @@ func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
 }
 
 func setup(t *testing.T, offset int) string {
-	dir, err := os.MkdirTemp("", t.Name())
+	dir, err := os.MkdirTemp("", strings.ReplaceAll(t.Name(), "/", ""))
 	require.NoError(t, err)
 
 	configPath := filepath.Join(dir, "config.yaml")

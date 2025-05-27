@@ -2,21 +2,24 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
-	"sync"
+	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 )
 
 type FakeConsensusBringerFactory struct {
-	CreateStub        func([]config.RawBytes, config.RawBytes, config.RawBytes, string, types.Logger) delivery.ConsensusBringer
+	CreateStub        func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, types.Logger) delivery.ConsensusBringer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 []config.RawBytes
 		arg2 config.RawBytes
 		arg3 config.RawBytes
 		arg4 string
-		arg5 types.Logger
+		arg5 ledger.AssemblerLedgerReaderWriter
+		arg6 types.Logger
 	}
 	createReturns struct {
 		result1 delivery.ConsensusBringer
@@ -28,7 +31,7 @@ type FakeConsensusBringerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusBringerFactory) Create(arg1 []config.RawBytes, arg2 config.RawBytes, arg3 config.RawBytes, arg4 string, arg5 types.Logger) delivery.ConsensusBringer {
+func (fake *FakeConsensusBringerFactory) Create(arg1 []config.RawBytes, arg2 config.RawBytes, arg3 config.RawBytes, arg4 string, arg5 ledger.AssemblerLedgerReaderWriter, arg6 types.Logger) delivery.ConsensusBringer {
 	var arg1Copy []config.RawBytes
 	if arg1 != nil {
 		arg1Copy = make([]config.RawBytes, len(arg1))
@@ -41,17 +44,19 @@ func (fake *FakeConsensusBringerFactory) Create(arg1 []config.RawBytes, arg2 con
 		arg2 config.RawBytes
 		arg3 config.RawBytes
 		arg4 string
-		arg5 types.Logger
-	}{arg1Copy, arg2, arg3, arg4, arg5})
-	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2, arg3, arg4, arg5})
+		arg5 ledger.AssemblerLedgerReaderWriter
+		arg6 types.Logger
+	}{arg1Copy, arg2, arg3, arg4, arg5, arg6})
+	stub := fake.CreateStub
+	fakeReturns := fake.createReturns
+	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2, arg3, arg4, arg5, arg6})
 	fake.createMutex.Unlock()
-	if fake.CreateStub != nil {
-		return fake.CreateStub(arg1, arg2, arg3, arg4, arg5)
+	if stub != nil {
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.createReturns
 	return fakeReturns.result1
 }
 
@@ -61,17 +66,17 @@ func (fake *FakeConsensusBringerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeConsensusBringerFactory) CreateCalls(stub func([]config.RawBytes, config.RawBytes, config.RawBytes, string, types.Logger) delivery.ConsensusBringer) {
+func (fake *FakeConsensusBringerFactory) CreateCalls(stub func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, types.Logger) delivery.ConsensusBringer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeConsensusBringerFactory) CreateArgsForCall(i int) ([]config.RawBytes, config.RawBytes, config.RawBytes, string, types.Logger) {
+func (fake *FakeConsensusBringerFactory) CreateArgsForCall(i int) ([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, types.Logger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6
 }
 
 func (fake *FakeConsensusBringerFactory) CreateReturns(result1 delivery.ConsensusBringer) {

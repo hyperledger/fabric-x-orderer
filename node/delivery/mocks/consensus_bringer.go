@@ -2,16 +2,16 @@
 package mocks
 
 import (
+	"sync"
+
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
-	"sync"
 )
 
 type FakeConsensusBringer struct {
-	ReplicateStub        func(core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation
+	ReplicateStub        func() <-chan core.OrderedBatchAttestation
 	replicateMutex       sync.RWMutex
 	replicateArgsForCall []struct {
-		arg1 core.AssemblerConsensusPosition
 	}
 	replicateReturns struct {
 		result1 <-chan core.OrderedBatchAttestation
@@ -37,21 +37,21 @@ type FakeConsensusBringer struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusBringer) Replicate(arg1 core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation {
+func (fake *FakeConsensusBringer) Replicate() <-chan core.OrderedBatchAttestation {
 	fake.replicateMutex.Lock()
 	ret, specificReturn := fake.replicateReturnsOnCall[len(fake.replicateArgsForCall)]
 	fake.replicateArgsForCall = append(fake.replicateArgsForCall, struct {
-		arg1 core.AssemblerConsensusPosition
-	}{arg1})
-	fake.recordInvocation("Replicate", []interface{}{arg1})
+	}{})
+	stub := fake.ReplicateStub
+	fakeReturns := fake.replicateReturns
+	fake.recordInvocation("Replicate", []interface{}{})
 	fake.replicateMutex.Unlock()
-	if fake.ReplicateStub != nil {
-		return fake.ReplicateStub(arg1)
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.replicateReturns
 	return fakeReturns.result1
 }
 
@@ -61,17 +61,10 @@ func (fake *FakeConsensusBringer) ReplicateCallCount() int {
 	return len(fake.replicateArgsForCall)
 }
 
-func (fake *FakeConsensusBringer) ReplicateCalls(stub func(core.AssemblerConsensusPosition) <-chan core.OrderedBatchAttestation) {
+func (fake *FakeConsensusBringer) ReplicateCalls(stub func() <-chan core.OrderedBatchAttestation) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = stub
-}
-
-func (fake *FakeConsensusBringer) ReplicateArgsForCall(i int) core.AssemblerConsensusPosition {
-	fake.replicateMutex.RLock()
-	defer fake.replicateMutex.RUnlock()
-	argsForCall := fake.replicateArgsForCall[i]
-	return argsForCall.arg1
 }
 
 func (fake *FakeConsensusBringer) ReplicateReturns(result1 <-chan core.OrderedBatchAttestation) {
@@ -102,15 +95,16 @@ func (fake *FakeConsensusBringer) ReplicateState() <-chan *core.State {
 	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
 	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
 	}{})
+	stub := fake.ReplicateStateStub
+	fakeReturns := fake.replicateStateReturns
 	fake.recordInvocation("ReplicateState", []interface{}{})
 	fake.replicateStateMutex.Unlock()
-	if fake.ReplicateStateStub != nil {
-		return fake.ReplicateStateStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.replicateStateReturns
 	return fakeReturns.result1
 }
 
@@ -153,9 +147,10 @@ func (fake *FakeConsensusBringer) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
+	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if fake.StopStub != nil {
+	if stub != nil {
 		fake.StopStub()
 	}
 }
