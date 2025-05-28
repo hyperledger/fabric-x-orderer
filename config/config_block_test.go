@@ -49,3 +49,27 @@ func TestReadGenesisBlock(t *testing.T) {
 
 	proto.Equal(&sharedConfigFromBlock, actualSharedConfig)
 }
+
+func TestReadGenesisBlock_Errors(t *testing.T) {
+	dir := t.TempDir()
+
+	sharedConfigYaml, sharedConfigBinaryPath := testutil.PrepareSharedConfigBinary(t, dir)
+	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
+	require.NoError(t, err)
+	require.NotNil(t, block)
+
+	blockPath := filepath.Join(dir, "bootstrap.block")
+	data, err := os.ReadFile(blockPath)
+	require.NoError(t, err)
+	configBlock, err := protoutil.UnmarshalBlock(data)
+	require.NoError(t, err)
+	require.NotNil(t, block)
+
+	// Mess the configBlock
+	configBlock.Data = nil
+
+	// expect error
+	c, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock)
+	require.EqualError(t, err, "block data is nil")
+	require.Nil(t, c)
+}

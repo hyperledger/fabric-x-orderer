@@ -87,3 +87,14 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.ClientAuthRequired, true)
 	}
 }
+
+func TestLoadLocalConfigYaml_Errors(t *testing.T) {
+	res, err := config.LoadLocalConfigYaml("")
+	require.Nil(t, res)
+	require.EqualError(t, err, "cannot load local node configuration, path:  is empty")
+
+	res, err = config.LoadLocalConfigYaml("File_not_exists")
+	require.Nil(t, res)
+	require.EqualError(t, err, "open File_not_exists: no such file or directory")
+	require.Error(t, err)
+}
