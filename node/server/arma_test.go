@@ -21,7 +21,6 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
@@ -165,84 +164,6 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assembler")
 		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
-
-		originalLogger := testLogger
-		defer func() {
-			testLogger = originalLogger
-		}()
-
-		var wg sync.WaitGroup
-		wg.Add(2)
-
-		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-			if strings.Contains(entry.Message, "Assembler listening on") {
-				wg.Done()
-			}
-			if strings.Contains(entry.Message, "Starting to replicate from consenter") {
-				wg.Done()
-			}
-			return nil
-		}))
-
-		cli := NewCLI()
-		cli.Run([]string{"assembler", "--config", configPath})
-		wg.Wait()
-	})
-}
-
-func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
-	t.Run("TestConsensusWithBlock", func(t *testing.T) {
-		dir := setup(t, 50)
-		defer os.RemoveAll(dir)
-
-		testLogger = flogging.MustGetLogger("arma")
-
-		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
-		storagePath := path.Join(dir, "storage", "party1", "consenter")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
-
-		block := utils.EmptyGenesisBlock("arma")
-		blockBytes := protoutil.MarshalOrPanic(block)
-		// where the block should be written in the new config? currently the node checks the "config/party" dir.
-		blockPath := filepath.Join(dir, "config", "party1", "genesis.block")
-		err := os.WriteFile(blockPath, blockBytes, 0o600)
-		require.NoError(t, err)
-
-		originalLogger := testLogger
-		defer func() {
-			testLogger = originalLogger
-		}()
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-
-		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-			if strings.Contains(entry.Message, "Consensus listening on") {
-				wg.Done()
-			}
-			return nil
-		}))
-
-		cli := NewCLI()
-		cli.Run([]string{"consensus", "--config", configPath})
-		wg.Wait()
-	})
-
-	t.Run("TestAssemblerWithBlock", func(t *testing.T) {
-		dir := setup(t, 50)
-		defer os.RemoveAll(dir)
-		testLogger = flogging.MustGetLogger("arma")
-
-		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
-		storagePath := path.Join(dir, "storage", "party1", "assembler")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
-
-		block := utils.EmptyGenesisBlock("arma")
-		blockBytes := protoutil.MarshalOrPanic(block)
-		// where the block should be written in the new config? currently the node checks the "config/party" dir.
-		blockPath := filepath.Join(dir, "config", "party1", "genesis.block")
-		err := os.WriteFile(blockPath, blockBytes, 0o600)
-		require.NoError(t, err)
 
 		originalLogger := testLogger
 		defer func() {

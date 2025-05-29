@@ -9,6 +9,7 @@ package consensus_test
 import (
 	"testing"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
 
@@ -23,13 +24,25 @@ var (
 	digest125 = append([]byte{1, 2, 5}, digest...)
 )
 
+func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
+	grpclog.SetLoggerV2(&testutil.SilentLogger{})
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	require.PanicsWithValue(t, "Error creating Consensus1, genesis block is nil", func() {
+		setupConsensusTest(t, ca, 1, nil)
+	})
+}
+
 func TestCreateOneConsensusNode(t *testing.T) {
 	grpclog.SetLoggerV2(&testutil.SilentLogger{})
 
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	setup := setupConsensusTest(t, ca, 1)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, 1, genesisBlock)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
 	require.NoError(t, err)
@@ -68,7 +81,8 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	setup := setupConsensusTest(t, ca, parties)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
 	require.NoError(t, err)
@@ -150,7 +164,8 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	setup := setupConsensusTest(t, ca, parties)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
 
 	// Leader fails and recovers before the first request
 	setup.consensusNodes[0].Stop()
@@ -208,7 +223,8 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	setup := setupConsensusTest(t, ca, parties)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
 
 	// Node fails and recovers before the first request
 	setup.consensusNodes[1].Stop()
@@ -305,7 +321,8 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	parties := 4
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	setup := setupConsensusTest(t, ca, parties)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
 
 	// Submit the first request and verify the first block is committed
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
@@ -371,7 +388,8 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	parties := 7
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	setup := setupConsensusTest(t, ca, parties)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
 
 	// Nodes fail and recover before the first request
 	setup.consensusNodes[1].Stop()
@@ -465,7 +483,8 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	parties := 7
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	setup := setupConsensusTest(t, ca, parties)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
 
 	// Commit the first request
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)

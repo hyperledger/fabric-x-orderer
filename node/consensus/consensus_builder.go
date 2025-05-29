@@ -19,7 +19,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
 	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/core/badb"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
@@ -215,7 +214,7 @@ func getInitialStateAndMetadata(config *config.ConsenterNodeConfig, genesisBlock
 	if height == 0 {
 		initState := initialStateFromConfig(config)
 		if genesisBlock == nil {
-			genesisBlock = utils.EmptyGenesisBlock("arma")
+			panic(fmt.Sprintf("Error creating Consensus%d, genesis block is nil", config.PartyId))
 		}
 		appendGenesisBlock(genesisBlock, initState, ledger)
 		return initState, &smartbftprotos.ViewMetadata{}, nil, nil

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	node2 "github.ibm.com/decentralized-trust-research/arma/node"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
@@ -44,7 +45,9 @@ func TestABCR(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: 1, Batchers: batcherInfos}}
 
-	_, clean := createConsenters(t, numParties, consenterNodes, consenterInfos, shards)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+
+	_, clean := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 	defer clean()
 
 	_, _, _, clean = createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId)
@@ -82,7 +85,8 @@ func TestABCR(t *testing.T) {
 	aLogger := testutil.CreateLogger(t, 1)
 
 	assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
-	assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, nil, aLogger)
+
+	assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, aLogger)
 
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 

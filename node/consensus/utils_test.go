@@ -140,7 +140,7 @@ func createConsenterInfo(partyID types.PartyID, n *node, ca tlsgen.CA) nodeconfi
 	}
 }
 
-func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int) consensusTestSetup {
+func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock *common.Block) consensusTestSetup {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
@@ -162,7 +162,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int) consensusTes
 		conf := makeConf(dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
 
-		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, nil, logger)
+		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, genesisBlock, logger)
 		grpcRegisterAndStart(c, consenterNodes[i])
 
 		listener := &storageListener{c: make(chan *common.Block, 100)}

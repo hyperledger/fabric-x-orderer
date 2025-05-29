@@ -70,7 +70,7 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 			if err != nil {
 				return nil, nil, fmt.Errorf("could not read block %s", blockPath)
 			}
-			genesisBlock, err := protoutil.UnmarshalBlock(data)
+			genesisBlock, err = protoutil.UnmarshalBlock(data)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error unmarshalling to block: %s", err)
 			}

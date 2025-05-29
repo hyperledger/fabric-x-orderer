@@ -13,6 +13,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
 	assembler_mocks "github.ibm.com/decentralized-trust-research/arma/node/assembler/mocks"
@@ -35,6 +36,7 @@ type assemblerTest struct {
 	shards                         []types.ShardID
 	party                          types.PartyID
 	ledgerDir                      string
+	genesisBlock                   *common.Block
 	nodeConfig                     *config.AssemblerNodeConfig
 	orderedBatchAttestationCreator *OrderedBatchAttestationCreator
 	expecedLedgerBA                []core.OrderedBatchAttestation
@@ -87,13 +89,14 @@ func createLedgerMockWrappingRealLedger(logger types.Logger, ledgerPath string) 
 	return mock, ledger, err
 }
 
-func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.PartyID, myParty types.PartyID) *assemblerTest {
+func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.PartyID, myParty types.PartyID, genesisBlock *common.Block) *assemblerTest {
 	orderedBatchAttestationCreator, _ := NewOrderedBatchAttestationCreator()
 	test := &assemblerTest{
 		logger:                         testutil.CreateLoggerForModule(t, "assembler", zap.DebugLevel),
 		shards:                         shards,
 		party:                          myParty,
 		ledgerDir:                      t.TempDir(),
+		genesisBlock:                   genesisBlock,
 		orderedBatchAttestationCreator: orderedBatchAttestationCreator,
 		expecedLedgerBA:                []core.OrderedBatchAttestation{},
 		batchBringerMock:               &assembler_mocks.FakeBatchBringer{},
@@ -202,7 +205,7 @@ func (at *assemblerTest) StartAssembler() {
 		at.logger,
 		&dummyAssemblerStopper{},
 		at.nodeConfig,
-		nil,
+		at.genesisBlock,
 		ledgerFactory,
 		prefetchIndexerFactory,
 		prefetcherFactoryMock,
@@ -211,11 +214,23 @@ func (at *assemblerTest) StartAssembler() {
 	)
 }
 
+func TestAssembler_StartPanicsSinceGenesisBlockIsNil(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	test := setupAssemblerTest(t, shards, parties, parties[0], nil)
+
+	// Act
+	require.PanicsWithValue(t, "Error creating Assembler1, genesis block is nil", func() {
+		test.StartAssembler()
+	})
+}
+
 func TestAssembler_StartAndThenStopShouldOnlyWriteGenesisBlockToLedger(t *testing.T) {
 	// Arrange
 	shards := []types.ShardID{1, 2}
 	parties := []types.PartyID{1, 2, 3}
-	test := setupAssemblerTest(t, shards, parties, parties[0])
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 
 	// Act
 	test.StartAssembler()
@@ -236,7 +251,7 @@ func TestAssembler_RestartWithoutAddingBatchesShouldWork(t *testing.T) {
 	// Arrange
 	shards := []types.ShardID{1, 2}
 	parties := []types.PartyID{1, 2, 3}
-	test := setupAssemblerTest(t, shards, parties, parties[0])
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 
 	// Act & Assert
 	test.StartAssembler()
@@ -251,7 +266,7 @@ func TestAssembler_StopCallsAllSubcomponents(t *testing.T) {
 	// Arrange
 	shards := []types.ShardID{1, 2}
 	parties := []types.PartyID{1, 2, 3}
-	test := setupAssemblerTest(t, shards, parties, parties[0])
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 
 	// Act
 	test.StartAssembler()
@@ -268,7 +283,7 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	// Arrange
 	shards := []types.ShardID{1, 2}
 	parties := []types.PartyID{1, 2, 3}
-	test := setupAssemblerTest(t, shards, parties, parties[0])
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 	test.StartAssembler()
 	batches := []core.Batch{
 		testutil.CreateMockBatch(1, 1, 1, []int{1}),

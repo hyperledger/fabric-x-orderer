@@ -19,9 +19,11 @@ import (
 	"testing"
 	"time"
 
-	config "github.ibm.com/decentralized-trust-research/arma/config"
-
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
@@ -30,9 +32,6 @@ import (
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/router"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -96,7 +95,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 	return routers
 }
 
-func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []nodeconfig.ConsenterInfo, shardInfo []nodeconfig.ShardInfo) ([]*consensus.Consensus, func()) {
+func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []nodeconfig.ConsenterInfo, shardInfo []nodeconfig.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, func()) {
 	var consensuses []*consensus.Consensus
 	var cleans []func()
 
@@ -134,7 +133,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		}
 
 		net := consenterNodes[i].GRPCServer
-		c := consensus.CreateConsensus(conf, net, nil, logger)
+		c := consensus.CreateConsensus(conf, net, genesisBlock, logger)
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)

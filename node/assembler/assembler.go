@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 	"github.ibm.com/decentralized-trust-research/arma/node/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
@@ -75,7 +74,7 @@ func NewDefaultAssembler(
 
 	if al.LedgerReader().Height() == 0 {
 		if genesisBlock == nil {
-			genesisBlock = utils.EmptyGenesisBlock("arma")
+			logger.Panicf("Error creating Assembler%d, genesis block is nil", config.PartyId)
 		}
 		al.AppendConfig(genesisBlock, 0)
 	}
