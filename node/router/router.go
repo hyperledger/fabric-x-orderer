@@ -116,7 +116,9 @@ func (r *Router) Stop() {
 		if sr.connPool != nil {
 			for _, con := range sr.connPool {
 				sr.lock.RLock()
-				con.Close()
+				if con != nil {
+					con.Close()
+				}
 				sr.lock.RUnlock()
 			}
 		}
