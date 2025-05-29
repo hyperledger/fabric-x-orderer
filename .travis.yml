@@ -23,6 +23,7 @@ jobs:
         - go install github.com/golang/protobuf/protoc-gen-go@latest
       script:
         - set -e
+        - make check-dco
         - make check-license
         - make linter
         - make check-deps

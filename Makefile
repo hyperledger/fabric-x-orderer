@@ -12,6 +12,7 @@
 #   - protos: generate all protobuf artifacts based on .proto files
 #   - linter-extra: runs extra lint checks on new changes since 'main'
 #   - check-license: checks files for Apache license header
+# 	- check-dco: check that commits include Signed-off-by
 
 .PHONY: linter
 linter: check-deps
@@ -48,3 +49,8 @@ linter-extra: check-deps
 check-license: 
 	@echo "Checking license headers..."
 	@./scripts/check_license.sh
+
+.PHONY: check-dco
+check-dco: 
+	@echo "Checking DCO..."
+	@./scripts/check_dco.sh
