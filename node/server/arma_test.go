@@ -172,10 +172,13 @@ func TestLaunchArmaNode(t *testing.T) {
 		}()
 
 		var wg sync.WaitGroup
-		wg.Add(1)
+		wg.Add(2)
 
 		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 			if strings.Contains(entry.Message, "Assembler listening on") {
+				wg.Done()
+			}
+			if strings.Contains(entry.Message, "Starting to replicate from consenter") {
 				wg.Done()
 			}
 			return nil
@@ -247,10 +250,13 @@ func TestLaunchAssemblerAndConsenterWithBlock(t *testing.T) {
 		}()
 
 		var wg sync.WaitGroup
-		wg.Add(1)
+		wg.Add(2)
 
 		testLogger = testLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
 			if strings.Contains(entry.Message, "Assembler listening on") {
+				wg.Done()
+			}
+			if strings.Contains(entry.Message, "Starting to replicate from consenter") {
 				wg.Done()
 			}
 			return nil

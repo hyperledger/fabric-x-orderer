@@ -189,6 +189,8 @@ func (cr *ConsensusReplicator) Replicate() <-chan core.OrderedBatchAttestation {
 
 	go Pull(cr.cancelCtx, "consensus", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
 
+	cr.logger.Infof("Starting to replicate from consenter")
+
 	return res
 }
 
