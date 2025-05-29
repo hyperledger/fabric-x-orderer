@@ -36,7 +36,7 @@ FileStore:
     Location: /var/dec-trust/store
 Assembler:
     PrefetchBufferMemoryBytes: 1073741824
-    LedgerScanTimeout: 5s
-    EvictionTtl: 1h
+    RestartLedgerScanTimeout: 5s
+    PrefetchEvictionTtl: 1h0m0s
     ReplicationChannelSize: 100
     BatchRequestsChannelSize: 1000
