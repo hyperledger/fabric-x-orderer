@@ -63,10 +63,6 @@ For example:
 
 At this point, a network of Arma is running, so you can start send txs. 
 
-**NOTE:
-ARMA network deployment is automated by `deploy.sh` in 
-[Iaas-GO](#https://github.ibm.com/decentralized-trust-research/Iaas-Go/blob/main/scripts/deploy.sh).**
-
 ### Containers
 
 <a name="vm-profiles"></a>

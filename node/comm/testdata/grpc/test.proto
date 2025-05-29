@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
-option go_package = "github.ibm.com/decentralized-trust-research/node/comm/testdata/grpc";
+option go_package = "github.ibm.com/decentralized-trust-research/arma/node/comm/testdata/grpc";
 
 message Empty {}
 
