@@ -7,13 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package arma
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -27,10 +25,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/router"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
-)
-
-const (
-	TerminationGracePeriod = 10 * time.Second
 )
 
 func init() {
@@ -74,29 +68,13 @@ type NodeStopper interface {
 
 func stopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr string) {
 	signalChan := make(chan os.Signal, 1)
-	ctx, cancel := context.WithCancel(context.Background())
 	signal.Notify(signalChan, syscall.SIGTERM)
 
 	go func() {
 		<-signalChan
 
-		go func() {
-			node.Stop()
-			cancel()
-		}()
-
 		logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
-
-		select {
-		case <-time.After(TerminationGracePeriod):
-			logger.Infof("Graceful shutdown: timeout expired")
-			logger.Zap().Sync()
-			cancel()
-			os.Exit(0)
-		case <-ctx.Done():
-			logger.Infof("Graceful shutdown: success")
-			return
-		}
+		node.Stop()
 	}()
 }
 

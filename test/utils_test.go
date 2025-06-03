@@ -14,16 +14,19 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/stretchr/testify/require"
+	config "github.ibm.com/decentralized-trust-research/arma/config"
+	"github.ibm.com/decentralized-trust-research/arma/testutil/client"
+
+	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/config"
 	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
@@ -32,6 +35,10 @@ import (
 	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"github.ibm.com/decentralized-trust-research/arma/node/router"
 	"github.ibm.com/decentralized-trust-research/arma/testutil"
+
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -317,4 +324,65 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	for routerId := 0; routerId < 4; routerId++ {
 		routers[routerId].Submit(context.Background(), &protos.Request{Payload: txn})
 	}
+}
+
+func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string) {
+	var waitForPullDone sync.WaitGroup
+
+	for _, partyID := range parties {
+		waitForPullDone.Add(1)
+
+		go func() {
+			defer waitForPullDone.Done()
+
+			totalTxs, totalBlocks, err := PullFromAssembler(t, userConfig, partyID, startBlock, endBlock, transactions, blocks)
+			errString := fmt.Sprintf(errString, partyID)
+			require.ErrorContains(t, err, errString)
+			require.True(t, totalTxs == uint64(transactions))
+			require.True(t, totalBlocks == uint64(blocks))
+		}()
+	}
+
+	waitForPullDone.Wait()
+}
+
+func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int) (uint64, uint64, error) {
+	require.NotNil(t, userConfig)
+	dc := client.NewDeliverClient(userConfig)
+	toCtx, toCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer toCancel()
+
+	totalTxs := uint64(0)
+	totalBlocks := uint64(0)
+
+	expectedNumOfTxs := uint64(transactions + 1)
+	expectedNumOfBlocks := uint64(blocks)
+
+	handler := func(block *common.Block) error {
+		if block == nil {
+			return errors.New("nil block")
+		}
+		if block.Header == nil {
+			return errors.New("nil block header")
+		}
+		if blocks > 0 {
+			atomic.AddUint64(&totalBlocks, uint64(1))
+			if atomic.CompareAndSwapUint64(&totalBlocks, expectedNumOfBlocks, uint64(blocks)) {
+				toCancel()
+			}
+		}
+		if transactions > 0 {
+			atomic.AddUint64(&totalTxs, uint64(len(block.GetData().GetData())))
+			if atomic.CompareAndSwapUint64(&totalTxs, expectedNumOfTxs, uint64(transactions)) {
+				toCancel()
+			}
+		}
+
+		return nil
+	}
+
+	fmt.Printf("Pulling from party: %d\n", partyID)
+	err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
+	fmt.Printf("Finished pull and count: blocks %d, txs %d\n", totalBlocks, totalTxs)
+	return totalTxs, totalBlocks, err
 }

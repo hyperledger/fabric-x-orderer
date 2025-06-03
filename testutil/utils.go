@@ -59,6 +59,8 @@ func readNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[string]*ArmaNodeInfo {
 	var parties []genconfig.Party
 	netInfo := make(map[string]*ArmaNodeInfo)
+	runOrderMap := map[string]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
+
 	for i := 0; i < numOfParties; i++ {
 		assemblerPort, lla := GetAvailablePort(t)
 		consenterPort, llc := GetAvailablePort(t)
@@ -82,18 +84,18 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 
 		parties = append(parties, party)
 
-		nodeName := fmt.Sprintf("Party%drouter", i+1)
+		nodeName := fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Router], Router)
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1)}
 
 		for j, b := range llbs {
-			nodeName = fmt.Sprintf("Party%dbatcher%d", i+1, j+1)
+			nodeName = fmt.Sprintf("Party%d%d%s%d", i+1, runOrderMap[Batcher], Batcher, j+1)
 			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1)}
 		}
 
-		nodeName = fmt.Sprintf("Party%dconsensus", i+1)
+		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Consensus], Consensus)
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1)}
 
-		nodeName = fmt.Sprintf("Party%dassembler", i+1)
+		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Assembler], Assembler)
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1)}
 	}
 

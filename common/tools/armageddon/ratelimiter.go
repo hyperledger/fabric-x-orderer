@@ -34,7 +34,7 @@ func NewRateLimiter(rateLimit int, fillInterval time.Duration, capacity int) (*R
 		return nil, fmt.Errorf("invalid capacity: (%d)", capacity)
 	}
 
-	if fillQuota <= 0 {
+	if fillQuota <= 0.0 {
 		return nil, fmt.Errorf("invalid fillQuota: (%.2f)", fillQuota)
 	}
 

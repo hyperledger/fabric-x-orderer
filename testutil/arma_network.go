@@ -7,13 +7,22 @@ SPDX-License-Identifier: Apache-2.0
 package testutil
 
 import (
+	"fmt"
 	"net"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
+
+const (
+	TerminationGracePeriod = 10 * time.Second
+)
+
+// var NodeSortingTable = map[string]int{Router: 0, Batcher: 1, Consensus: 2, Assembler: 3}
 
 type ArmaNetwork struct {
 	armaNodes map[string][][]*ArmaNodeInfo
@@ -42,7 +51,7 @@ func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType string, partyIdx int, nodeI
 }
 
 func (armaNetwork *ArmaNetwork) Stop() {
-	for k := range armaNetwork.armaNodes {
+	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
 		for i := range armaNetwork.armaNodes[k] {
 			for j := range armaNetwork.armaNodes[k][i] {
 				armaNetwork.armaNodes[k][i][j].StopArmaNode()
@@ -52,7 +61,7 @@ func (armaNetwork *ArmaNetwork) Stop() {
 }
 
 func (armaNetwork *ArmaNetwork) Kill() {
-	for k := range armaNetwork.armaNodes {
+	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
 		for i := range armaNetwork.armaNodes[k] {
 			for j := range armaNetwork.armaNodes[k][i] {
 				armaNetwork.armaNodes[k][i][j].KillArmaNode()
@@ -63,28 +72,28 @@ func (armaNetwork *ArmaNetwork) Kill() {
 
 func (armaNetwork *ArmaNetwork) GetAssembler(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["assembler"]) >= int(partyID))
-	return armaNetwork.armaNodes["assembler"][partyID-1][0]
+	require.True(t, len(armaNetwork.armaNodes[Assembler]) >= int(partyID))
+	return armaNetwork.armaNodes[Assembler][partyID-1][0]
 }
 
 func (armaNetwork *ArmaNetwork) GetRouter(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["router"]) >= int(partyID))
-	return armaNetwork.armaNodes["router"][partyID-1][0]
+	require.True(t, len(armaNetwork.armaNodes[Router]) >= int(partyID))
+	return armaNetwork.armaNodes[Router][partyID-1][0]
 }
 
 func (armaNetwork *ArmaNetwork) GetConsenter(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["consensus"]) >= int(partyID))
-	return armaNetwork.armaNodes["consensus"][partyID-1][0]
+	require.True(t, len(armaNetwork.armaNodes[Consensus]) >= int(partyID))
+	return armaNetwork.armaNodes[Consensus][partyID-1][0]
 }
 
 func (armaNetwork *ArmaNetwork) GeBatcher(t *testing.T, partyID types.PartyID, shardID types.ShardID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
 	require.True(t, int(shardID) > 0)
-	require.True(t, len(armaNetwork.armaNodes["batcher"]) >= int(partyID))
-	require.True(t, len(armaNetwork.armaNodes["batcher"][partyID-1]) >= int(shardID))
-	return armaNetwork.armaNodes["batcher"][partyID-1][shardID-1]
+	require.True(t, len(armaNetwork.armaNodes[Batcher]) >= int(partyID))
+	require.True(t, len(armaNetwork.armaNodes[Batcher][partyID-1]) >= int(shardID))
+	return armaNetwork.armaNodes[Batcher][partyID-1][shardID-1]
 }
 
 func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}) {
@@ -98,7 +107,12 @@ func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan s
 }
 
 func (armaNodeInfo *ArmaNodeInfo) StopArmaNode() {
-	<-armaNodeInfo.RunInfo.Session.Terminate().Exited
+	select {
+	case <-armaNodeInfo.RunInfo.Session.Terminate().Exited:
+	case <-time.After(TerminationGracePeriod):
+		fmt.Fprintf(os.Stderr, "Graceful shutdown: timeout expired Party%d%s@%s is about to be killed", armaNodeInfo.PartyId, armaNodeInfo.NodeType, armaNodeInfo.Listener.Addr())
+		<-armaNodeInfo.RunInfo.Session.Kill().Exited
+	}
 }
 
 func (armaNodeInfo *ArmaNodeInfo) KillArmaNode() {

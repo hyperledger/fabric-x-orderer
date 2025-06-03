@@ -44,7 +44,12 @@ func (c *BroadCastTxClient) SendTx(txContent []byte) error {
 			failures++
 		}
 	}
-	if failures >= len(c.userConfig.RouterEndpoints)/3 {
+
+	possibleNumOfFailures := len(c.userConfig.RouterEndpoints)
+	if len(c.userConfig.RouterEndpoints) >= 3 {
+		possibleNumOfFailures = len(c.userConfig.RouterEndpoints) / 3
+	}
+	if failures >= possibleNumOfFailures {
 		er := fmt.Sprintf("\nfailed to send tx to %d out of %d send streams", failures, len(c.streamRoutersMap))
 		errorsAccumulator.WriteString(er)
 	}
