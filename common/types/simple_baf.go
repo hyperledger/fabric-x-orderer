@@ -8,6 +8,8 @@ package types
 
 import (
 	"encoding/asn1"
+	"encoding/hex"
+	"fmt"
 	"math/big"
 )
 
@@ -76,6 +78,10 @@ func (s *SimpleBatchAttestationFragment) Signature() []byte {
 
 func (s *SimpleBatchAttestationFragment) SetSignature(sig []byte) {
 	s.signature = sig
+}
+
+func (s *SimpleBatchAttestationFragment) String() string {
+	return fmt.Sprintf("BAF: Signer: %d; Shard: %d; Primary: %d; Seq: %d; Digest %s", s.signer, s.shard, s.primary, s.seq, hex.EncodeToString(s.digest))
 }
 
 type asn1BAF struct {

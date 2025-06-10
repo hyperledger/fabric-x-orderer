@@ -50,7 +50,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	initialState, metadata, lastProposal, lastSigs := getInitialStateAndMetadata(conf, genesisBlock, consLedger)
+	initialState, metadata, lastProposal, lastSigs := getInitialStateAndMetadata(logger, conf, genesisBlock, consLedger)
 
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
@@ -209,8 +209,9 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature) {
+func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature) {
 	height := ledger.Height()
+	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
 		initState := initialStateFromConfig(config)
 		if genesisBlock == nil {

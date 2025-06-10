@@ -128,7 +128,7 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 			return err
 		}
 
-		c.Logger.Infof("Received event %x", event.Payload)
+		c.Logger.Debugf("Received event %s", printEvent(event.GetPayload()))
 
 		if err := c.SubmitRequest(event.GetPayload()); err != nil {
 			c.Logger.Warnf("Failed submitting request: %v", err)

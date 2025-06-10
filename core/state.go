@@ -302,9 +302,22 @@ func (c *Complaint) ToBeSigned() []byte {
 	return toBeSignedComplaint.Bytes()
 }
 
+func (c *Complaint) String() string {
+	return fmt.Sprintf("Complaint: Signer: %d; Shard: %d; Term %d; Reason: %s", c.Signer, c.Shard, c.Term, c.Reason)
+}
+
 type ControlEvent struct {
 	BAF       BatchAttestationFragment
 	Complaint *Complaint
+}
+
+func (ce *ControlEvent) String() string {
+	if ce.Complaint != nil {
+		return ce.Complaint.String()
+	} else if ce.BAF != nil {
+		return ce.BAF.String()
+	}
+	return "empty control event"
 }
 
 // ID returns a string representing the specific control event

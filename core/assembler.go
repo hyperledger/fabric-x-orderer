@@ -39,6 +39,7 @@ type BatchAttestationFragment interface {
 	Deserialize([]byte) error
 	GarbageCollect() [][]byte
 	Epoch() int64
+	String() string
 }
 
 // OrderedBatchAttestation carries the BatchAttestation and information on the actual order of the batch from the

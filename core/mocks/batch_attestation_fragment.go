@@ -110,6 +110,16 @@ type FakeBatchAttestationFragment struct {
 	signerReturnsOnCall map[int]struct {
 		result1 types.PartyID
 	}
+	StringStub        func() string
+	stringMutex       sync.RWMutex
+	stringArgsForCall []struct {
+	}
+	stringReturns struct {
+		result1 string
+	}
+	stringReturnsOnCall map[int]struct {
+		result1 string
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -657,6 +667,59 @@ func (fake *FakeBatchAttestationFragment) SignerReturnsOnCall(i int, result1 typ
 	}{result1}
 }
 
+func (fake *FakeBatchAttestationFragment) String() string {
+	fake.stringMutex.Lock()
+	ret, specificReturn := fake.stringReturnsOnCall[len(fake.stringArgsForCall)]
+	fake.stringArgsForCall = append(fake.stringArgsForCall, struct {
+	}{})
+	stub := fake.StringStub
+	fakeReturns := fake.stringReturns
+	fake.recordInvocation("String", []interface{}{})
+	fake.stringMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeBatchAttestationFragment) StringCallCount() int {
+	fake.stringMutex.RLock()
+	defer fake.stringMutex.RUnlock()
+	return len(fake.stringArgsForCall)
+}
+
+func (fake *FakeBatchAttestationFragment) StringCalls(stub func() string) {
+	fake.stringMutex.Lock()
+	defer fake.stringMutex.Unlock()
+	fake.StringStub = stub
+}
+
+func (fake *FakeBatchAttestationFragment) StringReturns(result1 string) {
+	fake.stringMutex.Lock()
+	defer fake.stringMutex.Unlock()
+	fake.StringStub = nil
+	fake.stringReturns = struct {
+		result1 string
+	}{result1}
+}
+
+func (fake *FakeBatchAttestationFragment) StringReturnsOnCall(i int, result1 string) {
+	fake.stringMutex.Lock()
+	defer fake.stringMutex.Unlock()
+	fake.StringStub = nil
+	if fake.stringReturnsOnCall == nil {
+		fake.stringReturnsOnCall = make(map[int]struct {
+			result1 string
+		})
+	}
+	fake.stringReturnsOnCall[i] = struct {
+		result1 string
+	}{result1}
+}
+
 func (fake *FakeBatchAttestationFragment) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -680,6 +743,8 @@ func (fake *FakeBatchAttestationFragment) Invocations() map[string][][]interface
 	defer fake.signatureMutex.RUnlock()
 	fake.signerMutex.RLock()
 	defer fake.signerMutex.RUnlock()
+	fake.stringMutex.RLock()
+	defer fake.stringMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
