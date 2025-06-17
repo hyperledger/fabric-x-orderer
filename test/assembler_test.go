@@ -54,7 +54,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 
 	// 3.
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 

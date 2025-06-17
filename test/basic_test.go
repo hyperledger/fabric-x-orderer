@@ -57,7 +57,7 @@ func TestSubmitAndReceive(t *testing.T) {
 	tts = append(tts, sometimes[rand.Intn(len(sometimes))])
 
 	// compile arma
-	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	defer gexec.CleanupBuildArtifacts()
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
