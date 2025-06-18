@@ -49,9 +49,9 @@ func (a *Assembler) Stop() {
 	a.netStopper.Stop()
 	a.prefetcher.Stop()
 	a.assembler.Index.Stop()
+	a.baReplicator.Stop()
 	a.assembler.WaitTermination()
 	a.assembler.Ledger.Close()
-	a.baReplicator.Stop()
 }
 
 func NewDefaultAssembler(

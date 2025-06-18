@@ -47,11 +47,9 @@ func TestABCR(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, clean := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
-	defer clean()
+	_, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 
-	_, _, _, clean = createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId)
-	defer clean()
+	_, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId)
 
 	routers := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId)
 
@@ -94,6 +92,15 @@ func TestABCR(t *testing.T) {
 		assemblerGRPC.Start()
 	}()
 
+	defer func() {
+		for i := range routers {
+			routers[i].Stop()
+		}
+		cleanBatchers()
+		cleanConsenters()
+		assembler.Stop()
+	}()
+
 	//_, assemblerPort, err := net.SplitHostPort(assemblerGRPC.Address())
 	//require.NoError(t, err)
 
@@ -131,14 +138,14 @@ func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembl
 		n := assembler.GetTxCount()
 		t.Logf("Received TXs: %d", n)
 		return int(n) >= totalTxn
-	}, 30*time.Second, 1000*time.Millisecond)
+	}, time.Minute, time.Second)
 
 	elapsed := int(time.Since(start).Seconds())
 	if elapsed == 0 {
 		elapsed = 1
 	}
 
-	fmt.Println(totalTxn / elapsed)
+	t.Logf("%f (totalTxn / elapsed)\n", float32(totalTxn)/float32(elapsed))
 }
 
 // func runPerf(t *testing.T, routerTLSCA, assemblerTLSCA [][]byte, routerEndpoints []string, assemblerEndpoint string, clientPath string) {
