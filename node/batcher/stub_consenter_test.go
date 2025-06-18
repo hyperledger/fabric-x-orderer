@@ -83,11 +83,16 @@ func (sc *stubConsenter) NotifyEvent(stream protos.Consensus_NotifyEventServer) 
 }
 
 func (sc *stubConsenter) Stop() {
+	// Stop() of stub consenter does nothing
+	// use NetStop() to stop the stub consenter network
+}
+
+func (sc *stubConsenter) StopNet() {
 	sc.net.Stop()
 }
 
 func (sc *stubConsenter) Restart() {
-	sc.Stop()
+	sc.StopNet()
 	addr := sc.net.Address()
 	server, err := comm.NewGRPCServer(addr, comm.ServerConfig{
 		SecOpts: comm.SecureOptions{

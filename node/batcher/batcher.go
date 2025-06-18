@@ -31,6 +31,7 @@ import (
 //go:generate counterfeiter -o mocks/state_replicator.go . StateReplicator
 type StateReplicator interface {
 	ReplicateState() <-chan *core.State
+	Stop()
 }
 
 // Signer signs messages
@@ -103,6 +104,7 @@ func (b *Batcher) replicateState() {
 	b.logger.Infof("Started replicating state")
 	b.running.Add(1)
 	defer func() {
+		b.stateReplicator.Stop()
 		b.running.Done()
 		b.logger.Infof("Stopped replicating state")
 	}()

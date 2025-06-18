@@ -154,7 +154,7 @@ func createConsenterStubs(t *testing.T, consenterNodes []*node, num int) ([]*stu
 
 	return stubConsenters, func() {
 		for _, sc := range stubConsenters {
-			sc.Stop()
+			sc.StopNet()
 		}
 	}
 }

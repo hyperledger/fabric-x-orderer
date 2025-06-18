@@ -326,7 +326,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// stop one consenter – quorum (3/4) is still valid
-	stubConsenters[0].Stop()
+	stubConsenters[0].StopNet()
 
 	// submit the second request
 	req = make([]byte, 8)
@@ -342,7 +342,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// now stop another consenter – quorum (2/4) is not enough
-	stubConsenters[1].Stop()
+	stubConsenters[1].StopNet()
 
 	// submit another request, batch will be created but waiting for quorum
 	req = make([]byte, 8)
