@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,7 +146,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 	return networkSharedConfig, sharedConfigPath
 }
 
-func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener) *gexec.Session {
+func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener, numOfParties int) *gexec.Session {
 	listener.Close()
 	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
 	require.NotNil(t, cmd)
@@ -159,12 +160,14 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 		return match
 	}, 60*time.Second, 10*time.Millisecond)
 
-	if name == "consensus" {
-		require.Eventually(t, func() bool {
-			match, err := gbytes.Say("Endpoint to pull from is").Match(sess.Err)
-			require.NoError(t, err)
-			return match
-		}, 60*time.Second, 10*time.Millisecond)
+	if numOfParties > 1 {
+		if name == "consensus" {
+			require.Eventually(t, func() bool {
+				match, err := gbytes.Say("Endpoint to pull from is").Match(sess.Err)
+				require.NoError(t, err)
+				return match
+			}, 60*time.Second, 10*time.Millisecond)
+		}
 	}
 
 	readyChan <- struct{}{}
@@ -180,8 +183,12 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 	}
 
 	nodeNames := make([]string, 0, len(netInfo))
+	numOfParties := 0
 	for n := range netInfo {
 		nodeNames = append(nodeNames, n)
+		if strings.Contains(n, "consensus") {
+			numOfParties++
+		}
 	}
 
 	sort.Strings(nodeNames)
@@ -213,7 +220,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		require.NoError(t, err)
 
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
-		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
+		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener, numOfParties)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
 		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}

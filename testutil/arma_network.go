@@ -96,14 +96,14 @@ func (armaNetwork *ArmaNetwork) GeBatcher(t *testing.T, partyID types.PartyID, s
 	return armaNetwork.armaNodes[Batcher][partyID-1][shardID-1]
 }
 
-func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}) {
+func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}, numOfParties int) {
 	require.FileExists(t, armaNodeInfo.RunInfo.NodeConfigPath)
 	nodeConfig := readNodeConfigFromYaml(t, armaNodeInfo.RunInfo.NodeConfigPath)
 	storagePath := nodeConfig.FileStore.Path
 	require.DirExists(t, storagePath)
 
 	armaNodeInfo.RunInfo.Session = runNode(t, armaNodeInfo.NodeType, armaNodeInfo.RunInfo.ArmaBinaryPath,
-		armaNodeInfo.RunInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener)
+		armaNodeInfo.RunInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener, numOfParties)
 }
 
 func (armaNodeInfo *ArmaNodeInfo) StopArmaNode() {

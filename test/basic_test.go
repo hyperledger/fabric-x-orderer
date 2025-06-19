@@ -128,19 +128,19 @@ func TestSubmitAndReceive(t *testing.T) {
 			}
 
 			startBlock := uint64(0)
-			endBlock := uint64(3)
+			endBlock := uint64(tt.numOfShards)
 			errString := "cancelled pull from assembler: %d"
 
-			PullFromAssemblers(t, uc, parties, startBlock, endBlock, 0, 4, errString)
+			PullFromAssemblers(t, uc, parties, startBlock, endBlock, 0, tt.numOfShards+1, errString)
 
-			// Pull some block from the middle and count them
-			startBlock = uint64(2)
-			endBlock = uint64(3)
+			// Pull first two blocks and count them
+			startBlock = uint64(0)
+			endBlock = uint64(1)
 
 			PullFromAssemblers(t, uc, parties, startBlock, endBlock, 0, int((endBlock-startBlock)+1), errString)
 
 			// Pull more block, then cancel
-			startBlock = uint64(3)
+			startBlock = uint64(1)
 			endBlock = uint64(1000)
 			errString = "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing"
 

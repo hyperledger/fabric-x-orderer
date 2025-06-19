@@ -97,7 +97,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	waitForTxSent.Wait()
 
 	// 7 + 8.
-	nodeToRestart.RestartArmaNode(t, readyChan)
+	nodeToRestart.RestartArmaNode(t, readyChan, 4)
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
@@ -133,7 +133,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 
 	err = dc.PullBlocks(toCtx, partyToRestart, 0, math.MaxUint64, handler)
 	require.ErrorContains(t, err, "cancelled pull from assembler: 3")
-	require.True(t, totalTxs == uint64(transactions*2))
+	require.Equal(t, uint64(transactions*2), totalTxs)
 
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
 }
