@@ -113,7 +113,7 @@ func (p *Prefetcher) handleBatchRequests() {
 			go func(batchId types.BatchID) {
 				batch, err := p.batchFetcher.GetBatch(batchId)
 				if err != nil {
-					p.logger.Panicf("error while fetching batch %v", err)
+					p.logger.Panicf("error while fetching batch: %s", err)
 				}
 				p.prefetchIndex.PutForce(batch)
 			}(batchId)

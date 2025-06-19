@@ -20,6 +20,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	minRetryInterval = 100 * time.Millisecond
+	maxRetryInterval = 10 * time.Second
+)
+
 func NewestSeekInfo() *orderer.SeekInfo {
 	return &orderer.SeekInfo{
 		Start:         &orderer.SeekPosition{Type: &orderer.SeekPosition_Newest{Newest: &orderer.SeekNewest{}}},
@@ -136,14 +141,31 @@ func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadc
 }
 
 // PullOne will pull a single block, as specified in the request.
-func PullOne(context context.Context, channel string, logger types.Logger, endpointToPullFrom string, requestEnvelope *common.Envelope, cc comm.ClientConfig) (*common.Block, error) {
-	logger.Infof("Started pulling one from: %s", channel)
+func PullOne(context context.Context, channel string, logger types.Logger, endpointToPullFrom string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig) (*common.Block, error) {
+	logger.Infof("Started pulling one batch, channel: %s, endpoint: %s", channel, endpointToPullFrom)
+
+	count := 0
+	retryInterval := minRetryInterval
+
 	for {
-		select {
-		case <-context.Done():
-			return nil, fmt.Errorf("context is done")
-		default:
+		if count > 0 {
+			if count > 1 {
+				retryInterval = 2 * retryInterval
+			}
+			if retryInterval > maxRetryInterval {
+				retryInterval = maxRetryInterval
+			}
+
+			logger.Infof("Going to try pulling one block again in %s, channel: %s, endpoint: %s", retryInterval, channel, endpointToPullFrom)
+
+			select {
+			case <-context.Done():
+				return nil, fmt.Errorf("context is done, pulling one batch from: channel: %s, endpoint: %s", channel, endpointToPullFrom)
+			case <-time.After(retryInterval):
+				logger.Debugf("Attempt %d to connect to %s", count, endpointToPullFrom)
+			}
 		}
+		count++
 
 		conn, err := cc.Dial(endpointToPullFrom)
 		if err != nil {
@@ -160,6 +182,7 @@ func PullOne(context context.Context, channel string, logger types.Logger, endpo
 			continue
 		}
 
+		requestEnvelope := requestEnvelopeFactory()
 		err = stream.Send(requestEnvelope)
 		if err != nil {
 			logger.Errorf("Failed sending request envelope to %s: %v", endpointToPullFrom, err)

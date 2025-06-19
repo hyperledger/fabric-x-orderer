@@ -6,7 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 package types
 
-import "math"
+import (
+	"math"
+)
 
 // ShardID identifies a shard, should be >0.
 // Value math.MaxUint16 is reserved.

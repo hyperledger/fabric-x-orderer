@@ -196,13 +196,15 @@ func (br *BatchFetcher) findShardID(shardID types.ShardID) config.BatcherInfo {
 // The Arma protocol ensures that if the batchID is from consensus, at least one batcher in the shard has it.
 func (br *BatchFetcher) GetBatch(batchID types.BatchID) (core.Batch, error) {
 	var shardInfo config.ShardInfo
+	var found bool
 	for _, shard := range br.config.Shards {
 		if shard.ShardId == batchID.Shard() {
 			shardInfo = shard
+			found = true
 			break
 		}
 	}
-	if len(shardInfo.Batchers) == 0 {
+	if !found {
 		return nil, fmt.Errorf("failed finding shard %d within config: %v", batchID.Shard(), br.config.Shards)
 	}
 
@@ -232,30 +234,36 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (core.Batch, error) {
 				cancelFunc()
 				return fetchedBatch, nil
 			} else if count == len(shardInfo.Batchers) {
+				br.logger.Errorf("We got responses from all %d batchers in shard %d, but none match the desired BatchID: %s", count, shardInfo.ShardId, types.BatchIDToString(batchID))
+
 				cancelFunc()
-				return nil, fmt.Errorf("failed finding batchID %v within shard: %v", batchID, shardInfo)
+				return nil, fmt.Errorf("failed finding batchID %s within shard: %d", types.BatchIDToString(batchID), shardInfo.ShardId)
 			}
 		}
 	}
 }
 
 func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom config.BatcherInfo, batchID types.BatchID, resultChan chan core.Batch) {
-	br.logger.Infof("Assembler trying to pull from %s, batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, batchID.Shard(), batchID.Primary(), batchID.Seq(), hex.EncodeToString(batchID.Digest()))
+	br.logger.Infof("Assembler trying to pull a single batch from %s, batch-ID: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(batchID))
 
 	channelName := ledger.ShardPartyToChannelName(batchID.Shard(), batchID.Primary())
 	br.logger.Infof("Assembler replicating from channel %s ", channelName)
 
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		channelName,
-		nil,
-		delivery.SingleSpecifiedSeekInfo(uint64(batchID.Seq())),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		br.logger.Panicf("Failed creating signed envelope: %v", err)
+	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+			common.HeaderType_DELIVER_SEEK_INFO,
+			channelName,
+			nil,
+			delivery.SingleSpecifiedSeekInfo(uint64(batchID.Seq())),
+			int32(0),
+			uint64(0),
+			nil,
+		)
+		if err != nil {
+			br.logger.Panicf("Failed creating signed envelope: %s", err)
+		}
+
+		return requestEnvelope
 	}
 
 	block, err := delivery.PullOne(
@@ -263,11 +271,11 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		channelName,
 		br.logger,
 		batcherToPullFrom.Endpoint,
-		requestEnvelope,
+		requestEnvelopeFactoryFunc,
 		br.clientConfig,
 	)
 	if err != nil {
-		br.logger.Errorf("Assembler failed to pull batch %v from %v", batchID, batcherToPullFrom)
+		br.logger.Errorf("Assembler failed to pull batch %s from %v", types.BatchIDToString(batchID), batcherToPullFrom)
 		resultChan <- nil
 	}
 
@@ -276,7 +284,7 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		br.logger.Errorf("Assembler pulled from %s a block that cannot be converted to a FabricBatch: %s", batcherToPullFrom.Endpoint, err)
 		return
 	}
-	br.logger.Infof("Assembler pulled from %s batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
+	br.logger.Infof("Assembler pulled from %s batch: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
 	resultChan <- fb
 }
 
