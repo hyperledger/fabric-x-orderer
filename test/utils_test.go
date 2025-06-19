@@ -321,7 +321,7 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	binary.BigEndian.PutUint64(txn, uint64(txnNum))
 	binary.BigEndian.PutUint16(txn[30:], uint16(workerID))
 
-	for routerId := 0; routerId < 4; routerId++ {
+	for routerId := 0; routerId < len(routers); routerId++ {
 		routers[routerId].Submit(context.Background(), &protos.Request{Payload: txn})
 	}
 }

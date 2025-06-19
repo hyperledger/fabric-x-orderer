@@ -39,7 +39,7 @@ func TestABCR(t *testing.T) {
 	batcherNodes, batcherInfos := createBatcherNodesAndInfo(t, ca, numParties)
 	consenterNodes, consenterInfos := createConsenterNodesAndInfo(t, ca, numParties)
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < numParties; i++ {
 		t.Logf("batcher: %v, %s", batcherInfos[i], batcherNodes[i].ToString())
 	}
 
