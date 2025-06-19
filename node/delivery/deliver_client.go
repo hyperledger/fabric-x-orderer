@@ -77,7 +77,7 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 		}
 
 		endpointToPullFrom := endpoint()
-
+		logger.Infof("Endpoint to pull from is %s", endpointToPullFrom)
 		if endpointToPullFrom == "" {
 			logger.Errorf("No one to pull from, waiting...")
 			continue

@@ -159,6 +159,14 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 		return match
 	}, 60*time.Second, 10*time.Millisecond)
 
+	if name == "consensus" {
+		require.Eventually(t, func() bool {
+			match, err := gbytes.Say("Endpoint to pull from is").Match(sess.Err)
+			require.NoError(t, err)
+			return match
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
 	readyChan <- struct{}{}
 	return sess
 }
