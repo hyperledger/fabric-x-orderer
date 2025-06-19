@@ -159,8 +159,9 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 		nextSeq: func() uint64 {
 			return ledger.Height()
 		},
-		BFTConfig:    c.BFTConfig,
-		CurrentNodes: c.CurrentNodes,
+		latestCommittedBlock: ledger.Height() - 1,
+		BFTConfig:            c.BFTConfig,
+		CurrentNodes:         c.CurrentNodes,
 	}
 
 	ledger.RegisterAppendListener(synchronizer)

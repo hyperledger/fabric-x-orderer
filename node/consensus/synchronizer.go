@@ -43,7 +43,6 @@ func (s *synchronizer) OnAppend(block *common.Block) {
 	defer s.lock.Unlock()
 
 	s.latestCommittedBlock = block.Header.Number
-
 	delete(s.memStore, block.Header.Number)
 }
 
@@ -88,7 +87,7 @@ func (s *synchronizer) run() {
 		s.memStore[block.Header.Number] = block
 	}
 
-	go delivery.Pull(stopCtx, "consensus", s.logger, s.endpoint, requestEnvelopeFactoryFunc, s.cc, blockHandlerFunc, nil)
+	go delivery.Pull(stopCtx, "consensus-synchronizer", s.logger, s.endpoint, requestEnvelopeFactoryFunc, s.cc, blockHandlerFunc, nil)
 }
 
 func (s *synchronizer) memStoreTooBig() bool {
@@ -103,15 +102,14 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 	lastSeqInLedger := height - 1
 	latestBlock := s.getBlock(lastSeqInLedger)
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	// Iterate over blocks retrieved from pulling asynchronously from the leader,
-	// and commit them.
+	// Iterate over blocks retrieved from pulling asynchronously and commit them.
 
 	nextSeqToCommit := lastSeqInLedger + 1
 	for {
+		s.lock.Lock()
 		retrievedBlock, exists := s.memStore[nextSeqToCommit]
+		s.lock.Unlock()
+
 		if !exists {
 			break
 		}
