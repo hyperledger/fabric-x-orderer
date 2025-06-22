@@ -19,16 +19,6 @@ type FakeConsensusBringer struct {
 	replicateReturnsOnCall map[int]struct {
 		result1 <-chan core.OrderedBatchAttestation
 	}
-	ReplicateStateStub        func() <-chan *core.State
-	replicateStateMutex       sync.RWMutex
-	replicateStateArgsForCall []struct {
-	}
-	replicateStateReturns struct {
-		result1 <-chan *core.State
-	}
-	replicateStateReturnsOnCall map[int]struct {
-		result1 <-chan *core.State
-	}
 	StopStub        func()
 	stopMutex       sync.RWMutex
 	stopArgsForCall []struct {
@@ -90,59 +80,6 @@ func (fake *FakeConsensusBringer) ReplicateReturnsOnCall(i int, result1 <-chan c
 	}{result1}
 }
 
-func (fake *FakeConsensusBringer) ReplicateState() <-chan *core.State {
-	fake.replicateStateMutex.Lock()
-	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
-	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
-	}{})
-	stub := fake.ReplicateStateStub
-	fakeReturns := fake.replicateStateReturns
-	fake.recordInvocation("ReplicateState", []interface{}{})
-	fake.replicateStateMutex.Unlock()
-	if stub != nil {
-		return stub()
-	}
-	if specificReturn {
-		return ret.result1
-	}
-	return fakeReturns.result1
-}
-
-func (fake *FakeConsensusBringer) ReplicateStateCallCount() int {
-	fake.replicateStateMutex.RLock()
-	defer fake.replicateStateMutex.RUnlock()
-	return len(fake.replicateStateArgsForCall)
-}
-
-func (fake *FakeConsensusBringer) ReplicateStateCalls(stub func() <-chan *core.State) {
-	fake.replicateStateMutex.Lock()
-	defer fake.replicateStateMutex.Unlock()
-	fake.ReplicateStateStub = stub
-}
-
-func (fake *FakeConsensusBringer) ReplicateStateReturns(result1 <-chan *core.State) {
-	fake.replicateStateMutex.Lock()
-	defer fake.replicateStateMutex.Unlock()
-	fake.ReplicateStateStub = nil
-	fake.replicateStateReturns = struct {
-		result1 <-chan *core.State
-	}{result1}
-}
-
-func (fake *FakeConsensusBringer) ReplicateStateReturnsOnCall(i int, result1 <-chan *core.State) {
-	fake.replicateStateMutex.Lock()
-	defer fake.replicateStateMutex.Unlock()
-	fake.ReplicateStateStub = nil
-	if fake.replicateStateReturnsOnCall == nil {
-		fake.replicateStateReturnsOnCall = make(map[int]struct {
-			result1 <-chan *core.State
-		})
-	}
-	fake.replicateStateReturnsOnCall[i] = struct {
-		result1 <-chan *core.State
-	}{result1}
-}
-
 func (fake *FakeConsensusBringer) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
@@ -172,8 +109,6 @@ func (fake *FakeConsensusBringer) Invocations() map[string][][]interface{} {
 	defer fake.invocationsMutex.RUnlock()
 	fake.replicateMutex.RLock()
 	defer fake.replicateMutex.RUnlock()
-	fake.replicateStateMutex.RLock()
-	defer fake.replicateStateMutex.RUnlock()
 	fake.stopMutex.RLock()
 	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

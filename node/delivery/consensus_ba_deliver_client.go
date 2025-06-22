@@ -8,8 +8,6 @@ package delivery
 
 import (
 	"context"
-	"encoding/binary"
-	"time"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
@@ -18,21 +16,16 @@ import (
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
 	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 
-	"github.com/pkg/errors"
-
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
 const (
-	replicateStateChanSize = 100
-	replicateChanSize      = 100
+	replicateBAChanSize = 100
 )
 
 //go:generate counterfeiter -o ./mocks/consensus_bringer.go . ConsensusBringer
 type ConsensusBringer interface {
-	ReplicateState() <-chan *core.State
 	Replicate() <-chan core.OrderedBatchAttestation
 	Stop()
 }
@@ -45,11 +38,11 @@ type ConsensusBringerFactory interface {
 type DefaultConsensusBringerFactory struct{}
 
 func (f *DefaultConsensusBringerFactory) Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) ConsensusBringer {
-	return NewConsensusReplicator(tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, logger)
+	return NewConsensusBAReplicator(tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, logger)
 }
 
-// ConsensusReplicator replicates decisions from consensus and allows the consumption of `core.state` or `core.BatchAttestation` objects.
-type ConsensusReplicator struct {
+// ConsensusBAReplicator replicates decisions from consensus and allows the consumption of `core.BatchAttestation` objects.
+type ConsensusBAReplicator struct {
 	assemblerLedger ledger.AssemblerLedgerReaderWriter // TODO instead of using AssemblerLedgerReaderWriter define a more general interface to read the last block
 	tlsKey, tlsCert []byte
 	endpoint        string
@@ -59,9 +52,9 @@ type ConsensusReplicator struct {
 	ctxCancelFunc   context.CancelFunc
 }
 
-func NewConsensusReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) *ConsensusReplicator {
+func NewConsensusBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) *ConsensusBAReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	baReplicator := &ConsensusReplicator{
+	baReplicator := &ConsensusBAReplicator{
 		assemblerLedger: assemblerLedger,
 		cc:              clientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint:        endpoint,
@@ -74,45 +67,7 @@ func NewConsensusReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes
 	return baReplicator
 }
 
-func (cr *ConsensusReplicator) ReplicateState() <-chan *core.State {
-	endpoint := func() string {
-		return cr.endpoint
-	}
-
-	requestEnvelopeFactoryFunc := func() *common.Envelope {
-		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-			common.HeaderType_DELIVER_SEEK_INFO,
-			"consensus",
-			nil,
-			NewestSeekInfo(),
-			int32(0),
-			uint64(0),
-			nil,
-		)
-		if err != nil {
-			cr.logger.Panicf("Failed creating signed envelope: %v", err)
-		}
-
-		return requestEnvelope
-	}
-
-	res := make(chan *core.State, replicateStateChanSize)
-
-	blockHandlerFunc := func(block *common.Block) {
-		header := extractHeaderFromBlock(block, cr.logger)
-		res <- header.State
-	}
-
-	onClose := func() {
-		close(res)
-	}
-
-	go Pull(cr.cancelCtx, "consensus", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
-
-	return res
-}
-
-func (cr *ConsensusReplicator) Replicate() <-chan core.OrderedBatchAttestation {
+func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation {
 	endpoint := func() string {
 		return cr.endpoint
 	}
@@ -139,7 +94,7 @@ func (cr *ConsensusReplicator) Replicate() <-chan core.OrderedBatchAttestation {
 		return requestEnvelope
 	}
 
-	res := make(chan core.OrderedBatchAttestation, replicateChanSize)
+	res := make(chan core.OrderedBatchAttestation, replicateBAChanSize)
 
 	initOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
 	if err != nil {
@@ -187,101 +142,13 @@ func (cr *ConsensusReplicator) Replicate() <-chan core.OrderedBatchAttestation {
 		close(res)
 	}
 
-	go Pull(cr.cancelCtx, "consensus", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
+	go Pull(cr.cancelCtx, "consensus-ba-replicate", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
 
 	cr.logger.Infof("Starting to replicate from consenter")
 
 	return res
 }
 
-func (cr *ConsensusReplicator) Stop() {
+func (cr *ConsensusBAReplicator) Stop() {
 	cr.ctxCancelFunc()
-}
-
-func extractHeaderFromBlock(block *common.Block, logger types.Logger) *state.Header {
-	decisionAsBytes := block.Data.Data[0]
-
-	headerSize := decisionAsBytes[:4]
-
-	rawHeader := decisionAsBytes[12 : 12+binary.BigEndian.Uint32(headerSize)]
-
-	header := &state.Header{}
-	if err := header.Deserialize(rawHeader); err != nil {
-		logger.Panicf("Failed parsing rawHeader")
-	}
-	return header
-}
-
-func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smartbft_types.Signature, error) {
-	if len(block.GetData().GetData()) == 0 {
-		return nil, nil, errors.New("missing data in block")
-	}
-
-	// An optimization would be to unmarshal just the header and sigs, skipping the proposal payload and metadata which we don't need here.
-	// An even better optimization would be to ask for content type that does not include the proposal payload and metadata.
-	proposal, compoundSigs, err := state.BytesToDecision(block.GetData().GetData()[0])
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to extract decision from block: %d", block.GetHeader().GetNumber())
-	}
-
-	stateHeader := &state.Header{}
-	if err := stateHeader.Deserialize(proposal.Header); err != nil {
-		return nil, nil, errors.Wrapf(err, "failed parsing consensus/state.Header from block: %d", block.GetHeader().GetNumber())
-	}
-
-	if stateHeader.Num == 0 { // this is the genesis block
-		sigs := make([][]smartbft_types.Signature, 1) // no signatures
-		return stateHeader, sigs, nil
-	}
-
-	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableBlocks))
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to extract header signatures from compound signature, block %d", block.GetHeader().GetNumber())
-	}
-
-	return stateHeader, sigs, nil
-}
-
-func signersFromSigs(sigs []smartbft_types.Signature) []uint64 {
-	var signers []uint64
-	for _, sig := range sigs {
-		signers = append(signers, sig.ID)
-	}
-	return signers
-}
-
-func clientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.ClientConfig {
-	var tlsCAs [][]byte
-	for _, cert := range TLSCACerts {
-		tlsCAs = append(tlsCAs, cert)
-	}
-
-	cc := comm.ClientConfig{
-		AsyncConnect: true,
-		KaOpts: comm.KeepaliveOptions{
-			ClientInterval: time.Hour,
-			ClientTimeout:  time.Hour,
-		},
-		SecOpts: comm.SecureOptions{
-			Key:               tlsKey,
-			Certificate:       tlsCert,
-			RequireClientCert: true,
-			UseTLS:            true,
-			ServerRootCAs:     tlsCAs,
-		},
-		DialTimeout: time.Second * 5,
-	}
-	return cc
-}
-
-func createAssemblerConsensusPosition(oi *state.OrderingInformation) core.AssemblerConsensusPosition {
-	if oi.BatchIndex != oi.BatchCount-1 {
-		return core.AssemblerConsensusPosition{
-			DecisionNum: oi.DecisionNum,
-			BatchIndex:  oi.BatchIndex + 1,
-		}
-	}
-	return core.AssemblerConsensusPosition{
-		DecisionNum: oi.DecisionNum + 1,
-	}
 }
