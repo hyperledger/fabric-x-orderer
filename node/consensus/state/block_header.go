@@ -11,6 +11,8 @@ import (
 	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"math/big"
 
 	"github.com/pkg/errors"
@@ -131,4 +133,12 @@ func (bh *BlockHeader) Equal(bh2 *BlockHeader) bool {
 		return false
 	}
 	return bytes.Equal(bh.Digest, bh2.Digest)
+}
+
+func (bh *BlockHeader) String() string {
+	if bh == nil {
+		return "<nil>"
+	}
+
+	return fmt.Sprintf("Number: %d, PrevHash: %s, Digest: %s", bh.Number, hex.EncodeToString(bh.PrevHash), hex.EncodeToString(bh.Digest))
 }

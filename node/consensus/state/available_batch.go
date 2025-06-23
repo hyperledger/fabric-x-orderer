@@ -9,7 +9,6 @@ package state
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
@@ -45,7 +44,8 @@ func (ab *AvailableBatch) Equal(ab2 *AvailableBatch) bool {
 	return bytes.Equal(ab.digest, ab.digest)
 }
 
-// TODO define a seprate interface for AvailableBatch
+// Fragments
+// TODO define a separate interface for AvailableBatch
 func (ab *AvailableBatch) Fragments() []core.BatchAttestationFragment {
 	panic("should not be called")
 }
@@ -98,5 +98,5 @@ func (ab *AvailableBatch) Deserialize(bytes []byte) error {
 }
 
 func (ab *AvailableBatch) String() string {
-	return fmt.Sprintf("Pri %d, Sha %d, Seq %d, Dig %s", ab.primary, ab.shard, ab.seq, core.ShortDigestString(ab.Digest()))
+	return types.BatchIDToString(ab)
 }

@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
+	"fmt"
+
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
 
@@ -19,6 +21,14 @@ type OrderingInformation struct {
 	DecisionNum types.DecisionNum
 	BatchIndex  int
 	BatchCount  int
+}
+
+func (oi *OrderingInformation) String() string {
+	if oi == nil {
+		return "<nil>"
+	}
+
+	return fmt.Sprintf("DecisionNum: %d, BatchIndex: %d, BatchCount: %d; No. Sigs: %d, BlockHeader: %s", oi.DecisionNum, oi.BatchIndex, oi.BatchCount, len(oi.Signatures), oi.BlockHeader.String())
 }
 
 type AvailableBatchOrdered struct {

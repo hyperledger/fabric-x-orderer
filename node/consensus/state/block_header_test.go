@@ -21,13 +21,18 @@ func TestBlockHeader_Serialize(t *testing.T) {
 		require.Equal(t, bh.Hash(), bh2.Hash())
 		require.True(t, bh.Equal(&bh2))
 		require.True(t, bh2.Equal(&bh))
+		require.Equal(t, "Number: 0, PrevHash: , Digest: ", bh.String())
 	})
 
 	t.Run("non nil hash", func(t *testing.T) {
 		var bh BlockHeader
 		bh.Number = 0
 		bh.PrevHash = make([]byte, 32)
+		bh.PrevHash[0] = 0xab
 		bh.Digest = make([]byte, 32)
+		bh.Digest[0] = 0xef
+
+		require.Equal(t, "Number: 0, PrevHash: ab00000000000000000000000000000000000000000000000000000000000000, Digest: ef00000000000000000000000000000000000000000000000000000000000000", bh.String())
 
 		var bh2 BlockHeader
 		bh2.deserialize(bh.serialize())
@@ -48,5 +53,10 @@ func TestBlockHeader_Serialize(t *testing.T) {
 
 		require.True(t, bh.Equal(&bh3))
 		require.True(t, bh3.Equal(&bh))
+	})
+
+	t.Run("nil header", func(t *testing.T) {
+		var bh *BlockHeader
+		require.Equal(t, "<nil>", bh.String())
 	})
 }

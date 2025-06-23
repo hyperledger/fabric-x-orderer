@@ -7,7 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package assembler
 
 import (
+	"encoding/hex"
 	"fmt"
+
+	"github.com/hyperledger/fabric/protoutil"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
@@ -72,11 +75,14 @@ func NewDefaultAssembler(
 		logger.Panicf("Failed creating assembler: %v", err)
 	}
 
+	logger.Infof("Starting with ledger height: %d", al.LedgerReader().Height())
+
 	if al.LedgerReader().Height() == 0 {
 		if genesisBlock == nil {
 			logger.Panicf("Error creating Assembler%d, genesis block is nil", config.PartyId)
 		}
 		al.AppendConfig(genesisBlock, 0)
+		logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(genesisBlock.GetHeader())))
 	}
 
 	shardIds := shardsFromAssemblerConfig(config)
@@ -86,6 +92,7 @@ func NewDefaultAssembler(
 	if err != nil {
 		logger.Panicf("Failed fetching batch frontier: %v", err)
 	}
+	logger.Infof("Starting with BatchFrontier: %s", node_ledger.BatchFrontierToString(batchFrontier))
 
 	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, config.PrefetchEvictionTtl, config.PrefetchBufferMemoryBytes, config.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{})
 	if err != nil {

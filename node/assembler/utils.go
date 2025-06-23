@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package assembler
 
 import (
-	"fmt"
+	"sort"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/core"
@@ -19,6 +19,11 @@ func partiesFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.Part
 	for _, b := range config.Shards[0].Batchers {
 		parties = append(parties, types.PartyID(b.PartyID))
 	}
+
+	sort.Slice(parties, func(i, j int) bool {
+		return int(parties[i]) < int(parties[j])
+	})
+
 	return parties
 }
 
@@ -27,15 +32,17 @@ func shardsFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.Shard
 	for i, shard := range config.Shards {
 		shardIds[i] = shard.ShardId
 	}
+
+	sort.Slice(shardIds, func(i, j int) bool {
+		return int(shardIds[i]) < int(shardIds[j])
+	})
+
 	return shardIds
 }
 
 // TODO: use stringer/formatter/gostringer for more general solution
-func BatchToString(batch types.BatchID) string {
-	if batch == nil {
-		return "<NIL BATCH>"
-	}
-	return fmt.Sprintf("Batch<shard: %d, primary: %d, seq: %d, digest: %s>", batch.Shard(), batch.Primary(), batch.Seq(), core.ShortDigestString(batch.Digest()))
+func BatchToString(batchID types.BatchID) string {
+	return types.BatchIDToString(batchID)
 }
 
 func batchSizeBytes(batch core.Batch) int {

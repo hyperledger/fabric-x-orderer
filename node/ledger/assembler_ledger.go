@@ -25,6 +25,11 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
+type (
+	PartySequenceMap = map[types.PartyID]types.BatchSequence
+	BatchFrontier    = map[types.ShardID]PartySequenceMap
+)
+
 //go:generate counterfeiter -o ./mocks/assembler_ledger.go . AssemblerLedgerReaderWriter
 type AssemblerLedgerReaderWriter interface {
 	GetTxCount() uint64
@@ -32,7 +37,7 @@ type AssemblerLedgerReaderWriter interface {
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	LastOrderingInfo() (*state.OrderingInformation, error)
 	LedgerReader() blockledger.Reader
-	BatchFrontier(shards []types.ShardID, parties []types.PartyID, scanTimeout time.Duration) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error)
+	BatchFrontier(shards []types.ShardID, parties []types.PartyID, scanTimeout time.Duration) (BatchFrontier, error)
 	Close()
 }
 
@@ -270,13 +275,13 @@ func (l *AssemblerLedger) BatchFrontier(
 	shards []types.ShardID,
 	parties []types.PartyID,
 	scanTimeout time.Duration,
-) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error) {
+) (BatchFrontier, error) {
 	height := l.Ledger.Height()
 	if height == 0 {
 		return nil, nil
 	}
 
-	shardParty2Seq := make(map[types.ShardID]map[types.PartyID]types.BatchSequence)
+	shardParty2Seq := make(BatchFrontier)
 	count := len(shards) * len(parties)
 	deadline := time.Now().Add(scanTimeout)
 
@@ -298,7 +303,7 @@ func (l *AssemblerLedger) BatchFrontier(
 		}
 
 		if _, exists := shardParty2Seq[batchID.Shard()]; !exists {
-			shardParty2Seq[batchID.Shard()] = make(map[types.PartyID]types.BatchSequence)
+			shardParty2Seq[batchID.Shard()] = make(PartySequenceMap)
 		}
 
 		// If we had already encountered this <shard,primary> we don't count it again

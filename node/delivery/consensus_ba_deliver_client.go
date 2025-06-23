@@ -77,7 +77,10 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 		if err != nil {
 			cr.logger.Panicf("Failed fetching last ordering info: %v", err)
 		}
+		cr.logger.Infof("Last OrderingInfo: %s", lastOrderingInfo.String())
 		position := createAssemblerConsensusPosition(lastOrderingInfo)
+		cr.logger.Infof("Last AssemblerConsensusPosition: %+v", position)
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			"consensus",
@@ -100,7 +103,10 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 	if err != nil {
 		cr.logger.Panicf("Failed fetching last ordering info: %v", err)
 	}
+	cr.logger.Infof("Initial OrderingInfo: %s", initOrderingInfo.String())
+
 	initPosition := createAssemblerConsensusPosition(initOrderingInfo)
+	cr.logger.Infof("Initial AssemblerConsensusPosition: %+v", initPosition)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header, sigs, err2 := extractHeaderAndSigsFromBlock(block)
@@ -108,12 +114,11 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 			cr.logger.Panicf("Failed extracting ordered batch attestation from decision: %s", err2)
 		}
 
-		cr.logger.Infof("Extracted a decision header with %d available blocks", len(header.AvailableBlocks))
+		cr.logger.Infof("Decision %d, with %d AvailableBlocks", block.GetHeader().GetNumber(), len(header.AvailableBlocks))
 		for index, ab := range header.AvailableBlocks {
-			cr.logger.Infof("BA index %d with: shard %d, primary %d, seq %d", index, ab.Batch.Shard(), ab.Batch.Primary(), ab.Batch.Seq())
-			cr.logger.Infof("BA block header: %+v", ab.Header)
+			cr.logger.Infof("BA index %d BatchID: %s", index, types.BatchIDToString(ab.Batch))
+			cr.logger.Infof("BA block header: %s", ab.Header.String())
 			cr.logger.Infof("BA block signers: %+v", signersFromSigs(sigs[index]))
-			cr.logger.Infof("BA digest: %s; block header digest: %s, ", core.ShortDigestString(ab.Batch.Digest()), core.ShortDigestString(ab.Header.Digest))
 
 			abo := &state.AvailableBatchOrdered{
 				AvailableBatch: ab.Batch,
@@ -130,7 +135,8 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 			// For instance, if a decision comprising three batches was interrupted after committing two, only the outstanding third batch should be reprocessed.
 			// This prevents redundant batch processing and potential errors upon resumption.
 			if abo.OrderingInformation.DecisionNum == initPosition.DecisionNum && abo.OrderingInformation.BatchIndex < initPosition.BatchIndex {
-				cr.logger.Debugf("AvailableBatchOrdered %+v is skipped, requested batch index was %d, but current is %d", abo, initPosition.BatchIndex, abo.OrderingInformation.BatchIndex)
+				cr.logger.Infof("AvailableBatchOrdered skipped, BatchID: %s, OrderingInfo: %s; but initial AssemblerConsensusPosition: %+v",
+					types.BatchIDToString(abo.AvailableBatch), abo.OrderingInformation.String(), initPosition)
 				return
 			}
 

@@ -8,6 +8,9 @@ package ledger
 
 import (
 	"encoding/binary"
+	"fmt"
+	"sort"
+	"strings"
 
 	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
@@ -124,4 +127,59 @@ func AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block *common.Block) (types
 		BatchCount:  int(bC),
 	}
 	return ab, oi, tC, nil
+}
+
+func BatchFrontierToString(frontier BatchFrontier) string {
+	// discover shards and parties for consistent iteration order, thus consistent string output
+	shardIDs := []types.ShardID{}
+	partySet := make(map[types.PartyID]bool)
+	for shard, shardMap := range frontier {
+		shardIDs = append(shardIDs, shard)
+		for party := range shardMap {
+			partySet[party] = true
+		}
+	}
+	sort.Slice(shardIDs, func(i, j int) bool {
+		return int(shardIDs[i]) < int(shardIDs[j])
+	})
+
+	partyIDs := []types.PartyID{}
+	for party := range partySet {
+		partyIDs = append(partyIDs, party)
+	}
+	sort.Slice(partyIDs, func(i, j int) bool {
+		return int(partyIDs[i]) < int(partyIDs[j])
+	})
+
+	sb := strings.Builder{}
+	sb.WriteString("{")
+
+	nShards := len(shardIDs)
+	for _, shard := range shardIDs {
+		shardMap := frontier[shard]
+		sb.WriteString(fmt.Sprintf("Sh: %d, {", shard))
+
+		nParties := len(shardMap)
+		for _, party := range partyIDs {
+			seq, ok := shardMap[party]
+			if !ok {
+				continue
+			}
+
+			sb.WriteString(fmt.Sprintf("<Pr: %d, Sq: %d>", party, seq))
+			nParties--
+			if nParties > 0 {
+				sb.WriteString(", ")
+			}
+		}
+
+		nShards--
+		sb.WriteString("}")
+		if nShards > 0 {
+			sb.WriteString("; ")
+		}
+	}
+	sb.WriteString("}")
+
+	return sb.String()
 }

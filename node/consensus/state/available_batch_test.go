@@ -18,7 +18,7 @@ func TestAvailableBatches(t *testing.T) {
 	ab.primary = 42
 	ab.shard = 666
 	ab.seq = 100
-	require.Equal(t, "Pri 42, Sha 666, Seq 100, Dig 0000000000000000", ab.String())
+	require.Equal(t, "Sh,Pr,Sq,Dg: <666,42,100,0000000000000000000000000000000000000000000000000000000000000000>", ab.String())
 
 	var ab2 AvailableBatch
 	require.NoError(t, ab2.Deserialize(ab.Serialize()))

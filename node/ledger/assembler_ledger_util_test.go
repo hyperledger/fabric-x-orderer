@@ -57,3 +57,47 @@ func TestAssemblerBlockMetadataToFromBytes(t *testing.T) {
 	assert.Equal(t, uint32(oi.BatchCount), batchCount)
 	assert.Equal(t, expectedTransactionCount, transactionCount)
 }
+
+func TestBatchFrontierToString(t *testing.T) {
+	t.Run("empty map", func(t *testing.T) {
+		bf := make(node_ledger.BatchFrontier)
+		assert.Equal(t, "{}", node_ledger.BatchFrontierToString(bf))
+	})
+
+	t.Run("partial map", func(t *testing.T) {
+		bf := make(node_ledger.BatchFrontier)
+		seq := types.BatchSequence(101)
+		for shardID := types.ShardID(1); shardID < 4; shardID++ {
+			bf[shardID] = make(node_ledger.PartySequenceMap)
+
+			for partyID := types.PartyID(11); partyID < 15; partyID++ {
+				if shardID == 3 {
+					continue
+				}
+				if partyID == types.PartyID(12) {
+					continue
+				}
+
+				bf[shardID][partyID] = seq
+				seq++
+			}
+		}
+		assert.Equal(t, "{Sh: 1, {<Pr: 11, Sq: 101>, <Pr: 13, Sq: 102>, <Pr: 14, Sq: 103>}; Sh: 2, {<Pr: 11, Sq: 104>, <Pr: 13, Sq: 105>, <Pr: 14, Sq: 106>}; Sh: 3, {}}",
+			node_ledger.BatchFrontierToString(bf))
+	})
+
+	t.Run("full map", func(t *testing.T) {
+		bf := make(node_ledger.BatchFrontier)
+		seq := types.BatchSequence(101)
+		for shardID := types.ShardID(1); shardID < 3; shardID++ {
+			bf[shardID] = make(node_ledger.PartySequenceMap)
+
+			for partyID := types.PartyID(11); partyID < 15; partyID++ {
+				bf[shardID][partyID] = seq
+				seq++
+			}
+		}
+		assert.Equal(t, "{Sh: 1, {<Pr: 11, Sq: 101>, <Pr: 12, Sq: 102>, <Pr: 13, Sq: 103>, <Pr: 14, Sq: 104>}; Sh: 2, {<Pr: 11, Sq: 105>, <Pr: 12, Sq: 106>, <Pr: 13, Sq: 107>, <Pr: 14, Sq: 108>}}",
+			node_ledger.BatchFrontierToString(bf))
+	})
+}
