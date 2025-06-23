@@ -57,7 +57,7 @@ func (s *stream) readResponses() {
 					SubmitResponse: resp,
 				}
 			} else {
-				s.logger.Debugf("received a response from batcher %v for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
+				s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
 			}
 		}
 	}

@@ -196,10 +196,7 @@ func (sr *ShardRouter) reconnect(connIndex int) {
 		if err != nil {
 			sr.logger.Errorf("Reconnection failed: %v, trying again in: %s", err, interval)
 			time.Sleep(interval)
-			interval = interval * 2
-			if interval > maxRetryInterval {
-				interval = maxRetryInterval
-			}
+			interval = min(interval*2, maxRetryInterval)
 			continue
 		}
 		sr.connPool[connIndex] = conn
@@ -223,14 +220,20 @@ func (sr *ShardRouter) maybeConnect() {
 }
 
 func (sr *ShardRouter) replenishNeeded() bool {
-	var createConnNeeded bool
 	sr.lock.RLock()
-	for _, conn := range sr.connPool {
-		createConnNeeded = createConnNeeded || conn == nil
+	defer sr.lock.RUnlock()
+
+	if len(sr.connPool) == 0 {
+		return true
 	}
-	createConnNeeded = createConnNeeded || len(sr.connPool) == 0
-	sr.lock.RUnlock()
-	return createConnNeeded
+
+	for _, conn := range sr.connPool {
+		if conn == nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (sr *ShardRouter) replenishConnPool() error {
@@ -317,7 +320,7 @@ func (sr *ShardRouter) initConnPoolAndStreamsOnce() {
 	sr.once.Do(func() {
 		sr.connPool = make([]*grpc.ClientConn, sr.router2batcherConnPoolSize)
 		sr.streams = make([][]*stream, sr.router2batcherConnPoolSize)
-		for i := 0; i < len(sr.connPool); i++ {
+		for i := 0; i < sr.router2batcherConnPoolSize; i++ {
 			sr.streams[i] = make([]*stream, sr.router2batcherStreamsPerConn)
 		}
 	})

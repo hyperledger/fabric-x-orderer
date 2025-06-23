@@ -162,9 +162,8 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		atomic.AddUint64(&r.incoming, 1)
 
-		reqID, router := r.getRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
-
-		if err := router.ForwardBestEffort(reqID, req.Payload); err != nil {
+		reqID, shardRouter := r.getShardRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
+		if err := shardRouter.ForwardBestEffort(reqID, req.Payload); err != nil {
 			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_INTERNAL_SERVER_ERROR, Info: err.Error()}
 		} else {
 			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_SUCCESS}
@@ -252,11 +251,11 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		atomic.AddUint64(&r.incoming, 1)
 
-		reqID, router := r.getRouterAndReqID(req)
+		reqID, shardRouter := r.getShardRouterAndReqID(req)
 
 		trace := createTraceID(rand)
 
-		router.Forward(reqID, req.Payload, feedbackChan, trace)
+		shardRouter.Forward(reqID, req.Payload, feedbackChan, trace)
 	}
 }
 
@@ -271,29 +270,27 @@ func (r *Router) initRand() *rand2.Rand {
 	return rand
 }
 
-func (r *Router) getRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
+func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 	shardIndex, reqID := r.router.Map(req.Payload)
 	shardId := r.shardIDs[shardIndex]
 	r.logger.Debugf("request %x is mapped to shard %d", req.Payload, shardId)
-	router, exists := r.shardRouters[shardId]
+	shardRouter, exists := r.shardRouters[shardId]
 	if !exists {
 		r.logger.Panicf("Mapped request %d to a non existent shard", shardId)
 	}
-	return reqID, router
+	return reqID, shardRouter
 }
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	atomic.AddUint64(&r.incoming, 1)
-	for _, shardId := range r.shardIDs {
-		r.shardRouters[shardId].MaybeInit()
-	}
+	r.init()
 
-	reqID, router := r.getRouterAndReqID(request)
+	reqID, shardRouter := r.getShardRouterAndReqID(request)
 
 	trace := createTraceID(nil)
 
 	feedbackChan := make(chan Response, 1)
-	router.Forward(reqID, request.Payload, feedbackChan, trace)
+	shardRouter.Forward(reqID, request.Payload, feedbackChan, trace)
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)
 
