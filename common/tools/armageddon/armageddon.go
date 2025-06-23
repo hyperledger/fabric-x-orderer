@@ -183,7 +183,11 @@ type CLI struct {
 	pullFromPartyId         *int
 	// createSharedConfigProto command flags
 	sharedConfigYamlPath *string
-	blockDir             *string
+	sharedConfigProtoDir *string
+	// createBlock command flags
+	sharedConfigYamlPathToBlock *string
+	blockDir                    *string
+	sampleConfigPathToBlock     *string
 }
 
 func NewCLI() *CLI {
@@ -230,10 +234,16 @@ func (cli *CLI) configureCommands() {
 	cli.pullFromPartyId = receive.Flag("pullFromPartyId", "The party id of the assembler to pull blocks from").Int()
 	commands["receive"] = receive
 
-	createBlock := cli.app.Command("createSharedConfigProto", "Create a shared config binary from a shared configuration YAML file")
-	cli.sharedConfigYamlPath = createBlock.Flag("sharedConfigYaml", "The path to the shared configuration YAML file").String()
-	cli.blockDir = createBlock.Flag("output", "The output directory in which to place the shared config binary").String()
-	commands["createSharedConfigProto"] = createBlock
+	createSharedConfigProto := cli.app.Command("createSharedConfigProto", "Create a shared config binary from a shared configuration YAML file")
+	cli.sharedConfigYamlPath = createSharedConfigProto.Flag("sharedConfigYaml", "The path to the shared configuration YAML file").String()
+	cli.sharedConfigProtoDir = createSharedConfigProto.Flag("output", "The output directory in which to place the shared config binary").String()
+	commands["createSharedConfigProto"] = createSharedConfigProto
+
+	createBlock := cli.app.Command("createBlock", "Create a new block with the given shared configuration")
+	cli.sharedConfigYamlPathToBlock = createBlock.Flag("sharedConfigYaml", "The path to the shared configuration YAML file").String()
+	cli.blockDir = createBlock.Flag("output", "The output directory in which to place the block").String()
+	cli.sampleConfigPathToBlock = createBlock.Flag("sampleConfigPath", "The path to the sample config files").String()
+	commands["createBlock"] = createBlock
 
 	cli.commands = commands
 }
@@ -272,13 +282,27 @@ func (cli *CLI) Run(args []string) {
 	case cli.commands["receive"].FullCommand():
 		receive(cli.receiveUserConfigFile, cli.pullFromPartyId, cli.receiveOutputDir, cli.receiveExpectedNumOfTxs)
 
-	// "createBlock" command
+	// "createSharedConfigProto" command
 	case cli.commands["createSharedConfigProto"].FullCommand():
-		createBlock(cli.sharedConfigYamlPath, cli.blockDir)
+		createSharedConfigProto(cli.sharedConfigYamlPath, cli.sharedConfigProtoDir)
+
+	// "createBlock" command
+	case cli.commands["createBlock"].FullCommand():
+		createBlock(cli.sharedConfigYamlPathToBlock, cli.blockDir, cli.sampleConfigPathToBlock)
 	}
 }
 
-func createBlock(sharedConfigYamlPath *string, outputDir *string) {
+func createBlock(sharedConfigYamlPath *string, outputDir *string, sampleConfigPath *string) {
+	sharedConfigProto, sharedConfigYaml, err := config.LoadSharedConfig(*sharedConfigYamlPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	sharedConfigToBlock(sharedConfigProto, sharedConfigYaml, outputDir, sampleConfigPath)
+}
+
+func createSharedConfigProto(sharedConfigYamlPath *string, outputDir *string) {
 	if *outputDir == "" {
 		fmt.Fprintf(os.Stderr, "Error creating block, outputDir is missing")
 		os.Exit(-1)

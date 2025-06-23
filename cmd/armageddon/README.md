@@ -231,10 +231,10 @@ It is recommended to run the `receive` command first to start waiting for blocks
 
 ###
 ##### Flags
-| Flags                              | Description                                                                                                                                                           |
-|------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `sharedConfigYaml`                 | The absolute or relative path of the shared configuration YAML file                                                                                                   |
-| `output`                           | The absolute or relative path to which the config block will be saved.                                                                                                |
+| Flags                              | Description                                                                   |
+|------------------------------------|-------------------------------------------------------------------------------|
+| `sharedConfigYaml`                 | The absolute or relative path of the shared configuration YAML file           |
+| `output`                           | The absolute or relative path to which the shared config proto will be saved. |
 
 
 ###
@@ -244,7 +244,31 @@ Running
 `./bin/armageddon createSharedConfigProto --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config` involves:
 1) Reading the shared configuration.
 2) Creating `shared_config.binpb` and write it under the output directory.
-   
+
+##
+### createBlock Command
+1. Run from `ARMA` root folder.
+2. Run: `./bin/armageddon createBlock [args]`.
+
+   Replace `[args]` with corresponding flags.
+
+###
+##### Flags
+| Flags                  | Description                                                                                                                                                           |
+|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sharedConfigYaml`     | The absolute or relative path of the shared configuration YAML file                                                                                                   |
+| `output`               | The absolute or relative path to which the config block will be saved.                                                                                                |
+| `sampleConfigPath`     | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
+
+###
+##### Example:
+
+Running
+`./bin/armageddon createBlock --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config --sampleConfigPath=ARMA/testutil/fabric/sampleconfig` involves:
+1) Reading the shared configuration.
+2) Creating `bootstrap.block` and write it under the output directory.
+
+
 For more details on the structure of the config block, see [config block](#config-block).
 ##
 <a id="config-block"></a>

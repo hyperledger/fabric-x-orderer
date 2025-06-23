@@ -343,6 +343,33 @@ func checkSharedConfigDir(outputDir string) error {
 // Scenario:
 // 1. Create a config YAML file to be an input to armageddon
 // 2. Run armageddon generate command to create crypto material and config files
+// 3. Check that createBlock command creates the expected output
+func TestArmageddonCreateBlockFromSharedConfigYAML(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	blockDir := filepath.Join(dir, "sharedConfig")
+	err = os.MkdirAll(blockDir, 0o755)
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+
+	// 2.
+	armageddon := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2", "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	sharedConfigYAMLPath := filepath.Join(dir, "bootstrap", "shared_config.yaml")
+	armageddon.Run([]string{"createBlock", "--sharedConfigYaml", sharedConfigYAMLPath, "--output", blockDir, "--sampleConfigPath", sampleConfigPath})
+	require.True(t, fileExists(filepath.Join(blockDir, "bootstrap.block")))
+}
+
+// Scenario:
+// 1. Create a config YAML file to be an input to armageddon
+// 2. Run armageddon generate command to create crypto material and config files
 // 3. Check that all required material was generated in the expected structure
 func TestArmageddonGenerateNewConfig(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
