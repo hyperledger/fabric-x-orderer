@@ -47,7 +47,9 @@ func (s *synchronizer) OnAppend(block *common.Block) {
 }
 
 func (s *synchronizer) stop() {
-	s.stopSync()
+	if s.stopSync != nil {
+		s.stopSync()
+	}
 }
 
 func (s *synchronizer) run() {

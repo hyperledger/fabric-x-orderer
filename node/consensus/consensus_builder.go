@@ -166,9 +166,11 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 
 	ledger.RegisterAppendListener(synchronizer)
 
-	defer func() {
-		go synchronizer.run()
-	}()
+	if len(c.CurrentNodes) > 1 { // don't run the synchronizer when there is only one node
+		defer func() {
+			go synchronizer.run()
+		}()
+	}
 
 	return synchronizer
 }
