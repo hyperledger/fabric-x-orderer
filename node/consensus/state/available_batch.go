@@ -45,7 +45,7 @@ func (ab *AvailableBatch) Equal(ab2 *AvailableBatch) bool {
 }
 
 // Fragments
-// TODO define a separate interface for AvailableBatch
+// TODO return the fragments with minimal data (at least the batchers that signed)
 func (ab *AvailableBatch) Fragments() []core.BatchAttestationFragment {
 	panic("should not be called")
 }
