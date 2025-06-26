@@ -130,14 +130,14 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 					BatchCount:  len(header.AvailableBlocks),
 				},
 			}
-			cr.logger.Debugf("AvailableBatchOrdered: %+v", abo)
+
 			// During recovery, this condition addresses scenarios where a partially committed decision exists in the ledger.
 			// For instance, if a decision comprising three batches was interrupted after committing two, only the outstanding third batch should be reprocessed.
-			// This prevents redundant batch processing and potential errors upon resumption.
+			// This skips those batches from a decision that were already committed.
 			if abo.OrderingInformation.DecisionNum == initPosition.DecisionNum && abo.OrderingInformation.BatchIndex < initPosition.BatchIndex {
-				cr.logger.Infof("AvailableBatchOrdered skipped, BatchID: %s, OrderingInfo: %s; but initial AssemblerConsensusPosition: %+v",
+				cr.logger.Infof("Recovery from partial decision commit: AvailableBatchOrdered skipped, already committed; BatchID: %s, OrderingInfo: %s; but initial AssemblerConsensusPosition: %+v",
 					types.BatchIDToString(abo.AvailableBatch), abo.OrderingInformation.String(), initPosition)
-				return
+				continue
 			}
 
 			res <- abo
