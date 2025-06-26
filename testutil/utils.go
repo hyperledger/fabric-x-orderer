@@ -182,16 +182,16 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		Assembler: "local_config_assembler",
 	}
 
-	nodeNames := make([]string, 0, len(netInfo))
+	nodeInfos := make([]ArmaNodeInfo, 0, len(netInfo))
 	numOfParties := 0
 	for n := range netInfo {
-		nodeNames = append(nodeNames, n)
+		nodeInfos = append(nodeInfos, *netInfo[n])
 		if strings.Contains(n, "consensus") {
 			numOfParties++
 		}
 	}
 
-	sort.Strings(nodeNames)
+	sort.Slice(nodeInfos, sortArmaNodeInfo(nodeInfos))
 
 	armaNetwork := ArmaNetwork{
 		armaNodes: map[string][][]*ArmaNodeInfo{
@@ -202,9 +202,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		},
 	}
 
-	for _, nodeName := range nodeNames {
-		netNode := netInfo[nodeName]
-
+	for _, netNode := range nodeInfos {
 		shardId := ""
 		if netNode.ShardId != 0 {
 			shardId = strconv.FormatUint(uint64(netNode.ShardId), 10)
@@ -222,7 +220,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
 		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener, numOfParties)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
-		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
+		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, &netNode)
 	}
 
 	return &armaNetwork
@@ -236,5 +234,22 @@ func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time
 		case <-startTimeout:
 			require.Fail(t, "arma nodes failed to start in time")
 		}
+	}
+}
+
+func sortArmaNodeInfo(infos []ArmaNodeInfo) func(i, j int) bool {
+	return func(i, j int) bool {
+		runOrderMap := map[string]int{Consensus: 1, Batcher: 2, Assembler: 3, Router: 4}
+
+		if infos[i].PartyId < infos[j].PartyId {
+			return true
+		}
+		if infos[i].PartyId == infos[j].PartyId {
+			if infos[i].NodeType == infos[j].NodeType {
+				return infos[i].ShardId < infos[j].ShardId
+			}
+			return runOrderMap[infos[i].NodeType] < runOrderMap[infos[j].NodeType]
+		}
+		return false
 	}
 }
