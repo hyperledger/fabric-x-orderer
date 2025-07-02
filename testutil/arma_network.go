@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 const (

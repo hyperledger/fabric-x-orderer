@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"

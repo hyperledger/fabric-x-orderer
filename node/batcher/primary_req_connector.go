@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	node_config "github.ibm.com/decentralized-trust-research/arma/node/config"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"google.golang.org/grpc"
 )
 

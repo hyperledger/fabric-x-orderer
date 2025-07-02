@@ -9,9 +9,9 @@ package assembler
 import (
 	"sort"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 func partiesFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.PartyID {

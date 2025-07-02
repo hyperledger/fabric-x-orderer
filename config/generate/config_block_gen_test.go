@@ -9,12 +9,12 @@ package generate_test
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
+	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/config/generate"
 )
 
 func TestCreateGenesisBlock(t *testing.T) {

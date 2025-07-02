@@ -2,8 +2,9 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 	"sync"
+
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 )

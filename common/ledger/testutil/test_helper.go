@@ -10,14 +10,14 @@ import (
 	"fmt"
 	"testing"
 
-	arma_testutil "github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
+	arma_testutil "github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 
 	"github.com/hyperledger/fabric/common/genesis"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil/fakes"
-	"github.ibm.com/decentralized-trust-research/arma/internal/configtxgen/encoder"
-	"github.ibm.com/decentralized-trust-research/arma/internal/configtxgen/genesisconfig"
-	"github.ibm.com/decentralized-trust-research/arma/internal/pkg/txflags"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil/fakes"
+	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/encoder"
+	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric-x-orderer/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/sw"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

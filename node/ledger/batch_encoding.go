@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"

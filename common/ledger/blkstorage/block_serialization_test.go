@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"

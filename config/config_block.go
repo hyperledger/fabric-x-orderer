@@ -9,9 +9,9 @@ package config
 import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
 )
 
 // ReadSharedConfigFromBootstrapConfigBlock reads the shared configuration which is encoded in the consensus metadata in a block.

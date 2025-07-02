@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/core/mocks"
-	"github.ibm.com/decentralized-trust-research/arma/request"
-	request_mocks "github.ibm.com/decentralized-trust-research/arma/request/mocks"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/core/mocks"
+	"github.com/hyperledger/fabric-x-orderer/request"
+	request_mocks "github.com/hyperledger/fabric-x-orderer/request/mocks"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/require"
 )

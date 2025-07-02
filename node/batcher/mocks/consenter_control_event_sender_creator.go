@@ -4,8 +4,8 @@ package mocks
 import (
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 type FakeConsenterControlEventSenderCreator struct {

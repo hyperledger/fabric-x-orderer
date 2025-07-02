@@ -10,7 +10,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type batchWithValue[K types.BatchID, V any] struct {

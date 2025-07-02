@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"testing"
 
-	cl "github.ibm.com/decentralized-trust-research/arma/common/ledger"
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage/blkstoragetest"
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
+	cl "github.com/hyperledger/fabric-x-orderer/common/ledger"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage/blkstoragetest"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"

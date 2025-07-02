@@ -13,12 +13,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
 	"github.com/stretchr/testify/require"
 )

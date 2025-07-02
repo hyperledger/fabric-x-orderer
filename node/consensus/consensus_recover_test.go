@@ -9,9 +9,9 @@ package consensus_test
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"

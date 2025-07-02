@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
-	commMocks "github.ibm.com/decentralized-trust-research/arma/node/protos/comm/mocks"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	commMocks "github.com/hyperledger/fabric-x-orderer/node/protos/comm/mocks"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

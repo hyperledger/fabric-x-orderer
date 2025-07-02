@@ -15,11 +15,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
 )
 
 // Scenario:
@@ -45,7 +45,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 	armageddon := armageddon.NewCLI()
 	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
 
-	armaBinaryPath, err := gexec.BuildWithEnvironment("github.ibm.com/decentralized-trust-research/arma/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 

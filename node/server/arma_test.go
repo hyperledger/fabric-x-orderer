@@ -17,17 +17,17 @@ import (
 	"sync"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
+	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	"github.ibm.com/decentralized-trust-research/arma/config"
-	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

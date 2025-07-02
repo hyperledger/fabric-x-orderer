@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
 )
 
 // Scenario:

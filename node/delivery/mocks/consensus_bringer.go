@@ -4,8 +4,8 @@ package mocks
 import (
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 )
 
 type FakeConsensusBringer struct {

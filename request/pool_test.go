@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
 )

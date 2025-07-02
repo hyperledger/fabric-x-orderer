@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"gopkg.in/yaml.v3"

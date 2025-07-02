@@ -14,8 +14,8 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
 type BroadCastTxClient struct {

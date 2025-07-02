@@ -11,11 +11,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
 )
 
 func TestGenerateCryptoConfig(t *testing.T) {

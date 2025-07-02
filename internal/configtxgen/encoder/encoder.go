@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/genesisconfig"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"

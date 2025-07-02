@@ -17,10 +17,10 @@ import (
 	"strconv"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
+	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/arma/config"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen/genesisconfig"
 )
 
 // CreateGenesisBlock creates a config block and writes it to a file under dir/bootstrap.block

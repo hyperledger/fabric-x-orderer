@@ -7,13 +7,13 @@ SPDX-License-Identifier: Apache-2.0
 package encoder_test
 
 import (
-	arma_testutil "github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
+	arma_testutil "github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/configtxgen/encoder"
-	"github.ibm.com/decentralized-trust-research/arma/internal/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/encoder"
+	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/genesisconfig"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/sw"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"

@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
-	"github.ibm.com/decentralized-trust-research/arma/node/batcher/mocks"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"

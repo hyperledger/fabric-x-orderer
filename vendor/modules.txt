@@ -178,6 +178,26 @@ github.com/hyperledger/fabric-protos-go-apiv2/orderer
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft
 github.com/hyperledger/fabric-protos-go-apiv2/peer
+# github.com/hyperledger/fabric-x-common v0.0.0-20250702121055-42b021047999
+## explicit; go 1.24
+github.com/hyperledger/fabric-x-common/common/capabilities
+github.com/hyperledger/fabric-x-common/common/cauthdsl
+github.com/hyperledger/fabric-x-common/common/channelconfig
+github.com/hyperledger/fabric-x-common/common/configtx
+github.com/hyperledger/fabric-x-common/common/genesis
+github.com/hyperledger/fabric-x-common/common/policies
+github.com/hyperledger/fabric-x-common/common/policydsl
+github.com/hyperledger/fabric-x-common/common/util
+github.com/hyperledger/fabric-x-common/common/viperutil
+github.com/hyperledger/fabric-x-common/core/config
+github.com/hyperledger/fabric-x-common/internaltools/configtxgen
+github.com/hyperledger/fabric-x-common/internaltools/configtxgen/encoder
+github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig
+github.com/hyperledger/fabric-x-common/internaltools/configtxlator/update
+github.com/hyperledger/fabric-x-common/internaltools/pkg/identity
+github.com/hyperledger/fabric-x-common/msp
+github.com/hyperledger/fabric-x-common/msp/cache
+github.com/hyperledger/fabric-x-common/protoutil
 # github.com/kilic/bls12-381 v0.1.0
 ## explicit; go 1.13
 github.com/kilic/bls12-381
@@ -316,26 +336,6 @@ github.com/syndtr/goleveldb/leveldb/opt
 github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
-# github.ibm.com/decentralized-trust-research/fabricx-config v0.1.2
-## explicit; go 1.24
-github.ibm.com/decentralized-trust-research/fabricx-config/common/capabilities
-github.ibm.com/decentralized-trust-research/fabricx-config/common/cauthdsl
-github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig
-github.ibm.com/decentralized-trust-research/fabricx-config/common/configtx
-github.ibm.com/decentralized-trust-research/fabricx-config/common/genesis
-github.ibm.com/decentralized-trust-research/fabricx-config/common/policies
-github.ibm.com/decentralized-trust-research/fabricx-config/common/policydsl
-github.ibm.com/decentralized-trust-research/fabricx-config/common/util
-github.ibm.com/decentralized-trust-research/fabricx-config/common/viperutil
-github.ibm.com/decentralized-trust-research/fabricx-config/core/config
-github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen
-github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen/encoder
-github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen/genesisconfig
-github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxlator/update
-github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/pkg/identity
-github.ibm.com/decentralized-trust-research/fabricx-config/msp
-github.ibm.com/decentralized-trust-research/fabricx-config/msp/cache
-github.ibm.com/decentralized-trust-research/fabricx-config/protoutil
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr

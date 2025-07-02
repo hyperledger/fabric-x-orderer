@@ -9,7 +9,7 @@ package core
 import (
 	"slices"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type TotalOrder interface {

@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/dataformat"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/dataformat"
 
 	"github.com/syndtr/goleveldb/leveldb"
 

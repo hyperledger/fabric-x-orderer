@@ -7,8 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package generate
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/config"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/config"
 )
 
 // Network describes an Arma network deployment by collecting all endpoints of nodes per party.

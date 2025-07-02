@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type FakeStateProvider struct {

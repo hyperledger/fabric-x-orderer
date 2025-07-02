@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 )
 
 type FakePrefetcherController struct {

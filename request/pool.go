@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"golang.org/x/sync/semaphore"
 )
 

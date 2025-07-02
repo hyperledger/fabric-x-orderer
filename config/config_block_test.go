@@ -11,14 +11,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 
+	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/config"
-	"github.ibm.com/decentralized-trust-research/arma/config/generate"
-	"github.ibm.com/decentralized-trust-research/arma/config/protos"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
-	"github.ibm.com/decentralized-trust-research/arma/testutil/fabric"
 	"google.golang.org/protobuf/proto"
 )
 

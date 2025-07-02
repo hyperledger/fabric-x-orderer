@@ -15,9 +15,9 @@ import (
 
 	"google.golang.org/grpc/connectivity"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
 	"google.golang.org/grpc"
 )

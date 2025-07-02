@@ -9,9 +9,9 @@ package batcher
 import (
 	"context"
 
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
 	"github.com/pkg/errors"
 )

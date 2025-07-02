@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
-	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"

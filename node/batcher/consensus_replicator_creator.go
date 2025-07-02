@@ -7,9 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	node_config "github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 )
 
 //go:generate counterfeiter -o mocks/consensus_state_replicator_creator.go . ConsensusStateReplicatorCreator

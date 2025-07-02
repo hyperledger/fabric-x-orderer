@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

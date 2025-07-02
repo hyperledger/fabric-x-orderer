@@ -10,9 +10,9 @@ import (
 	"os"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
-	"github.ibm.com/decentralized-trust-research/arma/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 
 	"github.com/stretchr/testify/require"
 )

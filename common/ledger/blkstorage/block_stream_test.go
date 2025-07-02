@@ -9,7 +9,7 @@ package blkstorage
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"

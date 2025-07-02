@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
 )
 
 type ControlEventBroadcaster struct {

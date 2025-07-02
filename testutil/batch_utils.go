@@ -9,9 +9,9 @@ package testutil
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	types_mocks "github.ibm.com/decentralized-trust-research/arma/common/types/mocks"
-	core_mocks "github.ibm.com/decentralized-trust-research/arma/core/mocks"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	types_mocks "github.com/hyperledger/fabric-x-orderer/common/types/mocks"
+	core_mocks "github.com/hyperledger/fabric-x-orderer/core/mocks"
 
 	"github.com/stretchr/testify/require"
 )

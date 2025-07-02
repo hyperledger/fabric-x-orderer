@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 )
 
 type FakeTimerFactory struct {

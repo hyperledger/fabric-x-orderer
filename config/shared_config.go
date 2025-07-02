@@ -9,9 +9,9 @@ package config
 import (
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/arma/config/protos"
+	"github.com/hyperledger/fabric-x-orderer/config/protos"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 // SharedConfigYaml holds the initial configuration that will be used to bootstrap new nodes.

@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"

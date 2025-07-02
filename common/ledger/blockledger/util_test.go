@@ -9,8 +9,8 @@ package blockledger_test
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger/mock"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/mock"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"

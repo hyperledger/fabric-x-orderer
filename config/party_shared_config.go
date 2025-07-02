@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 package config
 
-import "github.ibm.com/decentralized-trust-research/arma/common/types"
+import "github.com/hyperledger/fabric-x-orderer/common/types"
 
 type PartyConfig struct {
 	// the identity of the party, type unit16, id > 0

@@ -5,11 +5,11 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
-	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 )

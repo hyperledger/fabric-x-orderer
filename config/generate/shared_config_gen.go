@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	"github.ibm.com/decentralized-trust-research/arma/config"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
 )
 
 // CreateArmaSharedConfig creates a bootstrap directory that includes the shared config yaml file.

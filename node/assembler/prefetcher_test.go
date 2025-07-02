@@ -9,11 +9,11 @@ package assembler_test
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
-	assembler_mocks "github.ibm.com/decentralized-trust-research/arma/node/assembler/mocks"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler"
+	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/require"
 )

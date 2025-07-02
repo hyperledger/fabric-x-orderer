@@ -9,8 +9,8 @@ package batcher
 import (
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 func clientConfig(TLSPrivateKeyFile config.RawBytes, TLSCertificateFile config.RawBytes, TlsCACert []config.RawBytes) comm.ClientConfig {

@@ -10,7 +10,7 @@ import (
 	"encoding/binary"
 	"hash/crc64"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type Router struct {

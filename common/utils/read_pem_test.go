@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/testutil/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tlsgen"
 
 	"github.com/stretchr/testify/require"
 )

@@ -10,7 +10,7 @@ import (
 	"context"
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 //go:generate counterfeiter -o ./mocks/prefetcher_controller.go . PrefetcherController

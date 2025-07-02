@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type FakeMemPool struct {

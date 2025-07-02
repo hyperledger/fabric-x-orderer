@@ -16,11 +16,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.ibm.com/decentralized-trust-research/arma/config"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/tools/armageddon"
-	"github.ibm.com/decentralized-trust-research/arma/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 
 	"github.com/stretchr/testify/require"
 )

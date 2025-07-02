@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/testutil"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/stretchr/testify/require"
 )

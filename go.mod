@@ -1,13 +1,13 @@
-module github.ibm.com/decentralized-trust-research/arma
+module github.com/hyperledger/fabric-x-orderer
 
 go 1.24.3
 
 require (
 	github.com/davecgh/go-spew v1.1.1
+	github.com/hyperledger/fabric-x-common v0.0.0-20250702121055-42b021047999
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.9.0
-	github.ibm.com/decentralized-trust-research/fabricx-config v0.1.2
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.11.0
 	google.golang.org/grpc v1.72.0

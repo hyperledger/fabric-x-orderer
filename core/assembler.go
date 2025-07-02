@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 //go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation

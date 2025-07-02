@@ -9,7 +9,7 @@ package config
 import (
 	"sort"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 func (c *BatcherNodeConfig) GetShardsIDs() []types.ShardID {

@@ -9,9 +9,9 @@ package ledger_test
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
-	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
-	"github.ibm.com/decentralized-trust-research/arma/node/ledger/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger/mocks"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/stretchr/testify/require"

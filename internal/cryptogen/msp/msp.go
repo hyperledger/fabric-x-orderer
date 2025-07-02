@@ -14,8 +14,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/ca"
-	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/csp"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/csp"
 
 	fabricmsp "github.com/hyperledger/fabric/msp"
 	"github.com/pkg/errors"

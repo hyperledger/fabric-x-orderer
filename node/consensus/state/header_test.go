@@ -10,7 +10,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.com/hyperledger/fabric-x-orderer/core"
 
 	"github.com/stretchr/testify/require"
 )

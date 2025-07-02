@@ -9,7 +9,7 @@ package prefetch_benchmark_test
 import (
 	"math/rand"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 const PREFETCH_STRESS_TEST_MEMORY_FACTOR = 100

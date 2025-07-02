@@ -9,7 +9,7 @@ package prefetch_benchmark_test
 import (
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 func generateDecisions(logger types.Logger, batchesChan <-chan types.BatchID, decisionsPerSecond float64, maxBatchesPerDecision int, monitor *statsMonitor) <-chan []types.BatchID {

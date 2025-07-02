@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/dataformat"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/dataformat"
 
 	"github.com/pkg/errors"
 	"github.com/syndtr/goleveldb/leveldb"

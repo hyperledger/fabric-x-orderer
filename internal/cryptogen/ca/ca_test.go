@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/ca"
-	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/csp"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/csp"
 
 	"github.com/stretchr/testify/require"
 )

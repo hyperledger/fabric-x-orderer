@@ -10,9 +10,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/configtxgen/encoder"
-	"github.ibm.com/decentralized-trust-research/arma/internal/configtxgen/genesisconfig"
-	"github.ibm.com/decentralized-trust-research/arma/internal/pkg/identity"
+	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/encoder"
+	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity"
 
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"

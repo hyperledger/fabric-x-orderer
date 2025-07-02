@@ -16,11 +16,11 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
-	"github.ibm.com/decentralized-trust-research/arma/node/router"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/router"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/require"
 )

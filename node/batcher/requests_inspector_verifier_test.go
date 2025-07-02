@@ -9,13 +9,13 @@ package batcher_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/node/batcher"
-	"github.ibm.com/decentralized-trust-research/arma/node/batcher/mocks"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
 	"google.golang.org/protobuf/proto"
 )
 

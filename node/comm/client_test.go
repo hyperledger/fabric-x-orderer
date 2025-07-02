@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
-	testgrpc "github.ibm.com/decentralized-trust-research/arma/node/comm/testdata/grpc"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	testgrpc "github.com/hyperledger/fabric-x-orderer/node/comm/testdata/grpc"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"

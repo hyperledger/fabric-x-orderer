@@ -4,10 +4,10 @@ package mocks
 import (
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/delivery"
-	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 )
 
 type FakeConsensusBringerFactory struct {

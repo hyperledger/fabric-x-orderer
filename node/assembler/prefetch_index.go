@@ -9,8 +9,8 @@ package assembler
 import (
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 //go:generate counterfeiter -o ./mocks/prefetch_index.go . PrefetchIndexer

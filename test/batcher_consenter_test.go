@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm/tlsgen"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
 	"github.com/stretchr/testify/require"
 )

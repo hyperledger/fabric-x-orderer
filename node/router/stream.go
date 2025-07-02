@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
 type stream struct {

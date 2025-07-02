@@ -2,8 +2,9 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 	"sync"
+
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type FakeBatchID struct {

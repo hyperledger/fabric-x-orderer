@@ -14,12 +14,12 @@ import (
 	"sort"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	node_config "github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/crypto"
-	node_ledger "github.ibm.com/decentralized-trust-research/arma/node/ledger"
-	"github.ibm.com/decentralized-trust-research/arma/request"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
 func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator) *Batcher {

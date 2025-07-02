@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/request"
-	"github.ibm.com/decentralized-trust-research/arma/request/mocks"
-	"github.ibm.com/decentralized-trust-research/arma/testutil"
+	"github.com/hyperledger/fabric-x-orderer/request"
+	"github.com/hyperledger/fabric-x-orderer/request/mocks"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

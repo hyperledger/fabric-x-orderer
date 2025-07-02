@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/request"
+	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
 type FakeStriker struct {

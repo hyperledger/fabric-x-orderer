@@ -7,8 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 func GetBatchersIDs(batchers []config.BatcherInfo) []types.PartyID {

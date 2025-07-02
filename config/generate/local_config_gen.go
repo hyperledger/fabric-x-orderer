@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
 const (

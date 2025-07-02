@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blkstorage"
-	"github.ibm.com/decentralized-trust-research/arma/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric/orderer/common/filerepo"

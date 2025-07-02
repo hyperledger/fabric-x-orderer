@@ -9,8 +9,8 @@ package types_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/stretchr/testify/assert"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 func TestNewSimpleBatch(t *testing.T) {

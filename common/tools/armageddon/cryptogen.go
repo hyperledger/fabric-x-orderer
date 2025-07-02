@@ -18,10 +18,10 @@ import (
 	"os"
 	"path/filepath"
 
-	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
+	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/ca"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
 )
 
 // GenerateCryptoConfig provides all crypto material of Arma network, divided into parties and written to files in a folder structure.

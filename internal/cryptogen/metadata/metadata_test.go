@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/cryptogen/metadata"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 
 	"github.com/stretchr/testify/require"
 )

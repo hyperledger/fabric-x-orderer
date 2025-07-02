@@ -2,9 +2,10 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/ledger"
 	"sync"
+
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 )
 
 type FakeAssemblerLedgerFactory struct {

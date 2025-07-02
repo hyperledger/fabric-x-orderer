@@ -11,8 +11,8 @@ import (
 	"path"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
 )
 
 func TestRouterNodeConfigToYaml(t *testing.T) {

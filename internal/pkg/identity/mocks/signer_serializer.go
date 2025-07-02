@@ -2,8 +2,9 @@
 package mocks
 
 import (
-	"github.ibm.com/decentralized-trust-research/arma/internal/pkg/identity"
 	"sync"
+
+	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity"
 )
 
 type SignerSerializer struct {

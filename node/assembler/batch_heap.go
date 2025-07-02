@@ -9,8 +9,8 @@ package assembler
 import (
 	"container/heap"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type BatchHeapItem[T any] struct {

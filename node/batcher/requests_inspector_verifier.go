@@ -12,11 +12,11 @@ import (
 	"encoding/hex"
 	"runtime"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
-	"github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 )

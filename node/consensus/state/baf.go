@@ -7,8 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
-	arma_types "github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type BAFDeserializer struct{}

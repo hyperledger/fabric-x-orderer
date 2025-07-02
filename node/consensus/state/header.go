@@ -9,8 +9,8 @@ package state
 import (
 	"encoding/binary"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/core"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 
 	"github.com/pkg/errors"
 )

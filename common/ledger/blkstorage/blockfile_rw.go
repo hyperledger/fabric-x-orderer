@@ -9,7 +9,7 @@ package blkstorage
 import (
 	"os"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
+	"github.com/hyperledger/fabric-x-orderer/internal/fileutil"
 
 	"github.com/pkg/errors"
 )

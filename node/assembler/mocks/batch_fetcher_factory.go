@@ -4,9 +4,9 @@ package mocks
 import (
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/node/assembler"
-	"github.ibm.com/decentralized-trust-research/arma/node/config"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 type FakeBatchBringerFactory struct {

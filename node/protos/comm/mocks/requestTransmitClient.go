@@ -2,9 +2,10 @@
 package mocks
 
 import (
-	protos "github.ibm.com/decentralized-trust-research/arma/node/protos/comm"
 	"context"
 	"sync"
+
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
 	"google.golang.org/grpc"
 )

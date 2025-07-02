@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 
 	"github.com/pkg/errors"
 )

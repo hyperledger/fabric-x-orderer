@@ -9,8 +9,8 @@ package armageddon
 import (
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	genconfig "github.ibm.com/decentralized-trust-research/arma/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 )
 
 // UserConfig holds the user information needed for connection to routers and assemblers

@@ -10,7 +10,7 @@ import (
 	"encoding/asn1"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/arma/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/stretchr/testify/assert"

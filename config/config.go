@@ -17,15 +17,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config/protos"
+	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/arma/common/types"
-	"github.ibm.com/decentralized-trust-research/arma/common/utils"
-	"github.ibm.com/decentralized-trust-research/arma/config/protos"
-	nodeconfig "github.ibm.com/decentralized-trust-research/arma/node/config"
 	"google.golang.org/protobuf/proto"
 )
 

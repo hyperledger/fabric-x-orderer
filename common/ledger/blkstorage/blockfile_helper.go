@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.ibm.com/decentralized-trust-research/arma/internal/fileutil"
+	"github.com/hyperledger/fabric-x-orderer/internal/fileutil"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
