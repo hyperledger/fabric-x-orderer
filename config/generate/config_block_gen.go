@@ -74,7 +74,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	profile := genesisconfig.Load(genesisconfig.SampleFabricX, sampleConfigPath)
 
 	// update profile with some more relevant orderer information
-	profile.Orderer.Arma.LoadFromPath = sharedConfigPath
+	profile.Orderer.Arma.Path = sharedConfigPath
 
 	for _, org := range profile.Orderer.Organizations {
 		org.OrdererEndpoints = routerAndAssemblerEndpoints

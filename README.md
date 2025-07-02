@@ -1,4 +1,9 @@
-# Arma: a scalable Byzantine Fault Tolerant ordering service
+# Hyperledger Fabric-X Orderer
+
+This repository contains the ordering service of fabric-x. 
+The ordering service is based on the Arma protocol:
+
+"Arma: a scalable Byzantine Fault Tolerant ordering service".
 
 
 ## Abstract
