@@ -121,7 +121,3 @@ For more information about deployment of Arma, please refer to [arma-deployment]
 ## Tools
 Armageddon is a command-line tool that provides a simple way to config an ARMA network, for more information please refer to [armageddon](cmd/armageddon/README.md).
 
-
-## Development Environment 
-
-For more information about development environment, please refer to [docs](docs/README.md).

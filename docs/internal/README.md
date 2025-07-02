@@ -1,4 +1,9 @@
-# ARMA imports fabricx-config
+
+# Development Environment
+
+More information about the local development environment.
+
+## ARMA imports fabricx-config
 
 ARMA imports the `fabricx-config`, which is a private repository that was created to collect all configuration and generation tools from Fabric internals.
 To make import of this repository successful, the following steps were done:
@@ -40,3 +45,13 @@ If you're the first one to import the private repository you should do the follo
    ```
 3. If you get a 'write access to repository not granted' message, probably you don't have permissions. 
    To resolve this, reach out to the authorized members and ask them to grant you access.
+
+
+## Login to IBM Cloud
+
+Note: to login to IBM cloud:
+
+  `ibmcloud login  --sso`
+  `ibmcloud target -g zrl-dec-trust-identity`
+  `ibmcloud cr login`
+

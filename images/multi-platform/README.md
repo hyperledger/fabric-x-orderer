@@ -66,19 +66,3 @@ docker image push icr.io/cbdc/arma-node:linux-s390x-0.0.7
 docker image push icr.io/cbdc/arma-node:linux-amd64-0.0.7
 docker image push icr.io/cbdc/arma-node:linux-arm64-0.0.7
 ```
---------------
-Note: to login to IBM cloud:
-
-ibmcloud login  --sso
-ibmcloud target -g zrl-dec-trust-identity
-ibmcloud cr login
-
---------------
-Note: TODO automate in a script like:
-
-for arch in amd64 arm64 s390x  ; do
-docker buildx build \
-  --platform $arch \
-  --output "type=docker,push=false,name=me/myimage:mytag-$arch,dest=myimage.tar" \
-  $path_to_dockerfile/
-done
