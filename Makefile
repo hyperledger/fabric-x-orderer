@@ -68,3 +68,9 @@ check-protos:
 unit-tests:
 	go test -race -timeout 20m ./...
 
+.PHONY: sample-tests
+sample-tests:
+	set -e
+	(cd node/examples; bash ./scripts/build_docker.sh)
+	(bash ./node/examples/scripts/run_sample.sh)
+
