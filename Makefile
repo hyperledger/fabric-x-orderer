@@ -14,6 +14,10 @@
 #   - check-license: checks files for Apache license header
 # 	- check-dco: check that commits include Signed-off-by
 
+
+.PHONY: basic-checks
+basic-checks: linter check-license check-dco
+
 .PHONY: linter
 linter: check-deps
 	@echo "LINT: Running code checks.."
@@ -54,3 +58,9 @@ check-license:
 check-dco: 
 	@echo "Checking DCO..."
 	@./scripts/check_dco.sh
+
+.PHONY: check-protos
+check-protos:
+	@echo "Checking protos..."
+	@./scripts/check_protos.sh
+
