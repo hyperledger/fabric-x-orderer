@@ -64,3 +64,7 @@ check-protos:
 	@echo "Checking protos..."
 	@./scripts/check_protos.sh
 
+.PHONY: unit-tests
+unit-tests:
+	go test -race -timeout 20m ./...
+
