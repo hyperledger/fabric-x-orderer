@@ -1,0 +1,34 @@
+# Copyright the Hyperledger Fabric contributors. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Verify Build
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+env:
+  GOPATH: /opt/go
+  PATH: /opt/go/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+
+permissions:
+  contents: read # to fetch code (actions/checkout)
+
+jobs:
+  basic-checks:
+    name: Basic Checks
+    runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout Fabric-X Code
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        name: Install Go
+        with:
+          go-version-file: go.mod
+      - run: make basic-checks
+        name: Run Basic Checks
