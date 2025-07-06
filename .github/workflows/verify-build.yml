@@ -30,5 +30,13 @@ jobs:
         name: Install Go
         with:
           go-version-file: go.mod
+      - run: go install golang.org/x/tools/cmd/goimports@latest
+        name: Install goimports
+      - run: go install mvdan.cc/gofumpt@latest
+        name: Install gofumpt
+      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
+        name: Install staticcheck
+      - run: go install github.com/golang/protobuf/protoc-gen-go@latest
+        name: Install protoc-gen-go
       - run: make basic-checks
         name: Run Basic Checks
