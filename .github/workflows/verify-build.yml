@@ -55,3 +55,22 @@ jobs:
           go-version-file: go.mod
       - run: make unit-tests
         name: Run Unit Tests
+  sample-tests:
+    name: Sample Tests
+    needs: basic-checks
+    runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+        name: Checkout Fabric-X Code
+      - uses: actions/setup-go@v5
+        name: Install Go
+        with:
+          go-version-file: go.mod
+      - uses: docker/setup-compose-action@v1
+        name: Set up Docker Compose
+        with:
+          version: latest
+      - run: make sample-tests
+        name: Run Sample Tests
