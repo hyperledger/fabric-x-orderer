@@ -9,6 +9,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -27,6 +28,10 @@ type stream struct {
 	doneOnce                          sync.Once
 	lock                              sync.Mutex
 	requestTraceIdToResponseChannel   map[string]chan Response
+	connNum                           int
+	streamNum                         int
+	srReconnectChan                   chan reconnectReq
+	notifiedReconnect                 bool
 }
 
 // readResponses listens for responses from the batcher.
@@ -42,7 +47,7 @@ func (s *stream) readResponses() {
 			resp, err := s.requestTransmitSubmitStreamClient.Recv()
 			if err != nil {
 				s.logger.Debugf("failed receiving response from batcher %s", s.endpoint)
-				s.cancel()
+				s.cancelOnServerError()
 				return
 			}
 
@@ -73,22 +78,65 @@ func (s *stream) sendRequests() {
 		case msg, ok := <-s.requestsChannel:
 			if !ok {
 				s.logger.Debugf("request channel to batcher %s have been closed", s.endpoint)
-				s.cancel()
+				s.cancelOnServerError()
 				return
 			}
 			s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
 			err := s.requestTransmitSubmitStreamClient.Send(msg)
 			if err != nil {
 				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-				s.cancel()
+				s.cancelOnServerError()
 				return
 			}
 		}
 	}
 }
 
+func (s *stream) cancelOnServerError() {
+	s.cancel()
+	s.sendResponseToAllClientsOnError(fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint))
+	s.notifyReconnectRoutine()
+}
+
 func (s *stream) cancel() {
 	s.cancelOnce.Do(s.cancelFunc)
+}
+
+// Send an error to all clients that are still waiting for a response
+func (s *stream) sendResponseToAllClientsOnError(e error) {
+	s.lock.Lock()
+	s.logger.Debugf("Sending error %s to all response channels registerd in stream ", e)
+	for _, respChan := range s.requestTraceIdToResponseChannel {
+		respChan <- Response{
+			err: e,
+		}
+	}
+	clear(s.requestTraceIdToResponseChannel)
+
+	// Drain the requests channel. it could block another reader (none are expected)
+DrainChannelLoop:
+	for {
+		select {
+		case <-s.requestsChannel:
+		default:
+			break DrainChannelLoop
+		}
+	}
+
+	s.lock.Unlock()
+}
+
+// Here we notify the reconnect goroutine in the shard router that this stream need to be reconnected. However, we do it
+// only when its context is marked done, to avoid a race in the reconnection routine where s.faulty() check could be faule.
+func (s *stream) notifyReconnectRoutine() {
+	<-s.ctx.Done()
+	s.lock.Lock()
+	if !s.notifiedReconnect {
+		s.logger.Debugf("Reporting stream cIndex: %d, sIndex: %d to reconnection goroutine in shard-router", s.connNum, s.streamNum)
+		s.srReconnectChan <- reconnectReq{s.connNum, s.streamNum}
+		s.notifiedReconnect = true
+	}
+	s.lock.Unlock()
 }
 
 // faulty returns true if the stream is faulty, else return false.
@@ -111,9 +159,6 @@ func (s *stream) registerReply(traceID []byte, responses chan Response) {
 
 // renewStream creates a new stream that inherits the map and the requests channel
 func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger types.Logger, ctx context.Context, cancel context.CancelFunc) (*stream, error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	newGRPCStream, err := client.SubmitStream(ctx)
 	if err != nil {
 		s.logger.Errorf("Failed establishing a new stream")
@@ -124,16 +169,24 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 	newStreamRequests := make(chan *protos.Request, 1000)
 	newRequestTraceIdToResponseChannelMap := make(map[string]chan Response)
 
-	elem := len(s.requestsChannel)
-	for i := 0; i < elem; i++ {
-		req := <-s.requestsChannel
-		newStreamRequests <- req
-	}
-	s.close() // close the old stream
+	// close the old stream. This should stop the sendRequests and readResponses goroutines.
+	s.close()
 
-	for traceId, respChan := range s.requestTraceIdToResponseChannel {
-		newRequestTraceIdToResponseChannelMap[traceId] = respChan
+	// Move requests from the old channel to the new channel. There could be another reader (readResponses)
+	// so it is done with a select-loop, and not by counting and moving.
+CopyChannelLoop:
+	for {
+		select {
+		case req := <-s.requestsChannel:
+			newStreamRequests <- req
+		default:
+			break CopyChannelLoop
+		}
 	}
+
+	s.lock.Lock()
+	// copy the response-Channels map
+	maps.Copy(newRequestTraceIdToResponseChannelMap, s.requestTraceIdToResponseChannel)
 
 	newStream := &stream{
 		endpoint:                          endpoint,
@@ -144,9 +197,13 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 		requestTraceIdToResponseChannel:   newRequestTraceIdToResponseChannelMap,
 		requestsChannel:                   newStreamRequests,
 		doneChannel:                       make(chan bool),
+		connNum:                           s.connNum,
+		streamNum:                         s.streamNum,
+		srReconnectChan:                   s.srReconnectChan,
+		notifiedReconnect:                 false,
 	}
+	s.lock.Unlock()
 
-	newStream.logger.Infof("renew stream")
 	go newStream.sendRequests()
 	go newStream.readResponses()
 

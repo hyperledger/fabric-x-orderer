@@ -57,6 +57,14 @@ func (r *routerTestSetup) Close() {
 	}
 }
 
+func (r *routerTestSetup) isReconnectComplete() bool {
+	return r.router.IsAllStreamsOK()
+}
+
+func (r *routerTestSetup) isDisconnectedFromBatcher() bool {
+	return r.router.IsAllConnectionsDown()
+}
+
 func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int, useTLS bool, clientAuthRequired bool) *routerTestSetup {
 	// create a CA that issues a certificate for the router and the batchers
 	ca, err := tlsgen.NewCA()
@@ -97,11 +105,11 @@ func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
 
 	defer testSetup.Close()
 
-	err = submitStreamRequests(testSetup.clientConn, 10)
-	require.NoError(t, err)
+	res := submitStreamRequests(testSetup.clientConn, 10)
+	require.NoError(t, res.err)
 
-	err = submitBroadcastRequests(testSetup.clientConn, 10)
-	require.NoError(t, err)
+	res = submitBroadcastRequests(testSetup.clientConn, 10)
+	require.NoError(t, res.err)
 
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(20)
@@ -124,36 +132,165 @@ func TestStubBatcherReceivesClientRouterSingleRequest(t *testing.T) {
 	err = submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 
-	err = submitBroadcastRequests(testSetup.clientConn, 1)
-	require.NoError(t, err)
+	res := submitBroadcastRequests(testSetup.clientConn, 1)
+	require.NoError(t, res.err)
 
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(2)
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
-func TestClientRouterFailsToSendRequestOnBatcherServerStop(t *testing.T) {
-	t.Skip()
-	// TODO: check if the reason for error is the connectivity to batcher
+// Scenario:
+// 1. start a client, router and 1 stub batcher (1 shard)
+// 2. stop the batcher
+// 3. submit a request. should fail when router tries to send it to batcher
+// 4. submit the request again. now the stream is faulty and will try to reconnect, but will fail.
+// 5. restart the batcher
+// 6. submit the request again. now it should succeed
+func TestSubmitOnBatcherStopAndRestart(t *testing.T) {
 	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	defer testSetup.Close()
 	err := createServerTLSClientConnection(testSetup, testSetup.ca)
 	require.NoError(t, err)
 	require.NotNil(t, testSetup.clientConn)
 
-	defer testSetup.Close()
+	// stop the batcher
+	testSetup.batchers[0].Stop()
+
+	// send 1 request with Submit, should get server error
+	err = submitRequest(testSetup.clientConn)
+	require.EqualError(t, err, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+
+	// send same request, but now the stream is faulty and the router will try to reconnect.
+	err = submitRequest(testSetup.clientConn)
+	require.EqualError(t, err, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+
+	// restart the batcher
+	testSetup.batchers[0].Restart()
+
+	// wait for reconnection
+	require.Eventually(t, func() bool {
+		return testSetup.isReconnectComplete()
+	}, 10*time.Second, 10*time.Millisecond)
 
 	// send request, should succeed
 	err = submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
+}
+
+// Scenario:
+//  1. start a client, router and 1 stub batcher (1 shard)
+//  2. stop the batcher
+//  3. submit a stream of 20 requests. should all fail, when router tries to send it to
+//     batcher, or when it tries to reconnect
+//  4. submit the requests again. Now the stream is faulty and will try to reconnect, but all will fail.
+//  5. restart the batcher
+//  6. submit the requests again. now all should succeed
+func TestSubmitStreamOnBatcherStopAndRestart(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	defer testSetup.Close()
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
+	// stop the batcher
+	testSetup.batchers[0].Stop()
+
+	// send 20 requests with SubmitStream, should get 20 server errors
+	numOfRequests := 20
+	res := submitStreamRequests(testSetup.clientConn, numOfRequests)
+	require.Equal(t, 0, res.successRequests)
+	require.Equal(t, numOfRequests, res.failRequests)
+	require.Equal(t, numOfRequests, len(res.respondsErrors))
+	for _, e := range res.respondsErrors {
+		require.EqualError(t, e, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+	}
+
 	require.Eventually(t, func() bool {
-		return testSetup.batchers[0].ReceivedMessageCount() == uint32(1)
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(0)
 	}, 10*time.Second, 10*time.Millisecond)
 
-	// stop the batcher and send request, expect to error
+	// send 5 requests (of the previous 20) with SubmitStream, should get 5 server errors
+	// because of faulty stream and the reconnection fails
+	numOfRequests = 5
+	res = submitStreamRequests(testSetup.clientConn, numOfRequests)
+	require.Equal(t, 0, res.successRequests)
+	require.Equal(t, numOfRequests, res.failRequests)
+	require.Equal(t, numOfRequests, len(res.respondsErrors))
+	for _, e := range res.respondsErrors {
+		require.EqualError(t, e, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+	}
+	require.Equal(t, uint32(0), testSetup.batchers[0].ReceivedMessageCount())
+
+	// restart the batcher
+	testSetup.batchers[0].Restart()
+
+	// wait for reconnection
+	require.Eventually(t, func() bool {
+		return testSetup.isReconnectComplete()
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// send 20 requests, should succeed all requests
+	numOfRequests = 20
+	res = submitStreamRequests(testSetup.clientConn, numOfRequests)
+	require.NoError(t, res.err)
+	require.Equal(t, numOfRequests, res.successRequests)
+	require.Equal(t, 0, res.failRequests)
+	require.Equal(t, 0, len(res.respondsErrors))
+	require.Eventually(t, func() bool {
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(numOfRequests)
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// Scenario:
+//  1. start a client, router and 1 stub batcher (1 shard)
+//  2. stop the batcher
+//  3. broadcast a stream of 5 requests. some may fail if they are mapped to a known faulty stream
+//  5. restart the batcher
+//  6. broadcast the requsts again. now all should succeed
+func TestBroadcastOnBatcherStopAndRestart(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	defer testSetup.Close()
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
+	numOfRequests := 5
+
+	// stop the batcher
 	testSetup.batchers[0].Stop()
-	err = submitRequest(testSetup.clientConn)
-	require.NotNil(t, err)
-	require.EqualError(t, err, "receiving response with error: could not establish stream to "+testSetup.batchers[0].server.Address())
+
+	// wait for all streams to become faulty
+	require.Eventually(t, func() bool {
+		return testSetup.isDisconnectedFromBatcher()
+	}, 10*time.Second, 200*time.Millisecond)
+
+	// Broadcast 5 requests. should get server error
+	res := submitBroadcastRequests(testSetup.clientConn, numOfRequests)
+	require.Equal(t, 0, res.successRequests)
+	require.Equal(t, numOfRequests, res.failRequests)
+	require.Equal(t, numOfRequests, len(res.respondsErrors))
+	for _, e := range res.respondsErrors {
+		require.EqualError(t, e, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+	}
+
+	// restart the batcher
+	testSetup.batchers[0].Restart()
+
+	// wait for reconnection
+	require.Eventually(t, func() bool {
+		return testSetup.isReconnectComplete()
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// Broadcast same 5 requests again. expect success
+	res = submitBroadcastRequests(testSetup.clientConn, numOfRequests)
+	require.NoError(t, res.err)
+	require.Equal(t, numOfRequests, res.successRequests)
+	require.Equal(t, 0, res.failRequests)
+	require.Equal(t, 0, len(res.respondsErrors))
+	require.Eventually(t, func() bool {
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(numOfRequests)
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 // Scenario:
@@ -189,8 +326,8 @@ func TestClientRouterSubmitStreamRequestsAgainstMultipleBatchers(t *testing.T) {
 
 	defer testSetup.Close()
 
-	err = submitStreamRequests(testSetup.clientConn, 10)
-	require.NoError(t, err)
+	res := submitStreamRequests(testSetup.clientConn, 10)
+	require.NoError(t, res.err)
 
 	recvCond := func() uint32 {
 		receivedTxCount := uint32(0)
@@ -218,8 +355,8 @@ func TestClientRouterBroadcastRequestsAgainstMultipleBatchers(t *testing.T) {
 
 	defer testSetup.Close()
 
-	err = submitBroadcastRequests(testSetup.clientConn, 10)
-	require.NoError(t, err)
+	res := submitBroadcastRequests(testSetup.clientConn, 10)
+	require.NoError(t, res.err)
 
 	recvCond := func() uint32 {
 		receivedTxCount := uint32(0)
@@ -250,15 +387,27 @@ func createServerTLSClientConnection(testSetup *routerTestSetup, ca tlsgen.CA) e
 	return err
 }
 
-func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) error {
+type testStreamResult struct {
+	successRequests int
+	failRequests    int
+	err             error
+	respondsErrors  []error
+}
+
+func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) (res testStreamResult) {
+	res = testStreamResult{
+		failRequests: numOfRequests,
+	}
+
 	cl := protos.NewRequestTransmitClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	stream, err := cl.SubmitStream(ctx)
 	if err != nil {
-		return err
+		res.err = err
+		return
 	}
 
 	var wg sync.WaitGroup
@@ -281,22 +430,31 @@ func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) error {
 		default:
 			resp, err := stream.Recv()
 			if err != nil {
-				return fmt.Errorf("error receiving response: %w", err)
+				res.err = fmt.Errorf("error receiving response: %s", err)
 			}
 			if resp.Error != "" {
-				return fmt.Errorf("receiving response with error: %s", resp.Error)
+				requestErr := fmt.Errorf("receiving response with error: %s", resp.Error)
+				res.respondsErrors = append(res.respondsErrors, requestErr)
+				res.err = requestErr
+			} else {
+				res.successRequests++
+				res.failRequests--
 			}
 		case <-ctx.Done():
-			return fmt.Errorf("a time out occured during submitting request: %w", ctx.Err())
+			res.err = fmt.Errorf("a time out occured during submitting request: %w", ctx.Err())
 		}
 	}
 
 	wg.Wait()
 
-	return nil
+	return
 }
 
-func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) error {
+func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) (res testStreamResult) {
+	res = testStreamResult{
+		failRequests: numOfRequests,
+	}
+
 	cl := ab.NewAtomicBroadcastClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -304,7 +462,8 @@ func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) error {
 
 	stream, err := cl.Broadcast(ctx)
 	if err != nil {
-		return err
+		res.err = err
+		return
 	}
 
 	var wg sync.WaitGroup
@@ -327,19 +486,24 @@ func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) error {
 		default:
 			resp, err := stream.Recv()
 			if err != nil {
-				return fmt.Errorf("error receiving response: %w", err)
+				res.err = fmt.Errorf("error receiving response: %s", err)
 			}
-			if resp.Status != 200 {
-				return fmt.Errorf("receiving response with error: %s", resp.Status)
+			if resp.Status != common.Status_SUCCESS {
+				requestErr := fmt.Errorf("receiving response with error: %s", resp.Info)
+				res.respondsErrors = append(res.respondsErrors, requestErr)
+				res.err = requestErr
+			} else {
+				res.successRequests++
+				res.failRequests--
 			}
 		case <-ctx.Done():
-			return fmt.Errorf("a time out occured during submitting request: %w", ctx.Err())
+			res.err = fmt.Errorf("a time out occured during submitting request: %w", ctx.Err())
 		}
 	}
 
 	wg.Wait()
 
-	return nil
+	return
 }
 
 func submitRequest(conn *grpc.ClientConn) error {

@@ -47,6 +47,11 @@ const (
 	}`
 )
 
+type reconnectReq struct {
+	connNumber   int
+	streamInConn int
+}
+
 type ShardRouter struct {
 	router2batcherConnPoolSize   int
 	router2batcherStreamsPerConn int
@@ -60,6 +65,8 @@ type ShardRouter struct {
 	tlsCert                      []byte
 	tlsKey                       []byte
 	clientConfig                 comm.ClientConfig
+	reconnectOnce                sync.Once
+	reconnectRequests            chan reconnectReq
 }
 
 func NewShardRouter(l types.Logger,
@@ -97,6 +104,8 @@ func NewShardRouter(l types.Logger,
 		clientConfig:                 cc,
 	}
 
+	sr.reconnectRequests = make(chan reconnectReq, sr.router2batcherStreamsPerConn*sr.router2batcherConnPoolSize)
+
 	return sr
 }
 
@@ -109,11 +118,8 @@ func (sr *ShardRouter) ForwardBestEffort(reqID, request []byte) error {
 	sr.lock.RUnlock()
 
 	if stream == nil || stream.faulty() {
-		stream = sr.maybeInitStream(connIndex, streamInConnIndex)
-	}
-
-	if stream == nil || stream.faulty() {
-		return fmt.Errorf("could not establish stream to %s", sr.batcherEndpoint)
+		sr.maybeNotifyReconnectRoutine(stream, connIndex, streamInConnIndex)
+		return fmt.Errorf("server error: could not establish connection between router and batcher %s", sr.batcherEndpoint)
 	}
 
 	stream.requestsChannel <- &protos.Request{
@@ -131,12 +137,14 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 	sr.lock.RUnlock()
 
 	if stream == nil || stream.faulty() {
-		stream = sr.maybeInitStream(connIndex, streamInConnIndex)
-	}
+		sr.logger.Infof("request %x recieved but stream is faulty. Trying to reconnect stream...", reqID)
 
-	if stream == nil || stream.faulty() {
+		// Notify reconnection goroutine
+		sr.maybeNotifyReconnectRoutine(stream, connIndex, streamInConnIndex)
+
+		// Send a response and return
 		responses <- Response{
-			err:   fmt.Errorf("could not establish stream to %s", sr.batcherEndpoint),
+			err:   fmt.Errorf("server error: could not establish connection between router and batcher %s", sr.batcherEndpoint),
 			reqID: reqID,
 		}
 		return
@@ -151,45 +159,56 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 	}
 }
 
-func (sr *ShardRouter) maybeInitStream(connIndex int, streamInConnIndex int) *stream {
-	sr.lock.Lock()
-	defer sr.lock.Unlock()
-
+func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int) error {
 	var stream *stream
 	var err error
-
+	sr.lock.RLock()
 	currentStream := sr.streams[connIndex][streamInConnIndex]
+	conn := sr.connPool[connIndex]
+	sr.lock.RUnlock()
+	sr.logger.Debugf("Checking stream %d,%d that was reported", connIndex, streamInConnIndex)
 
-	if currentStream == nil || currentStream.faulty() {
-		// check the connection, and if it is faulty try to reconnect and renew the stream
-		sr.logger.Infof("stream is faulty, checking connection")
-		conn := sr.connPool[connIndex]
-		if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
-			sr.reconnect(connIndex)
-			client := protos.NewRequestTransmitClient(sr.connPool[connIndex])
-			ctx, cancel := context.WithCancel(context.Background())
-			stream, err = currentStream.renewStream(client, sr.batcherEndpoint, sr.logger, ctx, cancel)
-			if err != nil {
-				sr.logger.Errorf("failed to renew stream, err: %v", err)
-			}
-			sr.streams[connIndex][streamInConnIndex] = stream
-		} else {
-			currentStream.close()
-			sr.initStream(connIndex, streamInConnIndex)
-			stream = sr.streams[connIndex][streamInConnIndex]
-		}
+	// check the connection, and if it's bad - try to reconnect untill success
+	sr.logger.Debugf("connection %d has state %s", connIndex, conn.GetState())
+	if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
+		sr.reconnect(connIndex)
 	}
 
-	return stream
+	// try to initialize or renew the stream.
+	// It could fail when the stream is reported faster than the connection's status becomes bad, or if the connection breaks again.
+	if currentStream == nil {
+		sr.lock.Lock()
+		err = sr.initStream(connIndex, streamInConnIndex)
+		sr.lock.Unlock()
+		if err != nil {
+			return err
+		}
+	} else if currentStream.faulty() {
+		client := protos.NewRequestTransmitClient(sr.connPool[connIndex])
+		ctx, cancel := context.WithCancel(context.Background())
+		stream, err = currentStream.renewStream(client, sr.batcherEndpoint, sr.logger, ctx, cancel)
+		if err != nil {
+			sr.logger.Errorf("failed to renew stream in connection %d stream %d, err: %v ", connIndex, streamInConnIndex, err)
+			return err
+		}
+		sr.logger.Debugf("stream number %d in connection %d was renewed", streamInConnIndex, connIndex)
+		sr.lock.Lock()
+		sr.streams[connIndex][streamInConnIndex] = stream
+		sr.lock.Unlock()
+	} else {
+		sr.logger.Debugf("Stream %d,%d is OK but was reported", connIndex, streamInConnIndex)
+	}
+
+	return nil
 }
 
 func (sr *ShardRouter) reconnect(connIndex int) {
-	sr.logger.Infof("Connection %d is broken, attempting to reconnect...", connIndex)
+	sr.logger.Debugf("Connection %d is broken, attempting to reconnect...", connIndex)
 
 	interval := minRetryInterval
 	numOfRetries := 1
 	for {
-		sr.logger.Infof("Retry attempt #%d", numOfRetries)
+		sr.logger.Debugf("Retry attempt #%d", numOfRetries)
 		numOfRetries++
 
 		conn, err := sr.clientConfig.Dial(sr.batcherEndpoint)
@@ -198,15 +217,19 @@ func (sr *ShardRouter) reconnect(connIndex int) {
 			time.Sleep(interval)
 			interval = min(interval*2, maxRetryInterval)
 			continue
+		} else {
+			sr.lock.Lock()
+			sr.connPool[connIndex] = conn
+			sr.lock.Unlock()
+			sr.logger.Debugf("Reconnection succeeded for connection %d", connIndex)
+			return
 		}
-		sr.connPool[connIndex] = conn
-		sr.logger.Infof("Reconnection succeeded")
-		break
 	}
 }
 
 func (sr *ShardRouter) MaybeInit() {
 	sr.initConnPoolAndStreamsOnce()
+	sr.startReconnectionRoutineOnce()
 	sr.maybeConnect()
 }
 
@@ -274,22 +297,17 @@ func (sr *ShardRouter) replenishConnPool() error {
 
 func (sr *ShardRouter) initStreams() {
 	sr.lock.Lock()
-	defer sr.lock.Unlock()
-
-	for i := range sr.connPool {
-		sr.initStreamsForConn(i)
+	for i := 0; i < sr.router2batcherConnPoolSize; i++ {
+		for j := 0; j < sr.router2batcherStreamsPerConn; j++ {
+			sr.initStream(i, j)
+		}
 	}
+	sr.lock.Unlock()
 }
 
-func (sr *ShardRouter) initStreamsForConn(i int) {
-	for j := 0; j < len(sr.streams[i]); j++ {
-		sr.initStream(i, j)
-	}
-}
-
-func (sr *ShardRouter) initStream(i int, j int) {
+func (sr *ShardRouter) initStream(i int, j int) error {
 	if sr.connPool[i] == nil {
-		return
+		return fmt.Errorf("could not init stream because connection %d is nil", i)
 	}
 
 	client := protos.NewRequestTransmitClient(sr.connPool[i])
@@ -305,6 +323,10 @@ func (sr *ShardRouter) initStream(i int, j int) {
 			requestTransmitSubmitStreamClient: newStream,
 			cancelFunc:                        cancel,
 			ctx:                               ctx,
+			connNum:                           i,
+			streamNum:                         j,
+			srReconnectChan:                   sr.reconnectRequests,
+			notifiedReconnect:                 false,
 		}
 		go s.sendRequests()
 		go s.readResponses()
@@ -313,7 +335,10 @@ func (sr *ShardRouter) initStream(i int, j int) {
 	} else {
 		sr.logger.Errorf("Failed establishing stream %d to %s: %v", i*sr.router2batcherStreamsPerConn+j, sr.batcherEndpoint, err)
 		cancel()
+		return err
 	}
+
+	return nil
 }
 
 func (sr *ShardRouter) initConnPoolAndStreamsOnce() {
@@ -324,4 +349,59 @@ func (sr *ShardRouter) initConnPoolAndStreamsOnce() {
 			sr.streams[i] = make([]*stream, sr.router2batcherStreamsPerConn)
 		}
 	})
+}
+
+func (sr *ShardRouter) startReconnectionRoutineOnce() {
+	sr.reconnectOnce.Do(func() {
+		go sr.reconnectRoutine()
+	})
+}
+
+func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream, connIndex int, streamInConnIndex int) {
+	if stream == nil {
+		sr.reconnectRequests <- reconnectReq{connIndex, streamInConnIndex}
+	} else {
+		stream.notifyReconnectRoutine()
+	}
+}
+
+func (sr *ShardRouter) reconnectRoutine() {
+	for req := range sr.reconnectRequests {
+		sr.logger.Debugf("Reconnect routine recieved request to reconnect to conn %d stream %d...", req.connNumber, req.streamInConn)
+		for {
+			if err := sr.maybeReconnectStream(req.connNumber, req.streamInConn); err == nil {
+				break
+			}
+		}
+	}
+}
+
+// for testing only:
+func (sr *ShardRouter) IsAllStreamsOKinSR() bool {
+	sr.lock.RLock()
+	defer sr.lock.RUnlock()
+	for connIdx := 0; connIdx < sr.router2batcherConnPoolSize; connIdx++ {
+		for streamIdx := 0; streamIdx < sr.router2batcherStreamsPerConn; streamIdx++ {
+			stream := sr.streams[connIdx][streamIdx]
+			if stream == nil || stream.faulty() {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// for testing only:
+func (sr *ShardRouter) IsConnectionsToBatcherDown() bool {
+	sr.lock.RLock()
+	defer sr.lock.RUnlock()
+	for connIdx := 0; connIdx < sr.router2batcherConnPoolSize; connIdx++ {
+		for streamIdx := 0; streamIdx < sr.router2batcherStreamsPerConn; streamIdx++ {
+			stream := sr.streams[connIdx][streamIdx]
+			if !(stream == nil || stream.faulty()) {
+				return false
+			}
+		}
+	}
+	return true
 }

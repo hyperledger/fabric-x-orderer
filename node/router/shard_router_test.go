@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"math"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -62,7 +61,7 @@ func TestShardRouterConnectivityToBatcherByForwardBestEffort(t *testing.T) {
 	require.Eventually(t, func() bool { return testSetup.stubBatcher.ReceivedMessageCount() == uint32(1) }, 60*time.Second, 10*time.Millisecond)
 }
 
-func TestShardRouterRetryConnectToBatcherAndForwardReq(t *testing.T) {
+func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	testSetup := createTestSetup(t, 1)
 	testSetup.shardRouter.MaybeInit()
 
@@ -78,42 +77,33 @@ func TestShardRouterRetryConnectToBatcherAndForwardReq(t *testing.T) {
 	require.NotNil(t, response)
 	require.Equal(t, trace, response.SubmitResponse.TraceId)
 
-	t.Logf("Stop the batcher")
+	// stop the batcher
 	testSetup.stubBatcher.Stop()
-	time.Sleep(20 * time.Second)
 
-	// prepare future request
-	var wg sync.WaitGroup
-	wg.Add(1)
+	// send a request, expect failure
 	responses = make(chan router.Response, 1)
 	reqID, payload = createRequestAndRequestId(1, uint32(10000))
-
-	// wait on future response
-	go func() {
-		response = <-responses
-		require.NotNil(t, response)
-		require.Nil(t, response.GetResponseError())
-		require.Equal(t, trace, response.SubmitResponse.TraceId)
-		wg.Done()
-	}()
-
-	t.Logf("Restart the batcher")
-	go func() {
-		time.Sleep(10 * time.Second)
-		testSetup.stubBatcher.Restart()
-	}()
-
-	t.Logf("Send request") // expect to have retries
-	testSetup.shardRouter.Forward(reqID, payload, responses, trace)
-
-	wg.Wait()
-
-	t.Logf("Send request again") // expect to reconnection
-	responses = make(chan router.Response, 1)
-	reqID, payload = createRequestAndRequestId(1, uint32(90000))
 	testSetup.shardRouter.Forward(reqID, payload, responses, trace)
 	response = <-responses
 	require.NotNil(t, response)
+	require.EqualError(t, response.GetResponseError(), "server error: could not establish connection between router and batcher "+testSetup.stubBatcher.server.Address())
+	// require.Equal(t, trace, response.SubmitResponse.TraceId)
+
+	// restart the batcher
+	testSetup.stubBatcher.Restart()
+
+	// // wait for reconnection
+	require.Eventually(t, func() bool {
+		return testSetup.shardRouter.IsAllStreamsOKinSR()
+	}, 10*time.Second, 200*time.Millisecond)
+
+	// send a request, expect success
+	responses = make(chan router.Response, 1)
+	reqID, payload = createRequestAndRequestId(1, uint32(10000))
+	testSetup.shardRouter.Forward(reqID, payload, responses, trace)
+	response = <-responses
+	require.NotNil(t, response)
+	require.Nil(t, response.GetResponseError())
 	require.Equal(t, trace, response.SubmitResponse.TraceId)
 }
 
@@ -121,30 +111,33 @@ func TestShardRouterRetryConnectToBatcherAndForwardBestEffortReq(t *testing.T) {
 	testSetup := createTestSetup(t, 1)
 	testSetup.shardRouter.MaybeInit()
 
+	// send a request, expect no error
 	reqID1, payload1 := createRequestAndRequestId(1, uint32(10000))
 	err := testSetup.shardRouter.ForwardBestEffort(reqID1, payload1)
 	require.NoError(t, err)
 
-	t.Logf("Stop the batcher")
+	// stop the batcher
 	testSetup.stubBatcher.Stop()
-	time.Sleep(20 * time.Second)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	// wait for the streams to become faulty
+	require.Eventually(t, func() bool {
+		return testSetup.shardRouter.IsConnectionsToBatcherDown()
+	}, 10*time.Second, 200*time.Millisecond)
+
+	// send a request, expect server error
 	reqID2, payload2 := createRequestAndRequestId(1, uint32(10001))
-	go func() {
-		// send request, expect to retries
-		err := testSetup.shardRouter.ForwardBestEffort(reqID2, payload2)
-		require.NoError(t, err)
-	}()
+	err = testSetup.shardRouter.ForwardBestEffort(reqID2, payload2)
+	require.EqualError(t, err, "server error: could not establish connection between router and batcher "+testSetup.stubBatcher.server.Address())
 
-	t.Logf("Restart the batcher")
-	go func() {
-		time.Sleep(10 * time.Second)
-		testSetup.stubBatcher.Restart()
-	}()
+	// restart the batcher
+	testSetup.stubBatcher.Restart()
 
-	t.Logf("Send request again") // expect to reconnection
+	// wait for reconnection.
+	require.Eventually(t, func() bool {
+		return testSetup.shardRouter.IsAllStreamsOKinSR()
+	}, 10*time.Second, 200*time.Millisecond)
+
+	// send another request, expect no error
 	reqID3, payload3 := createRequestAndRequestId(1, uint32(10002))
 	err = testSetup.shardRouter.ForwardBestEffort(reqID3, payload3)
 	require.NoError(t, err)

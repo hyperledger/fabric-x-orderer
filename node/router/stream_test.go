@@ -62,6 +62,7 @@ func TestSendRequests(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	go s.sendRequests()
@@ -100,6 +101,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	go s.sendRequests()
@@ -145,6 +147,7 @@ func TestReadResponses(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	s.registerReply(traceID, responseChan)
@@ -187,6 +190,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	go s.readResponses()
@@ -231,6 +235,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		requestsChannel:                   requests,
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	faultyStream.cancel()
