@@ -92,7 +92,7 @@ type Bootstrap struct {
 	File string `yaml:"File,omitempty"`
 }
 
-// Cluster defines the settings for ordering service nodes that communicate with other ordering service nodes.
+// ClusterYaml defines the settings for ordering service nodes that communicate with other ordering service nodes.
 type ClusterYaml struct {
 	// SendBufferSize is the maximum number of messages in the egress buffer.
 	// Consensus messages are dropped if the buffer is full, and transaction messages are waiting for space to be freed.
