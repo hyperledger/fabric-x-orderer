@@ -97,7 +97,7 @@ func (a *Assembler) Run() {
 	go a.processOrderedBatchAttestations()
 }
 
-// Core Assebler stops by the node Assebler when the channels for batches and BAs are closed.
+// Core Assembler stops by the node Assebler when the channels for batches and BAs are closed.
 // This methods only waits for the core go routines to finish.
 func (a *Assembler) WaitTermination() {
 	a.runningWG.Wait()
