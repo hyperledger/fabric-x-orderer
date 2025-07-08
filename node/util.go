@@ -56,7 +56,7 @@ func ListenAddressForNode(endpointType ServerEndpointType, listenAddress string)
 
 	port, exists := type2port[endpointType]
 	if !exists {
-		panic(fmt.Sprintf("server listen adress type %d doesn't exist", endpointType))
+		panic(fmt.Sprintf("server listen address type %d doesn't exist", endpointType))
 	}
 	return net.JoinHostPort(listenAddress, fmt.Sprintf("%d", port))
 }
