@@ -16,8 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/delivery"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -35,7 +33,7 @@ func TestAssemblerAppendBlockAndIgnoreDuplicate(t *testing.T) {
 	consenterStub := NewStubConsenter(t, types.PartyID(1), ca)
 	defer consenterStub.Stop()
 
-	assembler, clean := NewAssembler(t, 1, 1, ca, batcherStub.batcherInfo, consenterStub.consenterInfo)
+	assembler, clean := newAssemblerTest(t, 1, 1, ca, batcherStub.batcherInfo, consenterStub.consenterInfo)
 	defer clean()
 
 	// genesis block added
@@ -47,10 +45,10 @@ func TestAssemblerAppendBlockAndIgnoreDuplicate(t *testing.T) {
 
 	// create batch with 1 req, send from batcher and consenter
 	batch1 := testutil.CreateMockBatch(1, 1, 1, []int{1})
-	batcherStub.SetBatch(batch1)
+	batcherStub.SetNextBatch(batch1)
 
 	oba1 := obaCreator.Append(batch1, 1, 1, 1)
-	consenterStub.SetDecision(oba1)
+	consenterStub.SetNextDecision(oba1)
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 2
@@ -58,25 +56,25 @@ func TestAssemblerAppendBlockAndIgnoreDuplicate(t *testing.T) {
 
 	// create batch with 2 reqs, send from batcher and consenter
 	batch2 := testutil.CreateMockBatch(1, 1, 2, []int{2, 3})
-	batcherStub.SetBatch(batch2)
+	batcherStub.SetNextBatch(batch2)
 
 	oba2 := obaCreator.Append(batch2, 2, 1, 1)
-	consenterStub.SetDecision(oba2)
+	consenterStub.SetNextDecision(oba2)
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 4
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// send duplicate batch+oba, should be ignored
-	batcherStub.SetBatch(batch2)
-	consenterStub.SetDecision(oba2)
+	batcherStub.SetNextBatch(batch2)
+	consenterStub.SetNextDecision(oba2)
 
 	require.Never(t, func() bool {
 		return assembler.GetTxCount() > 4
 	}, 3*time.Millisecond, 100*time.Millisecond)
 }
 
-func NewAssembler(t *testing.T, partyID int, shardID int, ca tlsgen.CA, batcherInfo config.BatcherInfo, consenterInfo config.ConsenterInfo) (*assembler.Assembler, func()) {
+func newAssemblerTest(t *testing.T, partyID int, shardID int, ca tlsgen.CA, batcherInfo config.BatcherInfo, consenterInfo config.ConsenterInfo) (*assembler.Assembler, func()) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	genesisBlock.Metadata = &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, []byte("dummy"), []byte("dummy")},
@@ -113,17 +111,7 @@ func NewAssembler(t *testing.T, partyID int, shardID int, ca tlsgen.CA, batcherI
 
 	assemblerGRPC := node.CreateGRPCAssembler(nodeConfig)
 
-	assembler := assembler.NewDefaultAssembler(
-		testutil.CreateLogger(t, partyID),
-		assemblerGRPC,
-		nodeConfig,
-		genesisBlock,
-		&ledger.DefaultAssemblerLedgerFactory{},
-		&assembler.DefaultPrefetchIndexerFactory{},
-		&assembler.DefaultPrefetcherFactory{},
-		&assembler.DefaultBatchBringerFactory{},
-		&delivery.DefaultConsensusBringerFactory{},
-	)
+	assembler := assembler.NewAssembler(nodeConfig, assemblerGRPC, genesisBlock, testutil.CreateLogger(t, partyID))
 
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 	go func() {

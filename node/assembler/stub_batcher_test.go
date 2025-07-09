@@ -91,7 +91,7 @@ func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) err
 	})
 }
 
-func (sb *stubBatcher) SetBatch(batch core.Batch) {
+func (sb *stubBatcher) SetNextBatch(batch core.Batch) {
 	block, _ := ledger.NewFabricBatchFromRequests(sb.partyID, sb.shardID, batch.Seq(), batch.Requests(), []byte(""))
 	sb.blockLock.Lock()
 	defer sb.blockLock.Unlock()

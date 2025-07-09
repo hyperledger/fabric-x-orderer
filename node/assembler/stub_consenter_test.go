@@ -91,7 +91,7 @@ func (sc *stubConsenter) Stop() {
 	sc.server.Stop()
 }
 
-func (sc *stubConsenter) SetDecision(oba core.OrderedBatchAttestation) {
+func (sc *stubConsenter) SetNextDecision(oba core.OrderedBatchAttestation) {
 	ba := oba.(*state.AvailableBatchOrdered)
 
 	proposal := smartbft_types.Proposal{
@@ -102,8 +102,6 @@ func (sc *stubConsenter) SetDecision(oba core.OrderedBatchAttestation) {
 				Header: ba.OrderingInformation.BlockHeader,
 			}},
 		}).Serialize(),
-		Payload:  []byte{},
-		Metadata: []byte{},
 	}
 
 	// Dummy compound signatures
