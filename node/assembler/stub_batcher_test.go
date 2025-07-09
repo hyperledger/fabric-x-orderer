@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -74,25 +75,25 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 	return stubBatcher
 }
 
-func (bs *stubBatcher) Stop() {
-	bs.server.Stop()
+func (sb *stubBatcher) Stop() {
+	sb.server.Stop()
 }
 
-func (bs *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
+func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (bs *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	bs.blockLock.Lock()
-	defer bs.blockLock.Unlock()
+func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	sb.blockLock.Lock()
+	defer sb.blockLock.Unlock()
 	return stream.Send(&orderer.DeliverResponse{
-		Type: &orderer.DeliverResponse_Block{Block: bs.storedBatch},
+		Type: &orderer.DeliverResponse_Block{Block: sb.storedBatch},
 	})
 }
 
-func (bs *stubBatcher) SendBlockFromReq(seq types.BatchSequence, req types.BatchedRequests) {
-	block, _ := ledger.NewFabricBatchFromRequests(bs.partyID, bs.shardID, seq, req, []byte(""))
-	bs.blockLock.Lock()
-	defer bs.blockLock.Unlock()
-	bs.storedBatch = (*common.Block)(block)
+func (sb *stubBatcher) SetBatch(batch core.Batch) {
+	block, _ := ledger.NewFabricBatchFromRequests(sb.partyID, sb.shardID, batch.Seq(), batch.Requests(), []byte(""))
+	sb.blockLock.Lock()
+	defer sb.blockLock.Unlock()
+	sb.storedBatch = (*common.Block)(block)
 }

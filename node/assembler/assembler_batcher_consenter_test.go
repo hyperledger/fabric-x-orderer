@@ -35,7 +35,7 @@ func TestAssemblerAppendBlockAndIgnoreDuplicate(t *testing.T) {
 	consenterStub := NewStubConsenter(t, types.PartyID(1), ca)
 	defer consenterStub.Stop()
 
-	assembler, clean := newAssemblerTest(t, 1, 1, ca, batcherStub.batcherInfo, consenterStub.consenterInfo)
+	assembler, clean := NewAssembler(t, 1, 1, ca, batcherStub.batcherInfo, consenterStub.consenterInfo)
 	defer clean()
 
 	// genesis block added
@@ -47,10 +47,10 @@ func TestAssemblerAppendBlockAndIgnoreDuplicate(t *testing.T) {
 
 	// create batch with 1 req, send from batcher and consenter
 	batch1 := testutil.CreateMockBatch(1, 1, 1, []int{1})
-	batcherStub.SendBlockFromReq(batch1.Seq(), batch1.Requests())
+	batcherStub.SetBatch(batch1)
 
 	oba1 := obaCreator.Append(batch1, 1, 1, 1)
-	consenterStub.SendBlockFromOBA(oba1)
+	consenterStub.SetDecision(oba1)
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 2
@@ -58,25 +58,25 @@ func TestAssemblerAppendBlockAndIgnoreDuplicate(t *testing.T) {
 
 	// create batch with 2 reqs, send from batcher and consenter
 	batch2 := testutil.CreateMockBatch(1, 1, 2, []int{2, 3})
-	batcherStub.SendBlockFromReq(batch2.Seq(), batch2.Requests())
+	batcherStub.SetBatch(batch2)
 
 	oba2 := obaCreator.Append(batch2, 2, 1, 1)
-	consenterStub.SendBlockFromOBA(oba2)
+	consenterStub.SetDecision(oba2)
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 4
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// send duplicate batch+oba, should be ignored
-	batcherStub.SendBlockFromReq(batch2.Seq(), batch2.Requests())
-	consenterStub.SendBlockFromOBA(oba2)
+	batcherStub.SetBatch(batch2)
+	consenterStub.SetDecision(oba2)
 
 	require.Never(t, func() bool {
 		return assembler.GetTxCount() > 4
 	}, 3*time.Millisecond, 100*time.Millisecond)
 }
 
-func newAssemblerTest(t *testing.T, partyID int, shardID int, ca tlsgen.CA, batcherInfo config.BatcherInfo, consenterInfo config.ConsenterInfo) (*assembler.Assembler, func()) {
+func NewAssembler(t *testing.T, partyID int, shardID int, ca tlsgen.CA, batcherInfo config.BatcherInfo, consenterInfo config.ConsenterInfo) (*assembler.Assembler, func()) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	genesisBlock.Metadata = &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, []byte("dummy"), []byte("dummy")},

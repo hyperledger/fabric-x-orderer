@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package assembler_test
 
 import (
-	"encoding/binary"
+	"encoding/asn1"
 	"fmt"
 	"sync"
 	"testing"
@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
@@ -90,29 +91,33 @@ func (sc *stubConsenter) Stop() {
 	sc.server.Stop()
 }
 
-func (sc *stubConsenter) SendBlockFromOBA(oba core.OrderedBatchAttestation) {
+func (sc *stubConsenter) SetDecision(oba core.OrderedBatchAttestation) {
 	ba := oba.(*state.AvailableBatchOrdered)
-	h := &state.Header{
-		Num: types.DecisionNum(0),
-		AvailableBlocks: []state.AvailableBlock{{
-			Batch:  ba.AvailableBatch,
-			Header: ba.OrderingInformation.BlockHeader,
-		}},
+
+	proposal := smartbft_types.Proposal{
+		Header: (&state.Header{
+			Num: ba.OrderingInformation.DecisionNum,
+			AvailableBlocks: []state.AvailableBlock{{
+				Batch:  ba.AvailableBatch,
+				Header: ba.OrderingInformation.BlockHeader,
+			}},
+		}).Serialize(),
+		Payload:  []byte{},
+		Metadata: []byte{},
 	}
 
-	data := createSerializedDecision(h.Serialize())
+	// Dummy compound signatures
+	sigs := [][]byte{{1}, {2}}
+	sigBytes, err := asn1.Marshal(sigs)
+	if err != nil {
+		panic("failed to marshal fake signature: " + err.Error())
+	}
+	signatures := []smartbft_types.Signature{{Value: sigBytes}}
+	bytes := state.DecisionToBytes(proposal, signatures)
+
 	sc.blockLock.Lock()
 	defer sc.blockLock.Unlock()
 	sc.storedBlock = &common.Block{
-		Data: &common.BlockData{Data: [][]byte{data}},
+		Data: &common.BlockData{Data: [][]byte{bytes}},
 	}
-}
-
-func createSerializedDecision(header []byte) []byte {
-	buf := make([]byte, 12+len(header))
-	binary.BigEndian.PutUint32(buf[0:4], uint32(len(header))) // header
-	binary.BigEndian.PutUint32(buf[4:8], 0)                   // payload
-	binary.BigEndian.PutUint32(buf[8:12], 0)                  // metadata
-	copy(buf[12:], header)
-	return buf
 }
