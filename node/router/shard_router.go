@@ -208,20 +208,16 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 
 	interval := minRetryInterval
 	numOfRetries := 1
-	ticker := time.Tick(minRetryInterval)
 	for {
 		select {
 		case <-sr.closeReconnect:
 			return fmt.Errorf("reconnection aborted because the shard-router was stoped")
-		case <-ticker:
+		case <-time.After(interval):
 			sr.logger.Warnf("Retry attempt #%d", numOfRetries)
 			numOfRetries++
 			conn, err := sr.clientConfig.Dial(sr.batcherEndpoint)
 			if err != nil {
-				if interval < maxRetryInterval {
-					interval = min(interval*2, maxRetryInterval)
-					ticker = time.Tick(interval)
-				}
+				interval = min(interval*2, maxRetryInterval)
 				sr.logger.Errorf("Reconnection failed: %v, trying again in: %s", err, interval)
 				continue
 			} else {
