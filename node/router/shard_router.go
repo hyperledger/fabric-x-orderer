@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	minRetryInterval = 1 * time.Second
+	minRetryInterval = 50 * time.Millisecond
 	maxRetryInterval = 10 * time.Second
 	retryPolicy      = `{
 	 "methodConfig": [
@@ -67,6 +67,7 @@ type ShardRouter struct {
 	clientConfig                 comm.ClientConfig
 	reconnectOnce                sync.Once
 	reconnectRequests            chan reconnectReq
+	closeReconnect               chan bool
 }
 
 func NewShardRouter(l types.Logger,
@@ -102,9 +103,9 @@ func NewShardRouter(l types.Logger,
 		router2batcherStreamsPerConn: numOfgRPCStreamsPerConnection,
 		router2batcherConnPoolSize:   numOfConnectionsForBatcher,
 		clientConfig:                 cc,
+		reconnectRequests:            make(chan reconnectReq, 2*numOfgRPCStreamsPerConnection*numOfConnectionsForBatcher),
+		closeReconnect:               make(chan bool),
 	}
-
-	sr.reconnectRequests = make(chan reconnectReq, sr.router2batcherStreamsPerConn*sr.router2batcherConnPoolSize)
 
 	return sr
 }
@@ -119,7 +120,7 @@ func (sr *ShardRouter) ForwardBestEffort(reqID, request []byte) error {
 
 	if stream == nil || stream.faulty() {
 		sr.maybeNotifyReconnectRoutine(stream, connIndex, streamInConnIndex)
-		return fmt.Errorf("server error: could not establish connection between router and batcher %s", sr.batcherEndpoint)
+		return fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint)
 	}
 
 	stream.requestsChannel <- &protos.Request{
@@ -137,14 +138,12 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 	sr.lock.RUnlock()
 
 	if stream == nil || stream.faulty() {
-		sr.logger.Infof("request %x recieved but stream is faulty. Trying to reconnect stream...", reqID)
-
 		// Notify reconnection goroutine
 		sr.maybeNotifyReconnectRoutine(stream, connIndex, streamInConnIndex)
 
 		// Send a response and return
 		responses <- Response{
-			err:   fmt.Errorf("server error: could not establish connection between router and batcher %s", sr.batcherEndpoint),
+			err:   fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint),
 			reqID: reqID,
 		}
 		return
@@ -171,7 +170,9 @@ func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int
 	// check the connection, and if it's bad - try to reconnect untill success
 	sr.logger.Debugf("connection %d has state %s", connIndex, conn.GetState())
 	if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
-		sr.reconnect(connIndex)
+		if err = sr.reconnect(connIndex); err != nil {
+			return err
+		}
 	}
 
 	// try to initialize or renew the stream.
@@ -202,27 +203,34 @@ func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int
 	return nil
 }
 
-func (sr *ShardRouter) reconnect(connIndex int) {
+func (sr *ShardRouter) reconnect(connIndex int) error {
 	sr.logger.Debugf("Connection %d is broken, attempting to reconnect...", connIndex)
 
 	interval := minRetryInterval
 	numOfRetries := 1
+	ticker := time.Tick(minRetryInterval)
 	for {
-		sr.logger.Debugf("Retry attempt #%d", numOfRetries)
-		numOfRetries++
-
-		conn, err := sr.clientConfig.Dial(sr.batcherEndpoint)
-		if err != nil {
-			sr.logger.Errorf("Reconnection failed: %v, trying again in: %s", err, interval)
-			time.Sleep(interval)
-			interval = min(interval*2, maxRetryInterval)
-			continue
-		} else {
-			sr.lock.Lock()
-			sr.connPool[connIndex] = conn
-			sr.lock.Unlock()
-			sr.logger.Debugf("Reconnection succeeded for connection %d", connIndex)
-			return
+		select {
+		case <-sr.closeReconnect:
+			return fmt.Errorf("reconnection aborted because the shard-router was stoped")
+		case <-ticker:
+			sr.logger.Warnf("Retry attempt #%d", numOfRetries)
+			numOfRetries++
+			conn, err := sr.clientConfig.Dial(sr.batcherEndpoint)
+			if err != nil {
+				if interval < maxRetryInterval {
+					interval = min(interval*2, maxRetryInterval)
+					ticker = time.Tick(interval)
+				}
+				sr.logger.Errorf("Reconnection failed: %v, trying again in: %s", err, interval)
+				continue
+			} else {
+				sr.lock.Lock()
+				sr.connPool[connIndex] = conn
+				sr.lock.Unlock()
+				sr.logger.Debugf("Reconnection succeeded for connection %d", connIndex)
+				return nil
+			}
 		}
 	}
 }
@@ -366,17 +374,44 @@ func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream, connIndex int
 }
 
 func (sr *ShardRouter) reconnectRoutine() {
-	for req := range sr.reconnectRequests {
-		sr.logger.Debugf("Reconnect routine recieved request to reconnect to conn %d stream %d...", req.connNumber, req.streamInConn)
-		for {
-			if err := sr.maybeReconnectStream(req.connNumber, req.streamInConn); err == nil {
-				break
+	for {
+		select {
+		case <-sr.closeReconnect:
+			return
+		case req := <-sr.reconnectRequests:
+			sr.logger.Debugf("Reconnect routine recieved request to reconnect to conn %d stream %d...", req.connNumber, req.streamInConn)
+			reconnected := false
+			for !reconnected {
+				select {
+				case <-sr.closeReconnect:
+					return
+				default:
+					if err := sr.maybeReconnectStream(req.connNumber, req.streamInConn); err == nil {
+						reconnected = true
+					}
+				}
 			}
 		}
 	}
 }
 
-// for testing only:
+func (sr *ShardRouter) Stop() {
+	//close all connetions in connection pool
+	for _, con := range sr.connPool {
+		sr.lock.RLock()
+		if con != nil {
+			con.Close()
+		}
+		sr.lock.RUnlock()
+	}
+
+	//close the reconnection goroutine
+	close(sr.closeReconnect)
+
+}
+
+// IsAllStreamsOKinSR checks that all the streams in the shard-router are not faulty.
+// Use for testing only.
 func (sr *ShardRouter) IsAllStreamsOKinSR() bool {
 	sr.lock.RLock()
 	defer sr.lock.RUnlock()
@@ -391,7 +426,8 @@ func (sr *ShardRouter) IsAllStreamsOKinSR() bool {
 	return true
 }
 
-// for testing only:
+// IsConnectionsToBatcherDown checks that all the streams are faulty (disconnected from batcher).
+// Use for testing only.
 func (sr *ShardRouter) IsConnectionsToBatcherDown() bool {
 	sr.lock.RLock()
 	defer sr.lock.RUnlock()

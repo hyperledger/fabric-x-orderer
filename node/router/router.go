@@ -108,20 +108,8 @@ func (r *Router) Stop() {
 
 	r.net.Stop()
 
-	if r.shardRouters == nil {
-		return
-	}
-
 	for _, sr := range r.shardRouters {
-		if sr.connPool != nil {
-			for _, con := range sr.connPool {
-				sr.lock.RLock()
-				if con != nil {
-					con.Close()
-				}
-				sr.lock.RUnlock()
-			}
-		}
+		sr.Stop()
 	}
 }
 
@@ -339,7 +327,8 @@ func createTraceID(rand *rand2.Rand) []byte {
 	return trace
 }
 
-// for testing only
+// IsAllStreamsOK checks that all the streams accross all shard-routers are non-faulty.
+// Use for testing only.
 func (r *Router) IsAllStreamsOK() bool {
 	for _, sr := range r.shardRouters {
 		if !sr.IsAllStreamsOKinSR() {
@@ -349,7 +338,8 @@ func (r *Router) IsAllStreamsOK() bool {
 	return true
 }
 
-// for testing only
+// IsAllConnectionsDown checks that all streams across all shard-routers are disconnected from a batcher.
+// Use for testing only.
 func (r *Router) IsAllConnectionsDown() bool {
 	for _, sr := range r.shardRouters {
 		if !sr.IsConnectionsToBatcherDown() {

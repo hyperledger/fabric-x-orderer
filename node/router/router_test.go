@@ -163,7 +163,7 @@ func TestSubmitOnBatcherStopAndRestart(t *testing.T) {
 
 	// send same request, but now the stream is faulty and the router will try to reconnect.
 	err = submitRequest(testSetup.clientConn)
-	require.EqualError(t, err, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+	require.EqualError(t, err, "receiving response with error: server error: connection between router and batcher "+testSetup.batchers[0].server.Address()+" is broken, try again later")
 
 	// restart the batcher
 	testSetup.batchers[0].Restart()
@@ -218,7 +218,7 @@ func TestSubmitStreamOnBatcherStopAndRestart(t *testing.T) {
 	require.Equal(t, numOfRequests, res.failRequests)
 	require.Equal(t, numOfRequests, len(res.respondsErrors))
 	for _, e := range res.respondsErrors {
-		require.EqualError(t, e, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+		require.EqualError(t, e, "receiving response with error: server error: connection between router and batcher "+testSetup.batchers[0].server.Address()+" is broken, try again later")
 	}
 	require.Equal(t, uint32(0), testSetup.batchers[0].ReceivedMessageCount())
 
@@ -271,7 +271,7 @@ func TestBroadcastOnBatcherStopAndRestart(t *testing.T) {
 	require.Equal(t, numOfRequests, res.failRequests)
 	require.Equal(t, numOfRequests, len(res.respondsErrors))
 	for _, e := range res.respondsErrors {
-		require.EqualError(t, e, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+		require.EqualError(t, e, "receiving response with error: server error: connection between router and batcher "+testSetup.batchers[0].server.Address()+" is broken, try again later")
 	}
 
 	// restart the batcher
