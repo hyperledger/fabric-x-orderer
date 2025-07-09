@@ -392,7 +392,7 @@ func (sr *ShardRouter) reconnectRoutine() {
 }
 
 func (sr *ShardRouter) Stop() {
-	//close all connetions in connection pool
+	// close all connetions in connection pool
 	for _, con := range sr.connPool {
 		sr.lock.RLock()
 		if con != nil {
@@ -401,9 +401,8 @@ func (sr *ShardRouter) Stop() {
 		sr.lock.RUnlock()
 	}
 
-	//close the reconnection goroutine
+	// close the reconnection goroutine
 	close(sr.closeReconnect)
-
 }
 
 // IsAllStreamsOKinSR checks that all the streams in the shard-router are not faulty.
