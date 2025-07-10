@@ -66,6 +66,7 @@ type ShardRouter struct {
 	tlsKey                       []byte
 	clientConfig                 comm.ClientConfig
 	reconnectOnce                sync.Once
+	closeReconnectOnce           sync.Once
 	reconnectRequests            chan reconnectReq
 	closeReconnect               chan bool
 }
@@ -373,6 +374,7 @@ func (sr *ShardRouter) reconnectRoutine() {
 	for {
 		select {
 		case <-sr.closeReconnect:
+			sr.logger.Infof("Reconnection goroutine in shard-router is exiting")
 			return
 		case req := <-sr.reconnectRequests:
 			sr.logger.Debugf("Reconnect routine recieved request to reconnect to conn %d stream %d...", req.connNumber, req.streamInConn)
@@ -380,6 +382,7 @@ func (sr *ShardRouter) reconnectRoutine() {
 			for !reconnected {
 				select {
 				case <-sr.closeReconnect:
+					sr.logger.Infof("Reconnection goroutine in shard-router is exiting")
 					return
 				default:
 					if err := sr.maybeReconnectStream(req.connNumber, req.streamInConn); err == nil {
@@ -392,17 +395,19 @@ func (sr *ShardRouter) reconnectRoutine() {
 }
 
 func (sr *ShardRouter) Stop() {
+	// close the reconnection goroutine
+	sr.closeReconnectOnce.Do(func() {
+		close(sr.closeReconnect)
+	})
+
 	// close all connetions in connection pool
+	sr.lock.RLock()
 	for _, con := range sr.connPool {
-		sr.lock.RLock()
 		if con != nil {
 			con.Close()
 		}
-		sr.lock.RUnlock()
 	}
-
-	// close the reconnection goroutine
-	close(sr.closeReconnect)
+	sr.lock.RUnlock()
 }
 
 // IsAllStreamsOKinSR checks that all the streams in the shard-router are not faulty.
