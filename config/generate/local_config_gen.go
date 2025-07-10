@@ -183,8 +183,8 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 		ListenPort:    generalConfigParams.listenPort,
 		TLSConfig: config.TLSConfigYaml{
 			Enabled:            generalConfigParams.tlsEnabled,
-			PrivateKey:         filepath.Join(partyPath, nodeRole, "key.pem"),
-			Certificate:        filepath.Join(partyPath, nodeRole, "tls-cert.pem"),
+			PrivateKey:         filepath.Join(partyPath, nodeRole, "tls", "key.pem"),
+			Certificate:        filepath.Join(partyPath, nodeRole, "tls", "tls-cert.pem"),
 			RootCAs:            []string{filepath.Join(orgPath, "tlsca", "tlsca-cert.pem")},
 			ClientAuthRequired: generalConfigParams.clientAuthRequired,
 		},
@@ -197,7 +197,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 			File:   filepath.Join(generalConfigParams.configBaseDir, "bootstrap", "bootstrap.block"),
 		},
 		LocalMSPDir: filepath.Join(partyPath, nodeRole, "msp"),
-		LocalMSPID:  "OrdererOrg",
+		LocalMSPID:  fmt.Sprintf("OrdererOrg%d", generalConfigParams.partyID),
 		BCCSP:       config.BCCSP{},
 		LogSpec:     generalConfigParams.logLevel,
 	}
@@ -205,8 +205,8 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 	if generalConfigParams.role == "consenter" {
 		generalConfig.Cluster = config.ClusterYaml{
 			SendBufferSize:    DefaultSendBufferSize,
-			ClientCertificate: filepath.Join(partyPath, nodeRole, "tls-cert.pem"),
-			ClientPrivateKey:  filepath.Join(partyPath, nodeRole, "key.pem"),
+			ClientCertificate: filepath.Join(partyPath, nodeRole, "tls", "tls-cert.pem"),
+			ClientPrivateKey:  filepath.Join(partyPath, nodeRole, "tls", "key.pem"),
 			ReplicationPolicy: "",
 		}
 	}

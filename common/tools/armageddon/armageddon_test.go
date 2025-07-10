@@ -8,6 +8,11 @@ package armageddon_test
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
+	"github.com/onsi/gomega/gexec"
+	"github.com/stretchr/testify/require"
 	"os"
 	"os/exec"
 	"path"
@@ -15,12 +20,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
-	"github.com/onsi/gomega/gexec"
-	"github.com/stretchr/testify/require"
 )
 
 // Scenario:
@@ -469,8 +468,6 @@ func checkCryptoDir(outputDir string) error {
 	requiredOrgSubDirs := []string{
 		"ca",
 		"tlsca",
-		"msp",
-		"msp/admincerts",
 		"orderers",
 		"users",
 	}
@@ -539,9 +536,42 @@ func checkCryptoDir(outputDir string) error {
 			if err != nil {
 				return fmt.Errorf("error reading directory %s\n", path)
 			}
+
+			mspPath := filepath.Join(partyDir, partySubDir, "msp")
+			if _, err := os.Stat(mspPath); os.IsNotExist(err) {
+				return fmt.Errorf("missing directory: %s\n", mspPath)
+			}
+			requiredMSPSubDirs := []string{"cacerts", "intermediatecerts", "admincerts", "keystore", "signcerts", "tlscacerts", "tlsintermediatecerts"}
+			for _, mspSubDir := range requiredMSPSubDirs {
+				mspSubDirPath := filepath.Join(mspPath, mspSubDir)
+				if _, err := os.Stat(mspSubDirPath); os.IsNotExist(err) {
+					return fmt.Errorf("missing directory: %s\n", mspSubDirPath)
+				}
+
+				if mspSubDir == "keystore" || mspSubDir == "signcerts" {
+					files, err = os.ReadDir(mspSubDirPath)
+					if err != nil {
+						return fmt.Errorf("error reading directory %s\n", mspSubDirPath)
+					}
+					for _, file := range files {
+						if !strings.HasSuffix(file.Name(), ".pem") {
+							return fmt.Errorf("error reading %s files, suffix file is not pem\n", mspSubDirPath)
+						}
+					}
+				}
+			}
+
+			tlsPath := filepath.Join(partyDir, partySubDir, "tls")
+			if _, err := os.Stat(tlsPath); os.IsNotExist(err) {
+				return fmt.Errorf("missing directory: %s\n", tlsPath)
+			}
+			files, err = os.ReadDir(tlsPath)
+			if err != nil {
+				return fmt.Errorf("error reading directory %s\n", tlsPath)
+			}
 			for _, file := range files {
 				if !strings.HasSuffix(file.Name(), ".pem") {
-					return fmt.Errorf("error reading %s files, suffix file is not pem\n", filepath.Join(orgDir, path))
+					return fmt.Errorf("error reading %s files, suffix file is not pem\n", tlsPath)
 				}
 			}
 		}
