@@ -57,6 +57,7 @@ func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisi
 			BlockHeader: &state.BlockHeader{
 				Number:   uint64(decisionNum),
 				PrevHash: obac.headerHash,
+				Digest:   batchId.Digest(),
 			},
 			DecisionNum: decisionNum,
 			BatchIndex:  batchIndex,
@@ -64,6 +65,7 @@ func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisi
 		},
 	}
 	obac.headerHash = calculateHeaderHash(ba.OrderingInformation.BlockHeader)
+	obac.prevBa = ba
 	return ba
 }
 
