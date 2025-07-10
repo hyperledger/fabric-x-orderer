@@ -533,10 +533,6 @@ func checkCryptoDir(outputDir string) error {
 			if _, err := os.Stat(path); os.IsNotExist(err) {
 				return fmt.Errorf("missing directory: %s\n", path)
 			}
-			files, err := os.ReadDir(path)
-			if err != nil {
-				return fmt.Errorf("error reading directory %s\n", path)
-			}
 
 			mspPath := filepath.Join(partyDir, partySubDir, "msp")
 			if _, err := os.Stat(mspPath); os.IsNotExist(err) {
@@ -548,7 +544,6 @@ func checkCryptoDir(outputDir string) error {
 				if _, err := os.Stat(mspSubDirPath); os.IsNotExist(err) {
 					return fmt.Errorf("missing directory: %s\n", mspSubDirPath)
 				}
-
 				if mspSubDir == "keystore" || mspSubDir == "signcerts" {
 					files, err = os.ReadDir(mspSubDirPath)
 					if err != nil {
