@@ -49,8 +49,6 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 	partiesConfig := make([]config.PartyConfig, len(network.Parties))
 
 	for i, party := range network.Parties {
-		partyPath := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID))
-
 		partyLocalConfig := networkLocalConfig.PartiesLocalConfig[i]
 
 		routerConfig := config.RouterNodeConfig{
@@ -65,7 +63,7 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 				ShardID:   partyLocalConfig.BatchersLocalConfig[j].BatcherParams.ShardID,
 				Host:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenAddress,
 				Port:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenPort,
-				PublicKey: filepath.Join(partyPath, fmt.Sprintf("batcher%d", j+1), "signing-cert.pem"),
+				PublicKey: filepath.Join(partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
 				TLSCert:   partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.TLSConfig.Certificate,
 			}
 			batchersConfig = append(batchersConfig, batcherConfig)
@@ -74,7 +72,7 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		consenterConfig := config.ConsenterNodeConfig{
 			Host:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenAddress,
 			Port:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenPort,
-			PublicKey: filepath.Join(partyPath, "consenter", "signing-cert.pem"),
+			PublicKey: filepath.Join(partyLocalConfig.ConsenterLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
 			TLSCert:   partyLocalConfig.ConsenterLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 

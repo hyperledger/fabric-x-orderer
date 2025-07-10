@@ -6,13 +6,13 @@
 PartyID: 1
 General:
     ListenAddress: 127.0.0.1
-    ListenPort: 52800
+    ListenPort: 60610
     TLS:
         Enabled: true
-        PrivateKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/key.pem
-        Certificate: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/tls-cert.pem
+        PrivateKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/tls/key.pem
+        Certificate: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/tls/tls-cert.pem
         RootCAs:
-            - /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/tlsca/cacert.pem
+            - /var/dec-trust/crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem
         ClientAuthRequired: false
     Keepalive:
         ClientInterval: 1m0s
@@ -27,13 +27,13 @@ General:
     MaxRecvMsgSize: 104857600
     MaxSendMsgSize: 104857600
     Bootstrap:
-        Method: yaml
-        File: /var/dec-trust/bootstrap/shared_config.yaml)
+        Method: block
+        File: /var/dec-trust/bootstrap/bootstrap.block
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/msp
-    LocalMSPID: OrdererOrg
+    LocalMSPID: OrdererOrg1
     LogSpec: info
 FileStore:
-    Location: /var/dec-trust/store
+    Location: /var/dec-trust/production/orderer/store
 Batcher:
     ShardID: 1
     BatchSequenceGap: 10

@@ -6,13 +6,13 @@
 PartyID: 3
 General:
     ListenAddress: 127.0.0.1
-    ListenPort: 52809
+    ListenPort: 60619
     TLS:
-        Enabled: false
-        PrivateKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/key.pem
-        Certificate: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/tls-cert.pem
+        Enabled: true
+        PrivateKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/tls/key.pem
+        Certificate: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/tls/tls-cert.pem
         RootCAs:
-            - /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/tlsca/cacert.pem
+            - /var/dec-trust/crypto/ordererOrganizations/org3/tlsca/tlsca-cert.pem
         ClientAuthRequired: false
     Keepalive:
         ClientInterval: 1m0s
@@ -27,11 +27,12 @@ General:
     MaxRecvMsgSize: 104857600
     MaxSendMsgSize: 104857600
     Bootstrap:
-        Method: yaml
-        File: /var/dec-trust/bootstrap/shared_config.yaml)
+        Method: block
+        File: /var/dec-trust/bootstrap/bootstrap.block
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/msp
-    LocalMSPID: OrdererOrg
+    LocalMSPID: OrdererOrg3
     LogSpec: info
+FileStore: {}
 Router:
     NumberOfConnectionsPerBatcher: 10
-    NumberOfStreamsPerConnection: 20
+    NumberOfStreamsPerConnection: 5
