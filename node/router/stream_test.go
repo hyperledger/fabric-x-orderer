@@ -62,6 +62,7 @@ func TestSendRequests(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	go s.sendRequests()
@@ -100,6 +101,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	go s.sendRequests()
@@ -145,6 +147,7 @@ func TestReadResponses(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	s.registerReply(traceID, responseChan)
@@ -187,6 +190,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		requestsChannel:                   make(chan *protos.Request, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	go s.readResponses()
@@ -231,6 +235,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		requestsChannel:                   requests,
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
+		srReconnectChan:                   make(chan reconnectReq, 20),
 	}
 
 	faultyStream.cancel()
@@ -279,6 +284,47 @@ func TestRenewStreamSuccess(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	newStream.close()
+}
+
+// Scenario:
+// A request is sent, but Send() returns an error
+// The stream is then expected to be reported to the reconnection goroutine in SR
+func TestReconnectRequest(t *testing.T) {
+	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
+	fakeSubmitStreamClient.SendReturns(fmt.Errorf("error"))
+	ctx, cancel := context.WithCancel(context.Background())
+	logger := testutil.CreateLogger(t, 1)
+
+	connectionNumber := 2
+	streamNumber := 3
+
+	s := &stream{
+		endpoint:                          "127.0.0.1:5017",
+		logger:                            logger,
+		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
+		ctx:                               ctx,
+		cancelFunc:                        cancel,
+		requestsChannel:                   make(chan *protos.Request, 10),
+		doneChannel:                       make(chan bool),
+		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
+		connNum:                           connectionNumber,
+		streamNum:                         streamNumber,
+	}
+
+	go s.sendRequests()
+
+	req := &protos.Request{TraceId: []byte("request")}
+	s.requestsChannel <- req
+
+	assert.Eventually(t, func() bool {
+		return fakeSubmitStreamClient.SendCallCount() == 1 && s.faulty()
+	}, time.Second, 10*time.Millisecond)
+
+	reconnectRequest := <-s.srReconnectChan
+
+	require.Equal(t, connectionNumber, reconnectRequest.connNumber)
+	require.Equal(t, streamNumber, reconnectRequest.streamInConn)
 }
 
 type safeReqPool struct {

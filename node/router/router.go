@@ -108,20 +108,8 @@ func (r *Router) Stop() {
 
 	r.net.Stop()
 
-	if r.shardRouters == nil {
-		return
-	}
-
 	for _, sr := range r.shardRouters {
-		if sr.connPool != nil {
-			for _, con := range sr.connPool {
-				sr.lock.RLock()
-				if con != nil {
-					con.Close()
-				}
-				sr.lock.RUnlock()
-			}
-		}
+		sr.Stop()
 	}
 }
 
@@ -163,6 +151,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		atomic.AddUint64(&r.incoming, 1)
 
 		reqID, shardRouter := r.getShardRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
+
 		if err := shardRouter.ForwardBestEffort(reqID, req.Payload); err != nil {
 			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_INTERNAL_SERVER_ERROR, Info: err.Error()}
 		} else {
@@ -336,4 +325,26 @@ func createTraceID(rand *rand2.Rand) []byte {
 	binary.BigEndian.PutUint64(trace, uint64(n1))
 	binary.BigEndian.PutUint64(trace[8:], uint64(n2))
 	return trace
+}
+
+// IsAllStreamsOK checks that all the streams accross all shard-routers are non-faulty.
+// Use for testing only.
+func (r *Router) IsAllStreamsOK() bool {
+	for _, sr := range r.shardRouters {
+		if !sr.IsAllStreamsOKinSR() {
+			return false
+		}
+	}
+	return true
+}
+
+// IsAllConnectionsDown checks that all streams across all shard-routers are disconnected from a batcher.
+// Use for testing only.
+func (r *Router) IsAllConnectionsDown() bool {
+	for _, sr := range r.shardRouters {
+		if !sr.IsConnectionsToBatcherDown() {
+			return false
+		}
+	}
+	return true
 }

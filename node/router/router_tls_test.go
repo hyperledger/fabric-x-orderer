@@ -30,8 +30,8 @@ func TestServerTLSClientConnectionToRouter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, testSetup.clientConn)
 
-	err = submitBroadcastRequests(testSetup.clientConn, 2)
-	require.NoError(t, err)
+	res := submitBroadcastRequests(testSetup.clientConn, 2)
+	require.NoError(t, res.err)
 
 	recvCond := func() uint32 {
 		receivedTxCount := uint32(0)
@@ -92,8 +92,8 @@ func TestMutualTLSClientConnectionToRouter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, testSetup.clientConn)
 
-	err = submitBroadcastRequests(testSetup.clientConn, 2)
-	require.NoError(t, err)
+	res := submitBroadcastRequests(testSetup.clientConn, 2)
+	require.NoError(t, res.err)
 
 	recvCond := func() uint32 {
 		receivedTxCount := uint32(0)
@@ -182,8 +182,8 @@ func TestNoTLSClientConnectionToRouter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, testSetup.clientConn)
 
-	err = submitBroadcastRequests(testSetup.clientConn, 2)
-	require.NoError(t, err)
+	res := submitBroadcastRequests(testSetup.clientConn, 2)
+	require.NoError(t, res.err)
 
 	recvCond := func() uint32 {
 		receivedTxCount := uint32(0)
