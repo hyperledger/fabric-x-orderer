@@ -6,13 +6,13 @@
 PartyID: 3
 General:
     ListenAddress: 127.0.0.1
-    ListenPort: 52808
+    ListenPort: 60618
     TLS:
         Enabled: true
-        PrivateKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/key.pem
-        Certificate: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls-cert.pem
+        PrivateKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls/key.pem
+        Certificate: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls/tls-cert.pem
         RootCAs:
-            - /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/tlsca/cacert.pem
+            - /var/dec-trust/crypto/ordererOrganizations/org3/tlsca/tlsca-cert.pem
         ClientAuthRequired: false
     Keepalive:
         ClientInterval: 1m0s
@@ -27,16 +27,16 @@ General:
     MaxRecvMsgSize: 104857600
     MaxSendMsgSize: 104857600
     Bootstrap:
-        Method: yaml
-        File: /var/dec-trust/bootstrap/shared_config.yaml)
+        Method: block
+        File: /var/dec-trust/bootstrap/bootstrap.block
     Cluster:
         SendBufferSize: 2000
-        ClientCertificate: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls-cert.pem
-        ClientPrivateKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/key.pem
+        ClientCertificate: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls/tls-cert.pem
+        ClientPrivateKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls/key.pem
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/msp
-    LocalMSPID: OrdererOrg
+    LocalMSPID: OrdererOrg3
     LogSpec: info
 FileStore:
-    Location: /var/dec-trust/store
+    Location: /var/dec-trust/production/orderer/store
 Consensus:
-    WALDir: /var/dec-trust/store/smartbft/wal
+    WALDir: /var/dec-trust/production/orderer/store/wal

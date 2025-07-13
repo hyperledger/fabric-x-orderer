@@ -113,7 +113,7 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 }
 
 // PrepareSharedConfigBinary generates a shared configuration and writes the encoded configuration to a file.
-// The function return the path to the file and the shared config in the yaml format.
+// The function returns the path to the file and the shared config in the yaml format.
 // This function is used in testing only.
 func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYaml, string) {
 	networkConfig := GenerateNetworkConfig(t, "none", "none")
