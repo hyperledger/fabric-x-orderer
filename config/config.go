@@ -227,11 +227,13 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 }
 
 func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeConfig {
-	partySharedConfig := getPartyConfigFromSharedConfigByPartyID(config.SharedConfig, config.LocalConfig.NodeLocalConfig.PartyID)
-
-	var tlsCACertsCollection []nodeconfig.RawBytes
-	for _, ca := range partySharedConfig.TLSCACerts {
-		tlsCACertsCollection = append(tlsCACertsCollection, ca)
+	consenters := config.ExtractConsenters()
+	var consenterFromMyParty nodeconfig.ConsenterInfo
+	for _, consenter := range consenters {
+		if consenter.PartyID == config.LocalConfig.NodeLocalConfig.PartyID {
+			consenterFromMyParty = consenter
+			break
+		}
 	}
 
 	assemblerConfig := &nodeconfig.AssemblerNodeConfig{
@@ -246,14 +248,9 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		ReplicationChannelSize:    config.LocalConfig.NodeLocalConfig.AssemblerParams.ReplicationChannelSize,
 		BatchRequestsChannelSize:  config.LocalConfig.NodeLocalConfig.AssemblerParams.BatchRequestsChannelSize,
 		Shards:                    config.ExtractShards(),
-		Consenter: nodeconfig.ConsenterInfo{
-			PartyID:    config.LocalConfig.NodeLocalConfig.PartyID,
-			Endpoint:   partySharedConfig.ConsenterConfig.Host + ":" + strconv.Itoa(int(partySharedConfig.ConsenterConfig.Port)),
-			PublicKey:  partySharedConfig.ConsenterConfig.PublicKey,
-			TLSCACerts: tlsCACertsCollection,
-		},
-		UseTLS:             config.LocalConfig.TLSConfig.Enabled,
-		ClientAuthRequired: config.LocalConfig.TLSConfig.ClientAuthRequired,
+		Consenter:                 consenterFromMyParty,
+		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
+		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
 	}
 	return assemblerConfig
 }
@@ -271,9 +268,9 @@ func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {
 			shardId := types.ShardID(batcher.ShardID)
 
 			// Fetch public key from signing certificate
-			// NOTE: ARMA's new configuration now uses certificates, which inherently contain the public key, instead of a separate public key field.
-			// To ensure backward compatibility until the full new config integration, the public key it extracted.
-			block, _ := pem.Decode(batcher.PublicKey)
+			// NOTE: ARMA's new configuration uses certificates, which inherently contain the public key, instead of a separate public key field.
+			// To ensure backward compatibility until the full new config integration, the public key it enabled.
+			block, _ := pem.Decode(batcher.SignCert)
 			if block == nil || block.Bytes == nil {
 				panic("Failed decoding batcher signing certificate")
 			}
@@ -284,7 +281,7 @@ func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {
 			}
 
 			if block.Type == "PUBLIC KEY" {
-				pemPublicKey = batcher.PublicKey
+				pemPublicKey = batcher.SignCert
 			}
 
 			batcher := nodeconfig.BatcherInfo{
@@ -325,8 +322,8 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 
 		// Fetch public key from signing certificate
 		// NOTE: ARMA's new configuration now uses certificates, which inherently contain the public key, instead of a separate public key field.
-		// To ensure backward compatibility until the full new config integration, the public key it extracted.
-		block, _ := pem.Decode(party.ConsenterConfig.PublicKey)
+		// To ensure backward compatibility until the full new config integration, the public key it enabled.
+		block, _ := pem.Decode(party.ConsenterConfig.SignCert)
 		if block == nil || block.Bytes == nil {
 			panic("Failed decoding consenter signing certificate")
 		}
@@ -337,7 +334,7 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 		}
 
 		if block.Type == "PUBLIC KEY" {
-			pemPublicKey = party.ConsenterConfig.PublicKey
+			pemPublicKey = party.ConsenterConfig.SignCert
 		}
 
 		consenterInfo := nodeconfig.ConsenterInfo{
@@ -376,11 +373,11 @@ func blockToPublicKey(block *pem.Block) []byte {
 	return pemPublicKey
 }
 
-func getPartyConfigFromSharedConfigByPartyID(sharedConfig *protos.SharedConfig, partyID types.PartyID) *protos.PartyConfig {
-	for _, partyConfig := range sharedConfig.PartiesConfig {
-		if partyConfig.PartyID == uint32(partyID) {
-			return partyConfig
-		}
-	}
-	return nil
-}
+//func getPartyConfigFromSharedConfigByPartyID(sharedConfig *protos.SharedConfig, partyID types.PartyID) *protos.PartyConfig {
+//	for _, partyConfig := range sharedConfig.PartiesConfig {
+//		if partyConfig.PartyID == uint32(partyID) {
+//			return partyConfig
+//		}
+//	}
+//	return nil
+//}
