@@ -44,29 +44,29 @@ const (
 // dir
 // └── crypto
 //
-//		└── ordererOrganizations
-//		    └── org{partyID}
-//		        ├── ca
-//		        ├── tlsca
-//		        ├── orderers
-//		        │   └── party{partyID}
-//	         │       ├── router
-//	         │       │   ├── tls
-//	         │       │   └── msp
-//	         │       │       ├── cacerts
-//	         │       │       ├── intermediatecerts
-//	         │       │       ├── admincerts  (ignored)
-//	         │       │       ├── keystore
-//	         │       │       ├── signcerts
-//	         │       │       ├── tlscacerts
-//	         │       │       └── tlsintermediatecerts
-//		        │       ├── batcher1
-//		        │       ├── batcher2
-//		        │       ├── ...
-//		        │       ├── batcher{shards}
-//		        │       ├── consenter
-//		        │       └── assembler
-//		        └── users
+//	└── ordererOrganizations
+//	        └── org{partyID}
+//	            ├── ca
+//	            ├── tlsca
+//	            ├── orderers
+//	            │    └── party{partyID}
+//	            │          ├── router
+//	            │          │   ├── tls
+//	            │          │   └── msp
+//	            │          │       ├── cacerts
+//	            │          │       ├── intermediatecerts
+//	            │          │       ├── admincerts  (ignored)
+//	            │          │       ├── keystore
+//	            │          │       ├── signcerts
+//	            │          │       ├── tlscacerts
+//	            │          │       └── tlsintermediatecerts
+//	            │          ├── batcher1
+//	            │          ├── batcher2
+//	            │          ├── ...
+//	            │          ├── batcher{shards}
+//	            │          ├── consenter
+//	            │          └── assembler
+//	            └── users
 func GenerateCryptoConfig(networkConfig *genconfig.Network, outputDir string) error {
 	// create folder structure for the crypto files
 	err := generateNetworkCryptoConfigFolderStructure(outputDir, networkConfig)
