@@ -16,7 +16,7 @@
 
 
 .PHONY: basic-checks
-basic-checks: linter check-license check-dco
+basic-checks: check-license check-dco check-protos linter
 
 .PHONY: linter
 linter: check-deps
