@@ -5,21 +5,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric/common/ledger/blockledger"
 )
 
 type FakeAssemblerLedgerReaderWriter struct {
-	AppendStub        func(core.Batch, interface{})
+	AppendStub        func(core.Batch, core.OrderingInfo)
 	appendMutex       sync.RWMutex
 	appendArgsForCall []struct {
 		arg1 core.Batch
-		arg2 interface{}
+		arg2 core.OrderingInfo
 	}
 	AppendConfigStub        func(*common.Block, types.DecisionNum)
 	appendConfigMutex       sync.RWMutex
@@ -82,15 +81,16 @@ type FakeAssemblerLedgerReaderWriter struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) Append(arg1 core.Batch, arg2 interface{}) {
+func (fake *FakeAssemblerLedgerReaderWriter) Append(arg1 core.Batch, arg2 core.OrderingInfo) {
 	fake.appendMutex.Lock()
 	fake.appendArgsForCall = append(fake.appendArgsForCall, struct {
 		arg1 core.Batch
-		arg2 interface{}
+		arg2 core.OrderingInfo
 	}{arg1, arg2})
+	stub := fake.AppendStub
 	fake.recordInvocation("Append", []interface{}{arg1, arg2})
 	fake.appendMutex.Unlock()
-	if fake.AppendStub != nil {
+	if stub != nil {
 		fake.AppendStub(arg1, arg2)
 	}
 }
@@ -101,13 +101,13 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendCallCount() int {
 	return len(fake.appendArgsForCall)
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendCalls(stub func(core.Batch, interface{})) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendCalls(stub func(core.Batch, core.OrderingInfo)) {
 	fake.appendMutex.Lock()
 	defer fake.appendMutex.Unlock()
 	fake.AppendStub = stub
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (core.Batch, interface{}) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (core.Batch, core.OrderingInfo) {
 	fake.appendMutex.RLock()
 	defer fake.appendMutex.RUnlock()
 	argsForCall := fake.appendArgsForCall[i]
@@ -120,9 +120,10 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendConfig(arg1 *common.Block, ar
 		arg1 *common.Block
 		arg2 types.DecisionNum
 	}{arg1, arg2})
+	stub := fake.AppendConfigStub
 	fake.recordInvocation("AppendConfig", []interface{}{arg1, arg2})
 	fake.appendConfigMutex.Unlock()
-	if fake.AppendConfigStub != nil {
+	if stub != nil {
 		fake.AppendConfigStub(arg1, arg2)
 	}
 }
@@ -164,15 +165,16 @@ func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontier(arg1 []types.ShardID,
 		arg2 []types.PartyID
 		arg3 time.Duration
 	}{arg1Copy, arg2Copy, arg3})
+	stub := fake.BatchFrontierStub
+	fakeReturns := fake.batchFrontierReturns
 	fake.recordInvocation("BatchFrontier", []interface{}{arg1Copy, arg2Copy, arg3})
 	fake.batchFrontierMutex.Unlock()
-	if fake.BatchFrontierStub != nil {
-		return fake.BatchFrontierStub(arg1, arg2, arg3)
+	if stub != nil {
+		return stub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.batchFrontierReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -225,9 +227,10 @@ func (fake *FakeAssemblerLedgerReaderWriter) Close() {
 	fake.closeMutex.Lock()
 	fake.closeArgsForCall = append(fake.closeArgsForCall, struct {
 	}{})
+	stub := fake.CloseStub
 	fake.recordInvocation("Close", []interface{}{})
 	fake.closeMutex.Unlock()
-	if fake.CloseStub != nil {
+	if stub != nil {
 		fake.CloseStub()
 	}
 }
@@ -249,15 +252,16 @@ func (fake *FakeAssemblerLedgerReaderWriter) GetTxCount() uint64 {
 	ret, specificReturn := fake.getTxCountReturnsOnCall[len(fake.getTxCountArgsForCall)]
 	fake.getTxCountArgsForCall = append(fake.getTxCountArgsForCall, struct {
 	}{})
+	stub := fake.GetTxCountStub
+	fakeReturns := fake.getTxCountReturns
 	fake.recordInvocation("GetTxCount", []interface{}{})
 	fake.getTxCountMutex.Unlock()
-	if fake.GetTxCountStub != nil {
-		return fake.GetTxCountStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.getTxCountReturns
 	return fakeReturns.result1
 }
 
@@ -301,15 +305,16 @@ func (fake *FakeAssemblerLedgerReaderWriter) LastOrderingInfo() (*state.Ordering
 	ret, specificReturn := fake.lastOrderingInfoReturnsOnCall[len(fake.lastOrderingInfoArgsForCall)]
 	fake.lastOrderingInfoArgsForCall = append(fake.lastOrderingInfoArgsForCall, struct {
 	}{})
+	stub := fake.LastOrderingInfoStub
+	fakeReturns := fake.lastOrderingInfoReturns
 	fake.recordInvocation("LastOrderingInfo", []interface{}{})
 	fake.lastOrderingInfoMutex.Unlock()
-	if fake.LastOrderingInfoStub != nil {
-		return fake.LastOrderingInfoStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.lastOrderingInfoReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -356,15 +361,16 @@ func (fake *FakeAssemblerLedgerReaderWriter) LedgerReader() blockledger.Reader {
 	ret, specificReturn := fake.ledgerReaderReturnsOnCall[len(fake.ledgerReaderArgsForCall)]
 	fake.ledgerReaderArgsForCall = append(fake.ledgerReaderArgsForCall, struct {
 	}{})
+	stub := fake.LedgerReaderStub
+	fakeReturns := fake.ledgerReaderReturns
 	fake.recordInvocation("LedgerReader", []interface{}{})
 	fake.ledgerReaderMutex.Unlock()
-	if fake.LedgerReaderStub != nil {
-		return fake.LedgerReaderStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.ledgerReaderReturns
 	return fakeReturns.result1
 }
 

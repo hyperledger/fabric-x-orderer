@@ -65,7 +65,7 @@ func createLedgerMockWrappingRealLedger(logger types.Logger, ledgerPath string) 
 	mock := &ledger_mocks.FakeAssemblerLedgerReaderWriter{}
 	ledger, err := node_ledger.NewAssemblerLedger(logger, ledgerPath)
 
-	mock.AppendCalls(func(b core.Batch, i interface{}) {
+	mock.AppendCalls(func(b core.Batch, i core.OrderingInfo) {
 		ledger.Append(b, i)
 	})
 	mock.AppendConfigCalls(func(b *common.Block, dn types.DecisionNum) {

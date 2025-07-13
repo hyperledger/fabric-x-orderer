@@ -9,6 +9,7 @@ package core
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -49,7 +50,7 @@ type OrderedBatchAttestation interface {
 	BatchAttestation() BatchAttestation
 	// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
 	// metadata to be used in the construction of the block.
-	OrderingInfo() interface{}
+	OrderingInfo() OrderingInfo
 }
 
 type BatchReplicator interface {
@@ -62,8 +63,12 @@ type AssemblerIndex interface {
 	Stop()
 }
 
+type OrderingInfo interface {
+	fmt.Stringer
+}
+
 type AssemblerLedgerWriter interface {
-	Append(batch Batch, orderingInfo interface{})
+	Append(batch Batch, orderingInfo OrderingInfo)
 	Close()
 }
 
@@ -122,12 +127,7 @@ func (a *Assembler) processOrderedBatchAttestations() {
 
 	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate()
 	for oba := range orderedBatchAttestations {
-		a.Logger.Infof("Received ordered batch attestation with BatchID primary=%d, shard=%d, seq=%d; digest %s",
-			oba.BatchAttestation().Primary(), oba.BatchAttestation().Shard(), oba.BatchAttestation().Seq(),
-			ShortDigestString(oba.BatchAttestation().Digest()))
-		a.Logger.Infof("Received ordered batch attestation with OrderingInfo: %+v; digest %s",
-			oba.OrderingInfo(),
-			ShortDigestString(oba.BatchAttestation().Digest()))
+		a.Logger.Infof("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInfo().String())
 
 		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
 			a.Logger.Infof("Config decision: shard: %d, primary: %d, Ignoring!", oba.BatchAttestation().Shard(), oba.BatchAttestation().Primary())

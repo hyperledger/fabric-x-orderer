@@ -33,7 +33,7 @@ type (
 //go:generate counterfeiter -o ./mocks/assembler_ledger.go . AssemblerLedgerReaderWriter
 type AssemblerLedgerReaderWriter interface {
 	GetTxCount() uint64
-	Append(batch core.Batch, orderingInfo interface{})
+	Append(batch core.Batch, orderingInfo core.OrderingInfo)
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	LastOrderingInfo() (*state.OrderingInformation, error)
 	LedgerReader() blockledger.Reader
@@ -72,12 +72,12 @@ func NewAssemblerLedger(logger types.Logger, ledgerPath string) (*AssemblerLedge
 	if err != nil {
 		logger.Panicf("Failed creating provider: %v", err)
 	}
-	logger.Infof("Assembler ledger opened block ledger provider, dir: %s", ledgerPath)
-	armaLedger, err := provider.Open("arma")
+	channelName := "arma" // TODO this will change when we'll support configurable channel name
+	armaLedger, err := provider.Open(channelName)
 	if err != nil {
 		logger.Panicf("Failed opening ledger: %v", err)
 	}
-	logger.Infof("Assembler ledger opened block store: %+v", armaLedger)
+	logger.Infof("Assembler ledger opened block store: path: %s, ledger-ID: %s", ledgerPath, channelName)
 	ledger := fileledger.NewFileLedger(armaLedger)
 	transactionCount := uint64(0)
 	height := ledger.Height()
@@ -134,7 +134,7 @@ func (l *AssemblerLedger) GetTxCount() uint64 {
 	return c
 }
 
-func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
+func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInfo) {
 	ordInfo := orderingInfo.(*state.OrderingInformation)
 	t1 := time.Now()
 	defer func() {
