@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -128,22 +129,30 @@ func (nba *naiveBatchAttestation) Deserialize(bytes []byte) error {
 	return nil
 }
 
+type naiveOrderingInfo struct {
+	num uint64
+}
+
+func (noi *naiveOrderingInfo) String() string {
+	return fmt.Sprintf("BlockNumber: %d", noi.num)
+}
+
 type naiveOrderedBatchAttestation struct {
 	ba           core.BatchAttestation
-	orderingInfo uint64
+	orderingInfo core.OrderingInfo
 }
 
 func (noba *naiveOrderedBatchAttestation) BatchAttestation() core.BatchAttestation {
 	return noba.ba
 }
 
-func (noba *naiveOrderedBatchAttestation) OrderingInfo() interface{} {
+func (noba *naiveOrderedBatchAttestation) OrderingInfo() core.OrderingInfo {
 	return noba.orderingInfo
 }
 
 type naiveAssemblerLedger chan core.OrderedBatchAttestation
 
-func (n naiveAssemblerLedger) Append(batch core.Batch, orderingInfo interface{}) {
+func (n naiveAssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInfo) {
 	noba := &naiveOrderedBatchAttestation{
 		ba: &naiveBatchAttestation{
 			primary: batch.Primary(),
@@ -152,7 +161,7 @@ func (n naiveAssemblerLedger) Append(batch core.Batch, orderingInfo interface{})
 			shard:   batch.Shard(),
 			digest:  batch.Digest(),
 		},
-		orderingInfo: orderingInfo.(uint64),
+		orderingInfo: orderingInfo,
 	}
 	n <- noba
 }
@@ -231,7 +240,7 @@ func TestAssembler(t *testing.T) {
 		for nba := range totalOrder {
 			noba := &naiveOrderedBatchAttestation{
 				ba:           nba,
-				orderingInfo: num,
+				orderingInfo: &naiveOrderingInfo{num: num},
 			}
 			nobar <- noba
 			num++
@@ -240,7 +249,7 @@ func TestAssembler(t *testing.T) {
 
 	for i := uint64(0); i < uint64(batchNum*shardCount); i++ {
 		noba := <-ledger
-		assert.Equal(t, i, noba.OrderingInfo().(uint64))
+		assert.Equal(t, fmt.Sprintf("BlockNumber: %d", i), noba.OrderingInfo().String())
 		delete(digests, string(noba.BatchAttestation().Digest()))
 	}
 

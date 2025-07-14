@@ -8,6 +8,7 @@ package core_test
 
 import (
 	"encoding/binary"
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -51,16 +52,16 @@ func (s *bafSender) SendBAF(baf core.BatchAttestationFragment) {
 }
 
 type naiveblock struct {
-	seq         uint64
+	order       core.OrderingInfo
 	batch       core.Batch
 	attestation core.BatchAttestation
 }
 
 type naiveBlockLedger chan naiveblock
 
-func (n naiveBlockLedger) Append(batch core.Batch, orderingInfo interface{}) {
+func (n naiveBlockLedger) Append(batch core.Batch, orderingInfo core.OrderingInfo) {
 	n <- naiveblock{
-		seq:   orderingInfo.(uint64),
+		order: orderingInfo,
 		batch: batch,
 		attestation: &naiveBatchAttestation{
 			primary: batch.Primary(),
@@ -176,7 +177,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 					ba.FragmentsReturns(bafs)
 					oba := &naiveOrderedBatchAttestation{
 						ba:           ba,
-						orderingInfo: num,
+						orderingInfo: &naiveOrderingInfo{num: num},
 					}
 					baReplicator <- oba
 					num++
@@ -270,7 +271,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 	num := uint64(0)
 	for committedReqCount < workerNum*workerPerWorker {
 		block := <-blockLedger
-		assert.Equal(t, num, block.seq)
+		assert.Equal(t, fmt.Sprintf("BlockNumber: %d", num), block.order.String())
 		num++
 		requests := block.batch.Requests()
 		committedReqCount += len(requests)

@@ -42,6 +42,6 @@ func (abo *AvailableBatchOrdered) BatchAttestation() core.BatchAttestation {
 
 // OrderingInfo returns an opaque object that provides extra information on the order of the batch attestation and
 // metadata to be used in the construction of the block.
-func (abo *AvailableBatchOrdered) OrderingInfo() interface{} {
+func (abo *AvailableBatchOrdered) OrderingInfo() core.OrderingInfo {
 	return abo.OrderingInformation
 }
