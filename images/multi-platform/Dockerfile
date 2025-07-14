@@ -5,14 +5,6 @@
 
 FROM docker.io/library/golang:1.24.3 AS builder
 
-# If you need to access github.ibm.com for the build
-# RUN apt update
-# RUN apt install -y git
-# ARG GITHUB_TOKEN
-# ENV GOPRIVATE=github.ibm.com
-# ENV TOKEN=$GITHUB_TOKEN
-# RUN git config --global url."https://${TOKEN}:x-oauth-basic@github.ibm.com/".insteadOf "https://github.ibm.com/"
-
 WORKDIR /src
 COPY . .
 ENV CGO_ENABLED=0
