@@ -1,4 +1,8 @@
-name: Release Orderer Docker Image
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release Fabric-X Orderer Docker Image
 
 on:
   push:
@@ -34,10 +38,10 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
       - name: Build and Push Multi-Platform Docker Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./images/multi-platform/Dockerfile
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           tags: |

@@ -14,7 +14,7 @@ FROM docker.io/library/golang:1.24.3 AS builder
 # RUN git config --global url."https://${TOKEN}:x-oauth-basic@github.ibm.com/".insteadOf "https://github.ibm.com/"
 
 WORKDIR /src
-COPY ../../ .
+COPY . .
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 
