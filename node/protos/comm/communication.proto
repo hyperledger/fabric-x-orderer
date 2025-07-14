@@ -16,6 +16,10 @@ message SubmitResponse {
   bytes trace_id = 3;
 }
 
+message ResponsePacket {
+  repeated SubmitResponse responses = 1;
+}
+
 message Request {
   bytes payload = 1;
   bytes signature = 2;
@@ -24,9 +28,17 @@ message Request {
   bytes trace_id = 5;
 }
 
+message RequestPacket {
+  repeated Request requests = 1;
+}
+
 service RequestTransmit {
   rpc Submit(Request) returns (SubmitResponse);
   rpc SubmitStream(stream Request) returns (stream SubmitResponse);
+}
+
+service StreamPacket {
+  rpc SubmitStreamPacket(stream RequestPacket) returns (stream ResponsePacket);
 }
 
 message EventResponse {

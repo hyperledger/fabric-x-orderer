@@ -203,6 +203,7 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		batcher.Run()
 
 		protos.RegisterRequestTransmitServer(batcherNodes[i].Server(), batcher)
+		protos.RegisterStreamPacketServer(batcherNodes[i].Server(), batcher)
 		protos.RegisterBatcherControlServiceServer(batcherNodes[i].Server(), batcher)
 		orderer.RegisterAtomicBroadcastServer(batcherNodes[i].Server(), batcher)
 
@@ -301,6 +302,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 
 	gRPCServer := newBatcherNode.Server()
 	protos.RegisterRequestTransmitServer(gRPCServer, batcher)
+	protos.RegisterStreamPacketServer(gRPCServer, batcher)
 	protos.RegisterBatcherControlServiceServer(gRPCServer, batcher)
 	orderer.RegisterAtomicBroadcastServer(gRPCServer, batcher)
 

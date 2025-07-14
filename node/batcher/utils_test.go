@@ -185,6 +185,7 @@ func grpcRegisterAndStart(b *batcher.Batcher, n *node) {
 	gRPCServer := n.Server()
 
 	protos.RegisterRequestTransmitServer(gRPCServer, b)
+	protos.RegisterStreamPacketServer(gRPCServer, b)
 	protos.RegisterBatcherControlServiceServer(gRPCServer, b)
 	orderer.RegisterAtomicBroadcastServer(gRPCServer, b)
 

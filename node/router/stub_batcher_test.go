@@ -64,6 +64,7 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 
 func (sb *stubBatcher) Start() {
 	protos.RegisterRequestTransmitServer(sb.server.Server(), sb)
+	protos.RegisterStreamPacketServer(sb.server.Server(), sb)
 	go func() {
 		if err := sb.server.Start(); err != nil {
 			panic(err)
@@ -95,6 +96,7 @@ func (sb *stubBatcher) Restart() {
 
 	// register the service again and start the new server
 	protos.RegisterRequestTransmitServer(sb.server.Server(), sb)
+	protos.RegisterStreamPacketServer(sb.server.Server(), sb)
 	go func() {
 		if err := sb.server.Start(); err != nil {
 			panic(err)
@@ -131,6 +133,35 @@ func (sb *stubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamSe
 		atomic.AddUint32(&sb.txs, 1)
 
 		err = stream.Send(resp)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (sb *stubBatcher) SubmitStreamPacket(stream protos.StreamPacket_SubmitStreamPacketServer) error {
+	for {
+		requests, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		atomic.AddUint32(&sb.txs, uint32(len(requests.Requests)))
+
+		var responses protos.ResponsePacket
+		for _, req := range requests.Requests {
+			resp := &protos.SubmitResponse{
+				Error:   "",
+				ReqID:   req.Identity,
+				TraceId: req.TraceId,
+			}
+			responses.Responses = append(responses.Responses, resp)
+		}
+
+		err = stream.Send(&responses)
 		if err != nil {
 			return err
 		}

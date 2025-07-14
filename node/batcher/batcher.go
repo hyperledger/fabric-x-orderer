@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -227,6 +228,104 @@ func (b *Batcher) sendResponses(stream protos.RequestTransmit_SubmitStreamServer
 			b.logger.Debugf("Sending response %x", resp.TraceId)
 			stream.Send(resp)
 			b.logger.Debugf("Sent response %x", resp.TraceId)
+		case <-stop:
+			b.logger.Debugf("Stopped sending responses")
+			return
+		}
+	}
+}
+
+func (b *Batcher) SubmitStreamPacket(stream protos.StreamPacket_SubmitStreamPacketServer) error {
+	stop := make(chan struct{})
+	defer close(stop)
+
+	defer func() {
+		b.logger.Infof("Client disconnected")
+	}()
+
+	responseCh := make(chan *protos.SubmitResponse, 1000)
+
+	go b.sendResponsesPacket(stream, responseCh, stop)
+
+	return b.dispatchRequestsPacket(stream, responseCh)
+}
+
+func (b *Batcher) dispatchRequestsWorker(reqsChan <-chan *protos.Request, responseCh chan *protos.SubmitResponse, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for req := range reqsChan {
+		traceId := req.TraceId
+		req.TraceId = nil
+
+		rawReq, err := proto.Marshal(req)
+		if err != nil {
+			b.logger.Panicf("Failed marshaling request: %v", err)
+		}
+
+		var resp protos.SubmitResponse
+		resp.TraceId = traceId
+
+		if err := b.requestsInspectorVerifier.VerifyRequest(rawReq); err != nil {
+			// TODO make sure the router verifies the request
+			b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
+		}
+		if err := b.batcher.Submit(rawReq); err != nil {
+			resp.Error = err.Error()
+		}
+
+		if len(traceId) > 0 {
+			responseCh <- &resp
+		}
+
+		b.logger.Debugf("Submitted request %x", traceId)
+	}
+}
+
+func (b *Batcher) dispatchRequestsPacket(stream protos.StreamPacket_SubmitStreamPacketServer, responseCh chan *protos.SubmitResponse) error {
+	workers := runtime.NumCPU()
+	var wg sync.WaitGroup
+	reqsChan := make(chan *protos.Request)
+	defer close(reqsChan)
+
+	// Start worker goroutines
+	for i := 1; i <= workers; i++ {
+		wg.Add(1)
+		go b.dispatchRequestsWorker(reqsChan, responseCh, &wg)
+	}
+
+	for {
+		requests, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		for _, req := range requests.Requests {
+			reqsChan <- req
+		}
+	}
+}
+
+// aggregate responses and send when a packet is filled or when a timeout occures.
+func (b *Batcher) sendResponsesPacket(stream protos.StreamPacket_SubmitStreamPacketServer, responseCh chan *protos.SubmitResponse, stop chan struct{}) {
+	ticker := time.Tick(100 * time.Millisecond)
+	packetSize := 1 << 7
+	var responses protos.ResponsePacket
+	for {
+		select {
+		case <-ticker:
+			if len(responses.Responses) > 0 {
+				stream.Send(&responses)
+				responses.Responses = nil
+			}
+		case resp := <-responseCh:
+			responses.Responses = append(responses.Responses, resp)
+			if len(responses.Responses) == packetSize {
+				stream.Send(&responses)
+				responses.Responses = nil
+			}
 		case <-stop:
 			b.logger.Debugf("Stopped sending responses")
 			return

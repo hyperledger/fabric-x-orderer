@@ -11,27 +11,28 @@ import (
 	"fmt"
 	"maps"
 	"sync"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
 type stream struct {
-	endpoint                          string
-	logger                            types.Logger
-	requestTransmitSubmitStreamClient protos.RequestTransmit_SubmitStreamClient
-	ctx                               context.Context
-	cancelOnce                        sync.Once
-	cancelFunc                        func()
-	requestsChannel                   chan *protos.Request
-	doneChannel                       chan bool
-	doneOnce                          sync.Once
-	lock                              sync.Mutex
-	requestTraceIdToResponseChannel   map[string]chan Response
-	connNum                           int
-	streamNum                         int
-	srReconnectChan                   chan reconnectReq
-	notifiedReconnect                 bool
+	endpoint                        string
+	logger                          types.Logger
+	StreamToBatcher                 protos.StreamPacket_SubmitStreamPacketClient
+	ctx                             context.Context
+	cancelOnce                      sync.Once
+	cancelFunc                      func()
+	requestsChannel                 chan *protos.Request
+	doneChannel                     chan bool
+	doneOnce                        sync.Once
+	lock                            sync.Mutex
+	requestTraceIdToResponseChannel map[string]chan Response
+	connNum                         int
+	streamNum                       int
+	srReconnectChan                 chan reconnectReq
+	notifiedReconnect               bool
 }
 
 // readResponses listens for responses from the batcher.
@@ -44,25 +45,26 @@ func (s *stream) readResponses() {
 			s.logger.Debugf("the stream has been closed, readResponses goroutine is exiting, it was connected to batcher %s ", s.endpoint)
 			return
 		default:
-			resp, err := s.requestTransmitSubmitStreamClient.Recv()
+			responses, err := s.StreamToBatcher.Recv()
 			if err != nil {
-				s.logger.Debugf("failed receiving response from batcher %s", s.endpoint)
+				s.logger.Debugf("failed receiving response packet from batcher %s", s.endpoint)
 				s.cancelOnServerError()
 				return
 			}
-
-			s.lock.Lock()
-			ch, exists := s.requestTraceIdToResponseChannel[string(resp.TraceId)]
-			delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
-			s.lock.Unlock()
-			if exists {
-				s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
-				s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", resp.TraceId)
-				ch <- Response{
-					SubmitResponse: resp,
+			for _, resp := range responses.Responses {
+				s.lock.Lock()
+				ch, exists := s.requestTraceIdToResponseChannel[string(resp.TraceId)]
+				delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
+				s.lock.Unlock()
+				if exists {
+					s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
+					s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", resp.TraceId)
+					ch <- Response{
+						SubmitResponse: resp,
+					}
+				} else {
+					s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
 				}
-			} else {
-				s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
 			}
 		}
 	}
@@ -70,11 +72,21 @@ func (s *stream) readResponses() {
 
 // sendRequests sends requests to the batcher.
 func (s *stream) sendRequests() {
+	ticker := time.Tick(100 * time.Millisecond)
+	packetSize := 1 << 7
+	var requests protos.RequestPacket
 	for {
 		select {
-		case <-s.doneChannel:
-			s.logger.Debugf("the stream has been closed, sendRequests goroutine is exiting, it was connected to batcher %s", s.endpoint)
-			return
+		case <-ticker:
+			if len(requests.Requests) > 0 {
+				err := s.StreamToBatcher.Send(&requests)
+				if err != nil {
+					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+					s.cancelOnServerError()
+					return
+				}
+				requests.Requests = nil
+			}
 		case msg, ok := <-s.requestsChannel:
 			if !ok {
 				s.logger.Debugf("request channel to batcher %s have been closed", s.endpoint)
@@ -82,12 +94,19 @@ func (s *stream) sendRequests() {
 				return
 			}
 			s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
-			err := s.requestTransmitSubmitStreamClient.Send(msg)
-			if err != nil {
-				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-				s.cancelOnServerError()
-				return
+			requests.Requests = append(requests.Requests, msg)
+			if len(requests.Requests) == packetSize {
+				err := s.StreamToBatcher.Send(&requests)
+				if err != nil {
+					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+					s.cancelOnServerError()
+					return
+				}
+				requests.Requests = nil
 			}
+		case <-s.doneChannel:
+			s.logger.Debugf("the stream has been closed, sendRequests goroutine is exiting, it was connected to batcher %s", s.endpoint)
+			return
 		}
 	}
 }
@@ -158,8 +177,8 @@ func (s *stream) registerReply(traceID []byte, responses chan Response) {
 }
 
 // renewStream creates a new stream that inherits the map and the requests channel
-func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger types.Logger, ctx context.Context, cancel context.CancelFunc) (*stream, error) {
-	newGRPCStream, err := client.SubmitStream(ctx)
+func (s *stream) renewStream(client protos.StreamPacketClient, endpoint string, logger types.Logger, ctx context.Context, cancel context.CancelFunc) (*stream, error) {
+	newGRPCStream, err := client.SubmitStreamPacket(ctx)
 	if err != nil {
 		s.logger.Errorf("Failed establishing a new stream")
 		cancel()
@@ -189,18 +208,18 @@ CopyChannelLoop:
 	maps.Copy(newRequestTraceIdToResponseChannelMap, s.requestTraceIdToResponseChannel)
 
 	newStream := &stream{
-		endpoint:                          endpoint,
-		logger:                            logger,
-		requestTransmitSubmitStreamClient: newGRPCStream,
-		ctx:                               ctx,
-		cancelFunc:                        cancel,
-		requestTraceIdToResponseChannel:   newRequestTraceIdToResponseChannelMap,
-		requestsChannel:                   newStreamRequests,
-		doneChannel:                       make(chan bool),
-		connNum:                           s.connNum,
-		streamNum:                         s.streamNum,
-		srReconnectChan:                   s.srReconnectChan,
-		notifiedReconnect:                 false,
+		endpoint:                        endpoint,
+		logger:                          logger,
+		StreamToBatcher:                 newGRPCStream,
+		ctx:                             ctx,
+		cancelFunc:                      cancel,
+		requestTraceIdToResponseChannel: newRequestTraceIdToResponseChannelMap,
+		requestsChannel:                 newStreamRequests,
+		doneChannel:                     make(chan bool),
+		connNum:                         s.connNum,
+		streamNum:                       s.streamNum,
+		srReconnectChan:                 s.srReconnectChan,
+		notifiedReconnect:               false,
 	}
 	s.lock.Unlock()
 
@@ -211,12 +230,12 @@ CopyChannelLoop:
 }
 
 // isRequestRegistered is only used for testing to validate that a request has been recorded in the map
-func (s *stream) isRequestRegistered(traceID []byte) (chan Response, bool) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	respChan, exists := s.requestTraceIdToResponseChannel[string(traceID)]
-	return respChan, exists
-}
+// func (s *stream) isRequestRegistered(traceID []byte) (chan Response, bool) {
+// 	s.lock.Lock()
+// 	defer s.lock.Unlock()
+// 	respChan, exists := s.requestTraceIdToResponseChannel[string(traceID)]
+// 	return respChan, exists
+// }
 
 // close closes the read and send channels
 func (s *stream) close() {

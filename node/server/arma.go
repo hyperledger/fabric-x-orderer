@@ -165,6 +165,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 		defer batcher.Run()
 
 		protos.RegisterRequestTransmitServer(srv.Server(), batcher)
+		protos.RegisterStreamPacketServer(srv.Server(), batcher)
 		protos.RegisterBatcherControlServiceServer(srv.Server(), batcher)
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), batcher)
 

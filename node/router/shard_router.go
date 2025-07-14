@@ -186,7 +186,7 @@ func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int
 			return err
 		}
 	} else if currentStream.faulty() {
-		client := protos.NewRequestTransmitClient(sr.connPool[connIndex])
+		client := protos.NewStreamPacketClient(sr.connPool[connIndex])
 		ctx, cancel := context.WithCancel(context.Background())
 		stream, err = currentStream.renewStream(client, sr.batcherEndpoint, sr.logger, ctx, cancel)
 		if err != nil {
@@ -315,23 +315,23 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 		return fmt.Errorf("could not init stream because connection %d is nil", i)
 	}
 
-	client := protos.NewRequestTransmitClient(sr.connPool[i])
+	client := protos.NewStreamPacketClient(sr.connPool[i])
 	ctx, cancel := context.WithCancel(context.Background())
-	newStream, err := client.SubmitStream(ctx)
+	newStream, err := client.SubmitStreamPacket(ctx)
 	if err == nil {
 		s := &stream{
-			endpoint:                          sr.batcherEndpoint,
-			logger:                            sr.logger,
-			requestTraceIdToResponseChannel:   make(map[string]chan Response),
-			requestsChannel:                   make(chan *protos.Request, 1000),
-			doneChannel:                       make(chan bool, 1),
-			requestTransmitSubmitStreamClient: newStream,
-			cancelFunc:                        cancel,
-			ctx:                               ctx,
-			connNum:                           i,
-			streamNum:                         j,
-			srReconnectChan:                   sr.reconnectRequests,
-			notifiedReconnect:                 false,
+			endpoint:                        sr.batcherEndpoint,
+			logger:                          sr.logger,
+			requestTraceIdToResponseChannel: make(map[string]chan Response),
+			requestsChannel:                 make(chan *protos.Request, 1000),
+			doneChannel:                     make(chan bool, 1),
+			StreamToBatcher:                 newStream,
+			cancelFunc:                      cancel,
+			ctx:                             ctx,
+			connNum:                         i,
+			streamNum:                       j,
+			srReconnectChan:                 sr.reconnectRequests,
+			notifiedReconnect:               false,
 		}
 		go s.sendRequests()
 		go s.readResponses()
