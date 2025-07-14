@@ -77,9 +77,8 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 		if err != nil {
 			cr.logger.Panicf("Failed fetching last ordering info: %v", err)
 		}
-		cr.logger.Infof("Last OrderingInfo: %s", lastOrderingInfo.String())
 		position := createAssemblerConsensusPosition(lastOrderingInfo)
-		cr.logger.Infof("Last AssemblerConsensusPosition: %+v", position)
+		cr.logger.Infof("Last OrderingInfo: %s; Last AssemblerConsensusPosition: %+v", lastOrderingInfo.String(), position)
 
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
@@ -103,10 +102,9 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 	if err != nil {
 		cr.logger.Panicf("Failed fetching last ordering info: %v", err)
 	}
-	cr.logger.Infof("Initial OrderingInfo: %s", initOrderingInfo.String())
 
 	initPosition := createAssemblerConsensusPosition(initOrderingInfo)
-	cr.logger.Infof("Initial AssemblerConsensusPosition: %+v", initPosition)
+	cr.logger.Infof("Initial OrderingInfo: %s; Initial AssemblerConsensusPosition: %+v", initOrderingInfo.String(), initPosition)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header, sigs, err2 := extractHeaderAndSigsFromBlock(block)
@@ -116,9 +114,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 
 		cr.logger.Infof("Decision %d, with %d AvailableBlocks", block.GetHeader().GetNumber(), len(header.AvailableBlocks))
 		for index, ab := range header.AvailableBlocks {
-			cr.logger.Infof("BA index %d BatchID: %s", index, types.BatchIDToString(ab.Batch))
-			cr.logger.Infof("BA block header: %s", ab.Header.String())
-			cr.logger.Infof("BA block signers: %+v", signersFromSigs(sigs[index]))
+			cr.logger.Infof("BA index: %d; BatchID: %s; BA block header: %s; BA block signers: %+v", index, types.BatchIDToString(ab.Batch), ab.Header.String(), signersFromSigs(sigs[index]))
 
 			abo := &state.AvailableBatchOrdered{
 				AvailableBatch: ab.Batch,
