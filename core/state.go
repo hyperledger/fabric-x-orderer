@@ -42,7 +42,7 @@ type State struct {
 	Threshold  uint16
 	ShardCount uint16
 	Shards     []ShardTerm
-	Pending    []BatchAttestationFragment
+	Pending    []types.BatchAttestationFragment
 	Complaints []Complaint
 	AppContext []byte
 }
@@ -118,7 +118,7 @@ func complaintsToBytes(complaints []Complaint) []byte {
 	return cBuffBytes
 }
 
-func fragmentsToBytes(fragments []BatchAttestationFragment) []byte {
+func fragmentsToBytes(fragments []types.BatchAttestationFragment) []byte {
 	if len(fragments) == 0 {
 		return nil
 	}
@@ -136,7 +136,7 @@ func fragmentsToBytes(fragments []BatchAttestationFragment) []byte {
 }
 
 type BAFDeserializer interface {
-	Deserialize([]byte) (BatchAttestationFragment, error)
+	Deserialize([]byte) (types.BatchAttestationFragment, error)
 }
 
 func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
@@ -164,7 +164,7 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 }
 
 func (s *State) loadPending(buff []byte, bafd BAFDeserializer) error {
-	var pending []BatchAttestationFragment
+	var pending []types.BatchAttestationFragment
 
 	var pos int
 	for pos < len(buff) {
@@ -307,7 +307,7 @@ func (c *Complaint) String() string {
 }
 
 type ControlEvent struct {
-	BAF       BatchAttestationFragment
+	BAF       types.BatchAttestationFragment
 	Complaint *Complaint
 }
 
@@ -374,7 +374,7 @@ func (ce *ControlEvent) Bytes() []byte {
 	return bytes
 }
 
-func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (BatchAttestationFragment, error)) error {
+func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) error {
 	var err error
 	switch b := bytes[0]; b {
 	case 1:
@@ -388,7 +388,7 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []BatchAttestationFragment) {
+func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.BatchAttestationFragment) {
 	s2 := s.Clone()
 
 	for _, rule := range Rules {
@@ -404,7 +404,7 @@ func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []BatchAtt
 func (s *State) Clone() *State {
 	s2 := *s
 	s2.Shards = make([]ShardTerm, len(s.Shards))
-	s2.Pending = make([]BatchAttestationFragment, len(s.Pending))
+	s2.Pending = make([]types.BatchAttestationFragment, len(s.Pending))
 	s2.Complaints = make([]Complaint, len(s.Complaints))
 	copy(s2.Shards, s.Shards)
 	copy(s2.Pending, s.Pending)
@@ -441,7 +441,7 @@ func CleanupOldAttestations(s *State, l types.Logger, _ ...ControlEvent) {
 		}
 	}
 
-	newPending := make([]BatchAttestationFragment, 0, len(s.Pending))
+	newPending := make([]types.BatchAttestationFragment, 0, len(s.Pending))
 	// For each attestation, check if more than a threshold of attestation votes in favor if garbage collecting it
 	for _, p := range s.Pending {
 		voteCount := gc[hex.EncodeToString(p.Digest())]
@@ -624,7 +624,7 @@ func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[strin
 	return m
 }
 
-func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []BatchAttestationFragment {
+func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []types.BatchAttestationFragment {
 	// <seq, shard, primary> --> { digest -->  signer }
 	m := batchAttestationVotesByDigests(s)
 
@@ -652,9 +652,9 @@ func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []BatchAttest
 
 	} // for all <seq, shard, primary>
 
-	var extracted []BatchAttestationFragment
+	var extracted []types.BatchAttestationFragment
 
-	newPending := make([]BatchAttestationFragment, 0, len(s.Pending))
+	newPending := make([]types.BatchAttestationFragment, 0, len(s.Pending))
 
 	// We iterate over the pending because we need deterministic processing
 	for _, baf := range s.Pending {

@@ -39,3 +39,28 @@ type BatchID interface {
 	// Digest is the digest of the requests in this batch.
 	Digest() []byte
 }
+
+//go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation
+type BatchAttestation interface {
+	Fragments() []BatchAttestationFragment
+	Digest() []byte
+	Seq() BatchSequence
+	Primary() PartyID
+	Shard() ShardID
+	Serialize() []byte
+	Deserialize([]byte) error
+}
+
+type BatchAttestationFragment interface {
+	Seq() BatchSequence
+	Primary() PartyID
+	Shard() ShardID
+	Signer() PartyID
+	Signature() []byte
+	Digest() []byte
+	Serialize() []byte
+	Deserialize([]byte) error
+	GarbageCollect() [][]byte
+	Epoch() int64
+	String() string
+}

@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type FakeBatchAttestationFragment struct {
@@ -22,9 +21,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	DigestStub        func() []byte
 	digestMutex       sync.RWMutex
-	digestArgsForCall []struct {
-	}
-	digestReturns struct {
+	digestArgsForCall []struct{}
+	digestReturns     struct {
 		result1 []byte
 	}
 	digestReturnsOnCall map[int]struct {
@@ -32,9 +30,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	EpochStub        func() int64
 	epochMutex       sync.RWMutex
-	epochArgsForCall []struct {
-	}
-	epochReturns struct {
+	epochArgsForCall []struct{}
+	epochReturns     struct {
 		result1 int64
 	}
 	epochReturnsOnCall map[int]struct {
@@ -42,9 +39,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	GarbageCollectStub        func() [][]byte
 	garbageCollectMutex       sync.RWMutex
-	garbageCollectArgsForCall []struct {
-	}
-	garbageCollectReturns struct {
+	garbageCollectArgsForCall []struct{}
+	garbageCollectReturns     struct {
 		result1 [][]byte
 	}
 	garbageCollectReturnsOnCall map[int]struct {
@@ -52,9 +48,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	PrimaryStub        func() types.PartyID
 	primaryMutex       sync.RWMutex
-	primaryArgsForCall []struct {
-	}
-	primaryReturns struct {
+	primaryArgsForCall []struct{}
+	primaryReturns     struct {
 		result1 types.PartyID
 	}
 	primaryReturnsOnCall map[int]struct {
@@ -62,9 +57,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	SeqStub        func() types.BatchSequence
 	seqMutex       sync.RWMutex
-	seqArgsForCall []struct {
-	}
-	seqReturns struct {
+	seqArgsForCall []struct{}
+	seqReturns     struct {
 		result1 types.BatchSequence
 	}
 	seqReturnsOnCall map[int]struct {
@@ -72,9 +66,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	SerializeStub        func() []byte
 	serializeMutex       sync.RWMutex
-	serializeArgsForCall []struct {
-	}
-	serializeReturns struct {
+	serializeArgsForCall []struct{}
+	serializeReturns     struct {
 		result1 []byte
 	}
 	serializeReturnsOnCall map[int]struct {
@@ -82,9 +75,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	ShardStub        func() types.ShardID
 	shardMutex       sync.RWMutex
-	shardArgsForCall []struct {
-	}
-	shardReturns struct {
+	shardArgsForCall []struct{}
+	shardReturns     struct {
 		result1 types.ShardID
 	}
 	shardReturnsOnCall map[int]struct {
@@ -92,9 +84,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	SignatureStub        func() []byte
 	signatureMutex       sync.RWMutex
-	signatureArgsForCall []struct {
-	}
-	signatureReturns struct {
+	signatureArgsForCall []struct{}
+	signatureReturns     struct {
 		result1 []byte
 	}
 	signatureReturnsOnCall map[int]struct {
@@ -102,9 +93,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	SignerStub        func() types.PartyID
 	signerMutex       sync.RWMutex
-	signerArgsForCall []struct {
-	}
-	signerReturns struct {
+	signerArgsForCall []struct{}
+	signerReturns     struct {
 		result1 types.PartyID
 	}
 	signerReturnsOnCall map[int]struct {
@@ -112,9 +102,8 @@ type FakeBatchAttestationFragment struct {
 	}
 	StringStub        func() string
 	stringMutex       sync.RWMutex
-	stringArgsForCall []struct {
-	}
-	stringReturns struct {
+	stringArgsForCall []struct{}
+	stringReturns     struct {
 		result1 string
 	}
 	stringReturnsOnCall map[int]struct {
@@ -193,8 +182,7 @@ func (fake *FakeBatchAttestationFragment) DeserializeReturnsOnCall(i int, result
 func (fake *FakeBatchAttestationFragment) Digest() []byte {
 	fake.digestMutex.Lock()
 	ret, specificReturn := fake.digestReturnsOnCall[len(fake.digestArgsForCall)]
-	fake.digestArgsForCall = append(fake.digestArgsForCall, struct {
-	}{})
+	fake.digestArgsForCall = append(fake.digestArgsForCall, struct{}{})
 	stub := fake.DigestStub
 	fakeReturns := fake.digestReturns
 	fake.recordInvocation("Digest", []interface{}{})
@@ -246,8 +234,7 @@ func (fake *FakeBatchAttestationFragment) DigestReturnsOnCall(i int, result1 []b
 func (fake *FakeBatchAttestationFragment) Epoch() int64 {
 	fake.epochMutex.Lock()
 	ret, specificReturn := fake.epochReturnsOnCall[len(fake.epochArgsForCall)]
-	fake.epochArgsForCall = append(fake.epochArgsForCall, struct {
-	}{})
+	fake.epochArgsForCall = append(fake.epochArgsForCall, struct{}{})
 	stub := fake.EpochStub
 	fakeReturns := fake.epochReturns
 	fake.recordInvocation("Epoch", []interface{}{})
@@ -299,8 +286,7 @@ func (fake *FakeBatchAttestationFragment) EpochReturnsOnCall(i int, result1 int6
 func (fake *FakeBatchAttestationFragment) GarbageCollect() [][]byte {
 	fake.garbageCollectMutex.Lock()
 	ret, specificReturn := fake.garbageCollectReturnsOnCall[len(fake.garbageCollectArgsForCall)]
-	fake.garbageCollectArgsForCall = append(fake.garbageCollectArgsForCall, struct {
-	}{})
+	fake.garbageCollectArgsForCall = append(fake.garbageCollectArgsForCall, struct{}{})
 	stub := fake.GarbageCollectStub
 	fakeReturns := fake.garbageCollectReturns
 	fake.recordInvocation("GarbageCollect", []interface{}{})
@@ -352,8 +338,7 @@ func (fake *FakeBatchAttestationFragment) GarbageCollectReturnsOnCall(i int, res
 func (fake *FakeBatchAttestationFragment) Primary() types.PartyID {
 	fake.primaryMutex.Lock()
 	ret, specificReturn := fake.primaryReturnsOnCall[len(fake.primaryArgsForCall)]
-	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct {
-	}{})
+	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct{}{})
 	stub := fake.PrimaryStub
 	fakeReturns := fake.primaryReturns
 	fake.recordInvocation("Primary", []interface{}{})
@@ -405,8 +390,7 @@ func (fake *FakeBatchAttestationFragment) PrimaryReturnsOnCall(i int, result1 ty
 func (fake *FakeBatchAttestationFragment) Seq() types.BatchSequence {
 	fake.seqMutex.Lock()
 	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
-	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
-	}{})
+	fake.seqArgsForCall = append(fake.seqArgsForCall, struct{}{})
 	stub := fake.SeqStub
 	fakeReturns := fake.seqReturns
 	fake.recordInvocation("Seq", []interface{}{})
@@ -458,8 +442,7 @@ func (fake *FakeBatchAttestationFragment) SeqReturnsOnCall(i int, result1 types.
 func (fake *FakeBatchAttestationFragment) Serialize() []byte {
 	fake.serializeMutex.Lock()
 	ret, specificReturn := fake.serializeReturnsOnCall[len(fake.serializeArgsForCall)]
-	fake.serializeArgsForCall = append(fake.serializeArgsForCall, struct {
-	}{})
+	fake.serializeArgsForCall = append(fake.serializeArgsForCall, struct{}{})
 	stub := fake.SerializeStub
 	fakeReturns := fake.serializeReturns
 	fake.recordInvocation("Serialize", []interface{}{})
@@ -511,8 +494,7 @@ func (fake *FakeBatchAttestationFragment) SerializeReturnsOnCall(i int, result1 
 func (fake *FakeBatchAttestationFragment) Shard() types.ShardID {
 	fake.shardMutex.Lock()
 	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
-	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
-	}{})
+	fake.shardArgsForCall = append(fake.shardArgsForCall, struct{}{})
 	stub := fake.ShardStub
 	fakeReturns := fake.shardReturns
 	fake.recordInvocation("Shard", []interface{}{})
@@ -564,8 +546,7 @@ func (fake *FakeBatchAttestationFragment) ShardReturnsOnCall(i int, result1 type
 func (fake *FakeBatchAttestationFragment) Signature() []byte {
 	fake.signatureMutex.Lock()
 	ret, specificReturn := fake.signatureReturnsOnCall[len(fake.signatureArgsForCall)]
-	fake.signatureArgsForCall = append(fake.signatureArgsForCall, struct {
-	}{})
+	fake.signatureArgsForCall = append(fake.signatureArgsForCall, struct{}{})
 	stub := fake.SignatureStub
 	fakeReturns := fake.signatureReturns
 	fake.recordInvocation("Signature", []interface{}{})
@@ -617,8 +598,7 @@ func (fake *FakeBatchAttestationFragment) SignatureReturnsOnCall(i int, result1 
 func (fake *FakeBatchAttestationFragment) Signer() types.PartyID {
 	fake.signerMutex.Lock()
 	ret, specificReturn := fake.signerReturnsOnCall[len(fake.signerArgsForCall)]
-	fake.signerArgsForCall = append(fake.signerArgsForCall, struct {
-	}{})
+	fake.signerArgsForCall = append(fake.signerArgsForCall, struct{}{})
 	stub := fake.SignerStub
 	fakeReturns := fake.signerReturns
 	fake.recordInvocation("Signer", []interface{}{})
@@ -670,8 +650,7 @@ func (fake *FakeBatchAttestationFragment) SignerReturnsOnCall(i int, result1 typ
 func (fake *FakeBatchAttestationFragment) String() string {
 	fake.stringMutex.Lock()
 	ret, specificReturn := fake.stringReturnsOnCall[len(fake.stringArgsForCall)]
-	fake.stringArgsForCall = append(fake.stringArgsForCall, struct {
-	}{})
+	fake.stringArgsForCall = append(fake.stringArgsForCall, struct{}{})
 	stub := fake.StringStub
 	fakeReturns := fake.stringReturns
 	fake.recordInvocation("String", []interface{}{})
@@ -764,4 +743,4 @@ func (fake *FakeBatchAttestationFragment) recordInvocation(key string, args []in
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ core.BatchAttestationFragment = new(FakeBatchAttestationFragment)
+var _ types.BatchAttestationFragment = new(FakeBatchAttestationFragment)

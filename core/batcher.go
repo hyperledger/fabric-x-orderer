@@ -74,14 +74,14 @@ type BatchAcker interface {
 
 // BAFSender sends the baf to the consenters
 type BAFSender interface {
-	SendBAF(baf BatchAttestationFragment)
+	SendBAF(baf types.BatchAttestationFragment)
 }
 
 //go:generate counterfeiter -o mocks/baf_creator.go . BAFCreator
 
 // BAFCreator creates a baf
 type BAFCreator interface {
-	CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) BatchAttestationFragment
+	CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) types.BatchAttestationFragment
 }
 
 type BatchLedgerWriter interface {

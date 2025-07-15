@@ -91,7 +91,7 @@ func (nba *naiveBatchAttestation) Digest() []byte {
 	return nba.digest
 }
 
-func (nba *naiveBatchAttestation) Fragments() []core.BatchAttestationFragment {
+func (nba *naiveBatchAttestation) Fragments() []types.BatchAttestationFragment {
 	return nil
 }
 
@@ -138,11 +138,11 @@ func (noi *naiveOrderingInfo) String() string {
 }
 
 type naiveOrderedBatchAttestation struct {
-	ba           core.BatchAttestation
+	ba           types.BatchAttestation
 	orderingInfo core.OrderingInfo
 }
 
-func (noba *naiveOrderedBatchAttestation) BatchAttestation() core.BatchAttestation {
+func (noba *naiveOrderedBatchAttestation) BatchAttestation() types.BatchAttestation {
 	return noba.ba
 }
 

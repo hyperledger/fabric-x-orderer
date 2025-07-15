@@ -239,7 +239,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) arma_types.BatchAttestationFragment {
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
 	})
 
@@ -382,7 +382,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) arma_types.BatchAttestationFragment {
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
 	})
 

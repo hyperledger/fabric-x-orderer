@@ -303,7 +303,7 @@ func (b *Batcher) OnSecondStrikeTimeout() {
 	b.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; second strike timeout occurred", b.config.PartyId, b.config.ShardId))
 }
 
-func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) core.BatchAttestationFragment {
+func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) types.BatchAttestationFragment {
 	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq)
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
@@ -383,7 +383,7 @@ func (b *Batcher) Complain(reason string) {
 	}
 }
 
-func (b *Batcher) SendBAF(baf core.BatchAttestationFragment) {
+func (b *Batcher) SendBAF(baf types.BatchAttestationFragment) {
 	b.logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
 	if err := b.controlEventBroadcaster.BroadcastControlEvent(core.ControlEvent{BAF: baf}); err != nil {
 		b.logger.Errorf("Failed to broadcast batch attestation fragment; err: %v", err)
@@ -406,7 +406,7 @@ func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term 
 	return c, nil
 }
 
-func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (core.BatchAttestationFragment, error) {
+func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (types.BatchAttestationFragment, error) {
 	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, 0, nil)
 	sig, err := signer.Sign(baf.ToBeSigned())
 	if err != nil {

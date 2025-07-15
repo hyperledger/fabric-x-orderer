@@ -36,7 +36,7 @@ type AvailableBatchOrdered struct {
 	OrderingInformation *OrderingInformation
 }
 
-func (abo *AvailableBatchOrdered) BatchAttestation() core.BatchAttestation {
+func (abo *AvailableBatchOrdered) BatchAttestation() types.BatchAttestation {
 	return abo.AvailableBatch
 }
 
