@@ -16,6 +16,11 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
+type RequestAndFeedbackChannel struct {
+	request  *protos.Request
+	feedback chan Response
+}
+
 type stream struct {
 	endpoint                          string
 	logger                            types.Logger
@@ -23,7 +28,7 @@ type stream struct {
 	ctx                               context.Context
 	cancelOnce                        sync.Once
 	cancelFunc                        func()
-	requestsChannel                   chan *protos.Request
+	requestsChannel                   chan *RequestAndFeedbackChannel
 	doneChannel                       chan bool
 	doneOnce                          sync.Once
 	lock                              sync.Mutex
@@ -44,26 +49,29 @@ func (s *stream) readResponses() {
 			s.logger.Debugf("the stream has been closed, readResponses goroutine is exiting, it was connected to batcher %s ", s.endpoint)
 			return
 		default:
-			resp, err := s.requestTransmitSubmitStreamClient.Recv()
+
+			// is there actually any need to read responses?
+
+			_, err := s.requestTransmitSubmitStreamClient.Recv()
 			if err != nil {
 				s.logger.Debugf("failed receiving response from batcher %s", s.endpoint)
 				s.cancelOnServerError()
 				return
 			}
 
-			s.lock.Lock()
-			ch, exists := s.requestTraceIdToResponseChannel[string(resp.TraceId)]
-			delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
-			s.lock.Unlock()
-			if exists {
-				s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
-				s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", resp.TraceId)
-				ch <- Response{
-					SubmitResponse: resp,
-				}
-			} else {
-				s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
-			}
+			// s.lock.Lock()
+			// ch, exists := s.requestTraceIdToResponseChannel[string(resp.TraceId)]
+			// delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
+			// s.lock.Unlock()
+			// if exists {
+			// 	s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
+			// 	s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", resp.TraceId)
+			// ch <- Response{
+			// 	SubmitResponse: resp,
+			// }
+			// } else {
+			// 	s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
+			// }
 		}
 	}
 }
@@ -81,12 +89,28 @@ func (s *stream) sendRequests() {
 				s.cancelOnServerError()
 				return
 			}
-			s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
-			err := s.requestTransmitSubmitStreamClient.Send(msg)
+			req := msg.request
+			feedbackCh := msg.feedback
+			s.logger.Debugf("send request with trace id %x to batcher %s", req.TraceId, s.endpoint)
+			err := s.requestTransmitSubmitStreamClient.Send(req)
 			if err != nil {
 				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+
+				if feedbackCh != nil {
+					feedbackCh <- Response{
+						err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint),
+					}
+				}
+
 				s.cancelOnServerError()
 				return
+			}
+
+			// Fast-Respond: the router returns a response imediatly after sending the request to the batcher
+			if feedbackCh != nil {
+				feedbackCh <- Response{
+					SubmitResponse: &protos.SubmitResponse{ReqID: req.Identity, TraceId: req.TraceId},
+				}
 			}
 		}
 	}
@@ -106,12 +130,12 @@ func (s *stream) cancel() {
 func (s *stream) sendResponseToAllClientsOnError(e error) {
 	s.lock.Lock()
 	s.logger.Debugf("Sending error %s to all response channels registerd in stream ", e)
-	for _, respChan := range s.requestTraceIdToResponseChannel {
-		respChan <- Response{
-			err: e,
-		}
-	}
-	clear(s.requestTraceIdToResponseChannel)
+	// for _, respChan := range s.requestTraceIdToResponseChannel {
+	// 	respChan <- Response{
+	// 		err: e,
+	// 	}
+	// }
+	// clear(s.requestTraceIdToResponseChannel)
 
 	// Drain the requests channel. it could block another reader (none are expected)
 DrainChannelLoop:
@@ -150,12 +174,12 @@ func (s *stream) faulty() bool {
 	}
 }
 
-func (s *stream) registerReply(traceID []byte, responses chan Response) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+// func (s *stream) registerReply(traceID []byte, responses chan Response) {
+// 	s.lock.Lock()
+// 	defer s.lock.Unlock()
 
-	s.requestTraceIdToResponseChannel[string(traceID)] = responses
-}
+// 	s.requestTraceIdToResponseChannel[string(traceID)] = responses
+// }
 
 // renewStream creates a new stream that inherits the map and the requests channel
 func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger types.Logger, ctx context.Context, cancel context.CancelFunc) (*stream, error) {
@@ -166,7 +190,7 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 		return nil, fmt.Errorf("failed establishing a new stream: %w", err)
 	}
 
-	newStreamRequests := make(chan *protos.Request, 1000)
+	newStreamRequests := make(chan *RequestAndFeedbackChannel, 1000)
 	newRequestTraceIdToResponseChannelMap := make(map[string]chan Response)
 
 	// close the old stream. This should stop the sendRequests and readResponses goroutines.
@@ -211,12 +235,12 @@ CopyChannelLoop:
 }
 
 // isRequestRegistered is only used for testing to validate that a request has been recorded in the map
-func (s *stream) isRequestRegistered(traceID []byte) (chan Response, bool) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	respChan, exists := s.requestTraceIdToResponseChannel[string(traceID)]
-	return respChan, exists
-}
+// func (s *stream) isRequestRegistered(traceID []byte) (chan Response, bool) {
+// 	s.lock.Lock()
+// 	defer s.lock.Unlock()
+// 	respChan, exists := s.requestTraceIdToResponseChannel[string(traceID)]
+// 	return respChan, exists
+// }
 
 // close closes the read and send channels
 func (s *stream) close() {

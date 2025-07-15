@@ -48,7 +48,8 @@ func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 	response := <-responses
 	require.NotNil(t, response)
 	require.Equal(t, trace, response.SubmitResponse.TraceId)
-	require.Equal(t, uint32(1), testSetup.stubBatcher.ReceivedMessageCount())
+	// require.Equal(t, uint32(1), testSetup.stubBatcher.ReceivedMessageCount())
+	require.Eventually(t, func() bool { return testSetup.stubBatcher.ReceivedMessageCount() == uint32(1) }, 60*time.Second, 10*time.Millisecond)
 }
 
 func TestShardRouterConnectivityToBatcherByForwardBestEffort(t *testing.T) {
@@ -79,6 +80,11 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 
 	// stop the batcher
 	testSetup.stubBatcher.Stop()
+
+	// wait for the streams to become faulty
+	require.Eventually(t, func() bool {
+		return testSetup.shardRouter.IsConnectionsToBatcherDown()
+	}, 10*time.Second, 200*time.Millisecond)
 
 	// send a request, expect failure
 	responses = make(chan router.Response, 1)

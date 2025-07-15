@@ -124,9 +124,9 @@ func (sr *ShardRouter) ForwardBestEffort(reqID, request []byte) error {
 		return fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint)
 	}
 
-	stream.requestsChannel <- &protos.Request{
+	stream.requestsChannel <- &RequestAndFeedbackChannel{request: &protos.Request{
 		Payload: request,
-	}
+	}, feedback: nil}
 	return nil
 }
 
@@ -150,13 +150,18 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 		return
 	}
 
-	stream.registerReply(trace, responses)
+	// stream.registerReply(trace, responses)
 
 	sr.logger.Debugf("enter request %x to the requests list", reqID)
-	stream.requestsChannel <- &protos.Request{
+
+	stream.requestsChannel <- &RequestAndFeedbackChannel{request: &protos.Request{
 		TraceId: trace,
 		Payload: request,
-	}
+	}, feedback: responses}
+	// stream.requestsChannel <- &protos.Request{
+	// 	TraceId: trace,
+	// 	Payload: request,
+	// }
 }
 
 func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int) error {
@@ -323,7 +328,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			endpoint:                          sr.batcherEndpoint,
 			logger:                            sr.logger,
 			requestTraceIdToResponseChannel:   make(map[string]chan Response),
-			requestsChannel:                   make(chan *protos.Request, 1000),
+			requestsChannel:                   make(chan *RequestAndFeedbackChannel, 1000),
 			doneChannel:                       make(chan bool, 1),
 			requestTransmitSubmitStreamClient: newStream,
 			cancelFunc:                        cancel,
