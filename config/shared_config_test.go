@@ -74,7 +74,7 @@ func TestSharedConfigLoading(t *testing.T) {
 			cert, err = parsex509Cert(batcher.TlsCert)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
-			cert, err = parsex509Cert(batcher.PublicKey)
+			cert, err = parsex509Cert(batcher.SignCert)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
 		}
@@ -82,7 +82,7 @@ func TestSharedConfigLoading(t *testing.T) {
 		cert, err = parsex509Cert(partyConfig.ConsenterConfig.TlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
-		cert, err = parsex509Cert(partyConfig.ConsenterConfig.PublicKey)
+		cert, err = parsex509Cert(partyConfig.ConsenterConfig.SignCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 
