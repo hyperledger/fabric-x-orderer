@@ -82,6 +82,7 @@ func (c *BroadCastTxClient) createSendStreams() error {
 				},
 				DialTimeout: time.Second * 5,
 			}
+			// dial the router endpoint
 			gRPCRouterClientConn, err := gRPCRouterClient.Dial(userConfig.RouterEndpoints[i])
 			if err == nil {
 				stream, err := ab.NewAtomicBroadcastClient(gRPCRouterClientConn).Broadcast(context.TODO())
