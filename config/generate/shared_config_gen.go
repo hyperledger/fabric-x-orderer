@@ -60,20 +60,20 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		var batchersConfig []config.BatcherNodeConfig
 		for j := range party.BatchersEndpoints {
 			batcherConfig := config.BatcherNodeConfig{
-				ShardID:   partyLocalConfig.BatchersLocalConfig[j].BatcherParams.ShardID,
-				Host:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenAddress,
-				Port:      partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenPort,
-				PublicKey: filepath.Join(partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
-				TLSCert:   partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.TLSConfig.Certificate,
+				ShardID:  partyLocalConfig.BatchersLocalConfig[j].BatcherParams.ShardID,
+				Host:     partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenAddress,
+				Port:     partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenPort,
+				SignCert: filepath.Join(partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
+				TLSCert:  partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.TLSConfig.Certificate,
 			}
 			batchersConfig = append(batchersConfig, batcherConfig)
 		}
 
 		consenterConfig := config.ConsenterNodeConfig{
-			Host:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenAddress,
-			Port:      partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenPort,
-			PublicKey: filepath.Join(partyLocalConfig.ConsenterLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
-			TLSCert:   partyLocalConfig.ConsenterLocalConfig.GeneralConfig.TLSConfig.Certificate,
+			Host:     partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenAddress,
+			Port:     partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenPort,
+			SignCert: filepath.Join(partyLocalConfig.ConsenterLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
+			TLSCert:  partyLocalConfig.ConsenterLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
 		assemblerConfig := config.AssemblerNodeConfig{

@@ -70,7 +70,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*protos.SharedCo
 			return nil, err
 		}
 
-		consenterConfig, err := loadConsenterConfig(partyConfig.ConsenterConfig.Host, partyConfig.ConsenterConfig.Port, partyConfig.ConsenterConfig.TLSCert, partyConfig.ConsenterConfig.PublicKey)
+		consenterConfig, err := loadConsenterConfig(partyConfig.ConsenterConfig.Host, partyConfig.ConsenterConfig.Port, partyConfig.ConsenterConfig.TLSCert, partyConfig.ConsenterConfig.SignCert)
 		if err != nil {
 			return nil, err
 		}
@@ -179,37 +179,37 @@ func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*protos.Batch
 			return nil, fmt.Errorf("load shared config failed, read batcher tls cert failed, err: %v", err)
 		}
 
-		pubKey, err := utils.ReadPem(batcher.PublicKey)
+		signCert, err := utils.ReadPem(batcher.SignCert)
 		if err != nil {
-			return nil, fmt.Errorf("load shared config failed, read batcher public key failed, err: %v", err)
+			return nil, fmt.Errorf("load shared config failed, read batcher sign cert failed, err: %v", err)
 		}
 		batcherConfig := &protos.BatcherNodeConfig{
-			ShardID:   uint32(batcher.ShardID),
-			Host:      batcher.Host,
-			Port:      batcher.Port,
-			PublicKey: pubKey,
-			TlsCert:   TLSCert,
+			ShardID:  uint32(batcher.ShardID),
+			Host:     batcher.Host,
+			Port:     batcher.Port,
+			SignCert: signCert,
+			TlsCert:  TLSCert,
 		}
 		batchersConfig = append(batchersConfig, batcherConfig)
 	}
 	return batchersConfig, nil
 }
 
-func loadConsenterConfig(host string, port uint32, tlsCertPath string, pubKeyPath string) (*protos.ConsenterNodeConfig, error) {
+func loadConsenterConfig(host string, port uint32, tlsCertPath string, signCertPath string) (*protos.ConsenterNodeConfig, error) {
 	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read consenster tls cert failed, err: %v", err)
 	}
 
-	pubKey, err := utils.ReadPem(pubKeyPath)
+	signCert, err := utils.ReadPem(signCertPath)
 	if err != nil {
-		return nil, fmt.Errorf("load shared config failed, read consenster public key failed, err: %v", err)
+		return nil, fmt.Errorf("load shared config failed, read consenster sign cert failed, err: %v", err)
 	}
 	return &protos.ConsenterNodeConfig{
-		Host:      host,
-		Port:      port,
-		PublicKey: pubKey,
-		TlsCert:   TLSCert,
+		Host:     host,
+		Port:     port,
+		SignCert: signCert,
+		TlsCert:  TLSCert,
 	}, nil
 }
 

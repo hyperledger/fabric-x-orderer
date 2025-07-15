@@ -49,8 +49,8 @@ message BatcherNodeConfig {
   string host = 2;
   // the port on which the gRPC server will listen
   uint32 port = 3;
-  // the public key of the batcher used to authenticate signatures on BAS's
-  bytes public_key = 4;
+  // the signing certificate (that includes the public key) of the batcher used to authenticate signatures on BAS's
+  bytes sign_cert = 4;
   // the certificate used to authenticate with clients
   bytes tls_cert = 5;
 }
@@ -60,8 +60,8 @@ message ConsenterNodeConfig {
   string host = 1;
   // the port on which the gRPC server will listen
   uint32 port = 2;
-  // the public key of the consensus used to authenticate signatures on blocks
-  bytes public_key = 3;
+  // the signing certificate (that includes the public key) of the consensus used to authenticate signatures on blocks
+  bytes sign_cert = 3;
   // the certificate used to authenticate with clients
   bytes tls_cert = 4;
 }
