@@ -372,12 +372,3 @@ func blockToPublicKey(block *pem.Block) []byte {
 
 	return pemPublicKey
 }
-
-//func getPartyConfigFromSharedConfigByPartyID(sharedConfig *protos.SharedConfig, partyID types.PartyID) *protos.PartyConfig {
-//	for _, partyConfig := range sharedConfig.PartiesConfig {
-//		if partyConfig.PartyID == uint32(partyID) {
-//			return partyConfig
-//		}
-//	}
-//	return nil
-//}
