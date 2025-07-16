@@ -30,8 +30,8 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       - name: Extract version from tag
         id: extract
@@ -45,5 +45,5 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           tags: |
-            docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/fabric-x-orderer:latest
-            docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/fabric-x-orderer:${{ env.VERSION }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-orderer:latest
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-orderer:${{ env.VERSION }}
