@@ -17,37 +17,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
-//go:generate counterfeiter -o mocks/batch_attestation.go . BatchAttestation
-type BatchAttestation interface {
-	Fragments() []BatchAttestationFragment
-	Digest() []byte
-	Seq() types.BatchSequence
-	Primary() types.PartyID
-	Shard() types.ShardID
-	Serialize() []byte
-	Deserialize([]byte) error
-}
-
-//go:generate counterfeiter -o mocks/batch_attestation_fragment.go . BatchAttestationFragment
-type BatchAttestationFragment interface {
-	Seq() types.BatchSequence
-	Primary() types.PartyID
-	Shard() types.ShardID
-	Signer() types.PartyID
-	Signature() []byte
-	Digest() []byte
-	Serialize() []byte
-	Deserialize([]byte) error
-	GarbageCollect() [][]byte
-	Epoch() int64
-	String() string
-}
-
 // OrderedBatchAttestation carries the BatchAttestation and information on the actual order of the batch from the
 // consensus cluster. This information is used when appending to the ledger, and helps the assembler to recover
 // following a shutdown or a failure.
 type OrderedBatchAttestation interface {
-	BatchAttestation() BatchAttestation
+	BatchAttestation() types.BatchAttestation
 	// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
 	// metadata to be used in the construction of the block.
 	OrderingInfo() OrderingInfo
@@ -149,7 +123,7 @@ func (a *Assembler) processOrderedBatchAttestations() {
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
 }
 
-func (a *Assembler) collateAttestationWithBatch(ba BatchAttestation) (Batch, error) {
+func (a *Assembler) collateAttestationWithBatch(ba types.BatchAttestation) (Batch, error) {
 	t1 := time.Now()
 	batch, err := a.Index.PopOrWait(ba)
 	if err != nil {

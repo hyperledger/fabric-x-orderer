@@ -51,7 +51,7 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState *core.State, events [][]byte) (*core.State, [][]core.BatchAttestationFragment)
+	SimulateStateTransition(prevState *core.State, events [][]byte) (*core.State, [][]arma_types.BatchAttestationFragment)
 	Commit(events [][]byte)
 }
 

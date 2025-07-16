@@ -676,7 +676,7 @@ func TestVerifyBatch(t *testing.T) {
 
 func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger arma_types.Logger) *core.Batcher {
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) core.BatchAttestationFragment {
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) arma_types.BatchAttestationFragment {
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
 	})
 

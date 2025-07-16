@@ -23,7 +23,7 @@ func TestConsenter(t *testing.T) {
 		N:          4,
 		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}},
 		Threshold:  2,
-		Pending:    []core.BatchAttestationFragment{},
+		Pending:    []arma_types.BatchAttestationFragment{},
 		Quorum:     4,
 	}
 

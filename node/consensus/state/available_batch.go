@@ -11,7 +11,6 @@ import (
 	"encoding/binary"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 
 	"github.com/pkg/errors"
 )
@@ -46,7 +45,7 @@ func (ab *AvailableBatch) Equal(ab2 *AvailableBatch) bool {
 
 // Fragments
 // TODO return the fragments with minimal data (at least the batchers that signed)
-func (ab *AvailableBatch) Fragments() []core.BatchAttestationFragment {
+func (ab *AvailableBatch) Fragments() []types.BatchAttestationFragment {
 	panic("should not be called")
 }
 

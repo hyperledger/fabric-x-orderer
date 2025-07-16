@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
-func toBeSignedBAF(baf core.BatchAttestationFragment) []byte {
+func toBeSignedBAF(baf arma_types.BatchAttestationFragment) []byte {
 	simpleBAF, ok := baf.(*arma_types.SimpleBatchAttestationFragment)
 	if !ok {
 		return nil

@@ -468,7 +468,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		initialAppContext      state.BlockHeader
 		metadata               *smartbftprotos.ViewMetadata
 		ces                    []core.ControlEvent
-		bafsOfAvailableBatches []core.BatchAttestationFragment
+		bafsOfAvailableBatches []arma_types.BatchAttestationFragment
 		numPending             int
 		numComplaints          int
 		newTermForShard1       uint64
@@ -484,7 +484,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				LatestSequence: 0,
 			},
 			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}},
-			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1},
+			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1},
 			numPending:             0,
 		},
 		{
@@ -511,7 +511,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				LatestSequence: 0,
 			},
 			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id2p1s1}},
-			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1},
+			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1},
 			numPending:             0,
 		},
 		{
@@ -525,7 +525,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				LatestSequence: 0,
 			},
 			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}, {Complaint: complaint2}},
-			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf123id1p1s1, baf124id3p1s2},
+			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1, baf124id3p1s2},
 			numPending:             1,
 			numComplaints:          1,
 		},
@@ -540,7 +540,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				LatestSequence: 5,
 			},
 			ces:                    []core.ControlEvent{{Complaint: complaint1}, {Complaint: complaint2}, {Complaint: complaint3}, {BAF: baf124id4p1s2}, {BAF: baf124id3p1s2}},
-			bafsOfAvailableBatches: []core.BatchAttestationFragment{baf124id3p1s2},
+			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf124id3p1s2},
 			numPending:             0,
 			newTermForShard1:       1,
 		},
@@ -787,7 +787,7 @@ func TestVerifyProposal(t *testing.T) {
 	headerPending := header
 	badState = newState
 	headerPending.State = &badState
-	headerPending.State.Pending = []core.BatchAttestationFragment{baf123id1p1s1}
+	headerPending.State.Pending = []arma_types.BatchAttestationFragment{baf123id1p1s1}
 	verifyProposalRequireError(t, c, headerPending.Serialize(), brs.Serialize(), mBytes)
 
 	// 8. mismatch state app context in header

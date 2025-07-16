@@ -30,7 +30,7 @@ type Consenter struct {
 	State           *State
 }
 
-func (c *Consenter) SimulateStateTransition(prevState *State, requests [][]byte) (*State, [][]BatchAttestationFragment) {
+func (c *Consenter) SimulateStateTransition(prevState *State, requests [][]byte) (*State, [][]types.BatchAttestationFragment) {
 	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)
@@ -66,7 +66,7 @@ func (c *Consenter) Commit(events [][]byte) {
 	c.State = state
 }
 
-func (c *Consenter) indexAttestationsInDB(batchAttestations [][]BatchAttestationFragment) {
+func (c *Consenter) indexAttestationsInDB(batchAttestations [][]types.BatchAttestationFragment) {
 	digests := make([][]byte, 0, len(batchAttestations))
 	epochs := make([]uint64, 0, len(batchAttestations))
 	for _, bafs := range batchAttestations {
@@ -81,10 +81,10 @@ func (c *Consenter) indexAttestationsInDB(batchAttestations [][]BatchAttestation
 	c.DB.Put(digests, epochs)
 }
 
-func aggregateFragments(batchAttestationFragments []BatchAttestationFragment) [][]BatchAttestationFragment {
+func aggregateFragments(batchAttestationFragments []types.BatchAttestationFragment) [][]types.BatchAttestationFragment {
 	index := indexBAFs(batchAttestationFragments)
 
-	var attestations [][]BatchAttestationFragment
+	var attestations [][]types.BatchAttestationFragment
 
 	added := make(map[struct {
 		seq   types.BatchSequence
@@ -110,14 +110,14 @@ func aggregateFragments(batchAttestationFragments []BatchAttestationFragment) []
 	return attestations
 }
 
-func indexBAFs(batchAttestationFragments []BatchAttestationFragment) map[struct {
+func indexBAFs(batchAttestationFragments []types.BatchAttestationFragment) map[struct {
 	seq   types.BatchSequence
 	shard types.ShardID
-}][]BatchAttestationFragment {
+}][]types.BatchAttestationFragment {
 	index := make(map[struct {
 		seq   types.BatchSequence
 		shard types.ShardID
-	}][]BatchAttestationFragment)
+	}][]types.BatchAttestationFragment)
 
 	for _, baf := range batchAttestationFragments {
 		key := struct {
@@ -131,7 +131,7 @@ func indexBAFs(batchAttestationFragments []BatchAttestationFragment) map[struct 
 	return index
 }
 
-func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (BatchAttestationFragment, error)) ([]ControlEvent, error) {
+func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) ([]ControlEvent, error) {
 	events := make([]ControlEvent, 0, len(requests))
 	for i := 0; i < len(requests); i++ {
 		ce := ControlEvent{}
@@ -144,7 +144,7 @@ func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (
 	return events, nil
 }
 
-func epochOfBatchAttestations(bafs []BatchAttestationFragment) uint64 {
+func epochOfBatchAttestations(bafs []types.BatchAttestationFragment) uint64 {
 	epochs := make([]uint64, len(bafs))
 	for i := 0; i < len(bafs); i++ {
 		epochs[i] = uint64(bafs[i].Epoch())

@@ -16,8 +16,8 @@ import (
 	"time"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	arma_types_mocks "github.com/hyperledger/fabric-x-orderer/common/types/mocks"
 	"github.com/hyperledger/fabric-x-orderer/core"
-	"github.com/hyperledger/fabric-x-orderer/core/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -46,7 +46,7 @@ type bafSender struct {
 	totalOrder *naiveTotalOrder
 }
 
-func (s *bafSender) SendBAF(baf core.BatchAttestationFragment) {
+func (s *bafSender) SendBAF(baf arma_types.BatchAttestationFragment) {
 	ba := arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), baf.Signer(), nil, 0, nil)
 	s.totalOrder.SubmitRequest((&core.ControlEvent{BAF: ba}).Bytes())
 }
@@ -54,7 +54,7 @@ func (s *bafSender) SendBAF(baf core.BatchAttestationFragment) {
 type naiveblock struct {
 	order       core.OrderingInfo
 	batch       core.Batch
-	attestation core.BatchAttestation
+	attestation arma_types.BatchAttestation
 }
 
 type naiveBlockLedger chan naiveblock
@@ -116,7 +116,7 @@ func (s *stateProvider) GetLatestStateChan() <-chan *core.State {
 
 type BAFSimpleDeserializer struct{}
 
-func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (core.BatchAttestationFragment, error) {
+func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (arma_types.BatchAttestationFragment, error) {
 	var baf arma_types.SimpleBatchAttestationFragment
 	if err := baf.Deserialize(bytes); err != nil {
 		return nil, err
@@ -172,7 +172,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 				newState, aggregatedBAFs := consenter.SimulateStateTransition(state, events)
 				state = newState
 				for _, bafs := range aggregatedBAFs {
-					ba := &mocks.FakeBatchAttestation{}
+					ba := &arma_types_mocks.FakeBatchAttestation{}
 					ba.DigestReturns(bafs[0].Digest())
 					ba.FragmentsReturns(bafs)
 					oba := &naiveOrderedBatchAttestation{
