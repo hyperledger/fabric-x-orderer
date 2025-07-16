@@ -32,8 +32,9 @@ type stubConsenter struct {
 	cert          []byte
 	key           []byte
 	consenterInfo config.ConsenterInfo
-	storedBlock   *common.Block
-	blockLock     sync.Mutex
+	decisions     chan *common.Block
+	stopped       chan struct{}
+	mu            sync.RWMutex
 }
 
 func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubConsenter {
@@ -63,6 +64,8 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubCo
 		key:           certKeyPair.Key,
 		endpoint:      server.Address(),
 		consenterInfo: consenterInfo,
+		decisions:     make(chan *common.Block, 100),
+		stopped:       make(chan struct{}),
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubConsenter)
@@ -75,20 +78,68 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubCo
 	return stubConsenter
 }
 
-func (sc *stubConsenter) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	sc.blockLock.Lock()
-	defer sc.blockLock.Unlock()
-	return stream.Send(&orderer.DeliverResponse{
-		Type: &orderer.DeliverResponse_Block{Block: sc.storedBlock},
+func (sc *stubConsenter) Stop() {
+	close(sc.decisions)
+	close(sc.stopped)
+	sc.server.Stop()
+}
+
+func (sc *stubConsenter) Restart() {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	server, err := comm.NewGRPCServer(sc.endpoint, comm.ServerConfig{
+		SecOpts: comm.SecureOptions{
+			UseTLS:      true,
+			Certificate: sc.cert,
+			Key:         sc.key,
+		},
 	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to restart gRPC server: %v", err))
+	}
+
+	sc.server = server
+	sc.stopped = make(chan struct{})
+	sc.decisions = make(chan *common.Block, 100)
+
+	orderer.RegisterAtomicBroadcastServer(server.Server(), sc)
+
+	go func() {
+		if err := sc.server.Start(); err != nil {
+			panic(err)
+		}
+	}()
+}
+
+func (sc *stubConsenter) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	for {
+		sc.mu.RLock()
+		decisions := sc.decisions
+		stopped := sc.stopped
+		sc.mu.RUnlock()
+
+		select {
+		case b := <-decisions:
+			if b == nil {
+				return nil
+			}
+			err := stream.Send(&orderer.DeliverResponse{
+				Type: &orderer.DeliverResponse_Block{Block: b},
+			})
+			if err != nil {
+				return err
+			}
+		case <-stopped:
+			return nil
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 }
 
 func (sc *stubConsenter) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
-}
-
-func (sc *stubConsenter) Stop() {
-	sc.server.Stop()
 }
 
 func (sc *stubConsenter) SetNextDecision(oba core.OrderedBatchAttestation) {
@@ -113,9 +164,9 @@ func (sc *stubConsenter) SetNextDecision(oba core.OrderedBatchAttestation) {
 	signatures := []smartbft_types.Signature{{Value: sigBytes}}
 	bytes := state.DecisionToBytes(proposal, signatures)
 
-	sc.blockLock.Lock()
-	defer sc.blockLock.Unlock()
-	sc.storedBlock = &common.Block{
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.decisions <- &common.Block{
 		Data: &common.BlockData{Data: [][]byte{bytes}},
 	}
 }

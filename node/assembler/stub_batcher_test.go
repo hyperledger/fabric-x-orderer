@@ -31,8 +31,9 @@ type stubBatcher struct {
 	cert        []byte
 	key         []byte
 	batcherInfo config.BatcherInfo
-	storedBatch *common.Block
-	blockLock   sync.Mutex
+	batches     chan *common.Block
+	stopped     chan struct{}
+	mu          sync.RWMutex
 }
 
 func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, ca tlsgen.CA) *stubBatcher {
@@ -64,6 +65,8 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		cert:        certKeyPair.Cert,
 		key:         certKeyPair.Key,
 		batcherInfo: batcherInfo,
+		batches:     make(chan *common.Block, 100),
+		stopped:     make(chan struct{}),
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher)
@@ -76,24 +79,71 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 }
 
 func (sb *stubBatcher) Stop() {
+	close(sb.batches)
+	close(sb.stopped)
 	sb.server.Stop()
+}
+
+func (sb *stubBatcher) Restart() {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	server, err := comm.NewGRPCServer(sb.endpoint, comm.ServerConfig{
+		SecOpts: comm.SecureOptions{
+			UseTLS:      true,
+			Certificate: sb.cert,
+			Key:         sb.key,
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to restart gRPC server: %v", err))
+	}
+
+	sb.server = server
+	sb.stopped = make(chan struct{})
+	sb.batches = make(chan *common.Block, 100)
+
+	orderer.RegisterAtomicBroadcastServer(server.Server(), sb)
+
+	go func() {
+		if err := sb.server.Start(); err != nil {
+			panic(err)
+		}
+	}()
+}
+
+func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	for {
+		sb.mu.RLock()
+		batches := sb.batches
+		stopped := sb.stopped
+		sb.mu.RUnlock()
+
+		select {
+		case b := <-batches:
+			if b == nil {
+				return nil
+			}
+			err := stream.Send(&orderer.DeliverResponse{
+				Type: &orderer.DeliverResponse_Block{Block: b},
+			})
+			if err != nil {
+				return err
+			}
+		case <-stopped:
+			return nil
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 }
 
 func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	sb.blockLock.Lock()
-	defer sb.blockLock.Unlock()
-	return stream.Send(&orderer.DeliverResponse{
-		Type: &orderer.DeliverResponse_Block{Block: sb.storedBatch},
-	})
-}
-
 func (sb *stubBatcher) SetNextBatch(batch core.Batch) {
 	block, _ := ledger.NewFabricBatchFromRequests(sb.partyID, sb.shardID, batch.Seq(), batch.Requests(), []byte(""))
-	sb.blockLock.Lock()
-	defer sb.blockLock.Unlock()
-	sb.storedBatch = (*common.Block)(block)
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	sb.batches <- (*common.Block)(block)
 }
