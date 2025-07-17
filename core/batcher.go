@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-
 	"github.com/pkg/errors"
 )
 
@@ -34,15 +33,9 @@ type MemPool interface {
 	Close()
 }
 
-//go:generate counterfeiter -o mocks/batch.go . Batch
-type Batch interface {
-	types.BatchID
-	Requests() types.BatchedRequests
-}
-
 //go:generate counterfeiter -o mocks/batch_puller.go . BatchPuller
 type BatchPuller interface {
-	PullBatches(from types.PartyID) <-chan Batch
+	PullBatches(from types.PartyID) <-chan types.Batch
 	Stop()
 }
 
@@ -90,7 +83,7 @@ type BatchLedgerWriter interface {
 
 type BatchLedgeReader interface {
 	Height(partyID types.PartyID) uint64
-	RetrieveBatchByNumber(partyID types.PartyID, seq uint64) Batch
+	RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch
 }
 
 //go:generate counterfeiter -o mocks/batch_ledger.go . BatchLedger
@@ -304,7 +297,7 @@ func (b *Batcher) runSecondary() {
 	for {
 		out := b.BatchPuller.PullBatches(b.primary)
 		for {
-			var batch Batch
+			var batch types.Batch
 			select {
 			case batch = <-out:
 			case newTerm := <-b.termChan:
@@ -336,7 +329,7 @@ func (b *Batcher) runSecondary() {
 	}
 }
 
-func (b *Batcher) verifyBatch(batch Batch) error {
+func (b *Batcher) verifyBatch(batch types.Batch) error {
 	if batch.Primary() != b.primary {
 		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
 	}
