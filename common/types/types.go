@@ -64,3 +64,9 @@ type BatchAttestationFragment interface {
 	Epoch() int64
 	String() string
 }
+
+//go:generate counterfeiter -o mocks/batch.go . Batch
+type Batch interface {
+	BatchID
+	Requests() BatchedRequests
+}

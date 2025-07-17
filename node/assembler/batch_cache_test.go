@@ -10,10 +10,8 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,7 +66,7 @@ func TestBatchCache_Has(t *testing.T) {
 	t.Run("ReturnsTrueIfItemExist", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batches := []core.Batch{}
+		batches := []types.Batch{}
 		for i := 0; i < 3; i++ {
 			batch := testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(i), nil)
 			batches = append(batches, batch)
@@ -104,7 +102,7 @@ func TestBatchCache_Pop(t *testing.T) {
 	t.Run("ReturnsTheCorrectBatch", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batches := []core.Batch{
+		batches := []types.Batch{
 			testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil),
 			testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil),
 			testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), nil),
