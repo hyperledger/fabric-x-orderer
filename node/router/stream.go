@@ -32,6 +32,7 @@ type stream struct {
 	streamNum                         int
 	srReconnectChan                   chan reconnectReq
 	notifiedReconnect                 bool
+	requestVerifier                   *Verifier
 }
 
 // readResponses listens for responses from the batcher.
@@ -81,12 +82,18 @@ func (s *stream) sendRequests() {
 				s.cancelOnServerError()
 				return
 			}
-			s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
-			err := s.requestTransmitSubmitStreamClient.Send(msg)
-			if err != nil {
-				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-				s.cancelOnServerError()
-				return
+			// validate the request
+			if err := s.requestVerifier.Verify(msg); err != nil {
+				s.logger.Debugf("request is invalid: %s", err)
+				// send a response to the client
+			} else {
+				s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
+				err := s.requestTransmitSubmitStreamClient.Send(msg)
+				if err != nil {
+					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+					s.cancelOnServerError()
+					return
+				}
 			}
 		}
 	}
@@ -201,6 +208,7 @@ CopyChannelLoop:
 		streamNum:                         s.streamNum,
 		srReconnectChan:                   s.srReconnectChan,
 		notifiedReconnect:                 false,
+		requestVerifier:                   s.requestVerifier,
 	}
 	s.lock.Unlock()
 
