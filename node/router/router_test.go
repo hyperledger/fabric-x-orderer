@@ -380,6 +380,55 @@ func TestClientRouterBroadcastRequestsAgainstMultipleBatchers(t *testing.T) {
 	}, 60*time.Second, 10*time.Millisecond)
 }
 
+// test request filters
+// 1) Start a client, router and stub batcher
+// 2) Send valid request, expect no error.
+// 3) Send request with empty payload, expect error.
+// 4) Send request that exceed the maximal size, expect error.
+// 5) ** Not implemented ** send request with bad signature, expect error.
+func TestRequestFilters(t *testing.T) {
+	// 1) Start a client, router and stub batcher
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+	conn := testSetup.clientConn
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	cl := protos.NewRequestTransmitClient(conn)
+	defer cancel()
+
+	// 2) send a valid request.
+	buff := make([]byte, 300)
+	binary.BigEndian.PutUint32(buff, uint32(12345))
+	req := &protos.Request{
+		Payload: buff,
+	}
+	resp, err := cl.Submit(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, resp.Error, "")
+
+	// 3) send request with empty payload.
+	req = &protos.Request{
+		Payload: nil,
+	}
+	resp, err = cl.Submit(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, resp.Error, "request verifying error: empty payload field")
+
+	// 4) send request with payload too big. (3000 is more than 1 << 10, the maximal request size in bytes)
+	buff = make([]byte, 3000)
+	binary.BigEndian.PutUint32(buff, uint32(12345))
+	req = &protos.Request{
+		Payload: buff,
+	}
+	resp, err = cl.Submit(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, resp.Error, "request verifying error: the request's size exceeds the maximum size")
+
+	// 5) send request with invalid signature. Not implemented
+}
+
 func createServerTLSClientConnection(testSetup *routerTestSetup, ca tlsgen.CA) error {
 	cc := comm.ClientConfig{
 		SecOpts: comm.SecureOptions{
@@ -558,6 +607,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		ListenAddress:      "127.0.0.1:0",
 		ClientAuthRequired: clientAuthRequired,
 		Shards:             shards,
+		RequestMaxBytes:    1 << 10,
 	}
 
 	r := router.NewRouter(conf, logger)

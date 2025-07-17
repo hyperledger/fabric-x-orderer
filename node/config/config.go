@@ -77,6 +77,7 @@ type RouterNodeConfig struct {
 	NumOfgRPCStreamsPerConnection int
 	UseTLS                        bool
 	ClientAuthRequired            bool
+	RequestMaxBytes               uint64
 }
 
 type AssemblerNodeConfig struct {
