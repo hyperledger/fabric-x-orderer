@@ -8,7 +8,6 @@ package assembler_test
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -32,8 +31,6 @@ type stubBatcher struct {
 	key         []byte
 	batcherInfo config.BatcherInfo
 	batches     chan *common.Block
-	stopped     chan struct{}
-	mu          sync.RWMutex
 }
 
 func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, ca tlsgen.CA) *stubBatcher {
@@ -66,7 +63,6 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		key:         certKeyPair.Key,
 		batcherInfo: batcherInfo,
 		batches:     make(chan *common.Block, 100),
-		stopped:     make(chan struct{}),
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher)
@@ -79,14 +75,15 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 }
 
 func (sb *stubBatcher) Stop() {
+	sb.server.Stop()
+}
+
+func (sb *stubBatcher) Shutdown() {
 	close(sb.batches)
-	close(sb.stopped)
 	sb.server.Stop()
 }
 
 func (sb *stubBatcher) Restart() {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	server, err := comm.NewGRPCServer(sb.endpoint, comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
 			UseTLS:      true,
@@ -99,8 +96,6 @@ func (sb *stubBatcher) Restart() {
 	}
 
 	sb.server = server
-	sb.stopped = make(chan struct{})
-	sb.batches = make(chan *common.Block, 100)
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), sb)
 
@@ -113,13 +108,8 @@ func (sb *stubBatcher) Restart() {
 
 func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	for {
-		sb.mu.RLock()
-		batches := sb.batches
-		stopped := sb.stopped
-		sb.mu.RUnlock()
-
 		select {
-		case b := <-batches:
+		case b := <-sb.batches:
 			if b == nil {
 				return nil
 			}
@@ -129,8 +119,6 @@ func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) err
 			if err != nil {
 				return err
 			}
-		case <-stopped:
-			return nil
 		case <-stream.Context().Done():
 			return stream.Context().Err()
 		}
@@ -143,7 +131,5 @@ func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer)
 
 func (sb *stubBatcher) SetNextBatch(batch core.Batch) {
 	block, _ := ledger.NewFabricBatchFromRequests(sb.partyID, sb.shardID, batch.Seq(), batch.Requests(), []byte(""))
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
 	sb.batches <- (*common.Block)(block)
 }

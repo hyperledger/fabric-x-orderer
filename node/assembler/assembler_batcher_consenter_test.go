@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -35,7 +36,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	defer cleanup()
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
-	defer consenterStub.Stop()
+	defer consenterStub.Shutdown()
 
 	assembler := newAssemblerTest(t, partyID, shardID, ca, batcherInfos, consenterStub.consenterInfo)
 	defer assembler.Stop()
@@ -51,7 +52,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	batch1 := testutil.CreateMockBatch(1, 1, 1, []int{1})
 	batchersStub[0].SetNextBatch(batch1)
 	oba1 := obaCreator.Append(batch1, 1, 1, 1)
-	consenterStub.SetNextDecision(oba1)
+	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 2
@@ -67,10 +68,28 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	consenterStub.Restart()
 
 	oba2 := obaCreator.Append(batch2, 2, 1, 1)
-	consenterStub.SetNextDecision(oba2)
+	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 4
+	}, 3*time.Second, 100*time.Millisecond)
+
+	// send next decision and restart consenter
+	batch3 := testutil.CreateMockBatch(1, 1, 3, []int{4})
+	oba3 := obaCreator.Append(batch3, 3, 1, 1)
+	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
+
+	// wait for decistion will be sent
+	time.Sleep(3 * time.Second)
+
+	consenterStub.Stop()
+	consenterStub.Restart()
+
+	// send matching batch
+	batchersStub[0].SetNextBatch(batch3)
+
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 5
 	}, 3*time.Second, 100*time.Millisecond)
 }
 
@@ -132,7 +151,7 @@ func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.Shar
 
 	return batchers, batcherInfos, func() {
 		for _, b := range batchers {
-			b.Stop()
+			b.Shutdown()
 		}
 	}
 }
