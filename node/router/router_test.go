@@ -549,6 +549,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		ListenAddress:      "127.0.0.1:0",
 		ClientAuthRequired: clientAuthRequired,
 		Shards:             shards,
+		RequestMaxBytes:    1 << 10,
 	}
 
 	r := router.NewRouter(conf, logger)
