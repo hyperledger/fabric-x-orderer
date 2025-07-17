@@ -9,11 +9,9 @@ package assembler_test
 import (
 	"encoding/asn1"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -32,8 +30,7 @@ type stubConsenter struct {
 	cert          []byte
 	key           []byte
 	consenterInfo config.ConsenterInfo
-	storedBlock   *common.Block
-	blockLock     sync.Mutex
+	decisions     chan *common.Block
 }
 
 func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubConsenter {
@@ -63,6 +60,7 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubCo
 		key:           certKeyPair.Key,
 		endpoint:      server.Address(),
 		consenterInfo: consenterInfo,
+		decisions:     make(chan *common.Block, 100),
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubConsenter)
@@ -75,25 +73,62 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubCo
 	return stubConsenter
 }
 
-func (sc *stubConsenter) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	sc.blockLock.Lock()
-	defer sc.blockLock.Unlock()
-	return stream.Send(&orderer.DeliverResponse{
-		Type: &orderer.DeliverResponse_Block{Block: sc.storedBlock},
+func (sc *stubConsenter) Stop() {
+	sc.server.Stop()
+}
+
+func (sc *stubConsenter) Shutdown() {
+	close(sc.decisions)
+	sc.server.Stop()
+}
+
+func (sc *stubConsenter) Restart() {
+	server, err := comm.NewGRPCServer(sc.endpoint, comm.ServerConfig{
+		SecOpts: comm.SecureOptions{
+			UseTLS:      true,
+			Certificate: sc.cert,
+			Key:         sc.key,
+		},
 	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to restart gRPC server: %v", err))
+	}
+
+	sc.server = server
+
+	orderer.RegisterAtomicBroadcastServer(server.Server(), sc)
+
+	go func() {
+		if err := sc.server.Start(); err != nil {
+			panic(err)
+		}
+	}()
+}
+
+func (sc *stubConsenter) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	for {
+		select {
+		case b := <-sc.decisions:
+			if b == nil {
+				return nil
+			}
+			err := stream.Send(&orderer.DeliverResponse{
+				Type: &orderer.DeliverResponse_Block{Block: b},
+			})
+			if err != nil {
+				return err
+			}
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 }
 
 func (sc *stubConsenter) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (sc *stubConsenter) Stop() {
-	sc.server.Stop()
-}
-
-func (sc *stubConsenter) SetNextDecision(oba core.OrderedBatchAttestation) {
-	ba := oba.(*state.AvailableBatchOrdered)
-
+func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 	proposal := smartbft_types.Proposal{
 		Header: (&state.Header{
 			Num: ba.OrderingInformation.DecisionNum,
@@ -113,9 +148,11 @@ func (sc *stubConsenter) SetNextDecision(oba core.OrderedBatchAttestation) {
 	signatures := []smartbft_types.Signature{{Value: sigBytes}}
 	bytes := state.DecisionToBytes(proposal, signatures)
 
-	sc.blockLock.Lock()
-	defer sc.blockLock.Unlock()
-	sc.storedBlock = &common.Block{
+	sc.decisions <- &common.Block{
+		Header: &common.BlockHeader{
+			Number:       uint64(ba.OrderingInformation.DecisionNum),
+			PreviousHash: ba.OrderingInformation.PrevHash,
+		},
 		Data: &common.BlockData{Data: [][]byte{bytes}},
 	}
 }
