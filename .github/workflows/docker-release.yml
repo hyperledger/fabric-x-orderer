@@ -30,8 +30,8 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract version from tag
         id: extract
@@ -45,7 +45,7 @@ jobs:
           if [ "${{ github.repository_owner }}" = "hyperledger" ]; then
             echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
            else
-            echo "IMAGE_PREFIX=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
+            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
 
       - name: Build and Push Multi-Platform Docker Image
