@@ -34,7 +34,6 @@ type MemPool interface {
 	Close()
 }
 
-//go:generate counterfeiter -o mocks/batch.go . Batch
 type Batch interface {
 	types.BatchID
 	Requests() types.BatchedRequests
