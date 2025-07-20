@@ -1333,6 +1333,10 @@ func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, 
 	}
 }
 
+// prepareTX prepares a transaction that includes:
+// 1. A session number (a run ID)
+// 2. A transaction number
+// 3. A timestamp (in nanoseconds)
 func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
 	// create timestamp (8 bytes)
 	timeStamp := uint64(time.Now().UnixNano())
