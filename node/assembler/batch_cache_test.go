@@ -12,8 +12,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +23,7 @@ func testCacheWrongShardOrParty(t *testing.T, cacheOp func(*assembler.BatchCache
 	t.Run("WrongShardParameterShouldPanic", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(partition, batchCacheTestDefaultTag)
-		batchId := testutil.CreateMockBatchId(types.ShardID(2), types.PartyID(2), types.BatchSequence(1), nil)
+		batchId := createTestBatchId(types.ShardID(2), types.PartyID(2), types.BatchSequence(1), nil)
 
 		// Act & Assert
 		require.Panics(t, func() { cacheOp(cache, batchId) })
@@ -34,7 +32,7 @@ func testCacheWrongShardOrParty(t *testing.T, cacheOp func(*assembler.BatchCache
 	t.Run("WrongPartyParameterShouldPanic", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(partition, batchCacheTestDefaultTag)
-		batchId := testutil.CreateMockBatchId(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
+		batchId := createTestBatchId(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
 
 		// Act & Assert
 		require.Panics(t, func() { cacheOp(cache, batchId) })
@@ -43,7 +41,7 @@ func testCacheWrongShardOrParty(t *testing.T, cacheOp func(*assembler.BatchCache
 	t.Run("WrongShardAndPartyParameterShouldPanic", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(partition, batchCacheTestDefaultTag)
-		batchId := testutil.CreateMockBatchId(types.ShardID(3), types.PartyID(3), types.BatchSequence(1), nil)
+		batchId := createTestBatchId(types.ShardID(3), types.PartyID(3), types.BatchSequence(1), nil)
 
 		// Act & Assert
 		require.Panics(t, func() { cacheOp(cache, batchId) })
@@ -56,7 +54,7 @@ func TestBatchCache_Has(t *testing.T) {
 	t.Run("ReturnsFalseIfItemDoesNotExist", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batchId := testutil.CreateMockBatchId(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
+		batchId := createTestBatchId(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
 
 		// Act
 		res := cache.Has(batchId)
@@ -70,7 +68,7 @@ func TestBatchCache_Has(t *testing.T) {
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
 		batches := []core.Batch{}
 		for i := 0; i < 3; i++ {
-			batch := testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(i), nil)
+			batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(i), nil)
 			batches = append(batches, batch)
 			require.NoError(t, cache.Put(batch))
 
@@ -86,8 +84,8 @@ func TestBatchCache_Has(t *testing.T) {
 	t.Run("ReturnsFalseIfDigestMismatch", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batchId := testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
-		batchIdDifferentDigest := testutil.CreateMockBatchId(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2, 3, 4})
+		batchId := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
+		batchIdDifferentDigest := createTestBatchId(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2, 3, 4})
 		cache.Put(batchId)
 
 		// Act
@@ -105,9 +103,9 @@ func TestBatchCache_Pop(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
 		batches := []core.Batch{
-			testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil),
-			testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil),
-			testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), nil),
+			createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil),
+			createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil),
+			createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), nil),
 		}
 		for _, batch := range batches {
 			require.NoError(t, cache.Put(batch))
@@ -117,17 +115,17 @@ func TestBatchCache_Pop(t *testing.T) {
 		for _, batch := range batches {
 			poppedBatch, err := cache.Pop(batch)
 			require.NoError(t, err)
-			testutil.AssertBatchIdsEquals(t, batch, poppedBatch)
+			assertBatchIdsEquals(t, batch, poppedBatch)
 		}
 	})
 
 	t.Run("GettingUnexistingBatchWillRaiseAnError", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		cache.Put(testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil))
+		cache.Put(createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil))
 
 		// Act
-		_, err := cache.Pop(testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil))
+		_, err := cache.Pop(createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil))
 
 		// Assert
 		require.ErrorIs(t, err, assembler.ErrBatchDoesNotExist)
@@ -136,8 +134,8 @@ func TestBatchCache_Pop(t *testing.T) {
 	t.Run("WhenMultipleDigestsBatchesReturnsTheCorrectBatch", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch := testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
-		batchDifferentDigest := testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2, 3, 4})
+		batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
+		batchDifferentDigest := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2, 3, 4})
 		require.NoError(t, cache.Put(batch))
 		require.NoError(t, cache.Put(batchDifferentDigest))
 
@@ -148,8 +146,8 @@ func TestBatchCache_Pop(t *testing.T) {
 		// Assert
 		require.NoError(t, err1)
 		require.NoError(t, err2)
-		testutil.AssertBatchIdsEquals(t, batch, poppedBatch)
-		testutil.AssertBatchIdsEquals(t, batchDifferentDigest, poppedBatchDifferentDigest)
+		assertBatchIdsEquals(t, batch, poppedBatch)
+		assertBatchIdsEquals(t, batchDifferentDigest, poppedBatchDifferentDigest)
 	})
 }
 
@@ -159,7 +157,7 @@ func TestBatchCache_Put(t *testing.T) {
 	t.Run("SinglePutAndThenGetShouldReturnTheBatch", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch := testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
+		batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
 
 		// Act
 		require.NoError(t, cache.Put(batch))
@@ -168,13 +166,13 @@ func TestBatchCache_Put(t *testing.T) {
 		// Assert
 
 		require.NoError(t, err)
-		testutil.AssertBatchIdsEquals(t, batch, poppedBatch)
+		assertBatchIdsEquals(t, batch, poppedBatch)
 	})
 
 	t.Run("MultiplePutsOnSameBatchWillRaiseAnError", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch := testutil.CreateEmptyMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
+		batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
 		require.NoError(t, cache.Put(batch))
 
 		// Act
@@ -191,9 +189,9 @@ func TestBatchCache_SizeBytes(t *testing.T) {
 	t.Run("PuttingMultipleBatchesShouldIncreaseSizeAccordingly", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch1 := testutil.CreateMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
-		batch2 := testutil.CreateMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
-		batch3 := testutil.CreateMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
+		batch1 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
+		batch2 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
+		batch3 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
 		require.NoError(t, cache.Put(batch1))
 		require.NoError(t, cache.Put(batch2))
 		require.NoError(t, cache.Put(batch3))
@@ -208,9 +206,9 @@ func TestBatchCache_SizeBytes(t *testing.T) {
 	t.Run("RemovingBatchesShouldDecreaseSizeAccordingly", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch1 := testutil.CreateMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
-		batch2 := testutil.CreateMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
-		batch3 := testutil.CreateMockBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
+		batch1 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
+		batch2 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
+		batch3 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
 		require.NoError(t, cache.Put(batch1))
 		require.NoError(t, cache.Put(batch2))
 		require.NoError(t, cache.Put(batch3))
