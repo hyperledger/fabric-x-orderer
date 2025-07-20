@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -24,8 +25,6 @@ import (
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	ledger_mocks "github.com/hyperledger/fabric-x-orderer/node/ledger/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -286,8 +285,8 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 	test.StartAssembler()
 	batches := []types.Batch{
-		testutil.CreateMockBatch(1, 1, 1, []int{1}),
-		testutil.CreateMockBatch(1, 1, 2, []int{1}),
+		createTestBatch(1, 1, 1, []int{1}),
+		createTestBatch(1, 1, 2, []int{1}),
 	}
 
 	// Act

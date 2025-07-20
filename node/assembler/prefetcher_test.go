@@ -13,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,8 +67,8 @@ func TestPrefetcher_BatchesReceivedByReplicationAreBeingIndexed(t *testing.T) {
 		shards[1]: make(chan types.Batch),
 	}
 	shardToBatch := map[types.ShardID]types.Batch{
-		shards[0]: testutil.CreateEmptyMockBatch(shards[0], parties[0], 0, nil),
-		shards[1]: testutil.CreateEmptyMockBatch(shards[1], parties[2], 0, nil),
+		shards[0]: createEmptyTestBatch(shards[0], parties[0], 0, nil),
+		shards[1]: createEmptyTestBatch(shards[1], parties[2], 0, nil),
 	}
 	test.batchFetcherMock.ReplicateCalls(func(shard types.ShardID) <-chan types.Batch {
 		return shardToReplicatedChan[shard]
@@ -87,7 +86,7 @@ func TestPrefetcher_BatchesReceivedByReplicationAreBeingIndexed(t *testing.T) {
 	}, eventuallyTimeout, eventuallyTick)
 	for i := 0; i < test.prefetchIndexMock.PutCallCount(); i++ {
 		batch := test.prefetchIndexMock.PutArgsForCall(0)
-		testutil.AssertBatchIdsEquals(t, batch, shardToBatch[batch.Shard()])
+		assertBatchIdsEquals(t, batch, shardToBatch[batch.Shard()])
 	}
 }
 
@@ -97,7 +96,7 @@ func TestPrefetcher_RequestedBatchWillBeFetchedByFetcherOnce(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3}
 	test := setupPrefetcherTest(t, shards, parties)
 	defer test.finish()
-	batch := testutil.CreateEmptyMockBatch(test.shards[0], test.parties[0], 10, nil)
+	batch := createEmptyTestBatch(test.shards[0], test.parties[0], 10, nil)
 	test.batchFetcherMock.GetBatchReturns(batch, nil)
 
 	// Act
@@ -116,7 +115,7 @@ func TestPrefetcher_RequestedBatchWillBeFetchedByFetcherAndForcePutToIndex(t *te
 	parties := []types.PartyID{1, 2, 3}
 	test := setupPrefetcherTest(t, shards, parties)
 	defer test.finish()
-	batch := testutil.CreateEmptyMockBatch(test.shards[0], test.parties[0], 10, nil)
+	batch := createEmptyTestBatch(test.shards[0], test.parties[0], 10, nil)
 	test.batchFetcherMock.GetBatchReturns(batch, nil)
 
 	// Act
@@ -128,9 +127,9 @@ func TestPrefetcher_RequestedBatchWillBeFetchedByFetcherAndForcePutToIndex(t *te
 		return test.batchFetcherMock.GetBatchCallCount() == 1 && test.prefetchIndexMock.PutForceCallCount() == 1
 	}, eventuallyTimeout, eventuallyTick)
 	requestedBatchId := test.batchFetcherMock.GetBatchArgsForCall(0)
-	testutil.AssertBatchIdsEquals(t, batch, requestedBatchId)
+	assertBatchIdsEquals(t, batch, requestedBatchId)
 	putBatch := test.prefetchIndexMock.PutForceArgsForCall(0)
-	testutil.AssertBatchIdsEquals(t, batch, putBatch)
+	assertBatchIdsEquals(t, batch, putBatch)
 }
 
 func TestPrefetcher_StopWillStopBatchFetcher(t *testing.T) {
