@@ -12,8 +12,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +22,7 @@ func testMapperWrongShardOrParty(t *testing.T, mapperOp func(*assembler.BatchMap
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 2}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batchId := testutil.CreateMockBatchId(types.ShardID(2), partition.Primary, types.BatchSequence(1), nil)
+		batchId := createTestBatchId(types.ShardID(2), partition.Primary, types.BatchSequence(1), nil)
 
 		// Act & Assert
 		require.Panics(t, func() { mapperOp(mapper, batchId) })
@@ -34,7 +32,7 @@ func testMapperWrongShardOrParty(t *testing.T, mapperOp func(*assembler.BatchMap
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 2}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batchId := testutil.CreateMockBatchId(partition.Shard, types.PartyID(1), types.BatchSequence(1), nil)
+		batchId := createTestBatchId(partition.Shard, types.PartyID(1), types.BatchSequence(1), nil)
 
 		// Act & Assert
 		require.Panics(t, func() { mapperOp(mapper, batchId) })
@@ -44,7 +42,7 @@ func testMapperWrongShardOrParty(t *testing.T, mapperOp func(*assembler.BatchMap
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 2}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batchId := testutil.CreateMockBatchId(types.ShardID(3), types.PartyID(3), types.BatchSequence(1), nil)
+		batchId := createTestBatchId(types.ShardID(3), types.PartyID(3), types.BatchSequence(1), nil)
 
 		// Act & Assert
 		require.Panics(t, func() { mapperOp(mapper, batchId) })
@@ -58,7 +56,7 @@ func TestBatchMapper_Has(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batchId := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
+		batchId := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
 
 		// Act
 		res := mapper.Has(batchId)
@@ -73,7 +71,7 @@ func TestBatchMapper_Has(t *testing.T) {
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
 		batches := []core.Batch{}
 		for i := 0; i < 3; i++ {
-			batch := testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(i), nil)
+			batch := createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(i), nil)
 			batches = append(batches, batch)
 			mapper.Put(batch, i)
 
@@ -90,8 +88,8 @@ func TestBatchMapper_Has(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batchId := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{1, 2, 3})
-		batchIdDifferentDigest := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{2, 3, 4})
+		batchId := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{1, 2, 3})
+		batchIdDifferentDigest := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{2, 3, 4})
 		mapper.Put(batchId, 1)
 
 		// Act
@@ -105,7 +103,7 @@ func TestBatchMapper_Has(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, fakeItem](partition)
-		batchId := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
+		batchId := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
 		item := fakeItem{Id: 1234}
 		mapper.Put(batchId, item)
 
@@ -125,9 +123,9 @@ func TestBatchMapper_Get(t *testing.T) {
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
 		batches := []core.Batch{
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
 		}
 		for i, batch := range batches {
 			mapper.Put(batch, i)
@@ -146,9 +144,9 @@ func TestBatchMapper_Get(t *testing.T) {
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, fakeItem](partition)
 		batches := []core.Batch{
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
 		}
 		for i, batch := range batches {
 			mapper.Put(batch, fakeItem{Id: i})
@@ -166,10 +164,10 @@ func TestBatchMapper_Get(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		mapper.Put(testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil), 0)
+		mapper.Put(createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil), 0)
 
 		// Act
-		_, err := mapper.Get(testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil))
+		_, err := mapper.Get(createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil))
 
 		// Assert
 		require.ErrorIs(t, err, assembler.ErrBatchDoesNotExist)
@@ -179,8 +177,8 @@ func TestBatchMapper_Get(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batchId := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{1, 2, 3})
-		batchIdDifferentDigest := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{2, 3, 4})
+		batchId := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{1, 2, 3})
+		batchIdDifferentDigest := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{2, 3, 4})
 		mapper.Put(batchId, 1)
 		mapper.Put(batchIdDifferentDigest, 2)
 
@@ -203,7 +201,7 @@ func TestBatchMapper_Put(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batch := testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
+		batch := createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
 
 		// Act
 		mapper.Put(batch, 1)
@@ -219,7 +217,7 @@ func TestBatchMapper_Put(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batch := testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
+		batch := createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
 		mapper.Put(batch, 1)
 
 		// Act
@@ -239,7 +237,7 @@ func TestBatchMapper_Insert(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batch := testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
+		batch := createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
 
 		// Act
 		insertSuccess := mapper.Insert(batch, 1)
@@ -255,7 +253,7 @@ func TestBatchMapper_Insert(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batch := testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
+		batch := createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
 		firstInsertSuccess := mapper.Insert(batch, 1)
 
 		// Act
@@ -278,9 +276,9 @@ func TestBatchMapper_Remove(t *testing.T) {
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
 		batches := []core.Batch{
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
-			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
+			createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
 		}
 		for i, batch := range batches {
 			mapper.Put(batch, i)
@@ -304,10 +302,10 @@ func TestBatchMapper_Remove(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		mapper.Put(testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil), 0)
+		mapper.Put(createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil), 0)
 
 		// Act
-		_, err := mapper.Remove(testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil))
+		_, err := mapper.Remove(createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil))
 
 		// Act
 		require.ErrorIs(t, err, assembler.ErrBatchDoesNotExist)
@@ -317,7 +315,7 @@ func TestBatchMapper_Remove(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batch := testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
+		batch := createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil)
 		mapper.Put(batch, 0)
 
 		// Act
@@ -333,8 +331,8 @@ func TestBatchMapper_Remove(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batchId := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{1, 2, 3})
-		batchIdDifferentDigest := testutil.CreateMockBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{2, 3, 4})
+		batchId := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{1, 2, 3})
+		batchIdDifferentDigest := createTestBatchId(partition.Shard, partition.Primary, types.BatchSequence(1), []byte{2, 3, 4})
 		mapper.Put(batchId, 1)
 		mapper.Put(batchIdDifferentDigest, 2)
 

@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -104,7 +103,7 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, co
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
 
 		// Act
 		require.NoError(t, put(test.partitionPrefetchIndex, batch))
@@ -118,7 +117,7 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, co
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
 
 		// Act
 		require.NoError(t, put(test.partitionPrefetchIndex, batch))
@@ -126,14 +125,14 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, co
 		require.NoError(t, err)
 
 		// Assert
-		testutil.AssertBatchIdsEquals(t, batch, poped_batch)
+		assertBatchIdsEquals(t, batch, poped_batch)
 	})
 
 	t.Run("PuttingBatchTooLargeWillResultInError", func(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{test.maxSizeBytes + 1})
+		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{test.maxSizeBytes + 1})
 
 		// Act
 		err := put(test.partitionPrefetchIndex, batch)
@@ -146,8 +145,8 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, co
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch1 := testutil.CreateEmptyMockBatch(test.partition.Shard, test.partition.Primary, 0, []byte{1})
-		batch2 := testutil.CreateEmptyMockBatch(test.partition.Shard, test.partition.Primary, 0, []byte{2})
+		batch1 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 0, []byte{1})
+		batch2 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 0, []byte{2})
 
 		// Act & Assert
 		require.NoError(t, put(test.partitionPrefetchIndex, batch1))
@@ -160,7 +159,7 @@ func TestPartitionPrefetchIndex_AutoEviction(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
 		test.partitionPrefetchIndex.Put(batch)
 
 		// Act
@@ -178,7 +177,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
 		shardId := test.partition.Shard
-		batch := testutil.CreateMockBatch(shardId, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(shardId, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.Put(batch))
 
 		// Act
@@ -186,7 +185,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		testutil.AssertBatchIdsEquals(t, batch, poppedBatch)
+		assertBatchIdsEquals(t, batch, poppedBatch)
 	})
 
 	t.Run("PopWillStopBatchTtlTimer", func(t *testing.T) {
@@ -194,7 +193,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
 		shardId := test.partition.Shard
-		batch := testutil.CreateMockBatch(shardId, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(shardId, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.Put(batch))
 
 		// Act
@@ -210,7 +209,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
 		shardId := test.partition.Shard
-		batch := testutil.CreateMockBatch(shardId, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(shardId, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.Put(batch))
 
 		// Act
@@ -224,8 +223,8 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		putBatch := testutil.CreateEmptyMockBatch(test.partition.Shard, test.partition.Primary, 9, nil)
-		popBatchId := testutil.CreateMockBatchId(test.partition.Shard, test.partition.Primary, 6, nil)
+		putBatch := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 9, nil)
+		popBatchId := createTestBatchId(test.partition.Shard, test.partition.Primary, 6, nil)
 
 		// Act
 		require.NoError(t, test.partitionPrefetchIndex.Put(putBatch))
@@ -238,15 +237,15 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		batchRequest := <-test.batchRequestChan
 
 		// Assert
-		testutil.AssertBatchIdsEquals(t, batchRequest, popBatchId)
+		assertBatchIdsEquals(t, batchRequest, popBatchId)
 	})
 
 	t.Run("PopBeforePutShouldNotRaiseRequestIfSeqGreaterThanLastPut", func(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		putBatch := testutil.CreateEmptyMockBatch(test.partition.Shard, test.partition.Primary, 6, nil)
-		popBatchId := testutil.CreateMockBatchId(test.partition.Shard, test.partition.Primary, 9, nil)
+		putBatch := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 6, nil)
+		popBatchId := createTestBatchId(test.partition.Shard, test.partition.Primary, 9, nil)
 
 		// Act
 		require.NoError(t, test.partitionPrefetchIndex.Put(putBatch))
@@ -273,7 +272,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 1; i <= 10; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		popedBatchChan := make(chan core.Batch)
 
@@ -292,7 +291,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Assert
 		time.Sleep(eventuallyTick)
 		batch := <-popedBatchChan
-		testutil.AssertBatchIdsEquals(t, batches[9], batch)
+		assertBatchIdsEquals(t, batches[9], batch)
 		require.True(t, test.batchCache.Has(batches[7]))
 		require.True(t, test.batchCache.Has(batches[8]))
 		require.Equal(t, 2, test.batchCache.SizeBytes())
@@ -302,8 +301,8 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch1 := testutil.CreateEmptyMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{1})
-		batch2 := testutil.CreateEmptyMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{2})
+		batch1 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{1})
+		batch2 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{2})
 		test.partitionPrefetchIndex.Put(batch1)
 
 		// Act
@@ -314,7 +313,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Assert
 		time.Sleep(eventuallyTick)
 		reqeustedBatchId := <-test.batchRequestChan
-		testutil.AssertBatchIdsEquals(t, batch2, reqeustedBatchId)
+		assertBatchIdsEquals(t, batch2, reqeustedBatchId)
 	})
 }
 
@@ -328,7 +327,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		batches := []core.Batch{}
 		for i := 2; i <= 6; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		// put seq 3
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[0]))
@@ -361,7 +360,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 2; i <= 6; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		// put seq 2
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[0]))
@@ -394,7 +393,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 2; i <= 6; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		// put seq 2
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[0]))
@@ -427,7 +426,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 1; i <= 4; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 
 		// Act
@@ -458,7 +457,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 0; i < 10; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 
 		// Act
@@ -483,7 +482,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 0; i < 10; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 
 		// Act
@@ -504,7 +503,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.PutForce(batch))
 
 		// Act
@@ -512,7 +511,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		testutil.AssertBatchIdsEquals(t, batch, poppedBatch)
+		assertBatchIdsEquals(t, batch, poppedBatch)
 		require.False(t, test.forcePutCache.Has(batch))
 	})
 
@@ -520,7 +519,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
 
 		// Act
 		require.NoError(t, test.partitionPrefetchIndex.PutForce(batch))
@@ -535,7 +534,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 0; i < 10; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[1]))
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[2]))
@@ -545,7 +544,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 			defer wg.Done()
 			poppedBatch, err := test.partitionPrefetchIndex.PopOrWait(batches[3])
 			require.NoError(t, err)
-			testutil.AssertBatchIdsEquals(t, batches[3], poppedBatch)
+			assertBatchIdsEquals(t, batches[3], poppedBatch)
 		}()
 
 		// Act
@@ -564,7 +563,7 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batchId := testutil.CreateMockBatchId(test.partition.Shard, test.partition.Primary, 1, nil)
+		batchId := createTestBatchId(test.partition.Shard, test.partition.Primary, 1, nil)
 
 		// Act
 		go func() {
@@ -585,7 +584,7 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		defer test.finish()
 		batches := []core.Batch{}
 		for i := 1; i <= 4; i++ {
-			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		errs := []error{}
 
