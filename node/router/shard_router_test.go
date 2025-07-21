@@ -80,6 +80,11 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	// stop the batcher
 	testSetup.stubBatcher.Stop()
 
+	// wait for the streams to become faulty
+	require.Eventually(t, func() bool {
+		return testSetup.shardRouter.IsConnectionsToBatcherDown()
+	}, 10*time.Second, 200*time.Millisecond)
+
 	// send a request, expect failure
 	responses = make(chan router.Response, 1)
 	reqID, payload = createRequestAndRequestId(1, uint32(10000))
@@ -91,7 +96,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	// restart the batcher
 	testSetup.stubBatcher.Restart()
 
-	// // wait for reconnection
+	// wait for reconnection
 	require.Eventually(t, func() bool {
 		return testSetup.shardRouter.IsAllStreamsOKinSR()
 	}, 10*time.Second, 200*time.Millisecond)

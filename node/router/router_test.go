@@ -157,11 +157,16 @@ func TestSubmitOnBatcherStopAndRestart(t *testing.T) {
 	// stop the batcher
 	testSetup.batchers[0].Stop()
 
+	// wait for all streams to become faulty
+	require.Eventually(t, func() bool {
+		return testSetup.isDisconnectedFromBatcher()
+	}, 10*time.Second, 200*time.Millisecond)
+
 	// send 1 request with Submit, should get server error
 	err = submitRequest(testSetup.clientConn)
-	require.EqualError(t, err, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+	require.EqualError(t, err, "receiving response with error: server error: connection between router and batcher "+testSetup.batchers[0].server.Address()+" is broken, try again later")
 
-	// send same request, but now the stream is faulty and the router will try to reconnect.
+	// send same request again.
 	err = submitRequest(testSetup.clientConn)
 	require.EqualError(t, err, "receiving response with error: server error: connection between router and batcher "+testSetup.batchers[0].server.Address()+" is broken, try again later")
 
@@ -196,6 +201,11 @@ func TestSubmitStreamOnBatcherStopAndRestart(t *testing.T) {
 	// stop the batcher
 	testSetup.batchers[0].Stop()
 
+	// wait for all streams to become faulty
+	require.Eventually(t, func() bool {
+		return testSetup.isDisconnectedFromBatcher()
+	}, 10*time.Second, 200*time.Millisecond)
+
 	// send 20 requests with SubmitStream, should get 20 server errors
 	numOfRequests := 20
 	res := submitStreamRequests(testSetup.clientConn, numOfRequests)
@@ -203,15 +213,14 @@ func TestSubmitStreamOnBatcherStopAndRestart(t *testing.T) {
 	require.Equal(t, numOfRequests, res.failRequests)
 	require.Equal(t, numOfRequests, len(res.respondsErrors))
 	for _, e := range res.respondsErrors {
-		require.EqualError(t, e, "receiving response with error: server error: could not establish connection between router and batcher "+testSetup.batchers[0].server.Address())
+		require.EqualError(t, e, "receiving response with error: server error: connection between router and batcher "+testSetup.batchers[0].server.Address()+" is broken, try again later")
 	}
 
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(0)
 	}, 10*time.Second, 10*time.Millisecond)
 
-	// send 5 requests (of the previous 20) with SubmitStream, should get 5 server errors
-	// because of faulty stream and the reconnection fails
+	// send 5 requests (of the previous 20) with SubmitStream, should get 5 server errors again
 	numOfRequests = 5
 	res = submitStreamRequests(testSetup.clientConn, numOfRequests)
 	require.Equal(t, 0, res.successRequests)
