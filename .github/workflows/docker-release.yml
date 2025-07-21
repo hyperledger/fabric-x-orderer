@@ -37,9 +37,6 @@ jobs:
         id: extract
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
       
-      - name: Print GitHub Repository Owner
-        run: echo "Repository owner is ${{ github.repository_owner }}"
-
       - name: Set image prefix
         run: |
           if [ "${{ github.repository_owner }}" = "hyperledger" ]; then
