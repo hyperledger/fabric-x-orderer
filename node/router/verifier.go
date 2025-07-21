@@ -9,6 +9,7 @@ package router
 import (
 	"fmt"
 
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
@@ -66,14 +67,31 @@ func (a acceptRule) Verify(request *comm.Request) error {
 	return nil
 }
 
-// Signature verification rule - to be implemented
-type SigVerifier struct{}
+// Signature verification rule
 
-func NewSigVerifier() *SigVerifier {
-	return &SigVerifier{}
+type SigVerifierSupport interface {
+	getSignedTransactionService() (*armageddon.SignedTransactionService, error)
+}
+
+type SigVerifier struct {
+	support SigVerifierSupport
+}
+
+func NewSigVerifier(support SigVerifierSupport) *SigVerifier {
+	return &SigVerifier{support: support}
 }
 
 func (sf *SigVerifier) Verify(request *comm.Request) error {
+	service, ok := sf.support.getSignedTransactionService()
+	if ok != nil {
+		return fmt.Errorf("SignedTransactionServie not found")
+	}
+	id, _ := service.GetRandomTransactionIndex()
+	isValid := service.VerifyTransaction(id)
+	if !isValid {
+		return fmt.Errorf("failed vrifying signature")
+	}
+	// fmt.Printf("Succefuly verified dignature of transaction id %d \n", id)
 	return nil
 }
 
