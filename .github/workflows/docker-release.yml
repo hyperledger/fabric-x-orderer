@@ -39,7 +39,9 @@ jobs:
       
       - name: Set image prefix
         run: |
+          echo $GITHUB_REPOSITORY_OWNER
           if [ "$GITHUB_REPOSITORY_OWNER" == "anushka159-a" ]; then
+           echo $GITHUB_REPOSITORY_OWNER
            echo "IMAGE_PREFIX=anushka159-a" >> $GITHUB_ENV
           fi
 
