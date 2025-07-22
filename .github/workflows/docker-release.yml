@@ -40,8 +40,9 @@ jobs:
       - name: Set image prefix
         run: |
           if [ "$GITHUB_REPOSITORY_OWNER" == "anushka159-a" ]; then
-           echo "IMAGE_PREFIX=anushka12" >> $GITHUB_ENV
+           echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
+           echo ${{ env.IMAGE_PREFIX }}
 
       - name: Build and Push Multi-Platform Docker Image
         uses: docker/build-push-action@v6
