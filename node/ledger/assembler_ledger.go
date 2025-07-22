@@ -142,8 +142,6 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInf
 			ordInfo.BlockHeader.Number, len(batch.Requests()), time.Since(t1))
 	}()
 
-	transactionCount := atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
-
 	block := &common.Block{
 		Header: &common.BlockHeader{
 			Number:       ordInfo.Number, // TODO make sure we start from 0
@@ -187,7 +185,7 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInf
 
 	//===
 	// TODO Ordering metadata  marshal orderingInfo and batchID
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, transactionCount)
+	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, l.transactionCount+uint64(len(batch.Requests())))
 	if err != nil {
 		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
@@ -204,6 +202,8 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInf
 	if err := l.Ledger.Append(block); err != nil {
 		panic(err)
 	}
+
+	atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
 }
 
 func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum) {
