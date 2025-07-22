@@ -37,18 +37,18 @@ func TestAssemblerLedger_Create(t *testing.T) {
 
 // TestAssemblerLedger_Append append two blocks
 func TestAssemblerLedger_Append(t *testing.T) {
-	tmpDir := t.TempDir()
-	logger := flogging.MustGetLogger("arma-assembler")
-
-	al, err := createAssemblerLedger(tmpDir, logger)
-	require.NoError(t, err)
-	defer al.Close()
-
-	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
-	assert.Equal(t, uint64(1), al.GetTxCount())
-	assert.Equal(t, uint64(1), al.Ledger.Height())
-
 	t.Run("three batches", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+		defer al.Close()
+
+		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		assert.Equal(t, uint64(1), al.GetTxCount())
+		assert.Equal(t, uint64(1), al.Ledger.Height())
+
 		batches, ordInfos := createBatchesAndOrdInfo(t, 3)
 
 		al.Append(batches[0], ordInfos[0])
@@ -62,6 +62,31 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		al.Append(batches[2], ordInfos[2])
 		assert.Equal(t, uint64(7), al.GetTxCount())
 		assert.Equal(t, uint64(4), al.Ledger.Height())
+	})
+
+	t.Run("duplicate block", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+		defer al.Close()
+
+		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		assert.Equal(t, uint64(1), al.GetTxCount())
+		assert.Equal(t, uint64(1), al.Ledger.Height())
+
+		batches, ordInfos := createBatchesAndOrdInfo(t, 1)
+
+		al.Append(batches[0], ordInfos[0])
+		assert.Equal(t, uint64(3), al.GetTxCount())
+		assert.Equal(t, uint64(2), al.Ledger.Height())
+
+		// append the same batch again, should panic
+		assert.Panics(t, func() { al.Append(batches[0], ordInfos[0]) })
+
+		assert.Equal(t, uint64(3), al.GetTxCount())
+		assert.Equal(t, uint64(2), al.Ledger.Height())
 	})
 }
 
