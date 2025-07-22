@@ -39,9 +39,9 @@ jobs:
       
       - name: Set image prefix
         run: |
-          if [ "${{ github.repository_owner }}" = "hyperledger" ]; then
-            echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
-           else
+          if [ "$GITHUB_REPOSITORY_OWNER" == "hyperledger" ]; then
+           echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
+          else
             echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
 
