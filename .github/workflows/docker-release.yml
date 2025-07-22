@@ -39,10 +39,13 @@ jobs:
       
       - name: Set image prefix
         run: |
-          if [ "$GITHUB_REPOSITORY_OWNER" == "anushka159-a" ]; then
-           echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
+          if [ "$GITHUB_REPOSITORY_OWNER" == "hyperledger" ]; then
+           echo "Inside if loop"
+           echo "IMAGE_PREFIX=hyperledger"  >> $GITHUB_ENV
+          else 
+            echo "Inside else loop"
+            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
-           echo ${{ env.IMAGE_PREFIX }}
 
       - name: Build and Push Multi-Platform Docker Image
         uses: docker/build-push-action@v6
