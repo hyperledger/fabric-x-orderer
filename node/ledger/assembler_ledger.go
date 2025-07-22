@@ -185,7 +185,7 @@ func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInf
 
 	//===
 	// TODO Ordering metadata  marshal orderingInfo and batchID
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, l.transactionCount+uint64(len(batch.Requests())))
+	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, atomic.LoadUint64(&l.transactionCount)+uint64(len(batch.Requests())))
 	if err != nil {
 		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
