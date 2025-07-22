@@ -42,7 +42,7 @@ jobs:
           if [ "$GITHUB_REPOSITORY_OWNER" == "hyperledger" ]; then
            echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
           else
-            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
+           echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
 
       - name: Build and Push Multi-Platform Docker Image
