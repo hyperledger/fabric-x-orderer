@@ -36,6 +36,14 @@ jobs:
       - name: Extract version from tag
         id: extract
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      
+      - name: Set image prefix
+        run: |
+          if [ "${{ github.repository_owner }}" = "hyperledger" ]; then
+            echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
+           else
+            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
+          fi
 
       - name: Build and Push Multi-Platform Docker Image
         uses: docker/build-push-action@v6
@@ -45,5 +53,5 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-orderer:latest
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-orderer:${{ env.VERSION }}
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
