@@ -190,8 +190,10 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		routerNodeConfig: rconfig,
 	}
 
+	verifier := r.createRequestVerifier()
+
 	for _, shardId := range shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection)
+		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier)
 	}
 
 	go func() {
@@ -325,6 +327,36 @@ func createTraceID(rand *rand2.Rand) []byte {
 	binary.BigEndian.PutUint64(trace, uint64(n1))
 	binary.BigEndian.PutUint64(trace[8:], uint64(n2))
 	return trace
+}
+
+// this struct implements the interface MaxSizeRuleSupport for the maxSize filter
+type routerFilterSupport struct {
+	router *Router
+}
+
+func (rfs *routerFilterSupport) GetMaxSizeBytes() (uint64, error) {
+	if rfs.router == nil {
+		return 0, fmt.Errorf("error: bad router filter support")
+	}
+	if rfs.router.routerNodeConfig == nil {
+		return 0, fmt.Errorf("error: bad RouterNodeConfnig")
+	}
+	return rfs.router.routerNodeConfig.RequestMaxBytes, nil
+}
+
+func (r *Router) createRequestVerifier() Verifier {
+	var requestVerifier Verifier
+
+	requestVerifier.AddRule(PayloadNotEmptyRule)
+
+	requestVerifier.AddRule(AcceptRule) // just for fun
+
+	// requestVerifier.AddRule(NewSigVerifier(support)) // not implemented for now (will accept)
+
+	rfs := routerFilterSupport{router: r}
+	requestVerifier.AddRule(NewMaxSizeRule(&rfs))
+
+	return requestVerifier
 }
 
 // IsAllStreamsOK checks that all the streams accross all shard-routers are non-faulty.
