@@ -20,6 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/core"
@@ -41,6 +42,7 @@ type Router struct {
 	shardIDs         []types.ShardID
 	incoming         uint64
 	routerNodeConfig *nodeconfig.RouterNodeConfig
+	signedTxService  *armageddon.SignedTransactionService
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -179,6 +181,11 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		rconfig.NumOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
 	}
 
+	// create random transactions ignature verification
+	numOfTxs := 1000
+	txSize := 300
+	service, _ := armageddon.NewSignedTransactionService(numOfTxs, txSize)
+
 	r := &Router{
 		router: core.Router{
 			Logger:     logger,
@@ -188,10 +195,13 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		logger:           logger,
 		shardIDs:         shardIDs,
 		routerNodeConfig: rconfig,
+		signedTxService:  service,
 	}
 
+	verifier := r.createRequestVerifier()
+
 	for _, shardId := range shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection)
+		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier)
 	}
 
 	go func() {
@@ -325,6 +335,41 @@ func createTraceID(rand *rand2.Rand) []byte {
 	binary.BigEndian.PutUint64(trace, uint64(n1))
 	binary.BigEndian.PutUint64(trace[8:], uint64(n2))
 	return trace
+}
+
+// this struct implements the interface MaxSizeRuleSupport for the maxSize filter
+type routerFilterSupport struct {
+	router *Router
+}
+
+func (rfs *routerFilterSupport) RouterNodeConfig() (*nodeconfig.RouterNodeConfig, error) {
+	if rfs.router.routerNodeConfig == nil {
+		return nil, fmt.Errorf("error: bad RouterNodeConfnig")
+	}
+	return rfs.router.routerNodeConfig, nil
+}
+
+func (rfs *routerFilterSupport) getSignedTransactionService() (*armageddon.SignedTransactionService, error) {
+	if rfs.router.signedTxService == nil {
+		return nil, fmt.Errorf("error: bad SignedTransactionService in router")
+	}
+	return rfs.router.signedTxService, nil
+}
+
+func (r *Router) createRequestVerifier() Verifier {
+	var requestVerifier Verifier
+
+	requestVerifier.AddRule(PayloadNotEmptyRule)
+
+	requestVerifier.AddRule(AcceptRule) // just for fun
+
+	rfs := routerFilterSupport{router: r}
+
+	requestVerifier.AddRule(NewMaxSizeRule(&rfs))
+
+	requestVerifier.AddRule(NewSigVerifier(&rfs)) // verify a random transaction signature
+
+	return requestVerifier
 }
 
 // IsAllStreamsOK checks that all the streams accross all shard-routers are non-faulty.
