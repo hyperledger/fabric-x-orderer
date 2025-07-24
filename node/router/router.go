@@ -22,7 +22,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -34,7 +33,7 @@ type Net interface {
 }
 
 type Router struct {
-	router           core.Router
+	mapper           ShardMapper
 	net              Net
 	shardRouters     map[types.ShardID]*ShardRouter
 	logger           types.Logger
@@ -180,7 +179,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 	}
 
 	r := &Router{
-		router: core.Router{
+		mapper: MapperCRC64{
 			Logger:     logger,
 			ShardCount: uint16(len(shardIDs)),
 		},
@@ -260,7 +259,7 @@ func (r *Router) initRand() *rand2.Rand {
 }
 
 func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
-	shardIndex, reqID := r.router.Map(req.Payload)
+	shardIndex, reqID := r.mapper.Map(req.Payload)
 	shardId := r.shardIDs[shardIndex]
 	r.logger.Debugf("request %x is mapped to shard %d", req.Payload, shardId)
 	shardRouter, exists := r.shardRouters[shardId]

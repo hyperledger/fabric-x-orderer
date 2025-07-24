@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core
+package router
 
 import (
 	"encoding/binary"
@@ -13,14 +13,18 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
-type Router struct {
+type ShardMapper interface {
+	Map(request []byte) (shard uint16, reqID []byte)
+}
+
+type MapperCRC64 struct {
 	Logger     types.Logger
 	ShardCount uint16
 }
 
-func (r *Router) Map(request []byte) (shard uint16, reqID []byte) {
-	reqID, shardID := CRC64RequestToShard(r.ShardCount)(request)
-	r.Logger.Debugf("Forwarding request %d to shard %d", reqID, shardID)
+func (m MapperCRC64) Map(request []byte) (shard uint16, reqID []byte) {
+	reqID, shardID := CRC64RequestToShard(m.ShardCount)(request)
+	m.Logger.Debugf("Forwarding request %d to shard %d", reqID, shardID)
 	return shardID, reqID
 }
 

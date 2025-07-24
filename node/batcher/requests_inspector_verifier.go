@@ -13,9 +13,9 @@ import (
 	"runtime"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
@@ -46,7 +46,7 @@ type RequestsInspectorVerifier struct {
 	shards                   []types.ShardID
 	shardID                  types.ShardID
 	logger                   types.Logger
-	mapper                   *core.Router // TODO make this into an interface?
+	mapper                   router.ShardMapper
 	requestClientSigVerifier ClientRequestSigVerifier
 	requestVerifier          RequestVerifier
 }
@@ -65,7 +65,7 @@ func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNod
 	if requestVerifier == nil {
 		riv.requestVerifier = riv
 	}
-	riv.mapper = &core.Router{Logger: riv.logger, ShardCount: uint16(len(riv.shards))}
+	riv.mapper = router.MapperCRC64{Logger: riv.logger, ShardCount: uint16(len(riv.shards))}
 	return riv
 }
 
