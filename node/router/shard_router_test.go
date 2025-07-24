@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -177,6 +176,6 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 func createRequestAndRequestId(shardCount uint16, content uint32) ([]byte, []byte) {
 	payload := make([]byte, 300)
 	binary.BigEndian.PutUint32(payload, content)
-	reqID, _ := core.CRC64RequestToShard(shardCount)(payload)
+	reqID, _ := router.CRC64RequestToShard(shardCount)(payload)
 	return reqID, payload
 }
