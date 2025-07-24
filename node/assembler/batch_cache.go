@@ -8,12 +8,11 @@ package assembler
 
 import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type BatchCache struct {
 	tag              string
-	shardBatchMapper *BatchMapper[types.BatchID, core.Batch]
+	shardBatchMapper *BatchMapper[types.BatchID, types.Batch]
 	partition        ShardPrimary
 	sizeBytes        int
 }
@@ -38,12 +37,12 @@ func NewBatchCache(partition ShardPrimary, tag string) *BatchCache {
 	sc := &BatchCache{
 		tag:              tag,
 		partition:        partition,
-		shardBatchMapper: NewBatchMapper[types.BatchID, core.Batch](partition),
+		shardBatchMapper: NewBatchMapper[types.BatchID, types.Batch](partition),
 	}
 	return sc
 }
 
-func (bc *BatchCache) Pop(batchId types.BatchID) (core.Batch, error) {
+func (bc *BatchCache) Pop(batchId types.BatchID) (types.Batch, error) {
 	batch, err := bc.shardBatchMapper.Remove(batchId)
 	if err != nil {
 		return nil, err
@@ -52,7 +51,7 @@ func (bc *BatchCache) Pop(batchId types.BatchID) (core.Batch, error) {
 	return batch, nil
 }
 
-func (bc *BatchCache) Put(batch core.Batch) error {
+func (bc *BatchCache) Put(batch types.Batch) error {
 	inserted := bc.shardBatchMapper.Insert(batch, batch)
 	if !inserted {
 		return ErrBatchAlreadyExists
@@ -67,7 +66,7 @@ func (bc *BatchCache) Has(batchId types.BatchID) bool {
 	return bc.shardBatchMapper.Has(batchId)
 }
 
-func (bc *BatchCache) Get(batchId types.BatchID) (core.Batch, error) {
+func (bc *BatchCache) Get(batchId types.BatchID) (types.Batch, error) {
 	return bc.shardBatchMapper.Get(batchId)
 }
 
