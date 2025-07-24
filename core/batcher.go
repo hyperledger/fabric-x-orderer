@@ -211,6 +211,26 @@ func (b *Batcher) getTermAndNotifyChange() {
 			if currentTerm != newTerm {
 				atomic.StoreUint64(&b.term, newTerm)
 				b.termChan <- newTerm
+				b.resubmitPendingBAFs(state, b.getPrimaryID(currentTerm))
+			}
+		}
+	}
+}
+
+// when the term is changed there might be a case where
+// a batch with a certain tx was attested by not enough batchers (less than f+1 BAFs)
+// and that tx is in the pool of other batchers but again not enough (less than f+1 batchers)
+// to prevent a case where such a tx falls through the cracks, after a term change
+// all batchers resubmit to their pools txs in batches with their BAFs still in pending state
+func (b *Batcher) resubmitPendingBAFs(state *State, prevPrimary types.PartyID) {
+	for _, baf := range state.Pending {
+		if baf.Signer() == b.ID && baf.Primary() == prevPrimary {
+			b.Logger.Debugf("found pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())
+			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
+			for _, req := range batch.Requests() {
+				if err := b.MemPool.Submit(req); err != nil {
+					b.Logger.Errorf("Failed submitting request to pool; err: %v", err)
+				}
 			}
 		}
 	}

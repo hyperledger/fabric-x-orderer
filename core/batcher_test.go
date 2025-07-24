@@ -587,6 +587,113 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	require.Equal(t, 10, pool.NextRequestsCallCount())
 }
 
+func TestResubmitPending(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 2
+	shardID := 0
+
+	logger := testutil.CreateLogger(t, batcherID)
+
+	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := make(arma_types.BatchedRequests, 0, 1)
+	reqs = append(reqs, req)
+
+	pool.NextRequestsReturnsOnCall(1, reqs)
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	stateProvider := &mocks.FakeStateProvider{}
+	stateChan := make(chan *core.State)
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	batcher.StateProvider = stateProvider
+
+	batch := &mocks.FakeBatch{}
+	batch.PrimaryReturns(1)
+	batch.RequestsReturns(reqs)
+	batch.DigestReturns(reqs.Digest())
+
+	batchPuller := &mocks.FakeBatchPuller{}
+	batchChan := make(chan core.Batch)
+	batchPuller.PullBatchesReturns(batchChan)
+	batcher.BatchPuller = batchPuller
+
+	batcher.Start()
+
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	stateChan <- &core.State{
+		Shards: []core.ShardTerm{
+			{
+				Shard: 0,
+				Term:  0,
+			},
+		},
+	}
+
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Zero(t, pool.NextRequestsCallCount())
+
+	require.Zero(t, pool.SubmitCallCount())
+
+	ledger.RetrieveBatchByNumberReturns(batch)
+
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), nil, 0, nil)
+	notMyBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID+1), nil, 0, nil)
+	myBAFWithOtherPrimary := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary()+1, batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), nil, 0, nil)
+
+	stateChan <- &core.State{
+		Shards: []core.ShardTerm{
+			{
+				Shard: 0,
+				Term:  1,
+			},
+		},
+		Pending: []arma_types.BatchAttestationFragment{myBAF, notMyBAF, myBAFWithOtherPrimary},
+	}
+
+	require.Eventually(t, func() bool {
+		return pool.SubmitCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.True(t, pool.RestartArgsForCall(1))
+
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return batchPuller.StopCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	require.NotZero(t, pool.NextRequestsCallCount())
+
+	batcher.Stop()
+
+	require.False(t, pool.RestartArgsForCall(0))
+	require.True(t, pool.RestartArgsForCall(1))
+
+	require.Equal(t, arma_types.PartyID(1), ledger.HeightArgsForCall(0))
+	require.Equal(t, arma_types.PartyID(2), ledger.HeightArgsForCall(1))
+}
+
 func TestVerifyBatch(t *testing.T) {
 	N := uint16(4)
 	batchers := []arma_types.PartyID{1, 2, 3, 4}
