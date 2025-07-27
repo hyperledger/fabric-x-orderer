@@ -151,6 +151,7 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 			return err
 		}
 		// add admin certs
+		// TODO: create an admin cert for all nodes instead of copying existing sign certs
 		src := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), "router", "msp", "signcerts")
 		dst := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), "router", "msp", "admincerts")
 		copyPEMFiles(src, dst)
