@@ -8,8 +8,6 @@ package batcher
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/x509"
 	"encoding/pem"
 	"sort"
 	"time"
@@ -52,13 +50,11 @@ func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net
 }
 
 func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
-	privateKey := createPrivateKey(logger, config.SigningPrivateKey)
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, &NoopClientRequestSigVerifier{}, nil)
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
 		batcherDeliverService:     ds,
 		stateReplicator:           sr,
-		privateKey:                privateKey,
 		signer:                    signer,
 		logger:                    logger,
 		Net:                       net,
@@ -114,21 +110,6 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	}
 
 	return b
-}
-
-func createPrivateKey(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {
-	bl, _ := pem.Decode(signingPrivateKey)
-
-	if bl == nil || bl.Bytes == nil {
-		logger.Panicf("Signing key is not a valid PEM")
-	}
-
-	sk, err := x509.ParsePKCS8PrivateKey(bl.Bytes)
-	if err != nil {
-		logger.Panicf("Signing key is not a valid PKCS8 private key: %v", err)
-	}
-
-	return sk.(*ecdsa.PrivateKey)
 }
 
 func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) core.MemPool {
