@@ -22,7 +22,6 @@ import (
 
 type StreamInfo struct {
 	stream      ab.AtomicBroadcast_BroadcastClient
-	lock        sync.Mutex
 	totalTxSent uint32
 	endPoint    string
 }
@@ -46,46 +45,53 @@ func (c *BroadCastTxClient) SendTx(txContent []byte) error {
 	failures := 0
 	var waitForReceiveDone sync.WaitGroup
 
+	lock := &sync.Mutex{}
+
+	updateState := func(streamInfo *StreamInfo, errMsg string) {
+		lock.Lock()
+		defer lock.Unlock()
+		streamInfo.stream = nil
+		errorsAccumulator.WriteString(errMsg)
+		failures++
+	}
+
+	waitForReceiveDone.Add(len(c.streamRoutersMap))
+	// Iterate over all streams and send the transaction
+	// Use a goroutine for each stream to send the transaction concurrently
+	// We use a mutex to ensure that we do not have concurrent writes to the errorsAccumulator
+	// and failures count.
+	// Each goroutine will send the transaction and wait for a response.
+	// If the response is an error, we update the state of the stream and increment the
+	// failures count.
+	// If the response is successful, we print a success message and increment the total transactions sent
+	// for that stream.
+
+	// send the transaction to all streams.
 	for _, streamInfo := range c.streamRoutersMap {
-		streamInfo.lock.Lock()
-		err := streamInfo.stream.Send(&common.Envelope{Payload: txContent})
-		if err != nil {
-			streamInfo.stream = nil
-			errorsAccumulator.WriteString(err.Error())
-			failures++
-		} else {
-			// wait for the response
+		go func() {
+			defer waitForReceiveDone.Done()
 
-			waitForReceiveDone.Add(1)
-			go func(streamInfo *StreamInfo) {
-				// wait for the response in a separate goroutine to avoid blocking
-				defer waitForReceiveDone.Done()
-				// receive the response from the router
-				streamInfo.lock.Lock()
-				defer streamInfo.lock.Unlock()
-
-				resp, err := streamInfo.stream.Recv()
-
-				if err != nil {
-					streamInfo.stream = nil
-
-					if err == io.EOF {
-						// the stream was closed by the server
-						errorsAccumulator.WriteString("stream closed by the server")
-					} else {
-						// some other error occurred
-						errorsAccumulator.WriteString(err.Error())
-						failures++
-					}
-				} else if resp.Status != common.Status_SUCCESS {
-					streamInfo.stream = nil
-					errorsAccumulator.WriteString(fmt.Sprintf("received error response: %s", resp.Status.String()))
-					failures++
+			err := streamInfo.stream.Send(&common.Envelope{Payload: txContent})
+			if err != nil {
+				updateState(streamInfo, err.Error())
+				return
+			}
+			resp, err := streamInfo.stream.Recv()
+			if err != nil {
+				if err != io.EOF {
+					// some other error occurred
+					updateState(streamInfo, err.Error())
 				}
-			}(streamInfo)
+				return
+			}
+			if resp.Status != common.Status_SUCCESS {
+				updateState(streamInfo, fmt.Sprintf("received error response from %s: %s", streamInfo.endPoint, resp.Status.String()))
+				return
+			}
+
+			// increment the total transactions sent for this stream
 			streamInfo.totalTxSent++
-		}
-		streamInfo.lock.Unlock()
+		}()
 	}
 
 	waitForReceiveDone.Wait()
@@ -144,7 +150,7 @@ func (c *BroadCastTxClient) createSendStreams() error {
 			stream := createSendStream(userConfig, serverRootCAs, routerEndpoint)
 			// if stream is created successfully, add it to the map
 			if stream != nil {
-				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, lock: sync.Mutex{}, totalTxSent: 0, endPoint: routerEndpoint}
+				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endPoint: routerEndpoint}
 			}
 		} else {
 			if streamInfo.stream == nil {
@@ -170,5 +176,5 @@ func (c *BroadCastTxClient) Stop() {
 		}
 	}
 
-	fmt.Printf("Total sent: txs %d\n", totalTxSent)
+	fmt.Printf("Total sent by all routers: txs %d\n", totalTxSent)
 }
