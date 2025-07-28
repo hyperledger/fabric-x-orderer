@@ -8,7 +8,6 @@ package batcher
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"io"
 	"math"
@@ -58,7 +57,6 @@ type Batcher struct {
 	Ledger                    *node_ledger.BatchLedgerArray
 	config                    *node_config.BatcherNodeConfig
 	batchers                  []node_config.BatcherInfo
-	privateKey                *ecdsa.PrivateKey
 	signer                    Signer
 
 	stateRef  atomic.Value
