@@ -23,7 +23,7 @@ import (
 type StreamInfo struct {
 	stream      ab.AtomicBroadcast_BroadcastClient
 	totalTxSent uint32
-	endPoint    string
+	endpoint    string
 }
 type BroadCastTxClient struct {
 	userConfig       *armageddon.UserConfig
@@ -85,7 +85,7 @@ func (c *BroadCastTxClient) SendTx(txContent []byte) error {
 				return
 			}
 			if resp.Status != common.Status_SUCCESS {
-				updateState(streamInfo, fmt.Sprintf("received error response from %s: %s", streamInfo.endPoint, resp.Status.String()))
+				updateState(streamInfo, fmt.Sprintf("received error response from %s: %s", streamInfo.endpoint, resp.Status.String()))
 				return
 			}
 
@@ -150,7 +150,7 @@ func (c *BroadCastTxClient) createSendStreams() error {
 			stream := createSendStream(userConfig, serverRootCAs, routerEndpoint)
 			// if stream is created successfully, add it to the map
 			if stream != nil {
-				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endPoint: routerEndpoint}
+				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endpoint: routerEndpoint}
 			}
 		} else {
 			if streamInfo.stream == nil {
@@ -168,7 +168,7 @@ func (c *BroadCastTxClient) Stop() {
 	totalTxSent := 0
 	for key := range c.streamRoutersMap {
 		if sInfo, ok := c.streamRoutersMap[key]; ok {
-			fmt.Printf("Sent to router %s: txs %d\n", sInfo.endPoint, sInfo.totalTxSent)
+			fmt.Printf("Sent to router %s: txs %d\n", sInfo.endpoint, sInfo.totalTxSent)
 			totalTxSent += int(sInfo.totalTxSent)
 			if sInfo.stream != nil {
 				sInfo.stream.CloseSend()

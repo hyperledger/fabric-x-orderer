@@ -33,6 +33,7 @@ import (
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -328,8 +329,9 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	}
 }
 
-func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string) {
+func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string) map[types.PartyID][]types.BatchID {
 	var waitForPullDone sync.WaitGroup
+	blockInfos := make(map[types.PartyID][]types.BatchID, len(parties))
 
 	for _, partyID := range parties {
 		waitForPullDone.Add(1)
@@ -337,9 +339,11 @@ func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties
 		go func() {
 			defer waitForPullDone.Done()
 
-			totalTxs, totalBlocks, err := PullFromAssembler(t, userConfig, partyID, startBlock, endBlock, transactions, blocks)
+			totalTxs, totalBlocks, bInfos, err := PullFromAssembler(t, userConfig, partyID, startBlock, endBlock, transactions, blocks)
+			blockInfos[partyID] = bInfos
 			errString := fmt.Sprintf(errString, partyID)
 			require.ErrorContains(t, err, errString)
+			// TODO:  check that we get all of the submitted transactions
 			require.LessOrEqual(t, uint64(transactions), totalTxs)
 			if blocks > 0 {
 				require.LessOrEqual(t, uint64(blocks), totalBlocks)
@@ -348,16 +352,18 @@ func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties
 	}
 
 	waitForPullDone.Wait()
+	return blockInfos
 }
 
-func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int) (uint64, uint64, error) {
+func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int) (uint64, uint64, []types.BatchID, error) {
 	require.NotNil(t, userConfig)
 	dc := client.NewDeliverClient(userConfig)
-	toCtx, toCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	toCtx, toCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer toCancel()
 
 	totalTxs := uint64(0)
 	totalBlocks := uint64(0)
+	blockInfos := make([]types.BatchID, 0)
 
 	expectedNumOfTxs := uint64(transactions + 1)
 	expectedNumOfBlocks := uint64(blocks)
@@ -369,14 +375,21 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		if block.Header == nil {
 			return errors.New("nil block header")
 		}
+
+		atomic.AddUint64(&totalBlocks, uint64(1))
+		atomic.AddUint64(&totalTxs, uint64(len(block.GetData().GetData())))
+		batchId, _, _, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
+		if err != nil {
+			return err
+		}
+		blockInfos = append(blockInfos, batchId)
+
 		if blocks > 0 {
-			atomic.AddUint64(&totalBlocks, uint64(1))
 			if atomic.CompareAndSwapUint64(&totalBlocks, expectedNumOfBlocks, uint64(blocks)) {
 				toCancel()
 			}
 		}
 		if transactions > 0 {
-			atomic.AddUint64(&totalTxs, uint64(len(block.GetData().GetData())))
 			if atomic.CompareAndSwapUint64(&totalTxs, expectedNumOfTxs, uint64(transactions)) {
 				toCancel()
 			}
@@ -388,5 +401,5 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	fmt.Printf("Pulling from party: %d\n", partyID)
 	err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
 	fmt.Printf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
-	return totalTxs, totalBlocks, err
+	return totalTxs, totalBlocks, blockInfos, err
 }

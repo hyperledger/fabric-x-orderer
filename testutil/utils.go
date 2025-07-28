@@ -13,11 +13,9 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -238,123 +236,6 @@ func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time
 			require.Fail(t, "arma nodes failed to start in time")
 		}
 	}
-}
-
-func WaitForAssemblersGotAtLeast(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, waitFor int, duration time.Duration) {
-	errBuffs := map[types.PartyID]*gbytes.Buffer{}
-	regex := "INFO.*\\s+\\[Assembler%d\\]\\s+.*trackThroughput.*\\s+-> Tx Count:"
-	numeric := regexp.MustCompile("[^0-9]+")
-
-	for _, partyId := range parties {
-		assembler := armaNetwork.GetAssembler(t, partyId)
-		defer assembler.RunInfo.Session.Err.CancelDetects()
-		errBuffs[partyId] = assembler.RunInfo.Session.Err
-	}
-
-	signalChanel := make(chan struct{})
-	exitChanel := make(chan struct{})
-	defer close(exitChanel) // close the exit channel to signal goroutines to stop
-
-	go func() {
-		// wait for the transactions to be processed
-		wait := sync.WaitGroup{}
-		wait.Add(len(parties))
-
-		for _, partyId := range parties {
-			go func() {
-				defer wait.Done()
-				for {
-					select {
-					case <-exitChanel:
-						return // exit if the exit channel is closed
-					case _, ok := <-errBuffs[partyId].Detect(regex, partyId):
-						if ok {
-							b := make([]byte, 8) // buffer to read the data
-							_, err := errBuffs[partyId].Read(b)
-							require.NoError(t, err)
-							s := numeric.ReplaceAllString(string(b), "")
-							count, err := strconv.Atoi(s) // convert to int
-							require.NoError(t, err)
-							if count >= waitFor {
-								t.Logf("Assembler %d received at least %d transactions", partyId, waitFor)
-								return
-							}
-						}
-					}
-				}
-			}()
-		}
-
-		wait.Wait()
-		close(signalChanel) // signal that all assemblers received the transactions
-	}()
-
-	select {
-	case <-signalChanel:
-	case <-time.After(duration * time.Second):
-		require.Fail(t, "Not all assemblers have received all transactions")
-	}
-}
-
-func WaitForComplaint(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, shardID types.ShardID, duration time.Duration) error {
-	return waitForEvent(t, armaNetwork, parties, shardID,
-		fmt.Sprintf("Created complaint with term \\d+ and reason batcher \\d+ \\(shard %d\\) complaining; second strike timeout occurred", shardID),
-		"Complaint", duration)
-}
-
-func WaitForTermChange(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, shardID types.ShardID, duration time.Duration) error {
-	return waitForEvent(t, armaNetwork, parties, shardID,
-		// fmt.Sprintf("Batcher \\d+ acting as primary \\(shard %d\\)", shardID),
-		fmt.Sprintf("Secondary batcher \\d+ \\(shard %d\\) term change to term", shardID),
-		"Term change", duration)
-}
-
-func waitForEvent(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, shardID types.ShardID, regex string, event string, duration time.Duration) error {
-	detectors := []chan bool{}
-	exitChanel := make(chan struct{})
-	var err error = nil
-
-	for _, partyId := range parties {
-		batcher := armaNetwork.GeBatcher(t, partyId, shardID)
-		defer batcher.RunInfo.Session.Err.CancelDetects()
-		detectors = append(detectors, batcher.RunInfo.Session.Err.Detect("%s", regex))
-	}
-
-	wait := sync.WaitGroup{}
-	wait.Add(len(detectors))
-	signalChanel := make(chan struct{}, len(detectors))
-
-	// start goroutines to wait for events
-	for _, detector := range detectors {
-		go func() {
-			defer wait.Done()
-
-			// wait for an event to be detected
-			select {
-			case <-exitChanel:
-			case <-detector:
-				signalChanel <- struct{}{} // signal that an event was detected
-			}
-		}()
-	}
-
-	select {
-	case <-signalChanel:
-		t.Logf("%s detected for shard %d", event, shardID)
-	case <-time.After(duration * time.Second):
-		err = fmt.Errorf("%s for shard %d was not detected in time", event, shardID)
-	}
-
-	close(exitChanel) // close the exit channel to signal goroutines to stop
-	wait.Wait()
-
-	close(signalChanel)
-	for range signalChanel {
-		// drain the channel
-		<-signalChanel
-	}
-
-	return err
 }
 
 func sortArmaNodeInfo(infos []ArmaNodeInfo) func(i, j int) bool {
