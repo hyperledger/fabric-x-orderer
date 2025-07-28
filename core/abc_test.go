@@ -18,6 +18,7 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	arma_types_mocks "github.com/hyperledger/fabric-x-orderer/common/types/mocks"
 	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -232,7 +233,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	assembler.Run()
 
-	router := &core.Router{
+	mapper := &router.MapperCRC64{
 		Logger:     logger,
 		ShardCount: uint16(shardCount),
 	}
@@ -259,7 +260,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 				binary.BigEndian.PutUint32(req[4:], uint32(i))
 				submittedRequests.Store(binary.BigEndian.Uint64(req), struct{}{})
 				atomic.AddUint32(&submittedCount, 1)
-				shardID, _ := router.Map(req)
+				shardID, _ := mapper.Map(req)
 				err := batchers[shardID].Submit(req)
 				if err != nil {
 					panic(err)
