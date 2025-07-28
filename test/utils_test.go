@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,7 +32,6 @@ import (
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -329,9 +327,17 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	}
 }
 
-func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string) map[types.PartyID][]types.BatchID {
+type BlockPullerInfo struct {
+	TotalTxs    uint64
+	TotalBlocks uint64
+	Primary     map[types.ShardID]types.PartyID
+	TermChanged bool
+}
+
+func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string, timeout int) map[types.PartyID]*BlockPullerInfo {
 	var waitForPullDone sync.WaitGroup
-	blockInfos := make(map[types.PartyID][]types.BatchID, len(parties))
+	pullInfos := make(map[types.PartyID]*BlockPullerInfo, len(parties))
+	lock := sync.Mutex{}
 
 	for _, partyID := range parties {
 		waitForPullDone.Add(1)
@@ -339,31 +345,32 @@ func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties
 		go func() {
 			defer waitForPullDone.Done()
 
-			totalTxs, totalBlocks, bInfos, err := PullFromAssembler(t, userConfig, partyID, startBlock, endBlock, transactions, blocks)
-			blockInfos[partyID] = bInfos
+			pullInfo, err := PullFromAssembler(t, userConfig, partyID, startBlock, endBlock, transactions, blocks, timeout)
+			lock.Lock()
+			defer lock.Unlock()
+			pullInfos[partyID] = pullInfo
 			errString := fmt.Sprintf(errString, partyID)
 			require.ErrorContains(t, err, errString)
 			// TODO:  check that we get all of the submitted transactions
-			require.LessOrEqual(t, uint64(transactions), totalTxs)
-			if blocks > 0 {
-				require.LessOrEqual(t, uint64(blocks), totalBlocks)
-			}
+			require.GreaterOrEqual(t, int64(pullInfo.TotalTxs), int64(transactions))
+			require.GreaterOrEqual(t, int64(pullInfo.TotalBlocks), int64(blocks))
 		}()
 	}
 
 	waitForPullDone.Wait()
-	return blockInfos
+	return pullInfos
 }
 
-func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int) (uint64, uint64, []types.BatchID, error) {
+func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int) (*BlockPullerInfo, error) {
 	require.NotNil(t, userConfig)
 	dc := client.NewDeliverClient(userConfig)
-	toCtx, toCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer toCancel()
 
 	totalTxs := uint64(0)
 	totalBlocks := uint64(0)
-	blockInfos := make([]types.BatchID, 0)
+	primaryMap := make(map[types.ShardID]types.PartyID)
+	termChanged := false
 
 	expectedNumOfTxs := uint64(transactions + 1)
 	expectedNumOfBlocks := uint64(blocks)
@@ -376,23 +383,30 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			return errors.New("nil block header")
 		}
 
-		atomic.AddUint64(&totalBlocks, uint64(1))
-		atomic.AddUint64(&totalTxs, uint64(len(block.GetData().GetData())))
-		batchId, _, _, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
-		if err != nil {
-			return err
-		}
-		blockInfos = append(blockInfos, batchId)
+		shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
+		shardID := types.ShardID(binary.BigEndian.Uint16(shardIDBytes))
 
-		if blocks > 0 {
-			if atomic.CompareAndSwapUint64(&totalBlocks, expectedNumOfBlocks, uint64(blocks)) {
-				toCancel()
+		if shardID != types.ShardIDConsensus {
+			primaryIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][0:2]
+			primaryID := types.PartyID(binary.BigEndian.Uint16(primaryIDBytes))
+
+			if pr, ok := primaryMap[shardID]; !ok {
+				primaryMap[shardID] = primaryID
+			} else if pr != primaryID {
+				t.Logf("primary id changed from %d to %d", pr, primaryID)
+				termChanged = true
+				primaryMap[shardID] = primaryID
 			}
 		}
-		if transactions > 0 {
-			if atomic.CompareAndSwapUint64(&totalTxs, expectedNumOfTxs, uint64(transactions)) {
-				toCancel()
-			}
+
+		totalBlocks++
+		totalTxs += uint64(len(block.GetData().GetData()))
+
+		if blocks > 0 && totalBlocks >= expectedNumOfBlocks {
+			toCancel()
+		}
+		if transactions > 0 && totalTxs >= expectedNumOfTxs {
+			toCancel()
 		}
 
 		return nil
@@ -401,5 +415,5 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	fmt.Printf("Pulling from party: %d\n", partyID)
 	err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
 	fmt.Printf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
-	return totalTxs, totalBlocks, blockInfos, err
+	return &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged}, err
 }

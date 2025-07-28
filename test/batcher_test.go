@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	// Number of shards in the test
-	numOfShards = 1
 	// Number of parties in the test
 	numOfParties = 4
 )
@@ -49,7 +47,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
-	t.Logf("Running test with %d parties and %d shards", numOfParties, numOfShards)
+	t.Logf("Running test with %d parties and %d shards", numOfParties, 1)
 
 	// Create a temporary directory for the test
 	dir, err := os.MkdirTemp("", t.Name())
@@ -57,7 +55,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
 	require.NoError(t, err)
 	numOfArmaNodes := len(netInfo)
 
@@ -111,23 +109,15 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	totalTxSent += totalTxNumber
 
 	// Pull from Assemblers
-	blockInfos := PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
+	infos := PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 
 	// Get the primary batcher
-	partyBlockInfos := blockInfos[types.PartyID(1)]
-	primaryBatcherId := partyBlockInfos[len(partyBlockInfos)-1].Primary()
+	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
 	primaryBatcher := armaNetwork.GeBatcher(t, primaryBatcherId, types.ShardID(1))
-	correctParties := []types.PartyID{}
 
 	// 3. Stop the primary batcher
 	t.Logf("Stopping primary batcher: party %d", primaryBatcher.PartyId)
 	primaryBatcher.StopArmaNode()
-
-	for partyID := 1; partyID <= numOfParties; partyID++ {
-		if primaryBatcherId != types.PartyID(partyID) {
-			correctParties = append(correctParties, types.PartyID(partyID))
-		}
-	}
 
 	stalled := false
 	routerToStall := armaNetwork.GetRouter(t, primaryBatcher.PartyId)
@@ -150,20 +140,25 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		}
 	}
 
-	// test that the router of party get stalled in the some point
+	// make sure the router of the faulty party got stalled
 	require.True(t, stalled, "expected router to stall but it did not")
 	broadcastClient.Stop()
 
 	totalTxSent += totalTxNumber
 
 	// 5.
-	// make sure clients of correct parties continue to get transactions (expect 2000 TXs).
-	blockInfos = PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
-	partyBlockInfos = blockInfos[correctParties[0]]
-	newPrimaryBatcherId := partyBlockInfos[len(partyBlockInfos)-1].Primary()
+	// make sure assemblers of correct parties continue to get transactions (expect 2000 TXs).
+
+	correctParties := []types.PartyID{}
+	for partyID := 1; partyID <= numOfParties; partyID++ {
+		if primaryBatcherId != types.PartyID(partyID) {
+			correctParties = append(correctParties, types.PartyID(partyID))
+		}
+	}
+	infos = PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 
 	// check that the primary batcher has changed
-	require.NotEqual(t, primaryBatcherId, newPrimaryBatcherId, "expected primary batcher not to remain the same")
+	require.True(t, infos[correctParties[0]].TermChanged, "expected primary batcher not to remain the same")
 
 	// 6.
 	t.Logf("Restarting Batcher: party %d", primaryBatcher.PartyId)
@@ -172,7 +167,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	PullFromAssemblers(t, uc, []types.PartyID{primaryBatcher.PartyId}, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
+	PullFromAssemblers(t, uc, []types.PartyID{primaryBatcher.PartyId}, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 
 	// 7.
 	broadcastClient = client.NewBroadCastTxClient(uc, 10*time.Second)
@@ -196,8 +191,8 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	totalTxSent += totalTxNumber
 
 	// Pull from Assemblers
-	// make sure clients of all the parties get transactions (expect 3000 TXs).
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
+	// make sure assemblers of all the parties get transactions (expect 3000 TXs).
+	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 }
 
 // Simulates a scenario where a secondary batcher node is stopped and restarted.
@@ -219,7 +214,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
-	t.Logf("Running test with %d parties and %d shards", numOfParties, numOfShards)
+	t.Logf("Running test with %d parties and %d shards", numOfParties, 1)
 
 	// Create a temporary directory for the test
 	dir, err := os.MkdirTemp("", t.Name())
@@ -227,7 +222,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
 	require.NoError(t, err)
 	numOfArmaNodes := len(netInfo)
 
@@ -283,10 +278,8 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	totalTxSent += totalTxNumber
 
 	// Pull from Assemblers
-	blockInfos := PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
-
-	partyBlockInfos := blockInfos[types.PartyID(1)]
-	primaryBatcherId := partyBlockInfos[len(partyBlockInfos)-1].Primary()
+	infos := PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
 	correctParties := []types.PartyID{}
 
 	var secondaryBatcher *testutil.ArmaNodeInfo = nil
@@ -326,20 +319,18 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		}
 	}
 
-	// test that the router of party get stalled in the some point
+	// make sure the router of the faulty party got stalled
 	require.True(t, stalled, "expected router to stall but it did not")
 	broadcastClient.Stop()
 
 	totalTxSent += totalTxNumber
 
 	// 5.
-	// make sure clients of correct parties continue to get transactions (expect 2000 TXs).
-	blockInfos = PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
-	partyBlockInfos = blockInfos[correctParties[0]]
-	newPrimaryBatcherId := partyBlockInfos[len(partyBlockInfos)-1].Primary()
+	// make sure assemblers of correct parties continue to get transactions (expect 2000 TXs).
+	infos = PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 
 	// make sure the primary batcher did not change
-	require.Equal(t, primaryBatcherId, newPrimaryBatcherId, "expected primary batcher to remain the same")
+	require.False(t, infos[correctParties[0]].TermChanged, "expected primary batcher to remain the same")
 
 	// 6.
 	t.Logf("Restarting Batcher %d of party %d", secondaryBatcher.PartyId, secondaryBatcher.PartyId)
@@ -348,7 +339,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	PullFromAssemblers(t, uc, []types.PartyID{secondaryBatcher.PartyId}, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
+	PullFromAssemblers(t, uc, []types.PartyID{secondaryBatcher.PartyId}, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 
 	// 7.
 	// make sure 2f+1 routers are receiving TXs w/o problems
@@ -373,6 +364,6 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	totalTxSent += totalTxNumber
 
 	// Pull from Assemblers
-	// make sure clients of all the parties get transactions (expect 3000 TXs).
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d")
+	// make sure assemblers of all the parties get transactions (expect 3000 TXs).
+	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 }
