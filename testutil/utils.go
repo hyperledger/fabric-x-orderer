@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -235,6 +236,89 @@ func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time
 		case <-startTimeout:
 			require.Fail(t, "arma nodes failed to start in time")
 		}
+	}
+}
+
+func WaitForAssemblersReady(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, waitFor int, duration time.Duration) {
+	detectors := []chan bool{}
+	for _, partyId := range parties {
+		assembler := armaNetwork.GetAssembler(t, partyId)
+		detectors = append(detectors, assembler.RunInfo.Session.Err.Detect("INFO.*\\s+\\[Assembler%d\\]\\s+.*trackThroughput.*\\s+-> Tx Count: %d", partyId, waitFor+1))
+	}
+
+	signalChanel := make(chan struct{})
+
+	go func() {
+		// wait for the transactions to be processed
+		for partyId, detector := range detectors {
+			<-detector
+			t.Logf("Assembler %d received all transactions", partyId+1)
+		}
+
+		close(signalChanel) // signal that all assemblers received the transactions
+	}()
+
+	select {
+	case <-signalChanel:
+	case <-time.After(duration * time.Second):
+		require.Fail(t, "Not all assemblers have received all transactions yet")
+	}
+}
+
+func WaitForComplaint(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, shardID types.ShardID, duration time.Duration) {
+	waitForEvent(t, armaNetwork, parties, shardID,
+		fmt.Sprintf("Created complaint with term \\d+ and reason batcher \\d+ \\(shard %d\\) complaining; second strike timeout occurred", shardID),
+		"Complaint", duration)
+}
+
+func WaitForTermChange(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, shardID types.ShardID, duration time.Duration) {
+	waitForEvent(t, armaNetwork, parties, shardID,
+		fmt.Sprintf("Batcher \\d+ acting as primary \\(shard %d\\)", shardID),
+		"Term change", duration)
+}
+
+func waitForEvent(t *testing.T, armaNetwork *ArmaNetwork, parties []types.PartyID, shardID types.ShardID, regex string, event string, duration time.Duration) {
+	detectors := []chan bool{}
+	exitChanel := make(chan struct{})
+
+	for _, partyId := range parties {
+		batcher := armaNetwork.GeBatcher(t, partyId, shardID)
+		defer batcher.RunInfo.Session.Err.CancelDetects()
+		detectors = append(detectors, batcher.RunInfo.Session.Err.Detect("%s", regex))
+	}
+
+	wait := sync.WaitGroup{}
+	wait.Add(len(detectors))
+	signalChanel := make(chan struct{}, len(detectors))
+
+	// start goroutines to wait for events
+	for _, detector := range detectors {
+		go func() {
+			defer wait.Done()
+
+			// wait for an event to be detected
+			select {
+			case <-exitChanel:
+			case <-detector:
+				signalChanel <- struct{}{} // signal that an event was detected
+			}
+		}()
+	}
+
+	select {
+	case <-signalChanel:
+		t.Logf("%s detected for shard %d", event, shardID)
+	case <-time.After(duration * time.Second):
+		require.Fail(t, fmt.Sprintf("%s for shard %d was not detected in time", event, shardID))
+	}
+
+	close(exitChanel) // close the exit channel to signal goroutines to stop
+	wait.Wait()
+
+	close(signalChanel)
+	for range signalChanel {
+		// drain the channel
+		<-signalChanel
 	}
 }
 
