@@ -10,7 +10,6 @@ import (
 	"sort"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
@@ -45,7 +44,7 @@ func BatchToString(batchID types.BatchID) string {
 	return types.BatchIDToString(batchID)
 }
 
-func batchSizeBytes(batch core.Batch) int {
+func batchSizeBytes(batch types.Batch) int {
 	size := 0
 	for _, req := range batch.Requests() {
 		size += len(req)

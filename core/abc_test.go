@@ -54,13 +54,13 @@ func (s *bafSender) SendBAF(baf arma_types.BatchAttestationFragment) {
 
 type naiveblock struct {
 	order       core.OrderingInfo
-	batch       core.Batch
+	batch       arma_types.Batch
 	attestation arma_types.BatchAttestation
 }
 
 type naiveBlockLedger chan naiveblock
 
-func (n naiveBlockLedger) Append(batch core.Batch, orderingInfo core.OrderingInfo) {
+func (n naiveBlockLedger) Append(batch arma_types.Batch, orderingInfo core.OrderingInfo) {
 	n <- naiveblock{
 		order: orderingInfo,
 		batch: batch,
@@ -93,15 +93,15 @@ func (r *shardCommitter) Height(partyID arma_types.PartyID) uint64 {
 	return 0
 }
 
-func (r *shardCommitter) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) core.Batch {
+func (r *shardCommitter) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) arma_types.Batch {
 	return nil
 }
 
 type shardReplicator struct {
-	subscribers []chan core.Batch
+	subscribers []chan arma_types.Batch
 }
 
-func (s *shardReplicator) Replicate(shard arma_types.ShardID) <-chan core.Batch {
+func (s *shardReplicator) Replicate(shard arma_types.ShardID) <-chan arma_types.Batch {
 	return s.subscribers[shard]
 }
 
@@ -135,7 +135,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	replicator := &shardReplicator{}
 	for i := 0; i < shardCount; i++ {
-		replicator.subscribers = append(replicator.subscribers, make(chan core.Batch, 1000))
+		replicator.subscribers = append(replicator.subscribers, make(chan arma_types.Batch, 1000))
 	}
 	assembler.Replicator = replicator
 	assembler.Logger = logger
