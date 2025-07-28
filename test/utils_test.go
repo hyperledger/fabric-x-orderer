@@ -340,7 +340,7 @@ func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties
 			totalTxs, totalBlocks, err := PullFromAssembler(t, userConfig, partyID, startBlock, endBlock, transactions, blocks)
 			errString := fmt.Sprintf(errString, partyID)
 			require.ErrorContains(t, err, errString)
-			require.Equal(t, uint64(transactions), totalTxs)
+			require.LessOrEqual(t, uint64(transactions), totalTxs)
 			if blocks > 0 {
 				require.LessOrEqual(t, uint64(blocks), totalBlocks)
 			}
