@@ -82,7 +82,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	oba3 := obaCreator.Append(batch3, 3, 1, 1)
 	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
 
-	// wait for decistion will be sent
+	// wait for decision to be sent
 	time.Sleep(time.Second)
 
 	consenterStub.Stop()
@@ -153,7 +153,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	batch3 := testutil.CreateMockBatch(1, 1, 3, []int{4})
 	batchersStub[0].SetNextBatch(batch3)
 
-	// wait for batch will be sent
+	// wait for batch to be sent
 	time.Sleep(time.Second)
 
 	batchersStub[0].Stop()
