@@ -118,6 +118,12 @@ func launchConsensus(
 		configContent, genesisBlock := loadConfigAndGenesis(configFile)
 		conf := configContent.ExtractConsenterConfig()
 
+		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := localmsp.GetDefaultSigningIdentity()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
+		}
+
 		var consenterLogger *flogging.FabricLogger
 		if testLogger != nil {
 			consenterLogger = testLogger
@@ -126,7 +132,7 @@ func launchConsensus(
 		}
 
 		srv := node.CreateGRPCConsensus(conf)
-		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, consenterLogger)
+		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, consenterLogger, signer)
 
 		defer consensus.Start()
 

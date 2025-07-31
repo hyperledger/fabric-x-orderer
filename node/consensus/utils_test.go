@@ -16,6 +16,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/core"
@@ -28,9 +30,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -94,7 +93,6 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int, addr string) []*node {
 		sk, rawPK := keygen(t)
 		sks = append(sks, sk)
 		pks = append(pks, pem.EncodeToMemory(&pem.Block{Bytes: rawPK, Type: "PUBLIC KEY"}))
-
 	}
 
 	for i := 0; i < num; i++ {
@@ -162,7 +160,9 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 		conf := makeConf(dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
 
-		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, genesisBlock, logger)
+		signer := buildSigner(conf, logger)
+
+		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, genesisBlock, logger, signer)
 		grpcRegisterAndStart(c, consenterNodes[i])
 
 		listener := &storageListener{c: make(chan *common.Block, 100)}
@@ -238,7 +238,9 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 	})
 	require.NoError(t, err)
 
-	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, nil, setup.loggers[nodeIndex])
+	signer := crypto.ECDSASigner(*newConsenterNode.sk)
+
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, nil, setup.loggers[nodeIndex], signer)
 
 	grpcRegisterAndStart(setup.consensusNodes[nodeIndex], newConsenterNode)
 
@@ -261,4 +263,18 @@ func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id 
 
 	controlEvent := &core.ControlEvent{BAF: baf}
 	return node.SubmitRequest(controlEvent.Bytes())
+}
+
+func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger types.Logger) consensus.Signer {
+	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
+	if privateKey == nil || privateKey.Bytes == nil {
+		logger.Panicf("Failed decoding private key PEM")
+	}
+
+	priv, err := x509.ParsePKCS8PrivateKey(privateKey.Bytes)
+	if err != nil {
+		logger.Panicf("Failed parsing private key DER: %v", err)
+	}
+
+	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }
