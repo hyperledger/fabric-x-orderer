@@ -64,6 +64,9 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	batch2 := testutil.CreateMockBatch(1, 1, 2, []int{2, 3})
 	batchersStub[0].SetNextBatch(batch2)
 
+	// let assembler retry while consenter is down
+	time.Sleep(2 * time.Second)
+
 	// restart consenter and send matching decision
 	consenterStub.Restart()
 
@@ -80,13 +83,85 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
 
 	// wait for decistion will be sent
-	time.Sleep(3 * time.Second)
+	time.Sleep(time.Second)
 
 	consenterStub.Stop()
 	consenterStub.Restart()
 
 	// send matching batch
 	batchersStub[0].SetNextBatch(batch3)
+
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 5
+	}, 3*time.Second, 100*time.Millisecond)
+}
+
+func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	numParties := 4
+	partyID := types.PartyID(1)
+	shardID := types.ShardID(1)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca)
+	defer cleanup()
+
+	consenterStub := NewStubConsenter(t, partyID, ca)
+	defer consenterStub.Shutdown()
+
+	assembler := newAssemblerTest(t, partyID, shardID, ca, batcherInfos, consenterStub.consenterInfo)
+	defer assembler.Stop()
+
+	// wait for genesis block
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 1
+	}, 3*time.Second, 100*time.Millisecond)
+
+	obaCreator, _ := NewOrderedBatchAttestationCreator()
+
+	// send batch and matching decision
+	batch1 := testutil.CreateMockBatch(1, 1, 1, []int{1})
+	batchersStub[0].SetNextBatch(batch1)
+	oba1 := obaCreator.Append(batch1, 1, 1, 1)
+	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
+
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 2
+	}, 3*time.Second, 100*time.Millisecond)
+
+	// stop batcher
+	batchersStub[0].Stop()
+
+	// let assembler retry while batcher is down
+	time.Sleep(2 * time.Second)
+
+	// send next decision
+	batch2 := testutil.CreateMockBatch(1, 1, 2, []int{2, 3})
+	oba2 := obaCreator.Append(batch2, 2, 1, 1)
+	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
+
+	// restart batcher and send matching batch
+	batchersStub[0].Restart()
+	batchersStub[0].SetNextBatch(batch2)
+
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 4
+	}, 3*time.Second, 100*time.Millisecond)
+
+	// send next batch and restart batcher
+	batch3 := testutil.CreateMockBatch(1, 1, 3, []int{4})
+	batchersStub[0].SetNextBatch(batch3)
+
+	// wait for batch will be sent
+	time.Sleep(time.Second)
+
+	batchersStub[0].Stop()
+	batchersStub[0].Restart()
+
+	// send matching decision
+	oba3 := obaCreator.Append(batch3, 3, 1, 1)
+	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 5
