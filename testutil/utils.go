@@ -47,6 +47,17 @@ func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string
 	require.NoError(t, err)
 }
 
+// EditLocalMSPDirForNode overrides the local msp directory of node.
+// This override is used in tests where nodes are running in the same process and a shared default BCCSP variable (global variable) is built.
+// This variable holds the key store path which is the local msp path and is initialized once with the local msp of the first node.
+// To avoid conflicts and access to wrong directories, we can override the local msp field to be the same.
+func EditLocalMSPDirForNode(t *testing.T, path string, localMSPPath string) {
+	nodeConfig := readNodeConfigFromYaml(t, path)
+	nodeConfig.GeneralConfig.LocalMSPDir = localMSPPath
+	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
+	require.NoError(t, err)
+}
+
 func readNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
