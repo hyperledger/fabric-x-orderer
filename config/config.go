@@ -155,6 +155,7 @@ func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig 
 		NumOfgRPCStreamsPerConnection: config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
 		UseTLS:                        config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:            config.LocalConfig.TLSConfig.ClientAuthRequired,
+		RequestMaxBytes:               config.SharedConfig.BatchingConfig.RequestMaxBytes,
 	}
 	return routerConfig
 }
