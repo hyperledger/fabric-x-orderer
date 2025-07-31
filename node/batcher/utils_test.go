@@ -15,15 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -107,6 +107,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		loggers = append(loggers, logger)
 
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
+		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 		require.NoError(t, err)
 		conf := &config.BatcherNodeConfig{
 			Shards:                []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
@@ -130,7 +131,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		}
 		configs = append(configs, conf)
 
-		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{})
+		batcher := batcher.CreateBatcher(conf, logger, batcherNodes[i], stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{}, signer)
 		batchers = append(batchers, batcher)
 		batcher.Run()
 
@@ -173,7 +174,9 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 	})
 	require.NoError(t, err)
 
-	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, sc, &batcher.ConsenterControlEventSenderFactory{})
+	signer := crypto.ECDSASigner(*newBatcherNode.sk)
+
+	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
 	batcher.Run()
 
 	grpcRegisterAndStart(batcher, newBatcherNode)
