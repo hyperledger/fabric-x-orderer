@@ -32,6 +32,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -138,7 +139,8 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		}
 
 		net := consenterNodes[i].GRPCServer
-		c := consensus.CreateConsensus(conf, net, genesisBlock, logger)
+		signer := crypto.ECDSASigner(*consenterNodes[i].sk)
+		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer)
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)
@@ -197,8 +199,9 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 
 		logger := testutil.CreateLogger(t, i+int(shardID)*10)
 		loggers = append(loggers, logger)
+		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
-		batcher := batcher.CreateBatcher(batcherConf, logger, batcherNodes[i], &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
+		batcher := batcher.CreateBatcher(batcherConf, logger, batcherNodes[i], &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 		batchers = append(batchers, batcher)
 		batcher.Run()
 
@@ -294,9 +297,10 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 	}
 
 	newBatcherNode.GRPCServer, err = newGRPCServer(batcherNode.Address(), ca, kp)
-
 	require.NoError(t, err)
-	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
+	signer := crypto.ECDSASigner(*newBatcherNode.sk)
+
+	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 	batcher.Run()
 
 	gRPCServer := newBatcherNode.Server()

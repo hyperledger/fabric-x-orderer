@@ -8,8 +8,6 @@ package batcher
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/x509"
 	"encoding/pem"
 	"sort"
 	"time"
@@ -17,12 +15,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator) *Batcher {
+func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	var parties []types.PartyID
 	for shIdx, sh := range conf.Shards {
 		if sh.ShardId != conf.ShardId {
@@ -47,20 +44,18 @@ func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net
 
 	bp := NewBatchPuller(conf, ledgerArray, logger)
 
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), senderCreator, net)
+	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), senderCreator, net, signer)
 
 	return batcher
 }
 
-func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net) *Batcher {
-	privateKey := createPrivateKey(logger, config.SigningPrivateKey)
+func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, &NoopClientRequestSigVerifier{}, nil)
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
 		batcherDeliverService:     ds,
 		stateReplicator:           sr,
-		privateKey:                privateKey,
-		signer:                    crypto.ECDSASigner(*privateKey),
+		signer:                    signer,
 		logger:                    logger,
 		Net:                       net,
 		Ledger:                    ledger,
@@ -115,21 +110,6 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	}
 
 	return b
-}
-
-func createPrivateKey(logger types.Logger, signingPrivateKey node_config.RawBytes) *ecdsa.PrivateKey {
-	bl, _ := pem.Decode(signingPrivateKey)
-
-	if bl == nil || bl.Bytes == nil {
-		logger.Panicf("Signing key is not a valid PEM")
-	}
-
-	sk, err := x509.ParsePKCS8PrivateKey(bl.Bytes)
-	if err != nil {
-		logger.Panicf("Signing key is not a valid PKCS8 private key: %v", err)
-	}
-
-	return sk.(*ecdsa.PrivateKey)
 }
 
 func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) core.MemPool {

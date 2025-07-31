@@ -17,15 +17,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -65,14 +63,17 @@ func TestCLI(t *testing.T) {
 }
 
 func TestLaunchArmaNode(t *testing.T) {
+	// TODO: remove all files and add a shut down signal to the CLI
+	dir := setup(t, 1)
+	mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "router", "msp")
+
 	t.Run("TestRouter", func(t *testing.T) {
-		dir := setup(t, 1)
-		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "router")
 		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
 
@@ -97,13 +98,12 @@ func TestLaunchArmaNode(t *testing.T) {
 	})
 
 	t.Run("TestBatcher", func(t *testing.T) {
-		dir := setup(t, 1)
-		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "batcher1")
 		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editConsentersInSharedConfig(dir, 4)
 		require.NoError(t, err)
 
@@ -128,13 +128,12 @@ func TestLaunchArmaNode(t *testing.T) {
 	})
 
 	t.Run("TestConsensus", func(t *testing.T) {
-		dir := setup(t, 1)
-		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "consenter")
 		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 
 		originalLogger := testLogger
 		defer func() {
@@ -157,13 +156,12 @@ func TestLaunchArmaNode(t *testing.T) {
 	})
 
 	t.Run("TestAssembler", func(t *testing.T) {
-		dir := setup(t, 1)
-		defer os.RemoveAll(dir)
 		testLogger = flogging.MustGetLogger("arma")
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assembler")
 		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 
 		originalLogger := testLogger
 		defer func() {

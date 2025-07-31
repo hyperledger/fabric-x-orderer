@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/msp"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
@@ -117,6 +118,12 @@ func launchConsensus(
 		configContent, genesisBlock := loadConfigAndGenesis(configFile)
 		conf := configContent.ExtractConsenterConfig()
 
+		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := (*localmsp).GetDefaultSigningIdentity()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
+		}
+
 		var consenterLogger *flogging.FabricLogger
 		if testLogger != nil {
 			consenterLogger = testLogger
@@ -125,7 +132,7 @@ func launchConsensus(
 		}
 
 		srv := node.CreateGRPCConsensus(conf)
-		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, consenterLogger)
+		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, consenterLogger, signer)
 
 		defer consensus.Start()
 
@@ -150,7 +157,14 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 		if err != nil {
 			panic(fmt.Sprintf("error launching batcher, err: %s", err))
 		}
+
 		conf := config.ExtractBatcherConfig()
+
+		localmsp := msp.BuildLocalMSP(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := (*localmsp).GetDefaultSigningIdentity()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
+		}
 
 		var batcherLogger *flogging.FabricLogger
 		if testLogger != nil {
@@ -161,7 +175,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 
 		srv := node.CreateGRPCBatcher(conf)
 
-		batcher := batcher.CreateBatcher(conf, batcherLogger, srv, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{})
+		batcher := batcher.CreateBatcher(conf, batcherLogger, srv, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 		defer batcher.Run()
 
 		protos.RegisterRequestTransmitServer(srv.Server(), batcher)
