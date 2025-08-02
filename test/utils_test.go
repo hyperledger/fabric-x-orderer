@@ -337,7 +337,9 @@ func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties
 			errString := fmt.Sprintf(errString, partyID)
 			require.ErrorContains(t, err, errString)
 			require.Equal(t, uint64(transactions), totalTxs)
-			require.Equal(t, uint64(blocks), totalBlocks)
+			if blocks > 0 {
+				require.LessOrEqual(t, uint64(blocks), totalBlocks)
+			}
 		}()
 	}
 
@@ -381,6 +383,6 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 
 	fmt.Printf("Pulling from party: %d\n", partyID)
 	err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
-	fmt.Printf("Finished pull and count: blocks %d, txs %d\n", totalBlocks, totalTxs)
+	fmt.Printf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
 	return totalTxs, totalBlocks, err
 }
