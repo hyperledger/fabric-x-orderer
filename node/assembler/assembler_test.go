@@ -41,7 +41,7 @@ type assemblerTest struct {
 	orderedBatchAttestationCreator *OrderedBatchAttestationCreator
 	expecedLedgerBA                []core.OrderedBatchAttestation
 	assembler                      *assembler.Assembler
-	shardToBatcherChan             map[types.ShardID]chan types.Batch
+	shardToBatcherChan             map[types.ShardID]chan core.Batch
 	consensusBAChan                chan core.OrderedBatchAttestation
 	batchBringerMock               *assembler_mocks.FakeBatchBringer
 	ledgerMock                     *ledger_mocks.FakeAssemblerLedgerReaderWriter
@@ -65,7 +65,7 @@ func createLedgerMockWrappingRealLedger(logger types.Logger, ledgerPath string) 
 	mock := &ledger_mocks.FakeAssemblerLedgerReaderWriter{}
 	ledger, err := node_ledger.NewAssemblerLedger(logger, ledgerPath)
 
-	mock.AppendCalls(func(b types.Batch, i core.OrderingInfo) {
+	mock.AppendCalls(func(b core.Batch, i core.OrderingInfo) {
 		ledger.Append(b, i)
 	})
 	mock.AppendConfigCalls(func(b *common.Block, dn types.DecisionNum) {
@@ -151,7 +151,7 @@ func (at *assemblerTest) SendBAToAssembler(oba core.OrderedBatchAttestation) {
 	at.expecedLedgerBA = append(at.expecedLedgerBA, oba)
 }
 
-func (at *assemblerTest) SendBatchToAssembler(batch types.Batch) {
+func (at *assemblerTest) SendBatchToAssembler(batch core.Batch) {
 	at.shardToBatcherChan[batch.Shard()] <- batch
 }
 
@@ -164,7 +164,7 @@ func (at *assemblerTest) StopAssembler() {
 }
 
 func (at *assemblerTest) StartAssembler() {
-	at.shardToBatcherChan = make(map[types.ShardID]chan types.Batch)
+	at.shardToBatcherChan = make(map[types.ShardID]chan core.Batch)
 	at.consensusBAChan = make(chan core.OrderedBatchAttestation, 100_000)
 
 	prefetchIndexerFactory := &assembler.DefaultPrefetchIndexerFactory{}
@@ -179,10 +179,10 @@ func (at *assemblerTest) StartAssembler() {
 		return at.batchBringerMock
 	})
 	for _, shardId := range at.shards {
-		batchChan := make(chan types.Batch, 100_000)
+		batchChan := make(chan core.Batch, 100_000)
 		at.shardToBatcherChan[shardId] = batchChan
 	}
-	at.batchBringerMock.ReplicateCalls(func(si types.ShardID) <-chan types.Batch {
+	at.batchBringerMock.ReplicateCalls(func(si types.ShardID) <-chan core.Batch {
 		return at.shardToBatcherChan[si]
 	})
 
@@ -285,7 +285,7 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3}
 	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 	test.StartAssembler()
-	batches := []types.Batch{
+	batches := []core.Batch{
 		testutil.CreateMockBatch(1, 1, 1, []int{1}),
 		testutil.CreateMockBatch(1, 1, 2, []int{1}),
 	}

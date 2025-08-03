@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type FakeBatch struct {
@@ -359,4 +360,4 @@ func (fake *FakeBatch) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ types.Batch = new(FakeBatch)
+var _ core.Batch = new(FakeBatch)

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -104,11 +105,11 @@ func createPrefetcherBenchmarkSetup(
 		)
 	}
 
-	test.batchFetcherMock.ReplicateCalls(func(shardId types.ShardID) <-chan types.Batch {
+	test.batchFetcherMock.ReplicateCalls(func(shardId types.ShardID) <-chan core.Batch {
 		return test.shardToBatcherStub[shardId].DeliveryChan()
 	})
 
-	test.batchFetcherMock.GetBatchCalls(func(batchId types.BatchID) (types.Batch, error) {
+	test.batchFetcherMock.GetBatchCalls(func(batchId types.BatchID) (core.Batch, error) {
 		test.statsMonitor.EventsChan <- &PrefetchBenchEvent{Event: EventPrefetchIndexMissed, Data: batchId}
 		return test.shardToBatcherStub[batchId.Shard()].GetBatch(batchId)
 	})

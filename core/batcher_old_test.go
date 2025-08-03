@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 	request_mocks "github.com/hyperledger/fabric-x-orderer/request/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,22 +41,22 @@ func (*noopLedger) Height(partyID arma_types.PartyID) uint64 {
 	return 0
 }
 
-func (*noopLedger) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) arma_types.Batch {
+func (*noopLedger) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) core.Batch {
 	return nil
 }
 
 type naiveReplication struct {
-	subscribers []chan arma_types.Batch
+	subscribers []chan core.Batch
 	i           uint32
 	stopped     int32
 }
 
-func (r *naiveReplication) Replicate(_ arma_types.ShardID) <-chan arma_types.Batch {
+func (r *naiveReplication) Replicate(_ arma_types.ShardID) <-chan core.Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
 
-func (r *naiveReplication) PullBatches(_ arma_types.PartyID) <-chan arma_types.Batch {
+func (r *naiveReplication) PullBatches(_ arma_types.PartyID) <-chan core.Batch {
 	j := atomic.AddUint32(&r.i, 1)
 	return r.subscribers[j-1]
 }
@@ -79,7 +80,7 @@ func (r *naiveReplication) Height(partyID arma_types.PartyID) uint64 {
 	return 0
 }
 
-func (r *naiveReplication) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) arma_types.Batch {
+func (r *naiveReplication) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) core.Batch {
 	// TODO use in test
 	return nil
 }
@@ -179,7 +180,7 @@ func BenchmarkBatcherNetwork(b *testing.B) {
 	}
 }
 
-func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan arma_types.Batch) {
+func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan core.Batch) {
 	var batcherConf []arma_types.PartyID
 	for i := 0; i < n; i++ {
 		batcherConf = append(batcherConf, arma_types.PartyID(i))
@@ -194,10 +195,10 @@ func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan arma_type
 	r := &naiveReplication{}
 
 	for i := 1; i < n; i++ {
-		r.subscribers = append(r.subscribers, make(chan arma_types.Batch, 100))
+		r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
 	}
 
-	r.subscribers = append(r.subscribers, make(chan arma_types.Batch, 100))
+	r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
 	commit := r.PullBatches(0)
 
 	batchers[0].Ledger = r
@@ -323,7 +324,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	}
 }
 
-func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan arma_types.Batch) {
+func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan core.Batch) {
 	var batcherConf []arma_types.PartyID
 	for i := 0; i < n; i++ {
 		batcherConf = append(batcherConf, arma_types.PartyID(i))
@@ -338,10 +339,10 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan arma_types.Bat
 	r := &naiveReplication{}
 
 	for i := 1; i < n; i++ {
-		r.subscribers = append(r.subscribers, make(chan arma_types.Batch, 100))
+		r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
 	}
 
-	r.subscribers = append(r.subscribers, make(chan arma_types.Batch, 100))
+	r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
 	commit := r.PullBatches(0)
 
 	batchers[0].Ledger = r

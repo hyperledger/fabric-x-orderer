@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -98,7 +99,7 @@ func (pitv *partitionPrefetchIndexTestVars) finish() {
 }
 
 // These tests can match both Put and PutForce
-func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, types.Batch) error) {
+func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, core.Batch) error) {
 	t.Run("PuttingSameBatchTwiceShouldResultInError", func(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
@@ -270,11 +271,11 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 1; i <= 10; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
-		popedBatchChan := make(chan types.Batch)
+		popedBatchChan := make(chan core.Batch)
 
 		// Act
 		go func() {
@@ -318,14 +319,14 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 }
 
 func TestPartitionPrefetchIndex_Put(t *testing.T) {
-	putCommonTests(t, func(pi *assembler.PartitionPrefetchIndex, b types.Batch) error {
+	putCommonTests(t, func(pi *assembler.PartitionPrefetchIndex, b core.Batch) error {
 		return pi.Put(b)
 	})
 
 	t.Run("PuttingBatchAfterMaxMemoryForBatchWithSeqLessThanLastPopedWillWait", func(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 2; i <= 6; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
@@ -358,7 +359,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 2; i <= 6; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
@@ -391,7 +392,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 2; i <= 6; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
@@ -424,7 +425,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 1; i <= 4; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
@@ -447,7 +448,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 }
 
 func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
-	putCommonTests(t, func(pi *assembler.PartitionPrefetchIndex, b types.Batch) error {
+	putCommonTests(t, func(pi *assembler.PartitionPrefetchIndex, b core.Batch) error {
 		return pi.PutForce(b)
 	})
 
@@ -455,7 +456,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 0; i < 10; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
@@ -480,7 +481,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 0; i < 10; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
@@ -532,7 +533,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 0; i < 10; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
@@ -582,7 +583,7 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 1; i <= 4; i++ {
 			batches = append(batches, testutil.CreateMockBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}

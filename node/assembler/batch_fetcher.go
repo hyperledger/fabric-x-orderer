@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -26,8 +27,8 @@ import (
 
 //go:generate counterfeiter -o ./mocks/batch_fetcher.go . BatchBringer
 type BatchBringer interface {
-	Replicate(shardID types.ShardID) <-chan types.Batch
-	GetBatch(batchID types.BatchID) (types.Batch, error)
+	Replicate(shardID types.ShardID) <-chan core.Batch
+	GetBatch(batchID types.BatchID) (core.Batch, error)
 	Stop()
 }
 
@@ -92,7 +93,7 @@ func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]ty
 	}
 }
 
-func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan types.Batch {
+func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan core.Batch {
 	br.logger.Infof("Assembler %d Replicate from shard %d", br.config.PartyId, shardID)
 
 	// Find the batcher from my party in this shard.
@@ -101,7 +102,7 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan types.Batch {
 
 	br.logger.Infof("Assembler %d Replicate from shard %d, batcher endpoint: %s, batcher party: %d", br.config.PartyId, shardID, batcherToPullFrom.Endpoint, batcherToPullFrom.PartyID)
 
-	res := make(chan types.Batch, br.config.ReplicationChannelSize)
+	res := make(chan core.Batch, br.config.ReplicationChannelSize)
 
 	var partyPullerWg sync.WaitGroup
 
@@ -118,7 +119,7 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan types.Batch {
 	return res
 }
 
-func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan types.Batch, wg *sync.WaitGroup) {
+func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan core.Batch, wg *sync.WaitGroup) {
 	seq := br.initialBatchFrontier[shardID][primaryID]
 
 	endpoint := func() string {
@@ -193,7 +194,7 @@ func (br *BatchFetcher) findShardID(shardID types.ShardID) config.BatcherInfo {
 // The ShardID is taken from the batchID.
 // It polls all the batchers in parallel but cancels the requests as soon as the first match is found.
 // The Arma protocol ensures that if the batchID is from consensus, at least one batcher in the shard has it.
-func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
+func (br *BatchFetcher) GetBatch(batchID types.BatchID) (core.Batch, error) {
 	var shardInfo config.ShardInfo
 	var found bool
 	for _, shard := range br.config.Shards {
@@ -210,7 +211,7 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 	// canceling ctx will not cancel br.cancelCtx,
 	// canceling br.cancelCtx will cancel ctx.
 	ctx, cancelFunc := context.WithCancel(br.cancelCtx)
-	res := make(chan types.Batch, len(shardInfo.Batchers))
+	res := make(chan core.Batch, len(shardInfo.Batchers))
 
 	for _, fromBatcher := range shardInfo.Batchers {
 		go func(from config.BatcherInfo) {
@@ -242,7 +243,7 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 	}
 }
 
-func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom config.BatcherInfo, batchID types.BatchID, resultChan chan types.Batch) {
+func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom config.BatcherInfo, batchID types.BatchID, resultChan chan core.Batch) {
 	br.logger.Infof("Assembler trying to pull a single batch from %s, batch-ID: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(batchID))
 
 	channelName := ledger.ShardPartyToChannelName(batchID.Shard(), batchID.Primary())

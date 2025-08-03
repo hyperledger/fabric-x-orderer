@@ -5,27 +5,28 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 )
 
 type FakePartitionPrefetchIndexer struct {
-	PopOrWaitStub        func(types.BatchID) (types.Batch, error)
+	PopOrWaitStub        func(types.BatchID) (core.Batch, error)
 	popOrWaitMutex       sync.RWMutex
 	popOrWaitArgsForCall []struct {
 		arg1 types.BatchID
 	}
 	popOrWaitReturns struct {
-		result1 types.Batch
+		result1 core.Batch
 		result2 error
 	}
 	popOrWaitReturnsOnCall map[int]struct {
-		result1 types.Batch
+		result1 core.Batch
 		result2 error
 	}
-	PutStub        func(types.Batch) error
+	PutStub        func(core.Batch) error
 	putMutex       sync.RWMutex
 	putArgsForCall []struct {
-		arg1 types.Batch
+		arg1 core.Batch
 	}
 	putReturns struct {
 		result1 error
@@ -33,10 +34,10 @@ type FakePartitionPrefetchIndexer struct {
 	putReturnsOnCall map[int]struct {
 		result1 error
 	}
-	PutForceStub        func(types.Batch) error
+	PutForceStub        func(core.Batch) error
 	putForceMutex       sync.RWMutex
 	putForceArgsForCall []struct {
-		arg1 types.Batch
+		arg1 core.Batch
 	}
 	putForceReturns struct {
 		result1 error
@@ -52,22 +53,21 @@ type FakePartitionPrefetchIndexer struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakePartitionPrefetchIndexer) PopOrWait(arg1 types.BatchID) (types.Batch, error) {
+func (fake *FakePartitionPrefetchIndexer) PopOrWait(arg1 types.BatchID) (core.Batch, error) {
 	fake.popOrWaitMutex.Lock()
 	ret, specificReturn := fake.popOrWaitReturnsOnCall[len(fake.popOrWaitArgsForCall)]
 	fake.popOrWaitArgsForCall = append(fake.popOrWaitArgsForCall, struct {
 		arg1 types.BatchID
 	}{arg1})
-	stub := fake.PopOrWaitStub
-	fakeReturns := fake.popOrWaitReturns
 	fake.recordInvocation("PopOrWait", []interface{}{arg1})
 	fake.popOrWaitMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.PopOrWaitStub != nil {
+		return fake.PopOrWaitStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
+	fakeReturns := fake.popOrWaitReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -77,7 +77,7 @@ func (fake *FakePartitionPrefetchIndexer) PopOrWaitCallCount() int {
 	return len(fake.popOrWaitArgsForCall)
 }
 
-func (fake *FakePartitionPrefetchIndexer) PopOrWaitCalls(stub func(types.BatchID) (types.Batch, error)) {
+func (fake *FakePartitionPrefetchIndexer) PopOrWaitCalls(stub func(types.BatchID) (core.Batch, error)) {
 	fake.popOrWaitMutex.Lock()
 	defer fake.popOrWaitMutex.Unlock()
 	fake.PopOrWaitStub = stub
@@ -90,48 +90,47 @@ func (fake *FakePartitionPrefetchIndexer) PopOrWaitArgsForCall(i int) types.Batc
 	return argsForCall.arg1
 }
 
-func (fake *FakePartitionPrefetchIndexer) PopOrWaitReturns(result1 types.Batch, result2 error) {
+func (fake *FakePartitionPrefetchIndexer) PopOrWaitReturns(result1 core.Batch, result2 error) {
 	fake.popOrWaitMutex.Lock()
 	defer fake.popOrWaitMutex.Unlock()
 	fake.PopOrWaitStub = nil
 	fake.popOrWaitReturns = struct {
-		result1 types.Batch
+		result1 core.Batch
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakePartitionPrefetchIndexer) PopOrWaitReturnsOnCall(i int, result1 types.Batch, result2 error) {
+func (fake *FakePartitionPrefetchIndexer) PopOrWaitReturnsOnCall(i int, result1 core.Batch, result2 error) {
 	fake.popOrWaitMutex.Lock()
 	defer fake.popOrWaitMutex.Unlock()
 	fake.PopOrWaitStub = nil
 	if fake.popOrWaitReturnsOnCall == nil {
 		fake.popOrWaitReturnsOnCall = make(map[int]struct {
-			result1 types.Batch
+			result1 core.Batch
 			result2 error
 		})
 	}
 	fake.popOrWaitReturnsOnCall[i] = struct {
-		result1 types.Batch
+		result1 core.Batch
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakePartitionPrefetchIndexer) Put(arg1 types.Batch) error {
+func (fake *FakePartitionPrefetchIndexer) Put(arg1 core.Batch) error {
 	fake.putMutex.Lock()
 	ret, specificReturn := fake.putReturnsOnCall[len(fake.putArgsForCall)]
 	fake.putArgsForCall = append(fake.putArgsForCall, struct {
-		arg1 types.Batch
+		arg1 core.Batch
 	}{arg1})
-	stub := fake.PutStub
-	fakeReturns := fake.putReturns
 	fake.recordInvocation("Put", []interface{}{arg1})
 	fake.putMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.PutStub != nil {
+		return fake.PutStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.putReturns
 	return fakeReturns.result1
 }
 
@@ -141,13 +140,13 @@ func (fake *FakePartitionPrefetchIndexer) PutCallCount() int {
 	return len(fake.putArgsForCall)
 }
 
-func (fake *FakePartitionPrefetchIndexer) PutCalls(stub func(types.Batch) error) {
+func (fake *FakePartitionPrefetchIndexer) PutCalls(stub func(core.Batch) error) {
 	fake.putMutex.Lock()
 	defer fake.putMutex.Unlock()
 	fake.PutStub = stub
 }
 
-func (fake *FakePartitionPrefetchIndexer) PutArgsForCall(i int) types.Batch {
+func (fake *FakePartitionPrefetchIndexer) PutArgsForCall(i int) core.Batch {
 	fake.putMutex.RLock()
 	defer fake.putMutex.RUnlock()
 	argsForCall := fake.putArgsForCall[i]
@@ -177,22 +176,21 @@ func (fake *FakePartitionPrefetchIndexer) PutReturnsOnCall(i int, result1 error)
 	}{result1}
 }
 
-func (fake *FakePartitionPrefetchIndexer) PutForce(arg1 types.Batch) error {
+func (fake *FakePartitionPrefetchIndexer) PutForce(arg1 core.Batch) error {
 	fake.putForceMutex.Lock()
 	ret, specificReturn := fake.putForceReturnsOnCall[len(fake.putForceArgsForCall)]
 	fake.putForceArgsForCall = append(fake.putForceArgsForCall, struct {
-		arg1 types.Batch
+		arg1 core.Batch
 	}{arg1})
-	stub := fake.PutForceStub
-	fakeReturns := fake.putForceReturns
 	fake.recordInvocation("PutForce", []interface{}{arg1})
 	fake.putForceMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.PutForceStub != nil {
+		return fake.PutForceStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.putForceReturns
 	return fakeReturns.result1
 }
 
@@ -202,13 +200,13 @@ func (fake *FakePartitionPrefetchIndexer) PutForceCallCount() int {
 	return len(fake.putForceArgsForCall)
 }
 
-func (fake *FakePartitionPrefetchIndexer) PutForceCalls(stub func(types.Batch) error) {
+func (fake *FakePartitionPrefetchIndexer) PutForceCalls(stub func(core.Batch) error) {
 	fake.putForceMutex.Lock()
 	defer fake.putForceMutex.Unlock()
 	fake.PutForceStub = stub
 }
 
-func (fake *FakePartitionPrefetchIndexer) PutForceArgsForCall(i int) types.Batch {
+func (fake *FakePartitionPrefetchIndexer) PutForceArgsForCall(i int) core.Batch {
 	fake.putForceMutex.RLock()
 	defer fake.putForceMutex.RUnlock()
 	argsForCall := fake.putForceArgsForCall[i]
@@ -242,10 +240,9 @@ func (fake *FakePartitionPrefetchIndexer) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
-	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if stub != nil {
+	if fake.StopStub != nil {
 		fake.StopStub()
 	}
 }

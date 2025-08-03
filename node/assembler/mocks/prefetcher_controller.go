@@ -24,10 +24,9 @@ func (fake *FakePrefetcherController) Start() {
 	fake.startMutex.Lock()
 	fake.startArgsForCall = append(fake.startArgsForCall, struct {
 	}{})
-	stub := fake.StartStub
 	fake.recordInvocation("Start", []interface{}{})
 	fake.startMutex.Unlock()
-	if stub != nil {
+	if fake.StartStub != nil {
 		fake.StartStub()
 	}
 }
@@ -48,10 +47,9 @@ func (fake *FakePrefetcherController) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
-	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if stub != nil {
+	if fake.StopStub != nil {
 		fake.StopStub()
 	}
 }

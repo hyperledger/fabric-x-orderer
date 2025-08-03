@@ -13,7 +13,6 @@ import (
 	"time"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	arma_types_mocks "github.com/hyperledger/fabric-x-orderer/common/types/mocks"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/core/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -79,13 +78,13 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := &arma_types_mocks.FakeBatch{}
+	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
-	batchChan := make(chan arma_types.Batch)
+	batchChan := make(chan core.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
 
@@ -151,14 +150,14 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := &arma_types_mocks.FakeBatch{}
+	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(2)
 	batch.SeqReturns(0)
 	batch.RequestsReturns(reqs)
 	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
-	batchChan := make(chan arma_types.Batch)
+	batchChan := make(chan core.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
 
@@ -237,13 +236,13 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := &arma_types_mocks.FakeBatch{}
+	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
-	batchChan := make(chan arma_types.Batch)
+	batchChan := make(chan core.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
 
@@ -318,13 +317,13 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := &arma_types_mocks.FakeBatch{}
+	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
-	batchChan := make(chan arma_types.Batch)
+	batchChan := make(chan core.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
 
@@ -533,13 +532,13 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := &arma_types_mocks.FakeBatch{}
+	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(2)
 	batch.RequestsReturns(reqs)
 	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
-	batchChan := make(chan arma_types.Batch)
+	batchChan := make(chan core.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
 
@@ -713,13 +712,13 @@ func TestVerifyBatch(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := &arma_types_mocks.FakeBatch{}
+	batch := &mocks.FakeBatch{}
 	batch.PrimaryReturns(1)
 	batch.RequestsReturns(reqs)
 	batch.DigestReturns(reqs.Digest())
 
 	batchPuller := &mocks.FakeBatchPuller{}
-	batchChan := make(chan arma_types.Batch)
+	batchChan := make(chan core.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	secondaryBatcher.BatchPuller = batchPuller
 

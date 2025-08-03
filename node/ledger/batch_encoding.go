@@ -22,7 +22,7 @@ import (
 // It includes the primary PartyID and ShardID.
 var BlockMetadataIndex_PartyShard = len(common.BlockMetadataIndex_name)
 
-// FabricBatch is a types.Batch encoded in a Fabric block
+// FabricBatch is a core.Batch encoded in a Fabric block
 type FabricBatch common.Block
 
 func (b *FabricBatch) Digest() []byte {

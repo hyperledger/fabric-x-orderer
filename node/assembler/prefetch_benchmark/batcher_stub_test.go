@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
@@ -33,7 +34,7 @@ type batcherStub struct {
 	batchGenerator      *batchGenerator
 	primaryToWaitChan   map[types.PartyID]chan struct{}
 	consensusChan       chan<- types.BatchID
-	deliveryServiceChan chan types.Batch
+	deliveryServiceChan chan core.Batch
 	// prob of primary change
 	primaryChangeProb           float64
 	sameShardPartySeqProb       float64
@@ -58,7 +59,7 @@ func newBatcherStub(
 	txInBatch int,
 	monitor *statsMonitor,
 ) *batcherStub {
-	deliveryServiceChan := make(chan types.Batch, PREFETCH_STRESS_TEST_MEMORY_FACTOR*batchesPerSecond)
+	deliveryServiceChan := make(chan core.Batch, PREFETCH_STRESS_TEST_MEMORY_FACTOR*batchesPerSecond)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	bs := &batcherStub{
@@ -87,7 +88,7 @@ func newBatcherStub(
 	return bs
 }
 
-func (bs *batcherStub) DeliveryChan() <-chan types.Batch {
+func (bs *batcherStub) DeliveryChan() <-chan core.Batch {
 	return bs.deliveryServiceChan
 }
 
@@ -145,7 +146,7 @@ func (bs *batcherStub) Stop() {
 	}
 }
 
-func (bs *batcherStub) GetBatch(batchId types.BatchID) (types.Batch, error) {
+func (bs *batcherStub) GetBatch(batchId types.BatchID) (core.Batch, error) {
 	cacheWithLock := bs.primaryToBatchCacheWithLock[batchId.Primary()]
 	cacheWithLock.lock.Lock()
 	defer cacheWithLock.lock.Unlock()

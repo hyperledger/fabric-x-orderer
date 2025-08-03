@@ -8,6 +8,7 @@ package prefetch_benchmark_test
 
 import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type batchGenerator struct {
@@ -36,7 +37,7 @@ func newBatchGenerator(txInBatch, txSize int) *batchGenerator {
 	}
 }
 
-func (bg *batchGenerator) GenerateBatch(shardId types.ShardID, primaryId types.PartyID, seq types.BatchSequence, regular bool) types.Batch {
+func (bg *batchGenerator) GenerateBatch(shardId types.ShardID, primaryId types.PartyID, seq types.BatchSequence, regular bool) core.Batch {
 	requests := bg.specialRequests
 	if !regular {
 		requests = bg.emptyRequests
