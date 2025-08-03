@@ -155,7 +155,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 		conf := config.ExtractBatcherConfig()
 
 		localmsp := msp.BuildLocalMSP(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
-		signer, err := (*localmsp).GetDefaultSigningIdentity()
+		signer, err := localmsp.GetDefaultSigningIdentity()
 		if err != nil {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
 		}

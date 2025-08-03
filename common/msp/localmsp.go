@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric/msp"
 )
 
-func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *bccsp.BCCSP) *msp.MSP {
+func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *bccsp.BCCSP) msp.MSP {
 	var factoryOpts *factory.FactoryOpts
 	if bccspConfig != nil {
 		if bccspConfig.Default != "" {
@@ -57,5 +57,5 @@ func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *bccsp.BCC
 		panic(fmt.Sprintf("Failed to setup local msp with config: %v", err))
 	}
 
-	return &localmsp
+	return localmsp
 }
