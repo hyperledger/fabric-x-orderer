@@ -9,11 +9,9 @@ package ledger
 import (
 	"slices"
 
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/pkg/errors"
 )
 
@@ -87,7 +85,7 @@ func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchS
 	part.Append(batchSeq, batchedRequests)
 }
 
-func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) core.Batch {
+func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)

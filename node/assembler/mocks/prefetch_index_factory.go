@@ -57,15 +57,16 @@ func (fake *FakePrefetchIndexerFactory) Create(arg1 []types.ShardID, arg2 []type
 		arg8 assembler.BatchCacheFactory
 		arg9 assembler.PartitionPrefetchIndexerFactory
 	}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6, arg7, arg8, arg9})
+	stub := fake.CreateStub
+	fakeReturns := fake.createReturns
 	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6, arg7, arg8, arg9})
 	fake.createMutex.Unlock()
-	if fake.CreateStub != nil {
-		return fake.CreateStub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
+	if stub != nil {
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.createReturns
 	return fakeReturns.result1
 }
 

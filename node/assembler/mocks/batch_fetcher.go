@@ -5,34 +5,33 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 )
 
 type FakeBatchBringer struct {
-	GetBatchStub        func(types.BatchID) (core.Batch, error)
+	GetBatchStub        func(types.BatchID) (types.Batch, error)
 	getBatchMutex       sync.RWMutex
 	getBatchArgsForCall []struct {
 		arg1 types.BatchID
 	}
 	getBatchReturns struct {
-		result1 core.Batch
+		result1 types.Batch
 		result2 error
 	}
 	getBatchReturnsOnCall map[int]struct {
-		result1 core.Batch
+		result1 types.Batch
 		result2 error
 	}
-	ReplicateStub        func(types.ShardID) <-chan core.Batch
+	ReplicateStub        func(types.ShardID) <-chan types.Batch
 	replicateMutex       sync.RWMutex
 	replicateArgsForCall []struct {
 		arg1 types.ShardID
 	}
 	replicateReturns struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}
 	replicateReturnsOnCall map[int]struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}
 	StopStub        func()
 	stopMutex       sync.RWMutex
@@ -42,21 +41,22 @@ type FakeBatchBringer struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchBringer) GetBatch(arg1 types.BatchID) (core.Batch, error) {
+func (fake *FakeBatchBringer) GetBatch(arg1 types.BatchID) (types.Batch, error) {
 	fake.getBatchMutex.Lock()
 	ret, specificReturn := fake.getBatchReturnsOnCall[len(fake.getBatchArgsForCall)]
 	fake.getBatchArgsForCall = append(fake.getBatchArgsForCall, struct {
 		arg1 types.BatchID
 	}{arg1})
+	stub := fake.GetBatchStub
+	fakeReturns := fake.getBatchReturns
 	fake.recordInvocation("GetBatch", []interface{}{arg1})
 	fake.getBatchMutex.Unlock()
-	if fake.GetBatchStub != nil {
-		return fake.GetBatchStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.getBatchReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -66,7 +66,7 @@ func (fake *FakeBatchBringer) GetBatchCallCount() int {
 	return len(fake.getBatchArgsForCall)
 }
 
-func (fake *FakeBatchBringer) GetBatchCalls(stub func(types.BatchID) (core.Batch, error)) {
+func (fake *FakeBatchBringer) GetBatchCalls(stub func(types.BatchID) (types.Batch, error)) {
 	fake.getBatchMutex.Lock()
 	defer fake.getBatchMutex.Unlock()
 	fake.GetBatchStub = stub
@@ -79,47 +79,48 @@ func (fake *FakeBatchBringer) GetBatchArgsForCall(i int) types.BatchID {
 	return argsForCall.arg1
 }
 
-func (fake *FakeBatchBringer) GetBatchReturns(result1 core.Batch, result2 error) {
+func (fake *FakeBatchBringer) GetBatchReturns(result1 types.Batch, result2 error) {
 	fake.getBatchMutex.Lock()
 	defer fake.getBatchMutex.Unlock()
 	fake.GetBatchStub = nil
 	fake.getBatchReturns = struct {
-		result1 core.Batch
+		result1 types.Batch
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakeBatchBringer) GetBatchReturnsOnCall(i int, result1 core.Batch, result2 error) {
+func (fake *FakeBatchBringer) GetBatchReturnsOnCall(i int, result1 types.Batch, result2 error) {
 	fake.getBatchMutex.Lock()
 	defer fake.getBatchMutex.Unlock()
 	fake.GetBatchStub = nil
 	if fake.getBatchReturnsOnCall == nil {
 		fake.getBatchReturnsOnCall = make(map[int]struct {
-			result1 core.Batch
+			result1 types.Batch
 			result2 error
 		})
 	}
 	fake.getBatchReturnsOnCall[i] = struct {
-		result1 core.Batch
+		result1 types.Batch
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakeBatchBringer) Replicate(arg1 types.ShardID) <-chan core.Batch {
+func (fake *FakeBatchBringer) Replicate(arg1 types.ShardID) <-chan types.Batch {
 	fake.replicateMutex.Lock()
 	ret, specificReturn := fake.replicateReturnsOnCall[len(fake.replicateArgsForCall)]
 	fake.replicateArgsForCall = append(fake.replicateArgsForCall, struct {
 		arg1 types.ShardID
 	}{arg1})
+	stub := fake.ReplicateStub
+	fakeReturns := fake.replicateReturns
 	fake.recordInvocation("Replicate", []interface{}{arg1})
 	fake.replicateMutex.Unlock()
-	if fake.ReplicateStub != nil {
-		return fake.ReplicateStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.replicateReturns
 	return fakeReturns.result1
 }
 
@@ -129,7 +130,7 @@ func (fake *FakeBatchBringer) ReplicateCallCount() int {
 	return len(fake.replicateArgsForCall)
 }
 
-func (fake *FakeBatchBringer) ReplicateCalls(stub func(types.ShardID) <-chan core.Batch) {
+func (fake *FakeBatchBringer) ReplicateCalls(stub func(types.ShardID) <-chan types.Batch) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = stub
@@ -142,26 +143,26 @@ func (fake *FakeBatchBringer) ReplicateArgsForCall(i int) types.ShardID {
 	return argsForCall.arg1
 }
 
-func (fake *FakeBatchBringer) ReplicateReturns(result1 <-chan core.Batch) {
+func (fake *FakeBatchBringer) ReplicateReturns(result1 <-chan types.Batch) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = nil
 	fake.replicateReturns = struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}{result1}
 }
 
-func (fake *FakeBatchBringer) ReplicateReturnsOnCall(i int, result1 <-chan core.Batch) {
+func (fake *FakeBatchBringer) ReplicateReturnsOnCall(i int, result1 <-chan types.Batch) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = nil
 	if fake.replicateReturnsOnCall == nil {
 		fake.replicateReturnsOnCall = make(map[int]struct {
-			result1 <-chan core.Batch
+			result1 <-chan types.Batch
 		})
 	}
 	fake.replicateReturnsOnCall[i] = struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}{result1}
 }
 
@@ -169,9 +170,10 @@ func (fake *FakeBatchBringer) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
+	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if fake.StopStub != nil {
+	if stub != nil {
 		fake.StopStub()
 	}
 }
