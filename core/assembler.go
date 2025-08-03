@@ -28,12 +28,12 @@ type OrderedBatchAttestation interface {
 }
 
 type BatchReplicator interface {
-	Replicate(shardID types.ShardID) <-chan types.Batch
+	Replicate(shardID types.ShardID) <-chan Batch
 }
 
 type AssemblerIndex interface {
-	PopOrWait(batchId types.BatchID) (types.Batch, error)
-	Put(batch types.Batch) error
+	PopOrWait(batchId types.BatchID) (Batch, error)
+	Put(batch Batch) error
 	Stop()
 }
 
@@ -42,7 +42,7 @@ type OrderingInfo interface {
 }
 
 type AssemblerLedgerWriter interface {
-	Append(batch types.Batch, orderingInfo OrderingInfo)
+	Append(batch Batch, orderingInfo OrderingInfo)
 	Close()
 }
 
@@ -123,7 +123,7 @@ func (a *Assembler) processOrderedBatchAttestations() {
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
 }
 
-func (a *Assembler) collateAttestationWithBatch(ba types.BatchAttestation) (types.Batch, error) {
+func (a *Assembler) collateAttestationWithBatch(ba types.BatchAttestation) (Batch, error) {
 	t1 := time.Now()
 	batch, err := a.Index.PopOrWait(ba)
 	if err != nil {

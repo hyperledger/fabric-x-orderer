@@ -15,6 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 const (
@@ -51,9 +52,9 @@ func ShardPrimaryFromBatch(batchId types.BatchID) ShardPrimary {
 
 //go:generate counterfeiter -o ./mocks/partition_prefetch_index.go . PartitionPrefetchIndexer
 type PartitionPrefetchIndexer interface {
-	PopOrWait(batchId types.BatchID) (types.Batch, error)
-	Put(batch types.Batch) error
-	PutForce(batch types.Batch) error
+	PopOrWait(batchId types.BatchID) (core.Batch, error)
+	Put(batch core.Batch) error
+	PutForce(batch core.Batch) error
 	Stop()
 }
 
@@ -190,7 +191,7 @@ func (pi *PartitionPrefetchIndex) assertBatchPartition(batchId types.BatchID) {
 	}
 }
 
-func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch, error) {
+func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
 	pi.logger.Debugf("PopOrWait called for %s on batch %s", pi.getName(), BatchToString(batchId))
 	pi.assertBatchPartition(batchId)
 	pi.stateCond.L.Lock()
@@ -221,7 +222,7 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 	}
 }
 
-func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch types.Batch) error {
+func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch core.Batch) error {
 	err := pi.cache.Put(batch)
 	if err != nil {
 		return err
@@ -242,7 +243,7 @@ func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch types.Batch) error {
 	return nil
 }
 
-func (pi *PartitionPrefetchIndex) Put(batch types.Batch) error {
+func (pi *PartitionPrefetchIndex) Put(batch core.Batch) error {
 	pi.logger.Debugf("Put called for %s on batch %s", pi.getName(), BatchToString(batch))
 	pi.assertBatchPartition(batch)
 	batchSize := batchSizeBytes(batch)
@@ -273,7 +274,7 @@ func (pi *PartitionPrefetchIndex) Put(batch types.Batch) error {
 	return pi.saveOrdinaryBatch(batch)
 }
 
-func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
+func (bs *PartitionPrefetchIndex) PutForce(batch core.Batch) error {
 	bs.logger.Debugf("PutForce called for %s on batch %s", bs.getName(), BatchToString(batch))
 	bs.assertBatchPartition(batch)
 	batchSize := batchSizeBytes(batch)
@@ -301,7 +302,7 @@ func (pi *PartitionPrefetchIndex) evictOldestBatch() error {
 	return nil
 }
 
-func (pi *PartitionPrefetchIndex) removeUnsafe(batchId types.BatchID) (types.Batch, error) {
+func (pi *PartitionPrefetchIndex) removeUnsafe(batchId types.BatchID) (core.Batch, error) {
 	// try to pop from the cache
 	batch, err := pi.cache.Pop(batchId)
 	if errors.Is(err, ErrBatchDoesNotExist) {

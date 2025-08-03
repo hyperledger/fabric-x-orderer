@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -288,8 +290,8 @@ func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_
 // output of consensus and including the batches retrieved from the batchers by the assembler.
 // When generating batches, we try to cover every <shard, primary> with a batches.
 // Assuming 4 parties (1-4) and 8 shards (1-8).
-func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.OrderingInformation) {
-	var batches []types.Batch
+func createBatchesAndOrdInfo(t *testing.T, num int) ([]core.Batch, []*state.OrderingInformation) {
+	var batches []core.Batch
 	var ordInfos []*state.OrderingInformation
 	transactionCount := 0
 

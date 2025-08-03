@@ -4,8 +4,9 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 )
 
 type FakeAppendListener struct {
@@ -23,10 +24,9 @@ func (fake *FakeAppendListener) OnAppend(arg1 *common.Block) {
 	fake.onAppendArgsForCall = append(fake.onAppendArgsForCall, struct {
 		arg1 *common.Block
 	}{arg1})
-	stub := fake.OnAppendStub
 	fake.recordInvocation("OnAppend", []interface{}{arg1})
 	fake.onAppendMutex.Unlock()
-	if stub != nil {
+	if fake.OnAppendStub != nil {
 		fake.OnAppendStub(arg1)
 	}
 }

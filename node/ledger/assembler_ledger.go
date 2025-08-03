@@ -33,7 +33,7 @@ type (
 //go:generate counterfeiter -o ./mocks/assembler_ledger.go . AssemblerLedgerReaderWriter
 type AssemblerLedgerReaderWriter interface {
 	GetTxCount() uint64
-	Append(batch types.Batch, orderingInfo core.OrderingInfo)
+	Append(batch core.Batch, orderingInfo core.OrderingInfo)
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	LastOrderingInfo() (*state.OrderingInformation, error)
 	LedgerReader() blockledger.Reader
@@ -134,7 +134,7 @@ func (l *AssemblerLedger) GetTxCount() uint64 {
 	return c
 }
 
-func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo core.OrderingInfo) {
+func (l *AssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInfo) {
 	ordInfo := orderingInfo.(*state.OrderingInformation)
 	t1 := time.Now()
 	defer func() {

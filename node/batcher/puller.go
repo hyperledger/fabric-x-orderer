@@ -11,13 +11,14 @@ import (
 	"math"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc"
 )
@@ -49,7 +50,7 @@ func (bp *BatchPuller) Stop() {
 	bp.stopPuller()
 }
 
-func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
+func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan core.Batch {
 	var stopCtx context.Context
 	stopCtx, bp.stopPuller = context.WithCancel(context.Background())
 
@@ -73,7 +74,7 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 		return requestEnvelope
 	}
 
-	res := make(chan types.Batch, 100)
+	res := make(chan core.Batch, 100)
 
 	endpoint := func() string {
 		return primary.Endpoint

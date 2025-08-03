@@ -12,6 +12,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -119,7 +120,7 @@ func TestPrefetchIndex_Requests(t *testing.T) {
 // batchPerCall - should give the batch id that is given to the partition indexer method as a parameter
 func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 	t *testing.T,
-	indexerOp func(assembler.PrefetchIndexer, types.Batch),
+	indexerOp func(assembler.PrefetchIndexer, core.Batch),
 	callsCount func(*mocks.FakePartitionPrefetchIndexer) int,
 	batchPerCall func(*mocks.FakePartitionPrefetchIndexer, int) types.BatchID,
 ) {
@@ -147,7 +148,7 @@ func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 func TestPrefetchIndex_PopOrWait(t *testing.T) {
 	checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 		t,
-		func(pi assembler.PrefetchIndexer, b types.Batch) { pi.PopOrWait(b) },
+		func(pi assembler.PrefetchIndexer, b core.Batch) { pi.PopOrWait(b) },
 		func(fppi *mocks.FakePartitionPrefetchIndexer) int {
 			return fppi.PopOrWaitCallCount()
 		},
@@ -196,14 +197,14 @@ func TestPrefetchIndex_PopOrWait(t *testing.T) {
 // putOpMockReturns - mocks the return value of the put method
 func runTestsForPutOps(
 	t *testing.T,
-	putOp func(assembler.PrefetchIndexer, types.Batch) error,
+	putOp func(assembler.PrefetchIndexer, core.Batch) error,
 	callsCount func(*mocks.FakePartitionPrefetchIndexer) int,
 	batchPerCall func(*mocks.FakePartitionPrefetchIndexer, int) types.BatchID,
 	putMockReturns func(*mocks.FakePartitionPrefetchIndexer, error),
 ) {
 	checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 		t,
-		func(pi assembler.PrefetchIndexer, b types.Batch) { putOp(pi, b) },
+		func(pi assembler.PrefetchIndexer, b core.Batch) { putOp(pi, b) },
 		func(fppi *mocks.FakePartitionPrefetchIndexer) int {
 			return callsCount(fppi)
 		},
@@ -232,7 +233,7 @@ func runTestsForPutOps(
 func TestPrefetchIndex_Put(t *testing.T) {
 	runTestsForPutOps(
 		t,
-		func(pi assembler.PrefetchIndexer, b types.Batch) error { return pi.Put(b) },
+		func(pi assembler.PrefetchIndexer, b core.Batch) error { return pi.Put(b) },
 		func(fppi *mocks.FakePartitionPrefetchIndexer) int { return fppi.PutCallCount() },
 		func(fppi *mocks.FakePartitionPrefetchIndexer, i int) types.BatchID { return fppi.PutArgsForCall(i) },
 		func(fppi *mocks.FakePartitionPrefetchIndexer, err error) { fppi.PutReturns(err) },
@@ -242,7 +243,7 @@ func TestPrefetchIndex_Put(t *testing.T) {
 func TestPrefetchIndex_PutForce(t *testing.T) {
 	runTestsForPutOps(
 		t,
-		func(pi assembler.PrefetchIndexer, b types.Batch) error { return pi.PutForce(b) },
+		func(pi assembler.PrefetchIndexer, b core.Batch) error { return pi.PutForce(b) },
 		func(fppi *mocks.FakePartitionPrefetchIndexer) int { return fppi.PutForceCallCount() },
 		func(fppi *mocks.FakePartitionPrefetchIndexer, i int) types.BatchID {
 			return fppi.PutForceArgsForCall(i)

@@ -41,16 +41,15 @@ func (fake *FakeBatchCacheFactory) Create(arg1 assembler.ShardPrimary) *assemble
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
 		arg1 assembler.ShardPrimary
 	}{arg1})
-	stub := fake.CreateStub
-	fakeReturns := fake.createReturns
 	fake.recordInvocation("Create", []interface{}{arg1})
 	fake.createMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.CreateStub != nil {
+		return fake.CreateStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createReturns
 	return fakeReturns.result1
 }
 
@@ -103,16 +102,15 @@ func (fake *FakeBatchCacheFactory) CreateWithTag(arg1 assembler.ShardPrimary, ar
 		arg1 assembler.ShardPrimary
 		arg2 string
 	}{arg1, arg2})
-	stub := fake.CreateWithTagStub
-	fakeReturns := fake.createWithTagReturns
 	fake.recordInvocation("CreateWithTag", []interface{}{arg1, arg2})
 	fake.createWithTagMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2)
+	if fake.CreateWithTagStub != nil {
+		return fake.CreateWithTagStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createWithTagReturns
 	return fakeReturns.result1
 }
 

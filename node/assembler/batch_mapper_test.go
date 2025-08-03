@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
@@ -70,7 +71,7 @@ func TestBatchMapper_Has(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batches := []types.Batch{}
+		batches := []core.Batch{}
 		for i := 0; i < 3; i++ {
 			batch := testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(i), nil)
 			batches = append(batches, batch)
@@ -123,7 +124,7 @@ func TestBatchMapper_Get(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batches := []types.Batch{
+		batches := []core.Batch{
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
@@ -144,7 +145,7 @@ func TestBatchMapper_Get(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, fakeItem](partition)
-		batches := []types.Batch{
+		batches := []core.Batch{
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),
@@ -276,7 +277,7 @@ func TestBatchMapper_Remove(t *testing.T) {
 		// Arrange
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		mapper := assembler.NewBatchMapper[types.BatchID, int](partition)
-		batches := []types.Batch{
+		batches := []core.Batch{
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(1), nil),
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(2), nil),
 			testutil.CreateEmptyMockBatch(partition.Shard, partition.Primary, types.BatchSequence(3), nil),

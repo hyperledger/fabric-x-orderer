@@ -21,9 +21,8 @@ type FakeBatchAttestation struct {
 	}
 	DigestStub        func() []byte
 	digestMutex       sync.RWMutex
-	digestArgsForCall []struct {
-	}
-	digestReturns struct {
+	digestArgsForCall []struct{}
+	digestReturns     struct {
 		result1 []byte
 	}
 	digestReturnsOnCall map[int]struct {
@@ -31,9 +30,8 @@ type FakeBatchAttestation struct {
 	}
 	FragmentsStub        func() []types.BatchAttestationFragment
 	fragmentsMutex       sync.RWMutex
-	fragmentsArgsForCall []struct {
-	}
-	fragmentsReturns struct {
+	fragmentsArgsForCall []struct{}
+	fragmentsReturns     struct {
 		result1 []types.BatchAttestationFragment
 	}
 	fragmentsReturnsOnCall map[int]struct {
@@ -41,9 +39,8 @@ type FakeBatchAttestation struct {
 	}
 	PrimaryStub        func() types.PartyID
 	primaryMutex       sync.RWMutex
-	primaryArgsForCall []struct {
-	}
-	primaryReturns struct {
+	primaryArgsForCall []struct{}
+	primaryReturns     struct {
 		result1 types.PartyID
 	}
 	primaryReturnsOnCall map[int]struct {
@@ -51,9 +48,8 @@ type FakeBatchAttestation struct {
 	}
 	SeqStub        func() types.BatchSequence
 	seqMutex       sync.RWMutex
-	seqArgsForCall []struct {
-	}
-	seqReturns struct {
+	seqArgsForCall []struct{}
+	seqReturns     struct {
 		result1 types.BatchSequence
 	}
 	seqReturnsOnCall map[int]struct {
@@ -61,9 +57,8 @@ type FakeBatchAttestation struct {
 	}
 	SerializeStub        func() []byte
 	serializeMutex       sync.RWMutex
-	serializeArgsForCall []struct {
-	}
-	serializeReturns struct {
+	serializeArgsForCall []struct{}
+	serializeReturns     struct {
 		result1 []byte
 	}
 	serializeReturnsOnCall map[int]struct {
@@ -71,9 +66,8 @@ type FakeBatchAttestation struct {
 	}
 	ShardStub        func() types.ShardID
 	shardMutex       sync.RWMutex
-	shardArgsForCall []struct {
-	}
-	shardReturns struct {
+	shardArgsForCall []struct{}
+	shardReturns     struct {
 		result1 types.ShardID
 	}
 	shardReturnsOnCall map[int]struct {
@@ -152,8 +146,7 @@ func (fake *FakeBatchAttestation) DeserializeReturnsOnCall(i int, result1 error)
 func (fake *FakeBatchAttestation) Digest() []byte {
 	fake.digestMutex.Lock()
 	ret, specificReturn := fake.digestReturnsOnCall[len(fake.digestArgsForCall)]
-	fake.digestArgsForCall = append(fake.digestArgsForCall, struct {
-	}{})
+	fake.digestArgsForCall = append(fake.digestArgsForCall, struct{}{})
 	stub := fake.DigestStub
 	fakeReturns := fake.digestReturns
 	fake.recordInvocation("Digest", []interface{}{})
@@ -205,8 +198,7 @@ func (fake *FakeBatchAttestation) DigestReturnsOnCall(i int, result1 []byte) {
 func (fake *FakeBatchAttestation) Fragments() []types.BatchAttestationFragment {
 	fake.fragmentsMutex.Lock()
 	ret, specificReturn := fake.fragmentsReturnsOnCall[len(fake.fragmentsArgsForCall)]
-	fake.fragmentsArgsForCall = append(fake.fragmentsArgsForCall, struct {
-	}{})
+	fake.fragmentsArgsForCall = append(fake.fragmentsArgsForCall, struct{}{})
 	stub := fake.FragmentsStub
 	fakeReturns := fake.fragmentsReturns
 	fake.recordInvocation("Fragments", []interface{}{})
@@ -258,8 +250,7 @@ func (fake *FakeBatchAttestation) FragmentsReturnsOnCall(i int, result1 []types.
 func (fake *FakeBatchAttestation) Primary() types.PartyID {
 	fake.primaryMutex.Lock()
 	ret, specificReturn := fake.primaryReturnsOnCall[len(fake.primaryArgsForCall)]
-	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct {
-	}{})
+	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct{}{})
 	stub := fake.PrimaryStub
 	fakeReturns := fake.primaryReturns
 	fake.recordInvocation("Primary", []interface{}{})
@@ -311,8 +302,7 @@ func (fake *FakeBatchAttestation) PrimaryReturnsOnCall(i int, result1 types.Part
 func (fake *FakeBatchAttestation) Seq() types.BatchSequence {
 	fake.seqMutex.Lock()
 	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
-	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
-	}{})
+	fake.seqArgsForCall = append(fake.seqArgsForCall, struct{}{})
 	stub := fake.SeqStub
 	fakeReturns := fake.seqReturns
 	fake.recordInvocation("Seq", []interface{}{})
@@ -364,8 +354,7 @@ func (fake *FakeBatchAttestation) SeqReturnsOnCall(i int, result1 types.BatchSeq
 func (fake *FakeBatchAttestation) Serialize() []byte {
 	fake.serializeMutex.Lock()
 	ret, specificReturn := fake.serializeReturnsOnCall[len(fake.serializeArgsForCall)]
-	fake.serializeArgsForCall = append(fake.serializeArgsForCall, struct {
-	}{})
+	fake.serializeArgsForCall = append(fake.serializeArgsForCall, struct{}{})
 	stub := fake.SerializeStub
 	fakeReturns := fake.serializeReturns
 	fake.recordInvocation("Serialize", []interface{}{})
@@ -417,8 +406,7 @@ func (fake *FakeBatchAttestation) SerializeReturnsOnCall(i int, result1 []byte) 
 func (fake *FakeBatchAttestation) Shard() types.ShardID {
 	fake.shardMutex.Lock()
 	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
-	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
-	}{})
+	fake.shardArgsForCall = append(fake.shardArgsForCall, struct{}{})
 	stub := fake.ShardStub
 	fakeReturns := fake.shardReturns
 	fake.recordInvocation("Shard", []interface{}{})

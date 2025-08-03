@@ -10,9 +10,8 @@ import (
 type FakeBatchID struct {
 	DigestStub        func() []byte
 	digestMutex       sync.RWMutex
-	digestArgsForCall []struct {
-	}
-	digestReturns struct {
+	digestArgsForCall []struct{}
+	digestReturns     struct {
 		result1 []byte
 	}
 	digestReturnsOnCall map[int]struct {
@@ -20,9 +19,8 @@ type FakeBatchID struct {
 	}
 	PrimaryStub        func() types.PartyID
 	primaryMutex       sync.RWMutex
-	primaryArgsForCall []struct {
-	}
-	primaryReturns struct {
+	primaryArgsForCall []struct{}
+	primaryReturns     struct {
 		result1 types.PartyID
 	}
 	primaryReturnsOnCall map[int]struct {
@@ -30,9 +28,8 @@ type FakeBatchID struct {
 	}
 	SeqStub        func() types.BatchSequence
 	seqMutex       sync.RWMutex
-	seqArgsForCall []struct {
-	}
-	seqReturns struct {
+	seqArgsForCall []struct{}
+	seqReturns     struct {
 		result1 types.BatchSequence
 	}
 	seqReturnsOnCall map[int]struct {
@@ -40,9 +37,8 @@ type FakeBatchID struct {
 	}
 	ShardStub        func() types.ShardID
 	shardMutex       sync.RWMutex
-	shardArgsForCall []struct {
-	}
-	shardReturns struct {
+	shardArgsForCall []struct{}
+	shardReturns     struct {
 		result1 types.ShardID
 	}
 	shardReturnsOnCall map[int]struct {
@@ -55,8 +51,7 @@ type FakeBatchID struct {
 func (fake *FakeBatchID) Digest() []byte {
 	fake.digestMutex.Lock()
 	ret, specificReturn := fake.digestReturnsOnCall[len(fake.digestArgsForCall)]
-	fake.digestArgsForCall = append(fake.digestArgsForCall, struct {
-	}{})
+	fake.digestArgsForCall = append(fake.digestArgsForCall, struct{}{})
 	stub := fake.DigestStub
 	fakeReturns := fake.digestReturns
 	fake.recordInvocation("Digest", []interface{}{})
@@ -108,8 +103,7 @@ func (fake *FakeBatchID) DigestReturnsOnCall(i int, result1 []byte) {
 func (fake *FakeBatchID) Primary() types.PartyID {
 	fake.primaryMutex.Lock()
 	ret, specificReturn := fake.primaryReturnsOnCall[len(fake.primaryArgsForCall)]
-	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct {
-	}{})
+	fake.primaryArgsForCall = append(fake.primaryArgsForCall, struct{}{})
 	stub := fake.PrimaryStub
 	fakeReturns := fake.primaryReturns
 	fake.recordInvocation("Primary", []interface{}{})
@@ -161,8 +155,7 @@ func (fake *FakeBatchID) PrimaryReturnsOnCall(i int, result1 types.PartyID) {
 func (fake *FakeBatchID) Seq() types.BatchSequence {
 	fake.seqMutex.Lock()
 	ret, specificReturn := fake.seqReturnsOnCall[len(fake.seqArgsForCall)]
-	fake.seqArgsForCall = append(fake.seqArgsForCall, struct {
-	}{})
+	fake.seqArgsForCall = append(fake.seqArgsForCall, struct{}{})
 	stub := fake.SeqStub
 	fakeReturns := fake.seqReturns
 	fake.recordInvocation("Seq", []interface{}{})
@@ -214,8 +207,7 @@ func (fake *FakeBatchID) SeqReturnsOnCall(i int, result1 types.BatchSequence) {
 func (fake *FakeBatchID) Shard() types.ShardID {
 	fake.shardMutex.Lock()
 	ret, specificReturn := fake.shardReturnsOnCall[len(fake.shardArgsForCall)]
-	fake.shardArgsForCall = append(fake.shardArgsForCall, struct {
-	}{})
+	fake.shardArgsForCall = append(fake.shardArgsForCall, struct{}{})
 	stub := fake.ShardStub
 	fakeReturns := fake.shardReturns
 	fake.recordInvocation("Shard", []interface{}{})

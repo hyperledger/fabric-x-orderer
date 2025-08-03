@@ -32,16 +32,15 @@ func (fake *FakeTimerFactory) Create(arg1 time.Duration, arg2 func()) assembler.
 		arg1 time.Duration
 		arg2 func()
 	}{arg1, arg2})
-	stub := fake.CreateStub
-	fakeReturns := fake.createReturns
 	fake.recordInvocation("Create", []interface{}{arg1, arg2})
 	fake.createMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2)
+	if fake.CreateStub != nil {
+		return fake.CreateStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createReturns
 	return fakeReturns.result1
 }
 
