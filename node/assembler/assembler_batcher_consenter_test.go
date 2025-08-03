@@ -120,7 +120,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
 	// send batch and matching decision
-	batch1 := createTestBatch(1, 1, 1, []int{1})
+	batch1 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{1}})
 	batchersStub[0].SetNextBatch(batch1)
 	oba1 := obaCreator.Append(batch1, 1, 1, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
@@ -136,7 +136,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// send next decision
-	batch2 := createTestBatch(1, 1, 2, []int{2, 3})
+	batch2 := types.NewSimpleBatch(2, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
 	oba2 := obaCreator.Append(batch2, 2, 1, 1)
 	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
 
@@ -149,7 +149,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// send next batch and restart batcher
-	batch3 := createTestBatch(1, 1, 3, []int{4})
+	batch3 := types.NewSimpleBatch(3, 1, 1, types.BatchedRequests{[]byte{4}})
 	batchersStub[0].SetNextBatch(batch3)
 
 	// wait for batch to be sent

@@ -597,10 +597,7 @@ func TestResubmitPending(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := &arma_types_mocks.FakeBatch{}
-	batch.PrimaryReturns(1)
-	batch.RequestsReturns(reqs)
-	batch.DigestReturns(reqs.Digest())
+	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
 
 	batchPuller := &mocks.FakeBatchPuller{}
 	batchChan := make(chan arma_types.Batch)
