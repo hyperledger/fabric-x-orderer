@@ -226,12 +226,12 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 		case <-ctx.Done():
 			cancelFunc()
 			return nil, fmt.Errorf("operation canceled")
-		case fetchedBatch := <-res:
+		case fb := <-res:
 			count++
-			if fetchedBatch.Shard() == batchID.Shard() && fetchedBatch.Primary() == batchID.Primary() && fetchedBatch.Seq() == batchID.Seq() && bytes.Equal(fetchedBatch.Digest(), batchID.Digest()) {
-				br.logger.Infof("Found batch %v", fetchedBatch)
+			if fb.Shard() == batchID.Shard() && fb.Primary() == batchID.Primary() && fb.Seq() == batchID.Seq() && bytes.Equal(fb.Digest(), batchID.Digest()) {
+				br.logger.Infof("Found batch <%d,%d,%d> with digest %s", fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
 				cancelFunc()
-				return fetchedBatch, nil
+				return fb, nil
 			} else if count == len(shardInfo.Batchers) {
 				br.logger.Errorf("We got responses from all %d batchers in shard %d, but none match the desired BatchID: %s", count, shardInfo.ShardId, types.BatchIDToString(batchID))
 
@@ -274,7 +274,7 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		br.clientConfig,
 	)
 	if err != nil {
-		br.logger.Errorf("Assembler failed to pull batch %s from %v", types.BatchIDToString(batchID), batcherToPullFrom)
+		br.logger.Errorf("Assembler failed to pull batch %s from batcher %d with endpoint %s", types.BatchIDToString(batchID), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint)
 		resultChan <- nil
 	}
 
