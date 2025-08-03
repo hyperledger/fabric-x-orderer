@@ -15,8 +15,10 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 
@@ -76,6 +78,12 @@ func GenerateCryptoConfig(networkConfig *genconfig.Network, outputDir string) er
 
 	// create crypto config material for each party
 	err = createNetworkCryptoMaterial(outputDir, networkConfig)
+	if err != nil {
+		return err
+	}
+
+	// for each organization, copy the ca and tlsca directories to the msp/cacerts and msp/tlscacerts for each node.
+	err = copyCACerts(networkConfig, outputDir)
 	if err != nil {
 		return err
 	}
@@ -142,6 +150,11 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		if err != nil {
 			return err
 		}
+		// add admin certs
+		// TODO: create an admin cert for all nodes instead of copying existing sign certs
+		src := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), "router", "msp", "signcerts")
+		dst := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), "router", "msp", "admincerts")
+		copyPEMFiles(src, dst)
 
 		// signing crypto for batchers
 		for j, batcherEndpoint := range party.BatchersEndpoints {
@@ -149,6 +162,10 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 			if err != nil {
 				return err
 			}
+			// add admin certs
+			src := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), fmt.Sprintf("batcher%d", j+1), "msp", "signcerts")
+			dst := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), fmt.Sprintf("batcher%d", j+1), "msp", "admincerts")
+			copyPEMFiles(src, dst)
 		}
 
 		// signing crypto to consenter
@@ -354,4 +371,80 @@ func getNodeIPs(network *genconfig.Network) []string {
 		nodeIPs = append(nodeIPs, trimPortFromEndpoint(party.AssemblerEndpoint))
 	}
 	return nodeIPs
+}
+
+func copyCACerts(networkConfig *genconfig.Network, outputDir string) error {
+	for i, party := range networkConfig.Parties {
+		orgDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1))
+		partyDir := filepath.Join(orgDir, "orderers", fmt.Sprintf("party%d", i+1))
+		caDir := filepath.Join(orgDir, "ca")
+		tlscaDir := filepath.Join(orgDir, "tlsca")
+
+		roles := []string{"router", "assembler", "consenter"}
+		for j := range party.BatchersEndpoints {
+			roles = append(roles, fmt.Sprintf("batcher%d", j+1))
+		}
+
+		for _, role := range roles {
+			caDstDir := filepath.Join(partyDir, role, "msp", "cacerts")
+			tlscaDstDir := filepath.Join(partyDir, role, "msp", "tlscacerts")
+			err := copyPEMFiles(caDir, caDstDir)
+			if err != nil {
+				return fmt.Errorf("err copying file from %s to %s", caDir, caDstDir)
+			}
+			err = copyPEMFiles(tlscaDir, tlscaDstDir)
+			if err != nil {
+				return fmt.Errorf("err copying file from %s to %s", tlscaDir, tlscaDstDir)
+			}
+		}
+	}
+
+	return nil
+}
+
+func copyPEMFiles(srcDir, destDir string) error {
+	if srcDir == "" {
+		return fmt.Errorf("missing source directory")
+	}
+
+	if destDir == "" {
+		return fmt.Errorf("missing destination directory")
+	}
+
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return fmt.Errorf("error reading dource directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".pem") {
+			continue
+		}
+
+		srcPath := filepath.Join(srcDir, entry.Name())
+		destPath := filepath.Join(destDir, entry.Name())
+
+		if err := copyFile(srcPath, destPath); err != nil {
+			return fmt.Errorf("error copying %s: %w", entry.Name(), err)
+		}
+	}
+
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
