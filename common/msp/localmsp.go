@@ -10,11 +10,10 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/hyperledger/fabric-x-orderer/config/bccsp"
 	"github.com/hyperledger/fabric/msp"
 )
 
-func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *bccsp.BCCSP) msp.MSP {
+func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *factory.FactoryOpts) msp.MSP {
 	var factoryOpts *factory.FactoryOpts
 	if bccspConfig != nil {
 		if bccspConfig.Default != "" {
