@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,12 +32,12 @@ type naiveIndex struct {
 	sync.Map
 }
 
-func (n *naiveIndex) Put(batch core.Batch) error {
+func (n *naiveIndex) Put(batch types.Batch) error {
 	n.Store(string(batch.Digest()), batch)
 	return nil
 }
 
-func (n *naiveIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
+func (n *naiveIndex) PopOrWait(batchId types.BatchID) (types.Batch, error) {
 	for {
 		val, exists := n.Load(string(batchId.Digest()))
 
@@ -49,7 +48,7 @@ func (n *naiveIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
 		defer func() {
 			n.Delete(string(batchId.Digest()))
 		}()
-		return val.(core.Batch), nil
+		return val.(types.Batch), nil
 	}
 }
 
@@ -152,7 +151,7 @@ func (noba *naiveOrderedBatchAttestation) OrderingInfo() core.OrderingInfo {
 
 type naiveAssemblerLedger chan core.OrderedBatchAttestation
 
-func (n naiveAssemblerLedger) Append(batch core.Batch, orderingInfo core.OrderingInfo) {
+func (n naiveAssemblerLedger) Append(batch types.Batch, orderingInfo core.OrderingInfo) {
 	noba := &naiveOrderedBatchAttestation{
 		ba: &naiveBatchAttestation{
 			primary: batch.Primary(),
@@ -187,9 +186,9 @@ func TestAssembler(t *testing.T) {
 
 	digests := make(map[string]struct{})
 
-	var batches [][]core.Batch
+	var batches [][]types.Batch
 	for shardID := types.ShardID(0); shardID < types.ShardID(shardCount); shardID++ {
-		var batchesForShard []core.Batch
+		var batchesForShard []types.Batch
 		for seq := types.BatchSequence(0); seq < types.BatchSequence(batchNum); seq++ {
 			buff := make([]byte, 1024)
 			binary.BigEndian.PutUint16(buff, uint16(shardID))
@@ -263,7 +262,7 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 
 	var shards []types.ShardID
 	for i := 0; i < shardCount; i++ {
-		r.subscribers = append(r.subscribers, make(chan core.Batch, 100))
+		r.subscribers = append(r.subscribers, make(chan types.Batch, 100))
 		shards = append(shards, types.ShardID(i))
 	}
 
