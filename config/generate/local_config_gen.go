@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/utils"
-
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
@@ -198,7 +198,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 		},
 		LocalMSPDir: filepath.Join(partyPath, nodeRole, "msp"),
 		LocalMSPID:  fmt.Sprintf("OrdererOrg%d", generalConfigParams.partyID),
-		BCCSP:       config.BCCSP{},
+		BCCSP:       &factory.FactoryOpts{},
 		LogSpec:     generalConfigParams.logLevel,
 	}
 
