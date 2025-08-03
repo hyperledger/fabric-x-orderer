@@ -1,0 +1,74 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+package requestfilter
+
+import (
+	"fmt"
+
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric/protoutil"
+	"google.golang.org/protobuf/proto"
+)
+
+type SigFilter struct{}
+
+func NewSigFilter(config FilterConfig) *SigFilter {
+	// TODO
+	return &SigFilter{}
+}
+
+func (sf *SigFilter) Verify(request *comm.Request) error {
+	// get config and policy - TBD
+
+	signedData, err := requestToSignedData(request)
+	if err != nil {
+		return fmt.Errorf("failed to convert request to signedData : %s", err)
+	}
+	_ = signedData
+
+	// verify the signature according to policy - TBD
+	return nil
+}
+
+// requestToSignedData verifies the request structure and returns the payload, identity and signature in a SignedData
+func requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
+	if request == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+
+	payload := &common.Payload{}
+	err := proto.Unmarshal(request.Payload, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if payload.Header == nil {
+		return nil, fmt.Errorf("missing header in request's payload")
+	}
+
+	if payload.Header.SignatureHeader == nil {
+		return nil, fmt.Errorf("missing signature header in payload's header")
+	}
+
+	shdr := &common.SignatureHeader{}
+	err = proto.Unmarshal(payload.Header.SignatureHeader, shdr)
+	if err != nil {
+		return nil, fmt.Errorf("failed unmarshaling signature header, err %s", err)
+	}
+
+	return &protoutil.SignedData{
+		Data:      request.Payload,
+		Identity:  shdr.Creator,
+		Signature: request.Signature,
+	}, nil
+}
+
+func (sf *SigFilter) Update(config FilterConfig) error {
+	// TODO
+	return nil
+}
