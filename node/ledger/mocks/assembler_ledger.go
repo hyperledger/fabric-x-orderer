@@ -14,10 +14,10 @@ import (
 )
 
 type FakeAssemblerLedgerReaderWriter struct {
-	AppendStub        func(core.Batch, core.OrderingInfo)
+	AppendStub        func(types.Batch, core.OrderingInfo)
 	appendMutex       sync.RWMutex
 	appendArgsForCall []struct {
-		arg1 core.Batch
+		arg1 types.Batch
 		arg2 core.OrderingInfo
 	}
 	AppendConfigStub        func(*common.Block, types.DecisionNum)
@@ -81,10 +81,10 @@ type FakeAssemblerLedgerReaderWriter struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) Append(arg1 core.Batch, arg2 core.OrderingInfo) {
+func (fake *FakeAssemblerLedgerReaderWriter) Append(arg1 types.Batch, arg2 core.OrderingInfo) {
 	fake.appendMutex.Lock()
 	fake.appendArgsForCall = append(fake.appendArgsForCall, struct {
-		arg1 core.Batch
+		arg1 types.Batch
 		arg2 core.OrderingInfo
 	}{arg1, arg2})
 	stub := fake.AppendStub
@@ -101,13 +101,13 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendCallCount() int {
 	return len(fake.appendArgsForCall)
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendCalls(stub func(core.Batch, core.OrderingInfo)) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendCalls(stub func(types.Batch, core.OrderingInfo)) {
 	fake.appendMutex.Lock()
 	defer fake.appendMutex.Unlock()
 	fake.AppendStub = stub
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (core.Batch, core.OrderingInfo) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (types.Batch, core.OrderingInfo) {
 	fake.appendMutex.RLock()
 	defer fake.appendMutex.RUnlock()
 	argsForCall := fake.appendArgsForCall[i]

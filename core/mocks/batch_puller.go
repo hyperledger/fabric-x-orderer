@@ -9,16 +9,16 @@ import (
 )
 
 type FakeBatchPuller struct {
-	PullBatchesStub        func(types.PartyID) <-chan core.Batch
+	PullBatchesStub        func(types.PartyID) <-chan types.Batch
 	pullBatchesMutex       sync.RWMutex
 	pullBatchesArgsForCall []struct {
 		arg1 types.PartyID
 	}
 	pullBatchesReturns struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}
 	pullBatchesReturnsOnCall map[int]struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}
 	StopStub        func()
 	stopMutex       sync.RWMutex
@@ -28,7 +28,7 @@ type FakeBatchPuller struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchPuller) PullBatches(arg1 types.PartyID) <-chan core.Batch {
+func (fake *FakeBatchPuller) PullBatches(arg1 types.PartyID) <-chan types.Batch {
 	fake.pullBatchesMutex.Lock()
 	ret, specificReturn := fake.pullBatchesReturnsOnCall[len(fake.pullBatchesArgsForCall)]
 	fake.pullBatchesArgsForCall = append(fake.pullBatchesArgsForCall, struct {
@@ -53,7 +53,7 @@ func (fake *FakeBatchPuller) PullBatchesCallCount() int {
 	return len(fake.pullBatchesArgsForCall)
 }
 
-func (fake *FakeBatchPuller) PullBatchesCalls(stub func(types.PartyID) <-chan core.Batch) {
+func (fake *FakeBatchPuller) PullBatchesCalls(stub func(types.PartyID) <-chan types.Batch) {
 	fake.pullBatchesMutex.Lock()
 	defer fake.pullBatchesMutex.Unlock()
 	fake.PullBatchesStub = stub
@@ -66,26 +66,26 @@ func (fake *FakeBatchPuller) PullBatchesArgsForCall(i int) types.PartyID {
 	return argsForCall.arg1
 }
 
-func (fake *FakeBatchPuller) PullBatchesReturns(result1 <-chan core.Batch) {
+func (fake *FakeBatchPuller) PullBatchesReturns(result1 <-chan types.Batch) {
 	fake.pullBatchesMutex.Lock()
 	defer fake.pullBatchesMutex.Unlock()
 	fake.PullBatchesStub = nil
 	fake.pullBatchesReturns = struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}{result1}
 }
 
-func (fake *FakeBatchPuller) PullBatchesReturnsOnCall(i int, result1 <-chan core.Batch) {
+func (fake *FakeBatchPuller) PullBatchesReturnsOnCall(i int, result1 <-chan types.Batch) {
 	fake.pullBatchesMutex.Lock()
 	defer fake.pullBatchesMutex.Unlock()
 	fake.PullBatchesStub = nil
 	if fake.pullBatchesReturnsOnCall == nil {
 		fake.pullBatchesReturnsOnCall = make(map[int]struct {
-			result1 <-chan core.Batch
+			result1 <-chan types.Batch
 		})
 	}
 	fake.pullBatchesReturnsOnCall[i] = struct {
-		result1 <-chan core.Batch
+		result1 <-chan types.Batch
 	}{result1}
 }
 

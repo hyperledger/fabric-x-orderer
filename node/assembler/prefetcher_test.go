@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -22,7 +21,7 @@ type prefetcherTestVars struct {
 	shards                 []types.ShardID
 	parties                []types.PartyID
 	batchRequestChan       chan types.BatchID
-	shardToReplicationChan map[types.ShardID]chan core.Batch
+	shardToReplicationChan map[types.ShardID]chan types.Batch
 	prefetcher             *assembler.Prefetcher
 	prefetchIndexMock      *assembler_mocks.FakePrefetchIndexer
 	batchFetcherMock       *assembler_mocks.FakeBatchBringer
@@ -33,15 +32,15 @@ func setupPrefetcherTest(t *testing.T, shards []types.ShardID, parties []types.P
 		shards:                 shards,
 		parties:                parties,
 		batchRequestChan:       make(chan types.BatchID, 10),
-		shardToReplicationChan: make(map[types.ShardID]chan core.Batch, len(shards)),
+		shardToReplicationChan: make(map[types.ShardID]chan types.Batch, len(shards)),
 		prefetchIndexMock:      &assembler_mocks.FakePrefetchIndexer{},
 		batchFetcherMock:       &assembler_mocks.FakeBatchBringer{},
 	}
 	for _, shardId := range shards {
-		vars.shardToReplicationChan[shardId] = make(chan core.Batch, 10)
+		vars.shardToReplicationChan[shardId] = make(chan types.Batch, 10)
 	}
 	vars.prefetchIndexMock.RequestsReturns(vars.batchRequestChan)
-	vars.batchFetcherMock.ReplicateCalls(func(shard types.ShardID) <-chan core.Batch {
+	vars.batchFetcherMock.ReplicateCalls(func(shard types.ShardID) <-chan types.Batch {
 		return vars.shardToReplicationChan[shard]
 	})
 	vars.prefetcher = assembler.NewPrefetcher(
@@ -64,15 +63,15 @@ func TestPrefetcher_BatchesReceivedByReplicationAreBeingIndexed(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3}
 	test := setupPrefetcherTest(t, shards, parties)
 	defer test.finish()
-	shardToReplicatedChan := map[types.ShardID]chan core.Batch{
-		shards[0]: make(chan core.Batch),
-		shards[1]: make(chan core.Batch),
+	shardToReplicatedChan := map[types.ShardID]chan types.Batch{
+		shards[0]: make(chan types.Batch),
+		shards[1]: make(chan types.Batch),
 	}
-	shardToBatch := map[types.ShardID]core.Batch{
+	shardToBatch := map[types.ShardID]types.Batch{
 		shards[0]: testutil.CreateEmptyMockBatch(shards[0], parties[0], 0, nil),
 		shards[1]: testutil.CreateEmptyMockBatch(shards[1], parties[2], 0, nil),
 	}
-	test.batchFetcherMock.ReplicateCalls(func(shard types.ShardID) <-chan core.Batch {
+	test.batchFetcherMock.ReplicateCalls(func(shard types.ShardID) <-chan types.Batch {
 		return shardToReplicatedChan[shard]
 	})
 

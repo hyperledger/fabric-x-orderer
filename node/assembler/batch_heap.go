@@ -10,11 +10,10 @@ import (
 	"container/heap"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 type BatchHeapItem[T any] struct {
-	Batch core.Batch
+	Batch types.Batch
 	Value T
 }
 

@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 )
 
 //go:generate counterfeiter -o ./mocks/prefetch_index.go . PrefetchIndexer
 type PrefetchIndexer interface {
-	PopOrWait(batchId types.BatchID) (core.Batch, error)
-	Put(batch core.Batch) error
-	PutForce(batch core.Batch) error
+	PopOrWait(batchId types.BatchID) (types.Batch, error)
+	Put(batch types.Batch) error
+	PutForce(batch types.Batch) error
 	Requests() <-chan types.BatchID
 	Stop()
 }
@@ -102,7 +101,7 @@ func NewPrefetchIndex(
 	return pi
 }
 
-func (pi *PrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
+func (pi *PrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch, error) {
 	t1 := time.Now()
 	defer func() {
 		pi.logger.Debugf("PrefetchIndex PopOrWait %s in %v", BatchToString(batchId), time.Since(t1))
@@ -111,7 +110,7 @@ func (pi *PrefetchIndex) PopOrWait(batchId types.BatchID) (core.Batch, error) {
 	return partitionIndex.PopOrWait(batchId)
 }
 
-func (pi *PrefetchIndex) Put(batch core.Batch) error {
+func (pi *PrefetchIndex) Put(batch types.Batch) error {
 	t1 := time.Now()
 	defer func() {
 		pi.logger.Debugf("PrefetchIndex Put %s in %v", BatchToString(batch), time.Since(t1))
@@ -120,7 +119,7 @@ func (pi *PrefetchIndex) Put(batch core.Batch) error {
 	return partitionIndex.Put(batch)
 }
 
-func (pi *PrefetchIndex) PutForce(batch core.Batch) error {
+func (pi *PrefetchIndex) PutForce(batch types.Batch) error {
 	t1 := time.Now()
 	defer func() {
 		pi.logger.Debugf("PrefetchIndex PutForce with force %s in %v", BatchToString(batch), time.Since(t1))
