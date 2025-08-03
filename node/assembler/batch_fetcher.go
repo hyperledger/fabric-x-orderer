@@ -9,7 +9,6 @@ package assembler
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -151,7 +150,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 			br.logger.Errorf("Assembler pulled from %s a block that cannot be converted to a FabricBatch: %s", batcherToPullFrom.Endpoint, errFB)
 			return
 		}
-		br.logger.Infof("Assembler pulled from %s batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
+		br.logger.Infof("Assembler pulled from %s batch %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
 		resultChan <- fb
 	}
 
@@ -229,7 +228,7 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 		case fb := <-res:
 			count++
 			if fb.Shard() == batchID.Shard() && fb.Primary() == batchID.Primary() && fb.Seq() == batchID.Seq() && bytes.Equal(fb.Digest(), batchID.Digest()) {
-				br.logger.Infof("Found batch <%d,%d,%d> with digest %s", fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
+				br.logger.Infof("Found batch %s", types.BatchIDToString(fb))
 				cancelFunc()
 				return fb, nil
 			} else if count == len(shardInfo.Batchers) {
@@ -274,7 +273,7 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		br.clientConfig,
 	)
 	if err != nil {
-		br.logger.Errorf("Assembler failed to pull batch %s from batcher %d with endpoint %s", types.BatchIDToString(batchID), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint)
+		br.logger.Errorf("Assembler failed to pull batch %s from batcher: shard: %d, party: %d, endpoint: %s", types.BatchIDToString(batchID), batchID.Shard(), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint)
 		resultChan <- nil
 	}
 
