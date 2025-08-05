@@ -23,7 +23,7 @@ func fillHeapWithBatches(t *testing.T, heap *assembler.BatchHeap[int], partition
 	items := []*assembler.BatchHeapItem[int]{}
 	for i := 0; i < numberOfBatches; i++ {
 		item := &assembler.BatchHeapItem[int]{
-			Batch: createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(i), []byte{byte(i)}),
+			Batch: createTestBatch(partition.Shard, partition.Primary, types.BatchSequence(i), []byte{byte(i)}),
 			Value: i,
 		}
 		items = append(items, item)
@@ -81,7 +81,7 @@ func TestHeap_NonPrimitiveGenericValueWorksAsExpected(t *testing.T) {
 	// push items
 	for i := byte(0); i < 10; i++ {
 		item := &assembler.BatchHeapItem[[]byte]{
-			Batch: createEmptyTestBatch(partition.Shard, partition.Primary, types.BatchSequence(i), []byte{i}),
+			Batch: createTestBatch(partition.Shard, partition.Primary, types.BatchSequence(i), []byte{i}),
 			Value: []byte{i, i, i},
 		}
 		items = append(items, item)
@@ -153,7 +153,7 @@ func TestHeap_Has(t *testing.T) {
 		heap := assembler.NewBatchHeap(partition, sequenceComparator)
 
 		// Act
-		exists := heap.Has(createEmptyTestBatch(1, 1, 1, []byte{1, 2, 3}))
+		exists := heap.Has(createTestBatch(1, 1, 1, []byte{1, 2, 3}))
 
 		// Assert
 		require.False(t, exists)
@@ -272,11 +272,11 @@ func TestHeap_Push(t *testing.T) {
 		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
 		heap := assembler.NewBatchHeap(partition, sequenceComparator)
 		item1 := &assembler.BatchHeapItem[int]{
-			Batch: createEmptyTestBatch(1, 1, 1, []byte{1}),
+			Batch: createTestBatch(1, 1, 1, []byte{1}),
 			Value: 1,
 		}
 		item2 := &assembler.BatchHeapItem[int]{
-			Batch: createEmptyTestBatch(1, 1, 1, []byte{1}),
+			Batch: createTestBatch(1, 1, 1, []byte{1}),
 			Value: 2,
 		}
 

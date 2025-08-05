@@ -67,8 +67,8 @@ func TestPrefetcher_BatchesReceivedByReplicationAreBeingIndexed(t *testing.T) {
 		shards[1]: make(chan types.Batch),
 	}
 	shardToBatch := map[types.ShardID]types.Batch{
-		shards[0]: createEmptyTestBatch(shards[0], parties[0], 0, nil),
-		shards[1]: createEmptyTestBatch(shards[1], parties[2], 0, nil),
+		shards[0]: createTestBatch(shards[0], parties[0], 0, nil),
+		shards[1]: createTestBatch(shards[1], parties[2], 0, nil),
 	}
 	test.batchFetcherMock.ReplicateCalls(func(shard types.ShardID) <-chan types.Batch {
 		return shardToReplicatedChan[shard]
@@ -96,7 +96,7 @@ func TestPrefetcher_RequestedBatchWillBeFetchedByFetcherOnce(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3}
 	test := setupPrefetcherTest(t, shards, parties)
 	defer test.finish()
-	batch := createEmptyTestBatch(test.shards[0], test.parties[0], 10, nil)
+	batch := createTestBatch(test.shards[0], test.parties[0], 10, nil)
 	test.batchFetcherMock.GetBatchReturns(batch, nil)
 
 	// Act
@@ -115,7 +115,7 @@ func TestPrefetcher_RequestedBatchWillBeFetchedByFetcherAndForcePutToIndex(t *te
 	parties := []types.PartyID{1, 2, 3}
 	test := setupPrefetcherTest(t, shards, parties)
 	defer test.finish()
-	batch := createEmptyTestBatch(test.shards[0], test.parties[0], 10, nil)
+	batch := createTestBatch(test.shards[0], test.parties[0], 10, nil)
 	test.batchFetcherMock.GetBatchReturns(batch, nil)
 
 	// Act

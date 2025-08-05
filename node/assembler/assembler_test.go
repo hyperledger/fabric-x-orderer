@@ -285,8 +285,8 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 	test.StartAssembler()
 	batches := []types.Batch{
-		createTestBatch(1, 1, 1, []int{1}),
-		createTestBatch(1, 1, 2, []int{1}),
+		createTestBatchWithSize(1, 1, 1, []int{1}),
+		createTestBatchWithSize(1, 1, 2, []int{1}),
 	}
 
 	// Act

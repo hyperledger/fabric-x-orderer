@@ -101,7 +101,7 @@ func TestPrefetchIndex_Requests(t *testing.T) {
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := createTestBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 
 		// Act
 		test.partitionToRequestsChan[assembler.ShardPrimaryFromBatch(batch)] <- batch
@@ -126,8 +126,8 @@ func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch1 := createTestBatch(test.shards[0], test.parties[0], 0, []int{1})
-		batch2 := createTestBatch(test.shards[1], test.parties[1], 0, []int{1})
+		batch1 := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
+		batch2 := createTestBatchWithSize(test.shards[1], test.parties[1], 0, []int{1})
 		batch1PartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch1)]
 		batch2PartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch2)]
 
@@ -159,7 +159,7 @@ func TestPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := createTestBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
 		batchPartitionIndexer.PopOrWaitReturns(batch, nil)
 
@@ -175,7 +175,7 @@ func TestPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := createTestBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
 		expectedErr := utils.ErrOperationCancelled
 		batchPartitionIndexer.PopOrWaitReturns(nil, expectedErr)
@@ -215,7 +215,7 @@ func runTestsForPutOps(
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := createTestBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
 		expectedErr := utils.ErrOperationCancelled
 		putMockReturns(batchPartitionIndexer, expectedErr)

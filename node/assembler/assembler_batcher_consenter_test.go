@@ -48,7 +48,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
 	// send batch and matching decision
-	batch1 := createTestBatch(1, 1, 1, []int{1})
+	batch1 := createTestBatchWithSize(1, 1, 1, []int{1})
 	batchersStub[0].SetNextBatch(batch1)
 	oba1 := obaCreator.Append(batch1, 1, 1, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
@@ -60,7 +60,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	// stop consenter and send next batch
 	consenterStub.Stop()
 
-	batch2 := createTestBatch(1, 1, 2, []int{2, 3})
+	batch2 := createTestBatchWithSize(1, 1, 2, []int{2, 3})
 	batchersStub[0].SetNextBatch(batch2)
 
 	// let assembler retry while consenter is down
@@ -77,7 +77,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// send next decision and restart consenter
-	batch3 := createTestBatch(1, 1, 3, []int{4})
+	batch3 := createTestBatchWithSize(1, 1, 3, []int{4})
 	oba3 := obaCreator.Append(batch3, 3, 1, 1)
 	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
 

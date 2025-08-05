@@ -102,7 +102,7 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, ty
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, 0, []int{1})
 
 		// Act
 		require.NoError(t, put(test.partitionPrefetchIndex, batch))
@@ -116,7 +116,7 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, ty
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, 0, []int{1})
 
 		// Act
 		require.NoError(t, put(test.partitionPrefetchIndex, batch))
@@ -131,7 +131,7 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, ty
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{test.maxSizeBytes + 1})
+		batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, 0, []int{test.maxSizeBytes + 1})
 
 		// Act
 		err := put(test.partitionPrefetchIndex, batch)
@@ -144,8 +144,8 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, ty
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch1 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 0, []byte{1})
-		batch2 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 0, []byte{2})
+		batch1 := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []byte{1})
+		batch2 := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []byte{2})
 
 		// Act & Assert
 		require.NoError(t, put(test.partitionPrefetchIndex, batch1))
@@ -158,7 +158,7 @@ func TestPartitionPrefetchIndex_AutoEviction(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, 0, []int{1})
 		test.partitionPrefetchIndex.Put(batch)
 
 		// Act
@@ -176,7 +176,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
 		shardId := test.partition.Shard
-		batch := createTestBatch(shardId, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(shardId, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.Put(batch))
 
 		// Act
@@ -192,7 +192,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
 		shardId := test.partition.Shard
-		batch := createTestBatch(shardId, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(shardId, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.Put(batch))
 
 		// Act
@@ -208,7 +208,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
 		shardId := test.partition.Shard
-		batch := createTestBatch(shardId, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(shardId, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.Put(batch))
 
 		// Act
@@ -222,7 +222,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		putBatch := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 9, nil)
+		putBatch := createTestBatch(test.partition.Shard, test.partition.Primary, 9, nil)
 		popBatchId := createTestBatchId(test.partition.Shard, test.partition.Primary, 6, nil)
 
 		// Act
@@ -243,7 +243,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		putBatch := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, 6, nil)
+		putBatch := createTestBatch(test.partition.Shard, test.partition.Primary, 6, nil)
 		popBatchId := createTestBatchId(test.partition.Shard, test.partition.Primary, 9, nil)
 
 		// Act
@@ -271,7 +271,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 1; i <= 10; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		popedBatchChan := make(chan types.Batch)
 
@@ -300,8 +300,8 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		defer test.finish()
-		batch1 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{1})
-		batch2 := createEmptyTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{2})
+		batch1 := createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{1})
+		batch2 := createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(1), []byte{2})
 		test.partitionPrefetchIndex.Put(batch1)
 
 		// Act
@@ -326,7 +326,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		test := setupPartitionPrefetchIndexTest(t, 3)
 		batches := []types.Batch{}
 		for i := 2; i <= 6; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		// put seq 3
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[0]))
@@ -359,7 +359,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 2; i <= 6; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		// put seq 2
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[0]))
@@ -392,7 +392,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 2; i <= 6; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		// put seq 2
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[0]))
@@ -425,7 +425,7 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 1; i <= 4; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 
 		// Act
@@ -456,7 +456,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 0; i < 10; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 
 		// Act
@@ -481,7 +481,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 0; i < 10; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 
 		// Act
@@ -502,7 +502,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, 0, []int{1})
 		require.NoError(t, test.partitionPrefetchIndex.PutForce(batch))
 
 		// Act
@@ -518,7 +518,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
 		defer test.finish()
-		batch := createTestBatch(test.partition.Shard, test.partition.Primary, 0, []int{1})
+		batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, 0, []int{1})
 
 		// Act
 		require.NoError(t, test.partitionPrefetchIndex.PutForce(batch))
@@ -533,7 +533,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 0; i < 10; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[1]))
 		require.NoError(t, test.partitionPrefetchIndex.Put(batches[2]))
@@ -583,7 +583,7 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		defer test.finish()
 		batches := []types.Batch{}
 		for i := 1; i <= 4; i++ {
-			batches = append(batches, createTestBatch(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
+			batches = append(batches, createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1}))
 		}
 		errs := []error{}
 

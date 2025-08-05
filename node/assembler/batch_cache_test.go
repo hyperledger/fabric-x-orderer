@@ -67,7 +67,7 @@ func TestBatchCache_Has(t *testing.T) {
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
 		batches := []types.Batch{}
 		for i := 0; i < 3; i++ {
-			batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(i), nil)
+			batch := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(i), nil)
 			batches = append(batches, batch)
 			require.NoError(t, cache.Put(batch))
 
@@ -83,7 +83,7 @@ func TestBatchCache_Has(t *testing.T) {
 	t.Run("ReturnsFalseIfDigestMismatch", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batchId := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
+		batchId := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
 		batchIdDifferentDigest := createTestBatchId(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2, 3, 4})
 		cache.Put(batchId)
 
@@ -102,9 +102,9 @@ func TestBatchCache_Pop(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
 		batches := []types.Batch{
-			createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil),
-			createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil),
-			createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), nil),
+			createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil),
+			createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil),
+			createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), nil),
 		}
 		for _, batch := range batches {
 			require.NoError(t, cache.Put(batch))
@@ -121,10 +121,10 @@ func TestBatchCache_Pop(t *testing.T) {
 	t.Run("GettingUnexistingBatchWillRaiseAnError", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		cache.Put(createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil))
+		cache.Put(createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil))
 
 		// Act
-		_, err := cache.Pop(createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil))
+		_, err := cache.Pop(createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), nil))
 
 		// Assert
 		require.ErrorIs(t, err, assembler.ErrBatchDoesNotExist)
@@ -133,8 +133,8 @@ func TestBatchCache_Pop(t *testing.T) {
 	t.Run("WhenMultipleDigestsBatchesReturnsTheCorrectBatch", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
-		batchDifferentDigest := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2, 3, 4})
+		batch := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3})
+		batchDifferentDigest := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2, 3, 4})
 		require.NoError(t, cache.Put(batch))
 		require.NoError(t, cache.Put(batchDifferentDigest))
 
@@ -156,7 +156,7 @@ func TestBatchCache_Put(t *testing.T) {
 	t.Run("SinglePutAndThenGetShouldReturnTheBatch", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
+		batch := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
 
 		// Act
 		require.NoError(t, cache.Put(batch))
@@ -171,7 +171,7 @@ func TestBatchCache_Put(t *testing.T) {
 	t.Run("MultiplePutsOnSameBatchWillRaiseAnError", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch := createEmptyTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
+		batch := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), nil)
 		require.NoError(t, cache.Put(batch))
 
 		// Act
@@ -188,9 +188,9 @@ func TestBatchCache_SizeBytes(t *testing.T) {
 	t.Run("PuttingMultipleBatchesShouldIncreaseSizeAccordingly", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch1 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
-		batch2 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
-		batch3 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
+		batch1 := createTestBatchWithSize(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
+		batch2 := createTestBatchWithSize(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
+		batch3 := createTestBatchWithSize(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
 		require.NoError(t, cache.Put(batch1))
 		require.NoError(t, cache.Put(batch2))
 		require.NoError(t, cache.Put(batch3))
@@ -205,9 +205,9 @@ func TestBatchCache_SizeBytes(t *testing.T) {
 	t.Run("RemovingBatchesShouldDecreaseSizeAccordingly", func(t *testing.T) {
 		// Arrange
 		cache := assembler.NewBatchCache(assembler.ShardPrimary{Shard: 1, Primary: 1}, batchCacheTestDefaultTag)
-		batch1 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
-		batch2 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
-		batch3 := createTestBatch(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
+		batch1 := createTestBatchWithSize(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{1})
+		batch2 := createTestBatchWithSize(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{2})
+		batch3 := createTestBatchWithSize(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []int{3})
 		require.NoError(t, cache.Put(batch1))
 		require.NoError(t, cache.Put(batch2))
 		require.NoError(t, cache.Put(batch3))
