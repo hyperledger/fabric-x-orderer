@@ -64,8 +64,6 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
 	logger.Infof("Started pulling from: %s", channel)
 
-	time.Sleep(time.Second)
-
 	select {
 	case <-context.Done():
 		logger.Infof("Returning since context is done")
@@ -84,8 +82,11 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 		endpointToPullFrom := endpoint()
 		logger.Infof("Endpoint to pull from is %s", endpointToPullFrom)
 		if endpointToPullFrom == "" {
-			logger.Errorf("No one to pull from, waiting...")
-			continue
+			logger.Errorf("No one to pull from (empty endpoint), returning")
+			if onClose != nil {
+				onClose()
+			}
+			return
 		}
 
 		if count > 0 {
