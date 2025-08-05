@@ -10,15 +10,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -129,7 +127,7 @@ func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer)
 	return fmt.Errorf("not implemented")
 }
 
-func (sb *stubBatcher) SetNextBatch(batch core.Batch) {
+func (sb *stubBatcher) SetNextBatch(batch types.Batch) {
 	block, _ := ledger.NewFabricBatchFromRequests(sb.partyID, sb.shardID, batch.Seq(), batch.Requests(), []byte(""))
 	sb.batches <- (*common.Block)(block)
 }

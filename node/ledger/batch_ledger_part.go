@@ -9,13 +9,11 @@ package ledger
 import (
 	"fmt"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
@@ -89,7 +87,7 @@ func (b *BatchLedgerPart) Height() uint64 {
 }
 
 // RetrieveBatchByNumber retrieves the batch with a specific sequence, or returns nil if not found.
-func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) core.Batch {
+func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) types.Batch {
 	block, err := b.ledger.RetrieveBlockByNumber(seq)
 	if err != nil {
 		b.logger.Errorf("Batch not found: %d, err: %s", seq, err)
