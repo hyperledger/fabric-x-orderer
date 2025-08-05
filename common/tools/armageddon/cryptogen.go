@@ -20,9 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
-
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
 )
 
@@ -173,6 +172,10 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		if err != nil {
 			return err
 		}
+		// add admin certs
+		src = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), "consenter", "msp", "signcerts")
+		dst = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "orderers", fmt.Sprintf("party%d", party.ID), "consenter", "msp", "admincerts")
+		copyPEMFiles(src, dst)
 
 		// signing crypto to assembler
 		err = createSignCertAndPrivateKeyForNode(signCA, dir, party.AssemblerEndpoint, "assembler", party.ID, nil)

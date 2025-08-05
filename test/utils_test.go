@@ -139,7 +139,8 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		}
 
 		net := consenterNodes[i].GRPCServer
-		c := consensus.CreateConsensus(conf, net, genesisBlock, logger)
+		signer := crypto.ECDSASigner(*consenterNodes[i].sk)
+		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer)
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)

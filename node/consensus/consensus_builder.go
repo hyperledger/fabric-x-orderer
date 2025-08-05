@@ -17,6 +17,11 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
@@ -27,17 +32,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-
-	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
-	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
-	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *common.Block, logger arma_types.Logger) *Consensus {
+func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *common.Block, logger arma_types.Logger, signer Signer) *Consensus {
 	logger.Infof("Creating consensus, party: %d, address: %s, with genesis block: %t", conf.PartyId, conf.ListenAddress, genesisBlock != nil)
 
 	var currentNodes []uint64
@@ -77,7 +76,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 		CurrentNodes: currentNodes,
 		Storage:      consLedger,
 		SigVerifier:  buildVerifier(conf.Consenters, conf.Shards, logger),
-		Signer:       buildSigner(conf, logger),
+		Signer:       signer,
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
@@ -86,20 +85,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 	c.BFT.Synchronizer = c.Synchronizer
 
 	return c
-}
-
-func buildSigner(conf *config.ConsenterNodeConfig, logger arma_types.Logger) Signer {
-	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
-	if privateKey == nil || privateKey.Bytes == nil {
-		logger.Panicf("Failed decoding private key PEM")
-	}
-
-	priv, err := x509.ParsePKCS8PrivateKey(privateKey.Bytes)
-	if err != nil {
-		logger.Panicf("Failed parsing private key DER: %v", err)
-	}
-
-	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }
 
 func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *consensus.Consensus {
