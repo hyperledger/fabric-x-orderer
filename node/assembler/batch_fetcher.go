@@ -9,7 +9,6 @@ package assembler
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -151,7 +150,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 			br.logger.Errorf("Assembler pulled from %s a block that cannot be converted to a FabricBatch: %s", batcherToPullFrom.Endpoint, errFB)
 			return
 		}
-		br.logger.Infof("Assembler pulled from %s batch <%d,%d,%d> with digest %s", batcherToPullFrom.Endpoint, fb.Shard(), fb.Primary(), fb.Seq(), hex.EncodeToString(fb.Digest()))
+		br.logger.Infof("Assembler pulled from %s batch %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
 		resultChan <- fb
 	}
 
@@ -226,12 +225,12 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 		case <-ctx.Done():
 			cancelFunc()
 			return nil, fmt.Errorf("operation canceled")
-		case fetchedBatch := <-res:
+		case fb := <-res:
 			count++
-			if fetchedBatch.Shard() == batchID.Shard() && fetchedBatch.Primary() == batchID.Primary() && fetchedBatch.Seq() == batchID.Seq() && bytes.Equal(fetchedBatch.Digest(), batchID.Digest()) {
-				br.logger.Infof("Found batch %v", fetchedBatch)
+			if fb.Shard() == batchID.Shard() && fb.Primary() == batchID.Primary() && fb.Seq() == batchID.Seq() && bytes.Equal(fb.Digest(), batchID.Digest()) {
+				br.logger.Infof("Found batch %s", types.BatchIDToString(fb))
 				cancelFunc()
-				return fetchedBatch, nil
+				return fb, nil
 			} else if count == len(shardInfo.Batchers) {
 				br.logger.Errorf("We got responses from all %d batchers in shard %d, but none match the desired BatchID: %s", count, shardInfo.ShardId, types.BatchIDToString(batchID))
 
@@ -274,7 +273,7 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		br.clientConfig,
 	)
 	if err != nil {
-		br.logger.Errorf("Assembler failed to pull batch %s from %v", types.BatchIDToString(batchID), batcherToPullFrom)
+		br.logger.Errorf("Assembler failed to pull batch %s from batcher: shard: %d, party: %d, endpoint: %s", types.BatchIDToString(batchID), batchID.Shard(), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint)
 		resultChan <- nil
 	}
 
