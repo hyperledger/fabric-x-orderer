@@ -111,7 +111,6 @@ func TestArmageddonWithTLSWithNoSampleConfigPathFlag(t *testing.T) {
 //  4. Run armageddon load command to make 10000 txs and send them to all routers at multiple rates (5000 for each rate)
 //  5. In parallel, run armageddon receive command to pull blocks from the assembler and report results , number of txs should be 40000
 func TestLoadStepsAndReceive(t *testing.T) {
-	t.Skip()
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
