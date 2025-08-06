@@ -63,25 +63,54 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 
 func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
 	logger.Infof("Started pulling from: %s", channel)
-	for {
-		time.Sleep(time.Second)
 
-		select {
-		case <-context.Done():
-			logger.Infof("Returning since context is done")
-			if onClose != nil {
-				onClose()
-			}
-			return
-		default:
+	select {
+	case <-context.Done():
+		logger.Infof("Returning since context is done")
+		if onClose != nil {
+			onClose()
 		}
+		return
+	default:
+	}
+
+	count := 0
+	retryInterval := minRetryInterval
+
+	for {
 
 		endpointToPullFrom := endpoint()
 		logger.Infof("Endpoint to pull from is %s", endpointToPullFrom)
 		if endpointToPullFrom == "" {
-			logger.Errorf("No one to pull from, waiting...")
-			continue
+			logger.Errorf("No one to pull from (empty endpoint), returning")
+			if onClose != nil {
+				onClose()
+			}
+			return
 		}
+
+		if count > 0 {
+			if count > 1 {
+				retryInterval = 2 * retryInterval
+			}
+			if retryInterval > maxRetryInterval {
+				retryInterval = maxRetryInterval
+			}
+
+			logger.Infof("Going to try pulling again in %s, channel: %s, endpoint: %s", retryInterval, channel, endpointToPullFrom)
+
+			select {
+			case <-context.Done():
+				logger.Infof("Returning since context is done")
+				if onClose != nil {
+					onClose()
+				}
+				return
+			case <-time.After(retryInterval):
+				logger.Debugf("Attempt %d to connect to %s", count, endpointToPullFrom)
+			}
+		}
+		count++
 
 		conn, err := cc.Dial(endpointToPullFrom)
 		if err != nil {
