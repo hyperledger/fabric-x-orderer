@@ -40,10 +40,6 @@ func createTestBatchId(shard types.ShardID, primary types.PartyID, seq types.Bat
 	return types.NewSimpleBatch(seq, shard, primary, types.BatchedRequests{req})
 }
 
-// TODO create and use a batch id equal function everywhere
 func assertBatchIdsEquals(t *testing.T, expectedBatchId, actualBatchId types.BatchID) {
-	require.Equal(t, expectedBatchId.Shard(), actualBatchId.Shard())
-	require.Equal(t, expectedBatchId.Primary(), actualBatchId.Primary())
-	require.Equal(t, expectedBatchId.Seq(), actualBatchId.Seq())
-	require.Equal(t, expectedBatchId.Digest(), actualBatchId.Digest())
+	require.True(t, types.BatchIDEqual(expectedBatchId, actualBatchId))
 }
