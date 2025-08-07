@@ -16,11 +16,9 @@ import (
 	"time"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	arma_types_mocks "github.com/hyperledger/fabric-x-orderer/common/types/mocks"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -125,6 +123,39 @@ func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (arma_types.BatchAt
 	return &baf, nil
 }
 
+type testBA struct {
+	digest []byte
+	bafs   []arma_types.BatchAttestationFragment
+}
+
+func (tba *testBA) Fragments() []arma_types.BatchAttestationFragment {
+	return tba.bafs
+}
+
+func (tba *testBA) Digest() []byte {
+	return tba.digest
+}
+
+func (tba *testBA) Seq() arma_types.BatchSequence {
+	return 0
+}
+
+func (tba *testBA) Primary() arma_types.PartyID {
+	return 0
+}
+
+func (tba *testBA) Shard() arma_types.ShardID {
+	return 0
+}
+
+func (tba *testBA) Serialize() []byte {
+	panic("not implemented")
+}
+
+func (tba *testBA) Deserialize([]byte) error {
+	panic("not implemented")
+}
+
 func TestAssemblerBatcherConsenter(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 	shardCount := 10
@@ -173,9 +204,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 				newState, aggregatedBAFs := consenter.SimulateStateTransition(state, events)
 				state = newState
 				for _, bafs := range aggregatedBAFs {
-					ba := &arma_types_mocks.FakeBatchAttestation{}
-					ba.DigestReturns(bafs[0].Digest())
-					ba.FragmentsReturns(bafs)
+					ba := &testBA{digest: bafs[0].Digest(), bafs: bafs}
 					oba := &naiveOrderedBatchAttestation{
 						ba:           ba,
 						orderingInfo: &naiveOrderingInfo{num: num},

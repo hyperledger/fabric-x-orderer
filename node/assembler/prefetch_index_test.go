@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,14 +101,14 @@ func TestPrefetchIndex_Requests(t *testing.T) {
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 
 		// Act
 		test.partitionToRequestsChan[assembler.ShardPrimaryFromBatch(batch)] <- batch
 
 		// Assert
 		requestedBatch := test.prefetchIndex.Requests()
-		testutil.AssertBatchIdsEquals(t, batch, <-requestedBatch)
+		assertBatchIdsEquals(t, batch, <-requestedBatch)
 	})
 }
 
@@ -127,8 +126,8 @@ func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch1 := testutil.CreateMockBatch(test.shards[0], test.parties[0], 0, []int{1})
-		batch2 := testutil.CreateMockBatch(test.shards[1], test.parties[1], 0, []int{1})
+		batch1 := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
+		batch2 := createTestBatchWithSize(test.shards[1], test.parties[1], 0, []int{1})
 		batch1PartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch1)]
 		batch2PartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch2)]
 
@@ -138,9 +137,9 @@ func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 
 		// Assert
 		require.Equal(t, 1, callsCount(batch1PartitionIndexer))
-		testutil.AssertBatchIdsEquals(t, batch1, batchPerCall(batch1PartitionIndexer, 0))
+		assertBatchIdsEquals(t, batch1, batchPerCall(batch1PartitionIndexer, 0))
 		require.Equal(t, 1, callsCount(batch2PartitionIndexer))
-		testutil.AssertBatchIdsEquals(t, batch2, batchPerCall(batch2PartitionIndexer, 0))
+		assertBatchIdsEquals(t, batch2, batchPerCall(batch2PartitionIndexer, 0))
 	})
 }
 
@@ -160,7 +159,7 @@ func TestPrefetchIndex_PopOrWait(t *testing.T) {
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
 		batchPartitionIndexer.PopOrWaitReturns(batch, nil)
 
@@ -169,14 +168,14 @@ func TestPrefetchIndex_PopOrWait(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		testutil.AssertBatchIdsEquals(t, batch, popedBatch)
+		assertBatchIdsEquals(t, batch, popedBatch)
 	})
 
 	t.Run("CheckErrRaisedFromPartitionIndexer", func(t *testing.T) {
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
 		expectedErr := utils.ErrOperationCancelled
 		batchPartitionIndexer.PopOrWaitReturns(nil, expectedErr)
@@ -216,7 +215,7 @@ func runTestsForPutOps(
 		// Arrange
 		test := setupPrefetchIndexTest(t)
 		defer test.finish()
-		batch := testutil.CreateMockBatch(test.shards[0], test.parties[0], 0, []int{1})
+		batch := createTestBatchWithSize(test.shards[0], test.parties[0], 0, []int{1})
 		batchPartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch)]
 		expectedErr := utils.ErrOperationCancelled
 		putMockReturns(batchPartitionIndexer, expectedErr)

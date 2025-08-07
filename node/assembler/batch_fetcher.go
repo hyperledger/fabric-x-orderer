@@ -7,19 +7,17 @@ SPDX-License-Identifier: Apache-2.0
 package assembler
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
@@ -227,7 +225,7 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 			return nil, fmt.Errorf("operation canceled")
 		case fb := <-res:
 			count++
-			if fb.Shard() == batchID.Shard() && fb.Primary() == batchID.Primary() && fb.Seq() == batchID.Seq() && bytes.Equal(fb.Digest(), batchID.Digest()) {
+			if types.BatchIDEqual(fb, batchID) {
 				br.logger.Infof("Found batch %s", types.BatchIDToString(fb))
 				cancelFunc()
 				return fb, nil
