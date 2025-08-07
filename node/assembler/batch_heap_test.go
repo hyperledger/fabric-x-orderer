@@ -15,7 +15,7 @@ import (
 )
 
 func assertSameHeapItems[T any](t *testing.T, expected, actual *assembler.BatchHeapItem[T]) {
-	assertBatchIdsEquals(t, expected.Batch, actual.Batch)
+	require.True(t, types.BatchIDEqual(expected.Batch, actual.Batch))
 	require.Equal(t, expected.Value, actual.Value)
 }
 

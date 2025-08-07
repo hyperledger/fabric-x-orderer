@@ -108,7 +108,7 @@ func TestPrefetchIndex_Requests(t *testing.T) {
 
 		// Assert
 		requestedBatch := test.prefetchIndex.Requests()
-		assertBatchIdsEquals(t, batch, <-requestedBatch)
+		require.True(t, types.BatchIDEqual(batch, <-requestedBatch))
 	})
 }
 
@@ -137,9 +137,9 @@ func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 
 		// Assert
 		require.Equal(t, 1, callsCount(batch1PartitionIndexer))
-		assertBatchIdsEquals(t, batch1, batchPerCall(batch1PartitionIndexer, 0))
+		require.True(t, types.BatchIDEqual(batch1, batchPerCall(batch1PartitionIndexer, 0)))
 		require.Equal(t, 1, callsCount(batch2PartitionIndexer))
-		assertBatchIdsEquals(t, batch2, batchPerCall(batch2PartitionIndexer, 0))
+		require.True(t, types.BatchIDEqual(batch2, batchPerCall(batch2PartitionIndexer, 0)))
 	})
 }
 
@@ -168,7 +168,7 @@ func TestPrefetchIndex_PopOrWait(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assertBatchIdsEquals(t, batch, popedBatch)
+		require.True(t, types.BatchIDEqual(batch, popedBatch))
 	})
 
 	t.Run("CheckErrRaisedFromPartitionIndexer", func(t *testing.T) {
