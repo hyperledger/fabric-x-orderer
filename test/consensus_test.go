@@ -78,7 +78,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		parties[i] = types.PartyID(i + 1)
 	}
 	errString := "cancelled pull from assembler: %d"
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, 1000, 0, errString)
+	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, 1000, 0, errString, 30)
 
 	partyToRestart := types.PartyID(3)
 	consenterToRestart := armaNetwork.GetConsenter(t, partyToRestart)
@@ -98,7 +98,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 			correctParties = append(correctParties, types.PartyID(i+1))
 		}
 	}
-	PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, 1500, 0, errString)
+	PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, 1500, 0, errString, 30)
 
 	consenterToRestart.RestartArmaNode(t, readyChan, numOfParties)
 	testutil.WaitReady(t, readyChan, 1, 10)
@@ -111,5 +111,5 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 
 	waitForTxSent.Wait()
 
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, 2000, 0, errString)
+	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, 2000, 0, errString, 30)
 }
