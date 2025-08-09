@@ -86,7 +86,7 @@ func TestPrefetcher_BatchesReceivedByReplicationAreBeingIndexed(t *testing.T) {
 	}, eventuallyTimeout, eventuallyTick)
 	for i := 0; i < test.prefetchIndexMock.PutCallCount(); i++ {
 		batch := test.prefetchIndexMock.PutArgsForCall(0)
-		assertBatchIdsEquals(t, batch, shardToBatch[batch.Shard()])
+		require.True(t, types.BatchIDEqual(batch, shardToBatch[batch.Shard()]))
 	}
 }
 
@@ -127,9 +127,9 @@ func TestPrefetcher_RequestedBatchWillBeFetchedByFetcherAndForcePutToIndex(t *te
 		return test.batchFetcherMock.GetBatchCallCount() == 1 && test.prefetchIndexMock.PutForceCallCount() == 1
 	}, eventuallyTimeout, eventuallyTick)
 	requestedBatchId := test.batchFetcherMock.GetBatchArgsForCall(0)
-	assertBatchIdsEquals(t, batch, requestedBatchId)
+	require.True(t, types.BatchIDEqual(batch, requestedBatchId))
 	putBatch := test.prefetchIndexMock.PutForceArgsForCall(0)
-	assertBatchIdsEquals(t, batch, putBatch)
+	require.True(t, types.BatchIDEqual(batch, putBatch))
 }
 
 func TestPrefetcher_StopWillStopBatchFetcher(t *testing.T) {

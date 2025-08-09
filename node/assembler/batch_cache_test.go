@@ -114,7 +114,7 @@ func TestBatchCache_Pop(t *testing.T) {
 		for _, batch := range batches {
 			poppedBatch, err := cache.Pop(batch)
 			require.NoError(t, err)
-			assertBatchIdsEquals(t, batch, poppedBatch)
+			require.True(t, types.BatchIDEqual(batch, poppedBatch))
 		}
 	})
 
@@ -145,8 +145,8 @@ func TestBatchCache_Pop(t *testing.T) {
 		// Assert
 		require.NoError(t, err1)
 		require.NoError(t, err2)
-		assertBatchIdsEquals(t, batch, poppedBatch)
-		assertBatchIdsEquals(t, batchDifferentDigest, poppedBatchDifferentDigest)
+		require.True(t, types.BatchIDEqual(batch, poppedBatch))
+		require.True(t, types.BatchIDEqual(batchDifferentDigest, poppedBatchDifferentDigest))
 	})
 }
 
@@ -165,7 +165,7 @@ func TestBatchCache_Put(t *testing.T) {
 		// Assert
 
 		require.NoError(t, err)
-		assertBatchIdsEquals(t, batch, poppedBatch)
+		require.True(t, types.BatchIDEqual(batch, poppedBatch))
 	})
 
 	t.Run("MultiplePutsOnSameBatchWillRaiseAnError", func(t *testing.T) {
