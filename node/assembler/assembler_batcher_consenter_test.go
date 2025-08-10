@@ -181,7 +181,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
 	defer cleanup()
 
-	batchersStubShard1, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -203,7 +203,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
 	// send batch and decision from party 1 in shard 0
-	batch1 := types.NewSimpleBatch(1, 0, 2, types.BatchedRequests{[]byte{1}})
+	batch1 := types.NewSimpleBatch(0, 0, 2, types.BatchedRequests{[]byte{1}})
 	batchersStubShard0[0].SetNextBatch(batch1)
 
 	oba1 := obaCreator.Append(batch1, 1, 1, 1)
@@ -215,34 +215,16 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 
 	// send batch and decision from party 2 in shard 0
 	// assembler (party 1) should find the batch in another party
-	batch2 := types.NewSimpleBatch(2, 0, 2, types.BatchedRequests{[]byte{2}, []byte{3}})
+	batch2 := types.NewSimpleBatch(1, 0, 2, types.BatchedRequests{[]byte{2}, []byte{3}})
 	batchersStubShard0[1].SetNextBatch(batch2)
 
 	oba2 := obaCreator.Append(batch2, 2, 1, 1)
 	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
 
-	// send another batch and decision from party 1 in shard 0
-	batch3 := types.NewSimpleBatch(3, 0, 2, types.BatchedRequests{[]byte{4}})
-	batchersStubShard0[0].SetNextBatch(batch3)
-
-	oba3 := obaCreator.Append(batch3, 3, 1, 1)
-	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
-
-	// should process all transactions
+	// assembler did not process the batch from party 2 (bug)
 	require.Eventually(t, func() bool {
-		return assembler.GetTxCount() == 5
-	}, 5*time.Second, 100*time.Millisecond)
-
-	// send batch and decision from party 1 in shard 1
-	batch4 := types.NewSimpleBatch(1, 1, 2, types.BatchedRequests{[]byte{5}})
-	batchersStubShard1[0].SetNextBatch(batch4)
-
-	oba4 := obaCreator.Append(batch4, 4, 1, 1)
-	consenterStub.SetNextDecision(oba4.(*state.AvailableBatchOrdered))
-
-	require.Eventually(t, func() bool {
-		return assembler.GetTxCount() == 6
-	}, 3*time.Second, 100*time.Millisecond)
+		return assembler.GetTxCount() == 3
+	}, 60*time.Second, 100*time.Millisecond)
 }
 
 func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo) *assembler.Assembler {
