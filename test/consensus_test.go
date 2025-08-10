@@ -77,8 +77,16 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 	for i := 0; i < numOfParties; i++ {
 		parties[i] = types.PartyID(i + 1)
 	}
-	errString := "cancelled pull from assembler: %d"
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, 1000, 0, errString, 30)
+
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: 1000,
+		ErrString:    "cancelled pull from assembler: %d",
+		Timeout:      30,
+	})
 
 	partyToRestart := types.PartyID(3)
 	consenterToRestart := armaNetwork.GetConsenter(t, partyToRestart)
@@ -98,7 +106,15 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 			correctParties = append(correctParties, types.PartyID(i+1))
 		}
 	}
-	PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, 1500, 0, errString, 30)
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      correctParties,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: 1500,
+		ErrString:    "cancelled pull from assembler: %d",
+		Timeout:      30,
+	})
 
 	consenterToRestart.RestartArmaNode(t, readyChan, numOfParties)
 	testutil.WaitReady(t, readyChan, 1, 10)
@@ -111,5 +127,13 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 
 	waitForTxSent.Wait()
 
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, 2000, 0, errString, 30)
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: 2000,
+		ErrString:    "cancelled pull from assembler: %d",
+		Timeout:      30,
+	})
 }

@@ -109,7 +109,16 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	totalTxSent += totalTxNumber
 
 	// Pull from Assemblers
-	infos := PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	infos := PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          parties,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
 
 	// Get the primary batcher
 	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
@@ -132,7 +141,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(i, 64, []byte("sessionNumber"))
+		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
@@ -155,7 +164,16 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			correctParties = append(correctParties, types.PartyID(partyID))
 		}
 	}
-	infos = PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	infos = PullFromAssemblers(t, &BlockPullerOptions{
+		Parties:          correctParties,
+		UserConfig:       uc,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
 
 	// check that the primary batcher has changed
 	require.True(t, infos[correctParties[0]].TermChanged, "expected primary batcher not to remain the same")
@@ -167,7 +185,16 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	PullFromAssemblers(t, uc, []types.PartyID{primaryBatcher.PartyId}, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          []types.PartyID{primaryBatcher.PartyId},
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
 
 	// 7.
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
@@ -178,9 +205,14 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(i, 64, []byte("sessionNumber"))
+		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d: %v", totalTxSent+i, err)
+			// we expect the batcher to be restarted and the router to be back online
+			// so we should not get an error here
+			// however, if the primary batcher is not restarted, we expect an error
+			// with INTERNAL_SERVER_ERROR from the router
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String())) // only such errors are permitted
 		}
 	}
@@ -192,7 +224,16 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	// Pull from Assemblers
 	// make sure assemblers of all the parties get transactions (expect 3000 TXs).
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          parties,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
 }
 
 // Simulates a scenario where a secondary batcher node is stopped and restarted.
@@ -278,7 +319,17 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	totalTxSent += totalTxNumber
 
 	// Pull from Assemblers
-	infos := PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	infos := PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          parties,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
+
 	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
 	correctParties := []types.PartyID{}
 
@@ -311,7 +362,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(i, 64, []byte("sessionNumber"))
+		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
@@ -327,7 +378,16 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	// 5.
 	// make sure assemblers of correct parties continue to get transactions (expect 2000 TXs).
-	infos = PullFromAssemblers(t, uc, correctParties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	infos = PullFromAssemblers(t, &BlockPullerOptions{
+		Parties:          correctParties,
+		UserConfig:       uc,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
 
 	// make sure the primary batcher did not change
 	require.False(t, infos[correctParties[0]].TermChanged, "expected primary batcher to remain the same")
@@ -339,7 +399,16 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	PullFromAssemblers(t, uc, []types.PartyID{secondaryBatcher.PartyId}, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          []types.PartyID{secondaryBatcher.PartyId},
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
 
 	// 7.
 	// make sure 2f+1 routers are receiving TXs w/o problems
@@ -351,7 +420,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(i, 64, []byte("sessionNumber"))
+		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String())) // only such errors are permitted
@@ -365,5 +434,14 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	// Pull from Assemblers
 	// make sure assemblers of all the parties get transactions (expect 3000 TXs).
-	PullFromAssemblers(t, uc, parties, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
+	PullFromAssemblers(t, &BlockPullerOptions{
+		Parties:          parties,
+		UserConfig:       uc,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxSent,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
 }
