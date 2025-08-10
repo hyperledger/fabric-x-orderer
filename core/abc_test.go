@@ -79,11 +79,7 @@ type shardCommitter struct {
 }
 
 func (s *shardCommitter) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
-	nb := &naiveBatch{
-		requests: batchedRequests,
-		node:     partyID,
-	}
-
+	nb := arma_types.NewSimpleBatch(batchSeq, arma_types.ShardID(s.shardID), partyID, batchedRequests)
 	s.sr.subscribers[s.shardID] <- nb
 }
 
