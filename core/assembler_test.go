@@ -138,20 +138,20 @@ func (noi *naiveOrderingInfo) String() string {
 
 type naiveOrderedBatchAttestation struct {
 	ba           types.BatchAttestation
-	orderingInfo core.OrderingInfo
+	orderingInfo types.OrderingInfo
 }
 
 func (noba *naiveOrderedBatchAttestation) BatchAttestation() types.BatchAttestation {
 	return noba.ba
 }
 
-func (noba *naiveOrderedBatchAttestation) OrderingInfo() core.OrderingInfo {
+func (noba *naiveOrderedBatchAttestation) OrderingInfo() types.OrderingInfo {
 	return noba.orderingInfo
 }
 
 type naiveAssemblerLedger chan core.OrderedBatchAttestation
 
-func (n naiveAssemblerLedger) Append(batch types.Batch, orderingInfo core.OrderingInfo) {
+func (n naiveAssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingInfo) {
 	noba := &naiveOrderedBatchAttestation{
 		ba: &naiveBatchAttestation{
 			primary: batch.Primary(),

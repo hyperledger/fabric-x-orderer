@@ -9,10 +9,8 @@ package state
 import (
 	"fmt"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type OrderingInformation struct {
@@ -42,6 +40,6 @@ func (abo *AvailableBatchOrdered) BatchAttestation() types.BatchAttestation {
 
 // OrderingInfo returns an opaque object that provides extra information on the order of the batch attestation and
 // metadata to be used in the construction of the block.
-func (abo *AvailableBatchOrdered) OrderingInfo() core.OrderingInfo {
+func (abo *AvailableBatchOrdered) OrderingInfo() types.OrderingInfo {
 	return abo.OrderingInformation
 }

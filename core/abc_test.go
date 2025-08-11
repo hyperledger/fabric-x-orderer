@@ -51,14 +51,14 @@ func (s *bafSender) SendBAF(baf arma_types.BatchAttestationFragment) {
 }
 
 type naiveblock struct {
-	order       core.OrderingInfo
+	order       arma_types.OrderingInfo
 	batch       arma_types.Batch
 	attestation arma_types.BatchAttestation
 }
 
 type naiveBlockLedger chan naiveblock
 
-func (n naiveBlockLedger) Append(batch arma_types.Batch, orderingInfo core.OrderingInfo) {
+func (n naiveBlockLedger) Append(batch arma_types.Batch, orderingInfo arma_types.OrderingInfo) {
 	n <- naiveblock{
 		order: orderingInfo,
 		batch: batch,
