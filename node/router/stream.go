@@ -12,6 +12,7 @@ import (
 	"maps"
 	"sync"
 
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
@@ -32,6 +33,7 @@ type stream struct {
 	streamNum                         int
 	srReconnectChan                   chan reconnectReq
 	notifiedReconnect                 bool
+	verifier                          *requestfilter.RulesVerifier
 }
 
 // readResponses listens for responses from the batcher.
@@ -50,18 +52,9 @@ func (s *stream) readResponses() {
 				s.cancelOnServerError()
 				return
 			}
-
-			s.lock.Lock()
-			ch, exists := s.requestTraceIdToResponseChannel[string(resp.TraceId)]
-			delete(s.requestTraceIdToResponseChannel, string(resp.TraceId))
-			s.lock.Unlock()
-			if exists {
-				s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
-				s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", resp.TraceId)
-				ch <- Response{
-					SubmitResponse: resp,
-				}
-			} else {
+			s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
+			err = s.sendResponseToClient(resp)
+			if err != nil {
 				s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
 			}
 		}
@@ -81,14 +74,42 @@ func (s *stream) sendRequests() {
 				s.cancelOnServerError()
 				return
 			}
-			s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
-			err := s.requestTransmitSubmitStreamClient.Send(msg)
-			if err != nil {
-				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-				s.cancelOnServerError()
-				return
+			// verify the request
+			if err := s.verifier.Verify(msg); err != nil {
+				s.logger.Debugf("request is invalid: %s", err)
+				// send a response to the client
+				resp := protos.SubmitResponse{Error: fmt.Sprintf("request verification error: %s", err), TraceId: msg.TraceId}
+				err = s.sendResponseToClient(&resp)
+				if err != nil {
+					s.logger.Debugf("error sending response to client: %s", err)
+				}
+			} else {
+				s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
+				err := s.requestTransmitSubmitStreamClient.Send(msg)
+				if err != nil {
+					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+					s.cancelOnServerError()
+					return
+				}
 			}
 		}
+	}
+}
+
+func (s *stream) sendResponseToClient(response *protos.SubmitResponse) error {
+	traceID := response.TraceId
+	s.lock.Lock()
+	ch, exists := s.requestTraceIdToResponseChannel[string(traceID)]
+	delete(s.requestTraceIdToResponseChannel, string(traceID))
+	s.lock.Unlock()
+	if exists {
+		s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", traceID)
+		ch <- Response{
+			SubmitResponse: response,
+		}
+		return nil
+	} else {
+		return fmt.Errorf("request with traceID %x is not in map", traceID)
 	}
 }
 
@@ -201,6 +222,7 @@ CopyChannelLoop:
 		streamNum:                         s.streamNum,
 		srReconnectChan:                   s.srReconnectChan,
 		notifiedReconnect:                 false,
+		verifier:                          s.verifier,
 	}
 	s.lock.Unlock()
 

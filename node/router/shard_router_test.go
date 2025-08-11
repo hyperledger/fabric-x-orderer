@@ -15,6 +15,7 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
@@ -157,11 +158,14 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
+	verifier := requestfilter.NewRulesVerifier(nil)
+	verifier.AddRule(requestfilter.AcceptRule{})
+
 	// create stub batcher
 	batcher := NewStubBatcher(t, ca, partyID, types.ShardID(1))
 
 	// create shard router
-	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20)
+	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier)
 
 	// start the batcher
 	batcher.Start()

@@ -15,6 +15,7 @@ import (
 
 	"google.golang.org/grpc/connectivity"
 
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -69,6 +70,7 @@ type ShardRouter struct {
 	closeReconnectOnce           sync.Once
 	reconnectRequests            chan reconnectReq
 	closeReconnect               chan bool
+	verifier                     *requestfilter.RulesVerifier
 }
 
 func NewShardRouter(l types.Logger,
@@ -78,6 +80,7 @@ func NewShardRouter(l types.Logger,
 	tlsKey []byte,
 	numOfConnectionsForBatcher int,
 	numOfgRPCStreamsPerConnection int,
+	verifier *requestfilter.RulesVerifier,
 ) *ShardRouter {
 	cc := comm.ClientConfig{
 		AsyncConnect: false,
@@ -106,6 +109,7 @@ func NewShardRouter(l types.Logger,
 		clientConfig:                 cc,
 		reconnectRequests:            make(chan reconnectReq, 2*numOfgRPCStreamsPerConnection*numOfConnectionsForBatcher),
 		closeReconnect:               make(chan bool),
+		verifier:                     verifier,
 	}
 
 	return sr
@@ -332,6 +336,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			streamNum:                         j,
 			srReconnectChan:                   sr.reconnectRequests,
 			notifiedReconnect:                 false,
+			verifier:                          sr.verifier,
 		}
 		go s.sendRequests()
 		go s.readResponses()

@@ -20,6 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node"
@@ -40,6 +41,7 @@ type Router struct {
 	shardIDs         []types.ShardID
 	incoming         uint64
 	routerNodeConfig *nodeconfig.RouterNodeConfig
+	verifier         *requestfilter.RulesVerifier
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -68,7 +70,9 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 		return int(shardIDs[i]) < int(shardIDs[j])
 	})
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config, logger)
+	verifier := createVerifier(config)
+
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config, logger, verifier)
 	r.init()
 	return r
 }
@@ -169,7 +173,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -187,10 +191,11 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		logger:           logger,
 		shardIDs:         shardIDs,
 		routerNodeConfig: rconfig,
+		verifier:         verifier,
 	}
 
 	for _, shardId := range shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection)
+		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier)
 	}
 
 	go func() {
@@ -324,6 +329,13 @@ func createTraceID(rand *rand2.Rand) []byte {
 	binary.BigEndian.PutUint64(trace, uint64(n1))
 	binary.BigEndian.PutUint64(trace[8:], uint64(n2))
 	return trace
+}
+
+func createVerifier(config *nodeconfig.RouterNodeConfig) *requestfilter.RulesVerifier {
+	rv := requestfilter.NewRulesVerifier(nil)
+	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
+	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
+	return rv
 }
 
 // IsAllStreamsOK checks that all the streams accross all shard-routers are non-faulty.
