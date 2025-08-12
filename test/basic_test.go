@@ -76,7 +76,7 @@ func TestSubmitAndReceive(t *testing.T) {
 			require.NoError(t, err)
 			numOfArmaNodes := len(netInfo)
 			// 2.
-			armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+			armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 			// 3.
 			// run arma nodes

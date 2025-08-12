@@ -43,7 +43,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "TLS")
 
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=github.ibm.com"})
 	require.NoError(t, err)

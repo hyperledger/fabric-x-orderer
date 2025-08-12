@@ -37,7 +37,7 @@ func TestTxClientSend(t *testing.T) {
 	require.NoError(t, err)
 	// 2.
 	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// 3.
 	// compile arma

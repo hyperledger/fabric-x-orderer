@@ -39,7 +39,6 @@ This command enables to create configuration files for ARMA nodes.
 |-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | ` config`             | The absolute or relative path to the configuration template to use                                                                                                    |
 | ` output`             | The absolute or relative path to which the configuration files will be saved. If missing configuration files will be saved under `arma-config`                        |
-| ` version`            | The version of the configuration. The default is version=2. Configuration created by version=1 is not supported anymore                                               |
 | ` sampleConfigPath`   | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
 
 ###

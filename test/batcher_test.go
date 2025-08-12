@@ -59,7 +59,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	require.NoError(t, err)
 	numOfArmaNodes := len(netInfo)
 
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	readyChan := make(chan struct{}, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
@@ -226,7 +226,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	require.NoError(t, err)
 	numOfArmaNodes := len(netInfo)
 
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--version", "2"})
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
