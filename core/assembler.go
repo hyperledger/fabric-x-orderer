@@ -9,7 +9,6 @@ package core
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -24,7 +23,7 @@ type OrderedBatchAttestation interface {
 	BatchAttestation() types.BatchAttestation
 	// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
 	// metadata to be used in the construction of the block.
-	OrderingInfo() OrderingInfo
+	OrderingInfo() types.OrderingInfo
 }
 
 type BatchReplicator interface {
@@ -37,12 +36,8 @@ type AssemblerIndex interface {
 	Stop()
 }
 
-type OrderingInfo interface {
-	fmt.Stringer
-}
-
 type AssemblerLedgerWriter interface {
-	Append(batch types.Batch, orderingInfo OrderingInfo)
+	Append(batch types.Batch, orderingInfo types.OrderingInfo)
 	Close()
 }
 

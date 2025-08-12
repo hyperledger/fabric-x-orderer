@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package types
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -65,4 +66,10 @@ type BatchAttestationFragment interface {
 type Batch interface {
 	BatchID
 	Requests() BatchedRequests
+}
+
+// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
+// metadata to be used in the construction of the block.
+type OrderingInfo interface {
+	fmt.Stringer
 }

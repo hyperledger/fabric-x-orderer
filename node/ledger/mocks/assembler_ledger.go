@@ -7,18 +7,17 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 )
 
 type FakeAssemblerLedgerReaderWriter struct {
-	AppendStub        func(types.Batch, core.OrderingInfo)
+	AppendStub        func(types.Batch, types.OrderingInfo)
 	appendMutex       sync.RWMutex
 	appendArgsForCall []struct {
 		arg1 types.Batch
-		arg2 core.OrderingInfo
+		arg2 types.OrderingInfo
 	}
 	AppendConfigStub        func(*common.Block, types.DecisionNum)
 	appendConfigMutex       sync.RWMutex
@@ -81,11 +80,11 @@ type FakeAssemblerLedgerReaderWriter struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) Append(arg1 types.Batch, arg2 core.OrderingInfo) {
+func (fake *FakeAssemblerLedgerReaderWriter) Append(arg1 types.Batch, arg2 types.OrderingInfo) {
 	fake.appendMutex.Lock()
 	fake.appendArgsForCall = append(fake.appendArgsForCall, struct {
 		arg1 types.Batch
-		arg2 core.OrderingInfo
+		arg2 types.OrderingInfo
 	}{arg1, arg2})
 	stub := fake.AppendStub
 	fake.recordInvocation("Append", []interface{}{arg1, arg2})
@@ -101,13 +100,13 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendCallCount() int {
 	return len(fake.appendArgsForCall)
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendCalls(stub func(types.Batch, core.OrderingInfo)) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendCalls(stub func(types.Batch, types.OrderingInfo)) {
 	fake.appendMutex.Lock()
 	defer fake.appendMutex.Unlock()
 	fake.AppendStub = stub
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (types.Batch, core.OrderingInfo) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (types.Batch, types.OrderingInfo) {
 	fake.appendMutex.RLock()
 	defer fake.appendMutex.RUnlock()
 	argsForCall := fake.appendArgsForCall[i]

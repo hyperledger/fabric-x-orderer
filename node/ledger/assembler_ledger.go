@@ -13,15 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
@@ -33,7 +31,7 @@ type (
 //go:generate counterfeiter -o ./mocks/assembler_ledger.go . AssemblerLedgerReaderWriter
 type AssemblerLedgerReaderWriter interface {
 	GetTxCount() uint64
-	Append(batch types.Batch, orderingInfo core.OrderingInfo)
+	Append(batch types.Batch, orderingInfo types.OrderingInfo)
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	LastOrderingInfo() (*state.OrderingInformation, error)
 	LedgerReader() blockledger.Reader
@@ -134,7 +132,7 @@ func (l *AssemblerLedger) GetTxCount() uint64 {
 	return c
 }
 
-func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo core.OrderingInfo) {
+func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingInfo) {
 	ordInfo := orderingInfo.(*state.OrderingInformation)
 	t1 := time.Now()
 	defer func() {
