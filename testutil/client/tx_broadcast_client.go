@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
@@ -70,8 +71,8 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 	for _, streamInfo := range c.streamRoutersMap {
 		go func() {
 			defer waitForReceiveDone.Done()
-
-			err := streamInfo.stream.Send(&common.Envelope{Payload: txContent})
+			env := utils.CreateStructuredEnvelope(txContent)
+			err := streamInfo.stream.Send(env)
 			if err != nil {
 				updateState(streamInfo, err.Error())
 				return
