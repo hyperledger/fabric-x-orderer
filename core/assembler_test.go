@@ -193,12 +193,7 @@ func TestAssembler(t *testing.T) {
 			buff := make([]byte, 1024)
 			binary.BigEndian.PutUint16(buff, uint16(shardID))
 			binary.BigEndian.PutUint16(buff[100:], uint16(seq))
-			batch := &naiveBatch{
-				shardID:  shardID,
-				node:     1,
-				seq:      seq,
-				requests: [][]byte{buff},
-			}
+			batch := types.NewSimpleBatch(seq, shardID, 1, [][]byte{buff})
 			digests[string(batch.Digest())] = struct{}{}
 			batchesForShard = append(batchesForShard, batch)
 		}

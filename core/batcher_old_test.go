@@ -66,11 +66,7 @@ func (r *naiveReplication) Stop() {
 
 func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
 	for _, s := range r.subscribers {
-		s <- &naiveBatch{
-			node:     partyID,
-			seq:      arma_types.BatchSequence(batchSeq),
-			requests: batchedRequests,
-		}
+		s <- arma_types.NewSimpleBatch(batchSeq, 0, partyID, batchedRequests)
 	}
 }
 
@@ -82,34 +78,6 @@ func (r *naiveReplication) Height(partyID arma_types.PartyID) uint64 {
 func (r *naiveReplication) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) arma_types.Batch {
 	// TODO use in test
 	return nil
-}
-
-type naiveBatch struct {
-	shardID  arma_types.ShardID
-	node     arma_types.PartyID
-	seq      arma_types.BatchSequence
-	requests [][]byte
-}
-
-func (nb *naiveBatch) Primary() arma_types.PartyID {
-	return nb.node
-}
-
-func (nb *naiveBatch) Digest() []byte {
-	br := arma_types.BatchedRequests(nb.requests)
-	return br.Digest()
-}
-
-func (nb *naiveBatch) Shard() arma_types.ShardID {
-	return nb.shardID
-}
-
-func (nb *naiveBatch) Seq() arma_types.BatchSequence {
-	return nb.seq
-}
-
-func (nb *naiveBatch) Requests() arma_types.BatchedRequests {
-	return nb.requests
 }
 
 type acker struct {
