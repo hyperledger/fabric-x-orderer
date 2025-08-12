@@ -7,10 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package assembler_test
 
 import (
-	"testing"
-
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/stretchr/testify/require"
 )
 
 func createTestBatch(shard types.ShardID, primary types.PartyID, seq types.BatchSequence, req []byte) types.Batch {
@@ -38,8 +35,4 @@ func createTestBatchWithSize(shard types.ShardID, primary types.PartyID, seq typ
 
 func createTestBatchId(shard types.ShardID, primary types.PartyID, seq types.BatchSequence, req []byte) types.BatchID {
 	return types.NewSimpleBatch(seq, shard, primary, types.BatchedRequests{req})
-}
-
-func assertBatchIdsEquals(t *testing.T, expectedBatchId, actualBatchId types.BatchID) {
-	require.True(t, types.BatchIDEqual(expectedBatchId, actualBatchId))
 }

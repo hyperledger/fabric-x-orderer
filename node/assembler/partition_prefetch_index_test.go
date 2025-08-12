@@ -124,7 +124,7 @@ func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, ty
 		require.NoError(t, err)
 
 		// Assert
-		assertBatchIdsEquals(t, batch, poped_batch)
+		require.True(t, types.BatchIDEqual(batch, poped_batch))
 	})
 
 	t.Run("PuttingBatchTooLargeWillResultInError", func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assertBatchIdsEquals(t, batch, poppedBatch)
+		require.True(t, types.BatchIDEqual(batch, poppedBatch))
 	})
 
 	t.Run("PopWillStopBatchTtlTimer", func(t *testing.T) {
@@ -236,7 +236,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		batchRequest := <-test.batchRequestChan
 
 		// Assert
-		assertBatchIdsEquals(t, batchRequest, popBatchId)
+		require.True(t, types.BatchIDEqual(batchRequest, popBatchId))
 	})
 
 	t.Run("PopBeforePutShouldNotRaiseRequestIfSeqGreaterThanLastPut", func(t *testing.T) {
@@ -290,7 +290,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Assert
 		time.Sleep(eventuallyTick)
 		batch := <-popedBatchChan
-		assertBatchIdsEquals(t, batches[9], batch)
+		require.True(t, types.BatchIDEqual(batches[9], batch))
 		require.True(t, test.batchCache.Has(batches[7]))
 		require.True(t, test.batchCache.Has(batches[8]))
 		require.Equal(t, 2, test.batchCache.SizeBytes())
@@ -312,7 +312,7 @@ func TestPartitionPrefetchIndex_PopOrWait(t *testing.T) {
 		// Assert
 		time.Sleep(eventuallyTick)
 		reqeustedBatchId := <-test.batchRequestChan
-		assertBatchIdsEquals(t, batch2, reqeustedBatchId)
+		require.True(t, types.BatchIDEqual(batch2, reqeustedBatchId))
 	})
 }
 
@@ -510,7 +510,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assertBatchIdsEquals(t, batch, poppedBatch)
+		require.True(t, types.BatchIDEqual(batch, poppedBatch))
 		require.False(t, test.forcePutCache.Has(batch))
 	})
 
@@ -543,7 +543,7 @@ func TestPartitionPrefetchIndex_PutForce(t *testing.T) {
 			defer wg.Done()
 			poppedBatch, err := test.partitionPrefetchIndex.PopOrWait(batches[3])
 			require.NoError(t, err)
-			assertBatchIdsEquals(t, batches[3], poppedBatch)
+			require.True(t, types.BatchIDEqual(batches[3], poppedBatch))
 		}()
 
 		// Act
