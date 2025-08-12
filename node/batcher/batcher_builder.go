@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
@@ -142,17 +143,17 @@ func batchersFromConfig(config *node_config.BatcherNodeConfig) []node_config.Bat
 	return batchers
 }
 
-func computeZeroState(config *node_config.BatcherNodeConfig) core.State {
-	var state core.State
+func computeZeroState(config *node_config.BatcherNodeConfig) state.State {
+	var s state.State
 	for _, shard := range config.Shards {
-		state.Shards = append(state.Shards, core.ShardTerm{
+		s.Shards = append(s.Shards, state.ShardTerm{
 			Shard: shard.ShardId,
 		})
 	}
 
-	state.N = uint16(len(config.Consenters))
+	s.N = uint16(len(config.Consenters))
 
-	return state
+	return s
 }
 
 func indexTLSCerts(batchers []node_config.BatcherInfo, logger types.Logger) map[string]types.PartyID {

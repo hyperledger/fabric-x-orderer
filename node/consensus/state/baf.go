@@ -10,9 +10,13 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
-type BAFDeserializer struct{}
+type BAFDeserializer interface {
+	Deserialize([]byte) (arma_types.BatchAttestationFragment, error)
+}
 
-func (bafd *BAFDeserializer) Deserialize(bytes []byte) (arma_types.BatchAttestationFragment, error) {
+type BAFDeserialize struct{}
+
+func (bafd *BAFDeserialize) Deserialize(bytes []byte) (arma_types.BatchAttestationFragment, error) {
 	var baf arma_types.SimpleBatchAttestationFragment
 	if err := baf.Deserialize(bytes); err != nil {
 		return nil, err

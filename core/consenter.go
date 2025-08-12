@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
 type TotalOrder interface {
@@ -26,17 +27,17 @@ type BatchAttestationDB interface {
 type Consenter struct {
 	Logger          types.Logger
 	DB              BatchAttestationDB
-	BAFDeserializer BAFDeserializer
-	State           *State
+	BAFDeserializer state.BAFDeserializer
+	State           *state.State
 }
 
-func (c *Consenter) SimulateStateTransition(prevState *State, requests [][]byte) (*State, [][]types.BatchAttestationFragment) {
+func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment) {
 	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)
 	}
 
-	filteredControlEvents := make([]ControlEvent, 0, len(controlEvents))
+	filteredControlEvents := make([]state.ControlEvent, 0, len(controlEvents))
 
 	// Iterate over all control events and prune those that already exist in our DB
 	for _, ce := range controlEvents {
@@ -131,10 +132,10 @@ func indexBAFs(batchAttestationFragments []types.BatchAttestationFragment) map[s
 	return index
 }
 
-func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) ([]ControlEvent, error) {
-	events := make([]ControlEvent, 0, len(requests))
+func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) ([]state.ControlEvent, error) {
+	events := make([]state.ControlEvent, 0, len(requests))
 	for i := 0; i < len(requests); i++ {
-		ce := ControlEvent{}
+		ce := state.ControlEvent{}
 		if err := ce.FromBytes(requests[i], fragmentFromBytes); err != nil {
 			return nil, err
 		}

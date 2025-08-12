@@ -10,9 +10,9 @@ import (
 	"context"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -47,7 +47,7 @@ func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.Raw
 	return baReplicator
 }
 
-func (cr *ConsensusStateReplicator) ReplicateState() <-chan *core.State {
+func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.State {
 	endpoint := func() string {
 		return cr.endpoint
 	}
@@ -69,7 +69,7 @@ func (cr *ConsensusStateReplicator) ReplicateState() <-chan *core.State {
 		return requestEnvelope
 	}
 
-	res := make(chan *core.State, replicateStateChanSize)
+	res := make(chan *state.State, replicateStateChanSize)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header := extractHeaderFromBlock(block, cr.logger)

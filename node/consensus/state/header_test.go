@@ -10,14 +10,12 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
-
 	"github.com/stretchr/testify/require"
 )
 
 func TestHeaderBytes(t *testing.T) {
 	hdr := Header{
-		State: &core.State{AppContext: []byte{}},
+		State: &State{AppContext: []byte{}},
 		Num:   100,
 		AvailableBlocks: []AvailableBlock{
 			{Header: &BlockHeader{10, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(3, 2, 1, make([]byte, 32))},

@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
@@ -29,7 +30,7 @@ import (
 
 //go:generate counterfeiter -o mocks/state_replicator.go . StateReplicator
 type StateReplicator interface {
-	ReplicateState() <-chan *core.State
+	ReplicateState() <-chan *state.State
 	Stop()
 }
 
@@ -60,7 +61,7 @@ type Batcher struct {
 	signer                    Signer
 
 	stateRef  atomic.Value
-	stateChan chan *core.State
+	stateChan chan *state.State
 
 	running  sync.WaitGroup
 	stopOnce sync.Once
@@ -74,7 +75,7 @@ type Batcher struct {
 func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 
-	b.stateChan = make(chan *core.State, 1)
+	b.stateChan = make(chan *state.State, 1)
 
 	go b.replicateState()
 
@@ -128,7 +129,7 @@ func (b *Batcher) replicateState() {
 	}
 }
 
-func (b *Batcher) GetLatestStateChan() <-chan *core.State {
+func (b *Batcher) GetLatestStateChan() <-chan *state.State {
 	return b.stateChan
 }
 
@@ -316,7 +317,7 @@ func (b *Batcher) GetPrimaryID() types.PartyID {
 	return b.primaryID
 }
 
-func (b *Batcher) getPrimaryIDAndTerm(state *core.State) (types.PartyID, uint64) {
+func (b *Batcher) getPrimaryIDAndTerm(state *state.State) (types.PartyID, uint64) {
 	term := uint64(math.MaxUint64)
 	for _, shard := range state.Shards {
 		if shard.Shard == b.config.ShardId {
@@ -335,7 +336,7 @@ func (b *Batcher) getPrimaryIDAndTerm(state *core.State) (types.PartyID, uint64)
 	return primaryID, term
 }
 
-func (b *Batcher) createComplaint(reason string) *core.Complaint {
+func (b *Batcher) createComplaint(reason string) *state.Complaint {
 	b.primaryLock.Lock()
 	term := b.term
 	b.primaryLock.Unlock()
@@ -376,21 +377,21 @@ func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 }
 
 func (b *Batcher) Complain(reason string) {
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(core.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
 }
 
 func (b *Batcher) SendBAF(baf types.BatchAttestationFragment) {
 	b.logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(core.ControlEvent{BAF: baf}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{BAF: baf}); err != nil {
 		b.logger.Errorf("Failed to broadcast batch attestation fragment; err: %v", err)
 	}
 }
 
-func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, reason string) (*core.Complaint, error) {
-	c := &core.Complaint{
-		ShardTerm: core.ShardTerm{Shard: shard, Term: term},
+func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, reason string) (*state.Complaint, error) {
+	c := &state.Complaint{
+		ShardTerm: state.ShardTerm{Shard: shard, Term: term},
 		Signer:    id,
 		Signature: nil,
 		Reason:    reason,

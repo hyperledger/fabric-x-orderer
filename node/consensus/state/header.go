@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 
 	"github.com/pkg/errors"
 )
@@ -18,7 +17,7 @@ import (
 type Header struct {
 	Num             types.DecisionNum
 	AvailableBlocks []AvailableBlock
-	State           *core.State
+	State           *State
 }
 
 func (h *Header) Deserialize(bytes []byte) error {
@@ -48,8 +47,8 @@ func (h *Header) Deserialize(bytes []byte) error {
 		h.State = nil
 		return nil
 	}
-	h.State = &core.State{}
-	h.State.Deserialize(rawState, &BAFDeserializer{})
+	h.State = &State{}
+	h.State.Deserialize(rawState, &BAFDeserialize{})
 
 	return nil
 }

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
@@ -76,11 +76,11 @@ func TestBatcherRun(t *testing.T) {
 
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
-	stubConsenters[0].UpdateState(&core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 0}}})
+	stubConsenters[0].UpdateState(&state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}})
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
 
-	termChangeState := &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 
 	for i := 0; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
@@ -162,7 +162,7 @@ func TestBatcherRun(t *testing.T) {
 	// stop primary, change term, and recover after a batch
 	batchers[1].Stop()
 
-	termChangeAgainState := &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 2}}}
+	termChangeAgainState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 2}}}
 
 	for i := 0; i < numParties; i++ {
 		if i != 1 {
@@ -249,7 +249,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	require.Equal(t, numParties, stubConsenters[2].BAFCount())
 
 	// change term
-	termChangeState := &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 	for i := 1; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
 	}

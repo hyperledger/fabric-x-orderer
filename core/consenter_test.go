@@ -12,16 +12,17 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/core/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestConsenter(t *testing.T) {
-	s := &core.State{
+	s := &state.State{
 		ShardCount: 1,
 		N:          4,
-		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}},
+		Shards:     []state.ShardTerm{{Shard: 1, Term: 1}},
 		Threshold:  2,
 		Pending:    []arma_types.BatchAttestationFragment{},
 		Quorum:     4,
@@ -34,7 +35,7 @@ func TestConsenter(t *testing.T) {
 	consenter.DB = db
 
 	ba := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(2), []uint8{1}, 0, [][]uint8{})
-	events := [][]byte{(&core.ControlEvent{BAF: ba}).Bytes()}
+	events := [][]byte{(&state.ControlEvent{BAF: ba}).Bytes()}
 
 	// Test with an event that should be filtered out
 	db.ExistsReturns(true)
@@ -58,7 +59,7 @@ func TestConsenter(t *testing.T) {
 
 	// Test valid events meeting the threshold
 	ba2 := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(3), []uint8{1}, 0, [][]uint8{})
-	events = append(events, (&core.ControlEvent{BAF: ba2}).Bytes())
+	events = append(events, (&state.ControlEvent{BAF: ba2}).Bytes())
 
 	newState, batchAttestations = consenter.SimulateStateTransition(s, events)
 	assert.Len(t, batchAttestations[0], 2)
@@ -69,20 +70,20 @@ func TestConsenter(t *testing.T) {
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test the complaint is not stored in the DB
-	c := core.Complaint{
-		ShardTerm: core.ShardTerm{Shard: 1, Term: 1},
+	c := state.Complaint{
+		ShardTerm: state.ShardTerm{Shard: 1, Term: 1},
 		Signer:    3,
 		Signature: []byte{2},
 	}
 
-	events = [][]byte{(&core.ControlEvent{Complaint: &c}).Bytes()}
+	events = [][]byte{(&state.ControlEvent{Complaint: &c}).Bytes()}
 
 	consenter.Commit(events)
 	assert.Equal(t, db.PutCallCount(), 1)
 	assert.Len(t, consenter.State.Complaints, 1)
 }
 
-func createConsenter(state *core.State, logger arma_types.Logger) *core.Consenter {
+func createConsenter(state *state.State, logger arma_types.Logger) *core.Consenter {
 	consenter := &core.Consenter{
 		Logger:          logger,
 		DB:              &mocks.FakeBatchAttestationDB{},

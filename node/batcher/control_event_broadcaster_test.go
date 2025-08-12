@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/pkg/errors"
@@ -61,7 +61,7 @@ func TestBroadcastControlEventQuorumScenarios(t *testing.T) {
 			b := batcher.NewControlEventBroadcaster(senders, tt.n, tt.f, 10*time.Millisecond, 100*time.Millisecond, logger, ctx, cancel)
 			defer b.Stop()
 
-			err := b.BroadcastControlEvent(core.ControlEvent{})
+			err := b.BroadcastControlEvent(state.ControlEvent{})
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
@@ -97,6 +97,6 @@ func TestControlEventBroadcasterSenderRetry(t *testing.T) {
 	b := batcher.NewControlEventBroadcaster(senders, 4, 1, 10*time.Millisecond, 100*time.Millisecond, logger, ctx, cancel)
 	defer b.Stop()
 
-	err := b.BroadcastControlEvent(core.ControlEvent{})
+	err := b.BroadcastControlEvent(state.ControlEvent{})
 	require.NoError(t, err)
 }

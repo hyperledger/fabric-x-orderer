@@ -68,7 +68,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 			State:           initialState,
 			DB:              badb,
 			Logger:          logger,
-			BAFDeserializer: &state.BAFDeserializer{},
+			BAFDeserializer: &state.BAFDeserialize{},
 		},
 		BADB:         badb,
 		Logger:       logger,
@@ -197,7 +197,7 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature) {
+func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature) {
 	height := ledger.Height()
 	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
@@ -232,8 +232,8 @@ func getInitialStateAndMetadata(logger arma_types.Logger, config *config.Consent
 	return header.State, md, &proposal, sigs
 }
 
-func initialStateFromConfig(config *config.ConsenterNodeConfig) *core.State {
-	var initState core.State
+func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
+	var initState state.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
 	F := (uint16(initState.N) - 1) / 3
@@ -241,7 +241,7 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *core.State {
 	initState.Quorum = uint16(math.Ceil((float64(initState.N) + float64(F) + 1) / 2.0))
 
 	for _, shard := range config.Shards {
-		initState.Shards = append(initState.Shards, core.ShardTerm{
+		initState.Shards = append(initState.Shards, state.ShardTerm{
 			Shard: arma_types.ShardID(shard.ShardId),
 			Term:  0,
 		})
@@ -262,7 +262,7 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *core.State {
 	return &initState
 }
 
-func appendGenesisBlock(genesisBlock *common.Block, initState *core.State, ledger *ledger.ConsensusLedger) {
+func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, ledger *ledger.ConsensusLedger) {
 	genesisBlocks := make([]state.AvailableBlock, 1)
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
 

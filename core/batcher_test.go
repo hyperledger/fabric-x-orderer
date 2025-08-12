@@ -15,6 +15,7 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/core/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -141,7 +142,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	batcher.Ledger = ledger
 
 	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *core.State)
+	stateChan := make(chan *state.State)
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
@@ -158,8 +159,8 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 		return stateProvider.GetLatestStateChanCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
@@ -173,8 +174,8 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 	require.NotZero(t, pool.NextRequestsCallCount())
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
@@ -223,7 +224,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	batcher.Ledger = ledger
 
 	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *core.State)
+	stateChan := make(chan *state.State)
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
@@ -240,8 +241,8 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 		return stateProvider.GetLatestStateChanCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
@@ -256,8 +257,8 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	require.Zero(t, pool.NextRequestsCallCount())
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
@@ -319,7 +320,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	batcher.MemPool = pool
 
 	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *core.State)
+	stateChan := make(chan *state.State)
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
@@ -329,8 +330,8 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return stateProvider.GetLatestStateChanCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
@@ -343,8 +344,8 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
@@ -404,7 +405,7 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 	batcher.Ledger = ledger
 
 	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *core.State)
+	stateChan := make(chan *state.State)
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
@@ -414,8 +415,8 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 		return stateProvider.GetLatestStateChanCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
@@ -429,8 +430,8 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 
 	require.NotZero(t, pool.NextRequestsCallCount())
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  4,
@@ -513,7 +514,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	batcher.Ledger = ledger
 
 	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *core.State)
+	stateChan := make(chan *state.State)
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
@@ -526,8 +527,8 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 
 	batcher.Start()
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
@@ -543,8 +544,8 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 		return pool.NextRequestsCallCount() == 10
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
@@ -593,7 +594,7 @@ func TestResubmitPending(t *testing.T) {
 	batcher.Ledger = ledger
 
 	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *core.State)
+	stateChan := make(chan *state.State)
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
@@ -610,8 +611,8 @@ func TestResubmitPending(t *testing.T) {
 		return stateProvider.GetLatestStateChanCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
@@ -634,8 +635,8 @@ func TestResubmitPending(t *testing.T) {
 	notMyBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID+1), nil, 0, nil)
 	myBAFWithOtherPrimary := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary()+1, batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), nil, 0, nil)
 
-	stateChan <- &core.State{
-		Shards: []core.ShardTerm{
+	stateChan <- &state.State{
+		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
