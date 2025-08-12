@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/alecthomas/kingpin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -856,13 +857,13 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 }
 
 func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	payload := prepareTx(i, txSize, sessionNumber)
+	data := prepareTx(i, txSize, sessionNumber)
 	if txsMap != nil {
-		logger.Debugf("Add tx %x to the map", payload)
-		txsMap.Add(string(payload))
+		logger.Debugf("Add tx %x to the map", data)
+		txsMap.Add(string(data))
 	}
 	for j := 0; j < len(streams); j++ {
-		err := streams[j].Send(&common.Envelope{Payload: payload})
+		err := streams[j].Send(tx.CreateStructuredEnvelope(data))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
 			os.Exit(3)
@@ -1075,7 +1076,10 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 			}
 
 			// 1. extract the sending time and calculate the delay, add the delay to sumOfDelayTimes
-			readPayload := bytes.NewBuffer(env.Payload)
+			var payload common.Payload
+			proto.Unmarshal(env.Payload, &payload)
+			readPayload := bytes.NewBuffer(payload.Data)
+
 			startPosition := 16 + 8
 			readPayload.Next(startPosition)
 			var extractedSendTime uint64
@@ -1086,8 +1090,8 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 
 			// 2. delete the tx from the map
 			if txsMap != nil {
-				logger.Debugf("remove tx %x from the map", env.Payload)
-				txsMap.Remove(string(env.Payload))
+				logger.Debugf("remove tx %x from the map", payload.Data)
+				txsMap.Remove(string(payload.Data))
 			}
 		}
 
