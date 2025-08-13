@@ -17,6 +17,7 @@ import (
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
@@ -47,7 +48,7 @@ type bafSender struct {
 
 func (s *bafSender) SendBAF(baf arma_types.BatchAttestationFragment) {
 	ba := arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), baf.Signer(), nil, 0, nil)
-	s.totalOrder.SubmitRequest((&core.ControlEvent{BAF: ba}).Bytes())
+	s.totalOrder.SubmitRequest((&state.ControlEvent{BAF: ba}).Bytes())
 }
 
 type naiveblock struct {
@@ -100,11 +101,11 @@ func (s *shardReplicator) Replicate(shard arma_types.ShardID) <-chan arma_types.
 }
 
 type stateProvider struct {
-	s *core.State
+	s *state.State
 }
 
-func (s *stateProvider) GetLatestStateChan() <-chan *core.State {
-	stateChan := make(chan *core.State, 1)
+func (s *stateProvider) GetLatestStateChan() <-chan *state.State {
+	stateChan := make(chan *state.State, 1)
 	stateChan <- s.s
 	return stateChan
 }
@@ -169,14 +170,14 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	totalOrder := make(naiveTotalOrder, 1000)
 
-	initialState := &core.State{
+	initialState := &state.State{
 		Threshold:  1,
 		N:          1,
 		ShardCount: uint16(shardCount),
 	}
 
 	for shardID := uint16(0); shardID < initialState.ShardCount; shardID++ {
-		initialState.Shards = append(initialState.Shards, core.ShardTerm{Shard: arma_types.ShardID(shardID), Term: 1})
+		initialState.Shards = append(initialState.Shards, state.ShardTerm{Shard: arma_types.ShardID(shardID), Term: 1})
 	}
 
 	consenter := &core.Consenter{
@@ -218,9 +219,9 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 
 	var batchers []*core.Batcher
 
-	state := core.State{N: uint16(shardCount)}
+	s := state.State{N: uint16(shardCount)}
 	for shard := 0; shard < shardCount; shard++ {
-		state.Shards = append(state.Shards, core.ShardTerm{Shard: arma_types.ShardID(shard)})
+		s.Shards = append(s.Shards, state.ShardTerm{Shard: arma_types.ShardID(shard)})
 	}
 
 	var parties []arma_types.PartyID
@@ -236,7 +237,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		batchers = append(batchers, batcher)
 	}
 
-	sp := &stateProvider{s: &state}
+	sp := &stateProvider{s: &s}
 
 	for i := 0; i < shardCount; i++ {
 		sc := &shardCommitter{
@@ -247,7 +248,7 @@ func TestAssemblerBatcherConsenter(t *testing.T) {
 		batchers[i].BatchAcker = acker
 		batchers[i].Ledger = sc
 		batchers[i].BatchPuller = nil
-		batchers[i].N = state.N
+		batchers[i].N = s.N
 		batchers[i].StateProvider = sp
 		batchers[i].ID = arma_types.PartyID(i)
 		batchers[i].Start()

@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,7 +57,7 @@ func TestPrimaryConnector(t *testing.T) {
 	batchers[0].Stop()
 
 	// change term
-	termChangeState := &core.State{N: uint16(numParties), Shards: []core.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 	for i := 1; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
 	}

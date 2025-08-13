@@ -4,15 +4,15 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
 type FakeConsenterControlEventSender struct {
-	SendControlEventStub        func(core.ControlEvent) error
+	SendControlEventStub        func(state.ControlEvent) error
 	sendControlEventMutex       sync.RWMutex
 	sendControlEventArgsForCall []struct {
-		arg1 core.ControlEvent
+		arg1 state.ControlEvent
 	}
 	sendControlEventReturns struct {
 		result1 error
@@ -24,11 +24,11 @@ type FakeConsenterControlEventSender struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsenterControlEventSender) SendControlEvent(arg1 core.ControlEvent) error {
+func (fake *FakeConsenterControlEventSender) SendControlEvent(arg1 state.ControlEvent) error {
 	fake.sendControlEventMutex.Lock()
 	ret, specificReturn := fake.sendControlEventReturnsOnCall[len(fake.sendControlEventArgsForCall)]
 	fake.sendControlEventArgsForCall = append(fake.sendControlEventArgsForCall, struct {
-		arg1 core.ControlEvent
+		arg1 state.ControlEvent
 	}{arg1})
 	stub := fake.SendControlEventStub
 	fakeReturns := fake.sendControlEventReturns
@@ -49,13 +49,13 @@ func (fake *FakeConsenterControlEventSender) SendControlEventCallCount() int {
 	return len(fake.sendControlEventArgsForCall)
 }
 
-func (fake *FakeConsenterControlEventSender) SendControlEventCalls(stub func(core.ControlEvent) error) {
+func (fake *FakeConsenterControlEventSender) SendControlEventCalls(stub func(state.ControlEvent) error) {
 	fake.sendControlEventMutex.Lock()
 	defer fake.sendControlEventMutex.Unlock()
 	fake.SendControlEventStub = stub
 }
 
-func (fake *FakeConsenterControlEventSender) SendControlEventArgsForCall(i int) core.ControlEvent {
+func (fake *FakeConsenterControlEventSender) SendControlEventArgsForCall(i int) state.ControlEvent {
 	fake.sendControlEventMutex.RLock()
 	defer fake.sendControlEventMutex.RUnlock()
 	argsForCall := fake.sendControlEventArgsForCall[i]

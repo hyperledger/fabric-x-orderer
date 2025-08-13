@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
@@ -23,8 +22,8 @@ func toBeSignedBAF(baf arma_types.BatchAttestationFragment) []byte {
 }
 
 func printEvent(event []byte) string {
-	var ce core.ControlEvent
-	bafd := &state.BAFDeserializer{}
+	var ce state.ControlEvent
+	bafd := &state.BAFDeserialize{}
 	if err := ce.FromBytes(event, bafd.Deserialize); err != nil {
 		return fmt.Sprintf("error: %v", err)
 	}

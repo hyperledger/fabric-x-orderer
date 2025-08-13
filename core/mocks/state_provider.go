@@ -5,24 +5,25 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
 type FakeStateProvider struct {
-	GetLatestStateChanStub        func() <-chan *core.State
+	GetLatestStateChanStub        func() <-chan *state.State
 	getLatestStateChanMutex       sync.RWMutex
 	getLatestStateChanArgsForCall []struct {
 	}
 	getLatestStateChanReturns struct {
-		result1 <-chan *core.State
+		result1 <-chan *state.State
 	}
 	getLatestStateChanReturnsOnCall map[int]struct {
-		result1 <-chan *core.State
+		result1 <-chan *state.State
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeStateProvider) GetLatestStateChan() <-chan *core.State {
+func (fake *FakeStateProvider) GetLatestStateChan() <-chan *state.State {
 	fake.getLatestStateChanMutex.Lock()
 	ret, specificReturn := fake.getLatestStateChanReturnsOnCall[len(fake.getLatestStateChanArgsForCall)]
 	fake.getLatestStateChanArgsForCall = append(fake.getLatestStateChanArgsForCall, struct {
@@ -46,32 +47,32 @@ func (fake *FakeStateProvider) GetLatestStateChanCallCount() int {
 	return len(fake.getLatestStateChanArgsForCall)
 }
 
-func (fake *FakeStateProvider) GetLatestStateChanCalls(stub func() <-chan *core.State) {
+func (fake *FakeStateProvider) GetLatestStateChanCalls(stub func() <-chan *state.State) {
 	fake.getLatestStateChanMutex.Lock()
 	defer fake.getLatestStateChanMutex.Unlock()
 	fake.GetLatestStateChanStub = stub
 }
 
-func (fake *FakeStateProvider) GetLatestStateChanReturns(result1 <-chan *core.State) {
+func (fake *FakeStateProvider) GetLatestStateChanReturns(result1 <-chan *state.State) {
 	fake.getLatestStateChanMutex.Lock()
 	defer fake.getLatestStateChanMutex.Unlock()
 	fake.GetLatestStateChanStub = nil
 	fake.getLatestStateChanReturns = struct {
-		result1 <-chan *core.State
+		result1 <-chan *state.State
 	}{result1}
 }
 
-func (fake *FakeStateProvider) GetLatestStateChanReturnsOnCall(i int, result1 <-chan *core.State) {
+func (fake *FakeStateProvider) GetLatestStateChanReturnsOnCall(i int, result1 <-chan *state.State) {
 	fake.getLatestStateChanMutex.Lock()
 	defer fake.getLatestStateChanMutex.Unlock()
 	fake.GetLatestStateChanStub = nil
 	if fake.getLatestStateChanReturnsOnCall == nil {
 		fake.getLatestStateChanReturnsOnCall = make(map[int]struct {
-			result1 <-chan *core.State
+			result1 <-chan *state.State
 		})
 	}
 	fake.getLatestStateChanReturnsOnCall[i] = struct {
-		result1 <-chan *core.State
+		result1 <-chan *state.State
 	}{result1}
 }
 

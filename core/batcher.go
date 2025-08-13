@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
 )
 
@@ -41,7 +42,7 @@ type BatchPuller interface {
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider
 type StateProvider interface {
-	GetLatestStateChan() <-chan *State
+	GetLatestStateChan() <-chan *state.State
 }
 
 //go:generate counterfeiter -o mocks/complainer.go . Complainer
@@ -178,7 +179,7 @@ func (b *Batcher) Stop() {
 	b.running.Wait()
 }
 
-func (b *Batcher) getTerm(state *State) uint64 {
+func (b *Batcher) getTerm(state *state.State) uint64 {
 	term := uint64(math.MaxUint64)
 	for _, shard := range state.Shards {
 		if shard.Shard == b.Shard {
@@ -215,7 +216,7 @@ func (b *Batcher) getTermAndNotifyChange() {
 // and that tx is in the pool of other batchers but again not enough (less than f+1 batchers)
 // to prevent a case where such a tx falls through the cracks, after a term change
 // all batchers resubmit to their pools txs in batches with their BAFs still in pending state
-func (b *Batcher) resubmitPendingBAFs(state *State, prevPrimary types.PartyID) {
+func (b *Batcher) resubmitPendingBAFs(state *state.State, prevPrimary types.PartyID) {
 	for _, baf := range state.Pending {
 		if baf.Signer() == b.ID && baf.Primary() == prevPrimary {
 			b.Logger.Debugf("found pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())

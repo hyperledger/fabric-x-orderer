@@ -9,8 +9,8 @@ package batcher
 import (
 	"context"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
 	"github.com/pkg/errors"
@@ -29,7 +29,7 @@ func (f *ConsenterControlEventSenderFactory) CreateConsenterControlEventSender(T
 
 //go:generate counterfeiter -o mocks/consenter_control_event_sender.go . ConsenterControlEventSender
 type ConsenterControlEventSender interface {
-	SendControlEvent(ce core.ControlEvent) error
+	SendControlEvent(ce state.ControlEvent) error
 }
 
 type ConsenterControlEventStream struct {
@@ -59,7 +59,7 @@ func (s *ConsenterControlEventStream) createStream() error {
 	return nil
 }
 
-func (s *ConsenterControlEventStream) SendControlEvent(ce core.ControlEvent) error {
+func (s *ConsenterControlEventStream) SendControlEvent(ce state.ControlEvent) error {
 	if s.stream == nil {
 		if err := s.createStream(); err != nil {
 			s.stream = nil // TODO maybe retry

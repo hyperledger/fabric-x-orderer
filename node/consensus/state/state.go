@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core
+package state
 
 import (
 	"bytes"
@@ -133,10 +133,6 @@ func fragmentsToBytes(fragments []types.BatchAttestationFragment) []byte {
 
 	fragmentBuffBytes := fragmentBuff.Bytes()
 	return fragmentBuffBytes
-}
-
-type BAFDeserializer interface {
-	Deserialize([]byte) (types.BatchAttestationFragment, error)
 }
 
 func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {

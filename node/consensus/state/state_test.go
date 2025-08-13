@@ -4,30 +4,29 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core_test
+package state_test
 
 import (
 	"math"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
 
 var (
-	initialState = core.State{
+	initialState = consensus_state.State{
 		N:          4,
 		Threshold:  2,
-		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}},
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 		ShardCount: 1,
 	}
 
-	complaint = core.Complaint{
-		ShardTerm: core.ShardTerm{
+	complaint = consensus_state.Complaint{
+		ShardTerm: consensus_state.ShardTerm{
 			Shard: 1,
 			Term:  1,
 		},
@@ -48,18 +47,18 @@ var (
 )
 
 func TestStateSerializeDeserialize(t *testing.T) {
-	s := core.State{
+	s := consensus_state.State{
 		N:          4,
 		Threshold:  2,
 		Quorum:     3,
-		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}},
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 		ShardCount: 1,
 		AppContext: make([]byte, 64),
 	}
 
 	bytes := s.Serialize()
 
-	s2 := core.State{}
+	s2 := consensus_state.State{}
 
 	s2.Deserialize(bytes, nil)
 
@@ -67,8 +66,8 @@ func TestStateSerializeDeserialize(t *testing.T) {
 }
 
 func TestComplaintSerialization(t *testing.T) {
-	c := core.Complaint{
-		ShardTerm: core.ShardTerm{
+	c := consensus_state.Complaint{
+		ShardTerm: consensus_state.ShardTerm{
 			Shard: 1,
 			Term:  2,
 		},
@@ -77,7 +76,7 @@ func TestComplaintSerialization(t *testing.T) {
 		Reason:    "abc",
 	}
 
-	var c2 core.Complaint
+	var c2 consensus_state.Complaint
 
 	err := c2.FromBytes(c.Bytes())
 	assert.NoError(t, err)
@@ -106,9 +105,9 @@ func TestComplaintSerialization(t *testing.T) {
 
 func TestControlEventSerialization(t *testing.T) {
 	// Serialization and deserialization of ControlEvent with Complaint
-	ce := core.ControlEvent{nil, &complaint}
+	ce := consensus_state.ControlEvent{nil, &complaint}
 
-	var ce2 core.ControlEvent
+	var ce2 consensus_state.ControlEvent
 
 	err := ce2.FromBytes(ce.Bytes(), nil)
 	assert.NoError(t, err)
@@ -116,9 +115,9 @@ func TestControlEventSerialization(t *testing.T) {
 	assert.Equal(t, ce, ce2)
 
 	// Serialization and deserialization of ControlEvent with BAF
-	ce = core.ControlEvent{baf, nil}
+	ce = consensus_state.ControlEvent{baf, nil}
 
-	bafd := state.BAFDeserializer{}
+	bafd := consensus_state.BAFDeserialize{}
 
 	ce2.Complaint = nil
 	err = ce2.FromBytes(ce.Bytes(), bafd.Deserialize)
@@ -129,30 +128,30 @@ func TestControlEventSerialization(t *testing.T) {
 
 func TestCollectAndDeduplicateEvents(t *testing.T) {
 	state := initialState
-	ce := core.ControlEvent{nil, &complaint}
-	ce2 := core.ControlEvent{nil, &complaint}
+	ce := consensus_state.ControlEvent{nil, &complaint}
+	ce2 := consensus_state.ControlEvent{nil, &complaint}
 	logger := testutil.CreateLogger(t, 0)
 
 	// Add a valid Complaint and ensure no duplicates are accepted in the same round
-	core.CollectAndDeduplicateEvents(&state, logger, ce, ce2)
+	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce, ce2)
 
-	expectedState := core.State{
+	expectedState := consensus_state.State{
 		N:          4,
 		Threshold:  2,
-		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}},
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 		ShardCount: 1,
-		Complaints: []core.Complaint{complaint},
+		Complaints: []consensus_state.Complaint{complaint},
 	}
 
 	assert.Equal(t, state, expectedState)
 
 	// Handle duplicate Complaint
-	core.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle Complaint with invalid shard
-	c := core.Complaint{
-		ShardTerm: core.ShardTerm{
+	c := consensus_state.Complaint{
+		ShardTerm: consensus_state.ShardTerm{
 			Shard: 2,
 			Term:  1,
 		},
@@ -160,13 +159,13 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 		Signature: []byte{4},
 	}
 
-	ce = core.ControlEvent{nil, &c}
-	core.CollectAndDeduplicateEvents(&state, logger, ce)
+	ce = consensus_state.ControlEvent{nil, &c}
+	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle Complaint with invalid term
-	c = core.Complaint{
-		ShardTerm: core.ShardTerm{
+	c = consensus_state.Complaint{
+		ShardTerm: consensus_state.ShardTerm{
 			Shard: 1,
 			Term:  2,
 		},
@@ -174,67 +173,67 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 		Signature: []byte{4},
 	}
 
-	ce = core.ControlEvent{nil, &c}
-	core.CollectAndDeduplicateEvents(&state, logger, ce)
+	ce = consensus_state.ControlEvent{nil, &c}
+	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Update state with a valid BAF
-	ce = core.ControlEvent{baf, nil}
+	ce = consensus_state.ControlEvent{baf, nil}
 	expectedState.Pending = append(expectedState.Pending, baf)
 
-	core.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle duplicate BAF
-	core.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle BAF with invalid Shard
 	baf2 := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(3), []uint8{4}, 0, [][]uint8{})
-	ce = core.ControlEvent{baf2, nil}
+	ce = consensus_state.ControlEvent{baf2, nil}
 
-	core.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 }
 
 func TestPrimaryRotateDueToComplaints(t *testing.T) {
-	state := core.State{
+	state := consensus_state.State{
 		N:          4,
 		Threshold:  2,
-		Shards:     []core.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
 		ShardCount: 2,
-		Complaints: []core.Complaint{
-			{ShardTerm: core.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
-			{ShardTerm: core.ShardTerm{Shard: 1, Term: 1}, Signer: 3},
+		Complaints: []consensus_state.Complaint{
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 3},
 		},
 	}
 
 	logger := testutil.CreateLogger(t, 0)
 
-	core.PrimaryRotateDueToComplaints(&state, logger)
+	consensus_state.PrimaryRotateDueToComplaints(&state, logger)
 
 	// Check that the term for shard 1 has been incremented
-	expectedShards := []core.ShardTerm{{Shard: 1, Term: 2}, {Shard: 2, Term: 1}}
+	expectedShards := []consensus_state.ShardTerm{{Shard: 1, Term: 2}, {Shard: 2, Term: 1}}
 	assert.Equal(t, expectedShards, state.Shards)
 
 	assert.Empty(t, state.Complaints)
 }
 
 func TestCleanupOldComplaints(t *testing.T) {
-	state := core.State{
-		Shards: []core.ShardTerm{{Shard: 1, Term: 2}},
-		Complaints: []core.Complaint{
-			{ShardTerm: core.ShardTerm{Shard: 1, Term: 1}, Signer: 2}, // Old complaint
-			{ShardTerm: core.ShardTerm{Shard: 1, Term: 2}, Signer: 3}, // Valid complaint
+	state := consensus_state.State{
+		Shards: []consensus_state.ShardTerm{{Shard: 1, Term: 2}},
+		Complaints: []consensus_state.Complaint{
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2}, // Old complaint
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 2}, Signer: 3}, // Valid complaint
 		},
 	}
 
 	logger := testutil.CreateLogger(t, 0)
 
-	core.CleanupOldComplaints(&state, logger)
+	consensus_state.CleanupOldComplaints(&state, logger)
 
-	expectedComplaints := []core.Complaint{
-		{ShardTerm: core.ShardTerm{Shard: 1, Term: 2}, Signer: 3},
+	expectedComplaints := []consensus_state.Complaint{
+		{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 2}, Signer: 3},
 	}
 	assert.Equal(t, expectedComplaints, state.Complaints)
 }
@@ -256,7 +255,7 @@ func TestCleanupOldAttestations(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 
 	state.Pending = append(state.Pending, baf1)
-	core.CleanupOldAttestations(&state, logger)
+	consensus_state.CleanupOldAttestations(&state, logger)
 
 	assert.Len(t, state.Pending, 1)
 
@@ -273,7 +272,7 @@ func TestCleanupOldAttestations(t *testing.T) {
 	)
 
 	state.Pending = append(state.Pending, baf2)
-	core.CleanupOldAttestations(&state, logger)
+	consensus_state.CleanupOldAttestations(&state, logger)
 
 	assert.Len(t, state.Pending, 1)
 	assert.Equal(t, baf1, state.Pending[0])

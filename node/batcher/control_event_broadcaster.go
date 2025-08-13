@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
 )
 
@@ -28,7 +28,7 @@ type ControlEventBroadcaster struct {
 	cancelFunc       context.CancelFunc
 }
 
-func (b *ControlEventBroadcaster) BroadcastControlEvent(ce core.ControlEvent) error {
+func (b *ControlEventBroadcaster) BroadcastControlEvent(ce state.ControlEvent) error {
 	retrySenders := b.senders
 	delay := b.minRetryInterval
 
@@ -76,7 +76,7 @@ func (b *ControlEventBroadcaster) BroadcastControlEvent(ce core.ControlEvent) er
 	}
 }
 
-func (b *ControlEventBroadcaster) sendControlEvent(ce core.ControlEvent, sender ConsenterControlEventSender) error {
+func (b *ControlEventBroadcaster) sendControlEvent(ce state.ControlEvent, sender ConsenterControlEventSender) error {
 	t1 := time.Now()
 
 	defer func() {

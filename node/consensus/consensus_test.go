@@ -89,10 +89,10 @@ func TestConsensus(t *testing.T) {
 			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
 				{expectCommits: big.NewInt(4)},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id1p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id2p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf124id1p2s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf124id2p2s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id1p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id1p2s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id2p2s1}},
 				{waitForCommit: &struct{}{}},
 			},
 		},
@@ -103,16 +103,16 @@ func TestConsensus(t *testing.T) {
 			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
 				{expectCommits: big.NewInt(4)},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id1p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id2p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf124id1p2s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf124id2p2s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id1p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id1p2s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id2p2s1}},
 				{waitForCommit: &struct{}{}},
 				{expectCommits: big.NewInt(4)},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id3p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id4p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf125id1p1s2}},
-				{ControlEvent: &core.ControlEvent{BAF: baf125id2p1s2}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id3p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id4p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf125id1p1s2}},
+				{ControlEvent: &state.ControlEvent{BAF: baf125id2p1s2}},
 				{waitForCommit: &struct{}{}},
 			},
 		},
@@ -123,16 +123,16 @@ func TestConsensus(t *testing.T) {
 			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
 				{expectCommits: big.NewInt(4)},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id3p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id4p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf125id1p1s2}},
-				{ControlEvent: &core.ControlEvent{BAF: baf125id2p1s2}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id3p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id4p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf125id1p1s2}},
+				{ControlEvent: &state.ControlEvent{BAF: baf125id2p1s2}},
 				{waitForCommit: &struct{}{}},
 				{expectCommits: big.NewInt(4)},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id1p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf123id2p1s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf124id1p2s1}},
-				{ControlEvent: &core.ControlEvent{BAF: baf124id2p2s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id1p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id1p2s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id2p2s1}},
 				{waitForCommit: &struct{}{}},
 			},
 		},
@@ -146,10 +146,10 @@ func TestConsensus(t *testing.T) {
 				Digest:   nil,
 			}
 
-			initialState := &core.State{
+			initialState := &state.State{
 				ShardCount: 2,
 				N:          4,
-				Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
 				AppContext: initialAppContext.Bytes(),
@@ -250,12 +250,12 @@ func TestConsensus(t *testing.T) {
 }
 
 type scheduleEvent struct {
-	*core.ControlEvent
+	*state.ControlEvent
 	expectCommits *big.Int
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *core.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *state.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
@@ -276,7 +276,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		State:           initialState,
 		DB:              db,
 		Logger:          l,
-		BAFDeserializer: &state.BAFDeserializer{},
+		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
 	c := &Consensus{
@@ -325,7 +325,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	}
 }
 
-func initializeStateAndMetadata(t *testing.T, initState *core.State, ledger *ledger.ConsensusLedger) (*core.State, *smartbftprotos.ViewMetadata) {
+func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata) {
 	height := ledger.Height()
 
 	if height == 0 {
@@ -428,19 +428,19 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	}
 
 	signer1 := crypto.ECDSASigner(*sks[0])
-	complaint1 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 1}
+	complaint1 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 1}
 	sig, err := signer1.Sign(complaint1.ToBeSigned())
 	require.NoError(t, err)
 	complaint1.Signature = sig
 
 	signer2 := crypto.ECDSASigner(*sks[1])
-	complaint2 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 2}
+	complaint2 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 2}
 	sig, err = signer2.Sign(complaint2.ToBeSigned())
 	require.NoError(t, err)
 	complaint2.Signature = sig
 
 	signer3 := crypto.ECDSASigner(*sks[2])
-	complaint3 := &core.Complaint{ShardTerm: core.ShardTerm{Shard: 1}, Signer: 3}
+	complaint3 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 3}
 	sig, err = signer3.Sign(complaint3.ToBeSigned())
 	require.NoError(t, err)
 	complaint3.Signature = sig
@@ -467,7 +467,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		name                   string
 		initialAppContext      state.BlockHeader
 		metadata               *smartbftprotos.ViewMetadata
-		ces                    []core.ControlEvent
+		ces                    []state.ControlEvent
 		bafsOfAvailableBatches []arma_types.BatchAttestationFragment
 		numPending             int
 		numComplaints          int
@@ -483,7 +483,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}},
+			ces:                    []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}},
 			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1},
 			numPending:             0,
 		},
@@ -497,7 +497,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			ces:        []core.ControlEvent{{BAF: baf123id1p1s1}},
+			ces:        []state.ControlEvent{{BAF: baf123id1p1s1}},
 			numPending: 1,
 		},
 		{
@@ -510,7 +510,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id2p1s1}},
+			ces:                    []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id2p1s1}},
 			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1},
 			numPending:             0,
 		},
@@ -524,7 +524,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			ces:                    []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}, {Complaint: complaint2}},
+			ces:                    []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf124id3p1s2}, {BAF: baf124id4p1s2}, {BAF: baf125id1p1s3}, {Complaint: complaint2}},
 			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1, baf124id3p1s2},
 			numPending:             1,
 			numComplaints:          1,
@@ -539,7 +539,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
 			},
-			ces:                    []core.ControlEvent{{Complaint: complaint1}, {Complaint: complaint2}, {Complaint: complaint3}, {BAF: baf124id4p1s2}, {BAF: baf124id3p1s2}},
+			ces:                    []state.ControlEvent{{Complaint: complaint1}, {Complaint: complaint2}, {Complaint: complaint3}, {BAF: baf124id4p1s2}, {BAF: baf124id3p1s2}},
 			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf124id3p1s2},
 			numPending:             0,
 			newTermForShard1:       1,
@@ -554,16 +554,16 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
 			},
-			ces:           []core.ControlEvent{{BAF: baf124id4p1s2}, {BAF: baf123id2p1s1}, {Complaint: complaint1}},
+			ces:           []state.ControlEvent{{BAF: baf124id4p1s2}, {BAF: baf123id2p1s1}, {Complaint: complaint1}},
 			numPending:    2,
 			numComplaints: 1,
 		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
-			initialState := &core.State{
+			initialState := &state.State{
 				ShardCount: 2,
 				N:          4,
-				Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
 				AppContext: tst.initialAppContext.Bytes(),
@@ -573,7 +573,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				DB:              db,
 				State:           initialState,
 				Logger:          logger,
-				BAFDeserializer: &state.BAFDeserializer{},
+				BAFDeserializer: &state.BAFDeserialize{},
 			}
 
 			c := &Consensus{
@@ -674,10 +674,10 @@ func TestVerifyProposal(t *testing.T) {
 		Digest:   make([]byte, 32),
 	}
 
-	initialState := core.State{
+	initialState := state.State{
 		ShardCount: 2,
 		N:          4,
-		Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
 		AppContext: initialAppContext.Bytes(),
@@ -687,7 +687,7 @@ func TestVerifyProposal(t *testing.T) {
 		DB:              db,
 		State:           &initialState,
 		Logger:          logger,
-		BAFDeserializer: &state.BAFDeserializer{},
+		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
 	c := &Consensus{
@@ -705,7 +705,7 @@ func TestVerifyProposal(t *testing.T) {
 	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1)
 	assert.NoError(t, err)
 
-	ces := []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
+	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
 	reqs := make([][]byte, len(ces))
 	for i, ce := range ces {
 		reqs[i] = ce.Bytes()
@@ -869,10 +869,10 @@ func TestSignProposal(t *testing.T) {
 		Digest:   make([]byte, 32),
 	}
 
-	initialState := core.State{
+	initialState := state.State{
 		ShardCount: 2,
 		N:          4,
-		Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
 		AppContext: initialAppContext.Bytes(),
@@ -882,7 +882,7 @@ func TestSignProposal(t *testing.T) {
 		DB:              db,
 		State:           &initialState,
 		Logger:          logger,
-		BAFDeserializer: &state.BAFDeserializer{},
+		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
 	c := &Consensus{
@@ -908,7 +908,7 @@ func TestSignProposal(t *testing.T) {
 	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1)
 	assert.NoError(t, err)
 
-	ces := []core.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
+	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
 	reqs := make([][]byte, len(ces))
 	for i, ce := range ces {
 		reqs[i] = ce.Bytes()
@@ -960,10 +960,10 @@ func TestConsensusStartStop(t *testing.T) {
 		Digest:   make([]byte, 32),
 	}
 
-	initialState := &core.State{
+	initialState := &state.State{
 		ShardCount: 2,
 		N:          1,
-		Shards:     []core.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  1,
 		Quorum:     1,
 		AppContext: initialAppContext.Bytes(),
@@ -994,7 +994,7 @@ func TestConsensusStartStop(t *testing.T) {
 	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1)
 	assert.NoError(t, err)
 
-	ce1 := &core.ControlEvent{BAF: baf123id1p1s1}
+	ce1 := &state.ControlEvent{BAF: baf123id1p1s1}
 	err = c.SubmitRequest(ce1.Bytes())
 	assert.NoError(t, err)
 	commitEvent.Wait()
@@ -1053,7 +1053,7 @@ func TestConsensusStartStop(t *testing.T) {
 	dig124 := append([]byte{1, 2, 4}, dig...)
 	baf124id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2)
 	assert.NoError(t, err)
-	ce2 := &core.ControlEvent{BAF: baf124id1p1s2}
+	ce2 := &state.ControlEvent{BAF: baf124id1p1s2}
 	commitEvent.Add(1)
 	err = c.SubmitRequest(ce2.Bytes())
 	assert.NoError(t, err)

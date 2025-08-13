@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -24,13 +23,13 @@ import (
 
 type stubConsenter struct {
 	net                *comm.GRPCServer
-	stateChan          chan *core.State
+	stateChan          chan *state.State
 	key                []byte
 	certificate        []byte
 	logger             types.Logger
-	complaints         int                 // number of complaints received
-	bafs               int                 // number of BAFs received
-	receivedEvents     []core.ControlEvent // received control events
+	complaints         int                  // number of complaints received
+	bafs               int                  // number of BAFs received
+	receivedEvents     []state.ControlEvent // received control events
 	receivedEventsLock sync.RWMutex
 }
 
@@ -42,7 +41,7 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, n *node) *stubConsent
 		net:         n.GRPCServer,
 		key:         n.TLSKey,
 		certificate: n.TLSCert,
-		stateChan:   make(chan *core.State),
+		stateChan:   make(chan *state.State),
 	}
 
 	gRPCServer := n.GRPCServer.Server()
@@ -67,8 +66,8 @@ func (sc *stubConsenter) NotifyEvent(stream protos.Consensus_NotifyEventServer) 
 			return err
 		}
 
-		var ce core.ControlEvent
-		bafd := &state.BAFDeserializer{}
+		var ce state.ControlEvent
+		bafd := &state.BAFDeserialize{}
 		ce.FromBytes(event.Payload, bafd.Deserialize)
 
 		sc.receivedEventsLock.Lock()
@@ -115,7 +114,7 @@ func (sc *stubConsenter) Restart() {
 }
 
 // Returns the last received control event
-func (sc *stubConsenter) LastControlEvent() *core.ControlEvent {
+func (sc *stubConsenter) LastControlEvent() *state.ControlEvent {
 	sc.receivedEventsLock.RLock()
 	defer sc.receivedEventsLock.RUnlock()
 	return &sc.receivedEvents[len(sc.receivedEvents)-1]
@@ -133,11 +132,11 @@ func (sc *stubConsenter) ComplaintCount() int {
 	return sc.complaints
 }
 
-func (sc *stubConsenter) UpdateState(state *core.State) {
+func (sc *stubConsenter) UpdateState(state *state.State) {
 	sc.stateChan <- state
 }
 
-func (sc *stubConsenter) ReplicateState() <-chan *core.State {
+func (sc *stubConsenter) ReplicateState() <-chan *state.State {
 	return sc.stateChan
 }
 

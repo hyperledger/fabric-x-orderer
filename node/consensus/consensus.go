@@ -17,7 +17,6 @@ import (
 	"sync"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/core/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -51,7 +50,7 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState *core.State, events [][]byte) (*core.State, [][]arma_types.BatchAttestationFragment)
+	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment)
 	Commit(events [][]byte)
 }
 
@@ -77,7 +76,7 @@ type Consensus struct {
 	BADB         *badb.BatchAttestationDB
 	Arma         Arma
 	stateLock    sync.Mutex
-	State        *core.State
+	State        *state.State
 	Logger       arma_types.Logger
 	Synchronizer *synchronizer
 }
@@ -106,8 +105,8 @@ func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.
 
 func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
 	rawCE := req.Payload.Payload
-	var ce core.ControlEvent
-	bafd := &state.BAFDeserializer{}
+	var ce state.ControlEvent
+	bafd := &state.BAFDeserialize{}
 	if err := ce.FromBytes(rawCE, bafd.Deserialize); err != nil {
 		c.Logger.Errorf("Failed unmarshaling control event %s: %v", base64.StdEncoding.EncodeToString(rawCE), err)
 		return errors.Wrap(err, "failed unmarshaling control event")
@@ -239,8 +238,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 // VerifyRequest verifies the given request and returns its info
 // (from SmartBFT API)
 func (c *Consensus) VerifyRequest(req []byte) (smartbft_types.RequestInfo, error) {
-	var ce core.ControlEvent
-	bafd := &state.BAFDeserializer{}
+	var ce state.ControlEvent
+	bafd := &state.BAFDeserialize{}
 	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
 		return smartbft_types.RequestInfo{}, err
 	}
@@ -343,8 +342,8 @@ func (c *Consensus) Sign(msg []byte) []byte {
 // RequestID returns info about the given request
 // (from SmartBFT API)
 func (c *Consensus) RequestID(req []byte) smartbft_types.RequestInfo {
-	var ce core.ControlEvent
-	bafd := &state.BAFDeserializer{}
+	var ce state.ControlEvent
+	bafd := &state.BAFDeserialize{}
 	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
 		return smartbft_types.RequestInfo{}
 	}
