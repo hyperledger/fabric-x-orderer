@@ -93,3 +93,13 @@ func createConsenter(state *state.State, logger arma_types.Logger) *core.Consent
 
 	return consenter
 }
+
+type BAFSimpleDeserializer struct{}
+
+func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (arma_types.BatchAttestationFragment, error) {
+	var baf arma_types.SimpleBatchAttestationFragment
+	if err := baf.Deserialize(bytes); err != nil {
+		return nil, err
+	}
+	return &baf, nil
+}
