@@ -104,7 +104,7 @@ func TestSubmitAndReceive(t *testing.T) {
 				os.Exit(3)
 			}
 
-			broadcastClient := client.NewBroadCastTxClient(uc, 10*time.Second)
+			broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 			defer broadcastClient.Stop()
 			require.NoError(t, err)
 

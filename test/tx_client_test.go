@@ -29,7 +29,7 @@ func TestTxClientSend(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
-	var broadcastClient *client.BroadCastTxClient
+	var broadcastClient *client.BroadcastTxClient
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
@@ -57,7 +57,7 @@ func TestTxClientSend(t *testing.T) {
 	uc, err := testutil.GetUserConfig(dir, 1)
 	assert.NoError(t, err)
 	assert.NotNil(t, uc)
-	broadcastClient = client.NewBroadCastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 	defer broadcastClient.Stop()
 	require.NoError(t, err)
 	for i := 0; i < totalTxNumber; i++ {

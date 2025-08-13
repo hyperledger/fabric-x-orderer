@@ -25,21 +25,21 @@ type StreamInfo struct {
 	totalTxSent uint32
 	endpoint    string
 }
-type BroadCastTxClient struct {
+type BroadcastTxClient struct {
 	userConfig       *armageddon.UserConfig
 	timeOut          time.Duration
 	streamRoutersMap map[string]*StreamInfo
 }
 
-func NewBroadCastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Duration) *BroadCastTxClient {
-	return &BroadCastTxClient{
+func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Duration) *BroadcastTxClient {
+	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
 		timeOut:          timeOut,
 		streamRoutersMap: make(map[string]*StreamInfo),
 	}
 }
 
-func (c *BroadCastTxClient) SendTx(txContent []byte) error {
+func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 	c.createSendStreams()
 	var errorsAccumulator strings.Builder
 	failures := 0
@@ -137,7 +137,7 @@ func createSendStream(userConfig *armageddon.UserConfig, serverRootCAs [][]byte,
 	return nil
 }
 
-func (c *BroadCastTxClient) createSendStreams() error {
+func (c *BroadcastTxClient) createSendStreams() error {
 	userConfig := c.userConfig
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
@@ -164,7 +164,7 @@ func (c *BroadCastTxClient) createSendStreams() error {
 	return nil
 }
 
-func (c *BroadCastTxClient) Stop() {
+func (c *BroadcastTxClient) Stop() {
 	totalTxSent := 0
 	for key := range c.streamRoutersMap {
 		if sInfo, ok := c.streamRoutersMap[key]; ok {

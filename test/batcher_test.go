@@ -85,7 +85,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		os.Exit(3)
 	}
 
-	broadcastClient := client.NewBroadCastTxClient(uc, 10*time.Second)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -124,7 +124,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	// 4.
 	// make sure 2f+1 routers are receiving TXs w/o problems
-	broadcastClient = client.NewBroadCastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -170,7 +170,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	PullFromAssemblers(t, uc, []types.PartyID{primaryBatcher.PartyId}, 0, math.MaxUint64, totalTxSent, -1, "cancelled pull from assembler: %d", 60)
 
 	// 7.
-	broadcastClient = client.NewBroadCastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -254,7 +254,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		os.Exit(3)
 	}
 
-	broadcastClient := client.NewBroadCastTxClient(uc, 10*time.Second)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -303,7 +303,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	// 4. Send To Routers
 	// make sure 2f+1 routers are receiving TXs w/o problems
-	broadcastClient = client.NewBroadCastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -343,7 +343,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	// 7.
 	// make sure 2f+1 routers are receiving TXs w/o problems
-	broadcastClient = client.NewBroadCastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
