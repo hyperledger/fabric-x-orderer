@@ -4,17 +4,16 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core_test
+package consensus_test
 
 import (
 	"testing"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-	"github.com/hyperledger/fabric-x-orderer/core/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -83,23 +82,13 @@ func TestConsenter(t *testing.T) {
 	assert.Len(t, consenter.State.Complaints, 1)
 }
 
-func createConsenter(state *state.State, logger arma_types.Logger) *core.Consenter {
-	consenter := &core.Consenter{
+func createConsenter(s *state.State, logger arma_types.Logger) *consensus.Consenter {
+	consenter := &consensus.Consenter{
 		Logger:          logger,
 		DB:              &mocks.FakeBatchAttestationDB{},
-		BAFDeserializer: &BAFSimpleDeserializer{},
-		State:           state,
+		BAFDeserializer: &state.BAFDeserialize{},
+		State:           s,
 	}
 
 	return consenter
-}
-
-type BAFSimpleDeserializer struct{}
-
-func (bafd *BAFSimpleDeserializer) Deserialize(bytes []byte) (arma_types.BatchAttestationFragment, error) {
-	var baf arma_types.SimpleBatchAttestationFragment
-	if err := baf.Deserialize(bytes); err != nil {
-		return nil, err
-	}
-	return &baf, nil
 }

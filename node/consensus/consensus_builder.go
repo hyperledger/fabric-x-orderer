@@ -24,10 +24,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-	"github.com/hyperledger/fabric-x-orderer/core/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -64,7 +63,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 		Net:            net,
 		Config:         conf,
 		BFTConfig:      conf.BFTConfig,
-		Arma: &core.Consenter{
+		Arma: &Consenter{
 			State:           initialState,
 			DB:              badb,
 			Logger:          logger,
