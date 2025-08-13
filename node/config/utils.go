@@ -22,3 +22,7 @@ func (c *BatcherNodeConfig) GetShardsIDs() []types.ShardID {
 	})
 	return ids
 }
+
+func (rc *RouterNodeConfig) GetMaxSizeBytes() (uint64, error) {
+	return rc.RequestMaxBytes, nil
+}

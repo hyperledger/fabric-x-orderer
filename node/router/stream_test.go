@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -52,7 +53,7 @@ func TestSendRequests(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(nil)
 	fakeSubmitStreamClient.ContextReturns(ctx)
 	logger := testutil.CreateLogger(t, 0)
-
+	verifier := createTestVerifier()
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
 		logger:                            logger,
@@ -63,6 +64,7 @@ func TestSendRequests(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
 	}
 
 	go s.sendRequests()
@@ -91,6 +93,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(fmt.Errorf("error"))
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := testutil.CreateLogger(t, 1)
+	verifier := createTestVerifier()
 
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
@@ -102,6 +105,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
 	}
 
 	go s.sendRequests()
@@ -135,6 +139,7 @@ func TestReadResponses(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, 2)
 	ctx, cancel := context.WithCancel(context.Background())
+	verifier := createTestVerifier()
 
 	responseChan := make(chan Response, 1)
 
@@ -148,6 +153,7 @@ func TestReadResponses(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
 	}
 
 	s.registerReply(traceID, responseChan)
@@ -178,6 +184,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		TraceId: traceID,
 	}, fmt.Errorf("rpc error: service unavailable"))
 	logger := testutil.CreateLogger(t, 3)
+	verifier := createTestVerifier()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -191,6 +198,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
 	}
 
 	go s.readResponses()
@@ -225,6 +233,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 	}
 	requests <- req2
 	requestTraceIdToResponseChannel[string(req2.TraceId)] = make(chan Response, 100)
+	verifier := createTestVerifier()
 
 	faultyStream := &stream{
 		endpoint:                          "127.0.0.1:7015",
@@ -236,6 +245,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
 	}
 
 	faultyStream.cancel()
@@ -294,6 +304,7 @@ func TestReconnectRequest(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(fmt.Errorf("error"))
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := testutil.CreateLogger(t, 1)
+	verifier := createTestVerifier()
 
 	connectionNumber := 2
 	streamNumber := 3
@@ -310,6 +321,7 @@ func TestReconnectRequest(t *testing.T) {
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		connNum:                           connectionNumber,
 		streamNum:                         streamNumber,
+		verifier:                          verifier,
 	}
 
 	go s.sendRequests()
@@ -348,4 +360,10 @@ func (srp *safeReqPool) getElement(i int) *protos.Request {
 	srp.mu.Lock()
 	defer srp.mu.Unlock()
 	return srp.reqPool[i]
+}
+
+func createTestVerifier() *requestfilter.RulesVerifier {
+	rv := requestfilter.NewRulesVerifier(nil)
+	rv.AddRule(requestfilter.AcceptRule{})
+	return rv
 }

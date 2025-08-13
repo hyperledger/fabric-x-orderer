@@ -9,6 +9,7 @@ package requestfilter_test
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,16 +52,24 @@ func TestRulesVerifier(t *testing.T) {
 	})
 }
 
-// scenario: test that verifiers can run in parallel.
+// scenario: test that verifiers will execute verify in parallel.
 func TestConcurrentVeirfy(t *testing.T) {
 	v := requestfilter.NewRulesVerifier(nil)
-	fc := &mocks.FakeFilterConfig{}
-	fc.GetMaxSizeBytesReturns(1000, nil)
-	v.AddRule(requestfilter.NewMaxSizeFilter(fc))
+	fr := &mocks.FakeRule{}
+	var activeVerifiers int64 = 0
+	var maxVerifiers int64 = 0
+	fr.VerifyStub = func(r *comm.Request) error {
+		atomic.AddInt64(&activeVerifiers, 1)
+		time.Sleep(50 * time.Millisecond)
+		atomic.StoreInt64(&maxVerifiers, max(atomic.LoadInt64(&activeVerifiers), atomic.LoadInt64(&maxVerifiers)))
+		time.Sleep(50 * time.Millisecond)
+		atomic.AddInt64(&activeVerifiers, -1)
+		return nil
+	}
+	v.AddRule(fr)
 
 	var wg sync.WaitGroup
 	start := make(chan struct{})
-	end := make(chan struct{})
 	verifiers := 8
 
 	for i := 0; i < verifiers; i++ {
@@ -70,21 +79,12 @@ func TestConcurrentVeirfy(t *testing.T) {
 			<-start
 			err := v.Verify(&comm.Request{})
 			require.NoError(t, err)
-			time.Sleep(1 * time.Second)
 		}()
 	}
 
-	go func() {
-		close(start)
-		wg.Wait()
-		close(end)
-	}()
-
-	select {
-	case <-end:
-	case <-time.After(7 * time.Second):
-		t.Error("concurrent verify took too long")
-	}
+	close(start)
+	wg.Wait()
+	require.True(t, maxVerifiers > 1)
 }
 
 // scenario: multiple goroutines call verify and update. chech with -race flag.
