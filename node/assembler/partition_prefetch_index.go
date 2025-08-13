@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -59,12 +60,20 @@ type PartitionPrefetchIndexer interface {
 
 //go:generate counterfeiter -o ./mocks/partition_prefetch_index_factory.go . PartitionPrefetchIndexerFactory
 type PartitionPrefetchIndexerFactory interface {
-	Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) PartitionPrefetchIndexer
+	Create(
+		partition ShardPrimary,
+		logger types.Logger,
+		defaultTtl time.Duration,
+		maxSizeBytes int,
+		timerFactory TimerFactory,
+		batchCacheFactory BatchCacheFactory,
+		batchRequestChan chan types.BatchID,
+		popWaitMonitorTimeout time.Duration) PartitionPrefetchIndexer
 }
 
 type DefaultPartitionPrefetchIndexerFactory struct{}
 
-func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) PartitionPrefetchIndexer {
+func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) PartitionPrefetchIndexer {
 	return NewPartitionPrefetchIndex(
 		partition,
 		logger,
@@ -73,6 +82,7 @@ func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, 
 		timerFactory,
 		batchCacheFactory,
 		batchRequestChan,
+		popWaitMonitorTimeout,
 	)
 }
 
@@ -158,29 +168,32 @@ type PartitionPrefetchIndex struct {
 	timerFactory        TimerFactory
 	cancellationContext context.Context
 	cancelContextFunc   context.CancelFunc
+	// delay before PopOrWait requests the batch
+	popWaitMonitorTimeout time.Duration
 }
 
-func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID) *PartitionPrefetchIndex {
+func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) *PartitionPrefetchIndex {
 	ctx, cancel := context.WithCancel(context.Background())
 	pi := &PartitionPrefetchIndex{
-		logger:              logger,
-		partition:           partition,
-		cache:               batchCacheFactory.CreateWithTag(partition, BATCH_CACHE_TAG),
-		forcedPutCache:      batchCacheFactory.CreateWithTag(partition, FORCE_PUT_CACHE_TAG),
-		sequenceHeap:        NewBatchHeap(partition, func(item1, item2 *BatchHeapItem[StoppableTimer]) bool { return item1.Batch.Seq() < item2.Batch.Seq() }),
-		stateCond:           sync.NewCond(&sync.Mutex{}),
-		maxSizeBytes:        maxSizeBytes,
-		batchRequestChan:    batchRequestChan,
-		defaultTtl:          defaultTtl,
-		timerFactory:        timerFactory,
-		cancellationContext: ctx,
-		cancelContextFunc:   cancel,
+		logger:                logger,
+		partition:             partition,
+		cache:                 batchCacheFactory.CreateWithTag(partition, BATCH_CACHE_TAG),
+		forcedPutCache:        batchCacheFactory.CreateWithTag(partition, FORCE_PUT_CACHE_TAG),
+		sequenceHeap:          NewBatchHeap(partition, func(item1, item2 *BatchHeapItem[StoppableTimer]) bool { return item1.Batch.Seq() < item2.Batch.Seq() }),
+		stateCond:             sync.NewCond(&sync.Mutex{}),
+		maxSizeBytes:          maxSizeBytes,
+		batchRequestChan:      batchRequestChan,
+		defaultTtl:            defaultTtl,
+		timerFactory:          timerFactory,
+		cancellationContext:   ctx,
+		cancelContextFunc:     cancel,
+		popWaitMonitorTimeout: popWaitMonitorTimeout,
 	}
 	return pi
 }
 
 func (pi *PartitionPrefetchIndex) getName() string {
-	return fmt.Sprintf("partition prefetch index [shard: %d, primary: %d]", pi.partition.Shard, pi.partition.Primary)
+	return fmt.Sprintf("partition <Sh: %d, Pr: %d>", pi.partition.Shard, pi.partition.Primary)
 }
 
 func (pi *PartitionPrefetchIndex) assertBatchPartition(batchId types.BatchID) {
@@ -191,7 +204,8 @@ func (pi *PartitionPrefetchIndex) assertBatchPartition(batchId types.BatchID) {
 }
 
 func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch, error) {
-	pi.logger.Debugf("PopOrWait called for %s on batch %s", pi.getName(), BatchToString(batchId))
+	pi.logger.Debugf("Entry: PopOrWait partition %s on batch %s", pi.getName(), BatchToString(batchId))
+
 	pi.assertBatchPartition(batchId)
 	pi.stateCond.L.Lock()
 	defer pi.stateCond.L.Unlock()
@@ -199,7 +213,10 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 		pi.maxPoppedCallSeq = batchId.Seq()
 		pi.stateCond.Broadcast()
 	}
-	wasBatchRequested := false
+
+	var wasBatchRequestedFlag int32
+	var censorMonitor *time.Timer
+
 	// while not exists, wait
 	for {
 		if pi.cancellationContext.Err() != nil {
@@ -212,11 +229,36 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 		if err == nil {
 			return batch, nil
 		}
+
+		pi.logger.Debugf("PopOrWait %s, not in cache; maxPoppedCallSeq: %d, lastPutSeqRequest: %d, lastPutSeq: %d; batch %s, err: %s",
+			pi.getName(), pi.maxPoppedCallSeq, pi.lastPutSeqRequest, pi.lastPutSeq, BatchToString(batchId), err)
+
+		// Here we wait for the batch with `batchID` to arrive from our own party batcher.
+		// Normally it will get to us through one of delivery the stream we opened to it.
+		// We may need to issue a search request if:
+		// 1. There was already a batch with same <sh,Pr,Sq> but with different digest; or
+		// 2. We have a primary that had failed and never got to give said batch to our batcher; or
+		// 3. We have primary that is censoring our batcher.
+
 		// batchId.Seq() == bs.lastPutSeq is true in case we have 2 digests
-		if !wasBatchRequested && (batchId.Seq() < pi.lastPutSeqRequest || batchId.Seq() == pi.lastPutSeq) {
-			wasBatchRequested = true
+		doubleDigest := (batchId.Seq() < pi.lastPutSeqRequest || batchId.Seq() == pi.lastPutSeq)
+		if atomic.LoadInt32(&wasBatchRequestedFlag) == 0 && doubleDigest {
+			pi.logger.Debugf("PopOrWait %s, double digest, requesting batch %s", pi.getName(), BatchToString(batchId))
+			atomic.StoreInt32(&wasBatchRequestedFlag, 0x1)
 			pi.batchRequestChan <- batchId
 		}
+
+		if atomic.LoadInt32(&wasBatchRequestedFlag) == 0 {
+			censorMonitor = time.AfterFunc(pi.popWaitMonitorTimeout, func() {
+				atomic.StoreInt32(&wasBatchRequestedFlag, 0x1)
+				pi.logger.Debugf("PopOrWait %s, censorship monitor, requesting batch %s", pi.getName(), BatchToString(batchId))
+				pi.batchRequestChan <- batchId
+				pi.stateCond.Broadcast()
+			})
+			defer censorMonitor.Stop()
+		}
+
+		pi.logger.Debugf("PopOrWait %s, going to wait for batch %s", pi.getName(), BatchToString(batchId))
 		pi.stateCond.Wait()
 	}
 }
