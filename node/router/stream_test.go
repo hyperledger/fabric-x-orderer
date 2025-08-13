@@ -52,6 +52,7 @@ func TestSendRequests(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(nil)
 	fakeSubmitStreamClient.ContextReturns(ctx)
 	logger := testutil.CreateLogger(t, 0)
+	v := createTestAcceptVerifer()
 
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
@@ -63,6 +64,7 @@ func TestSendRequests(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		requestVerifier:                   v,
 	}
 
 	go s.sendRequests()
@@ -91,6 +93,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(fmt.Errorf("error"))
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := testutil.CreateLogger(t, 1)
+	v := createTestAcceptVerifer()
 
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
@@ -102,6 +105,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		requestVerifier:                   v,
 	}
 
 	go s.sendRequests()
@@ -137,6 +141,7 @@ func TestReadResponses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	responseChan := make(chan Response, 1)
+	v := createTestAcceptVerifer()
 
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
@@ -148,6 +153,7 @@ func TestReadResponses(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		requestVerifier:                   v,
 	}
 
 	s.registerReply(traceID, responseChan)
@@ -180,6 +186,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 	logger := testutil.CreateLogger(t, 3)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	v := createTestAcceptVerifer()
 
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
@@ -191,6 +198,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		requestVerifier:                   v,
 	}
 
 	go s.readResponses()
@@ -225,6 +233,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 	}
 	requests <- req2
 	requestTraceIdToResponseChannel[string(req2.TraceId)] = make(chan Response, 100)
+	v := createTestAcceptVerifer()
 
 	faultyStream := &stream{
 		endpoint:                          "127.0.0.1:7015",
@@ -236,6 +245,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
 		srReconnectChan:                   make(chan reconnectReq, 20),
+		requestVerifier:                   v,
 	}
 
 	faultyStream.cancel()
@@ -294,6 +304,7 @@ func TestReconnectRequest(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(fmt.Errorf("error"))
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := testutil.CreateLogger(t, 1)
+	v := createTestAcceptVerifer()
 
 	connectionNumber := 2
 	streamNumber := 3
@@ -310,6 +321,7 @@ func TestReconnectRequest(t *testing.T) {
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		connNum:                           connectionNumber,
 		streamNum:                         streamNumber,
+		requestVerifier:                   v,
 	}
 
 	go s.sendRequests()
@@ -325,6 +337,12 @@ func TestReconnectRequest(t *testing.T) {
 
 	require.Equal(t, connectionNumber, reconnectRequest.connNumber)
 	require.Equal(t, streamNumber, reconnectRequest.streamInConn)
+}
+
+func createTestAcceptVerifer() *Verifier {
+	var v Verifier
+	v.AddRule(AcceptRule)
+	return &v
 }
 
 type safeReqPool struct {
