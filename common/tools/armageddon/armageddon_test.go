@@ -201,9 +201,9 @@ func TestLoadStepsFails(t *testing.T) {
 	require.NotNil(t, armageddonBinary)
 	cmd := exec.Command(armageddonBinary, "load", "--config", userConfigPath, "--transactions", txsSent, "--rate", rates, "--txSize", txSize)
 	require.NotNil(t, cmd)
-	stdout, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	// Check if the command returned an error and the output contains the expected error message
-	require.Contains(t, string(stdout), "BOOM")
+	require.Contains(t, string(output), "rate is not valid")
 	require.Contains(t, err.Error(), "exit status")
 }
 

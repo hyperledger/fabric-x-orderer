@@ -490,10 +490,9 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
 	}
-	converted_rates := make([]int, len(rates))
+	convertedRates := make([]int, len(rates))
 	for i := 0; i < len(rates); i++ {
-		fmt.Print(rates[i])
-		converted_rates[i], err = strconv.Atoi(rates[i])
+		convertedRates[i], err = strconv.Atoi(rates[i])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "rate is not valid: %s", err)
 			os.Exit(-1)
@@ -502,7 +501,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	// send txs to the routers
 	for i := 0; i < len(rates); i++ {
 		start := time.Now()
-		sendTxToRouters(userConfig, *transactions, converted_rates[i], *txSize, nil)
+		sendTxToRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
 		elapsed := time.Since(start)
 		reportLoadResults(*transactions, elapsed, *txSize)
 	}
