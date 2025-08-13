@@ -99,21 +99,14 @@ func TestSubmitAndReceive(t *testing.T) {
 
 			capacity := rate / fillFrequency
 			rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
-				os.Exit(3)
-			}
-
-			broadcastClient := client.NewBroadCastTxClient(uc, 10*time.Second)
-			defer broadcastClient.Stop()
 			require.NoError(t, err)
+
+			broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+			defer broadcastClient.Stop()
 
 			for i := 0; i < totalTxNumber; i++ {
 				status := rl.GetToken()
-				if !status {
-					fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-					os.Exit(3)
-				}
+				require.True(t, status)
 				txContent := prepareTx(i, 64, []byte("sessionNumber"))
 				err = broadcastClient.SendTx(txContent)
 				require.NoError(t, err)
