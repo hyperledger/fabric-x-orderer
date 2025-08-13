@@ -36,7 +36,7 @@ func setupPrefetchIndexTest(t *testing.T) *prefetchIndexTestVars {
 		partitionToRequestsChan:                 make(map[assembler.ShardPrimary]chan types.BatchID),
 	}
 	partitionPrefetchIndexerFactory := &mocks.FakePartitionPrefetchIndexerFactory{}
-	partitionPrefetchIndexerFactory.CreateCalls(func(sp assembler.ShardPrimary, l types.Logger, d time.Duration, i int, tf assembler.TimerFactory, bcf assembler.BatchCacheFactory, requestsChan chan types.BatchID) assembler.PartitionPrefetchIndexer {
+	partitionPrefetchIndexerFactory.CreateCalls(func(sp assembler.ShardPrimary, l types.Logger, d time.Duration, i int, tf assembler.TimerFactory, bcf assembler.BatchCacheFactory, requestsChan chan types.BatchID, popWaitMonitorTimeout time.Duration) assembler.PartitionPrefetchIndexer {
 		mock := &mocks.FakePartitionPrefetchIndexer{}
 		vars.partitionToPartitionPrefetchIndexerMock[sp] = mock
 		vars.partitionToRequestsChan[sp] = requestsChan
@@ -53,6 +53,7 @@ func setupPrefetchIndexTest(t *testing.T) *prefetchIndexTestVars {
 		nil,
 		nil,
 		partitionPrefetchIndexerFactory,
+		time.Second,
 	)
 	vars.prefetchIndex = prefetchIndex
 	return vars

@@ -89,6 +89,7 @@ type AssemblerNodeConfig struct {
 	PrefetchBufferMemoryBytes int
 	RestartLedgerScanTimeout  time.Duration
 	PrefetchEvictionTtl       time.Duration
+	PopWaitMonitorTimeout     time.Duration
 	ReplicationChannelSize    int
 	BatchRequestsChannelSize  int
 	// Shared config

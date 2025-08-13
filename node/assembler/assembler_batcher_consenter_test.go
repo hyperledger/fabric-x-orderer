@@ -39,7 +39,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo)
+	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 10*time.Second)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -50,9 +50,9 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
 	// send batch and matching decision
-	batch1 := createTestBatchWithSize(1, 1, 1, []int{1})
+	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
 	batchersStub[0].SetNextBatch(batch1)
-	oba1 := obaCreator.Append(batch1, 1, 1, 1)
+	oba1 := obaCreator.Append(batch1, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
@@ -62,7 +62,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	// stop consenter and send next batch
 	consenterStub.Stop()
 
-	batch2 := createTestBatchWithSize(1, 1, 2, []int{2, 3})
+	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
 	batchersStub[0].SetNextBatch(batch2)
 
 	// let assembler retry while consenter is down
@@ -71,26 +71,26 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	// restart consenter and send matching decision
 	consenterStub.Restart()
 
-	oba2 := obaCreator.Append(batch2, 2, 1, 1)
+	oba2 := obaCreator.Append(batch2, 2, 0, 1)
 	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 4
-	}, 3*time.Second, 100*time.Millisecond)
+	}, 5*time.Second, 100*time.Millisecond)
 
-	// send next decision and restart consenter
-	batch3 := createTestBatchWithSize(1, 1, 3, []int{4})
-	oba3 := obaCreator.Append(batch3, 3, 1, 1)
+	// send next batch and matching decision
+	batch3 := types.NewSimpleBatch(2, 1, 1, types.BatchedRequests{[]byte{4}})
+	batchersStub[0].SetNextBatch(batch3)
+
+	oba3 := obaCreator.Append(batch3, 3, 0, 1)
 	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
 
 	// wait for decision to be sent
 	time.Sleep(time.Second)
 
+	// restart consenter
 	consenterStub.Stop()
 	consenterStub.Restart()
-
-	// send matching batch
-	batchersStub[0].SetNextBatch(batch3)
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 5
@@ -113,7 +113,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo)
+	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 10*time.Second)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -124,9 +124,9 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
 	// send batch and matching decision
-	batch1 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{1}})
+	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
 	batchersStub[0].SetNextBatch(batch1)
-	oba1 := obaCreator.Append(batch1, 1, 1, 1)
+	oba1 := obaCreator.Append(batch1, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
@@ -139,31 +139,32 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	// let assembler retry while batcher is down
 	time.Sleep(2 * time.Second)
 
-	// send next decision
-	batch2 := types.NewSimpleBatch(2, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
-	oba2 := obaCreator.Append(batch2, 2, 1, 1)
-	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
-
-	// restart batcher and send matching batch
+	// restart batcher and wait for assembler to reconnect
 	batchersStub[0].Restart()
+	time.Sleep(2 * time.Second)
+
+	// send next decision and batch
+	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
 	batchersStub[0].SetNextBatch(batch2)
+	oba2 := obaCreator.Append(batch2, 2, 0, 1)
+	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 4
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// send next batch and restart batcher
-	batch3 := types.NewSimpleBatch(3, 1, 1, types.BatchedRequests{[]byte{4}})
+	batch3 := types.NewSimpleBatch(2, 1, 1, types.BatchedRequests{[]byte{4}})
 	batchersStub[0].SetNextBatch(batch3)
 
 	// wait for batch to be sent
-	time.Sleep(time.Second)
+	time.Sleep(2 * time.Second)
 
 	batchersStub[0].Stop()
 	batchersStub[0].Restart()
 
 	// send matching decision
-	oba3 := obaCreator.Append(batch3, 3, 1, 1)
+	oba3 := obaCreator.Append(batch3, 3, 0, 1)
 	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
@@ -181,7 +182,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	batchersStubShard1, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -192,7 +193,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Shutdown()
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo)
+	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -206,28 +207,51 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	batch1 := types.NewSimpleBatch(0, 0, 2, types.BatchedRequests{[]byte{1}})
 	batchersStubShard0[0].SetNextBatch(batch1)
 
-	oba1 := obaCreator.Append(batch1, 1, 1, 1)
+	oba1 := obaCreator.Append(batch1, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 2
 	}, 3*time.Second, 100*time.Millisecond)
 
-	// send batch and decision from party 2 in shard 0
+	// send batch and decision from parties 2 and 3 in shard 0
 	// assembler (party 1) should find the batch in another party
 	batch2 := types.NewSimpleBatch(1, 0, 2, types.BatchedRequests{[]byte{2}, []byte{3}})
 	batchersStubShard0[1].SetNextBatch(batch2)
+	batchersStubShard0[2].SetNextBatch(batch2)
 
-	oba2 := obaCreator.Append(batch2, 2, 1, 1)
+	oba2 := obaCreator.Append(batch2, 2, 0, 1)
 	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
 
-	// assembler did not process the batch from party 2 (bug)
 	require.Eventually(t, func() bool {
-		return assembler.GetTxCount() == 3
-	}, 60*time.Second, 100*time.Millisecond)
+		return assembler.GetTxCount() == 4
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// send another batch and decision from party 1 in shard 0
+	batch3 := types.NewSimpleBatch(2, 0, 2, types.BatchedRequests{[]byte{4}})
+	batchersStubShard0[0].SetNextBatch(batch3)
+
+	oba3 := obaCreator.Append(batch3, 3, 0, 1)
+	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
+
+	// should process all transactions
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 5
+	}, 3*time.Second, 100*time.Millisecond)
+
+	// send batch and decision from party 1 in shard 1
+	batch4 := types.NewSimpleBatch(0, 1, 2, types.BatchedRequests{[]byte{5}})
+	batchersStubShard1[0].SetNextBatch(batch4)
+
+	oba4 := obaCreator.Append(batch4, 4, 0, 1)
+	consenterStub.SetNextDecision(oba4.(*state.AvailableBatchOrdered))
+
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 6
+	}, 3*time.Second, 100*time.Millisecond)
 }
 
-func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo) *assembler.Assembler {
+func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) *assembler.Assembler {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	genesisBlock.Metadata = &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, []byte("dummy"), []byte("dummy")},
@@ -245,6 +269,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024,
 		RestartLedgerScanTimeout:  5 * time.Second,
 		PrefetchEvictionTtl:       time.Hour,
+		PopWaitMonitorTimeout:     popWaitMonitorTimeout,
 		ReplicationChannelSize:    100,
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shards,
