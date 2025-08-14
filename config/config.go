@@ -161,7 +161,7 @@ func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig 
 }
 
 func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfig {
-	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "sign-privateKey.pem"))
+	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
 	}
@@ -204,7 +204,7 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 }
 
 func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeConfig {
-	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "sign-privateKey.pem"))
+	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}

@@ -269,7 +269,7 @@ func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, 
 	}
 
 	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "signcerts"), "sign", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
-	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "keystore", "sign-privateKey.pem"), "PRIVATE KEY", privateKeyBytes)
+	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
