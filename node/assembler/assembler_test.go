@@ -38,7 +38,7 @@ type assemblerTest struct {
 	genesisBlock                   *common.Block
 	nodeConfig                     *config.AssemblerNodeConfig
 	orderedBatchAttestationCreator *OrderedBatchAttestationCreator
-	expecedLedgerBA                []core.OrderedBatchAttestation
+	expectedLedgerBA               []core.OrderedBatchAttestation
 	assembler                      *assembler.Assembler
 	shardToBatcherChan             map[types.ShardID]chan types.Batch
 	consensusBAChan                chan core.OrderedBatchAttestation
@@ -97,7 +97,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		ledgerDir:                      t.TempDir(),
 		genesisBlock:                   genesisBlock,
 		orderedBatchAttestationCreator: orderedBatchAttestationCreator,
-		expecedLedgerBA:                []core.OrderedBatchAttestation{},
+		expectedLedgerBA:               []core.OrderedBatchAttestation{},
 		batchBringerMock:               &assembler_mocks.FakeBatchBringer{},
 		ledgerMock:                     &ledger_mocks.FakeAssemblerLedgerReaderWriter{},
 		prefetcherMock:                 &assembler_mocks.FakePrefetcherController{},
@@ -147,7 +147,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 
 func (at *assemblerTest) SendBAToAssembler(oba core.OrderedBatchAttestation) {
 	at.consensusBAChan <- oba
-	at.expecedLedgerBA = append(at.expecedLedgerBA, oba)
+	at.expectedLedgerBA = append(at.expectedLedgerBA, oba)
 }
 
 func (at *assemblerTest) SendBatchToAssembler(batch types.Batch) {
