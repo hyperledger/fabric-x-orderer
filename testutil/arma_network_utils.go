@@ -13,6 +13,8 @@ import (
 	"path"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
@@ -57,7 +59,7 @@ func GenerateNetworkConfig(t *testing.T, useTLSRouter string, useTLSAssembler st
 }
 
 // GetUserConfig returns the armageddon generated user config object of a given party, for testing.
-func GetUserConfig(baseDir string, partyID types.PartyID) (*armageddon.UserConfig, error) {
+func GetUserConfig(baseDir string, partyID types.PartyID) (*client.UserConfig, error) {
 	userConfigPath := path.Join(baseDir, "config", fmt.Sprintf("party%d", partyID), "user_config.yaml")
 	f, err := os.Open(userConfigPath)
 	if err != nil {

@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
@@ -354,7 +356,7 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 		userTLSPrivateKeyPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user-key.pem")
 		userTLSCertPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user-tls-cert.pem")
 
-		userConfig, err := NewUserConfig(userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
+		userConfig, err := client.NewUserConfig(userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating user config: %s", err)
 			os.Exit(-1)
@@ -404,7 +406,7 @@ func printVersion() {
 	fmt.Printf("Armageddon version is: %+v\n", bi.Main.Version)
 }
 
-func ReadUserConfig(userConfigFile **os.File) (*UserConfig, error) {
+func ReadUserConfig(userConfigFile **os.File) (*client.UserConfig, error) {
 	var configFileContent string
 	if *userConfigFile != nil {
 		data, err := io.ReadAll(*userConfigFile)
@@ -418,7 +420,7 @@ func ReadUserConfig(userConfigFile **os.File) (*UserConfig, error) {
 		os.Exit(1)
 	}
 
-	userConfig := UserConfig{}
+	userConfig := client.UserConfig{}
 	err := yaml.Unmarshal([]byte(configFileContent), &userConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error Unmarshalling YAML: %s", err)
@@ -476,7 +478,6 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 
 // load command makes txs and sends them to all routers
 func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int) {
-	rates := strings.Fields(*rate)
 	// check transaction size
 	txMinimumSize := 16 + 8 + 8
 	if *txSize < txMinimumSize {
@@ -490,6 +491,9 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
 	}
+
+	// extract rates
+	rates := strings.Fields(*rate)
 	convertedRates := make([]int, len(rates))
 	for i := 0; i < len(rates); i++ {
 		convertedRates[i], err = strconv.Atoi(rates[i])
@@ -498,10 +502,50 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 			os.Exit(-1)
 		}
 	}
+
+	broadcastClient := client.NewBroadcastTxClient(userConfig, 60*time.Second)
+	defer broadcastClient.Stop()
+
 	// send txs to the routers
 	for i := 0; i < len(rates); i++ {
 		start := time.Now()
-		sendTxToRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
+
+		// create a rate limiter
+		fillInterval := 10 * time.Millisecond
+		fillFrequency := 1000 / int(fillInterval.Milliseconds())
+		currentRate := convertedRates[i]
+		capacity := currentRate / fillFrequency
+		rl, err := NewRateLimiter(currentRate, fillInterval, capacity)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+			os.Exit(3)
+		}
+
+		// create a session number (16 bytes)
+		sessionNumber := make([]byte, 16)
+		_, err = rand.Read(sessionNumber)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create a session number, %v", err)
+			os.Exit(3)
+		}
+
+		for i := 0; i < *transactions; i++ {
+			fmt.Printf("tx num %d is sent...\n", i)
+			status := rl.GetToken()
+			if !status {
+				fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+				os.Exit(3)
+			}
+			txContent := prepareTx(i, 64, sessionNumber)
+			err = broadcastClient.SendTx(txContent)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+				os.Exit(3)
+			}
+		}
+
+		rl.Stop()
+
 		elapsed := time.Since(start)
 		reportLoadResults(*transactions, elapsed, *txSize)
 	}
@@ -542,7 +586,7 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 	}
 }
 
-func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
+func sendTxToRouters(userConfig *client.UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
 	var gRPCRouterClientsConn []*grpc.ClientConn
 	var streams []ab.AtomicBroadcast_BroadcastClient
 
@@ -647,7 +691,7 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	}
 }
 
-func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int) {
+func pullBlocksFromAssemblerAndCollectStatistics(userConfig *client.UserConfig, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int) {
 	// choose randomly the first assembler
 	i := pullFromPartyId - 1
 
@@ -985,7 +1029,7 @@ func writeStatisticsToCSV(file *os.File, statistic Statistics, timeIntervalToSam
 	}
 }
 
-func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
+func receiveResponseFromAssembler(userConfig *client.UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
 	// choose randomly the first assembler
 	i := 0
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
