@@ -17,20 +17,18 @@ import (
 	"testing"
 	"time"
 
-	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-	"github.com/hyperledger/fabric-x-orderer/core/badb"
-	"github.com/hyperledger/fabric-x-orderer/node/batcher"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -272,7 +270,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	initialState, md := initializeStateAndMetadata(t, initialState, ledger)
 
-	consenter := &core.Consenter{ // TODO should this be initialized as part of consensus node start?
+	consenter := &Consenter{ // TODO should this be initialized as part of consensus node start?
 		State:           initialState,
 		DB:              db,
 		Logger:          l,
@@ -569,7 +567,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				AppContext: tst.initialAppContext.Bytes(),
 			}
 
-			consenter := &core.Consenter{
+			consenter := &Consenter{
 				DB:              db,
 				State:           initialState,
 				Logger:          logger,
@@ -683,7 +681,7 @@ func TestVerifyProposal(t *testing.T) {
 		AppContext: initialAppContext.Bytes(),
 	}
 
-	consenter := &core.Consenter{
+	consenter := &Consenter{
 		DB:              db,
 		State:           &initialState,
 		Logger:          logger,
@@ -878,7 +876,7 @@ func TestSignProposal(t *testing.T) {
 		AppContext: initialAppContext.Bytes(),
 	}
 
-	consenter := &core.Consenter{
+	consenter := &Consenter{
 		DB:              db,
 		State:           &initialState,
 		Logger:          logger,

@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 )
 
 type FakeBatchAttestationDB struct {
@@ -203,4 +203,4 @@ func (fake *FakeBatchAttestationDB) recordInvocation(key string, args []interfac
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ core.BatchAttestationDB = new(FakeBatchAttestationDB)
+var _ consensus.BatchAttestationDB = new(FakeBatchAttestationDB)
