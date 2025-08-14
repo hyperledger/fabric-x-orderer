@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -324,7 +325,8 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	binary.BigEndian.PutUint16(txn[30:], uint16(workerID))
 
 	for routerId := 0; routerId < len(routers); routerId++ {
-		routers[routerId].Submit(context.Background(), &protos.Request{Payload: txn})
+		req := utils.CreateStructuredRequest(txn)
+		routers[routerId].Submit(context.Background(), req)
 	}
 }
 

@@ -41,8 +41,8 @@ func requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
 		return nil, fmt.Errorf("nil request")
 	}
 
-	payload := &common.Payload{}
-	err := proto.Unmarshal(request.Payload, payload)
+	payload := common.Payload{}
+	err := proto.Unmarshal(request.Payload, &payload)
 	if err != nil {
 		return nil, err
 	}
@@ -55,11 +55,19 @@ func requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
 		return nil, fmt.Errorf("missing signature header in payload's header")
 	}
 
-	shdr := &common.SignatureHeader{}
-	err = proto.Unmarshal(payload.Header.SignatureHeader, shdr)
+	shdr := common.SignatureHeader{}
+	err = proto.Unmarshal(payload.Header.SignatureHeader, &shdr)
 	if err != nil {
 		return nil, fmt.Errorf("failed unmarshaling signature header, err %s", err)
 	}
+
+	if payload.Header.ChannelHeader == nil {
+		return nil, fmt.Errorf("missing channel header in request's payload")
+	}
+
+	chdr := common.ChannelHeader{}
+	_ = proto.Unmarshal(payload.Header.SignatureHeader, &chdr)
+	// TBD: validate chdr.ChannelId
 
 	return &protoutil.SignedData{
 		Data:      request.Payload,
