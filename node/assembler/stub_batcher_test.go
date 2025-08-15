@@ -128,6 +128,6 @@ func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer)
 }
 
 func (sb *stubBatcher) SetNextBatch(batch types.Batch) {
-	block, _ := ledger.NewFabricBatchFromRequests(sb.partyID, sb.shardID, batch.Seq(), batch.Requests(), []byte(""))
+	block, _ := ledger.NewFabricBatchFromRequests(batch.Primary(), batch.Shard(), batch.Seq(), batch.Requests(), []byte(""))
 	sb.batches <- (*common.Block)(block)
 }

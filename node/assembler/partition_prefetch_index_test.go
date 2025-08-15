@@ -87,6 +87,7 @@ func setupPartitionPrefetchIndexTest(t *testing.T, maxSizeBytes int) *partitionP
 		timerFactoryMock,
 		cacheFactory,
 		vars.batchRequestChan,
+		time.Second,
 	)
 	vars.partitionPrefetchIndex = partitionPrefetchIndex
 	return vars

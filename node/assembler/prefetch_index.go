@@ -33,6 +33,7 @@ type PrefetchIndexerFactory interface {
 		timerFactory TimerFactory,
 		batchCacheFactory BatchCacheFactory,
 		partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
+		popWaitMonitorTimeout time.Duration,
 	) PrefetchIndexer
 }
 
@@ -48,6 +49,7 @@ func (f *DefaultPrefetchIndexerFactory) Create(
 	timerFactory TimerFactory,
 	batchCacheFactory BatchCacheFactory,
 	partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
+	popWaitMonitorTimeout time.Duration,
 ) PrefetchIndexer {
 	return NewPrefetchIndex(
 		shards,
@@ -59,6 +61,7 @@ func (f *DefaultPrefetchIndexerFactory) Create(
 		timerFactory,
 		batchCacheFactory,
 		partitionPrefetchIndexerFactory,
+		popWaitMonitorTimeout,
 	)
 }
 
@@ -78,6 +81,7 @@ func NewPrefetchIndex(
 	timerFactory TimerFactory,
 	batchCacheFactory BatchCacheFactory,
 	partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
+	popWaitMonitorTimeout time.Duration,
 ) *PrefetchIndex {
 	pi := &PrefetchIndex{
 		logger:           logger,
@@ -95,6 +99,7 @@ func NewPrefetchIndex(
 				timerFactory,
 				batchCacheFactory,
 				pi.batchRequestChan,
+				popWaitMonitorTimeout,
 			)
 		}
 	}

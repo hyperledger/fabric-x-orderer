@@ -128,6 +128,7 @@ func createPrefetcherBenchmarkSetup(
 		timerFactoryMock,
 		&assembler.DefaultBatchCacheFactory{},
 		&assembler.DefaultPartitionPrefetchIndexerFactory{},
+		time.Second,
 	)
 	test.prefetchIndex = prefetchIndex
 	test.prefetcher = assembler.NewPrefetcher(
