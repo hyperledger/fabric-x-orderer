@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -50,7 +49,7 @@ func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net
 	return batcher
 }
 
-func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp core.BatchPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
+func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp BatchesPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, &NoopClientRequestSigVerifier{}, nil)
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
@@ -89,7 +88,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, config.ShardId, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
-	b.batcher = &core.Batcher{
+	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),
 		BatchPuller:             bp,
 		Threshold:               int(f + 1),
@@ -113,7 +112,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	return b
 }
 
-func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) core.MemPool {
+func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) MemPool {
 	opts := request.PoolOptions{
 		MaxSize:               config.MemPoolMaxSize,
 		BatchMaxSize:          config.BatchMaxSize,

@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 )
 
 type FakeComplainer struct {
@@ -73,4 +73,4 @@ func (fake *FakeComplainer) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ core.Complainer = new(FakeComplainer)
+var _ batcher.Complainer = new(FakeComplainer)

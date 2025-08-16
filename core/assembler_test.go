@@ -28,6 +28,42 @@ func (n naiveOrderedBatchAttestationReplicator) Replicate() <-chan core.OrderedB
 	return n
 }
 
+type naiveReplication struct {
+	subscribers []chan types.Batch
+	i           uint32
+	stopped     int32
+}
+
+func (r *naiveReplication) Replicate(_ types.ShardID) <-chan types.Batch {
+	j := atomic.AddUint32(&r.i, 1)
+	return r.subscribers[j-1]
+}
+
+func (r *naiveReplication) PullBatches(_ types.PartyID) <-chan types.Batch {
+	j := atomic.AddUint32(&r.i, 1)
+	return r.subscribers[j-1]
+}
+
+func (r *naiveReplication) Stop() {
+	atomic.StoreInt32(&r.stopped, 0x1)
+}
+
+func (r *naiveReplication) Append(partyID types.PartyID, batchSeq types.BatchSequence, batchedRequests types.BatchedRequests) {
+	for _, s := range r.subscribers {
+		s <- types.NewSimpleBatch(batchSeq, 0, partyID, batchedRequests)
+	}
+}
+
+func (r *naiveReplication) Height(partyID types.PartyID) uint64 {
+	// TODO use in test
+	return 0
+}
+
+func (r *naiveReplication) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch {
+	// TODO use in test
+	return nil
+}
+
 type naiveIndex struct {
 	sync.Map
 }

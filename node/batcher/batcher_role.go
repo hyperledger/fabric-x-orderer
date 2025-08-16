@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core
+package batcher
 
 import (
 	"context"
@@ -32,12 +32,6 @@ type MemPool interface {
 	Submit(request []byte) error
 	Restart(bool)
 	Close()
-}
-
-//go:generate counterfeiter -o mocks/batch_puller.go . BatchPuller
-type BatchPuller interface {
-	PullBatches(from types.PartyID) <-chan types.Batch
-	Stop()
 }
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider
@@ -93,7 +87,7 @@ type BatchLedger interface {
 	BatchLedgeReader
 }
 
-type Batcher struct {
+type BatcherRole struct {
 	Batchers                []types.PartyID
 	BatchTimeout            time.Duration
 	RequestInspector        RequestInspector
@@ -103,7 +97,7 @@ type Batcher struct {
 	N                       uint16
 	Logger                  types.Logger
 	Ledger                  BatchLedger
-	BatchPuller             BatchPuller
+	BatchPuller             BatchesPuller
 	StateProvider           StateProvider
 	BAFCreator              BAFCreator
 	BAFSender               BAFSender
@@ -125,7 +119,7 @@ type Batcher struct {
 	acker                   SeqAcker
 }
 
-func (b *Batcher) Start() {
+func (b *BatcherRole) Start() {
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.termChan = make(chan uint64, 1)
@@ -135,7 +129,7 @@ func (b *Batcher) Start() {
 	go b.run()
 }
 
-func (b *Batcher) run() {
+func (b *BatcherRole) run() {
 	defer b.running.Done()
 	for {
 		select {
@@ -157,19 +151,19 @@ func (b *Batcher) run() {
 	}
 }
 
-func (b *Batcher) getPrimaryID(term uint64) types.PartyID {
+func (b *BatcherRole) getPrimaryID(term uint64) types.PartyID {
 	primaryIndex := b.getPrimaryIndex(term)
 	return b.Batchers[primaryIndex]
 }
 
-func (b *Batcher) getPrimaryIndex(term uint64) types.PartyID {
+func (b *BatcherRole) getPrimaryIndex(term uint64) types.PartyID {
 	primaryIndex := types.PartyID((uint64(b.Shard) + term) % uint64(b.N))
 
 	return primaryIndex
 }
 
-func (b *Batcher) Stop() {
-	b.Logger.Infof("Stopping batcher core")
+func (b *BatcherRole) Stop() {
+	b.Logger.Infof("Stopping batcher rol")
 	b.stopOnce.Do(func() { close(b.stopChan) })
 	b.cancelBatch()
 	b.MemPool.Close()
@@ -179,7 +173,7 @@ func (b *Batcher) Stop() {
 	b.running.Wait()
 }
 
-func (b *Batcher) getTerm(state *state.State) uint64 {
+func (b *BatcherRole) getTerm(state *state.State) uint64 {
 	term := uint64(math.MaxUint64)
 	for _, shard := range state.Shards {
 		if shard.Shard == b.Shard {
@@ -192,7 +186,7 @@ func (b *Batcher) getTerm(state *state.State) uint64 {
 	return term
 }
 
-func (b *Batcher) getTermAndNotifyChange() {
+func (b *BatcherRole) getTermAndNotifyChange() {
 	defer b.running.Done()
 	stateChan := b.StateProvider.GetLatestStateChan()
 	for {
@@ -216,7 +210,7 @@ func (b *Batcher) getTermAndNotifyChange() {
 // and that tx is in the pool of other batchers but again not enough (less than f+1 batchers)
 // to prevent a case where such a tx falls through the cracks, after a term change
 // all batchers resubmit to their pools txs in batches with their BAFs still in pending state
-func (b *Batcher) resubmitPendingBAFs(state *state.State, prevPrimary types.PartyID) {
+func (b *BatcherRole) resubmitPendingBAFs(state *state.State, prevPrimary types.PartyID) {
 	for _, baf := range state.Pending {
 		if baf.Signer() == b.ID && baf.Primary() == prevPrimary {
 			b.Logger.Debugf("found pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())
@@ -230,11 +224,11 @@ func (b *Batcher) resubmitPendingBAFs(state *state.State, prevPrimary types.Part
 	}
 }
 
-func (b *Batcher) Submit(request []byte) error {
+func (b *BatcherRole) Submit(request []byte) error {
 	return b.MemPool.Submit(request)
 }
 
-func (b *Batcher) HandleAck(seq types.BatchSequence, from types.PartyID) {
+func (b *BatcherRole) HandleAck(seq types.BatchSequence, from types.PartyID) {
 	b.ackerLock.RLock()
 	defer b.ackerLock.RUnlock()
 	if b.acker != nil {
@@ -242,7 +236,7 @@ func (b *Batcher) HandleAck(seq types.BatchSequence, from types.PartyID) {
 	}
 }
 
-func (b *Batcher) runPrimary() {
+func (b *BatcherRole) runPrimary() {
 	b.Logger.Infof("Batcher %d acting as primary (shard %d)", b.ID, b.Shard)
 
 	defer func() {
@@ -304,7 +298,7 @@ func (b *Batcher) runPrimary() {
 	}
 }
 
-func (b *Batcher) removeRequests(batch types.BatchedRequests) {
+func (b *BatcherRole) removeRequests(batch types.BatchedRequests) {
 	reqInfos := make([]string, 0, len(batch))
 	for _, req := range batch {
 		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
@@ -312,7 +306,7 @@ func (b *Batcher) removeRequests(batch types.BatchedRequests) {
 	b.MemPool.RemoveRequests(reqInfos...)
 }
 
-func (b *Batcher) runSecondary() {
+func (b *BatcherRole) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
 	for {
@@ -350,7 +344,7 @@ func (b *Batcher) runSecondary() {
 	}
 }
 
-func (b *Batcher) verifyBatch(batch types.Batch) error {
+func (b *BatcherRole) verifyBatch(batch types.Batch) error {
 	if batch.Primary() != b.primary {
 		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
 	}

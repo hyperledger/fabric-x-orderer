@@ -14,7 +14,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -25,8 +24,14 @@ import (
 // TODO The deliver service and client (puller) were copied almost as is from Fabric.
 // Both the server and side and client side will need to go a revision.
 
+//go:generate counterfeiter -o mocks/batches_puller.go . BatchesPuller
+type BatchesPuller interface {
+	PullBatches(from types.PartyID) <-chan types.Batch
+	Stop()
+}
+
 type BatchPuller struct {
-	ledger     core.BatchLedger
+	ledger     BatchLedger
 	logger     types.Logger
 	config     *config.BatcherNodeConfig
 	tlsKey     []byte
@@ -34,7 +39,7 @@ type BatchPuller struct {
 	stopPuller context.CancelFunc
 }
 
-func NewBatchPuller(config *config.BatcherNodeConfig, ledger core.BatchLedger, logger types.Logger) *BatchPuller {
+func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, logger types.Logger) *BatchPuller {
 	puller := &BatchPuller{
 		ledger:  ledger,
 		logger:  logger,

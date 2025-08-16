@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core_test
+package batcher_test
 
 import (
 	"encoding/binary"
@@ -13,8 +13,8 @@ import (
 	"time"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-	"github.com/hyperledger/fabric-x-orderer/core/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
@@ -80,7 +80,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 
 	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
 
-	batchPuller := &mocks.FakeBatchPuller{}
+	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
@@ -148,7 +148,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 	batch := arma_types.NewSimpleBatch(0, 0, 2, reqs)
 
-	batchPuller := &mocks.FakeBatchPuller{}
+	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
@@ -230,7 +230,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
 
-	batchPuller := &mocks.FakeBatchPuller{}
+	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
@@ -308,7 +308,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 
 	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
 
-	batchPuller := &mocks.FakeBatchPuller{}
+	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
@@ -520,7 +520,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 
 	batch := arma_types.NewSimpleBatch(0, 0, 2, reqs)
 
-	batchPuller := &mocks.FakeBatchPuller{}
+	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
@@ -600,7 +600,7 @@ func TestResubmitPending(t *testing.T) {
 
 	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
 
-	batchPuller := &mocks.FakeBatchPuller{}
+	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	batcher.BatchPuller = batchPuller
@@ -694,7 +694,7 @@ func TestVerifyBatch(t *testing.T) {
 
 	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
 
-	batchPuller := &mocks.FakeBatchPuller{}
+	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
 	batchPuller.PullBatchesReturns(batchChan)
 	secondaryBatcher.BatchPuller = batchPuller
@@ -748,13 +748,13 @@ func TestVerifyBatch(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
-func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger arma_types.Logger) *core.Batcher {
+func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger arma_types.Logger) *batcher.BatcherRole {
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) arma_types.BatchAttestationFragment {
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, nil, 0, nil)
 	})
 
-	batcher := &core.Batcher{
+	batcher := &batcher.BatcherRole{
 		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
 		RequestInspector:        &mocks.FakeRequestInspector{},
@@ -764,7 +764,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		N:                       N,
 		Logger:                  logger,
 		Ledger:                  &mocks.FakeBatchLedger{},
-		BatchPuller:             &mocks.FakeBatchPuller{},
+		BatchPuller:             &mocks.FakeBatchesPuller{},
 		StateProvider:           &mocks.FakeStateProvider{},
 		BAFCreator:              bafCreator,
 		BAFSender:               &mocks.FakeBAFSender{},
