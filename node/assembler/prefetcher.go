@@ -8,6 +8,7 @@ package assembler
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -113,7 +114,12 @@ func (p *Prefetcher) handleBatchRequests() {
 			go func(batchId types.BatchID) {
 				batch, err := p.batchFetcher.GetBatch(batchId)
 				if err != nil {
-					p.logger.Panicf("error while fetching batch: %s", err)
+					if errors.Is(err, context.Canceled) {
+						p.logger.Infof("fetch canceled")
+						return
+					}
+
+					p.logger.Panicf("error while fetching batch: %v", err)
 				}
 				p.prefetchIndex.PutForce(batch)
 			}(batchId)

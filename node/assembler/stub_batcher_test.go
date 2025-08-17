@@ -29,6 +29,7 @@ type stubBatcher struct {
 	key         []byte
 	batcherInfo config.BatcherInfo
 	batches     chan *common.Block
+	batchSentCh chan struct{} // batch sent signal
 }
 
 func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, ca tlsgen.CA) *stubBatcher {
@@ -61,6 +62,7 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		key:         certKeyPair.Key,
 		batcherInfo: batcherInfo,
 		batches:     make(chan *common.Block, 100),
+		batchSentCh: make(chan struct{}, 1),
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher)
@@ -78,6 +80,7 @@ func (sb *stubBatcher) Stop() {
 
 func (sb *stubBatcher) Shutdown() {
 	close(sb.batches)
+	close(sb.batchSentCh)
 	sb.server.Stop()
 }
 
@@ -117,6 +120,8 @@ func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) err
 			if err != nil {
 				return err
 			}
+
+			sb.batchSentCh <- struct{}{}
 		case <-stream.Context().Done():
 			return stream.Context().Err()
 		}

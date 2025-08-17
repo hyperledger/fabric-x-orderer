@@ -24,13 +24,14 @@ import (
 )
 
 type stubConsenter struct {
-	partyID       types.PartyID
-	endpoint      string
-	server        *comm.GRPCServer
-	cert          []byte
-	key           []byte
-	consenterInfo config.ConsenterInfo
-	decisions     chan *common.Block
+	partyID        types.PartyID
+	endpoint       string
+	server         *comm.GRPCServer
+	cert           []byte
+	key            []byte
+	consenterInfo  config.ConsenterInfo
+	decisions      chan *common.Block
+	decisionSentCh chan struct{} // decision sent signal
 }
 
 func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubConsenter {
@@ -54,13 +55,14 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubCo
 	}
 
 	stubConsenter := &stubConsenter{
-		partyID:       partyID,
-		server:        server,
-		cert:          certKeyPair.Cert,
-		key:           certKeyPair.Key,
-		endpoint:      server.Address(),
-		consenterInfo: consenterInfo,
-		decisions:     make(chan *common.Block, 100),
+		partyID:        partyID,
+		server:         server,
+		cert:           certKeyPair.Cert,
+		key:            certKeyPair.Key,
+		endpoint:       server.Address(),
+		consenterInfo:  consenterInfo,
+		decisions:      make(chan *common.Block, 100),
+		decisionSentCh: make(chan struct{}, 1),
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubConsenter)
@@ -79,6 +81,7 @@ func (sc *stubConsenter) Stop() {
 
 func (sc *stubConsenter) Shutdown() {
 	close(sc.decisions)
+	close(sc.decisionSentCh)
 	sc.server.Stop()
 }
 
@@ -118,6 +121,8 @@ func (sc *stubConsenter) Deliver(stream orderer.AtomicBroadcast_DeliverServer) e
 			if err != nil {
 				return err
 			}
+
+			sc.decisionSentCh <- struct{}{}
 		case <-stream.Context().Done():
 			return stream.Context().Err()
 		}
