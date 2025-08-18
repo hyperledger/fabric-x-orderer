@@ -4,22 +4,21 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core_test
+package batcher_test
 
 import (
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 )
 
 func TestAcker(t *testing.T) {
 	// Test ack thresholds and constraints in secondaries wait scenario
-	acker := core.NewAcker(100, 10, 4, 2, testutil.CreateLogger(t, 0))
+	acker := batcher.NewAcker(100, 10, 4, 2, testutil.CreateLogger(t, 0))
 
 	var done uint32
 
@@ -51,7 +50,7 @@ func TestAcker(t *testing.T) {
 	acker.Stop()
 
 	// Test correct stop handling
-	acker = core.NewAcker(100, 10, 4, 2, testutil.CreateLogger(t, 0))
+	acker = batcher.NewAcker(100, 10, 4, 2, testutil.CreateLogger(t, 0))
 
 	var done2 uint32
 
@@ -82,7 +81,7 @@ func TestAcker(t *testing.T) {
 	acker.Stop()
 
 	// Test scenario without waiting for secondaries
-	acker = core.NewAcker(100, 10, 4, 2, testutil.CreateLogger(t, 0))
+	acker = batcher.NewAcker(100, 10, 4, 2, testutil.CreateLogger(t, 0))
 
 	var done3 uint32
 

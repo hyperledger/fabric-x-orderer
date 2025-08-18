@@ -11,16 +11,18 @@ import (
 type FakeStateReplicator struct {
 	ReplicateStateStub        func() <-chan *state.State
 	replicateStateMutex       sync.RWMutex
-	replicateStateArgsForCall []struct{}
-	replicateStateReturns     struct {
+	replicateStateArgsForCall []struct {
+	}
+	replicateStateReturns struct {
 		result1 <-chan *state.State
 	}
 	replicateStateReturnsOnCall map[int]struct {
 		result1 <-chan *state.State
 	}
-	StopStub         func()
-	stopMutex        sync.RWMutex
-	stopArgsForCall  []struct{}
+	StopStub        func()
+	stopMutex       sync.RWMutex
+	stopArgsForCall []struct {
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -28,7 +30,8 @@ type FakeStateReplicator struct {
 func (fake *FakeStateReplicator) ReplicateState() <-chan *state.State {
 	fake.replicateStateMutex.Lock()
 	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
-	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct{}{})
+	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
+	}{})
 	stub := fake.ReplicateStateStub
 	fakeReturns := fake.replicateStateReturns
 	fake.recordInvocation("ReplicateState", []interface{}{})
@@ -79,7 +82,8 @@ func (fake *FakeStateReplicator) ReplicateStateReturnsOnCall(i int, result1 <-ch
 
 func (fake *FakeStateReplicator) Stop() {
 	fake.stopMutex.Lock()
-	fake.stopArgsForCall = append(fake.stopArgsForCall, struct{}{})
+	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
+	}{})
 	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()

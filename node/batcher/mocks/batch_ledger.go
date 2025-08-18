@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 )
 
 type FakeBatchLedger struct {
@@ -228,4 +228,4 @@ func (fake *FakeBatchLedger) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ core.BatchLedger = new(FakeBatchLedger)
+var _ batcher.BatchLedger = new(FakeBatchLedger)

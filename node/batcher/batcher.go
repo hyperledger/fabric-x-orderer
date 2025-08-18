@@ -15,15 +15,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -48,7 +46,7 @@ type Batcher struct {
 	batcherDeliverService     *BatcherDeliverService
 	stateReplicator           StateReplicator
 	logger                    types.Logger
-	batcher                   *core.Batcher
+	batcher                   *BatcherRole
 	batcherCerts2IDs          map[string]types.PartyID
 	controlEventSenders       []ConsenterControlEventSender
 	controlEventBroadcaster   *ControlEventBroadcaster

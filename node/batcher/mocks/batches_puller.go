@@ -5,10 +5,10 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 )
 
-type FakeBatchPuller struct {
+type FakeBatchesPuller struct {
 	PullBatchesStub        func(types.PartyID) <-chan types.Batch
 	pullBatchesMutex       sync.RWMutex
 	pullBatchesArgsForCall []struct {
@@ -28,7 +28,7 @@ type FakeBatchPuller struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchPuller) PullBatches(arg1 types.PartyID) <-chan types.Batch {
+func (fake *FakeBatchesPuller) PullBatches(arg1 types.PartyID) <-chan types.Batch {
 	fake.pullBatchesMutex.Lock()
 	ret, specificReturn := fake.pullBatchesReturnsOnCall[len(fake.pullBatchesArgsForCall)]
 	fake.pullBatchesArgsForCall = append(fake.pullBatchesArgsForCall, struct {
@@ -47,26 +47,26 @@ func (fake *FakeBatchPuller) PullBatches(arg1 types.PartyID) <-chan types.Batch 
 	return fakeReturns.result1
 }
 
-func (fake *FakeBatchPuller) PullBatchesCallCount() int {
+func (fake *FakeBatchesPuller) PullBatchesCallCount() int {
 	fake.pullBatchesMutex.RLock()
 	defer fake.pullBatchesMutex.RUnlock()
 	return len(fake.pullBatchesArgsForCall)
 }
 
-func (fake *FakeBatchPuller) PullBatchesCalls(stub func(types.PartyID) <-chan types.Batch) {
+func (fake *FakeBatchesPuller) PullBatchesCalls(stub func(types.PartyID) <-chan types.Batch) {
 	fake.pullBatchesMutex.Lock()
 	defer fake.pullBatchesMutex.Unlock()
 	fake.PullBatchesStub = stub
 }
 
-func (fake *FakeBatchPuller) PullBatchesArgsForCall(i int) types.PartyID {
+func (fake *FakeBatchesPuller) PullBatchesArgsForCall(i int) types.PartyID {
 	fake.pullBatchesMutex.RLock()
 	defer fake.pullBatchesMutex.RUnlock()
 	argsForCall := fake.pullBatchesArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakeBatchPuller) PullBatchesReturns(result1 <-chan types.Batch) {
+func (fake *FakeBatchesPuller) PullBatchesReturns(result1 <-chan types.Batch) {
 	fake.pullBatchesMutex.Lock()
 	defer fake.pullBatchesMutex.Unlock()
 	fake.PullBatchesStub = nil
@@ -75,7 +75,7 @@ func (fake *FakeBatchPuller) PullBatchesReturns(result1 <-chan types.Batch) {
 	}{result1}
 }
 
-func (fake *FakeBatchPuller) PullBatchesReturnsOnCall(i int, result1 <-chan types.Batch) {
+func (fake *FakeBatchesPuller) PullBatchesReturnsOnCall(i int, result1 <-chan types.Batch) {
 	fake.pullBatchesMutex.Lock()
 	defer fake.pullBatchesMutex.Unlock()
 	fake.PullBatchesStub = nil
@@ -89,7 +89,7 @@ func (fake *FakeBatchPuller) PullBatchesReturnsOnCall(i int, result1 <-chan type
 	}{result1}
 }
 
-func (fake *FakeBatchPuller) Stop() {
+func (fake *FakeBatchesPuller) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
@@ -101,19 +101,19 @@ func (fake *FakeBatchPuller) Stop() {
 	}
 }
 
-func (fake *FakeBatchPuller) StopCallCount() int {
+func (fake *FakeBatchesPuller) StopCallCount() int {
 	fake.stopMutex.RLock()
 	defer fake.stopMutex.RUnlock()
 	return len(fake.stopArgsForCall)
 }
 
-func (fake *FakeBatchPuller) StopCalls(stub func()) {
+func (fake *FakeBatchesPuller) StopCalls(stub func()) {
 	fake.stopMutex.Lock()
 	defer fake.stopMutex.Unlock()
 	fake.StopStub = stub
 }
 
-func (fake *FakeBatchPuller) Invocations() map[string][][]interface{} {
+func (fake *FakeBatchesPuller) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	fake.pullBatchesMutex.RLock()
@@ -127,7 +127,7 @@ func (fake *FakeBatchPuller) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
-func (fake *FakeBatchPuller) recordInvocation(key string, args []interface{}) {
+func (fake *FakeBatchesPuller) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
 	if fake.invocations == nil {
@@ -139,4 +139,4 @@ func (fake *FakeBatchPuller) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ core.BatchPuller = new(FakeBatchPuller)
+var _ batcher.BatchesPuller = new(FakeBatchesPuller)

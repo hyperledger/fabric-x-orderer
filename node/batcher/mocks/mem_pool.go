@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 )
 
 type FakeMemPool struct {
@@ -296,4 +296,4 @@ func (fake *FakeMemPool) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ core.MemPool = new(FakeMemPool)
+var _ batcher.MemPool = new(FakeMemPool)

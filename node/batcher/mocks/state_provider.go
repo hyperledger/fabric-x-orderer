@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
@@ -100,4 +100,4 @@ func (fake *FakeStateProvider) recordInvocation(key string, args []interface{}) 
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ core.StateProvider = new(FakeStateProvider)
+var _ batcher.StateProvider = new(FakeStateProvider)

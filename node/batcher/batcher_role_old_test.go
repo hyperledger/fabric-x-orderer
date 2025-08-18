@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core_test
+package batcher_test
 
 import (
 	"crypto/sha256"
@@ -16,8 +16,8 @@ import (
 	"time"
 
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
-	"github.com/hyperledger/fabric-x-orderer/core/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
 	"github.com/hyperledger/fabric-x-orderer/request"
 	request_mocks "github.com/hyperledger/fabric-x-orderer/request/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -82,7 +82,7 @@ func (r *naiveReplication) RetrieveBatchByNumber(partyID arma_types.PartyID, seq
 
 type acker struct {
 	from     arma_types.PartyID
-	batchers []*core.Batcher
+	batchers []*batcher.BatcherRole
 }
 
 func (a *acker) Ack(seq arma_types.BatchSequence, to arma_types.PartyID) {
@@ -147,13 +147,13 @@ func BenchmarkBatcherNetwork(b *testing.B) {
 	}
 }
 
-func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan arma_types.Batch) {
+func createBenchBatchers(b *testing.B, n int) ([]*batcher.BatcherRole, <-chan arma_types.Batch) {
 	var batcherConf []arma_types.PartyID
 	for i := 0; i < n; i++ {
 		batcherConf = append(batcherConf, arma_types.PartyID(i))
 	}
 
-	var batchers []*core.Batcher
+	var batchers []*batcher.BatcherRole
 	for i := 0; i < n; i++ {
 		b := createBenchBatcher(b, 0, arma_types.PartyID(i), batcherConf)
 		batchers = append(batchers, b)
@@ -181,7 +181,7 @@ func createBenchBatchers(b *testing.B, n int) ([]*core.Batcher, <-chan arma_type
 	return batchers, commit
 }
 
-func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *core.Batcher {
+func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *batcher.BatcherRole {
 	sugaredLogger := testutil.CreateBenchmarkLogger(b, int(nodeID))
 
 	requestInspector := &reqInspector{}
@@ -210,7 +210,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
 	})
 
-	batcher := &core.Batcher{
+	batcher := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
@@ -242,7 +242,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 		atomic.AddUint32(&secondStrikeCount, 1)
 	}
 
-	batchers, _ := createBatchers(t, n)
+	batchers, _ := createRoleBatchers(t, n)
 	for _, b := range batchers {
 		b.BatchAcker = &mocks.FakeBatchAcker{} // no ack will be received by the primary
 		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
@@ -291,13 +291,13 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	}
 }
 
-func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan arma_types.Batch) {
+func createRoleBatchers(t *testing.T, n int) ([]*batcher.BatcherRole, <-chan arma_types.Batch) {
 	var batcherConf []arma_types.PartyID
 	for i := 0; i < n; i++ {
 		batcherConf = append(batcherConf, arma_types.PartyID(i))
 	}
 
-	var batchers []*core.Batcher
+	var batchers []*batcher.BatcherRole
 	for i := 0; i < n; i++ {
 		b := createTestBatcher(t, 0, arma_types.PartyID(i), batcherConf)
 		batchers = append(batchers, b)
@@ -325,7 +325,7 @@ func createBatchers(t *testing.T, n int) ([]*core.Batcher, <-chan arma_types.Bat
 	return batchers, commit
 }
 
-func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *core.Batcher {
+func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_types.PartyID, batchers []arma_types.PartyID) *batcher.BatcherRole {
 	sugaredLogger := testutil.CreateLogger(t, int(nodeID))
 
 	striker := &request_mocks.FakeStriker{}
@@ -353,7 +353,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, nil, 0, nil)
 	})
 
-	b := &core.Batcher{
+	b := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
