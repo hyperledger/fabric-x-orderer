@@ -13,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -27,7 +26,7 @@ type NetStopper interface {
 }
 
 type Assembler struct {
-	assembler    core.Assembler
+	assembler    AssemblerRole
 	logger       types.Logger
 	ds           delivery.DeliverService
 	prefetcher   PrefetcherController
@@ -108,7 +107,7 @@ func NewDefaultAssembler(
 
 	assembler := &Assembler{
 		ds: make(delivery.DeliverService),
-		assembler: core.Assembler{
+		assembler: AssemblerRole{
 			Shards:                            shardIds,
 			OrderedBatchAttestationReplicator: baReplicator,
 			Replicator:                        br,

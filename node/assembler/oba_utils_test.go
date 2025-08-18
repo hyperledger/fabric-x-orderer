@@ -11,7 +11,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -47,7 +46,7 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 	return orderedBatchAttestationCreator, ba
 }
 
-func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisionNum types.DecisionNum, batchIndex, batchCount int) core.OrderedBatchAttestation {
+func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisionNum types.DecisionNum, batchIndex, batchCount int) types.OrderedBatchAttestation {
 	if decisionNum-types.DecisionNum(obac.prevBa.OrderingInformation.Number) > 1 {
 		panic("Cannot create non-consecutive BA")
 	}

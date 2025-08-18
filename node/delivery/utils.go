@@ -13,7 +13,6 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -96,14 +95,14 @@ func clientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.Cli
 	return cc
 }
 
-func createAssemblerConsensusPosition(oi *state.OrderingInformation) core.AssemblerConsensusPosition {
+func createAssemblerConsensusPosition(oi *state.OrderingInformation) types.AssemblerConsensusPosition {
 	if oi.BatchIndex != oi.BatchCount-1 {
-		return core.AssemblerConsensusPosition{
+		return types.AssemblerConsensusPosition{
 			DecisionNum: oi.DecisionNum,
 			BatchIndex:  oi.BatchIndex + 1,
 		}
 	}
-	return core.AssemblerConsensusPosition{
+	return types.AssemblerConsensusPosition{
 		DecisionNum: oi.DecisionNum + 1,
 	}
 }

@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core
+package assembler
 
 import (
 	"encoding/hex"
@@ -15,16 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
-
-// OrderedBatchAttestation carries the BatchAttestation and information on the actual order of the batch from the
-// consensus cluster. This information is used when appending to the ledger, and helps the assembler to recover
-// following a shutdown or a failure.
-type OrderedBatchAttestation interface {
-	BatchAttestation() types.BatchAttestation
-	// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
-	// metadata to be used in the construction of the block.
-	OrderingInfo() types.OrderingInfo
-}
 
 type BatchReplicator interface {
 	Replicate(shardID types.ShardID) <-chan types.Batch
@@ -41,16 +31,11 @@ type AssemblerLedgerWriter interface {
 	Close()
 }
 
-type AssemblerConsensusPosition struct {
-	DecisionNum types.DecisionNum
-	BatchIndex  int
-}
-
 type OrderedBatchAttestationReplicator interface {
-	Replicate() <-chan OrderedBatchAttestation
+	Replicate() <-chan types.OrderedBatchAttestation
 }
 
-type Assembler struct {
+type AssemblerRole struct {
 	ShardCount                        int
 	Ledger                            AssemblerLedgerWriter
 	Logger                            types.Logger
@@ -61,7 +46,7 @@ type Assembler struct {
 	runningWG                         sync.WaitGroup
 }
 
-func (a *Assembler) Run() {
+func (a *AssemblerRole) Run() {
 	// TODO we need to be able to stop these goroutines when we stop the assembler server
 	for _, shardID := range a.Shards {
 		a.runningWG.Add(1)
@@ -73,11 +58,11 @@ func (a *Assembler) Run() {
 
 // WaitTermination the core Assembler is stopped by the node Assembler when the channels for batches and BAs are closed.
 // This methods only waits for the core go routines to finish.
-func (a *Assembler) WaitTermination() {
+func (a *AssemblerRole) WaitTermination() {
 	a.runningWG.Wait()
 }
 
-func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
+func (a *AssemblerRole) fetchBatchesFromShard(shardID types.ShardID) {
 	defer a.runningWG.Done()
 	a.Logger.Infof("Starting to fetch batches from shard: %d", shardID)
 
@@ -90,7 +75,7 @@ func (a *Assembler) fetchBatchesFromShard(shardID types.ShardID) {
 	a.Logger.Infof("Finished fetching batches from shard: %d", shardID)
 }
 
-func (a *Assembler) processOrderedBatchAttestations() {
+func (a *AssemblerRole) processOrderedBatchAttestations() {
 	defer a.runningWG.Done()
 	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
@@ -118,7 +103,7 @@ func (a *Assembler) processOrderedBatchAttestations() {
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
 }
 
-func (a *Assembler) collateAttestationWithBatch(ba types.BatchAttestation) (types.Batch, error) {
+func (a *AssemblerRole) collateAttestationWithBatch(ba types.BatchAttestation) (types.Batch, error) {
 	t1 := time.Now()
 	batch, err := a.Index.PopOrWait(ba)
 	if err != nil {

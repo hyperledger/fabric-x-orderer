@@ -73,3 +73,18 @@ type Batch interface {
 type OrderingInfo interface {
 	fmt.Stringer
 }
+
+// OrderedBatchAttestation carries the BatchAttestation and information on the actual order of the batch from the
+// consensus cluster. This information is used when appending to the ledger, and helps the assembler to recover
+// following a shutdown or a failure.
+type OrderedBatchAttestation interface {
+	BatchAttestation() BatchAttestation
+	// OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
+	// metadata to be used in the construction of the block.
+	OrderingInfo() OrderingInfo
+}
+
+type AssemblerConsensusPosition struct {
+	DecisionNum DecisionNum
+	BatchIndex  int
+}
