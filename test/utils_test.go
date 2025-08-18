@@ -392,7 +392,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	return pullInfos
 }
 
-func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int, need_verification bool) (*BlockPullerInfo, error) {
+func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int, needVerification bool) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer toCancel()
@@ -436,7 +436,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				termChanged = true
 				primaryMap[shardID] = primaryID
 			}
-		} else if need_verification {
+		} else if needVerification {
 			t.Log("skipping genesis block")
 			return nil
 		}
@@ -450,7 +450,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				t.Fatalf("error unmarshalling envelope: %s", err)
 			}
 
-			if need_verification && transactions > 0 {
+			if needVerification && transactions > 0 {
 				txNumber := binary.BigEndian.Uint64(envelope.Payload[0:8])
 				if txNumber >= uint64(transactions) {
 					t.Fatalf("invalid tx number: %d", txNumber)
@@ -465,7 +465,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			}
 		}
 
-		if need_verification {
+		if needVerification {
 			anythingMissing := false
 			for _, v := range m {
 				if v == 0 {
@@ -493,7 +493,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	t.Logf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
 	blockPullerInfo := &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged, Missing: make([]uint64, 0), Duplicate: make([]uint64, 0)}
 
-	if need_verification {
+	if needVerification {
 		for k, v := range m {
 			if v == 0 {
 				blockPullerInfo.Missing = append(blockPullerInfo.Missing, k)
