@@ -10,7 +10,6 @@ import (
 	"context"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -26,7 +25,7 @@ const (
 
 //go:generate counterfeiter -o ./mocks/consensus_bringer.go . ConsensusBringer
 type ConsensusBringer interface {
-	Replicate() <-chan core.OrderedBatchAttestation
+	Replicate() <-chan types.OrderedBatchAttestation
 	Stop()
 }
 
@@ -67,7 +66,7 @@ func NewConsensusBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawByt
 	return baReplicator
 }
 
-func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation {
+func (cr *ConsensusBAReplicator) Replicate() <-chan types.OrderedBatchAttestation {
 	endpoint := func() string {
 		return cr.endpoint
 	}
@@ -96,7 +95,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan core.OrderedBatchAttestation
 		return requestEnvelope
 	}
 
-	res := make(chan core.OrderedBatchAttestation, replicateBAChanSize)
+	res := make(chan types.OrderedBatchAttestation, replicateBAChanSize)
 
 	initOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
 	if err != nil {

@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	"github.com/hyperledger/fabric-x-orderer/core"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -38,10 +37,10 @@ type assemblerTest struct {
 	genesisBlock                   *common.Block
 	nodeConfig                     *config.AssemblerNodeConfig
 	orderedBatchAttestationCreator *OrderedBatchAttestationCreator
-	expectedLedgerBA               []core.OrderedBatchAttestation
+	expectedLedgerBA               []types.OrderedBatchAttestation
 	assembler                      *assembler.Assembler
 	shardToBatcherChan             map[types.ShardID]chan types.Batch
-	consensusBAChan                chan core.OrderedBatchAttestation
+	consensusBAChan                chan types.OrderedBatchAttestation
 	batchBringerMock               *assembler_mocks.FakeBatchBringer
 	ledgerMock                     *ledger_mocks.FakeAssemblerLedgerReaderWriter
 	prefetcherMock                 *assembler_mocks.FakePrefetcherController
@@ -97,7 +96,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		ledgerDir:                      t.TempDir(),
 		genesisBlock:                   genesisBlock,
 		orderedBatchAttestationCreator: orderedBatchAttestationCreator,
-		expectedLedgerBA:               []core.OrderedBatchAttestation{},
+		expectedLedgerBA:               []types.OrderedBatchAttestation{},
 		batchBringerMock:               &assembler_mocks.FakeBatchBringer{},
 		ledgerMock:                     &ledger_mocks.FakeAssemblerLedgerReaderWriter{},
 		prefetcherMock:                 &assembler_mocks.FakePrefetcherController{},
@@ -145,7 +144,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 	return test
 }
 
-func (at *assemblerTest) SendBAToAssembler(oba core.OrderedBatchAttestation) {
+func (at *assemblerTest) SendBAToAssembler(oba types.OrderedBatchAttestation) {
 	at.consensusBAChan <- oba
 	at.expectedLedgerBA = append(at.expectedLedgerBA, oba)
 }
@@ -164,7 +163,7 @@ func (at *assemblerTest) StopAssembler() {
 
 func (at *assemblerTest) StartAssembler() {
 	at.shardToBatcherChan = make(map[types.ShardID]chan types.Batch)
-	at.consensusBAChan = make(chan core.OrderedBatchAttestation, 100_000)
+	at.consensusBAChan = make(chan types.OrderedBatchAttestation, 100_000)
 
 	prefetchIndexerFactory := &assembler.DefaultPrefetchIndexerFactory{}
 
@@ -189,7 +188,7 @@ func (at *assemblerTest) StartAssembler() {
 	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l types.Logger) delivery.ConsensusBringer {
 		return at.consensusBringerMock
 	})
-	at.consensusBringerMock.ReplicateCalls(func() <-chan core.OrderedBatchAttestation {
+	at.consensusBringerMock.ReplicateCalls(func() <-chan types.OrderedBatchAttestation {
 		return at.consensusBAChan
 	})
 

@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package core_test
+package assembler_test
 
 import (
 	"encoding/binary"
@@ -17,14 +17,14 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/core"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
-type naiveOrderedBatchAttestationReplicator chan core.OrderedBatchAttestation
+type naiveOrderedBatchAttestationReplicator chan types.OrderedBatchAttestation
 
-func (n naiveOrderedBatchAttestationReplicator) Replicate() <-chan core.OrderedBatchAttestation {
+func (n naiveOrderedBatchAttestationReplicator) Replicate() <-chan types.OrderedBatchAttestation {
 	return n
 }
 
@@ -185,7 +185,7 @@ func (noba *naiveOrderedBatchAttestation) OrderingInfo() types.OrderingInfo {
 	return noba.orderingInfo
 }
 
-type naiveAssemblerLedger chan core.OrderedBatchAttestation
+type naiveAssemblerLedger chan types.OrderedBatchAttestation
 
 func (n naiveAssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingInfo) {
 	noba := &naiveOrderedBatchAttestation{
@@ -286,7 +286,7 @@ func TestAssembler(t *testing.T) {
 	assert.Len(t, digests, 0)
 }
 
-func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveOrderedBatchAttestationReplicator, *core.Assembler) {
+func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveOrderedBatchAttestationReplicator, *assembler.AssemblerRole) {
 	index := &naiveIndex{}
 
 	r := &naiveReplication{}
@@ -301,7 +301,7 @@ func createAssembler(t *testing.T, shardCount int) (*naiveReplication, naiveAsse
 
 	nobar := make(naiveOrderedBatchAttestationReplicator)
 
-	assembler := &core.Assembler{
+	assembler := &assembler.AssemblerRole{
 		Shards:                            shards,
 		Logger:                            testutil.CreateLogger(t, 0),
 		Replicator:                        r,
