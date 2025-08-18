@@ -23,7 +23,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -335,7 +334,7 @@ type BlockPullerInfo struct {
 	TermChanged bool
 }
 
-func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string, timeout int) map[types.PartyID]*BlockPullerInfo {
+func PullFromAssemblers(t *testing.T, userConfig *client.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string, timeout int) map[types.PartyID]*BlockPullerInfo {
 	var waitForPullDone sync.WaitGroup
 	pullInfos := make(map[types.PartyID]*BlockPullerInfo, len(parties))
 	lock := sync.Mutex{}
@@ -362,7 +361,7 @@ func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties
 	return pullInfos
 }
 
-func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int) (*BlockPullerInfo, error) {
+func PullFromAssembler(t *testing.T, userConfig *client.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int) (*BlockPullerInfo, error) {
 	require.NotNil(t, userConfig)
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)

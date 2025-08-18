@@ -16,7 +16,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
@@ -26,12 +25,12 @@ type StreamInfo struct {
 	endpoint    string
 }
 type BroadcastTxClient struct {
-	userConfig       *armageddon.UserConfig
+	userConfig       *UserConfig
 	timeOut          time.Duration
 	streamRoutersMap map[string]*StreamInfo
 }
 
-func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Duration) *BroadcastTxClient {
+func NewBroadcastTxClient(userConfigFile *UserConfig, timeOut time.Duration) *BroadcastTxClient {
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
 		timeOut:          timeOut,
@@ -110,7 +109,7 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 	return nil
 }
 
-func createSendStream(userConfig *armageddon.UserConfig, serverRootCAs [][]byte, endpoint string) ab.AtomicBroadcast_BroadcastClient {
+func createSendStream(userConfig *UserConfig, serverRootCAs [][]byte, endpoint string) ab.AtomicBroadcast_BroadcastClient {
 	gRPCRouterClient := comm.ClientConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ClientInterval: time.Hour,
