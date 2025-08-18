@@ -420,6 +420,9 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 
 		totalBlocks++
 
+		data := block.GetData().GetData()
+		transactionsNumber := len(data)
+
 		// Check if the block is genesis block or not
 		isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
 
@@ -437,12 +440,11 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				primaryMap[shardID] = primaryID
 			}
 		} else if needVerification {
+			require.Equal(t, 1, transactionsNumber)
+			totalTxs++
 			t.Log("skipping genesis block")
 			return nil
 		}
-
-		data := block.GetData().GetData()
-		transactionsNumber := len(data)
 
 		for i := 0; i < transactionsNumber; i++ {
 			envelope, err := protoutil.UnmarshalEnvelope(data[i])
@@ -462,19 +464,6 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				m[txNumber]++
 			} else {
 				totalTxs++
-			}
-		}
-
-		if needVerification {
-			anythingMissing := false
-			for _, v := range m {
-				if v == 0 {
-					anythingMissing = true
-					break
-				}
-			}
-			if !anythingMissing {
-				toCancel()
 			}
 		}
 
