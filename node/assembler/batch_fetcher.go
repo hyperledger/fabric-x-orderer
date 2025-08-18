@@ -222,7 +222,8 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 		select {
 		case <-ctx.Done():
 			cancelFunc()
-			return nil, fmt.Errorf("operation canceled")
+			br.logger.Errorf("operation canceled")
+			return nil, context.Canceled
 		case fb := <-res:
 			count++
 			if types.BatchIDEqual(fb, batchID) {
