@@ -98,9 +98,9 @@ func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
 	// prepare the payload
 	buffer := make([]byte, txSize)
 	buff := bytes.NewBuffer(buffer[:0])
-	buff.Write(sessionNumber)
 	binary.Write(buff, binary.BigEndian, uint64(txNumber))
 	binary.Write(buff, binary.BigEndian, timeStamp)
+	buff.Write(sessionNumber)
 	result := buff.Bytes()
 	if len(buff.Bytes()) < txSize {
 		padding := make([]byte, txSize-len(result))

@@ -36,6 +36,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -329,32 +330,61 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 }
 
 type BlockPullerInfo struct {
-	TotalTxs    uint64
-	TotalBlocks uint64
+	TotalTxs    int
+	TotalBlocks int
 	Primary     map[types.ShardID]types.PartyID
 	TermChanged bool
+	Duplicate   []uint64
+	Missing     []uint64
 }
 
-func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties []types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, errString string, timeout int) map[types.PartyID]*BlockPullerInfo {
+type BlockPullerOptions struct {
+	UserConfig       *armageddon.UserConfig
+	Parties          []types.PartyID
+	NeedVerification bool
+	StartBlock       uint64
+	EndBlock         uint64
+	Transactions     int
+	Blocks           int
+	Timeout          int
+	ErrString        string
+}
+
+func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.PartyID]*BlockPullerInfo {
+	require.NotNil(t, options)
+	require.NotNil(t, options.UserConfig)
+	require.NotEmpty(t, options.Parties)
+	require.GreaterOrEqual(t, options.StartBlock, uint64(0))
+	require.GreaterOrEqual(t, options.EndBlock, options.StartBlock)
+	require.GreaterOrEqual(t, options.Transactions, 0)
+	require.GreaterOrEqual(t, options.Blocks, 0)
+	require.NotEmpty(t, options.ErrString)
+
+	if options.Timeout <= 0 {
+		options.Timeout = 30
+	}
+
 	var waitForPullDone sync.WaitGroup
-	pullInfos := make(map[types.PartyID]*BlockPullerInfo, len(parties))
+	pullInfos := make(map[types.PartyID]*BlockPullerInfo, len(options.Parties))
 	lock := sync.Mutex{}
 
-	for _, partyID := range parties {
+	for _, partyID := range options.Parties {
 		waitForPullDone.Add(1)
 
 		go func() {
 			defer waitForPullDone.Done()
 
-			pullInfo, err := PullFromAssembler(t, userConfig, partyID, startBlock, endBlock, transactions, blocks, timeout)
+			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, options.Transactions, options.Blocks, options.Timeout, options.NeedVerification)
 			lock.Lock()
 			defer lock.Unlock()
 			pullInfos[partyID] = pullInfo
-			errString := fmt.Sprintf(errString, partyID)
-			require.ErrorContains(t, err, errString)
-			// TODO:  check that we get all of the submitted transactions
-			require.GreaterOrEqual(t, int64(pullInfo.TotalTxs), int64(transactions))
-			require.GreaterOrEqual(t, int64(pullInfo.TotalBlocks), int64(blocks))
+			if err != nil {
+				errString := fmt.Sprintf(options.ErrString, partyID)
+				require.ErrorContains(t, err, errString)
+			}
+			require.GreaterOrEqual(t, int64(pullInfo.TotalTxs), int64(options.Transactions))
+			require.GreaterOrEqual(t, int64(pullInfo.TotalBlocks), int64(options.Blocks))
+			require.Empty(t, pullInfo.Missing)
 		}()
 	}
 
@@ -362,19 +392,23 @@ func PullFromAssemblers(t *testing.T, userConfig *armageddon.UserConfig, parties
 	return pullInfos
 }
 
-func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int) (*BlockPullerInfo, error) {
-	require.NotNil(t, userConfig)
+func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int, need_verification bool) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer toCancel()
 
-	totalTxs := uint64(0)
-	totalBlocks := uint64(0)
+	totalTxs := 0
+	totalBlocks := 0
 	primaryMap := make(map[types.ShardID]types.PartyID)
 	termChanged := false
 
-	expectedNumOfTxs := uint64(transactions + 1)
-	expectedNumOfBlocks := uint64(blocks)
+	expectedNumOfTxs := transactions + 1
+	expectedNumOfBlocks := blocks
+
+	m := make(map[uint64]int, transactions)
+	for i := 0; i < transactions; i++ {
+		m[uint64(i)] = 0
+	}
 
 	handler := func(block *common.Block) error {
 		if block == nil {
@@ -384,10 +418,14 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			return errors.New("nil block header")
 		}
 
-		shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
-		shardID := types.ShardID(binary.BigEndian.Uint16(shardIDBytes))
+		totalBlocks++
 
-		if shardID != types.ShardIDConsensus {
+		// Check if the block is genesis block or not
+		isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
+
+		if !isGenesisBlock {
+			shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
+			shardID := types.ShardID(binary.BigEndian.Uint16(shardIDBytes))
 			primaryIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][0:2]
 			primaryID := types.PartyID(binary.BigEndian.Uint16(primaryIDBytes))
 
@@ -398,10 +436,34 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				termChanged = true
 				primaryMap[shardID] = primaryID
 			}
+		} else if need_verification {
+			t.Log("skipping genesis block")
+			return nil
 		}
 
-		totalBlocks++
-		totalTxs += uint64(len(block.GetData().GetData()))
+		data := block.GetData().GetData()
+		transactionsNumber := len(data)
+
+		for i := 0; i < transactionsNumber; i++ {
+			envelope, err := protoutil.UnmarshalEnvelope(data[i])
+			if err != nil {
+				t.Fatalf("error unmarshalling envelope: %s", err)
+			}
+
+			if need_verification && transactions > 0 {
+				txNumber := binary.BigEndian.Uint64(envelope.Payload[0:8])
+				if txNumber >= uint64(transactions) {
+					t.Fatalf("invalid tx number: %d", txNumber)
+				}
+				// count only unique txs
+				if m[txNumber] == 0 {
+					totalTxs++
+				}
+				m[txNumber]++
+			} else {
+				totalTxs++
+			}
+		}
 
 		if blocks > 0 && totalBlocks >= expectedNumOfBlocks {
 			toCancel()
@@ -413,8 +475,19 @@ func PullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		return nil
 	}
 
-	fmt.Printf("Pulling from party: %d\n", partyID)
+	t.Logf("Pulling from party: %d\n", partyID)
 	err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
-	fmt.Printf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
-	return &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged}, err
+	t.Logf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
+	blockPullerInfo := &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged, Missing: make([]uint64, 0), Duplicate: make([]uint64, 0)}
+
+	if need_verification {
+		for k, v := range m {
+			if v == 0 {
+				blockPullerInfo.Missing = append(blockPullerInfo.Missing, k)
+			} else if v > 1 {
+				blockPullerInfo.Duplicate = append(blockPullerInfo.Duplicate, k)
+			}
+		}
+	}
+	return blockPullerInfo, err
 }
