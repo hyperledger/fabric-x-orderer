@@ -465,6 +465,19 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			}
 		}
 
+		if need_verification {
+			anythingMissing := false
+			for _, v := range m {
+				if v == 0 {
+					anythingMissing = true
+					break
+				}
+			}
+			if !anythingMissing {
+				toCancel()
+			}
+		}
+
 		if blocks > 0 && totalBlocks >= expectedNumOfBlocks {
 			toCancel()
 		}
