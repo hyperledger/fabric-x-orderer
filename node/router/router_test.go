@@ -26,6 +26,7 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -401,9 +402,7 @@ func TestRequestFilters(t *testing.T) {
 	// 2) send a valid request.
 	buff := make([]byte, 300)
 	binary.BigEndian.PutUint32(buff, uint32(12345))
-	req := &protos.Request{
-		Payload: buff,
-	}
+	req := tx.CreateStructuredRequest(buff)
 	resp, err := cl.Submit(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, "", resp.Error)
@@ -475,7 +474,8 @@ func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) (res testStr
 		buff := make([]byte, 300)
 		for j := 0; j < numOfRequests; j++ {
 			binary.BigEndian.PutUint32(buff, uint32(j))
-			err := stream.Send(&protos.Request{Payload: buff})
+			req := tx.CreateStructuredRequest(buff)
+			err := stream.Send(req)
 			if err != nil {
 				return
 			}
@@ -531,7 +531,8 @@ func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) (res test
 		buff := make([]byte, 300)
 		for j := 0; j < numOfRequests; j++ {
 			binary.BigEndian.PutUint32(buff, uint32(j))
-			err := stream.Send(&common.Envelope{Payload: buff})
+			env := tx.CreateStructuredEnvelope(buff)
+			err := stream.Send(env)
 			if err != nil {
 				return
 			}
@@ -569,10 +570,7 @@ func submitRequest(conn *grpc.ClientConn) error {
 
 	buff := make([]byte, 300)
 	binary.BigEndian.PutUint32(buff, uint32(12345))
-	req := &protos.Request{
-		Payload: buff,
-	}
-
+	req := tx.CreateStructuredRequest(buff)
 	cl := protos.NewRequestTransmitClient(conn)
 	resp, err := cl.Submit(ctx, req)
 	if err != nil {

@@ -23,6 +23,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config "github.com/hyperledger/fabric-x-orderer/config"
@@ -36,7 +37,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -325,7 +326,8 @@ func sendTxn(workerID int, txnNum int, routers []*router.Router) {
 	binary.BigEndian.PutUint16(txn[30:], uint16(workerID))
 
 	for routerId := 0; routerId < len(routers); routerId++ {
-		routers[routerId].Submit(context.Background(), &protos.Request{Payload: txn})
+		req := tx.CreateStructuredRequest(txn)
+		routers[routerId].Submit(context.Background(), req)
 	}
 }
 
@@ -453,7 +455,10 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			}
 
 			if needVerification && transactions > 0 {
-				txNumber := binary.BigEndian.Uint64(envelope.Payload[0:8])
+				data, err := tx.GetDataFromEnvelope(envelope)
+				require.NoError(t, err)
+				require.NotNil(t, data)
+				txNumber := binary.BigEndian.Uint64(data[0:8])
 				if txNumber >= uint64(transactions) {
 					t.Fatalf("invalid tx number: %d", txNumber)
 				}

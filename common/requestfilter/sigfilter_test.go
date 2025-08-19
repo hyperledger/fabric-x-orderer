@@ -35,6 +35,13 @@ func TestSigVerifyFilter(t *testing.T) {
 	err = v.Verify(req)
 	require.EqualError(t, err, "failed to convert request to signedData : missing signature header in payload's header")
 
+	payload = &common.Payload{Header: &common.Header{ChannelHeader: make([]byte, 10), SignatureHeader: make([]byte, 10)}}
+	p, err = proto.Marshal(payload)
+	require.NoError(t, err)
+	req.Payload = p
+	err = v.Verify(req)
+	require.ErrorContains(t, err, "failed unmarshalling signature header")
+
 	sigheader, err := proto.Marshal(&common.SignatureHeader{
 		Creator: []byte("user"),
 		Nonce:   []byte("nonce"),
@@ -42,6 +49,16 @@ func TestSigVerifyFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	payload = &common.Payload{Header: &common.Header{ChannelHeader: make([]byte, 10), SignatureHeader: sigheader}}
+	p, err = proto.Marshal(payload)
+	require.NoError(t, err)
+	req.Payload = p
+	err = v.Verify(req)
+	require.ErrorContains(t, err, "failed unmarshalling channel header")
+
+	chdr := &common.ChannelHeader{ChannelId: "ChannelId"}
+	chdrBytes, err := proto.Marshal(chdr)
+	require.NoError(t, err)
+	payload = &common.Payload{Header: &common.Header{ChannelHeader: chdrBytes, SignatureHeader: sigheader}}
 	p, err = proto.Marshal(payload)
 	require.NoError(t, err)
 	req.Payload = p
