@@ -128,6 +128,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024, // 1GB
 		RestartLedgerScanTimeout:  5 * time.Second,
 		PrefetchEvictionTtl:       time.Hour,
+		PopWaitMonitorTimeout:     time.Second,
 		ReplicationChannelSize:    100,
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shardsInfo,

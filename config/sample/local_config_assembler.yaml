@@ -36,7 +36,8 @@ FileStore:
 # Assembler specific parameters
 Assembler:
   PrefetchBufferMemoryBytes: 1073741824
-  LedgerScanTimeout: 5s
-  EvictionTtl: 1h
+  RestartLedgerScanTimeout: 5s
+  PrefetchEvictionTtl: 1h
+  PopWaitMonitorTimeout: 1s
   ReplicationChannelSize: 100
   BatchRequestsChannelSize: 1000

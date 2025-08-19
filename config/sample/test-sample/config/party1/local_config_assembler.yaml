@@ -38,5 +38,6 @@ Assembler:
     PrefetchBufferMemoryBytes: 1073741824
     RestartLedgerScanTimeout: 5s
     PrefetchEvictionTtl: 1h0m0s
+    PopWaitMonitorTimeout: 1s
     ReplicationChannelSize: 100
     BatchRequestsChannelSize: 1000
