@@ -145,6 +145,7 @@ type AssemblerParams struct {
 	PrefetchBufferMemoryBytes int           `yaml:"PrefetchBufferMemoryBytes,omitempty"`
 	RestartLedgerScanTimeout  time.Duration `yaml:"RestartLedgerScanTimeout,omitempty"`
 	PrefetchEvictionTtl       time.Duration `yaml:"PrefetchEvictionTtl,omitempty"`
+	PopWaitMonitorTimeout     time.Duration `yaml:"PopWaitMonitorTimeout,omitempty"`
 	ReplicationChannelSize    int           `yaml:"ReplicationChannelSize,omitempty"`
 	BatchRequestsChannelSize  int           `yaml:"BatchRequestsChannelSize,omitempty"`
 }

@@ -72,6 +72,7 @@ func TestABCR(t *testing.T) {
 		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024, // 1GB
 		RestartLedgerScanTimeout:  5 * time.Second,
 		PrefetchEvictionTtl:       time.Hour,
+		PopWaitMonitorTimeout:     time.Second,
 		ReplicationChannelSize:    100,
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shards,
