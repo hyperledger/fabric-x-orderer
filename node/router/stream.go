@@ -24,7 +24,7 @@ type stream struct {
 	ctx                               context.Context
 	cancelOnce                        sync.Once
 	cancelFunc                        func()
-	requestsChannel                   chan *protos.Request
+	requestsChannel                   chan *TrackedRequest
 	doneChannel                       chan bool
 	doneOnce                          sync.Once
 	lock                              sync.Mutex
@@ -53,7 +53,7 @@ func (s *stream) readResponses() {
 				return
 			}
 			s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
-			err = s.sendResponseToClient(resp)
+			err = s.forwardResponseToClient(resp)
 			if err != nil {
 				s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
 			}
@@ -68,35 +68,40 @@ func (s *stream) sendRequests() {
 		case <-s.doneChannel:
 			s.logger.Debugf("the stream has been closed, sendRequests goroutine is exiting, it was connected to batcher %s", s.endpoint)
 			return
-		case msg, ok := <-s.requestsChannel:
+		case tr, ok := <-s.requestsChannel:
 			if !ok {
 				s.logger.Debugf("request channel to batcher %s have been closed", s.endpoint)
 				s.cancelOnServerError()
 				return
 			}
 			// verify the request
-			if err := s.verifier.Verify(msg); err != nil {
+			if err := s.verifier.Verify(tr.request); err != nil {
 				s.logger.Debugf("request is invalid: %s", err)
-				// send a response to the client
-				resp := protos.SubmitResponse{Error: fmt.Sprintf("request verification error: %s", err), TraceId: msg.TraceId}
-				err = s.sendResponseToClient(&resp)
-				if err != nil {
-					s.logger.Debugf("error sending response to client: %s", err)
-				}
+				// send error to the client
+				s.responseToClientWithError(tr, fmt.Errorf("request verification error: %s", err))
 			} else {
-				s.logger.Debugf("send request with trace id %x to batcher %s", msg.TraceId, s.endpoint)
-				err := s.requestTransmitSubmitStreamClient.Send(msg)
+				s.logger.Debugf("send request with trace id %x to batcher %s", tr.trace, s.endpoint)
+				err := s.requestTransmitSubmitStreamClient.Send(tr.request)
 				if err != nil {
 					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+					if tr.trace == nil {
+						// send error to client, in case request is not traced.
+						tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
+					}
 					s.cancelOnServerError()
 					return
+				}
+				// fast response to client
+				if tr.trace == nil {
+					// request is untraced, send no-error to client.
+					tr.responses <- Response{err: nil}
 				}
 			}
 		}
 	}
 }
 
-func (s *stream) sendResponseToClient(response *protos.SubmitResponse) error {
+func (s *stream) forwardResponseToClient(response *protos.SubmitResponse) error {
 	traceID := response.TraceId
 	s.lock.Lock()
 	ch, exists := s.requestTraceIdToResponseChannel[string(traceID)]
@@ -110,6 +115,28 @@ func (s *stream) sendResponseToClient(response *protos.SubmitResponse) error {
 		return nil
 	} else {
 		return fmt.Errorf("request with traceID %x is not in map", traceID)
+	}
+}
+
+func (s *stream) responseToClientWithError(rr *TrackedRequest, err error) {
+	traceID := rr.trace
+	if traceID == nil {
+		// request is untraced, send a response
+		rr.responses <- Response{err: err}
+	} else {
+		// request is traced, and there was an error
+		s.lock.Lock()
+		ch, exists := s.requestTraceIdToResponseChannel[string(traceID)]
+		delete(s.requestTraceIdToResponseChannel, string(traceID))
+		s.lock.Unlock()
+		if exists {
+			s.logger.Debugf("responding to request with trace id %x, and removing registration from map", traceID)
+			ch <- Response{
+				SubmitResponse: &protos.SubmitResponse{Error: err.Error(), TraceId: traceID},
+			}
+		} else {
+			s.logger.Debugf("request with traceID %x is not in map", traceID)
+		}
 	}
 }
 
@@ -138,7 +165,8 @@ func (s *stream) sendResponseToAllClientsOnError(e error) {
 DrainChannelLoop:
 	for {
 		select {
-		case <-s.requestsChannel:
+		case rr := <-s.requestsChannel:
+			rr.responses <- Response{err: e, reqID: rr.reqID}
 		default:
 			break DrainChannelLoop
 		}
@@ -187,7 +215,7 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 		return nil, fmt.Errorf("failed establishing a new stream: %w", err)
 	}
 
-	newStreamRequests := make(chan *protos.Request, 1000)
+	newStreamRequests := make(chan *TrackedRequest, 1000)
 	newRequestTraceIdToResponseChannelMap := make(map[string]chan Response)
 
 	// close the old stream. This should stop the sendRequests and readResponses goroutines.
