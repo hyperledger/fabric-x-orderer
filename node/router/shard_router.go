@@ -115,28 +115,9 @@ func NewShardRouter(l types.Logger,
 	return sr
 }
 
-func (sr *ShardRouter) ForwardBestEffort(reqID, request []byte) error {
-	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
-	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % sr.router2batcherStreamsPerConn
-
-	sr.lock.RLock()
-	stream := sr.streams[connIndex][streamInConnIndex]
-	sr.lock.RUnlock()
-
-	if stream == nil || stream.faulty() {
-		sr.maybeNotifyReconnectRoutine(stream, connIndex, streamInConnIndex)
-		return fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint)
-	}
-
-	stream.requestsChannel <- &protos.Request{
-		Payload: request,
-	}
-	return nil
-}
-
-func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, trace []byte) {
-	connIndex := int(binary.BigEndian.Uint16(reqID)) % len(sr.connPool)
-	streamInConnIndex := int(binary.BigEndian.Uint16(reqID)) % sr.router2batcherStreamsPerConn
+func (sr *ShardRouter) NewForward(trackedReq *TrackedRequest) {
+	connIndex := int(binary.BigEndian.Uint16(trackedReq.reqID)) % len(sr.connPool)
+	streamInConnIndex := int(binary.BigEndian.Uint16(trackedReq.reqID)) % sr.router2batcherStreamsPerConn
 
 	sr.lock.RLock()
 	stream := sr.streams[connIndex][streamInConnIndex]
@@ -147,20 +128,19 @@ func (sr *ShardRouter) Forward(reqID, request []byte, responses chan Response, t
 		sr.maybeNotifyReconnectRoutine(stream, connIndex, streamInConnIndex)
 
 		// Send a response and return
-		responses <- Response{
+		trackedReq.responses <- Response{
 			err:   fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint),
-			reqID: reqID,
+			reqID: trackedReq.reqID,
 		}
 		return
 	}
-
-	stream.registerReply(trace, responses)
-
-	sr.logger.Debugf("enter request %x to the requests list", reqID)
-	stream.requestsChannel <- &protos.Request{
-		TraceId: trace,
-		Payload: request,
+	if trackedReq.trace != nil {
+		stream.registerReply(trackedReq.trace, trackedReq.responses)
+		trackedReq.request.TraceId = trackedReq.trace
 	}
+
+	sr.logger.Debugf("enter request %x to the requests list", trackedReq.reqID)
+	stream.requestsChannel <- trackedReq
 }
 
 func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int) error {
@@ -327,7 +307,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			endpoint:                          sr.batcherEndpoint,
 			logger:                            sr.logger,
 			requestTraceIdToResponseChannel:   make(map[string]chan Response),
-			requestsChannel:                   make(chan *protos.Request, 1000),
+			requestsChannel:                   make(chan *TrackedRequest, 1000),
 			doneChannel:                       make(chan bool, 1),
 			requestTransmitSubmitStreamClient: newStream,
 			cancelFunc:                        cancel,
