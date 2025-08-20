@@ -240,7 +240,7 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 		// 2. We have a primary that had failed and never got to give said batch to our batcher; or
 		// 3. We have primary that is censoring our batcher.
 
-		// batchId.Seq() == bs.lastPutSeq is true in case we have 2 digests
+		// batchId.Seq() == bs.lastPutSeq is true in case we get same <Sh, Pr, Seq> with different digest
 		doubleDigest := (batchId.Seq() < pi.lastPutSeqRequest || batchId.Seq() == pi.lastPutSeq)
 		if atomic.LoadInt32(&wasBatchRequestedFlag) == 0 && doubleDigest {
 			pi.logger.Debugf("PopOrWait %s, double digest, requesting batch %s", pi.getName(), BatchToString(batchId))
