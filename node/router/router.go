@@ -18,7 +18,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -129,21 +128,11 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		close(exit)
 	}()
 
-	feedbackChan := make(chan *orderer.BroadcastResponse, 1000)
-
-	go func() {
-		for {
-			select {
-			case <-exit:
-				return
-			case response := <-feedbackChan:
-				stream.Send(response)
-			}
-		}
-	}()
+	feedbackChan := make(chan Response, 1000)
+	go sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
 
 	for {
-		req, err := stream.Recv()
+		reqEnv, err := stream.Recv()
 		if err == io.EOF {
 			return nil
 		}
@@ -153,13 +142,12 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		atomic.AddUint64(&r.incoming, 1)
 
-		reqID, shardRouter := r.getShardRouterAndReqID(&protos.Request{Payload: req.Payload, Signature: req.Signature})
+		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature}
+		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
-		if err := shardRouter.ForwardBestEffort(reqID, req.Payload); err != nil {
-			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_INTERNAL_SERVER_ERROR, Info: err.Error()}
-		} else {
-			feedbackChan <- &orderer.BroadcastResponse{Status: common.Status_SUCCESS}
-		}
+		// creating a routing request with nil trace - request is not trce in router.
+		tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
+		shardRouter.NewForward(tr)
 	}
 }
 
@@ -210,16 +198,6 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 	return r
 }
 
-type Response struct {
-	err   error
-	reqID []byte
-	*protos.SubmitResponse
-}
-
-func (resp *Response) GetResponseError() error {
-	return resp.err
-}
-
 func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
 	r.init()
 
@@ -231,7 +209,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 	}()
 
 	feedbackChan := make(chan Response, 100)
-	go r.sendFeedbackRequestStream(stream, exit, feedbackChan)
+	go sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
 
 	for {
 		req, err := stream.Recv()
@@ -247,8 +225,8 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		reqID, shardRouter := r.getShardRouterAndReqID(req)
 
 		trace := createTraceID(rand)
-
-		shardRouter.Forward(reqID, req.Payload, feedbackChan, trace)
+		tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
+		shardRouter.NewForward(tr)
 	}
 }
 
@@ -283,36 +261,37 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	trace := createTraceID(nil)
 
 	feedbackChan := make(chan Response, 1)
-	shardRouter.Forward(reqID, request.Payload, feedbackChan, trace)
+
+	tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
+	shardRouter.NewForward(tr)
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)
 
-	response := <-feedbackChan
-	return prepareRequestResponse(&response), nil
+	response := <-feedbackChan // TODO: add select on shutdwon or timeout here
+	return responseToSubmitResponse(&response), nil
 }
 
-func (r *Router) sendFeedbackRequestStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, errors chan Response) {
+func sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, feedbackChan chan Response) {
 	for {
 		select {
 		case <-exit:
 			return
-		case response := <-errors:
-			resp := prepareRequestResponse(&response)
+		case response := <-feedbackChan:
+			resp := responseToSubmitResponse(&response)
 			stream.Send(resp)
 		}
 	}
 }
 
-func prepareRequestResponse(response *Response) *protos.SubmitResponse {
-	resp := &protos.SubmitResponse{
-		ReqID: response.reqID,
+func sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
+	for {
+		select {
+		case <-exit:
+			return
+		case response := <-feedbackChan:
+			stream.Send(responseToBroadcastResponse(&response))
+		}
 	}
-	if response.SubmitResponse != nil {
-		resp = response.SubmitResponse
-	} else { // It's an error
-		resp.Error = response.err.Error()
-	}
-	return resp
 }
 
 func createTraceID(rand *rand2.Rand) []byte {
