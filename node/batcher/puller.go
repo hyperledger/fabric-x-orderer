@@ -16,9 +16,9 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric/protoutil"
-	"google.golang.org/grpc"
 )
 
 // TODO The deliver service and client (puller) were copied almost as is from Fabric.
@@ -85,12 +85,12 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 	}
 
 	blockHandlerFunc := func(block *common.Block) {
-		bp.logger.Infof("[%s] Fetched block %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
+		bp.logger.Infof("[%s] Fetched batch %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
 		fb := (*node_ledger.FabricBatch)(block)
 		res <- fb
 	}
 
-	go pull(
+	go delivery.Pull(
 		stopCtx,
 		channelName,
 		bp.logger,
@@ -98,6 +98,9 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 		requestEnvelopeFactoryFunc,
 		bp.clientConfig(from),
 		blockHandlerFunc,
+		func() {
+			bp.logger.Infof("Closed PullBatches from %s, channel %s", endpoint(), channelName)
+		},
 	)
 
 	return res
@@ -154,79 +157,5 @@ func nextSeekInfo(startSeq uint64) *orderer.SeekInfo {
 		Stop:          &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{Number: math.MaxUint64}}},
 		Behavior:      orderer.SeekInfo_BLOCK_UNTIL_READY,
 		ErrorResponse: orderer.SeekInfo_BEST_EFFORT,
-	}
-}
-
-func pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, parseBlock func(block *common.Block)) {
-	for {
-		time.Sleep(time.Second)
-
-		select {
-		case <-context.Done():
-			logger.Infof("Returning since context is done")
-			return
-		default:
-		}
-
-		endpointToPullFrom := endpoint()
-
-		if endpointToPullFrom == "" {
-			logger.Infof("No one to pull from, waiting...")
-			continue
-		}
-
-		conn, err := cc.Dial(endpointToPullFrom)
-		if err != nil {
-			logger.Errorf("Failed connecting to %s: %v", endpointToPullFrom, err)
-			continue
-		}
-
-		abc := orderer.NewAtomicBroadcastClient(conn)
-
-		stream, err := abc.Deliver(context)
-		if err != nil {
-			logger.Errorf("Failed creating Deliver stream to %s: %v", endpointToPullFrom, err)
-			conn.Close()
-			continue
-		}
-
-		err = stream.Send(requestEnvelopeFactory())
-		if err != nil {
-			logger.Errorf("Failed sending request envelope to %s: %v", endpointToPullFrom, err)
-			stream.CloseSend()
-			conn.Close()
-			continue
-		}
-
-		pullBlocks(channel, logger, stream, endpointToPullFrom, conn, parseBlock)
-	}
-}
-
-func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, parseBlock func(block *common.Block)) {
-	for {
-		resp, err := stream.Recv()
-		if err != nil {
-			logger.Errorf("Failed receiving block for %s from %s: %v", channel, endpoint, err)
-			stream.CloseSend()
-			conn.Close()
-			return
-		}
-
-		if resp.GetBlock() == nil {
-			logger.Errorf("Received a non block message from %s: %v", endpoint, resp)
-			stream.CloseSend()
-			conn.Close()
-			return
-		}
-
-		block := resp.GetBlock()
-		if block.Data == nil || len(block.Data.Data) == 0 {
-			logger.Errorf("Received empty block from %s", endpoint)
-			stream.CloseSend()
-			conn.Close()
-			return
-		}
-
-		parseBlock(block)
 	}
 }

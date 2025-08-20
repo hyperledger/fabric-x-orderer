@@ -78,7 +78,6 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 	retryInterval := minRetryInterval
 
 	for {
-
 		endpointToPullFrom := endpoint()
 		logger.Infof("Endpoint to pull from is %s", endpointToPullFrom)
 		if endpointToPullFrom == "" {
@@ -135,11 +134,32 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 			continue
 		}
 
-		pullBlocks(channel, logger, stream, endpointToPullFrom, conn, handleBlock)
+		resetRetryOnSuccess := func() {
+			count = 0
+			retryInterval = minRetryInterval
+		}
+
+		pullBlocks(
+			channel,
+			logger,
+			stream,
+			endpointToPullFrom,
+			conn,
+			handleBlock,
+			resetRetryOnSuccess,
+		)
 	}
 }
 
-func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadcast_DeliverClient, endpoint string, conn *grpc.ClientConn, handleBlock func(block *common.Block)) {
+func pullBlocks(
+	channel string,
+	logger types.Logger,
+	stream orderer.AtomicBroadcast_DeliverClient,
+	endpoint string,
+	conn *grpc.ClientConn,
+	handleBlock func(block *common.Block),
+	onSuccess func(),
+) {
 	logger.Infof("Started pulling blocks from: %s", channel)
 	for {
 		resp, err := stream.Recv()
@@ -166,6 +186,7 @@ func pullBlocks(channel string, logger types.Logger, stream orderer.AtomicBroadc
 		}
 
 		handleBlock(block)
+		onSuccess()
 	}
 }
 
