@@ -224,6 +224,62 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 }
 
+func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	numParties := 4
+	partyID := types.PartyID(1)
+	shardID := types.ShardID(1)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca)
+	defer cleanup()
+
+	consenterStub := NewStubConsenter(t, partyID, ca)
+	defer consenterStub.Shutdown()
+
+	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
+
+	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
+	defer assembler.Stop()
+
+	// wait for genesis block
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 1
+	}, 3*time.Second, 100*time.Millisecond)
+
+	obaCreator, _ := NewOrderedBatchAttestationCreator()
+
+	// send batch and decision
+	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
+	batchersStub[0].SetNextBatch(batch1)
+	<-batchersStub[0].batchSentCh
+
+	oba1 := obaCreator.Append(batch1, 1, 0, 1)
+	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
+	<-consenterStub.decisionSentCh
+
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 2
+	}, 3*time.Second, 100*time.Millisecond)
+
+	// create another batch with same <Sh, Pr, Seq> but different digest
+	batch2 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{2}})
+	require.NotEqual(t, batch1.Digest(), batch2.Digest())
+
+	// send next batch and decision
+	batchersStub[0].SetNextBatch(batch2)
+	<-batchersStub[0].batchSentCh
+
+	oba2 := obaCreator.Append(batch2, 2, 0, 1)
+	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
+	<-consenterStub.decisionSentCh
+
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 3
+	}, 3*time.Second, 100*time.Millisecond)
+}
+
 func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) *assembler.Assembler {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	genesisBlock.Metadata = &common.BlockMetadata{
