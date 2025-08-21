@@ -119,6 +119,8 @@ type RouterParams struct {
 	NumberOfConnectionsPerBatcher int `yaml:"NumberOfConnectionsPerBatcher,omitempty"`
 	// NumberOfStreamsPerConnection specifies the number of streams per connection that are opened between Router and Batcher
 	NumberOfStreamsPerConnection int `yaml:"NumberOfStreamsPerConnection,omitempty"`
+	// ClientSignatureVerificationRequired specifies if the router will validate the signature in the requests
+	ClientSignatureVerificationRequired bool `yaml:"ClientSignatureVerificationRequired,omitempty"`
 }
 
 type ConsensusParams struct {

@@ -13,32 +13,24 @@ import (
 )
 
 type MaxSizeFilter struct {
-	maxSizeBytes uint64
+	requestMaxBytes uint64
 }
 
 func NewMaxSizeFilter(config FilterConfig) *MaxSizeFilter {
-	maxSize, err := config.GetMaxSizeBytes()
-	if err != nil {
-		return nil
-	}
-	return &MaxSizeFilter{maxSizeBytes: maxSize}
+	return &MaxSizeFilter{requestMaxBytes: config.GetRequestMaxBytes()}
 }
 
 // Verify checks that the size of the request does not exceeds the maximal size in bytes.
 func (ms *MaxSizeFilter) Verify(request *comm.Request) error {
 	requestSize := uint64(len(request.Payload) + len(request.Signature))
-	if requestSize > ms.maxSizeBytes {
-		return fmt.Errorf("the request's size exceeds the maximum size: actual = %d, limit = %d", requestSize, ms.maxSizeBytes)
+	if requestSize > ms.requestMaxBytes {
+		return fmt.Errorf("the request's size exceeds the maximum size: actual = %d, limit = %d", requestSize, ms.requestMaxBytes)
 	}
 	return nil
 }
 
 func (ms *MaxSizeFilter) Update(config FilterConfig) error {
-	maxSize, err := config.GetMaxSizeBytes()
-	if err != nil {
-		return err
-	}
-	ms.maxSizeBytes = maxSize
+	ms.requestMaxBytes = config.GetRequestMaxBytes()
 	return nil
 }
 

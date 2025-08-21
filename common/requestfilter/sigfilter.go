@@ -15,23 +15,26 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type SigFilter struct{}
+type SigFilter struct {
+	clientSignatureVerificationRequired bool
+}
 
 func NewSigFilter(config FilterConfig) *SigFilter {
-	// TODO
-	return &SigFilter{}
+	return &SigFilter{clientSignatureVerificationRequired: config.GetClientSignatureVerificationRequired()}
 }
 
 func (sf *SigFilter) Verify(request *comm.Request) error {
-	// get config and policy - TBD
-
+	// extract signedData, while verifying the structure of the request
 	signedData, err := requestToSignedData(request)
 	if err != nil {
 		return fmt.Errorf("failed to convert request to signedData : %s", err)
 	}
 	_ = signedData
 
-	// verify the signature according to policy - TBD
+	if sf.clientSignatureVerificationRequired {
+		// extract policy and validate the signature - TBD
+		return fmt.Errorf("error: signature validation is not implemented")
+	}
 	return nil
 }
 
@@ -81,6 +84,6 @@ func requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
 }
 
 func (sf *SigFilter) Update(config FilterConfig) error {
-	// TODO
+	sf.clientSignatureVerificationRequired = config.GetClientSignatureVerificationRequired()
 	return nil
 }

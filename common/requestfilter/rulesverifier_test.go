@@ -91,7 +91,7 @@ func TestConcurrentVeirfy(t *testing.T) {
 func TestConcurrentUpdateAndVerify(t *testing.T) {
 	v := requestfilter.NewRulesVerifier(nil)
 	fc := &mocks.FakeFilterConfig{}
-	fc.GetMaxSizeBytesReturns(1000, nil)
+	fc.GetRequestMaxBytesReturns(1000)
 	v.AddRule(requestfilter.NewMaxSizeFilter(fc))
 
 	var wg sync.WaitGroup
@@ -109,7 +109,7 @@ func TestConcurrentUpdateAndVerify(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			fc2 := &mocks.FakeFilterConfig{}
-			fc2.GetMaxSizeBytesReturns(uint64(100+i), nil)
+			fc2.GetRequestMaxBytesReturns(uint64(100 + i))
 			<-start
 			err := v.Update(fc2)
 			require.NoError(t, err)

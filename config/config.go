@@ -146,16 +146,17 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 
 func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig {
 	routerConfig := &nodeconfig.RouterNodeConfig{
-		PartyID:                       config.LocalConfig.NodeLocalConfig.PartyID,
-		TLSCertificateFile:            config.LocalConfig.TLSConfig.Certificate,
-		TLSPrivateKeyFile:             config.LocalConfig.TLSConfig.PrivateKey,
-		ListenAddress:                 config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
-		Shards:                        config.ExtractShards(),
-		NumOfConnectionsForBatcher:    config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
-		NumOfgRPCStreamsPerConnection: config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
-		UseTLS:                        config.LocalConfig.TLSConfig.Enabled,
-		ClientAuthRequired:            config.LocalConfig.TLSConfig.ClientAuthRequired,
-		RequestMaxBytes:               config.SharedConfig.BatchingConfig.RequestMaxBytes,
+		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
+		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
+		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
+		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		Shards:                              config.ExtractShards(),
+		NumOfConnectionsForBatcher:          config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
+		NumOfgRPCStreamsPerConnection:       config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
+		UseTLS:                              config.LocalConfig.TLSConfig.Enabled,
+		ClientAuthRequired:                  config.LocalConfig.TLSConfig.ClientAuthRequired,
+		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
+		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.RouterParams.ClientSignatureVerificationRequired,
 	}
 	return routerConfig
 }

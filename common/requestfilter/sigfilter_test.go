@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
@@ -62,6 +63,22 @@ func TestSigVerifyFilter(t *testing.T) {
 	p, err = proto.Marshal(payload)
 	require.NoError(t, err)
 	req.Payload = p
+	err = v.Verify(req)
+	require.NoError(t, err)
+}
+
+func TestSigValidationFlag(t *testing.T) {
+	var v requestfilter.RulesVerifier
+	req := tx.CreateStructuredRequest([]byte("data"))
+	fc := &mocks.FakeFilterConfig{}
+	fc.GetClientSignatureVerificationRequiredReturns(true)
+	v.AddRule(requestfilter.NewSigFilter(fc))
+
+	err := v.Verify(req)
+	require.EqualError(t, err, "error: signature validation is not implemented")
+
+	fc.GetClientSignatureVerificationRequiredReturns(false)
+	v.Update(fc)
 	err = v.Verify(req)
 	require.NoError(t, err)
 }
