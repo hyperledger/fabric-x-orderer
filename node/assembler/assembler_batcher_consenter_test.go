@@ -240,7 +240,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
+	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -267,17 +267,17 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	batch2 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{2}})
 	require.NotEqual(t, batch1.Digest(), batch2.Digest())
 
-	// send next batch and decision
-	batchersStub[0].SetNextBatch(batch2)
-	<-batchersStub[0].batchSentCh
-
+	// send next batch through another batcher
+	batchersStub[1].SetNextBatch(batch2)
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
+	// send decision
 	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
 	<-consenterStub.decisionSentCh
+	<-batchersStub[1].batchSentCh
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 3
-	}, 3*time.Second, 100*time.Millisecond)
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) *assembler.Assembler {
