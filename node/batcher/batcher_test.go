@@ -93,6 +93,7 @@ func TestBatcherRun(t *testing.T) {
 	require.Equal(t, uint64(0), batchers[1].Ledger.Height(2))
 
 	// stop and recover secondary
+	t.Logf("Stop and recover secondary")
 	batchers[3].Stop()
 	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], batcherNodes[3], stubConsenters[3])
 	stubConsenters[3].UpdateState(termChangeState)
@@ -117,7 +118,9 @@ func TestBatcherRun(t *testing.T) {
 	}
 
 	// stop and recover primary
+	t.Logf("Stop and recover primary")
 	batchers[1].Stop()
+	time.Sleep(500 * time.Millisecond)
 	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], batcherNodes[1], stubConsenters[1])
 	stubConsenters[1].UpdateState(termChangeState)
 
