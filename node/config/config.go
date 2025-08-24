@@ -72,12 +72,13 @@ type RouterNodeConfig struct {
 	TLSPrivateKeyFile  RawBytes
 	ListenAddress      string
 	// Shared config
-	Shards                        []ShardInfo
-	NumOfConnectionsForBatcher    int
-	NumOfgRPCStreamsPerConnection int
-	UseTLS                        bool
-	ClientAuthRequired            bool
-	RequestMaxBytes               uint64
+	Shards                              []ShardInfo
+	NumOfConnectionsForBatcher          int
+	NumOfgRPCStreamsPerConnection       int
+	UseTLS                              bool
+	ClientAuthRequired                  bool
+	RequestMaxBytes                     uint64
+	ClientSignatureVerificationRequired bool
 }
 
 type AssemblerNodeConfig struct {

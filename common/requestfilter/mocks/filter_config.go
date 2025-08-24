@@ -8,76 +8,134 @@ import (
 )
 
 type FakeFilterConfig struct {
-	GetMaxSizeBytesStub        func() (uint64, error)
-	getMaxSizeBytesMutex       sync.RWMutex
-	getMaxSizeBytesArgsForCall []struct {
+	GetClientSignatureVerificationRequiredStub        func() bool
+	getClientSignatureVerificationRequiredMutex       sync.RWMutex
+	getClientSignatureVerificationRequiredArgsForCall []struct {
 	}
-	getMaxSizeBytesReturns struct {
-		result1 uint64
-		result2 error
+	getClientSignatureVerificationRequiredReturns struct {
+		result1 bool
 	}
-	getMaxSizeBytesReturnsOnCall map[int]struct {
+	getClientSignatureVerificationRequiredReturnsOnCall map[int]struct {
+		result1 bool
+	}
+	GetRequestMaxBytesStub        func() uint64
+	getRequestMaxBytesMutex       sync.RWMutex
+	getRequestMaxBytesArgsForCall []struct {
+	}
+	getRequestMaxBytesReturns struct {
 		result1 uint64
-		result2 error
+	}
+	getRequestMaxBytesReturnsOnCall map[int]struct {
+		result1 uint64
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeFilterConfig) GetMaxSizeBytes() (uint64, error) {
-	fake.getMaxSizeBytesMutex.Lock()
-	ret, specificReturn := fake.getMaxSizeBytesReturnsOnCall[len(fake.getMaxSizeBytesArgsForCall)]
-	fake.getMaxSizeBytesArgsForCall = append(fake.getMaxSizeBytesArgsForCall, struct {
+func (fake *FakeFilterConfig) GetClientSignatureVerificationRequired() bool {
+	fake.getClientSignatureVerificationRequiredMutex.Lock()
+	ret, specificReturn := fake.getClientSignatureVerificationRequiredReturnsOnCall[len(fake.getClientSignatureVerificationRequiredArgsForCall)]
+	fake.getClientSignatureVerificationRequiredArgsForCall = append(fake.getClientSignatureVerificationRequiredArgsForCall, struct {
 	}{})
-	stub := fake.GetMaxSizeBytesStub
-	fakeReturns := fake.getMaxSizeBytesReturns
-	fake.recordInvocation("GetMaxSizeBytes", []interface{}{})
-	fake.getMaxSizeBytesMutex.Unlock()
+	stub := fake.GetClientSignatureVerificationRequiredStub
+	fakeReturns := fake.getClientSignatureVerificationRequiredReturns
+	fake.recordInvocation("GetClientSignatureVerificationRequired", []interface{}{})
+	fake.getClientSignatureVerificationRequiredMutex.Unlock()
 	if stub != nil {
 		return stub()
 	}
 	if specificReturn {
-		return ret.result1, ret.result2
+		return ret.result1
 	}
-	return fakeReturns.result1, fakeReturns.result2
+	return fakeReturns.result1
 }
 
-func (fake *FakeFilterConfig) GetMaxSizeBytesCallCount() int {
-	fake.getMaxSizeBytesMutex.RLock()
-	defer fake.getMaxSizeBytesMutex.RUnlock()
-	return len(fake.getMaxSizeBytesArgsForCall)
+func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredCallCount() int {
+	fake.getClientSignatureVerificationRequiredMutex.RLock()
+	defer fake.getClientSignatureVerificationRequiredMutex.RUnlock()
+	return len(fake.getClientSignatureVerificationRequiredArgsForCall)
 }
 
-func (fake *FakeFilterConfig) GetMaxSizeBytesCalls(stub func() (uint64, error)) {
-	fake.getMaxSizeBytesMutex.Lock()
-	defer fake.getMaxSizeBytesMutex.Unlock()
-	fake.GetMaxSizeBytesStub = stub
+func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredCalls(stub func() bool) {
+	fake.getClientSignatureVerificationRequiredMutex.Lock()
+	defer fake.getClientSignatureVerificationRequiredMutex.Unlock()
+	fake.GetClientSignatureVerificationRequiredStub = stub
 }
 
-func (fake *FakeFilterConfig) GetMaxSizeBytesReturns(result1 uint64, result2 error) {
-	fake.getMaxSizeBytesMutex.Lock()
-	defer fake.getMaxSizeBytesMutex.Unlock()
-	fake.GetMaxSizeBytesStub = nil
-	fake.getMaxSizeBytesReturns = struct {
-		result1 uint64
-		result2 error
-	}{result1, result2}
+func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredReturns(result1 bool) {
+	fake.getClientSignatureVerificationRequiredMutex.Lock()
+	defer fake.getClientSignatureVerificationRequiredMutex.Unlock()
+	fake.GetClientSignatureVerificationRequiredStub = nil
+	fake.getClientSignatureVerificationRequiredReturns = struct {
+		result1 bool
+	}{result1}
 }
 
-func (fake *FakeFilterConfig) GetMaxSizeBytesReturnsOnCall(i int, result1 uint64, result2 error) {
-	fake.getMaxSizeBytesMutex.Lock()
-	defer fake.getMaxSizeBytesMutex.Unlock()
-	fake.GetMaxSizeBytesStub = nil
-	if fake.getMaxSizeBytesReturnsOnCall == nil {
-		fake.getMaxSizeBytesReturnsOnCall = make(map[int]struct {
-			result1 uint64
-			result2 error
+func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredReturnsOnCall(i int, result1 bool) {
+	fake.getClientSignatureVerificationRequiredMutex.Lock()
+	defer fake.getClientSignatureVerificationRequiredMutex.Unlock()
+	fake.GetClientSignatureVerificationRequiredStub = nil
+	if fake.getClientSignatureVerificationRequiredReturnsOnCall == nil {
+		fake.getClientSignatureVerificationRequiredReturnsOnCall = make(map[int]struct {
+			result1 bool
 		})
 	}
-	fake.getMaxSizeBytesReturnsOnCall[i] = struct {
+	fake.getClientSignatureVerificationRequiredReturnsOnCall[i] = struct {
+		result1 bool
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) GetRequestMaxBytes() uint64 {
+	fake.getRequestMaxBytesMutex.Lock()
+	ret, specificReturn := fake.getRequestMaxBytesReturnsOnCall[len(fake.getRequestMaxBytesArgsForCall)]
+	fake.getRequestMaxBytesArgsForCall = append(fake.getRequestMaxBytesArgsForCall, struct {
+	}{})
+	stub := fake.GetRequestMaxBytesStub
+	fakeReturns := fake.getRequestMaxBytesReturns
+	fake.recordInvocation("GetRequestMaxBytes", []interface{}{})
+	fake.getRequestMaxBytesMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeFilterConfig) GetRequestMaxBytesCallCount() int {
+	fake.getRequestMaxBytesMutex.RLock()
+	defer fake.getRequestMaxBytesMutex.RUnlock()
+	return len(fake.getRequestMaxBytesArgsForCall)
+}
+
+func (fake *FakeFilterConfig) GetRequestMaxBytesCalls(stub func() uint64) {
+	fake.getRequestMaxBytesMutex.Lock()
+	defer fake.getRequestMaxBytesMutex.Unlock()
+	fake.GetRequestMaxBytesStub = stub
+}
+
+func (fake *FakeFilterConfig) GetRequestMaxBytesReturns(result1 uint64) {
+	fake.getRequestMaxBytesMutex.Lock()
+	defer fake.getRequestMaxBytesMutex.Unlock()
+	fake.GetRequestMaxBytesStub = nil
+	fake.getRequestMaxBytesReturns = struct {
 		result1 uint64
-		result2 error
-	}{result1, result2}
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) GetRequestMaxBytesReturnsOnCall(i int, result1 uint64) {
+	fake.getRequestMaxBytesMutex.Lock()
+	defer fake.getRequestMaxBytesMutex.Unlock()
+	fake.GetRequestMaxBytesStub = nil
+	if fake.getRequestMaxBytesReturnsOnCall == nil {
+		fake.getRequestMaxBytesReturnsOnCall = make(map[int]struct {
+			result1 uint64
+		})
+	}
+	fake.getRequestMaxBytesReturnsOnCall[i] = struct {
+		result1 uint64
+	}{result1}
 }
 
 func (fake *FakeFilterConfig) Invocations() map[string][][]interface{} {

@@ -37,4 +37,5 @@ FileStore:
 Router:
   NumberOfConnectionsPerBatcher: 10
   NumberOfStreamsPerConnection: 20
+  ClientSignatureVerificationRequired: false
 

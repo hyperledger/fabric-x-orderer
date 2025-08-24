@@ -23,6 +23,10 @@ func (c *BatcherNodeConfig) GetShardsIDs() []types.ShardID {
 	return ids
 }
 
-func (rc *RouterNodeConfig) GetMaxSizeBytes() (uint64, error) {
-	return rc.RequestMaxBytes, nil
+func (rc *RouterNodeConfig) GetRequestMaxBytes() uint64 {
+	return rc.RequestMaxBytes
+}
+
+func (rc *RouterNodeConfig) GetClientSignatureVerificationRequired() bool {
+	return rc.ClientSignatureVerificationRequired
 }
