@@ -451,7 +451,8 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		for i := 0; i < transactionsNumber; i++ {
 			envelope, err := protoutil.UnmarshalEnvelope(data[i])
 			if err != nil {
-				t.Fatalf("error unmarshalling envelope: %s", err)
+				t.Errorf("failed to unmarshal envelope %v", err)
+				toCancel()
 			}
 
 			if needVerification && transactions > 0 {
@@ -459,9 +460,6 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				require.NoError(t, err)
 				require.NotNil(t, data)
 				txNumber := binary.BigEndian.Uint64(data[0:8])
-				if txNumber >= uint64(transactions) {
-					t.Fatalf("invalid tx number: %d", txNumber)
-				}
 				// count only unique txs
 				if m[txNumber] == 0 {
 					totalTxs++

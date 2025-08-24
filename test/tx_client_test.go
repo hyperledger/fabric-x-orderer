@@ -7,9 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,8 +34,7 @@ func TestTxClientSend(t *testing.T) {
 	listeners := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
 	require.NoError(t, err)
 	// 2.
-	armageddon := armageddon.NewCLI()
-	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// 3.
 	// compile arma
@@ -61,7 +58,7 @@ func TestTxClientSend(t *testing.T) {
 	defer broadcastClient.Stop()
 	require.NoError(t, err)
 	for i := 0; i < totalTxNumber; i++ {
-		txContent := prepareTx(i, 100, []byte("sessionNumber"))
+		txContent := armageddon.PrepareTx(i, 100, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		require.NoError(t, err)
 	}
@@ -89,22 +86,4 @@ func TestTxClientSend(t *testing.T) {
 	assert.Equal(t, totalTxNumber+1, totalTxs)
 	assert.True(t, totalBlocks > 2)
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
-}
-
-func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
-	// create timestamp (8 bytes)
-	timeStamp := uint64(time.Now().UnixNano())
-
-	// prepare the payload
-	buffer := make([]byte, txSize)
-	buff := bytes.NewBuffer(buffer[:0])
-	binary.Write(buff, binary.BigEndian, uint64(txNumber))
-	binary.Write(buff, binary.BigEndian, timeStamp)
-	buff.Write(sessionNumber)
-	result := buff.Bytes()
-	if len(buff.Bytes()) < txSize {
-		padding := make([]byte, txSize-len(result))
-		result = append(result, padding...)
-	}
-	return result
 }
