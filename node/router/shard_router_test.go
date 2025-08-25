@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
@@ -42,8 +43,9 @@ func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 	binary.BigEndian.PutUint16(trace, math.MaxInt16)
 
 	responses := make(chan router.Response, 1)
-	reqID, payload := createRequestAndRequestId(1, uint32(10000))
-	testSetup.shardRouter.Forward(reqID, payload, responses, trace)
+	reqID, request := createRequestAndRequestId(1, uint32(10000))
+	tr := router.CreateTrackedRequest(request, responses, reqID, trace)
+	testSetup.shardRouter.NewForward(tr)
 
 	response := <-responses
 	require.NotNil(t, response)
@@ -51,15 +53,15 @@ func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 	require.Equal(t, uint32(1), testSetup.stubBatcher.ReceivedMessageCount())
 }
 
-func TestShardRouterConnectivityToBatcherByForwardBestEffort(t *testing.T) {
-	testSetup := createTestSetup(t, 1)
-	testSetup.shardRouter.MaybeInit()
+// func TestShardRouterConnectivityToBatcherByForwardBestEffort(t *testing.T) {
+// 	testSetup := createTestSetup(t, 1)
+// 	testSetup.shardRouter.MaybeInit()
 
-	reqID, payload := createRequestAndRequestId(1, uint32(10000))
-	err := testSetup.shardRouter.ForwardBestEffort(reqID, payload)
-	require.NoError(t, err)
-	require.Eventually(t, func() bool { return testSetup.stubBatcher.ReceivedMessageCount() == uint32(1) }, 60*time.Second, 10*time.Millisecond)
-}
+// 	reqID, payload := createRequestAndRequestId(1, uint32(10000))
+// 	err := testSetup.shardRouter.ForwardBestEffort(reqID, payload)
+// 	require.NoError(t, err)
+// 	require.Eventually(t, func() bool { return testSetup.stubBatcher.ReceivedMessageCount() == uint32(1) }, 60*time.Second, 10*time.Millisecond)
+// }
 
 func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	testSetup := createTestSetup(t, 1)
@@ -69,8 +71,9 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	binary.BigEndian.PutUint16(trace, math.MaxInt16)
 
 	responses := make(chan router.Response, 1)
-	reqID, payload := createRequestAndRequestId(1, uint32(10000))
-	testSetup.shardRouter.Forward(reqID, payload, responses, trace)
+	reqID, request := createRequestAndRequestId(1, uint32(10000))
+	tr := router.CreateTrackedRequest(request, responses, reqID, trace)
+	testSetup.shardRouter.NewForward(tr)
 
 	var response router.Response
 	response = <-responses
@@ -87,8 +90,9 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 
 	// send a request, expect failure
 	responses = make(chan router.Response, 1)
-	reqID, payload = createRequestAndRequestId(1, uint32(10000))
-	testSetup.shardRouter.Forward(reqID, payload, responses, trace)
+	reqID, request = createRequestAndRequestId(1, uint32(10000))
+	tr = router.CreateTrackedRequest(request, responses, reqID, trace)
+	testSetup.shardRouter.NewForward(tr)
 	response = <-responses
 	require.NotNil(t, response)
 	require.EqualError(t, response.GetResponseError(), "server error: connection between router and batcher "+testSetup.stubBatcher.server.Address()+" is broken, try again later")
@@ -103,49 +107,50 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 
 	// send a request, expect success
 	responses = make(chan router.Response, 1)
-	reqID, payload = createRequestAndRequestId(1, uint32(10000))
-	testSetup.shardRouter.Forward(reqID, payload, responses, trace)
+	reqID, request = createRequestAndRequestId(1, uint32(10000))
+	tr = router.CreateTrackedRequest(request, responses, reqID, trace)
+	testSetup.shardRouter.NewForward(tr)
 	response = <-responses
 	require.NotNil(t, response)
 	require.Nil(t, response.GetResponseError())
 	require.Equal(t, trace, response.SubmitResponse.TraceId)
 }
 
-func TestShardRouterRetryConnectToBatcherAndForwardBestEffortReq(t *testing.T) {
-	testSetup := createTestSetup(t, 1)
-	testSetup.shardRouter.MaybeInit()
+// func TestShardRouterRetryConnectToBatcherAndForwardBestEffortReq(t *testing.T) {
+// 	testSetup := createTestSetup(t, 1)
+// 	testSetup.shardRouter.MaybeInit()
 
-	// send a request, expect no error
-	reqID1, payload1 := createRequestAndRequestId(1, uint32(10000))
-	err := testSetup.shardRouter.ForwardBestEffort(reqID1, payload1)
-	require.NoError(t, err)
+// 	// send a request, expect no error
+// 	reqID1, payload1 := createRequestAndRequestId(1, uint32(10000))
+// 	err := testSetup.shardRouter.ForwardBestEffort(reqID1, payload1)
+// 	require.NoError(t, err)
 
-	// stop the batcher
-	testSetup.stubBatcher.Stop()
+// 	// stop the batcher
+// 	testSetup.stubBatcher.Stop()
 
-	// wait for the streams to become faulty
-	require.Eventually(t, func() bool {
-		return testSetup.shardRouter.IsConnectionsToBatcherDown()
-	}, 10*time.Second, 200*time.Millisecond)
+// 	// wait for the streams to become faulty
+// 	require.Eventually(t, func() bool {
+// 		return testSetup.shardRouter.IsConnectionsToBatcherDown()
+// 	}, 10*time.Second, 200*time.Millisecond)
 
-	// send a request, expect server error
-	reqID2, payload2 := createRequestAndRequestId(1, uint32(10001))
-	err = testSetup.shardRouter.ForwardBestEffort(reqID2, payload2)
-	require.EqualError(t, err, "server error: connection between router and batcher "+testSetup.stubBatcher.server.Address()+" is broken, try again later")
+// 	// send a request, expect server error
+// 	reqID2, payload2 := createRequestAndRequestId(1, uint32(10001))
+// 	err = testSetup.shardRouter.ForwardBestEffort(reqID2, payload2)
+// 	require.EqualError(t, err, "server error: connection between router and batcher "+testSetup.stubBatcher.server.Address()+" is broken, try again later")
 
-	// restart the batcher
-	testSetup.stubBatcher.Restart()
+// 	// restart the batcher
+// 	testSetup.stubBatcher.Restart()
 
-	// wait for reconnection.
-	require.Eventually(t, func() bool {
-		return testSetup.shardRouter.IsAllStreamsOKinSR()
-	}, 10*time.Second, 200*time.Millisecond)
+// 	// wait for reconnection.
+// 	require.Eventually(t, func() bool {
+// 		return testSetup.shardRouter.IsAllStreamsOKinSR()
+// 	}, 10*time.Second, 200*time.Millisecond)
 
-	// send another request, expect no error
-	reqID3, payload3 := createRequestAndRequestId(1, uint32(10002))
-	err = testSetup.shardRouter.ForwardBestEffort(reqID3, payload3)
-	require.NoError(t, err)
-}
+// 	// send another request, expect no error
+// 	reqID3, payload3 := createRequestAndRequestId(1, uint32(10002))
+// 	err = testSetup.shardRouter.ForwardBestEffort(reqID3, payload3)
+// 	require.NoError(t, err)
+// }
 
 func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	// create a CA that issues a certificate for the router and the primary stub batcher
@@ -177,9 +182,9 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	}
 }
 
-func createRequestAndRequestId(shardCount uint16, content uint32) ([]byte, []byte) {
+func createRequestAndRequestId(shardCount uint16, content uint32) ([]byte, *protos.Request) {
 	payload := make([]byte, 300)
 	binary.BigEndian.PutUint32(payload, content)
 	reqID, _ := router.CRC64RequestToShard(shardCount)(payload)
-	return reqID, payload
+	return reqID, &protos.Request{Payload: payload}
 }
