@@ -3,12 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-FROM docker.io/library/golang:1.24.3 AS builder
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.24.3 AS builder
 
 WORKDIR /src
 COPY . .
 ENV CGO_ENABLED=0
-ENV GOOS=linux
+
+ARG TARGETOS
+ARG TARGETARCH
+ENV GOOS=${TARGETOS}
+ENV GOARCH=${TARGETARCH}
 
 RUN make binary
 
