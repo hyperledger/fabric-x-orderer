@@ -857,7 +857,7 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 }
 
 func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	data := prepareTx(i, txSize, sessionNumber)
+	data := PrepareTx(i, txSize, sessionNumber)
 	if txsMap != nil {
 		logger.Debugf("Add tx %x to the map", data)
 		txsMap.Add(string(data))
@@ -871,16 +871,16 @@ func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, 
 	}
 }
 
-func prepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
+func PrepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
 	// create timestamp (8 bytes)
 	timeStamp := uint64(time.Now().UnixNano())
 
 	// prepare the payload
 	buffer := make([]byte, txSize)
 	buff := bytes.NewBuffer(buffer[:0])
-	buff.Write(sessionNumber)
 	binary.Write(buff, binary.BigEndian, uint64(txNumber))
 	binary.Write(buff, binary.BigEndian, timeStamp)
+	buff.Write(sessionNumber)
 	result := buff.Bytes()
 	if len(buff.Bytes()) < txSize {
 		padding := make([]byte, txSize-len(result))
