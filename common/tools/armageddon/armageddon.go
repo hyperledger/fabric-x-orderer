@@ -23,20 +23,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
-
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
-
-	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-
 	"github.com/alecthomas/kingpin"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
@@ -500,9 +497,61 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	// send txs to the routers
 	for i := 0; i < len(rates); i++ {
 		start := time.Now()
-		sendTxToRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
+		SendTxsToAllAvailableRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
 		elapsed := time.Since(start)
 		reportLoadResults(*transactions, elapsed, *txSize)
+	}
+}
+
+func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
+	broadcastClient := NewBroadcastTxClient(userConfig, logger)
+	err := broadcastClient.InitStreams()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to init streams between client and router %v", err)
+		os.Exit(3)
+	}
+
+	// create a session number (16 bytes)
+	sessionNumber := make([]byte, 16)
+	_, err = rand.Read(sessionNumber)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create a session number, %v", err)
+		os.Exit(3)
+	}
+
+	// send txs to all routers, using the rate limiter bucket
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	capacity := rate / fillFrequency
+	rl, err := NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
+		os.Exit(3)
+	}
+
+	// open go routines for receive response from the router
+	for _, streamInfo := range broadcastClient.streamsToRouters {
+		go ReceiveResponseFromRouter(userConfig, streamInfo)
+	}
+
+	for i := 0; i < numOfTxs; i++ {
+		data := tx.PrepareTxWithTimestamp(i, txSize, sessionNumber)
+		env := tx.CreateStructuredEnvelope(data)
+
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+
+		broadcastClient.SendTxToAllRouters(env)
+	}
+	rl.Stop()
+
+	err = broadcastClient.Stop()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to stop broadcast client, err: %v", err)
+		os.Exit(3)
 	}
 }
 
@@ -545,8 +594,6 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	var gRPCRouterClientsConn []*grpc.ClientConn
 	var streams []ab.AtomicBroadcast_BroadcastClient
 
-	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
-
 	// create gRPC clients and streams to the routers
 	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
 		// create a gRPC connection to the router
@@ -560,7 +607,7 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 				Certificate:       userConfig.TLSCertificate,
 				RequireClientCert: userConfig.UseTLSRouter == "mTLS",
 				UseTLS:            userConfig.UseTLSRouter != "none",
-				ServerRootCAs:     serverRootCAs,
+				ServerRootCAs:     userConfig.TLSCACerts,
 			},
 			DialTimeout: time.Second * 5,
 		}
@@ -622,7 +669,7 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	capacity := rate / fillFrequency
 	rl, err := NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
 		os.Exit(3)
 	}
 	for i := 0; i < numOfTxs; i++ {
@@ -886,7 +933,6 @@ func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
 func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, stopChan <-chan bool, startTime float64, expectedTxs int, pullFrom int, timeIntervalToSampleStat time.Duration) {
 	filePath := path.Join(receiveOutputDir, "statistics.csv")
 	logger.Infof("Statistics are written to: %v\n", filePath)
-	fmt.Printf("Statistics are written to: %v\n", filePath)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open a csv file: %v", err)
