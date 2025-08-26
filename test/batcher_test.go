@@ -93,7 +93,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(i, 64, []byte("sessionNumber"))
+		txContent := armageddon.PrepareTx(i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		require.NoError(t, err)
 	}
@@ -141,7 +141,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := armageddon.PrepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
@@ -205,7 +205,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := armageddon.PrepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d: %v", totalTxSent+i, err)
@@ -303,7 +303,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(i, 64, []byte("sessionNumber"))
+		txContent := armageddon.PrepareTx(i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		require.NoError(t, err)
 	}
@@ -362,7 +362,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := armageddon.PrepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
@@ -420,7 +420,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := prepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := armageddon.PrepareTx(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String())) // only such errors are permitted

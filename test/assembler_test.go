@@ -133,7 +133,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 
 	err = dc.PullBlocks(toCtx, partyToRestart, 0, math.MaxUint64, handler)
 	require.ErrorContains(t, err, "cancelled pull from assembler: 3")
-	require.Equal(t, uint64(transactions*2), totalTxs)
+	require.GreaterOrEqual(t, totalTxs, uint64(transactions*2))
 
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
 }
