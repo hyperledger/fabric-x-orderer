@@ -500,7 +500,8 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	// send txs to the routers
 	for i := 0; i < len(rates); i++ {
 		start := time.Now()
-		sendTxToRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
+		// sendTxToRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
+		LoadThatTolerateRoutersFaulty(userConfig, *transactions, convertedRates[i], *txSize, nil)
 		elapsed := time.Since(start)
 		reportLoadResults(*transactions, elapsed, *txSize)
 	}
@@ -545,7 +546,7 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	var gRPCRouterClientsConn []*grpc.ClientConn
 	var streams []ab.AtomicBroadcast_BroadcastClient
 
-	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
+	// serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create gRPC clients and streams to the routers
 	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
@@ -560,7 +561,7 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 				Certificate:       userConfig.TLSCertificate,
 				RequireClientCert: userConfig.UseTLSRouter == "mTLS",
 				UseTLS:            userConfig.UseTLSRouter != "none",
-				ServerRootCAs:     serverRootCAs,
+				ServerRootCAs:     userConfig.TLSCACerts,
 			},
 			DialTimeout: time.Second * 5,
 		}
