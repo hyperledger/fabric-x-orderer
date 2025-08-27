@@ -796,14 +796,23 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 			// iterate over txs in block
 			for j := 0; j < txs; j++ {
 				env, err := protoutil.GetEnvelopeFromBlock(blockWithTime.block.Data.Data[j])
-				logger.Debugf("tx %x was received from the assembler", env.Payload)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to get envelope from block with time: err: %v", err)
+					os.Exit(3)
+				}
+				data, err := tx.GetDataFromEnvelope(env)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
+					os.Exit(3)
+				}
+				logger.Debugf("tx %x was received from the assembler", data)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "failed to get envelope from block: %v", err)
 					os.Exit(3)
 				}
 
 				// extract the tx size, sending time and calculate the delay, add the delay to sumOfDelayTimes
-				sumOfTxsSize += len(env.Payload)
+				sumOfTxsSize += len(data)
 				delay := calculateDelayOfTx(env, blockWithTime.acceptedTime)
 				sumOfDelayTimes = sumOfDelayTimes + delay.Seconds()
 			}
@@ -823,8 +832,13 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 }
 
 func calculateDelayOfTx(env *common.Envelope, acceptedTime time.Time) time.Duration {
-	readPayload := bytes.NewBuffer(env.Payload)
-	startPosition := 16 + 8
+	data, err := tx.GetDataFromEnvelope(env)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
+		os.Exit(3)
+	}
+	readPayload := bytes.NewBuffer(data)
+	startPosition := 8
 	readPayload.Next(startPosition)
 	var extractedSendTime uint64
 	binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
@@ -1076,11 +1090,13 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 			}
 
 			// 1. extract the sending time and calculate the delay, add the delay to sumOfDelayTimes
-			var payload common.Payload
-			proto.Unmarshal(env.Payload, &payload)
-			readPayload := bytes.NewBuffer(payload.Data)
-
-			startPosition := 16 + 8
+			data, err := tx.GetDataFromEnvelope(env)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
+				os.Exit(3)
+			}
+			readPayload := bytes.NewBuffer(data)
+			startPosition := 8
 			readPayload.Next(startPosition)
 			var extractedSendTime uint64
 			binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
@@ -1090,8 +1106,8 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 
 			// 2. delete the tx from the map
 			if txsMap != nil {
-				logger.Debugf("remove tx %x from the map", payload.Data)
-				txsMap.Remove(string(payload.Data))
+				logger.Debugf("remove tx %x from the map", data)
+				txsMap.Remove(string(data))
 			}
 		}
 

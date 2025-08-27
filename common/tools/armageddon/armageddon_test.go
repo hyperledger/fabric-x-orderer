@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -259,6 +260,8 @@ func TestLoadAndReceive(t *testing.T) {
 		waitForTxToBeSentAndReceived.Done()
 	}()
 	waitForTxToBeSentAndReceived.Wait()
+
+	time.Sleep(10 * time.Minute)
 }
 
 // Scenario:
