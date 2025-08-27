@@ -7,7 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package tx
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -53,4 +56,23 @@ func GetDataFromEnvelope(env *common.Envelope) ([]byte, error) {
 		return nil, err
 	}
 	return payload.Data, nil
+}
+
+// PrepareMeasuredTxContent is used only in performance testing and its content consists of the tx number, the time stamp (creation time) and the session number the tx is sent through
+func PrepareMeasuredTxContent(txNumber int, txSize int, sessionNumber []byte) []byte {
+	// create timestamp (8 bytes)
+	timeStamp := uint64(time.Now().UnixNano())
+
+	// prepare the payload data
+	buffer := make([]byte, txSize)
+	buff := bytes.NewBuffer(buffer[:0])
+	binary.Write(buff, binary.BigEndian, uint64(txNumber))
+	binary.Write(buff, binary.BigEndian, timeStamp)
+	buff.Write(sessionNumber)
+	result := buff.Bytes()
+	if len(buff.Bytes()) < txSize {
+		padding := make([]byte, txSize-len(result))
+		result = append(result, padding...)
+	}
+	return result
 }

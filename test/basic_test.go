@@ -8,6 +8,7 @@ package test
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -107,7 +108,7 @@ func TestSubmitAndReceive(t *testing.T) {
 			for i := 0; i < totalTxNumber; i++ {
 				status := rl.GetToken()
 				require.True(t, status)
-				txContent := armageddon.PrepareTx(i, 64, []byte("sessionNumber"))
+				txContent := tx.PrepareMeasuredTxContent(i, 64, []byte("sessionNumber"))
 				err = broadcastClient.SendTx(txContent)
 				require.NoError(t, err)
 			}
