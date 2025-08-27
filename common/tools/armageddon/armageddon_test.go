@@ -8,11 +8,6 @@ package armageddon_test
 
 import (
 	"fmt"
-	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
-	"github.com/onsi/gomega/gexec"
-	"github.com/stretchr/testify/require"
 	"os"
 	"os/exec"
 	"path"
@@ -20,6 +15,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
+	"github.com/onsi/gomega/gexec"
+	"github.com/stretchr/testify/require"
 )
 
 // Scenario:

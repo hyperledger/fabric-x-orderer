@@ -8,11 +8,12 @@ package test
 
 import (
 	"context"
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"

@@ -8,12 +8,13 @@ package test
 
 import (
 	"fmt"
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"math"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
