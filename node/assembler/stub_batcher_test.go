@@ -78,12 +78,6 @@ func (sb *stubBatcher) Stop() {
 	sb.server.Stop()
 }
 
-func (sb *stubBatcher) Shutdown() {
-	close(sb.batches)
-	close(sb.batchSentCh)
-	sb.server.Stop()
-}
-
 func (sb *stubBatcher) Restart() {
 	server, err := comm.NewGRPCServer(sb.endpoint, comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
