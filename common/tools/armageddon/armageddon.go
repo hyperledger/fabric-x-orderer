@@ -7,10 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package armageddon
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -837,12 +835,7 @@ func calculateDelayOfTx(env *common.Envelope, acceptedTime time.Time) time.Durat
 		fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
 		os.Exit(3)
 	}
-	readPayload := bytes.NewBuffer(data)
-	startPosition := 8
-	readPayload.Next(startPosition)
-	var extractedSendTime uint64
-	binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
-	sendTime := time.Unix(0, int64(extractedSendTime))
+	sendTime := tx.ExtractSendTimeFromTx(data)
 	delayTime := acceptedTime.Sub(sendTime)
 	return delayTime
 }
@@ -1077,12 +1070,7 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 				fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
 				os.Exit(3)
 			}
-			readPayload := bytes.NewBuffer(data)
-			startPosition := 8
-			readPayload.Next(startPosition)
-			var extractedSendTime uint64
-			binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
-			sendTime := time.Unix(0, int64(extractedSendTime))
+			sendTime := tx.ExtractSendTimeFromTx(data)
 			delayTime := currentTime.Sub(sendTime)
 			sumOfDelayTimes = sumOfDelayTimes + delayTime.Seconds()
 
