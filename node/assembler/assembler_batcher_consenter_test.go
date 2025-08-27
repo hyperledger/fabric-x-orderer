@@ -255,6 +255,9 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	batchersStub[0].SetNextBatch(batch1)
 	<-batchersStub[0].batchSentCh
 
+	// also send batch1 via another batcher in case the assembler starts searching
+	batchersStub[2].SetNextBatch(batch1)
+
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
 	<-consenterStub.decisionSentCh
