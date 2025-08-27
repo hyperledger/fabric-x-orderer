@@ -79,12 +79,6 @@ func (sc *stubConsenter) Stop() {
 	sc.server.Stop()
 }
 
-func (sc *stubConsenter) Shutdown() {
-	close(sc.decisions)
-	close(sc.decisionSentCh)
-	sc.server.Stop()
-}
-
 func (sc *stubConsenter) Restart() {
 	server, err := comm.NewGRPCServer(sc.endpoint, comm.ServerConfig{
 		SecOpts: comm.SecureOptions{

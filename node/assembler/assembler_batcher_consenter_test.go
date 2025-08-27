@@ -35,7 +35,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	defer cleanup()
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
-	defer consenterStub.Shutdown()
+	defer consenterStub.Stop()
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
@@ -98,7 +98,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	defer cleanup()
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
-	defer consenterStub.Shutdown()
+	defer consenterStub.Stop()
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
@@ -168,7 +168,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	}
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
-	defer consenterStub.Shutdown()
+	defer consenterStub.Stop()
 
 	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
 	defer assembler.Stop()
@@ -236,7 +236,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	defer cleanup()
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
-	defer consenterStub.Shutdown()
+	defer consenterStub.Stop()
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
@@ -335,7 +335,7 @@ func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.Shar
 
 	return batchers, batcherInfos, func() {
 		for _, b := range batchers {
-			b.Shutdown()
+			b.Stop()
 		}
 	}
 }
