@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,17 +38,30 @@ func TestPrimaryConnector(t *testing.T) {
 	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
 	defer clean()
 
+	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
+	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
+
 	connector := batcher.CreatePrimaryReqConnector(1, loggers[2], configs[2], batcher.GetBatchersEndpointsAndCerts(configs[2].Shards[0].Batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 	connector.ConnectToPrimary()
 
-	// send request to primary via connector
+	// send request via normal submit
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
-	connector.SendReq(req)
+	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[2].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// send request to primary via connector
+	req = make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(2))
+	connector.SendReq(req)
+
+	// make sure request was batched
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(2) && batchers[2].Ledger.Height(1) == uint64(2)
 	}, 30*time.Second, 10*time.Millisecond)
 
 	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
@@ -69,14 +83,24 @@ func TestPrimaryConnector(t *testing.T) {
 	// update the connector
 	connector.ConnectToNewPrimary(2)
 
-	// send request via the connector to a new primary
+	// send request via normal submit
 	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(2))
-	connector.SendReq(req)
+	binary.BigEndian.PutUint64(req, uint64(3))
+	batchers[1].Submit(context.Background(), &protos.Request{Payload: req})
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
 		return batchers[1].Ledger.Height(2) == uint64(1) && batchers[2].Ledger.Height(2) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// send request via the connector to a new primary
+	req = make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(4))
+	connector.SendReq(req)
+
+	// make sure request was batched
+	require.Eventually(t, func() bool {
+		return batchers[1].Ledger.Height(2) == uint64(2) && batchers[2].Ledger.Height(2) == uint64(2)
 	}, 30*time.Second, 10*time.Millisecond)
 
 	connector.Stop()
