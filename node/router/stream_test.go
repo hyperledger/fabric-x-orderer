@@ -60,7 +60,7 @@ func TestSendRequests(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requestsChannel:                   make(chan *protos.Request, 10),
+		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
@@ -69,8 +69,8 @@ func TestSendRequests(t *testing.T) {
 
 	go s.sendRequests()
 
-	req1 := &protos.Request{TraceId: []byte("request1")}
-	req2 := &protos.Request{TraceId: []byte("request2")}
+	req1 := createTestTrackedRequestFromTrace([]byte("request1"))
+	req2 := createTestTrackedRequestFromTrace([]byte("request2"))
 
 	s.requestsChannel <- req1
 	s.requestsChannel <- req2
@@ -80,10 +80,10 @@ func TestSendRequests(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 
 	sentReq1 := fakeSubmitStreamClient.SendArgsForCall(0)
-	require.Equal(t, req1, sentReq1)
+	require.Equal(t, req1.request, sentReq1)
 
 	sentReq2 := fakeSubmitStreamClient.SendArgsForCall(1)
-	require.Equal(t, req2, sentReq2)
+	require.Equal(t, req2.request, sentReq2)
 
 	s.close()
 }
@@ -101,7 +101,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requestsChannel:                   make(chan *protos.Request, 10),
+		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
@@ -110,7 +110,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 
 	go s.sendRequests()
 
-	req := &protos.Request{TraceId: []byte("request")}
+	req := createTestTrackedRequestFromTrace([]byte("request"))
 	s.requestsChannel <- req
 
 	assert.Eventually(t, func() bool {
@@ -118,7 +118,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 
 	sentReq := fakeSubmitStreamClient.SendArgsForCall(0)
-	require.Equal(t, req, sentReq)
+	require.Equal(t, req.request, sentReq)
 }
 
 func TestReadResponses(t *testing.T) {
@@ -149,7 +149,7 @@ func TestReadResponses(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requestsChannel:                   make(chan *protos.Request, 10),
+		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
@@ -194,7 +194,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requestsChannel:                   make(chan *protos.Request, 10),
+		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
@@ -208,6 +208,45 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
+// scenario: when error is received, check that the requests in the request channel get a response.
+func TestErrorRequestChannel(t *testing.T) {
+	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
+	fakeSubmitStreamClient.RecvReturns(&protos.SubmitResponse{Error: "SERVICE_UNAVAILABLE"}, fmt.Errorf("rpc error: service unavailable"))
+	logger := testutil.CreateLogger(t, 3)
+	verifier := createTestVerifier()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s := &stream{
+		endpoint:                          "127.0.0.1:5017",
+		logger:                            logger,
+		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
+		ctx:                               ctx,
+		cancelFunc:                        cancel,
+		requestsChannel:                   make(chan *TrackedRequest, 10),
+		doneChannel:                       make(chan bool),
+		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
+	}
+
+	responseChan := make(chan Response, 1)
+	trace := []byte("traceID")
+	reqID := []byte("ID")
+	req := CreateTrackedRequest(&protos.Request{TraceId: trace}, responseChan, reqID, trace)
+	s.requestsChannel <- req
+
+	go s.readResponses()
+
+	assert.Eventually(t, func() bool {
+		return fakeSubmitStreamClient.RecvCallCount() == 1 && s.faulty()
+	}, time.Second, 10*time.Millisecond)
+
+	res := <-responseChan
+	require.ErrorContains(t, res.err, "server error: could not establish connection between router and batcher")
+	require.True(t, bytes.Equal(res.reqID, reqID))
+}
+
 func TestRenewStreamSuccess(t *testing.T) {
 	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
 
@@ -217,22 +256,16 @@ func TestRenewStreamSuccess(t *testing.T) {
 	logger := testutil.CreateLogger(t, 4)
 
 	// prepare requests and map
-	requests := make(chan *protos.Request, 10)
+	requests := make(chan *TrackedRequest, 10)
 	requestTraceIdToResponseChannel := make(map[string]chan Response)
 
-	req1 := &protos.Request{
-		Payload: []byte{0o123},
-		TraceId: []byte{1},
-	}
+	req1 := createTestTrackedRequestFromTrace([]byte{1})
 	requests <- req1
-	requestTraceIdToResponseChannel[string(req1.TraceId)] = make(chan Response, 100)
+	requestTraceIdToResponseChannel[string(req1.trace)] = make(chan Response, 100)
 
-	req2 := &protos.Request{
-		Payload: []byte{123},
-		TraceId: []byte{2},
-	}
+	req2 := createTestTrackedRequestFromTrace([]byte{2})
 	requests <- req2
-	requestTraceIdToResponseChannel[string(req2.TraceId)] = make(chan Response, 100)
+	requestTraceIdToResponseChannel[string(req2.trace)] = make(chan Response, 100)
 	verifier := createTestVerifier()
 
 	faultyStream := &stream{
@@ -259,13 +292,13 @@ func TestRenewStreamSuccess(t *testing.T) {
 		if newFakeSubmitStreamClient.RecvCallCount() == 1 {
 			return &protos.SubmitResponse{
 				Error:   "",
-				TraceId: req1.TraceId,
+				TraceId: req1.trace,
 			}, nil
 		}
 		if newFakeSubmitStreamClient.RecvCallCount() == 2 {
 			return &protos.SubmitResponse{
 				Error:   "",
-				TraceId: req2.TraceId,
+				TraceId: req2.trace,
 			}, nil
 		}
 		return &protos.SubmitResponse{
@@ -289,7 +322,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 	require.False(t, newStream.faulty())
 
 	assert.Eventually(t, func() bool {
-		reqCond := reqPool.length() == 2 && bytes.Equal(reqPool.getElement(0).TraceId, req1.TraceId) && bytes.Equal(reqPool.getElement(1).TraceId, req2.TraceId)
+		reqCond := reqPool.length() == 2 && bytes.Equal(reqPool.getElement(0).TraceId, req1.trace) && bytes.Equal(reqPool.getElement(1).TraceId, req2.trace)
 		return reqCond && newFakeSubmitStreamClient.SendCallCount() >= 2 && newFakeSubmitStreamClient.RecvCallCount() >= 2
 	}, 30*time.Second, 10*time.Millisecond)
 
@@ -315,7 +348,7 @@ func TestReconnectRequest(t *testing.T) {
 		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requestsChannel:                   make(chan *protos.Request, 10),
+		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
@@ -326,7 +359,7 @@ func TestReconnectRequest(t *testing.T) {
 
 	go s.sendRequests()
 
-	req := &protos.Request{TraceId: []byte("request")}
+	req := createTestTrackedRequestFromTrace([]byte("request"))
 	s.requestsChannel <- req
 
 	assert.Eventually(t, func() bool {
@@ -366,4 +399,8 @@ func createTestVerifier() *requestfilter.RulesVerifier {
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.AcceptRule{})
 	return rv
+}
+
+func createTestTrackedRequestFromTrace(trace []byte) *TrackedRequest {
+	return CreateTrackedRequest(&protos.Request{TraceId: trace}, make(chan Response, 10), nil, trace)
 }
