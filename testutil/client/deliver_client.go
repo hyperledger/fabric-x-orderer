@@ -9,8 +9,7 @@ package client
 import (
 	"context"
 	"fmt"
-	"math"
-	"sync"
+	"io"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -35,30 +34,32 @@ func NewDeliverClient(userConfig *armageddon.UserConfig) *DeliverClient {
 	}
 }
 
+type response struct {
+	status common.Status
+	err    error
+}
+
 // PullBlocks is blocking untill all blocks are delivered: startBlock to endBlock, inclusive; or an error is returned.
-func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyID, startBlock uint64, endBlock uint64, handler BlockHandler) error {
-	client, gRPCAssemblerClientConn, err := c.createClientAndSendRequest(startBlock, assemblerId)
+func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyID, startBlock uint64, endBlock uint64, handler BlockHandler) (common.Status, error) {
+	client, gRPCAssemblerClientConn, err := c.createClientAndSendRequest(startBlock, endBlock, assemblerId)
 	if err != nil {
-		return errors.Wrapf(err, "failed to create client to assembler: %d", assemblerId)
+		return common.Status(0), errors.Wrapf(err, "failed to create client to assembler: %d", assemblerId)
 	}
+
+	stopChan := make(chan response)
 
 	cleanUp := func() {
 		_ = client.CloseSend()
 		_ = gRPCAssemblerClientConn.Close()
 	}
 
-	stopChan := make(chan error)
-
-	var waitToFinish sync.WaitGroup
-	waitToFinish.Add(1)
-
 	// pull blocks from the assembler, this goroutine only receives from the stream
 	go func() {
 		for {
-			block, err := pullBlock(client)
-			if err != nil {
-				fmt.Printf("Failed to pull block: %s \n", err.Error())
-				stopChan <- err
+			block, status, err := pullBlock(client)
+			if err != nil || status != common.Status(0) {
+				fmt.Printf("Pulling blocks from assembler: %d ended with status: %v, err: %v \n", assemblerId, status, err)
+				stopChan <- response{err: err, status: status}
 				close(stopChan)
 				return
 			}
@@ -66,12 +67,22 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 			err = handler(block)
 			if err != nil {
 				fmt.Printf("Failed to handle block: %s \n", err.Error())
-				stopChan <- err
+				stopChan <- response{err: err, status: common.Status(0)}
 				close(stopChan)
 				return
 			}
 
 			if block.GetHeader().GetNumber() == endBlock {
+				block, status, err = pullBlock(client)
+				if status == common.Status_SUCCESS {
+					fmt.Printf("Pulling blocks from assembler: %d completed successfully \n", assemblerId)
+				} else if block != nil {
+					err = errors.Errorf("expected Status_SUCCESS when reaching endBlock: %d, but got block", endBlock)
+				} else {
+					fmt.Printf("Failed to pull status: %v error: %v \n", status, err)
+				}
+
+				stopChan <- response{err: err, status: status}
 				close(stopChan)
 				return
 			}
@@ -82,17 +93,17 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 	case <-ctx.Done():
 		cleanUp() // we call cleanUp here so that the goroutine would exit.
 		errCanceled := <-stopChan
-		return errors.Errorf("cancelled pull from assembler: %d; pull ended: %s", assemblerId, errCanceled)
-	case err := <-stopChan:
+		return errCanceled.status, errors.Errorf("cancelled pull from assembler: %d; pull ended: %s", assemblerId, errCanceled.err)
+	case resp := <-stopChan:
 		defer cleanUp()
-		if err != nil {
-			return errors.Wrapf(err, "failed to pull from assembler: %d", assemblerId)
+		if resp.err != nil {
+			resp.err = errors.Wrapf(resp.err, "pull from assembler: %d ended", assemblerId)
 		}
-		return nil
+		return resp.status, resp.err
 	}
 }
 
-func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, assemblerId types.PartyID) (ab.AtomicBroadcast_DeliverClient, *grpc.ClientConn, error) {
+func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock uint64, assemblerId types.PartyID) (ab.AtomicBroadcast_DeliverClient, *grpc.ClientConn, error) {
 	serverRootCAs := append([][]byte{}, c.userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -116,7 +127,7 @@ func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, assemblerI
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"arma",
 		nil,
-		nextSeekInfo(startBlock),
+		nextSeekInfo(startBlock, endBlock),
 		int32(0),
 		uint64(0),
 		nil,
@@ -154,25 +165,32 @@ func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, assemblerI
 	return client, gRPCAssemblerClientConn, nil
 }
 
-func pullBlock(client ab.AtomicBroadcast_DeliverClient) (*common.Block, error) {
+func pullBlock(client ab.AtomicBroadcast_DeliverClient) (*common.Block, common.Status, error) {
 	resp, err := client.Recv()
+	if err == io.EOF {
+		return nil, common.Status(0), err
+	}
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to receive a deliver response")
+		return nil, common.Status(0), errors.Wrap(err, "failed to receive a deliver response")
 	}
 
 	block := resp.GetBlock()
 
 	if block == nil {
-		return nil, fmt.Errorf("received a non block message: %v", resp)
+		status := resp.GetStatus()
+		if status != common.Status_SUCCESS {
+			err = fmt.Errorf("received a non block message: %v", resp)
+		}
+		return nil, status, err
 	}
 
-	return block, nil
+	return block, common.Status(0), nil
 }
 
-func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
+func nextSeekInfo(start uint64, stop uint64) *ab.SeekInfo {
 	return &ab.SeekInfo{
-		Start:         &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: startSeq}}},
-		Stop:          &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: math.MaxUint64}}},
+		Start:         &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: start}}},
+		Stop:          &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: stop}}},
 		Behavior:      ab.SeekInfo_BLOCK_UNTIL_READY,
 		ErrorResponse: ab.SeekInfo_BEST_EFFORT,
 	}

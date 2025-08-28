@@ -11,11 +11,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
-
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/deliver"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/protoutil"
@@ -51,7 +50,11 @@ type responseSender struct {
 }
 
 func (r *responseSender) SendStatusResponse(status common.Status) error {
-	return nil
+	return r.stream.Send(&orderer.DeliverResponse{
+		Type: &orderer.DeliverResponse_Status{
+			Status: status,
+		},
+	})
 }
 
 func (r *responseSender) SendBlockResponse(block *common.Block, channelID string, chain deliver.Chain, signedData *protoutil.SignedData) error {

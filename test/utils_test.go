@@ -16,6 +16,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"testing"
@@ -338,6 +339,7 @@ type BlockPullerInfo struct {
 	TermChanged bool
 	Duplicate   []uint64
 	Missing     []uint64
+	Status      common.Status
 }
 
 type BlockPullerOptions struct {
@@ -350,6 +352,7 @@ type BlockPullerOptions struct {
 	Blocks           int
 	Timeout          int
 	ErrString        string
+	Status           *common.Status
 }
 
 func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.PartyID]*BlockPullerInfo {
@@ -357,13 +360,16 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	require.NotNil(t, options.UserConfig)
 	require.NotEmpty(t, options.Parties)
 	require.GreaterOrEqual(t, options.StartBlock, uint64(0))
-	require.GreaterOrEqual(t, options.EndBlock, options.StartBlock)
+	require.GreaterOrEqual(t, options.EndBlock, uint64(0))
 	require.GreaterOrEqual(t, options.Transactions, 0)
 	require.GreaterOrEqual(t, options.Blocks, 0)
-	require.NotEmpty(t, options.ErrString)
 
 	if options.Timeout <= 0 {
 		options.Timeout = 30
+	}
+
+	if options.EndBlock == 0 {
+		options.EndBlock = math.MaxUint64
 	}
 
 	var waitForPullDone sync.WaitGroup
@@ -380,9 +386,16 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 			lock.Lock()
 			defer lock.Unlock()
 			pullInfos[partyID] = pullInfo
-			if err != nil {
+
+			require.True(t, err != nil && options.ErrString != "" || options.ErrString == "" && err == nil)
+
+			if options.ErrString != "" {
 				errString := fmt.Sprintf(options.ErrString, partyID)
 				require.ErrorContains(t, err, errString)
+			}
+
+			if options.Status != nil {
+				require.Equal(t, *options.Status, pullInfo.Status)
 			}
 			require.GreaterOrEqual(t, int64(pullInfo.TotalTxs), int64(options.Transactions))
 			require.GreaterOrEqual(t, int64(pullInfo.TotalBlocks), int64(options.Blocks))
@@ -481,9 +494,9 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	}
 
 	t.Logf("Pulling from party: %d\n", partyID)
-	err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
+	status, err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
 	t.Logf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
-	blockPullerInfo := &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged, Missing: make([]uint64, 0), Duplicate: make([]uint64, 0)}
+	blockPullerInfo := &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged, Missing: make([]uint64, 0), Duplicate: make([]uint64, 0), Status: status}
 
 	if needVerification {
 		for k, v := range m {
