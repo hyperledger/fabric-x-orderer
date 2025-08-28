@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -578,4 +579,68 @@ func checkCryptoDir(outputDir string) error {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func TestLoadAndReceiveRouterFaulty(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	fmt.Printf("path is: %v\n", configPath)
+
+	// 2.
+	armageddon := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	fmt.Printf("Arma is up")
+
+	// 4. + 5.
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
+	rate := "1000"
+	txs := "100000"
+	txSize := "64"
+
+	var waitForTxToBeSentAndReceived sync.WaitGroup
+	var waitForStartSend sync.WaitGroup
+	waitForTxToBeSentAndReceived.Add(3)
+	waitForStartSend.Add(1)
+
+	go func() {
+		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", "100000", "--output", dir})
+		waitForTxToBeSentAndReceived.Done()
+	}()
+
+	go func() {
+		waitForStartSend.Done()
+		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
+		waitForTxToBeSentAndReceived.Done()
+	}()
+
+	// stop the router
+	go func() {
+		waitForStartSend.Wait()
+		time.Sleep(10 * time.Second)
+		armaNetwork.GetRouter(t, 1).StopArmaNode()
+		waitForTxToBeSentAndReceived.Done()
+	}()
+
+	waitForTxToBeSentAndReceived.Wait()
 }
