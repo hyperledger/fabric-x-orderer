@@ -31,8 +31,10 @@ type StreamInfo struct {
 	cancel                context.CancelFunc
 	isBroken              bool
 	isAlreadyReconnecting bool
+	maxRetryDelay         time.Duration
 	endpoint              string
 	lock                  sync.Mutex
+	logger                *flogging.FabricLogger
 }
 
 func (streamInfo *StreamInfo) IsBroken() bool {
@@ -59,9 +61,16 @@ func (streamInfo *StreamInfo) SetIsAlreadyReconnecting(value bool) {
 	streamInfo.isAlreadyReconnecting = value
 }
 
-func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn, newStream ab.AtomicBroadcast_BroadcastClient) {
+func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn, newStream ab.AtomicBroadcast_BroadcastClient) error {
 	streamInfo.lock.Lock()
 	defer streamInfo.lock.Unlock()
+	// close old connection
+	err := streamInfo.conn.Close()
+	if err != nil {
+		return err
+	}
+	// set new connection and stream
+	streamInfo.logger.Infof("Set new connection and stream to router: %s", streamInfo.endpoint)
 	ctx, cancel := context.WithCancel(context.Background())
 	streamInfo.stream = newStream
 	streamInfo.conn = newConnection
@@ -70,6 +79,7 @@ func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn
 	streamInfo.cancel = cancel
 	streamInfo.isBroken = false
 	streamInfo.isAlreadyReconnecting = false
+	return nil
 }
 
 func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
@@ -80,15 +90,23 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 	streamInfo.SetIsAlreadyReconnecting(true)
 
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
+		delay := 2 * time.Second
 		for {
+			ticker := time.NewTicker(delay)
 			select {
 			case <-streamInfo.ctx.Done():
 				return
 			case <-ticker.C:
 				newConn, newStream, err := createConnAndStream(userConfig, streamInfo.endpoint)
 				if err != nil {
-					streamInfo.SetNewConnAndStream(newConn, newStream)
+					delay *= 2
+					if delay > streamInfo.maxRetryDelay {
+						delay = streamInfo.maxRetryDelay
+					}
+					streamInfo.logger.Infof("Reconnection to router: %s failed, going to try again in %v", streamInfo.endpoint, delay)
+				} else {
+					streamInfo.logger.Infof("Reconnection to router: %s succeeded", streamInfo.endpoint)
+					_ = streamInfo.SetNewConnAndStream(newConn, newStream)
 					go ReceiveResponseFromRouter(userConfig, streamInfo)
 					return
 				}
@@ -128,12 +146,14 @@ func (c *BroadcastTxClient) InitStreams() error {
 		}
 
 		c.streamsToRouters[i] = &StreamInfo{
-			conn:     conn,
-			stream:   stream,
-			ctx:      ctx,
-			cancel:   cancel,
-			endpoint: routerEndpoint,
-			lock:     sync.Mutex{},
+			conn:          conn,
+			stream:        stream,
+			ctx:           ctx,
+			cancel:        cancel,
+			maxRetryDelay: 8 * time.Second,
+			endpoint:      routerEndpoint,
+			lock:          sync.Mutex{},
+			logger:        flogging.MustGetLogger(fmt.Sprintf("BroadcastClient%d", i)),
 		}
 	}
 	return nil
@@ -146,6 +166,7 @@ func ReceiveResponseFromRouter(userConfig *UserConfig, streamInfo *StreamInfo) {
 			if err == io.EOF {
 				return
 			} else {
+				logger.Infof("Failed to receive response from router, close receive go routine, mark router %v as broken and start reconnection", streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(userConfig)
 				return
@@ -159,6 +180,7 @@ func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
 		if !streamInfo.IsBroken() {
 			err := streamInfo.stream.Send(envelope)
 			if err != nil {
+				logger.Infof("Failed to send envelope to the router, mark router %v as broken and start reconnection", streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(c.userConfig)
 			}
@@ -184,7 +206,7 @@ func createConnAndStream(userConfig *UserConfig, endpoint string) (*grpc.ClientC
 
 	gRPCRouterClientConn, err := gRPCRouterClient.Dial(endpoint)
 	if err != nil {
-		logger.Infof("failed to close gRPC connection to router %s, err: %v", endpoint, err)
+		logger.Infof("failed to create a gRPC client connection to router %s, err: %v", endpoint, err)
 		return nil, nil, fmt.Errorf("failed to close gRPC connection to router %s, err: %v", endpoint, err)
 	}
 
@@ -219,7 +241,7 @@ func LoadThatTolerateRoutersFaulty(userConfig *UserConfig, numOfTxs int, rate in
 	capacity := rate / fillFrequency
 	rl, err := NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
 		os.Exit(3)
 	}
 
@@ -229,7 +251,7 @@ func LoadThatTolerateRoutersFaulty(userConfig *UserConfig, numOfTxs int, rate in
 	}
 
 	for i := 0; i < numOfTxs; i++ {
-		data := PrepareTx(i, txSize, sessionNumber)
+		data := tx.PrepareTxWithTimestamp(i, txSize, sessionNumber)
 		env := tx.CreateStructuredEnvelope(data)
 
 		status := rl.GetToken()

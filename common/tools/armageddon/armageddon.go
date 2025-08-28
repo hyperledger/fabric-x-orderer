@@ -498,6 +498,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 		}
 	}
 	// send txs to the routers
+	fmt.Printf("start to load, calling to LoadThatTolerateRoutersFaulty...\n")
 	for i := 0; i < len(rates); i++ {
 		start := time.Now()
 		// sendTxToRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
@@ -623,7 +624,7 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	capacity := rate / fillFrequency
 	rl, err := NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
 		os.Exit(3)
 	}
 	for i := 0; i < numOfTxs; i++ {
@@ -887,7 +888,6 @@ func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
 func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, stopChan <-chan bool, startTime float64, expectedTxs int, pullFrom int, timeIntervalToSampleStat time.Duration) {
 	filePath := path.Join(receiveOutputDir, "statistics.csv")
 	logger.Infof("Statistics are written to: %v\n", filePath)
-	fmt.Printf("Statistics are written to: %v\n", filePath)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open a csv file: %v", err)
