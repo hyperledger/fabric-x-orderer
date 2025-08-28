@@ -14,12 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,7 +108,7 @@ func TestSubmitAndReceive(t *testing.T) {
 			for i := 0; i < totalTxNumber; i++ {
 				status := rl.GetToken()
 				require.True(t, status)
-				txContent := tx.PrepareMeasuredTxContent(i, 64, []byte("sessionNumber"))
+				txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
 				err = broadcastClient.SendTx(txContent)
 				require.NoError(t, err)
 			}

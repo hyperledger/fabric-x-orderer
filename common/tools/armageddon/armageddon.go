@@ -800,18 +800,14 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 				}
 				data, err := tx.GetDataFromEnvelope(env)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
+					fmt.Fprintf(os.Stderr, "failed to get data from envelope: err: %v", err)
 					os.Exit(3)
 				}
 				logger.Debugf("tx %x was received from the assembler", data)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "failed to get envelope from block: %v", err)
-					os.Exit(3)
-				}
 
 				// extract the tx size, sending time and calculate the delay, add the delay to sumOfDelayTimes
 				sumOfTxsSize += len(data)
-				delay := calculateDelayOfTx(env, blockWithTime.acceptedTime)
+				delay := calculateDelayOfTx(data, blockWithTime.acceptedTime)
 				sumOfDelayTimes = sumOfDelayTimes + delay.Seconds()
 			}
 			statisticsAggregator.Add(txs, 1, sumOfDelayTimes, sumOfTxsSize)
@@ -829,13 +825,8 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	logger.Debugf("exit pulling blocks from the assembler")
 }
 
-func calculateDelayOfTx(env *common.Envelope, acceptedTime time.Time) time.Duration {
-	data, err := tx.GetDataFromEnvelope(env)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
-		os.Exit(3)
-	}
-	sendTime := tx.ExtractSendTimeFromTx(data)
+func calculateDelayOfTx(data []byte, acceptedTime time.Time) time.Duration {
+	sendTime := tx.ExtractTimestampFromTx(data)
 	delayTime := acceptedTime.Sub(sendTime)
 	return delayTime
 }
@@ -864,7 +855,7 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 }
 
 func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	data := tx.PrepareMeasuredTxContent(i, txSize, sessionNumber)
+	data := tx.PrepareTxWithTimestamp(i, txSize, sessionNumber)
 	if txsMap != nil {
 		logger.Debugf("Add tx %x to the map", data)
 		txsMap.Add(string(data))
@@ -1067,10 +1058,10 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 			// 1. extract the sending time and calculate the delay, add the delay to sumOfDelayTimes
 			data, err := tx.GetDataFromEnvelope(env)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to unmarshal envelope: err: %v", err)
+				fmt.Fprintf(os.Stderr, "failed to get data from envelope: err: %v", err)
 				os.Exit(3)
 			}
-			sendTime := tx.ExtractSendTimeFromTx(data)
+			sendTime := tx.ExtractTimestampFromTx(data)
 			delayTime := currentTime.Sub(sendTime)
 			sumOfDelayTimes = sumOfDelayTimes + delayTime.Seconds()
 

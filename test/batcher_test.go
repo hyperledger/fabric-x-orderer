@@ -14,12 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,7 +94,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := tx.PrepareMeasuredTxContent(i, 64, []byte("sessionNumber"))
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		require.NoError(t, err)
 	}
@@ -143,7 +142,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := tx.PrepareMeasuredTxContent(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
@@ -207,7 +206,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := tx.PrepareMeasuredTxContent(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d: %v", totalTxSent+i, err)
@@ -305,7 +304,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := tx.PrepareMeasuredTxContent(i, 64, []byte("sessionNumber"))
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		require.NoError(t, err)
 	}
@@ -364,7 +363,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := tx.PrepareMeasuredTxContent(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
@@ -422,7 +421,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		txContent := tx.PrepareMeasuredTxContent(totalTxSent+i, 64, []byte("sessionNumber"))
+		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String())) // only such errors are permitted

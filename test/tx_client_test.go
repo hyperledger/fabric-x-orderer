@@ -13,12 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +59,7 @@ func TestTxClientSend(t *testing.T) {
 	defer broadcastClient.Stop()
 	require.NoError(t, err)
 	for i := 0; i < totalTxNumber; i++ {
-		txContent := tx.PrepareMeasuredTxContent(i, 100, []byte("sessionNumber"))
+		txContent := tx.PrepareTxWithTimestamp(i, 100, []byte("sessionNumber"))
 		err = broadcastClient.SendTx(txContent)
 		require.NoError(t, err)
 	}

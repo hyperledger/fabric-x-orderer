@@ -58,8 +58,8 @@ func GetDataFromEnvelope(env *common.Envelope) ([]byte, error) {
 	return payload.Data, nil
 }
 
-// PrepareMeasuredTxContent is used only in performance testing and its content consists of the tx number, the time stamp (creation time) and the session number the tx is sent through
-func PrepareMeasuredTxContent(txNumber int, txSize int, sessionNumber []byte) []byte {
+// PrepareTxWithTimestamp is used only in performance testing and its content consists of the tx number, the time stamp (creation time) and the session number the tx is sent through
+func PrepareTxWithTimestamp(txNumber int, txSize int, sessionNumber []byte) []byte {
 	// create timestamp (8 bytes)
 	timeStamp := uint64(time.Now().UnixNano())
 
@@ -77,9 +77,9 @@ func PrepareMeasuredTxContent(txNumber int, txSize int, sessionNumber []byte) []
 	return result
 }
 
-// ExtractSendTimeFromTx extracts the time stamp from its content (payload.data)
+// ExtractTimestampFromTx extracts the time stamp from its content (payload.data)
 // This function assumes that the tx structure is: txNumber (8 bytes), timeStamp (8 bytes) and session number (16 bytes).
-func ExtractSendTimeFromTx(data []byte) time.Time {
+func ExtractTimestampFromTx(data []byte) time.Time {
 	readPayload := bytes.NewBuffer(data)
 	startPosition := 8
 	readPayload.Next(startPosition)
