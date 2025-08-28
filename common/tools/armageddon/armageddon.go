@@ -7,10 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package armageddon
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -796,15 +794,20 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 			// iterate over txs in block
 			for j := 0; j < txs; j++ {
 				env, err := protoutil.GetEnvelopeFromBlock(blockWithTime.block.Data.Data[j])
-				logger.Debugf("tx %x was received from the assembler", env.Payload)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "failed to get envelope from block: %v", err)
+					fmt.Fprintf(os.Stderr, "failed to get envelope from block with time: err: %v", err)
 					os.Exit(3)
 				}
+				data, err := tx.GetDataFromEnvelope(env)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to get data from envelope: err: %v", err)
+					os.Exit(3)
+				}
+				logger.Debugf("tx %x was received from the assembler", data)
 
 				// extract the tx size, sending time and calculate the delay, add the delay to sumOfDelayTimes
-				sumOfTxsSize += len(env.Payload)
-				delay := calculateDelayOfTx(env, blockWithTime.acceptedTime)
+				sumOfTxsSize += len(data)
+				delay := calculateDelayOfTx(data, blockWithTime.acceptedTime)
 				sumOfDelayTimes = sumOfDelayTimes + delay.Seconds()
 			}
 			statisticsAggregator.Add(txs, 1, sumOfDelayTimes, sumOfTxsSize)
@@ -822,13 +825,8 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	logger.Debugf("exit pulling blocks from the assembler")
 }
 
-func calculateDelayOfTx(env *common.Envelope, acceptedTime time.Time) time.Duration {
-	readPayload := bytes.NewBuffer(env.Payload)
-	startPosition := 16 + 8
-	readPayload.Next(startPosition)
-	var extractedSendTime uint64
-	binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
-	sendTime := time.Unix(0, int64(extractedSendTime))
+func calculateDelayOfTx(data []byte, acceptedTime time.Time) time.Duration {
+	sendTime := tx.ExtractTimestampFromTx(data)
 	delayTime := acceptedTime.Sub(sendTime)
 	return delayTime
 }
@@ -857,7 +855,7 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 }
 
 func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	data := PrepareTx(i, txSize, sessionNumber)
+	data := tx.PrepareTxWithTimestamp(i, txSize, sessionNumber)
 	if txsMap != nil {
 		logger.Debugf("Add tx %x to the map", data)
 		txsMap.Add(string(data))
@@ -869,24 +867,6 @@ func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, 
 			os.Exit(3)
 		}
 	}
-}
-
-func PrepareTx(txNumber int, txSize int, sessionNumber []byte) []byte {
-	// create timestamp (8 bytes)
-	timeStamp := uint64(time.Now().UnixNano())
-
-	// prepare the payload
-	buffer := make([]byte, txSize)
-	buff := bytes.NewBuffer(buffer[:0])
-	binary.Write(buff, binary.BigEndian, uint64(txNumber))
-	binary.Write(buff, binary.BigEndian, timeStamp)
-	buff.Write(sessionNumber)
-	result := buff.Bytes()
-	if len(buff.Bytes()) < txSize {
-		padding := make([]byte, txSize-len(result))
-		result = append(result, padding...)
-	}
-	return result
 }
 
 func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult float64, numOfBlocksResult int, txSize int) {
@@ -1076,22 +1056,19 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 			}
 
 			// 1. extract the sending time and calculate the delay, add the delay to sumOfDelayTimes
-			var payload common.Payload
-			proto.Unmarshal(env.Payload, &payload)
-			readPayload := bytes.NewBuffer(payload.Data)
-
-			startPosition := 16 + 8
-			readPayload.Next(startPosition)
-			var extractedSendTime uint64
-			binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
-			sendTime := time.Unix(0, int64(extractedSendTime))
+			data, err := tx.GetDataFromEnvelope(env)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to get data from envelope: err: %v", err)
+				os.Exit(3)
+			}
+			sendTime := tx.ExtractTimestampFromTx(data)
 			delayTime := currentTime.Sub(sendTime)
 			sumOfDelayTimes = sumOfDelayTimes + delayTime.Seconds()
 
 			// 2. delete the tx from the map
 			if txsMap != nil {
-				logger.Debugf("remove tx %x from the map", payload.Data)
-				txsMap.Remove(string(payload.Data))
+				logger.Debugf("remove tx %x from the map", data)
+				txsMap.Remove(string(data))
 			}
 		}
 
