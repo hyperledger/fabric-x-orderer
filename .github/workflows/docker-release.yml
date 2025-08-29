@@ -33,10 +33,25 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version from tag
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract and Validate Version from Tag
         id: extract
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-      
+        run: |
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            echo "VERSION=$VERSION" >> $GITHUB_ENV
+            echo "✅ Tag validated: $VERSION"
+          else
+            echo "❌ Invalid tag format: ${GITHUB_REF}. Expected format: refs/tags/v<semver>"
+            exit 1
+          fi
+
       - name: Set image prefix
         run: |
           if [ "$GITHUB_REPOSITORY_OWNER" == "hyperledger" ]; then
@@ -44,7 +59,7 @@ jobs:
           else
            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
-        
+
       - name: Build and Push Multi-Platform Docker Image
         uses: docker/build-push-action@v6
         with:
@@ -53,5 +68,7 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           tags: |
-            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
             docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
