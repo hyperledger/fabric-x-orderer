@@ -61,7 +61,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "500"
 	txs := "1000"
-	txSize := "32"
+	txSize := "128"
 	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
 }
 
@@ -101,7 +101,7 @@ func TestArmageddonWithTLSWithNoSampleConfigPathFlag(t *testing.T) {
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "500"
 	txs := "1000"
-	txSize := "32"
+	txSize := "128"
 	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
 }
 
@@ -143,7 +143,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	rates := "500 1000"
 	txsSent := "5000"
 	txsRec := "10000"
-	txSize := "64"
+	txSize := "128"
 
 	var waitForTxToBeSentAndReceived sync.WaitGroup
 	waitForTxToBeSentAndReceived.Add(2)
@@ -195,7 +195,7 @@ func TestLoadStepsFails(t *testing.T) {
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rates := "BOOM"
 	txsSent := "10000"
-	txSize := "64"
+	txSize := "128"
 
 	armageddonBinary, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/armageddon", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	require.NoError(t, err)
@@ -246,7 +246,7 @@ func TestLoadAndReceive(t *testing.T) {
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "500"
 	txs := "10000"
-	txSize := "64"
+	txSize := "300"
 
 	var waitForTxToBeSentAndReceived sync.WaitGroup
 	waitForTxToBeSentAndReceived.Add(2)
@@ -300,7 +300,7 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "200"
 	txs := "10000"
-	txSize := "64"
+	txSize := "128"
 
 	var waitForTxToBeSentAndReceived sync.WaitGroup
 	var waitForStartSend sync.WaitGroup
@@ -370,7 +370,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
 	rate := "500"
 	txs := "1000"
-	txSize := "32"
+	txSize := "128"
 	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
 }
 
