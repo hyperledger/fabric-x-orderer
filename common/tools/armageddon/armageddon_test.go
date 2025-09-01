@@ -316,13 +316,11 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	}()
 
 	// stop the router while txs are submitted
-	go func() {
-		waitForStartSend.Wait()
-		time.Sleep(10 * time.Second)
-		t.Log("Stop Router")
-		armaNetwork.GetRouter(t, 1).StopArmaNode()
-		waitForForStopNode.Done()
-	}()
+	waitForStartSend.Wait()
+	time.Sleep(10 * time.Second)
+	t.Log("Stop Router")
+	armaNetwork.GetRouter(t, 1).StopArmaNode()
+	waitForForStopNode.Done()
 
 	// restart router
 	t.Log("Restart Router")
