@@ -152,7 +152,7 @@ func ReceiveResponseFromRouter(userConfig *UserConfig, streamInfo *StreamInfo) {
 			if err == io.EOF {
 				return
 			} else {
-				logger.Infof("Failed to receive response from router, close receive go routine, mark router %v as broken and start reconnection", streamInfo.endpoint)
+				logger.Infof("Failed to receive response from router, close receive go routine, mark router %s as broken and start reconnection", streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(userConfig)
 				return
@@ -166,7 +166,7 @@ func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
 		if !streamInfo.IsBroken() {
 			err := streamInfo.stream.Send(envelope)
 			if err != nil {
-				logger.Infof("Failed to send envelope to the router, mark router %v as broken and start reconnection", streamInfo.endpoint)
+				logger.Infof("Failed to send envelope to the router, mark router %s as broken and start reconnection", streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(c.userConfig)
 			}
