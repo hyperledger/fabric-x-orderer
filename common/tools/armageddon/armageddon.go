@@ -504,7 +504,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 }
 
 func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
-	broadcastClient := NewBroadcastTxClient(userConfig, logger)
+	broadcastClient := NewBroadcastTxClient(userConfig)
 	err := broadcastClient.InitStreams()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to init streams between client and router %v", err)

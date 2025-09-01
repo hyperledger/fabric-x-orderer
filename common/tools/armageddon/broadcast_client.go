@@ -107,21 +107,18 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 type BroadcastTxClient struct {
 	// userConfig is the client configuration includes the TLS configuration and the endpoints of router and assembler nodes
 	userConfig *UserConfig
-	// streamRoutersMap maps from endpoint of node to the stream the client opened for their communication.
+	// streamsToRouters holds streams between client and routers.
 	streamsToRouters []*StreamInfo
-	// logger
-	logger *flogging.FabricLogger
 }
 
 // NewBroadcastTxClient initializes a Broadcast TXs Client that sends transactions to the all routers.
 // The client configuration comes from the user config.
 // When a router becomes faulty, a reconnection process is running in the background, and txs are still sent to the available routers.
 // When the faulty router recovers, the client continues to send him transactions.
-func NewBroadcastTxClient(userConfigFile *UserConfig, logger *flogging.FabricLogger) *BroadcastTxClient {
+func NewBroadcastTxClient(userConfigFile *UserConfig) *BroadcastTxClient {
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
 		streamsToRouters: make([]*StreamInfo, len(userConfigFile.RouterEndpoints)),
-		logger:           logger,
 	}
 }
 
@@ -152,7 +149,7 @@ func ReceiveResponseFromRouter(userConfig *UserConfig, streamInfo *StreamInfo) {
 			if err == io.EOF {
 				return
 			} else {
-				logger.Infof("Failed to receive response from router, close receive go routine, mark router %s as broken and start reconnection", streamInfo.endpoint)
+				streamInfo.logger.Infof("Failed to receive response from router, close receive go routine, mark router %s as broken and start reconnection", streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(userConfig)
 				return
@@ -166,7 +163,7 @@ func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
 		if !streamInfo.IsBroken() {
 			err := streamInfo.stream.Send(envelope)
 			if err != nil {
-				logger.Infof("Failed to send envelope to the router, mark router %s as broken and start reconnection", streamInfo.endpoint)
+				streamInfo.logger.Infof("Failed to send envelope to the router, mark router %s as broken and start reconnection", streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(c.userConfig)
 			}
@@ -204,13 +201,11 @@ func createConnAndStream(userConfig *UserConfig, endpoint string) (*grpc.ClientC
 
 	gRPCRouterClientConn, err := gRPCRouterClient.Dial(endpoint)
 	if err != nil {
-		logger.Infof("failed to create a gRPC client connection to router %s, err: %v", endpoint, err)
 		return nil, nil, fmt.Errorf("failed to close gRPC connection to router %s, err: %v", endpoint, err)
 	}
 
 	stream, err := ab.NewAtomicBroadcastClient(gRPCRouterClientConn).Broadcast(context.TODO())
 	if err != nil {
-		logger.Infof("failed to open a broadcast stream to router %s, err: %v", endpoint, err)
 		return nil, nil, fmt.Errorf("failed to open a broadcast stream to router %s, err: %v", endpoint, err)
 	}
 
