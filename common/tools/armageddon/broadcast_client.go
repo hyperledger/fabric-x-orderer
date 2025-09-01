@@ -24,8 +24,7 @@ import (
 type StreamInfo struct {
 	conn                  *grpc.ClientConn
 	stream                ab.AtomicBroadcast_BroadcastClient
-	ctx                   context.Context
-	cancel                context.CancelFunc
+	stopChan              chan struct{}
 	isBroken              bool
 	isAlreadyReconnecting bool
 	maxRetryDelay         time.Duration
@@ -67,12 +66,8 @@ func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn
 	}
 	// set new connection and stream
 	streamInfo.logger.Infof("Set new connection and stream to router: %s", streamInfo.endpoint)
-	ctx, cancel := context.WithCancel(context.Background())
 	streamInfo.stream = newStream
 	streamInfo.conn = newConnection
-	streamInfo.ctx = ctx
-	streamInfo.cancel()
-	streamInfo.cancel = cancel
 	streamInfo.isBroken = false
 	streamInfo.isAlreadyReconnecting = false
 	return nil
@@ -88,7 +83,7 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 		for {
 			ticker := time.NewTicker(delay)
 			select {
-			case <-streamInfo.ctx.Done():
+			case <-streamInfo.stopChan:
 				return
 			case <-ticker.C:
 				newConn, newStream, err := createConnAndStream(userConfig, streamInfo.endpoint)
@@ -132,18 +127,15 @@ func NewBroadcastTxClient(userConfigFile *UserConfig, logger *flogging.FabricLog
 
 func (c *BroadcastTxClient) InitStreams() error {
 	for i, routerEndpoint := range c.userConfig.RouterEndpoints {
-		ctx, cancel := context.WithCancel(context.Background())
 		conn, stream, err := createConnAndStream(c.userConfig, routerEndpoint)
 		if err != nil {
-			cancel()
 			return err
 		}
 
 		c.streamsToRouters[i] = &StreamInfo{
 			conn:          conn,
 			stream:        stream,
-			ctx:           ctx,
-			cancel:        cancel,
+			stopChan:      make(chan struct{}),
 			maxRetryDelay: 8 * time.Second,
 			endpoint:      routerEndpoint,
 			lock:          sync.Mutex{},
@@ -189,7 +181,7 @@ func (c *BroadcastTxClient) Stop() error {
 		if err := streamInfo.conn.Close(); err != nil {
 			return fmt.Errorf("failed to close connection to router %s", streamInfo.endpoint)
 		}
-		streamInfo.cancel()
+		close(streamInfo.stopChan)
 	}
 	return nil
 }
