@@ -56,13 +56,14 @@ func (streamInfo *StreamInfo) CheckIfReconnectionIsNeeded() bool {
 	}
 }
 
-func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn, newStream ab.AtomicBroadcast_BroadcastClient) error {
+func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn, newStream ab.AtomicBroadcast_BroadcastClient) {
 	streamInfo.lock.Lock()
 	defer streamInfo.lock.Unlock()
 	// close old connection
 	err := streamInfo.conn.Close()
 	if err != nil {
-		return err
+		streamInfo.logger.Infof("set new connection and stream failed, err: %v", err)
+		return
 	}
 	// set new connection and stream
 	streamInfo.logger.Infof("Set new connection and stream to router: %s", streamInfo.endpoint)
@@ -70,7 +71,6 @@ func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn
 	streamInfo.conn = newConnection
 	streamInfo.isBroken = false
 	streamInfo.isAlreadyReconnecting = false
-	return nil
 }
 
 func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
@@ -95,7 +95,7 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 					streamInfo.logger.Infof("Reconnection to router: %s failed, going to try again in %v", streamInfo.endpoint, delay)
 				} else {
 					streamInfo.logger.Infof("Reconnection to router: %s succeeded", streamInfo.endpoint)
-					_ = streamInfo.SetNewConnAndStream(newConn, newStream)
+					streamInfo.SetNewConnAndStream(newConn, newStream)
 					go ReceiveResponseFromRouter(userConfig, streamInfo)
 					return
 				}
@@ -105,7 +105,7 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 }
 
 type BroadcastTxClient struct {
-	// userConfig is the client configuration includes the TLS configuration and the endpoints of router and assembler nodes
+	// userConfig is the client configuration that includes the TLS configuration and the endpoints of router and assembler nodes
 	userConfig *UserConfig
 	// streamsToRouters holds streams between client and routers.
 	streamsToRouters []*StreamInfo
@@ -114,7 +114,7 @@ type BroadcastTxClient struct {
 // NewBroadcastTxClient initializes a Broadcast TXs Client that sends transactions to the all routers.
 // The client configuration comes from the user config.
 // When a router becomes faulty, a reconnection process is running in the background, and txs are still sent to the available routers.
-// When the faulty router recovers, the client continues to send him transactions.
+// When the faulty router recovers, the client continues to send to the router transactions.
 func NewBroadcastTxClient(userConfigFile *UserConfig) *BroadcastTxClient {
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
