@@ -597,36 +597,13 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	// create gRPC clients and streams to the routers
 	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
 		// create a gRPC connection to the router
-		gRPCRouterClient := comm.ClientConfig{
-			KaOpts: comm.KeepaliveOptions{
-				ClientInterval: time.Hour,
-				ClientTimeout:  time.Hour,
-			},
-			SecOpts: comm.SecureOptions{
-				Key:               userConfig.TLSPrivateKey,
-				Certificate:       userConfig.TLSCertificate,
-				RequireClientCert: userConfig.UseTLSRouter == "mTLS",
-				UseTLS:            userConfig.UseTLSRouter != "none",
-				ServerRootCAs:     userConfig.TLSCACerts,
-			},
-			DialTimeout: time.Second * 5,
-		}
-
-		gRPCRouterClientConn, err := gRPCRouterClient.Dial(userConfig.RouterEndpoints[i])
+		gRPCRouterClientConn, stream, err := createConnAndStream(userConfig, userConfig.RouterEndpoints[i])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to router %d: %v", i+1, err)
+			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection and stream to router %d, err: %v", i+1, err)
 			os.Exit(3)
 		}
 
 		gRPCRouterClientsConn = append(gRPCRouterClientsConn, gRPCRouterClientConn)
-
-		// open a broadcast stream
-		stream, err := ab.NewAtomicBroadcastClient(gRPCRouterClientConn).Broadcast(context.TODO())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to open a broadcast stream to router %d: %v", i+1, err)
-			os.Exit(3)
-		}
-
 		streams = append(streams, stream)
 	}
 
