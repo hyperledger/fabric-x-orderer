@@ -147,8 +147,21 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	require.Equal(t, uint64(3), b.Header.Number)
 	b = <-setup.listeners[0].c
 	require.Equal(t, uint64(4), b.Header.Number)
+
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest124, 1, 2)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[1].sk, 2, 1, digest124, 1, 2)
+	require.NoError(t, err)
+
+	b1 = <-setup.listeners[1].c
+	require.Equal(t, uint64(6), b1.Header.Number)
+	b2 = <-setup.listeners[2].c
+	require.Equal(t, uint64(6), b2.Header.Number)
+
 	b = <-setup.listeners[0].c
 	require.Equal(t, uint64(5), b.Header.Number)
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(6), b.Header.Number)
 
 	for _, c := range setup.consensusNodes {
 		c.Stop()
