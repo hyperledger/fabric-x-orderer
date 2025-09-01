@@ -46,16 +46,15 @@ func (streamInfo *StreamInfo) SetIsBroken(value bool) {
 	streamInfo.isBroken = value
 }
 
-func (streamInfo *StreamInfo) IsAlreadyReconnecting() bool {
+func (streamInfo *StreamInfo) CheckIfReconnectionIsNeeded() bool {
 	streamInfo.lock.Lock()
 	defer streamInfo.lock.Unlock()
-	return streamInfo.isAlreadyReconnecting
-}
-
-func (streamInfo *StreamInfo) SetIsAlreadyReconnecting(value bool) {
-	streamInfo.lock.Lock()
-	defer streamInfo.lock.Unlock()
-	streamInfo.isAlreadyReconnecting = value
+	if streamInfo.isAlreadyReconnecting {
+		return false // reconnection is not needed again
+	} else {
+		streamInfo.isAlreadyReconnecting = true // mark that reconnection is needed
+		return true
+	}
 }
 
 func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn, newStream ab.AtomicBroadcast_BroadcastClient) error {
@@ -80,11 +79,9 @@ func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn
 }
 
 func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
-	if streamInfo.IsAlreadyReconnecting() {
+	if !streamInfo.CheckIfReconnectionIsNeeded() {
 		return
 	}
-
-	streamInfo.SetIsAlreadyReconnecting(true)
 
 	go func() {
 		delay := 2 * time.Second
