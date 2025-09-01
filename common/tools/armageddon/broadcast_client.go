@@ -9,7 +9,6 @@ package armageddon
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -143,12 +142,15 @@ func (c *BroadcastTxClient) InitStreams() error {
 
 func ReceiveResponseFromRouter(userConfig *UserConfig, streamInfo *StreamInfo) {
 	for {
-		_, err := streamInfo.stream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				return
-			} else {
-				streamInfo.logger.Infof("Failed to receive response from router, close receive go routine, mark router %s as broken and start reconnection", streamInfo.endpoint)
+		select {
+		case <-streamInfo.stopChan:
+			return
+		default:
+			_, err := streamInfo.stream.Recv()
+			if err != nil {
+				// An error can occur if the server is faulty (Unavailable desc) or the connections is closed (Canceled desc)
+				// If the connection is closed, then the reconnection go routine is opened, but then it exits with the stopChan.
+				streamInfo.logger.Infof("Failed to receive response from router, close receive go routine, mark router %s as broken and start reconnection, err: %v", streamInfo.endpoint, err)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(userConfig)
 				return
