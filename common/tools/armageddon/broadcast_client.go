@@ -172,7 +172,7 @@ func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
 }
 
 func (c *BroadcastTxClient) Stop() error {
-	// close the recv go routine
+	// close the reconnection go routine
 	// close all connections
 	for _, streamInfo := range c.streamsToRouters {
 		if err := streamInfo.conn.Close(); err != nil {
