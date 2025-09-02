@@ -1,0 +1,52 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+package policy
+
+import (
+	"testing"
+
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
+	"github.com/stretchr/testify/require"
+)
+
+func TestBuildPolicyManagerFromBlock(t *testing.T) {
+	dir := t.TempDir()
+
+	sharedConfigYaml, sharedConfigPath := testutil.PrepareSharedConfigBinary(t, dir)
+
+	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigPath, fabric.GetDevConfigDir())
+	require.NoError(t, err)
+	require.NotNil(t, block)
+
+	require.True(t, block.Data != nil)
+	require.NotEqual(t, len(block.Data.Data), 0)
+
+	env, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[0])
+	require.NoError(t, err)
+	require.NotNil(t, env)
+
+	policyManager, err := BuildPolicyManagerFromBlock(env, factory.GetDefault())
+	require.NoError(t, err)
+	require.NotNil(t, policyManager)
+
+	policy, exists := policyManager.GetPolicy(policies.ChannelWriters)
+	require.True(t, exists)
+	require.NotNil(t, policy)
+
+	policy, exists = policyManager.GetPolicy(policies.ChannelReaders)
+	require.True(t, exists)
+	require.NotNil(t, policy)
+
+	policy, exists = policyManager.GetPolicy(policies.ChannelOrdererAdmins)
+	require.True(t, exists)
+	require.NotNil(t, policy)
+}
