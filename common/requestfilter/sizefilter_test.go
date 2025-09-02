@@ -33,7 +33,7 @@ func TestNonEmptyFilter(t *testing.T) {
 func TestMaxSizeFilter(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	fc := &mocks.FakeFilterConfig{}
-	fc.GetRequestMaxBytesReturns(1000)
+	fc.RequestMaxBytesReturns(1000)
 	v.AddRule(requestfilter.NewMaxSizeFilter(fc))
 
 	t.Run("Filter Test", func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestMaxSizeFilter(t *testing.T) {
 		require.NoError(t, err)
 
 		fc2 := &mocks.FakeFilterConfig{}
-		fc2.GetRequestMaxBytesReturns(100)
+		fc2.RequestMaxBytesReturns(100)
 		v.Update(fc2)
 		err = v.Verify(request)
 		require.EqualError(t, err, "the request's size exceeds the maximum size: actual = 300, limit = 100")

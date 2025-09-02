@@ -17,7 +17,7 @@ type MaxSizeFilter struct {
 }
 
 func NewMaxSizeFilter(config FilterConfig) *MaxSizeFilter {
-	return &MaxSizeFilter{requestMaxBytes: config.GetRequestMaxBytes()}
+	return &MaxSizeFilter{requestMaxBytes: config.RequestMaxBytes()}
 }
 
 // Verify checks that the size of the request does not exceeds the maximal size in bytes.
@@ -30,7 +30,7 @@ func (ms *MaxSizeFilter) Verify(request *comm.Request) error {
 }
 
 func (ms *MaxSizeFilter) Update(config FilterConfig) error {
-	ms.requestMaxBytes = config.GetRequestMaxBytes()
+	ms.requestMaxBytes = config.RequestMaxBytes()
 	return nil
 }
 

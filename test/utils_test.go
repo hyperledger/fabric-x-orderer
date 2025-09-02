@@ -92,8 +92,8 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 				ShardId:  shardId,
 				Batchers: batcherInfos,
 			}},
-			UseTLS:          true,
-			RequestMaxBytes: 1 << 10,
+			UseTLS:             true,
+			RouterFilterConfig: nodeconfig.NewRouterFilterConfig(1<<10, false, "arma"),
 		}
 
 		router := router.NewRouter(config, l)
