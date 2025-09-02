@@ -104,7 +104,7 @@ func TestControlEventSerialization(t *testing.T) {
 	assert.Equal(t, ce, ce2)
 
 	// Serialization and deserialization of ControlEvent with BAF
-	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), nil, 0, [][]uint8{}, 0)
+	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, [][]uint8{}, 0)
 	baf.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf}
 
@@ -169,7 +169,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 
 	// Update state with a valid BAF
-	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), nil, 0, [][]uint8{}, 0)
+	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, [][]uint8{}, 0)
 	baf.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf}
 	expectedState.Pending = append(expectedState.Pending, baf)
@@ -182,7 +182,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 
 	// Handle BAF with invalid Shard
-	baf2 := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(3), nil, 0, [][]uint8{}, 0)
+	baf2 := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(3), 0, [][]uint8{}, 0)
 	baf2.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf2}
 
@@ -236,7 +236,7 @@ func TestCleanupOldAttestations(t *testing.T) {
 	state := initialState
 
 	// Test condition where the threshold is not met
-	baf1 := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2}, types.PartyID(2), nil, 1, [][]byte{{1, 2}, {3, 4}}, 0)
+	baf1 := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2}, types.PartyID(2), 1, [][]byte{{1, 2}, {3, 4}}, 0)
 	baf1.SetSignature([]byte{1})
 	logger := testutil.CreateLogger(t, 0)
 
@@ -246,7 +246,7 @@ func TestCleanupOldAttestations(t *testing.T) {
 	assert.Len(t, state.Pending, 1)
 
 	// Test condition where the threshold is met
-	baf2 := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3, 4}, types.PartyID(3), nil, 1, [][]byte{{3, 4}}, 0)
+	baf2 := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3, 4}, types.PartyID(3), 1, [][]byte{{3, 4}}, 0)
 	baf2.SetSignature([]byte{1})
 
 	state.Pending = append(state.Pending, baf2)

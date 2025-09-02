@@ -404,7 +404,7 @@ func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term 
 }
 
 func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (types.BatchAttestationFragment, error) {
-	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, nil, 0, nil, 0)
+	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, 0, nil, 0)
 	sig, err := signer.Sign(baf.ToBeSigned())
 	if err != nil {
 		return nil, err
