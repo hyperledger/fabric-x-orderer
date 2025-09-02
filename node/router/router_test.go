@@ -597,14 +597,16 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	}
 
 	conf := &config.RouterNodeConfig{
-		PartyID:            partyID,
-		TLSCertificateFile: ckp.Cert,
-		UseTLS:             useTLS,
-		TLSPrivateKeyFile:  ckp.Key,
-		ListenAddress:      "127.0.0.1:0",
-		ClientAuthRequired: clientAuthRequired,
-		Shards:             shards,
-		RequestMaxBytes:    1 << 10,
+		PartyID:                             partyID,
+		TLSCertificateFile:                  ckp.Cert,
+		UseTLS:                              useTLS,
+		TLSPrivateKeyFile:                   ckp.Key,
+		ListenAddress:                       "127.0.0.1:0",
+		ClientAuthRequired:                  clientAuthRequired,
+		Shards:                              shards,
+		RequestMaxBytes:                     1 << 10,
+		ClientSignatureVerificationRequired: false,
+		ChannelID:                           "arma",
 	}
 
 	r := router.NewRouter(conf, logger)

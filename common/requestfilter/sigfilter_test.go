@@ -20,8 +20,9 @@ import (
 
 func TestSigVerifyFilter(t *testing.T) {
 	var v requestfilter.RulesVerifier
+	fc := &mocks.FakeFilterConfig{}
 
-	v.AddRule(requestfilter.NewSigFilter(&mocks.FakeFilterConfig{}))
+	v.AddRule(requestfilter.NewSigFilter(fc))
 	err := v.Verify(nil)
 	require.EqualError(t, err, "failed to convert request to signedData : nil request")
 

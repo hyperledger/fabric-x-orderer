@@ -8,6 +8,16 @@ import (
 )
 
 type FakeFilterConfig struct {
+	GetChannelIDStub        func() string
+	getChannelIDMutex       sync.RWMutex
+	getChannelIDArgsForCall []struct {
+	}
+	getChannelIDReturns struct {
+		result1 string
+	}
+	getChannelIDReturnsOnCall map[int]struct {
+		result1 string
+	}
 	GetClientSignatureVerificationRequiredStub        func() bool
 	getClientSignatureVerificationRequiredMutex       sync.RWMutex
 	getClientSignatureVerificationRequiredArgsForCall []struct {
@@ -30,6 +40,59 @@ type FakeFilterConfig struct {
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
+}
+
+func (fake *FakeFilterConfig) GetChannelID() string {
+	fake.getChannelIDMutex.Lock()
+	ret, specificReturn := fake.getChannelIDReturnsOnCall[len(fake.getChannelIDArgsForCall)]
+	fake.getChannelIDArgsForCall = append(fake.getChannelIDArgsForCall, struct {
+	}{})
+	stub := fake.GetChannelIDStub
+	fakeReturns := fake.getChannelIDReturns
+	fake.recordInvocation("GetChannelID", []interface{}{})
+	fake.getChannelIDMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeFilterConfig) GetChannelIDCallCount() int {
+	fake.getChannelIDMutex.RLock()
+	defer fake.getChannelIDMutex.RUnlock()
+	return len(fake.getChannelIDArgsForCall)
+}
+
+func (fake *FakeFilterConfig) GetChannelIDCalls(stub func() string) {
+	fake.getChannelIDMutex.Lock()
+	defer fake.getChannelIDMutex.Unlock()
+	fake.GetChannelIDStub = stub
+}
+
+func (fake *FakeFilterConfig) GetChannelIDReturns(result1 string) {
+	fake.getChannelIDMutex.Lock()
+	defer fake.getChannelIDMutex.Unlock()
+	fake.GetChannelIDStub = nil
+	fake.getChannelIDReturns = struct {
+		result1 string
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) GetChannelIDReturnsOnCall(i int, result1 string) {
+	fake.getChannelIDMutex.Lock()
+	defer fake.getChannelIDMutex.Unlock()
+	fake.GetChannelIDStub = nil
+	if fake.getChannelIDReturnsOnCall == nil {
+		fake.getChannelIDReturnsOnCall = make(map[int]struct {
+			result1 string
+		})
+	}
+	fake.getChannelIDReturnsOnCall[i] = struct {
+		result1 string
+	}{result1}
 }
 
 func (fake *FakeFilterConfig) GetClientSignatureVerificationRequired() bool {

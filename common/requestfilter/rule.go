@@ -22,6 +22,7 @@ type Rule interface {
 type FilterConfig interface {
 	GetRequestMaxBytes() uint64
 	GetClientSignatureVerificationRequired() bool
+	GetChannelID() string
 }
 
 // AcceptRule - always returns nil as a result for Verify

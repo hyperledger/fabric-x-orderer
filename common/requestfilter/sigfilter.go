@@ -17,15 +17,19 @@ import (
 
 type SigFilter struct {
 	clientSignatureVerificationRequired bool
+	channelID                           string
 }
 
 func NewSigFilter(config FilterConfig) *SigFilter {
-	return &SigFilter{clientSignatureVerificationRequired: config.GetClientSignatureVerificationRequired()}
+	return &SigFilter{
+		clientSignatureVerificationRequired: config.GetClientSignatureVerificationRequired(),
+		channelID:                           config.GetChannelID(),
+	}
 }
 
 func (sf *SigFilter) Verify(request *comm.Request) error {
 	// extract signedData, while verifying the structure of the request
-	signedData, err := requestToSignedData(request)
+	signedData, err := sf.requestToSignedData(request)
 	if err != nil {
 		return fmt.Errorf("failed to convert request to signedData : %s", err)
 	}
@@ -39,7 +43,7 @@ func (sf *SigFilter) Verify(request *comm.Request) error {
 }
 
 // requestToSignedData verifies the request structure and returns the payload, identity and signature in a SignedData
-func requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
+func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
 	if request == nil {
 		return nil, fmt.Errorf("nil request")
 	}
@@ -73,8 +77,10 @@ func requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed unmarshalling channel header, err %s", err.Error())
 	}
-
-	// TBD: validate chdr.ChannelId
+	// TODO: check channel ID
+	// if sf.channelID != chdr.ChannelId {
+	// 	return nil, fmt.Errorf("channelID is incorrect. expected: %s, actual: %s", sf.channelID, chdr.ChannelId)
+	// }
 
 	return &protoutil.SignedData{
 		Data:      request.Payload,
@@ -85,5 +91,6 @@ func requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
 
 func (sf *SigFilter) Update(config FilterConfig) error {
 	sf.clientSignatureVerificationRequired = config.GetClientSignatureVerificationRequired()
+	sf.channelID = config.GetChannelID()
 	return nil
 }
