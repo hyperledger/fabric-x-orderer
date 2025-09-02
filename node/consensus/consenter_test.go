@@ -33,7 +33,7 @@ func TestConsenter(t *testing.T) {
 	db := &mocks.FakeBatchAttestationDB{}
 	consenter.DB = db
 
-	ba := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(2), []uint8{1}, 0, [][]uint8{})
+	ba := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(2), []uint8{1}, 0, [][]uint8{}, 0)
 	events := [][]byte{(&state.ControlEvent{BAF: ba}).Bytes()}
 
 	// Test with an event that should be filtered out
@@ -57,7 +57,7 @@ func TestConsenter(t *testing.T) {
 	assert.Zero(t, db.PutCallCount())
 
 	// Test valid events meeting the threshold
-	ba2 := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(3), []uint8{1}, 0, [][]uint8{})
+	ba2 := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(3), []uint8{1}, 0, [][]uint8{}, 0)
 	events = append(events, (&state.ControlEvent{BAF: ba2}).Bytes())
 
 	newState, batchAttestations = consenter.SimulateStateTransition(s, events)
