@@ -27,13 +27,13 @@ type SimpleBatchAttestationFragment struct {
 	garbageCollect [][]byte // TODO remove
 }
 
+// NewSimpleBatchAttestationFragment creates a new, unsigned, SimpleBatchAttestationFragment.
 func NewSimpleBatchAttestationFragment(
 	shard ShardID,
 	primary PartyID,
 	seq BatchSequence,
 	digest []byte,
 	signer PartyID,
-	sig []byte,
 	epoch int64,
 	garbageCollect [][]byte,
 	configSqn ConfigSequence,
@@ -45,7 +45,6 @@ func NewSimpleBatchAttestationFragment(
 		signer:         signer,
 		shard:          shard,
 		digest:         digest,
-		signature:      sig,
 		garbageCollect: garbageCollect,
 		configSequence: configSqn,
 	}
