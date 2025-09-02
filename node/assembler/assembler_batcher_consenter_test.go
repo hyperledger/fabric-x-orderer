@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package assembler_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -52,7 +53,6 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	// send batch and matching decision
 	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
 	batchersStub[0].SetNextBatch(batch1)
-	<-batchersStub[0].batchSentCh
 
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
@@ -67,7 +67,6 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 
 	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
 	batchersStub[0].SetNextBatch(batch2)
-	<-batchersStub[0].batchSentCh
 
 	// let assembler retry while consenter is down
 	time.Sleep(time.Second)
@@ -115,7 +114,6 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	// send batch and matching decision
 	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
 	batchersStub[0].SetNextBatch(batch1)
-	<-batchersStub[0].batchSentCh
 
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
@@ -138,7 +136,6 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	// send next batch and decision
 	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
 	batchersStub[0].SetNextBatch(batch2)
-	<-batchersStub[0].batchSentCh
 
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
 	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
@@ -184,14 +181,12 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	// assembler (party 1) should fetch it from another party
 	batch1 := types.NewSimpleBatch(0, 0, 2, types.BatchedRequests{[]byte{1}})
 	batchersStubShard0[1].SetNextBatch(batch1)
+	batchersStubShard0[0].SetNextBatch(batch1)
 
 	// send matching decision
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
 	<-consenterStub.decisionSentCh
-
-	// wait until the batch is sent
-	<-batchersStubShard0[1].batchSentCh
 
 	require.Eventually(t, func() bool {
 		return assembler.GetTxCount() == 2
@@ -200,7 +195,6 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	// send another batch and decision from party 1 on shard 0
 	batch2 := types.NewSimpleBatch(1, 0, 2, types.BatchedRequests{[]byte{2}, []byte{3}})
 	batchersStubShard0[0].SetNextBatch(batch2)
-	<-batchersStubShard0[0].batchSentCh
 
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
 	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
@@ -213,7 +207,6 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	// send batch and decision from party 1 on shard 1
 	batch3 := types.NewSimpleBatch(0, 1, 2, types.BatchedRequests{[]byte{5}})
 	batchersStubShard1[0].SetNextBatch(batch3)
-	<-batchersStubShard1[0].batchSentCh
 
 	oba3 := obaCreator.Append(batch3, 3, 0, 1)
 	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
@@ -250,15 +243,13 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
-	// send batch and decision
-	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
-	batchersStub[0].SetNextBatch(batch1)
-	<-batchersStub[0].batchSentCh
+	var batches0to10 []*types.SimpleBatch
+	// send batch 0 and decisions
+	batch0 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
+	batchersStub[0].SetNextBatch(batch0)
+	batches0to10 = append(batches0to10, batch0)
 
-	// also send batch1 via another batcher in case the assembler starts searching
-	batchersStub[2].SetNextBatch(batch1)
-
-	oba1 := obaCreator.Append(batch1, 1, 0, 1)
+	oba1 := obaCreator.Append(batch0, 1, 0, 1)
 	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
 	<-consenterStub.decisionSentCh
 
@@ -266,21 +257,45 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 		return assembler.GetTxCount() == 2
 	}, 3*time.Second, 100*time.Millisecond)
 
-	// create another batch with same <Sh, Pr, Seq> but different digest
-	batch2 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{2}})
-	require.NotEqual(t, batch1.Digest(), batch2.Digest())
+	// Send batch 1-10 and decisions via batcher 0
+	for i := types.BatchSequence(1); i <= 10; i++ {
+		batch := types.NewSimpleBatch(i, 1, 1, types.BatchedRequests{[]byte{byte(i)}})
+		batchersStub[0].SetNextBatch(batch)
 
-	// send next batch through another batcher
-	batchersStub[1].SetNextBatch(batch2)
-	oba2 := obaCreator.Append(batch2, 2, 0, 1)
-	// send decision
-	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
+		oba := obaCreator.Append(batch, types.DecisionNum(1+i), 0, 1)
+		consenterStub.SetNextDecision(oba.(*state.AvailableBatchOrdered))
+		<-consenterStub.decisionSentCh
+
+		require.Eventually(t, func() bool {
+			return assembler.GetTxCount() == uint64(2+i)
+		}, 3*time.Second, 100*time.Millisecond)
+
+		batches0to10 = append(batches0to10, batch)
+	}
+
+	// Create another batch with same <Sh, Pr, Seq> = <1,1,10> but different digest
+	batch10dup := types.NewSimpleBatch(10, 1, 1, types.BatchedRequests{[]byte{100}})
+	require.NotEqual(t, batch10dup.Digest(), batches0to10[10].Digest())
+
+	// Batchers 1,2 have the same batches with sequence 0-9, but differ on the batch with sequence 10
+	for i, b := range batches0to10 {
+		if i == 10 {
+			break
+		}
+		batchersStub[1].SetNextBatch(b)
+		batchersStub[2].SetNextBatch(b)
+	}
+	// Send the duplicate batch through batchers 1,2 (not 0, which provided the previous one).
+	batchersStub[1].SetNextBatch(batch10dup)
+	batchersStub[2].SetNextBatch(batch10dup)
+	oba10dup := obaCreator.Append(batch10dup, 12, 0, 1)
+	// send decision respective
+	consenterStub.SetNextDecision(oba10dup.(*state.AvailableBatchOrdered))
 	<-consenterStub.decisionSentCh
-	<-batchersStub[1].batchSentCh
 
 	require.Eventually(t, func() bool {
-		return assembler.GetTxCount() == 3
-	}, 5*time.Second, 100*time.Millisecond)
+		return assembler.GetTxCount() == 13
+	}, 10*time.Second, 100*time.Millisecond, fmt.Sprintf("TXs: %d", assembler.GetTxCount()))
 }
 
 func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) *assembler.Assembler {
@@ -327,8 +342,13 @@ func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.Shar
 	var batchers []*stubBatcher
 	var batcherInfos []config.BatcherInfo
 
+	var parties []types.PartyID
+	for p := types.PartyID(1); int(p) <= numParties; p++ {
+		parties = append(parties, p)
+	}
+
 	for i := 1; i <= numParties; i++ {
-		b := NewStubBatcher(t, shardID, types.PartyID(i), ca)
+		b := NewStubBatcher(t, shardID, types.PartyID(i), parties, ca)
 		batchers = append(batchers, b)
 		batcherInfos = append(batcherInfos, b.batcherInfo)
 	}

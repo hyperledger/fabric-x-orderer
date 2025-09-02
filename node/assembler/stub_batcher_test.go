@@ -10,13 +10,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,11 +29,11 @@ type stubBatcher struct {
 	cert        []byte
 	key         []byte
 	batcherInfo config.BatcherInfo
-	batches     chan *common.Block
-	batchSentCh chan struct{} // batch sent signal
+
+	deliveryService *batcher.BatcherDeliverService
 }
 
-func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, ca tlsgen.CA) *stubBatcher {
+func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, ca tlsgen.CA) *stubBatcher {
 	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
@@ -53,19 +54,29 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		TLSCACerts: []config.RawBytes{ca.CertBytes()},
 	}
 
-	stubBatcher := &stubBatcher{
-		shardID:     shardID,
-		partyID:     partyID,
-		server:      server,
-		endpoint:    server.Address(),
-		cert:        certKeyPair.Cert,
-		key:         certKeyPair.Key,
-		batcherInfo: batcherInfo,
-		batches:     make(chan *common.Block, 100),
-		batchSentCh: make(chan struct{}, 1),
+	logger := flogging.MustGetLogger(fmt.Sprintf("stub-batcher-S%d-P%d", shardID, partyID))
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(shardID, partyID, parties, t.TempDir(), logger)
+	if err != nil {
+		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
 
-	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher)
+	deliveryService := &batcher.BatcherDeliverService{
+		LedgerArray: ledgerArray,
+		Logger:      logger,
+	}
+
+	stubBatcher := &stubBatcher{
+		shardID:         shardID,
+		partyID:         partyID,
+		server:          server,
+		endpoint:        server.Address(),
+		cert:            certKeyPair.Cert,
+		key:             certKeyPair.Key,
+		batcherInfo:     batcherInfo,
+		deliveryService: deliveryService,
+	}
+
+	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher.deliveryService)
 	go func() {
 		err := server.Start()
 		require.NoError(t, err)
@@ -92,7 +103,7 @@ func (sb *stubBatcher) Restart() {
 
 	sb.server = server
 
-	orderer.RegisterAtomicBroadcastServer(server.Server(), sb)
+	orderer.RegisterAtomicBroadcastServer(server.Server(), sb.deliveryService)
 
 	go func() {
 		if err := sb.server.Start(); err != nil {
@@ -101,32 +112,10 @@ func (sb *stubBatcher) Restart() {
 	}()
 }
 
-func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	for {
-		select {
-		case b := <-sb.batches:
-			if b == nil {
-				return nil
-			}
-			err := stream.Send(&orderer.DeliverResponse{
-				Type: &orderer.DeliverResponse_Block{Block: b},
-			})
-			if err != nil {
-				return err
-			}
-
-			sb.batchSentCh <- struct{}{}
-		case <-stream.Context().Done():
-			return stream.Context().Err()
-		}
-	}
-}
-
 func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
 }
 
 func (sb *stubBatcher) SetNextBatch(batch types.Batch) {
-	block, _ := ledger.NewFabricBatchFromRequests(batch.Primary(), batch.Shard(), batch.Seq(), batch.Requests(), []byte(""))
-	sb.batches <- (*common.Block)(block)
+	sb.deliveryService.LedgerArray.Append(batch.Primary(), batch.Seq(), batch.Requests())
 }
