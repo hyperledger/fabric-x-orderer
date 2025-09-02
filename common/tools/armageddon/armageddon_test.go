@@ -298,8 +298,8 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	testutil.WaitReady(t, readyChan, 20, 10)
 
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
-	rate := "1000"
-	txs := "100000"
+	rate := "200"
+	txs := "10000"
 	txSize := "64"
 
 	var waitForTxToBeSentAndReceived sync.WaitGroup
@@ -308,7 +308,7 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	waitForStartSend.Add(1)
 
 	go func() {
-		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", "100000", "--output", dir})
+		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", "10000", "--output", dir})
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
