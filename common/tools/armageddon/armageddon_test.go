@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -258,6 +259,77 @@ func TestLoadAndReceive(t *testing.T) {
 		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", txs, "--output", dir})
 		waitForTxToBeSentAndReceived.Done()
 	}()
+	waitForTxToBeSentAndReceived.Wait()
+}
+
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files in a folder structure
+//  3. Run arma with the generated config files to run each of the nodes for all parties
+//  4. Run armageddon receive command to pull blocks from the assembler and report results (in a go routine)
+//  5. Run armageddon load command to send txs to all routers at a specified rate (in a go routine)
+//  6. Shutdown the router (the client tries to reconnect to the faulty router and txs are still sent to the available routers)
+//  7. Restart the faulty router
+//  8. Wait for the txs to be received by the assembler
+func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	fmt.Printf("path is: %v\n", configPath)
+
+	armageddon := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
+
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
+	rate := "200"
+	txs := "10000"
+	txSize := "64"
+
+	var waitForTxToBeSentAndReceived sync.WaitGroup
+	var waitForStartSend sync.WaitGroup
+	waitForTxToBeSentAndReceived.Add(2)
+	waitForStartSend.Add(1)
+
+	go func() {
+		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", "10000", "--output", dir})
+		waitForTxToBeSentAndReceived.Done()
+	}()
+
+	go func() {
+		waitForStartSend.Done()
+		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
+		waitForTxToBeSentAndReceived.Done()
+	}()
+
+	// stop the router while txs are submitted
+	waitForStartSend.Wait()
+	time.Sleep(10 * time.Second)
+	t.Log("Stop Router")
+	armaNetwork.GetRouter(t, 1).StopArmaNode()
+
+	// restart router
+	time.Sleep(10 * time.Second)
+	t.Log("Restart Router")
+	armaNetwork.GetRouter(t, 1).RestartArmaNode(t, readyChan, 4)
+	testutil.WaitReady(t, readyChan, 1, 10)
+
 	waitForTxToBeSentAndReceived.Wait()
 }
 

@@ -82,7 +82,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
 		os.Exit(3)
 	}
 
@@ -292,7 +292,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
 		os.Exit(3)
 	}
 
