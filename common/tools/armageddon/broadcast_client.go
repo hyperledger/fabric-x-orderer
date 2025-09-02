@@ -61,7 +61,7 @@ func (streamInfo *StreamInfo) SetNewConnAndStream(newConnection *grpc.ClientConn
 	// close old connection
 	err := streamInfo.conn.Close()
 	if err != nil {
-		streamInfo.logger.Infof("set new connection and stream failed, err: %v", err)
+		streamInfo.logger.Infof("Failed to close old connection, err: %v", err)
 	}
 	// set new connection and stream
 	streamInfo.logger.Infof("Set new connection and stream to router: %s", streamInfo.endpoint)

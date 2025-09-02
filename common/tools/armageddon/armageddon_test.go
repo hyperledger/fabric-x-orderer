@@ -268,7 +268,7 @@ func TestLoadAndReceive(t *testing.T) {
 //  3. Run arma with the generated config files to run each of the nodes for all parties
 //  4. Run armageddon receive command to pull blocks from the assembler and report results (in a go routine)
 //  5. Run armageddon load command to send txs to all routers at a specified rate (in a go routine)
-//  6. Shut Down the router (the client try to reconnect to the faulty router and txs are still sent to the available routers)
+//  6. Shutdown the router (the client tries to reconnect to the faulty router and txs are still sent to the available routers)
 //  7. Restart the faulty router
 //  8. Wait for the txs to be received by the assembler
 func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
