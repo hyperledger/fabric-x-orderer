@@ -27,6 +27,10 @@ type BatchSequence uint64
 // DecisionNum is the number the consensus nodes assign to each decision they produce.
 type DecisionNum uint64
 
+// ConfigSequence numbers configuration changes, as delivered by a config TX and the corresponding config block.
+// It starts from 0 (on the genesis block) and increases by 1 with every config change.
+type ConfigSequence uint64
+
 // BatchID is the tuple that identifies a batch.
 type BatchID interface {
 	// Shard the shard from which this batch was produced.
