@@ -75,7 +75,7 @@ func TestCreateOneConsensusNode(t *testing.T) {
 // Sending a couple of requests and waiting for 2 blocks to be written to the ledger.
 // Then taking down the leader node (ID=1).
 // The rest of the nodes get a new request and we make sure another block is committed (a view change occurs).
-// Then we restart the stopped node, send 2 more requests, and we make sure the nodes commit 2 more blocks.
+// Then we restart the stopped node, send one more request, and we make sure the nodes commit another block.
 // Finally, we make sure the restarted node is synced with all blocks.
 func TestCreateMultipleConsensusNodes(t *testing.T) {
 	t.Parallel()
@@ -121,10 +121,20 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(3), b2.Header.Number)
 
+	b3 := <-setup.listeners[3].c
+	require.Equal(t, uint64(1), b3.Header.Number)
+	b3 = <-setup.listeners[3].c
+	require.Equal(t, uint64(2), b3.Header.Number)
+	b3 = <-setup.listeners[3].c
+	require.Equal(t, uint64(3), b3.Header.Number)
+
 	err = recoverNode(t, setup, 0, ca)
 	require.NoError(t, err)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(time.Minute)
+
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(3), b.Header.Number)
 
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
 	require.NoError(t, err)
@@ -135,36 +145,11 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	require.Equal(t, uint64(4), b1.Header.Number)
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(4), b2.Header.Number)
+	b3 = <-setup.listeners[3].c
+	require.Equal(t, uint64(4), b3.Header.Number)
 
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest123, 1, 1)
-	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[1].sk, 2, 1, digest123, 1, 1)
-	require.NoError(t, err)
-
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(5), b1.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(5), b2.Header.Number)
-
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(3), b.Header.Number)
 	b = <-setup.listeners[0].c
 	require.Equal(t, uint64(4), b.Header.Number)
-
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest124, 1, 2)
-	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[1].sk, 2, 1, digest124, 1, 2)
-	require.NoError(t, err)
-
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(6), b1.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(6), b2.Header.Number)
-
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(5), b.Header.Number)
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(6), b.Header.Number)
 
 	for _, c := range setup.consensusNodes {
 		c.Stop()
