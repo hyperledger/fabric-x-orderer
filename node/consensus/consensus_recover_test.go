@@ -8,6 +8,7 @@ package consensus_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -122,6 +123,8 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 
 	err = recoverNode(t, setup, 0, ca)
 	require.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
 
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
 	require.NoError(t, err)
