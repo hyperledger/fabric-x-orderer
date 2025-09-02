@@ -113,6 +113,7 @@ type BroadcastTxClient struct {
 // The client configuration comes from the user config.
 // When a router becomes faulty, a reconnection process is running in the background, and txs are still sent to the available routers.
 // When the faulty router recovers, the client continues to send to the router transactions.
+// This broadcast client is used for performance tests.
 func NewBroadcastTxClient(userConfigFile *UserConfig) *BroadcastTxClient {
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
