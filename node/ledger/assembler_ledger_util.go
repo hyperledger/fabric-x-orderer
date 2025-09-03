@@ -70,7 +70,7 @@ func AssemblerBlockMetadataFromBytes(metadata []byte) (primary types.PartyID, sh
 	batchCount = (binary.BigEndian.Uint32(metadata[24:28]))
 	transactionCount = (binary.BigEndian.Uint64(metadata[28:36]))
 
-	return
+	return primary, shard, seq, num, batchIndex, batchCount, transactionCount, err
 }
 
 // AssemblerBatchIdOrderingInfoAndTxCountFromBlock returns the BatchID, the OrderingInformation and the transactions count that are encoded in the metadata

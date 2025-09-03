@@ -323,9 +323,9 @@ func (ce *ControlEvent) ID() string {
 		ce.Complaint.Signature = nil
 		payloadToHash = ce.Complaint.Bytes()
 	} else if ce.BAF != nil {
-		payloadToHash = make([]byte, 22+32) // seq and epoch are uint64, signer, primary and shard are uint16, and digest is 32 bytes
+		payloadToHash = make([]byte, 22+32) // seq and confog sequence are uint64, signer, primary and shard are uint16, and digest is 32 bytes
 		binary.BigEndian.PutUint64(payloadToHash, uint64(ce.BAF.Seq()))
-		binary.BigEndian.PutUint64(payloadToHash[8:], uint64(ce.BAF.Epoch()))
+		binary.BigEndian.PutUint64(payloadToHash[8:], uint64(ce.BAF.ConfigSequence()))
 		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))
 		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))
 		binary.BigEndian.PutUint16(payloadToHash[20:], uint16(ce.BAF.Shard()))
@@ -426,30 +426,6 @@ func CleanupOldComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	}
 
 	s.Complaints = newComplaints
-}
-
-func CleanupOldAttestations(s *State, l types.Logger, _ ...ControlEvent) {
-	// Reverse index all gc attestations by their digests
-	gc := make(map[string]int)
-	for _, p := range s.Pending {
-		for _, x := range p.GarbageCollect() {
-			gc[hex.EncodeToString(x)]++
-		}
-	}
-
-	newPending := make([]types.BatchAttestationFragment, 0, len(s.Pending))
-	// For each attestation, check if more than a threshold of attestation votes in favor if garbage collecting it
-	for _, p := range s.Pending {
-		voteCount := gc[hex.EncodeToString(p.Digest())]
-		if voteCount >= int(s.Threshold) {
-			l.Infof("Received %d votes (threshold is %d) in favor of garbage collecting attestation fragment of seq %d in shard %d by primary %d signed by %d",
-				voteCount, s.Threshold, p.Seq(), p.Shard(), p.Primary(), p.Signer())
-			continue
-		}
-		newPending = append(newPending, p)
-	}
-
-	s.Pending = newPending
 }
 
 func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {

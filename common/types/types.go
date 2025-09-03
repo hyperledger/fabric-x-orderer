@@ -62,8 +62,7 @@ type BatchAttestationFragment interface {
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error
-	GarbageCollect() [][]byte
-	Epoch() int64
+	ConfigSequence() ConfigSequence
 	String() string
 }
 

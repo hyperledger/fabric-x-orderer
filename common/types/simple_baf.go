@@ -22,30 +22,16 @@ type SimpleBatchAttestationFragment struct {
 	signature []byte
 
 	configSequence ConfigSequence
-
-	epoch          int64    // TODO remove
-	garbageCollect [][]byte // TODO remove
 }
 
 // NewSimpleBatchAttestationFragment creates a new, unsigned, SimpleBatchAttestationFragment.
-func NewSimpleBatchAttestationFragment(
-	shard ShardID,
-	primary PartyID,
-	seq BatchSequence,
-	digest []byte,
-	signer PartyID,
-	epoch int64,
-	garbageCollect [][]byte,
-	configSqn ConfigSequence,
-) *SimpleBatchAttestationFragment {
+func NewSimpleBatchAttestationFragment(shard ShardID, primary PartyID, seq BatchSequence, digest []byte, signer PartyID, configSqn ConfigSequence) *SimpleBatchAttestationFragment {
 	return &SimpleBatchAttestationFragment{
-		epoch:          epoch,
 		seq:            seq,
 		primary:        primary,
 		signer:         signer,
 		shard:          shard,
 		digest:         digest,
-		garbageCollect: garbageCollect,
 		configSequence: configSqn,
 	}
 }
@@ -74,14 +60,6 @@ func (s *SimpleBatchAttestationFragment) ConfigSequence() ConfigSequence {
 	return s.configSequence
 }
 
-func (s *SimpleBatchAttestationFragment) Epoch() int64 {
-	return (s.epoch)
-}
-
-func (s *SimpleBatchAttestationFragment) GarbageCollect() [][]byte {
-	return s.garbageCollect
-}
-
 func (s *SimpleBatchAttestationFragment) Signature() []byte {
 	return s.signature
 }
@@ -102,8 +80,6 @@ type asn1BAF struct {
 	ConfigSequence *big.Int
 	Signer         int
 	Sig            []byte
-	Epoch          *big.Int
-	GarbageCollect [][]byte
 }
 
 // Serialize marshals every field including the signature, using an auxiliary ASN1 struct and asn1.Marshal.
@@ -116,8 +92,6 @@ func (s *SimpleBatchAttestationFragment) Serialize() []byte {
 		ConfigSequence: new(big.Int).SetUint64(uint64(s.configSequence)),
 		Signer:         int(s.signer),
 		Sig:            s.signature,
-		Epoch:          new(big.Int).SetInt64(s.epoch),
-		GarbageCollect: s.garbageCollect,
 	}
 	result, err := asn1.Marshal(a)
 	if err != nil {
@@ -136,8 +110,6 @@ func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
 		ConfigSequence: new(big.Int).SetUint64(uint64(s.configSequence)),
 		Signer:         int(s.signer),
 		Sig:            nil, // everything but the signature
-		Epoch:          new(big.Int).SetInt64(s.epoch),
-		GarbageCollect: s.garbageCollect,
 	}
 	result, err := asn1.Marshal(a)
 	if err != nil {
@@ -161,8 +133,6 @@ func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
 	s.configSequence = ConfigSequence(a.ConfigSequence.Uint64())
 	s.signer = PartyID(a.Signer)
 	s.signature = a.Sig
-	s.epoch = a.Epoch.Int64()
-	s.garbageCollect = a.GarbageCollect
 
 	return nil
 }

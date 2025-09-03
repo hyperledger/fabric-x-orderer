@@ -454,7 +454,7 @@ func parseTestRequest(request []byte) (txID, data string) {
 
 	data = string(buff[:l])
 
-	return
+	return txID, data
 }
 
 type testRequestInspector struct{}

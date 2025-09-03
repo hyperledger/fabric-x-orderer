@@ -1061,7 +1061,7 @@ func TestUpdateTLSCert(t *testing.T) {
 		cert = readFile(filepath.Join(prefix, "server.crt"))
 		key = readFile(filepath.Join(prefix, "server.key"))
 		caCert = readFile(filepath.Join("ca.crt"))
-		return
+		return key, cert, caCert
 	}
 
 	key, cert, caCert := loadBytes("notlocalhost")

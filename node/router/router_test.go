@@ -463,7 +463,7 @@ func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) (res testStr
 	stream, err := cl.SubmitStream(ctx)
 	if err != nil {
 		res.err = err
-		return
+		return res
 	}
 
 	var wg sync.WaitGroup
@@ -504,7 +504,7 @@ func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) (res testStr
 
 	wg.Wait()
 
-	return
+	return res
 }
 
 func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) (res testStreamResult) {
@@ -520,7 +520,7 @@ func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) (res test
 	stream, err := cl.Broadcast(ctx)
 	if err != nil {
 		res.err = err
-		return
+		return res
 	}
 
 	var wg sync.WaitGroup
@@ -561,7 +561,7 @@ func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) (res test
 
 	wg.Wait()
 
-	return
+	return res
 }
 
 func submitRequest(conn *grpc.ClientConn) error {
