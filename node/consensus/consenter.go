@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
-	"slices"
-
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
@@ -75,7 +73,7 @@ func (c *Consenter) indexAttestationsInDB(batchAttestations [][]types.BatchAttes
 			continue
 		}
 		digests = append(digests, bafs[0].Digest())
-		epochs = append(epochs, epochOfBatchAttestations(bafs))
+		epochs = append(epochs, 0) // TODO remove
 
 		c.Logger.Debugf("Indexed batch attestation for digest %x", bafs[0].Digest())
 	}
@@ -143,15 +141,4 @@ func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (
 	}
 
 	return events, nil
-}
-
-func epochOfBatchAttestations(bafs []types.BatchAttestationFragment) uint64 {
-	epochs := make([]uint64, len(bafs))
-	for i := 0; i < len(bafs); i++ {
-		epochs[i] = uint64(bafs[i].Epoch())
-	}
-
-	slices.Sort(epochs)
-
-	return epochs[len(epochs)/2]
 }
