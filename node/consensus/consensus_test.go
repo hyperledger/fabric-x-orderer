@@ -720,6 +720,7 @@ func TestVerifyProposal(t *testing.T) {
 	latestBlockHeader.PrevHash = initialAppContext.Hash()
 
 	header.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	header.AvailableCommonBlocks = []*common.Block{{Header: &common.BlockHeader{DataHash: baf123id1p1s1.Digest(), Number: latestBlockHeader.Number}}}
 
 	newState := initialState
 	newState.AppContext = latestBlockHeader.Bytes()
