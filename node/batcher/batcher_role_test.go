@@ -78,7 +78,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -105,7 +105,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(1, 0, 1, reqs)
+	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -146,7 +146,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 0, 2, reqs)
+	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -228,7 +228,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -306,7 +306,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -363,7 +363,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return batchPuller.StopCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 0, 2, reqs)
+	batch = arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -518,7 +518,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 0, 2, reqs)
+	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -598,7 +598,7 @@ func TestResubmitPending(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -692,7 +692,7 @@ func TestVerifyBatch(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := arma_types.NewSimpleBatch(0, 0, 1, reqs)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -710,25 +710,25 @@ func TestVerifyBatch(t *testing.T) {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 0, 2, reqs)
+	batch = arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs)
+	batch = arma_types.NewSimpleBatch(1, 1, 0, reqs, 0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(2, 0, 1, reqs)
+	batch = arma_types.NewSimpleBatch(0, 1, 2, reqs, 0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 3
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 0, 1, nil)
+	batch = arma_types.NewSimpleBatch(0, 1, 0, nil, 0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 4
@@ -741,7 +741,7 @@ func TestVerifyBatch(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 	verifier.VerifyBatchedRequestsReturns(nil)
 
-	batch = arma_types.NewSimpleBatch(1, 0, 1, reqs)
+	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 0)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2

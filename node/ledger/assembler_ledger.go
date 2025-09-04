@@ -216,7 +216,7 @@ func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum ty
 	}
 
 	transactionCount := atomic.AddUint64(&l.transactionCount, 1) // len(configBlock.GetData().GetData()) = should always be a single TX
-	batchID := types.NewSimpleBatch(0, types.ShardIDConsensus, 0, nil)
+	batchID := types.NewSimpleBatch(types.ShardIDConsensus, 0, 0, nil, 0)
 	ordInfo := &state.OrderingInformation{
 		DecisionNum: decisionNum,
 		BatchIndex:  0,
