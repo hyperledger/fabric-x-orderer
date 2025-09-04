@@ -314,9 +314,8 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		seq := seqArray[sIdx][pIdx]
 		seqArray[sIdx][pIdx] = seq + 1
 
-		fb, err := node_ledger.NewFabricBatchFromRequests(
-			party, shard, types.BatchSequence(seq), batchedRequests, nil)
-		require.NoError(t, err)
+		fb := node_ledger.NewFabricBatchFromRequests(shard, party, types.BatchSequence(seq), batchedRequests, 0, nil)
+		require.NotNil(t, fb)
 
 		transactionCount += len(batchedRequests)
 
