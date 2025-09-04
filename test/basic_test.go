@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -159,4 +160,109 @@ func TestSubmitAndReceive(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestSubmitReceiveAndGetStatus tests submitting transactions to the orderer,
+// receiving blocks from the assembler, and getting the status from the assembler.
+// It also tests edge cases such as pulling with endBlock < startBlock to ensure proper error handling.
+func TestSubmitAndReceiveStatus(t *testing.T) {
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	numOfShards := 2
+	numOfParties := 4
+
+	// create temp dir
+
+	dir, err := os.MkdirTemp("", fmt.Sprintf("%s_%d_%d_", "TestSubmitAndReceive", numOfParties, numOfShards))
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	require.NoError(t, err)
+	numOfArmaNodes := len(netInfo)
+	// 2.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 3.
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
+
+	// 4. Send To Routers
+	totalTxNumber := 500
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	require.NoError(t, err)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	for i := 0; i < totalTxNumber; i++ {
+		status := rl.GetToken()
+		require.True(t, status)
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		err = broadcastClient.SendTx(txContent)
+		require.NoError(t, err)
+	}
+
+	// 5. Check If Transaction is sent to all parties
+	t.Log("Finished submit")
+
+	parties := []types.PartyID{}
+	for partyID := 1; partyID <= numOfParties; partyID++ {
+		parties = append(parties, types.PartyID(partyID))
+	}
+
+	startBlock := uint64(0)
+	endBlock := uint64(numOfShards)
+
+	statusSuccess := common.Status_SUCCESS
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    parties,
+		StartBlock: startBlock,
+		EndBlock:   endBlock,
+		Status:     &statusSuccess,
+	})
+
+	statusUknown := common.Status_UNKNOWN
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    parties,
+		StartBlock: startBlock,
+		Blocks:     numOfShards + 1,
+		ErrString:  "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:     &statusUknown,
+	})
+
+	// Pull with endBlock < startBlock, then cancel.
+	startBlock = uint64(3)
+	endBlock = uint64(2)
+
+	statusBadRequest := common.Status_BAD_REQUEST
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    parties,
+		StartBlock: startBlock,
+		EndBlock:   endBlock,
+		ErrString:  "pull from assembler: %d ended: received a non block message: status:BAD_REQUEST",
+		Status:     &statusBadRequest,
+	})
 }
