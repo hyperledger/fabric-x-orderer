@@ -41,5 +41,5 @@ func (bg *batchGenerator) GenerateBatch(shardId types.ShardID, primaryId types.P
 	if !regular {
 		requests = bg.emptyRequests
 	}
-	return types.NewSimpleBatch(seq, shardId, primaryId, requests)
+	return types.NewSimpleBatch(shardId, primaryId, seq, requests, 0)
 }

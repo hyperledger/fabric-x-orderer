@@ -50,7 +50,7 @@ func (r *naiveReplication) Stop() {
 
 func (r *naiveReplication) Append(partyID types.PartyID, batchSeq types.BatchSequence, batchedRequests types.BatchedRequests) {
 	for _, s := range r.subscribers {
-		s <- types.NewSimpleBatch(batchSeq, 0, partyID, batchedRequests)
+		s <- types.NewSimpleBatch(0, partyID, batchSeq, batchedRequests, 0)
 	}
 }
 
@@ -229,7 +229,7 @@ func TestAssembler(t *testing.T) {
 			buff := make([]byte, 1024)
 			binary.BigEndian.PutUint16(buff, uint16(shardID))
 			binary.BigEndian.PutUint16(buff[100:], uint16(seq))
-			batch := types.NewSimpleBatch(seq, shardID, 1, [][]byte{buff})
+			batch := types.NewSimpleBatch(shardID, 1, seq, [][]byte{buff}, 0)
 			digests[string(batch.Digest())] = struct{}{}
 			batchesForShard = append(batchesForShard, batch)
 		}

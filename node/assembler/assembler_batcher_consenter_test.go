@@ -51,7 +51,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
 	// send batch and matching decision
-	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
+	batch1 := types.NewSimpleBatch(1, 1, 0, types.BatchedRequests{[]byte{1}}, 0)
 	batchersStub[0].SetNextBatch(batch1)
 
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
@@ -65,7 +65,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	// stop consenter and send next batch
 	consenterStub.Stop()
 
-	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
+	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}}, 0)
 	batchersStub[0].SetNextBatch(batch2)
 
 	// let assembler retry while consenter is down
@@ -112,7 +112,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	obaCreator, _ := NewOrderedBatchAttestationCreator()
 
 	// send batch and matching decision
-	batch1 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
+	batch1 := types.NewSimpleBatch(1, 1, 0, types.BatchedRequests{[]byte{1}}, 0)
 	batchersStub[0].SetNextBatch(batch1)
 
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
@@ -134,7 +134,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// send next batch and decision
-	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}})
+	batch2 := types.NewSimpleBatch(1, 1, 1, types.BatchedRequests{[]byte{2}, []byte{3}}, 0)
 	batchersStub[0].SetNextBatch(batch2)
 
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
@@ -179,7 +179,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 
 	// send batch from party 2 on shard 0
 	// assembler (party 1) should fetch it from another party
-	batch1 := types.NewSimpleBatch(0, 0, 2, types.BatchedRequests{[]byte{1}})
+	batch1 := types.NewSimpleBatch(0, 2, 0, types.BatchedRequests{[]byte{1}}, 0)
 	batchersStubShard0[1].SetNextBatch(batch1)
 	batchersStubShard0[0].SetNextBatch(batch1)
 
@@ -193,7 +193,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// send another batch and decision from party 1 on shard 0
-	batch2 := types.NewSimpleBatch(1, 0, 2, types.BatchedRequests{[]byte{2}, []byte{3}})
+	batch2 := types.NewSimpleBatch(0, 2, 1, types.BatchedRequests{[]byte{2}, []byte{3}}, 0)
 	batchersStubShard0[0].SetNextBatch(batch2)
 
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
@@ -205,7 +205,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// send batch and decision from party 1 on shard 1
-	batch3 := types.NewSimpleBatch(0, 1, 2, types.BatchedRequests{[]byte{5}})
+	batch3 := types.NewSimpleBatch(1, 2, 0, types.BatchedRequests{[]byte{5}}, 0)
 	batchersStubShard1[0].SetNextBatch(batch3)
 
 	oba3 := obaCreator.Append(batch3, 3, 0, 1)
@@ -245,7 +245,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	var batches0to10 []*types.SimpleBatch
 	// send batch 0 and decisions
-	batch0 := types.NewSimpleBatch(0, 1, 1, types.BatchedRequests{[]byte{1}})
+	batch0 := types.NewSimpleBatch(1, 1, 0, types.BatchedRequests{[]byte{1}}, 0)
 	batchersStub[0].SetNextBatch(batch0)
 	batches0to10 = append(batches0to10, batch0)
 
@@ -259,7 +259,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	// Send batch 1-10 and decisions via batcher 0
 	for i := types.BatchSequence(1); i <= 10; i++ {
-		batch := types.NewSimpleBatch(i, 1, 1, types.BatchedRequests{[]byte{byte(i)}})
+		batch := types.NewSimpleBatch(1, 1, i, types.BatchedRequests{[]byte{byte(i)}}, 0)
 		batchersStub[0].SetNextBatch(batch)
 
 		oba := obaCreator.Append(batch, types.DecisionNum(1+i), 0, 1)
@@ -274,7 +274,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	}
 
 	// Create another batch with same <Sh, Pr, Seq> = <1,1,10> but different digest
-	batch10dup := types.NewSimpleBatch(10, 1, 1, types.BatchedRequests{[]byte{100}})
+	batch10dup := types.NewSimpleBatch(1, 1, 10, types.BatchedRequests{[]byte{100}}, 0)
 	require.NotEqual(t, batch10dup.Digest(), batches0to10[10].Digest())
 
 	// Batchers 1,2 have the same batches with sequence 0-9, but differ on the batch with sequence 10
