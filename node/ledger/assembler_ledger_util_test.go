@@ -22,8 +22,8 @@ func TestAssemblerBlockMetadataToFromBytes(t *testing.T) {
 		[]byte("tx1-1"), []byte("tx2"),
 	}
 
-	fb, err := node_ledger.NewFabricBatchFromRequests(1, 2, 3, batchedRequests, []byte("bogus"))
-	assert.NoError(t, err)
+	fb := node_ledger.NewFabricBatchFromRequests(2, 1, 3, batchedRequests, 0, []byte("bogus"))
+	assert.NotNil(t, fb)
 
 	oi := &state.OrderingInformation{
 		BlockHeader: &state.BlockHeader{

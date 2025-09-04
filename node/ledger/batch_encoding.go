@@ -18,11 +18,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-// BlockMetadataIndex_PartyShard is one location after the last entry that Fabric uses, which evaluates to 5.
-// It includes the primary PartyID and ShardID.
-var BlockMetadataIndex_PartyShard = len(common.BlockMetadataIndex_name)
+// BlockMetadataIndex_PartyShardConfigSequence is the location where we encode the ShardID, primary PartyID, and config sequence.
+// We reuse the location of the orderer metadata.
+const BlockMetadataIndex_PartyShardConfigSequence = common.BlockMetadataIndex_ORDERER
 
-// FabricBatch is a types.Batch encoded in a Fabric block
+// The size of the partyShardConfigSequenceSize metadata: shard uint16 + party uint16 + config sequence uint64
+const partyShardConfigSequenceSize = 2 + 2 + 8
+
+// FabricBatch is a types.Batch encoded in a Fabric block.
 type FabricBatch common.Block
 
 func (b *FabricBatch) Digest() []byte {
@@ -35,32 +38,45 @@ func (b *FabricBatch) Requests() types.BatchedRequests {
 
 // Primary returns the PartyID if encoded correctly, or 0.
 func (b *FabricBatch) Primary() types.PartyID {
-	m := (*common.Block)(b).GetMetadata().GetMetadata()
-	if len(m) <= BlockMetadataIndex_PartyShard {
+	buff := ordererMetadata((*common.Block)(b).GetMetadata().GetMetadata())
+	if len(buff) == 0 {
 		return 0
 	}
 
-	buff := m[BlockMetadataIndex_PartyShard]
-	if len(buff) < 4 {
-		return 0
-	}
-
-	return types.PartyID(binary.BigEndian.Uint16(buff[:2]))
+	return types.PartyID(binary.BigEndian.Uint16(buff[2:4]))
 }
 
 // Shard returns the ShardID if encoded correctly, or 0.
 func (b *FabricBatch) Shard() types.ShardID {
-	m := (*common.Block)(b).GetMetadata().GetMetadata()
-	if len(m) <= BlockMetadataIndex_PartyShard {
+	buff := ordererMetadata((*common.Block)(b).GetMetadata().GetMetadata())
+	if len(buff) == 0 {
 		return 0
 	}
 
-	buff := m[BlockMetadataIndex_PartyShard]
-	if len(buff) < 4 {
+	return types.ShardID(binary.BigEndian.Uint16(buff[0:2]))
+}
+
+// ConfigSequence returns the ConfigSequence if encoded correctly, or 0.
+func (b *FabricBatch) ConfigSequence() types.ConfigSequence {
+	buff := ordererMetadata((*common.Block)(b).GetMetadata().GetMetadata())
+	if len(buff) == 0 {
 		return 0
 	}
 
-	return types.ShardID(binary.BigEndian.Uint16(buff[2:]))
+	return types.ConfigSequence(binary.BigEndian.Uint64(buff[4:]))
+}
+
+func ordererMetadata(m [][]byte) []byte {
+	if len(m) <= int(BlockMetadataIndex_PartyShardConfigSequence) {
+		return nil
+	}
+
+	buff := m[BlockMetadataIndex_PartyShardConfigSequence]
+	if len(buff) < partyShardConfigSequenceSize {
+		return nil
+	}
+
+	return buff
 }
 
 func (b *FabricBatch) Seq() types.BatchSequence {
@@ -68,15 +84,17 @@ func (b *FabricBatch) Seq() types.BatchSequence {
 }
 
 func NewFabricBatchFromRequests(
-	partyID types.PartyID,
 	shardID types.ShardID,
+	partyID types.PartyID,
 	seq types.BatchSequence,
 	batchedRequests types.BatchedRequests,
+	configSeq types.ConfigSequence,
 	prevHash []byte,
-) (*FabricBatch, error) { // TODO remove the error
-	buff := make([]byte, 4)
-	binary.BigEndian.PutUint16(buff[:2], uint16(partyID))
-	binary.BigEndian.PutUint16(buff[2:], uint16(shardID))
+) *FabricBatch {
+	buff := make([]byte, partyShardConfigSequenceSize)
+	binary.BigEndian.PutUint16(buff[:2], uint16(shardID))
+	binary.BigEndian.PutUint16(buff[2:4], uint16(partyID))
+	binary.BigEndian.PutUint64(buff[4:], uint64(configSeq))
 
 	block := &common.Block{
 		Header: &common.BlockHeader{
@@ -88,11 +106,11 @@ func NewFabricBatchFromRequests(
 			Data: batchedRequests,
 		},
 		Metadata: &common.BlockMetadata{
-			Metadata: [][]byte{{}, {}, {}, {}, {}, buff},
+			Metadata: [][]byte{{}, {}, {}, buff, {}},
 		},
 	}
 
-	return (*FabricBatch)(block), nil
+	return (*FabricBatch)(block)
 }
 
 func NewFabricBatchFromBlock(block *common.Block) (*FabricBatch, error) {
@@ -110,13 +128,13 @@ func NewFabricBatchFromBlock(block *common.Block) (*FabricBatch, error) {
 	}
 
 	m := block.GetMetadata().GetMetadata()
-	if len(m) <= BlockMetadataIndex_PartyShard {
-		return nil, errors.New("missing shard party metadata")
+	if len(m) <= int(BlockMetadataIndex_PartyShardConfigSequence) {
+		return nil, errors.New("missing orderer metadata")
 	}
 
-	buff := m[BlockMetadataIndex_PartyShard]
-	if len(buff) < 4 {
-		return nil, errors.New("bad shard party metadata")
+	buff := m[BlockMetadataIndex_PartyShardConfigSequence]
+	if len(buff) < partyShardConfigSequenceSize {
+		return nil, errors.New("bad orderer metadata")
 	}
 
 	batch := (*FabricBatch)(block)

@@ -7,14 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package ledger_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,29 +120,38 @@ func TestNewFabricBatchFromBlock(t *testing.T) {
 			expectedErr: "empty block metadata",
 		},
 		{
-			name: "missing shard party metadata 2",
+			name: "missing orderer metadata",
 			block: &common.Block{
 				Header:   header,
 				Data:     data,
-				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}}},
+				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}}},
 			},
-			expectedErr: "missing shard party metadata",
+			expectedErr: "missing orderer metadata",
 		},
 		{
-			name: "bad shard party metadata",
+			name: "bad orderer metadata",
 			block: &common.Block{
 				Header:   header,
 				Data:     data,
 				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}, {}}},
 			},
-			expectedErr: "bad shard party metadata",
+			expectedErr: "bad orderer metadata",
+		},
+		{
+			name: "bad orderer metadata 2",
+			block: &common.Block{
+				Header:   header,
+				Data:     data,
+				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {0x01}, {}, {}}},
+			},
+			expectedErr: "bad orderer metadata",
 		},
 		{
 			name: "good",
 			block: &common.Block{
 				Header:   header,
 				Data:     data,
-				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}, {0x01, 0x02, 0x03, 0x04}}},
+				Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05}, {}}},
 			},
 			expectedErr: "",
 		},
@@ -156,11 +165,29 @@ func TestNewFabricBatchFromBlock(t *testing.T) {
 				assert.NotNil(t, fb)
 				assert.NoError(t, err)
 				assert.Equal(t, types.BatchSequence(7), fb.Seq())
-				assert.Equal(t, types.PartyID(0x102), fb.Primary())
-				assert.Equal(t, types.ShardID(0x304), fb.Shard())
+				assert.Equal(t, types.ShardID(0x102), fb.Shard())
+				assert.Equal(t, types.PartyID(0x304), fb.Primary())
+				assert.Equal(t, types.ConfigSequence(0x05), fb.ConfigSequence())
 				assert.Len(t, fb.Requests(), 2)
 				assert.Equal(t, header.DataHash, fb.Digest())
 			}
 		})
 	}
+}
+
+func TestNewFabricBatchFromRequests(t *testing.T) {
+	bReqs := types.BatchedRequests([][]byte{{0x08}, {0x09}})
+	fb := ledger.NewFabricBatchFromRequests(2, 3, 4, bReqs, 5, []byte{0x06})
+	require.NotNil(t, fb)
+	require.Equal(t, types.ShardID(2), fb.Shard())
+	require.Equal(t, types.PartyID(3), fb.Primary())
+	require.Equal(t, types.BatchSequence(4), fb.Seq())
+	require.True(t, bytes.Equal(bReqs.Digest(), fb.Digest()))
+	require.Equal(t, types.ConfigSequence(5), fb.ConfigSequence())
+	require.Equal(t, bReqs, fb.Requests())
+
+	require.True(t, bytes.Equal([]byte{0x06}, fb.Header.GetPreviousHash()))
+
+	require.Equal(t, "Sh,Pr,Sq,Dg: <2,3,4,f99be8ba3f263229e64cd89aded97556d208a7650bfd06be5979fbf748f94cbe>", types.BatchIDToString(fb))
+	require.True(t, types.BatchIDEqual(fb, state.NewAvailableBatch(3, 2, 4, bReqs.Digest())))
 }
