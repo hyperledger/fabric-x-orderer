@@ -195,19 +195,21 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 
 func launchRouter(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		config, _, err := config.ReadConfig(configFile.Name())
+		conf, genesisBlock, err := config.ReadConfig(configFile.Name())
 		if err != nil {
 			panic(fmt.Sprintf("error launching router, err: %s", err))
 		}
-		conf := config.ExtractRouterConfig()
+
+		routerConf := conf.ExtractRouterConfig()
+		routerConf.RouterFilterConfig = conf.ExtractRouterFilterConfig(genesisBlock)
 
 		var routerLogger *flogging.FabricLogger
 		if testLogger != nil {
 			routerLogger = testLogger
 		} else {
-			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", conf.PartyID))
+			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", routerConf.PartyID))
 		}
-		r := router.NewRouter(conf, routerLogger)
+		r := router.NewRouter(routerConf, routerLogger)
 		ch := r.StartRouterService()
 
 		go func() {
@@ -216,7 +218,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		}()
 
 		stopSignalListen(r, routerLogger, r.Address())
-		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), conf.PartyID)
+		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)
 	}
 }
 

@@ -20,8 +20,9 @@ type Rule interface {
 //
 //go:generate counterfeiter -o ./mocks/filter_config.go . FilterConfig
 type FilterConfig interface {
-	GetRequestMaxBytes() uint64
-	GetClientSignatureVerificationRequired() bool
+	RequestMaxBytes() uint64
+	ClientSignatureVerificationRequired() bool
+	ChannelID() string
 }
 
 // AcceptRule - always returns nil as a result for Verify

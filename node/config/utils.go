@@ -23,10 +23,18 @@ func (c *BatcherNodeConfig) GetShardsIDs() []types.ShardID {
 	return ids
 }
 
-func (rc *RouterNodeConfig) GetRequestMaxBytes() uint64 {
-	return rc.RequestMaxBytes
+func NewRouterFilterConfig(requestMaxBytes uint64, clientSignatureVerificationRequired bool, channelID string) RouterFilterConfig {
+	return RouterFilterConfig{requestMaxBytes: requestMaxBytes, clientSignatureVerificationRequired: clientSignatureVerificationRequired, channelID: channelID}
 }
 
-func (rc *RouterNodeConfig) GetClientSignatureVerificationRequired() bool {
-	return rc.ClientSignatureVerificationRequired
+func (rfc RouterFilterConfig) RequestMaxBytes() uint64 {
+	return rfc.requestMaxBytes
+}
+
+func (rfc RouterFilterConfig) ClientSignatureVerificationRequired() bool {
+	return rfc.clientSignatureVerificationRequired
+}
+
+func (rfc RouterFilterConfig) ChannelID() string {
+	return rfc.channelID
 }

@@ -313,8 +313,8 @@ func createTraceID(rand *rand2.Rand) []byte {
 func createVerifier(config *nodeconfig.RouterNodeConfig) *requestfilter.RulesVerifier {
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
-	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
-	rv.AddRule(requestfilter.NewSigFilter(config))
+	rv.AddRule(requestfilter.NewMaxSizeFilter(config.RouterFilterConfig))
+	rv.AddRule(requestfilter.NewSigFilter(config.RouterFilterConfig))
 	return rv
 }
 

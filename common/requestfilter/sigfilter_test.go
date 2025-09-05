@@ -20,8 +20,9 @@ import (
 
 func TestSigVerifyFilter(t *testing.T) {
 	var v requestfilter.RulesVerifier
+	fc := &mocks.FakeFilterConfig{}
 
-	v.AddRule(requestfilter.NewSigFilter(&mocks.FakeFilterConfig{}))
+	v.AddRule(requestfilter.NewSigFilter(fc))
 	err := v.Verify(nil)
 	require.EqualError(t, err, "failed to convert request to signedData : nil request")
 
@@ -71,13 +72,13 @@ func TestSigValidationFlag(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	req := tx.CreateStructuredRequest([]byte("data"))
 	fc := &mocks.FakeFilterConfig{}
-	fc.GetClientSignatureVerificationRequiredReturns(true)
+	fc.ClientSignatureVerificationRequiredReturns(true)
 	v.AddRule(requestfilter.NewSigFilter(fc))
 
 	err := v.Verify(req)
 	require.EqualError(t, err, "error: signature validation is not implemented")
 
-	fc.GetClientSignatureVerificationRequiredReturns(false)
+	fc.ClientSignatureVerificationRequiredReturns(false)
 	v.Update(fc)
 	err = v.Verify(req)
 	require.NoError(t, err)
