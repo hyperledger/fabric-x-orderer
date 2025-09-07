@@ -11,26 +11,24 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
-	"github.com/hyperledger/fabric-x-common/common/policies"
-	"github.com/hyperledger/fabric-x-common/internaltools/pkg/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
 )
 
-//go:generate counterfeiter -o mocks/configtx_validator.go --fake-name ConfigTXValidator . configTxValidator
-type configTxValidator interface {
-	configtx.Validator
-}
-
-//go:generate counterfeiter -o mocks/policy_manager.go --fake-name PolicyManager . policyManager
-type policyManager interface {
-	policies.Manager
-}
-
-//go:generate counterfeiter -o mocks/signer_serializer.go --fake-name SignerSerializer . signerSerializer
-type signerSerializer interface {
-	identity.SignerSerializer
-}
+////go:generate counterfeiter -o mocks/configtx_validator.go --fake-name ConfigTXValidator . configTxValidator
+//type configTxValidator interface {
+//	configtx.Validator
+//}
+//
+////go:generate counterfeiter -o mocks/policy_manager.go --fake-name PolicyManager . policyManager
+//type policyManager interface {
+//	policies.Manager
+//}
+//
+////go:generate counterfeiter -o mocks/signer_serializer.go --fake-name SignerSerializer . signerSerializer
+//type signerSerializer interface {
+//	identity.SignerSerializer
+//}
 
 func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelconfig.Bundle, error) {
 	payload, err := protoutil.UnmarshalPayload(configTX.Payload)
