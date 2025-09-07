@@ -24,6 +24,7 @@ func TestRouterNodeConfigToYaml(t *testing.T) {
 		{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-1"), RawBytes("TLS CERT")},
 		{2, "127.0.0.1:7051", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("BatcherPubKey-2"), RawBytes("TLS CERT")},
 	}
+	consenter := ConsenterInfo{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}}
 
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 	rnc := &RouterNodeConfig{
@@ -31,6 +32,7 @@ func TestRouterNodeConfigToYaml(t *testing.T) {
 		TLSPrivateKeyFile:             []byte("tls key"),
 		PartyID:                       1,
 		Shards:                        shards,
+		Consenter:                     consenter,
 		NumOfConnectionsForBatcher:    1,
 		NumOfgRPCStreamsPerConnection: 2,
 	}
@@ -87,10 +89,12 @@ func TestConsenterNodeConfigToYaml(t *testing.T) {
 	}
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 	consenters := []ConsenterInfo{{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}}}
+	router := RouterInfo{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("ConsenterPubKey-1")}
 
 	cnc := &ConsenterNodeConfig{
 		Shards:             shards,
 		Consenters:         consenters,
+		Router:             router,
 		PartyId:            1,
 		TLSPrivateKeyFile:  RawBytes("TlsPrivateKey"),
 		TLSCertificateFile: RawBytes("TlsCertKey"),

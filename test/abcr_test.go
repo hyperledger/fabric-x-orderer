@@ -38,7 +38,7 @@ func TestABCR(t *testing.T) {
 
 	batcherNodes, batcherInfos := createBatcherNodesAndInfo(t, ca, numParties)
 	consenterNodes, consenterInfos := createConsenterNodesAndInfo(t, ca, numParties)
-
+	routerInfos := createRoutersInfo(t, ca, numParties)
 	for i := 0; i < numParties; i++ {
 		t.Logf("batcher: %v, %s", batcherInfos[i], batcherNodes[i].ToString())
 	}
@@ -47,7 +47,7 @@ func TestABCR(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
+	_, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, routerInfos, genesisBlock)
 
 	_, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId)
 

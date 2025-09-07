@@ -7,9 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package config
 
 import (
-	"crypto/ecdsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -151,6 +148,7 @@ func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig 
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
 		Shards:                              config.ExtractShards(),
+		Consenter:                           config.ExtractConsenterInParty(),
 		NumOfConnectionsForBatcher:          config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
 		NumOfgRPCStreamsPerConnection:       config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
 		UseTLS:                              config.LocalConfig.TLSConfig.Enabled,
@@ -216,6 +214,7 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
 		Shards:             config.ExtractShards(),
 		Consenters:         config.ExtractConsenters(),
+		Router:             config.ExtractRouterInParty(),
 		Directory:          config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		ListenAddress:      config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
 		PartyId:            config.LocalConfig.NodeLocalConfig.PartyID,
@@ -270,22 +269,7 @@ func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {
 		for _, batcher := range party.BatchersConfig {
 			shardId := types.ShardID(batcher.ShardID)
 
-			// Fetch public key from signing certificate
-			// NOTE: ARMA's new configuration uses certificates, which inherently contain the public key, instead of a separate public key field.
-			// To ensure backward compatibility until the full new config integration, the public key it enabled.
-			block, _ := pem.Decode(batcher.SignCert)
-			if block == nil || block.Bytes == nil {
-				panic("Failed decoding batcher signing certificate")
-			}
-
-			var pemPublicKey []byte
-			if block.Type == "CERTIFICATE" {
-				pemPublicKey = blockToPublicKey(block)
-			}
-
-			if block.Type == "PUBLIC KEY" {
-				pemPublicKey = batcher.SignCert
-			}
+			pemPublicKey := utils.GetPublicKeyFromCertificate(batcher.SignCert)
 
 			batcher := nodeconfig.BatcherInfo{
 				PartyID:    types.PartyID(party.PartyID),
@@ -323,22 +307,7 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 			tlsCACertsCollection = append(tlsCACertsCollection, ca)
 		}
 
-		// Fetch public key from signing certificate
-		// NOTE: ARMA's new configuration now uses certificates, which inherently contain the public key, instead of a separate public key field.
-		// To ensure backward compatibility until the full new config integration, the public key it enabled.
-		block, _ := pem.Decode(party.ConsenterConfig.SignCert)
-		if block == nil || block.Bytes == nil {
-			panic("Failed decoding consenter signing certificate")
-		}
-
-		var pemPublicKey []byte
-		if block.Type == "CERTIFICATE" {
-			pemPublicKey = blockToPublicKey(block)
-		}
-
-		if block.Type == "PUBLIC KEY" {
-			pemPublicKey = party.ConsenterConfig.SignCert
-		}
+		pemPublicKey := utils.GetPublicKeyFromCertificate(party.ConsenterConfig.SignCert)
 
 		consenterInfo := nodeconfig.ConsenterInfo{
 			PartyID:    types.PartyID(party.PartyID),
@@ -352,26 +321,28 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 	return consenters
 }
 
-func blockToPublicKey(block *pem.Block) []byte {
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		panic(fmt.Sprintf("Failed parsing consenter signing certificate: %v", err))
+func (config *Configuration) ExtractRouterInParty() nodeconfig.RouterInfo {
+	partyID := config.LocalConfig.NodeLocalConfig.PartyID
+	party := config.SharedConfig.PartiesConfig[partyID-1]
+	routerConfig := party.RouterConfig
+
+	var tlsCACertsCollection []nodeconfig.RawBytes
+	for _, ca := range party.TLSCACerts {
+		tlsCACertsCollection = append(tlsCACertsCollection, ca)
 	}
 
-	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	if !ok {
-		panic(fmt.Sprintf("Failed parsing consenter public key: %v", err))
+	routerInfo := nodeconfig.RouterInfo{
+		PartyID:    partyID,
+		Endpoint:   routerConfig.Host + ":" + strconv.Itoa(int(routerConfig.Port)),
+		TLSCACerts: tlsCACertsCollection,
+		TLSCert:    routerConfig.TlsCert,
 	}
 
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
-	if err != nil {
-		panic(fmt.Sprintf("Failed marshaling consenter public key: %v", err))
-	}
+	return routerInfo
+}
 
-	pemPublicKey := pem.EncodeToMemory(&pem.Block{
-		Type:  "PUBLIC KEY",
-		Bytes: publicKeyBytes,
-	})
-
-	return pemPublicKey
+func (config *Configuration) ExtractConsenterInParty() nodeconfig.ConsenterInfo {
+	partyID := config.LocalConfig.NodeLocalConfig.PartyID
+	consenterInfos := config.ExtractConsenters()
+	return consenterInfos[partyID-1]
 }

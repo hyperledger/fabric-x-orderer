@@ -34,6 +34,7 @@ type stream struct {
 	srReconnectChan                   chan reconnectReq
 	notifiedReconnect                 bool
 	verifier                          *requestfilter.RulesVerifier
+	configStreamer                    *configStreamer
 }
 
 // readResponses listens for responses from the batcher.
@@ -251,6 +252,7 @@ CopyChannelLoop:
 		srReconnectChan:                   s.srReconnectChan,
 		notifiedReconnect:                 false,
 		verifier:                          s.verifier,
+		configStreamer:                    s.configStreamer,
 	}
 	s.lock.Unlock()
 

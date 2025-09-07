@@ -170,7 +170,7 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	batcher := NewStubBatcher(t, ca, partyID, types.ShardID(1))
 
 	// create shard router
-	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier)
+	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil)
 
 	// start the batcher
 	batcher.Start()

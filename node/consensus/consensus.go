@@ -8,8 +8,10 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"math"
@@ -22,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
@@ -522,4 +525,36 @@ func (c *Consensus) pickEndpoint() string {
 	}
 	c.Logger.Debugf("Returning random node (ID=%d) endpoint : %s", c.Config.Consenters[r].PartyID, c.Config.Consenters[r].Endpoint)
 	return c.Config.Consenters[r].Endpoint
+}
+
+func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	err := c.validateRouterFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	c.Logger.Debugf("Received config request from router %s", c.Config.Router.Endpoint)
+
+	return &protos.SubmitResponse{Error: "SubmitConfig is not implemented in consenter", TraceId: request.TraceId}, nil
+}
+
+func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
+	// extract the client certificate from the context
+	cert := node.ExtractCertificateFromContext(ctx)
+	if cert == nil {
+		return errors.New("error: access denied; could not extract certificate from context")
+	}
+
+	// extract the router certificate from the ConsenterNodeConfig
+	rawRouterCert := c.Config.Router.TLSCert
+	pemBlock, _ := pem.Decode(rawRouterCert)
+	if pemBlock == nil || pemBlock.Bytes == nil {
+		return fmt.Errorf("error decoding router TLS certificate")
+	}
+
+	// compare the two certificates
+	if !bytes.Equal(pemBlock.Bytes, cert.Raw) {
+		return fmt.Errorf("error: access denied; client certificatte is different than the router's certificate")
+	}
+	return nil
 }
