@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package policy
+package policy_test
 
 import (
 	"testing"
@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
@@ -34,8 +35,9 @@ func TestBuildPolicyManagerFromBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, env)
 
-	policyManager, err := BuildPolicyManagerFromBlock(env, factory.GetDefault())
+	bundle, err := policy.BuildBundleFromBlock(env, factory.GetDefault())
 	require.NoError(t, err)
+	policyManager := bundle.PolicyManager()
 	require.NotNil(t, policyManager)
 
 	policy, exists := policyManager.GetPolicy(policies.ChannelWriters)

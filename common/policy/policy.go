@@ -12,12 +12,27 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/internaltools/pkg/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
 )
 
-// BuildPolicyManagerFromBlock builds a new policy manager from block.
-func BuildPolicyManagerFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (policies.Manager, error) {
+//go:generate counterfeiter -o mocks/configtx_validator.go --fake-name ConfigTXValidator . configTxValidator
+type configTxValidator interface {
+	configtx.Validator
+}
+
+//go:generate counterfeiter -o mocks/policy_manager.go --fake-name PolicyManager . policyManager
+type policyManager interface {
+	policies.Manager
+}
+
+//go:generate counterfeiter -o mocks/signer_serializer.go --fake-name SignerSerializer . signerSerializer
+type signerSerializer interface {
+	identity.SignerSerializer
+}
+
+func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelconfig.Bundle, error) {
 	payload, err := protoutil.UnmarshalPayload(configTX.Payload)
 	if err != nil {
 		return nil, errors.WithMessage(err, "error unmarshaling envelope to payload")
@@ -46,9 +61,7 @@ func BuildPolicyManagerFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (poli
 	if err != nil {
 		return nil, errors.WithMessagef(err, "error checking bundle for channel: %s", chdr.ChannelId)
 	}
-
-	policyManager := bundle.PolicyManager()
-	return policyManager, nil
+	return bundle, nil
 }
 
 // checkResources makes sure that the channel config is compatible with this binary and logs sanity checks

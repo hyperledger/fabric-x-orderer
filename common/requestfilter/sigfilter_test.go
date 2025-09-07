@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	mocksPolicy "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -73,10 +74,18 @@ func TestSigValidationFlag(t *testing.T) {
 	req := tx.CreateStructuredRequest([]byte("data"))
 	fc := &mocks.FakeFilterConfig{}
 	fc.ClientSignatureVerificationRequiredReturns(true)
+
+	mockValidator := &mocksPolicy.ConfigTXValidator{}
+	mockPolicyManager := &mocksPolicy.PolicyManager{}
+	mockSigner := &mocksPolicy.SignerSerializer{}
+
+	fc.ConfigTxValidatorReturns(mockValidator)
+	fc.PolicyManagerReturns(mockPolicyManager)
+	fc.SignerReturns(mockSigner)
 	v.AddRule(requestfilter.NewSigFilter(fc))
 
 	err := v.Verify(req)
-	require.EqualError(t, err, "error: signature validation is not implemented")
+	require.EqualError(t, err, "no policies in config block")
 
 	fc.ClientSignatureVerificationRequiredReturns(false)
 	v.Update(fc)
