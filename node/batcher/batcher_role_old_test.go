@@ -66,7 +66,7 @@ func (r *naiveReplication) Stop() {
 
 func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
 	for _, s := range r.subscribers {
-		s <- arma_types.NewSimpleBatch(batchSeq, 0, partyID, batchedRequests)
+		s <- arma_types.NewSimpleBatch(0, partyID, batchSeq, batchedRequests, 0)
 	}
 }
 

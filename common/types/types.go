@@ -69,6 +69,7 @@ type BatchAttestationFragment interface {
 type Batch interface {
 	BatchID
 	Requests() BatchedRequests
+	ConfigSequence() ConfigSequence
 }
 
 // OrderingInfo is an opaque object that provides extra information on the order of the batch attestation and
