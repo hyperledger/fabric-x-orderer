@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package assembler
 
 import (
-	"encoding/hex"
 	"errors"
 	"sync"
 	"time"
@@ -88,7 +87,6 @@ func (a *AssemblerRole) processOrderedBatchAttestations() {
 			return
 		}
 
-		t1 := time.Now()
 		batch, err := a.collateAttestationWithBatch(oba.BatchAttestation())
 		if err != nil {
 			if errors.Is(err, utils.ErrOperationCancelled) {
@@ -97,7 +95,6 @@ func (a *AssemblerRole) processOrderedBatchAttestations() {
 			}
 			a.Logger.Panicf("Something went wrong while fetching the batch %v", oba.BatchAttestation())
 		}
-		a.Logger.Infof("Located batch for digest %s within %v", ShortDigestString(oba.BatchAttestation().Digest()), time.Since(t1))
 		a.Ledger.Append(batch, oba.OrderingInfo())
 	}
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
@@ -109,18 +106,6 @@ func (a *AssemblerRole) collateAttestationWithBatch(ba types.BatchAttestation) (
 	if err != nil {
 		return nil, err
 	}
-	a.Logger.Infof("Retrieved batch with %d requests for attestation %s from index within %v", len(batch.Requests()), ShortDigestString(ba.Digest()), time.Since(t1))
+	a.Logger.Infof("Retrieved full batch with %d requests from index within %s, BatchID: %s", len(batch.Requests()), time.Since(t1), types.BatchIDToString(ba))
 	return batch, nil
-}
-
-// ShortDigestString provides a short string from a potentially long (32B) digest.
-func ShortDigestString(digest []byte) string {
-	if digest == nil {
-		return "nil"
-	}
-	if len(digest) <= 8 {
-		return hex.EncodeToString(digest)
-	}
-
-	return hex.EncodeToString(digest[:8])
 }
