@@ -17,10 +17,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hyperledger/fabric-x-common/protoutil"
-
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/msp"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
@@ -85,7 +87,7 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 				return nil, nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
 			}
 		} else {
-			return nil, nil, errors.Wrapf(err, "failed to read a cofig block, path is empty")
+			return nil, nil, errors.Wrapf(err, "failed to read a config block, path is empty")
 		}
 	default:
 		return nil, nil, errors.Errorf("bootstrap method %s is invalid", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method)
@@ -146,17 +148,15 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 
 func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig {
 	routerConfig := &nodeconfig.RouterNodeConfig{
-		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
-		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
-		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
-		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
-		Shards:                              config.ExtractShards(),
-		NumOfConnectionsForBatcher:          config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
-		NumOfgRPCStreamsPerConnection:       config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
-		UseTLS:                              config.LocalConfig.TLSConfig.Enabled,
-		ClientAuthRequired:                  config.LocalConfig.TLSConfig.ClientAuthRequired,
-		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
-		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.RouterParams.ClientSignatureVerificationRequired,
+		PartyID:                       config.LocalConfig.NodeLocalConfig.PartyID,
+		TLSCertificateFile:            config.LocalConfig.TLSConfig.Certificate,
+		TLSPrivateKeyFile:             config.LocalConfig.TLSConfig.PrivateKey,
+		ListenAddress:                 config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		Shards:                        config.ExtractShards(),
+		NumOfConnectionsForBatcher:    config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
+		NumOfgRPCStreamsPerConnection: config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
+		UseTLS:                        config.LocalConfig.TLSConfig.Enabled,
+		ClientAuthRequired:            config.LocalConfig.TLSConfig.ClientAuthRequired,
 	}
 	return routerConfig
 }
@@ -374,4 +374,42 @@ func blockToPublicKey(block *pem.Block) []byte {
 	})
 
 	return pemPublicKey
+}
+
+func (config *Configuration) ExtractRouterFilterConfig(block *common.Block) nodeconfig.RouterFilterConfig {
+	channelID, err := ReadChannelIdFromConfigBlock(block)
+	if err != nil {
+		panic(fmt.Sprintf("failed to read channelID from genesis block: %s", err))
+	}
+
+	env, err := protoutil.ExtractEnvelope(block, 0)
+	if err != nil {
+		panic(fmt.Sprintf("failed to extract envelope from genesis block: %s", err))
+	}
+
+	bccsp, err := (&factory.SWFactory{}).Get(config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	if err != nil {
+		// TODO: should be panic when there is no bccsp or take the default ?
+		// panic(fmt.Sprintf("failed to get bccsp config for router: %s", err))
+		bccsp = factory.GetDefault()
+	}
+
+	localmsp := msp.BuildLocalMSP(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	signer, err := localmsp.GetDefaultSigningIdentity()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
+	}
+
+	bundle, err := policy.BuildBundleFromBlock(env, bccsp)
+	if err != nil {
+		panic(fmt.Sprintf("failed to build bundle from genesis block: %s", err))
+	}
+
+	return nodeconfig.NewRouterFilterConfig(
+		config.SharedConfig.BatchingConfig.RequestMaxBytes,
+		config.LocalConfig.NodeLocalConfig.RouterParams.ClientSignatureVerificationRequired,
+		channelID,
+		bundle.PolicyManager(),
+		bundle.ConfigtxValidator(),
+		signer)
 }

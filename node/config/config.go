@@ -11,9 +11,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
-
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-x-common/common/configtx"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -65,6 +67,15 @@ type ConsenterInfo struct {
 	TLSCACerts []RawBytes
 }
 
+type RouterFilterConfig struct {
+	requestMaxBytes                     uint64
+	clientSignatureVerificationRequired bool
+	channelID                           string
+	policyManager                       policies.Manager
+	configTxValidator                   configtx.Validator
+	signer                              protoutil.Signer
+}
+
 type RouterNodeConfig struct {
 	// Private config
 	PartyID            types.PartyID
@@ -72,13 +83,12 @@ type RouterNodeConfig struct {
 	TLSPrivateKeyFile  RawBytes
 	ListenAddress      string
 	// Shared config
-	Shards                              []ShardInfo
-	NumOfConnectionsForBatcher          int
-	NumOfgRPCStreamsPerConnection       int
-	UseTLS                              bool
-	ClientAuthRequired                  bool
-	RequestMaxBytes                     uint64
-	ClientSignatureVerificationRequired bool
+	Shards                        []ShardInfo
+	NumOfConnectionsForBatcher    int
+	NumOfgRPCStreamsPerConnection int
+	UseTLS                        bool
+	ClientAuthRequired            bool
+	RouterFilterConfig            RouterFilterConfig
 }
 
 type AssemblerNodeConfig struct {

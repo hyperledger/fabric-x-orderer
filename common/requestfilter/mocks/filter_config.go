@@ -4,143 +4,404 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-x-common/common/configtx"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 )
 
 type FakeFilterConfig struct {
-	GetClientSignatureVerificationRequiredStub        func() bool
-	getClientSignatureVerificationRequiredMutex       sync.RWMutex
-	getClientSignatureVerificationRequiredArgsForCall []struct {
+	ChannelIDStub        func() string
+	channelIDMutex       sync.RWMutex
+	channelIDArgsForCall []struct {
 	}
-	getClientSignatureVerificationRequiredReturns struct {
+	channelIDReturns struct {
+		result1 string
+	}
+	channelIDReturnsOnCall map[int]struct {
+		result1 string
+	}
+	ClientSignatureVerificationRequiredStub        func() bool
+	clientSignatureVerificationRequiredMutex       sync.RWMutex
+	clientSignatureVerificationRequiredArgsForCall []struct {
+	}
+	clientSignatureVerificationRequiredReturns struct {
 		result1 bool
 	}
-	getClientSignatureVerificationRequiredReturnsOnCall map[int]struct {
+	clientSignatureVerificationRequiredReturnsOnCall map[int]struct {
 		result1 bool
 	}
-	GetRequestMaxBytesStub        func() uint64
-	getRequestMaxBytesMutex       sync.RWMutex
-	getRequestMaxBytesArgsForCall []struct {
+	ConfigTxValidatorStub        func() configtx.Validator
+	configTxValidatorMutex       sync.RWMutex
+	configTxValidatorArgsForCall []struct {
 	}
-	getRequestMaxBytesReturns struct {
+	configTxValidatorReturns struct {
+		result1 configtx.Validator
+	}
+	configTxValidatorReturnsOnCall map[int]struct {
+		result1 configtx.Validator
+	}
+	PolicyManagerStub        func() policies.Manager
+	policyManagerMutex       sync.RWMutex
+	policyManagerArgsForCall []struct {
+	}
+	policyManagerReturns struct {
+		result1 policies.Manager
+	}
+	policyManagerReturnsOnCall map[int]struct {
+		result1 policies.Manager
+	}
+	RequestMaxBytesStub        func() uint64
+	requestMaxBytesMutex       sync.RWMutex
+	requestMaxBytesArgsForCall []struct {
+	}
+	requestMaxBytesReturns struct {
 		result1 uint64
 	}
-	getRequestMaxBytesReturnsOnCall map[int]struct {
+	requestMaxBytesReturnsOnCall map[int]struct {
 		result1 uint64
+	}
+	SignerStub        func() protoutil.Signer
+	signerMutex       sync.RWMutex
+	signerArgsForCall []struct {
+	}
+	signerReturns struct {
+		result1 protoutil.Signer
+	}
+	signerReturnsOnCall map[int]struct {
+		result1 protoutil.Signer
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeFilterConfig) GetClientSignatureVerificationRequired() bool {
-	fake.getClientSignatureVerificationRequiredMutex.Lock()
-	ret, specificReturn := fake.getClientSignatureVerificationRequiredReturnsOnCall[len(fake.getClientSignatureVerificationRequiredArgsForCall)]
-	fake.getClientSignatureVerificationRequiredArgsForCall = append(fake.getClientSignatureVerificationRequiredArgsForCall, struct {
+func (fake *FakeFilterConfig) ChannelID() string {
+	fake.channelIDMutex.Lock()
+	ret, specificReturn := fake.channelIDReturnsOnCall[len(fake.channelIDArgsForCall)]
+	fake.channelIDArgsForCall = append(fake.channelIDArgsForCall, struct {
 	}{})
-	stub := fake.GetClientSignatureVerificationRequiredStub
-	fakeReturns := fake.getClientSignatureVerificationRequiredReturns
-	fake.recordInvocation("GetClientSignatureVerificationRequired", []interface{}{})
-	fake.getClientSignatureVerificationRequiredMutex.Unlock()
-	if stub != nil {
-		return stub()
+	fake.recordInvocation("ChannelID", []interface{}{})
+	fake.channelIDMutex.Unlock()
+	if fake.ChannelIDStub != nil {
+		return fake.ChannelIDStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.channelIDReturns
 	return fakeReturns.result1
 }
 
-func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredCallCount() int {
-	fake.getClientSignatureVerificationRequiredMutex.RLock()
-	defer fake.getClientSignatureVerificationRequiredMutex.RUnlock()
-	return len(fake.getClientSignatureVerificationRequiredArgsForCall)
+func (fake *FakeFilterConfig) ChannelIDCallCount() int {
+	fake.channelIDMutex.RLock()
+	defer fake.channelIDMutex.RUnlock()
+	return len(fake.channelIDArgsForCall)
 }
 
-func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredCalls(stub func() bool) {
-	fake.getClientSignatureVerificationRequiredMutex.Lock()
-	defer fake.getClientSignatureVerificationRequiredMutex.Unlock()
-	fake.GetClientSignatureVerificationRequiredStub = stub
+func (fake *FakeFilterConfig) ChannelIDCalls(stub func() string) {
+	fake.channelIDMutex.Lock()
+	defer fake.channelIDMutex.Unlock()
+	fake.ChannelIDStub = stub
 }
 
-func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredReturns(result1 bool) {
-	fake.getClientSignatureVerificationRequiredMutex.Lock()
-	defer fake.getClientSignatureVerificationRequiredMutex.Unlock()
-	fake.GetClientSignatureVerificationRequiredStub = nil
-	fake.getClientSignatureVerificationRequiredReturns = struct {
+func (fake *FakeFilterConfig) ChannelIDReturns(result1 string) {
+	fake.channelIDMutex.Lock()
+	defer fake.channelIDMutex.Unlock()
+	fake.ChannelIDStub = nil
+	fake.channelIDReturns = struct {
+		result1 string
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) ChannelIDReturnsOnCall(i int, result1 string) {
+	fake.channelIDMutex.Lock()
+	defer fake.channelIDMutex.Unlock()
+	fake.ChannelIDStub = nil
+	if fake.channelIDReturnsOnCall == nil {
+		fake.channelIDReturnsOnCall = make(map[int]struct {
+			result1 string
+		})
+	}
+	fake.channelIDReturnsOnCall[i] = struct {
+		result1 string
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) ClientSignatureVerificationRequired() bool {
+	fake.clientSignatureVerificationRequiredMutex.Lock()
+	ret, specificReturn := fake.clientSignatureVerificationRequiredReturnsOnCall[len(fake.clientSignatureVerificationRequiredArgsForCall)]
+	fake.clientSignatureVerificationRequiredArgsForCall = append(fake.clientSignatureVerificationRequiredArgsForCall, struct {
+	}{})
+	fake.recordInvocation("ClientSignatureVerificationRequired", []interface{}{})
+	fake.clientSignatureVerificationRequiredMutex.Unlock()
+	if fake.ClientSignatureVerificationRequiredStub != nil {
+		return fake.ClientSignatureVerificationRequiredStub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.clientSignatureVerificationRequiredReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeFilterConfig) ClientSignatureVerificationRequiredCallCount() int {
+	fake.clientSignatureVerificationRequiredMutex.RLock()
+	defer fake.clientSignatureVerificationRequiredMutex.RUnlock()
+	return len(fake.clientSignatureVerificationRequiredArgsForCall)
+}
+
+func (fake *FakeFilterConfig) ClientSignatureVerificationRequiredCalls(stub func() bool) {
+	fake.clientSignatureVerificationRequiredMutex.Lock()
+	defer fake.clientSignatureVerificationRequiredMutex.Unlock()
+	fake.ClientSignatureVerificationRequiredStub = stub
+}
+
+func (fake *FakeFilterConfig) ClientSignatureVerificationRequiredReturns(result1 bool) {
+	fake.clientSignatureVerificationRequiredMutex.Lock()
+	defer fake.clientSignatureVerificationRequiredMutex.Unlock()
+	fake.ClientSignatureVerificationRequiredStub = nil
+	fake.clientSignatureVerificationRequiredReturns = struct {
 		result1 bool
 	}{result1}
 }
 
-func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredReturnsOnCall(i int, result1 bool) {
-	fake.getClientSignatureVerificationRequiredMutex.Lock()
-	defer fake.getClientSignatureVerificationRequiredMutex.Unlock()
-	fake.GetClientSignatureVerificationRequiredStub = nil
-	if fake.getClientSignatureVerificationRequiredReturnsOnCall == nil {
-		fake.getClientSignatureVerificationRequiredReturnsOnCall = make(map[int]struct {
+func (fake *FakeFilterConfig) ClientSignatureVerificationRequiredReturnsOnCall(i int, result1 bool) {
+	fake.clientSignatureVerificationRequiredMutex.Lock()
+	defer fake.clientSignatureVerificationRequiredMutex.Unlock()
+	fake.ClientSignatureVerificationRequiredStub = nil
+	if fake.clientSignatureVerificationRequiredReturnsOnCall == nil {
+		fake.clientSignatureVerificationRequiredReturnsOnCall = make(map[int]struct {
 			result1 bool
 		})
 	}
-	fake.getClientSignatureVerificationRequiredReturnsOnCall[i] = struct {
+	fake.clientSignatureVerificationRequiredReturnsOnCall[i] = struct {
 		result1 bool
 	}{result1}
 }
 
-func (fake *FakeFilterConfig) GetRequestMaxBytes() uint64 {
-	fake.getRequestMaxBytesMutex.Lock()
-	ret, specificReturn := fake.getRequestMaxBytesReturnsOnCall[len(fake.getRequestMaxBytesArgsForCall)]
-	fake.getRequestMaxBytesArgsForCall = append(fake.getRequestMaxBytesArgsForCall, struct {
+func (fake *FakeFilterConfig) ConfigTxValidator() configtx.Validator {
+	fake.configTxValidatorMutex.Lock()
+	ret, specificReturn := fake.configTxValidatorReturnsOnCall[len(fake.configTxValidatorArgsForCall)]
+	fake.configTxValidatorArgsForCall = append(fake.configTxValidatorArgsForCall, struct {
 	}{})
-	stub := fake.GetRequestMaxBytesStub
-	fakeReturns := fake.getRequestMaxBytesReturns
-	fake.recordInvocation("GetRequestMaxBytes", []interface{}{})
-	fake.getRequestMaxBytesMutex.Unlock()
-	if stub != nil {
-		return stub()
+	fake.recordInvocation("ConfigTxValidator", []interface{}{})
+	fake.configTxValidatorMutex.Unlock()
+	if fake.ConfigTxValidatorStub != nil {
+		return fake.ConfigTxValidatorStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.configTxValidatorReturns
 	return fakeReturns.result1
 }
 
-func (fake *FakeFilterConfig) GetRequestMaxBytesCallCount() int {
-	fake.getRequestMaxBytesMutex.RLock()
-	defer fake.getRequestMaxBytesMutex.RUnlock()
-	return len(fake.getRequestMaxBytesArgsForCall)
+func (fake *FakeFilterConfig) ConfigTxValidatorCallCount() int {
+	fake.configTxValidatorMutex.RLock()
+	defer fake.configTxValidatorMutex.RUnlock()
+	return len(fake.configTxValidatorArgsForCall)
 }
 
-func (fake *FakeFilterConfig) GetRequestMaxBytesCalls(stub func() uint64) {
-	fake.getRequestMaxBytesMutex.Lock()
-	defer fake.getRequestMaxBytesMutex.Unlock()
-	fake.GetRequestMaxBytesStub = stub
+func (fake *FakeFilterConfig) ConfigTxValidatorCalls(stub func() configtx.Validator) {
+	fake.configTxValidatorMutex.Lock()
+	defer fake.configTxValidatorMutex.Unlock()
+	fake.ConfigTxValidatorStub = stub
 }
 
-func (fake *FakeFilterConfig) GetRequestMaxBytesReturns(result1 uint64) {
-	fake.getRequestMaxBytesMutex.Lock()
-	defer fake.getRequestMaxBytesMutex.Unlock()
-	fake.GetRequestMaxBytesStub = nil
-	fake.getRequestMaxBytesReturns = struct {
+func (fake *FakeFilterConfig) ConfigTxValidatorReturns(result1 configtx.Validator) {
+	fake.configTxValidatorMutex.Lock()
+	defer fake.configTxValidatorMutex.Unlock()
+	fake.ConfigTxValidatorStub = nil
+	fake.configTxValidatorReturns = struct {
+		result1 configtx.Validator
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) ConfigTxValidatorReturnsOnCall(i int, result1 configtx.Validator) {
+	fake.configTxValidatorMutex.Lock()
+	defer fake.configTxValidatorMutex.Unlock()
+	fake.ConfigTxValidatorStub = nil
+	if fake.configTxValidatorReturnsOnCall == nil {
+		fake.configTxValidatorReturnsOnCall = make(map[int]struct {
+			result1 configtx.Validator
+		})
+	}
+	fake.configTxValidatorReturnsOnCall[i] = struct {
+		result1 configtx.Validator
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) PolicyManager() policies.Manager {
+	fake.policyManagerMutex.Lock()
+	ret, specificReturn := fake.policyManagerReturnsOnCall[len(fake.policyManagerArgsForCall)]
+	fake.policyManagerArgsForCall = append(fake.policyManagerArgsForCall, struct {
+	}{})
+	fake.recordInvocation("PolicyManager", []interface{}{})
+	fake.policyManagerMutex.Unlock()
+	if fake.PolicyManagerStub != nil {
+		return fake.PolicyManagerStub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.policyManagerReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeFilterConfig) PolicyManagerCallCount() int {
+	fake.policyManagerMutex.RLock()
+	defer fake.policyManagerMutex.RUnlock()
+	return len(fake.policyManagerArgsForCall)
+}
+
+func (fake *FakeFilterConfig) PolicyManagerCalls(stub func() policies.Manager) {
+	fake.policyManagerMutex.Lock()
+	defer fake.policyManagerMutex.Unlock()
+	fake.PolicyManagerStub = stub
+}
+
+func (fake *FakeFilterConfig) PolicyManagerReturns(result1 policies.Manager) {
+	fake.policyManagerMutex.Lock()
+	defer fake.policyManagerMutex.Unlock()
+	fake.PolicyManagerStub = nil
+	fake.policyManagerReturns = struct {
+		result1 policies.Manager
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) PolicyManagerReturnsOnCall(i int, result1 policies.Manager) {
+	fake.policyManagerMutex.Lock()
+	defer fake.policyManagerMutex.Unlock()
+	fake.PolicyManagerStub = nil
+	if fake.policyManagerReturnsOnCall == nil {
+		fake.policyManagerReturnsOnCall = make(map[int]struct {
+			result1 policies.Manager
+		})
+	}
+	fake.policyManagerReturnsOnCall[i] = struct {
+		result1 policies.Manager
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) RequestMaxBytes() uint64 {
+	fake.requestMaxBytesMutex.Lock()
+	ret, specificReturn := fake.requestMaxBytesReturnsOnCall[len(fake.requestMaxBytesArgsForCall)]
+	fake.requestMaxBytesArgsForCall = append(fake.requestMaxBytesArgsForCall, struct {
+	}{})
+	fake.recordInvocation("RequestMaxBytes", []interface{}{})
+	fake.requestMaxBytesMutex.Unlock()
+	if fake.RequestMaxBytesStub != nil {
+		return fake.RequestMaxBytesStub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.requestMaxBytesReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeFilterConfig) RequestMaxBytesCallCount() int {
+	fake.requestMaxBytesMutex.RLock()
+	defer fake.requestMaxBytesMutex.RUnlock()
+	return len(fake.requestMaxBytesArgsForCall)
+}
+
+func (fake *FakeFilterConfig) RequestMaxBytesCalls(stub func() uint64) {
+	fake.requestMaxBytesMutex.Lock()
+	defer fake.requestMaxBytesMutex.Unlock()
+	fake.RequestMaxBytesStub = stub
+}
+
+func (fake *FakeFilterConfig) RequestMaxBytesReturns(result1 uint64) {
+	fake.requestMaxBytesMutex.Lock()
+	defer fake.requestMaxBytesMutex.Unlock()
+	fake.RequestMaxBytesStub = nil
+	fake.requestMaxBytesReturns = struct {
 		result1 uint64
 	}{result1}
 }
 
-func (fake *FakeFilterConfig) GetRequestMaxBytesReturnsOnCall(i int, result1 uint64) {
-	fake.getRequestMaxBytesMutex.Lock()
-	defer fake.getRequestMaxBytesMutex.Unlock()
-	fake.GetRequestMaxBytesStub = nil
-	if fake.getRequestMaxBytesReturnsOnCall == nil {
-		fake.getRequestMaxBytesReturnsOnCall = make(map[int]struct {
+func (fake *FakeFilterConfig) RequestMaxBytesReturnsOnCall(i int, result1 uint64) {
+	fake.requestMaxBytesMutex.Lock()
+	defer fake.requestMaxBytesMutex.Unlock()
+	fake.RequestMaxBytesStub = nil
+	if fake.requestMaxBytesReturnsOnCall == nil {
+		fake.requestMaxBytesReturnsOnCall = make(map[int]struct {
 			result1 uint64
 		})
 	}
-	fake.getRequestMaxBytesReturnsOnCall[i] = struct {
+	fake.requestMaxBytesReturnsOnCall[i] = struct {
 		result1 uint64
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) Signer() protoutil.Signer {
+	fake.signerMutex.Lock()
+	ret, specificReturn := fake.signerReturnsOnCall[len(fake.signerArgsForCall)]
+	fake.signerArgsForCall = append(fake.signerArgsForCall, struct {
+	}{})
+	fake.recordInvocation("Signer", []interface{}{})
+	fake.signerMutex.Unlock()
+	if fake.SignerStub != nil {
+		return fake.SignerStub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.signerReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeFilterConfig) SignerCallCount() int {
+	fake.signerMutex.RLock()
+	defer fake.signerMutex.RUnlock()
+	return len(fake.signerArgsForCall)
+}
+
+func (fake *FakeFilterConfig) SignerCalls(stub func() protoutil.Signer) {
+	fake.signerMutex.Lock()
+	defer fake.signerMutex.Unlock()
+	fake.SignerStub = stub
+}
+
+func (fake *FakeFilterConfig) SignerReturns(result1 protoutil.Signer) {
+	fake.signerMutex.Lock()
+	defer fake.signerMutex.Unlock()
+	fake.SignerStub = nil
+	fake.signerReturns = struct {
+		result1 protoutil.Signer
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) SignerReturnsOnCall(i int, result1 protoutil.Signer) {
+	fake.signerMutex.Lock()
+	defer fake.signerMutex.Unlock()
+	fake.SignerStub = nil
+	if fake.signerReturnsOnCall == nil {
+		fake.signerReturnsOnCall = make(map[int]struct {
+			result1 protoutil.Signer
+		})
+	}
+	fake.signerReturnsOnCall[i] = struct {
+		result1 protoutil.Signer
 	}{result1}
 }
 
 func (fake *FakeFilterConfig) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.channelIDMutex.RLock()
+	defer fake.channelIDMutex.RUnlock()
+	fake.clientSignatureVerificationRequiredMutex.RLock()
+	defer fake.clientSignatureVerificationRequiredMutex.RUnlock()
+	fake.configTxValidatorMutex.RLock()
+	defer fake.configTxValidatorMutex.RUnlock()
+	fake.policyManagerMutex.RLock()
+	defer fake.policyManagerMutex.RUnlock()
+	fake.requestMaxBytesMutex.RLock()
+	defer fake.requestMaxBytesMutex.RUnlock()
+	fake.signerMutex.RLock()
+	defer fake.signerMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -72,7 +72,7 @@ func TestMultiShardMapper(t *testing.T) {
 	})
 }
 
-func TestOneSharMapper(t *testing.T) {
+func TestOneShardMapper(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 
 	// test MapperCRC64 with 1 shard
