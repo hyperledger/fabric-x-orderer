@@ -535,8 +535,7 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 	}
 
 	for i := 0; i < numOfTxs; i++ {
-		data := tx.PrepareTxWithTimestamp(i, txSize, sessionNumber)
-		env := tx.CreateStructuredEnvelope(data)
+		env := tx.PrepareEnvWithTimestamp(i, txSize, sessionNumber)
 
 		status := rl.GetToken()
 		if !status {
@@ -830,7 +829,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 				logger.Debugf("tx %x was received from the assembler", data)
 
 				// extract the tx size, sending time and calculate the delay, add the delay to sumOfDelayTimes
-				sumOfTxsSize += len(data)
+				sumOfTxsSize += len(protoutil.MarshalOrPanic(env))
 				delay := calculateDelayOfTx(data, blockWithTime.acceptedTime)
 				sumOfDelayTimes = sumOfDelayTimes + delay.Seconds()
 			}
@@ -879,13 +878,14 @@ func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom strin
 }
 
 func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	data := tx.PrepareTxWithTimestamp(i, txSize, sessionNumber)
+	env := tx.PrepareEnvWithTimestamp(i, txSize, sessionNumber)
+	data, _ := tx.GetDataFromEnvelope(env)
 	if txsMap != nil {
 		logger.Debugf("Add tx %x to the map", data)
 		txsMap.Add(string(data))
 	}
 	for j := 0; j < len(streams); j++ {
-		err := streams[j].Send(tx.CreateStructuredEnvelope(data))
+		err := streams[j].Send(env)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
 			os.Exit(3)

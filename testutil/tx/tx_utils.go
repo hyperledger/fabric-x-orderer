@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -59,19 +60,20 @@ func GetDataFromEnvelope(env *common.Envelope) ([]byte, error) {
 }
 
 // PrepareTxWithTimestamp is used only in performance testing and its content consists of the tx number, the time stamp (creation time) and the session number the tx is sent through
-func PrepareTxWithTimestamp(txNumber int, txSize int, sessionNumber []byte) []byte {
+func PrepareTxWithTimestamp(txNumber int, requiredDataSize int, sessionNumber []byte) []byte {
 	// create timestamp (8 bytes)
 	timeStamp := uint64(time.Now().UnixNano())
 
 	// prepare the payload data
-	buffer := make([]byte, txSize)
+	dataInfoSize := 8 + 8 + len(sessionNumber) // size of info fields stored in the data
+	buffer := make([]byte, max(requiredDataSize, dataInfoSize))
 	buff := bytes.NewBuffer(buffer[:0])
 	binary.Write(buff, binary.BigEndian, uint64(txNumber))
 	binary.Write(buff, binary.BigEndian, timeStamp)
 	buff.Write(sessionNumber)
 	result := buff.Bytes()
-	if len(buff.Bytes()) < txSize {
-		padding := make([]byte, txSize-len(result))
+	if len(buff.Bytes()) < requiredDataSize {
+		padding := make([]byte, requiredDataSize-len(result))
 		result = append(result, padding...)
 	}
 	return result
@@ -87,4 +89,30 @@ func ExtractTimestampFromTx(data []byte) time.Time {
 	binary.Read(readPayload, binary.BigEndian, &extractedSendTime)
 	sendTime := time.Unix(0, int64(extractedSendTime))
 	return sendTime
+}
+
+// currently, for large enough data, the overhead remains constant at 58 bytes.
+var headersOverheadSize = func() int {
+	size := 300
+	env := CreateStructuredEnvelope(make([]byte, size))
+	envBytes, _ := proto.Marshal(env)
+	return len(envBytes) - size
+}()
+
+// PrepareEnvWithTimestamp prepares an envelope of size envSize, accounting for the overhead introduced by additional headers in the transaction.
+func PrepareEnvWithTimestamp(txNumber int, envSize int, sessionNumber []byte) *common.Envelope {
+	var dataSize int
+
+	overheadSize := headersOverheadSize
+	if envSize < 186 { // 128+58
+		overheadSize -= 2
+	}
+
+	if envSize < overheadSize {
+		dataSize = envSize
+	} else {
+		dataSize = envSize - overheadSize
+	}
+	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
+	return CreateStructuredEnvelope(data)
 }
