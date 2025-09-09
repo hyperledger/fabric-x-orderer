@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -177,6 +178,9 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	availableBlocks := make([]state.AvailableBlock, len(attestations))
 	for i, ba := range attestations {
 		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
+		if !bytes.Equal(hdr.AvailableCommonBlocks[i].Header.DataHash, ba[0].Digest()) {
+			return nil, fmt.Errorf("proposed available common block data hash in index %d isn't equal to computed digest", i)
+		}
 	}
 
 	for i, ab := range hdr.AvailableBlocks {
@@ -197,13 +201,18 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	for i, ba := range attestations {
-		var hdr state.BlockHeader
-		hdr.Digest = ba[0].Digest()
+		var bh state.BlockHeader
+		bh.Digest = ba[0].Digest()
 		lastBlockNumber++
-		hdr.Number = lastBlockNumber
-		hdr.PrevHash = prevHash
-		prevHash = hdr.Hash()
-		availableBlocks[i].Header = &hdr
+		bh.Number = lastBlockNumber
+		bh.PrevHash = prevHash
+		prevHash = bh.Hash()
+		availableBlocks[i].Header = &bh
+
+		if hdr.AvailableCommonBlocks[i].Header.Number != lastBlockNumber {
+			return nil, fmt.Errorf("proposed common block header number %d in index %d isn't equal to computed number %d", hdr.AvailableCommonBlocks[i].Header.Number, i, lastBlockNumber)
+		}
+
 	}
 
 	for i, availableBlock := range hdr.AvailableBlocks {
@@ -424,9 +433,11 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
 
 	availableBlocks := make([]state.AvailableBlock, len(attestations))
+	availableCommonBlocks := make([]*common.Block, len(attestations))
 
 	for i, ba := range attestations {
 		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
+		availableCommonBlocks[i] = &common.Block{Header: &common.BlockHeader{DataHash: ba[0].Digest()}}
 	}
 
 	for i, ba := range attestations {
@@ -437,6 +448,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		hdr.PrevHash = prevHash
 		prevHash = hdr.Hash()
 		availableBlocks[i].Header = &hdr
+		availableCommonBlocks[i].Header.Number = lastBlockNumber
 	}
 
 	if len(attestations) > 0 {
@@ -452,9 +464,10 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	return smartbft_types.Proposal{
 		Header: (&state.Header{
-			AvailableBlocks: availableBlocks,
-			State:           newState,
-			Num:             arma_types.DecisionNum(md.LatestSequence),
+			AvailableBlocks:       availableBlocks,
+			AvailableCommonBlocks: availableCommonBlocks,
+			State:                 newState,
+			Num:                   arma_types.DecisionNum(md.LatestSequence),
 		}).Serialize(),
 		Metadata: metadata,
 		Payload:  reqs.Serialize(),

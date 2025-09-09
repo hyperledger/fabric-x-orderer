@@ -601,13 +601,13 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			require.Equal(t, tst.metadata.LatestSequence, uint64(header.Num))
 
 			require.Len(t, header.AvailableBlocks, len(tst.bafsOfAvailableBatches))
+			require.Len(t, header.AvailableCommonBlocks, len(tst.bafsOfAvailableBatches))
 
 			for i, baf := range tst.bafsOfAvailableBatches {
 				ab := state.NewAvailableBatch(baf.Primary(), baf.Shard(), baf.Seq(), baf.Digest())
 				require.Equal(t, ab, header.AvailableBlocks[i].Batch)
+				require.Equal(t, baf.Digest(), header.AvailableCommonBlocks[i].Header.DataHash)
 			}
-
-			require.Len(t, header.AvailableBlocks, len(tst.bafsOfAvailableBatches))
 
 			latestBlockHeader := tst.initialAppContext
 			latestBlockNumber := tst.initialAppContext.Number + 1
@@ -621,6 +621,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				}
 
 				require.Equal(t, latestBlockHeader, *header.AvailableBlocks[i].Header)
+				require.Equal(t, latestBlockNumber, header.AvailableCommonBlocks[i].Header.Number)
 
 				latestBlockNumber++
 				latestBlockHash = latestBlockHeader.Hash()
@@ -719,6 +720,7 @@ func TestVerifyProposal(t *testing.T) {
 	latestBlockHeader.PrevHash = initialAppContext.Hash()
 
 	header.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	header.AvailableCommonBlocks = []*common.Block{{Header: &common.BlockHeader{DataHash: baf123id1p1s1.Digest(), Number: latestBlockHeader.Number}}}
 
 	newState := initialState
 	newState.AppContext = latestBlockHeader.Bytes()
