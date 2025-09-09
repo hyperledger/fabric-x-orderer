@@ -35,6 +35,9 @@ func (h *Header) Deserialize(bytes []byte) error {
 	availableBlockCount := int(binary.BigEndian.Uint32(bytes[8:12]))
 	pos := 12
 	h.AvailableBlocks = nil
+	if availableBlockCount > 0 {
+		h.AvailableBlocks = make([]AvailableBlock, availableBlockCount)
+	}
 	if len(bytes) < pos+availableBlockSerializedSize*availableBlockCount {
 		return errors.Errorf("len of bytes is just %d which is not enough to read the available blocks; expected at least %d", len(bytes), pos+availableBlockSerializedSize*availableBlockCount)
 	}
@@ -44,11 +47,14 @@ func (h *Header) Deserialize(bytes []byte) error {
 			return errors.Errorf("failed deserializing available block; index: %d", i)
 		}
 		pos += availableBlockSerializedSize
-		h.AvailableBlocks = append(h.AvailableBlocks, ab)
+		h.AvailableBlocks[i] = ab
 	}
 	availableCommonBlockCount := int(binary.BigEndian.Uint32(bytes[pos : pos+4]))
 	pos += 4
 	h.AvailableCommonBlocks = nil
+	if availableCommonBlockCount > 0 {
+		h.AvailableCommonBlocks = make([]*common.Block, availableCommonBlockCount)
+	}
 	for i := 0; i < availableCommonBlockCount; i++ {
 		rawBlockSize := int(binary.BigEndian.Uint32(bytes[pos : pos+4]))
 		pos += 4
@@ -58,7 +64,7 @@ func (h *Header) Deserialize(bytes []byte) error {
 			return errors.Errorf("failed to unmarshal available common block; index: %d", i)
 		}
 		pos += rawBlockSize
-		h.AvailableCommonBlocks = append(h.AvailableCommonBlocks, block)
+		h.AvailableCommonBlocks[i] = block
 	}
 	rawState := bytes[pos:]
 	if len(rawState) == 0 {

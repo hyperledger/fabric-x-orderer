@@ -7,10 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
+	"bytes"
 	"encoding/binary"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
@@ -35,8 +37,8 @@ func TestHeaderBytes(t *testing.T) {
 
 	require.Equal(t, hdr, hdr2)
 
-	block1 := &common.Block{Header: &common.BlockHeader{Number: 1}}
-	block2 := &common.Block{Header: &common.BlockHeader{Number: 2}}
+	block1 := &common.Block{Header: &common.BlockHeader{Number: 1, PreviousHash: []byte{1}, DataHash: []byte{11}}}
+	block2 := &common.Block{Header: &common.BlockHeader{Number: 2, PreviousHash: []byte{2}, DataHash: []byte{22}}}
 
 	m1, err := proto.Marshal(block1)
 	require.NoError(t, err)
@@ -50,7 +52,11 @@ func TestHeaderBytes(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(m2, b2))
 
 	require.Equal(t, uint64(1), b1.Header.Number)
+	require.Equal(t, []byte{1}, b1.Header.PreviousHash)
+	require.Equal(t, []byte{11}, b1.Header.DataHash)
 	require.Equal(t, uint64(2), b2.Header.Number)
+	require.Equal(t, []byte{2}, b2.Header.PreviousHash)
+	require.Equal(t, []byte{22}, b2.Header.DataHash)
 
 	bm1, err := proto.Marshal(b1)
 	require.NoError(t, err)
@@ -69,6 +75,8 @@ func TestHeaderBytes(t *testing.T) {
 	require.Equal(t, hdr.AvailableBlocks, hdr2.AvailableBlocks)
 	require.Equal(t, hdr.AvailableCommonBlocks[0].Header.Number, hdr2.AvailableCommonBlocks[0].Header.Number)
 	require.Equal(t, hdr.AvailableCommonBlocks[1].Header.Number, hdr2.AvailableCommonBlocks[1].Header.Number)
+	require.True(t, bytes.Equal(protoutil.MarshalOrPanic(hdr.AvailableCommonBlocks[0]), protoutil.MarshalOrPanic(hdr2.AvailableCommonBlocks[0])))
+	require.True(t, bytes.Equal(protoutil.MarshalOrPanic(hdr.AvailableCommonBlocks[1]), protoutil.MarshalOrPanic(hdr2.AvailableCommonBlocks[1])))
 
 	require.Equal(t, hdr.Serialize(), hdr2.Serialize())
 
