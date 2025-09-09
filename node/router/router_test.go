@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
@@ -116,6 +117,32 @@ func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(20)
 	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestSubmitToStubBatchersGetMetrics verifies that submitting a series of stream and broadcast requests
+// to the router correctly updates the incoming transaction metrics. It sets up a test router with TLS,
+// submits 100 stream and 100 broadcast requests, and then asserts that the monitoring service reports
+// the expected total number of incoming transactions within a specified timeout.
+func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, errors.Wrap(err, "during TLS client connection setup"))
+	require.NotNil(t, testSetup.clientConn)
+
+	defer testSetup.Close()
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+
+	res := submitStreamRequests(testSetup.clientConn, 100)
+	require.NoError(t, res.err)
+
+	res = submitBroadcastRequests(testSetup.clientConn, 100)
+	require.NoError(t, res.err)
+
+	require.Eventually(t, func() bool {
+		return testutil.RouterIncomingTxMetric(t, types.PartyID(1), URL) == 200
+	}, 30*time.Second, 100*time.Millisecond)
 }
 
 // Scenario:
