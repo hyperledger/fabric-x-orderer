@@ -14,7 +14,6 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -33,14 +32,17 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 type node struct {
@@ -355,6 +357,7 @@ type BlockPullerOptions struct {
 	Timeout          int
 	ErrString        string
 	Status           *common.Status
+	Verifier         *crypto.ECDSAVerifier
 }
 
 func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.PartyID]*BlockPullerInfo {
@@ -384,7 +387,8 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 		go func() {
 			defer waitForPullDone.Done()
 
-			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, options.Transactions, options.Blocks, options.Timeout, options.NeedVerification)
+			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, (len(options.Parties)-1)/3, options.Transactions,
+				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier)
 			lock.Lock()
 			defer lock.Unlock()
 			pullInfos[partyID] = pullInfo
@@ -409,7 +413,10 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	return pullInfos
 }
 
-func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID, startBlock uint64, endBlock uint64, transactions int, blocks int, timeout int, needVerification bool) (*BlockPullerInfo, error) {
+func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID,
+	startBlock uint64, endBlock uint64, fval, transactions, blocks, timeout int,
+	needVerification bool, sigVerifier *crypto.ECDSAVerifier,
+) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer toCancel()
@@ -463,11 +470,37 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			return nil
 		}
 
+		if sigVerifier != nil && !isGenesisBlock {
+			bhdr := state.BlockHeader{Number: block.Header.Number, Digest: block.Header.DataHash, PrevHash: block.Header.PreviousHash}
+			sigsBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
+			md := &common.Metadata{}
+			if err := proto.Unmarshal(sigsBytes, md); err != nil {
+				return errors.Wrapf(err, "error unmarshalling signatures from metadata: %v", err)
+			}
+
+			verifiedSigns := 0
+			for _, metadataSignature := range md.Signatures {
+				identifierHeader, err := protoutil.UnmarshalIdentifierHeader(metadataSignature.IdentifierHeader)
+				if err != nil {
+					return fmt.Errorf("failed unmarshalling identifier header for block %d: %v", block.Header.GetNumber(), err)
+				}
+				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, bhdr.Bytes(), metadataSignature.GetSignature()); err != nil {
+					t.Logf("failed verifying signature for block %d: %v", block.Header.GetNumber(), err)
+					continue
+				}
+
+				verifiedSigns++
+			}
+
+			if verifiedSigns < 2*fval+1 {
+				return fmt.Errorf("not enough signatures: got %d, need at least %d (2*f + 1)", verifiedSigns, 2*fval+1)
+			}
+		}
+
 		for i := 0; i < transactionsNumber; i++ {
 			envelope, err := protoutil.UnmarshalEnvelope(data[i])
 			if err != nil {
-				t.Errorf("failed to unmarshal envelope %v", err)
-				toCancel()
+				return errors.Wrapf(err, "failed to unmarshal envelope %v", err)
 			}
 
 			if needVerification && transactions > 0 {
@@ -510,4 +543,23 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		}
 	}
 	return blockPullerInfo, err
+}
+
+func BuildVerifier(consenters []nodeconfig.ConsenterInfo, logger types.Logger) crypto.ECDSAVerifier {
+	verifier := make(crypto.ECDSAVerifier)
+	for _, ci := range consenters {
+		pk, _ := pem.Decode(ci.PublicKey)
+		if pk == nil || pk.Bytes == nil {
+			logger.Panicf("Failed decoding consenter public key")
+		}
+
+		pk4, err := x509.ParsePKIXPublicKey(pk.Bytes)
+		if err != nil {
+			logger.Panicf("Failed parsing consenter public key: %v", err)
+		}
+
+		verifier[crypto.ShardPartyKey{Shard: types.ShardIDConsensus, Party: types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+	}
+
+	return verifier
 }
