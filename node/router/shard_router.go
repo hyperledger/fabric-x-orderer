@@ -152,12 +152,13 @@ func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int
 	sr.lock.RUnlock()
 	sr.logger.Debugf("Checking stream %d,%d that was reported", connIndex, streamInConnIndex)
 
-	// check the connection, and if it's bad - try to reconnect until success
 	if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
 		if err = sr.reconnect(connIndex); err != nil {
 			return err
 		}
 	}
+	// check the connection, and if it's bad - try to reconnect untill success
+	sr.logger.Debugf("connection %d has state %s", connIndex, conn.GetState())
 
 	// try to initialize or renew the stream.
 	// It could fail when the stream is reported faster than the connection's status becomes bad, or if the connection breaks again.

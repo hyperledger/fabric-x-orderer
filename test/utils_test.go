@@ -99,11 +99,13 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
 		config := &nodeconfig.RouterNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			ConfigStorePath:    t.TempDir(),
-			TLSPrivateKeyFile:  kp.Key,
-			TLSCertificateFile: kp.Cert,
-			PartyID:            types.PartyID(i + 1),
+			ListenAddress:           "0.0.0.0:0",
+			MonitoringListenAddress: "127.0.0.1",
+			MetricsLogInterval:      5 * time.Second,
+			ConfigStorePath:         t.TempDir(),
+			TLSPrivateKeyFile:       kp.Key,
+			TLSCertificateFile:      kp.Cert,
+			PartyID:                 types.PartyID(i + 1),
 			Shards: []nodeconfig.ShardInfo{{
 				ShardId:  shardId,
 				Batchers: batcherInfos,

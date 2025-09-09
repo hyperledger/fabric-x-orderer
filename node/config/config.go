@@ -81,7 +81,9 @@ type RouterNodeConfig struct {
 	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
 	// Bundle collects resources (e.g., policy manager, configTx validator, etc.) that are used by the router for validation of transactions
-	Bundle channelconfig.Resources
+	Bundle                  channelconfig.Resources
+	MonitoringListenAddress string
+	MetricsLogInterval      time.Duration
 }
 
 type AssemblerNodeConfig struct {
@@ -98,10 +100,12 @@ type AssemblerNodeConfig struct {
 	ReplicationChannelSize    int
 	BatchRequestsChannelSize  int
 	// Shared config
-	Shards             []ShardInfo
-	Consenter          ConsenterInfo
-	UseTLS             bool
-	ClientAuthRequired bool
+	Shards                  []ShardInfo
+	Consenter               ConsenterInfo
+	UseTLS                  bool
+	ClientAuthRequired      bool
+	MonitoringListenAddress string
+	MetricsLogInterval      time.Duration
 }
 
 type BatcherNodeConfig struct {
@@ -127,6 +131,7 @@ type BatcherNodeConfig struct {
 	AutoRemoveTimeout                   time.Duration
 	BatchCreationTimeout                time.Duration
 	BatchSequenceGap                    types.BatchSequence
+	MonitoringListenAddress             string
 	ClientSignatureVerificationRequired bool
 	Bundle                              channelconfig.Resources
 	MetricsLogInterval                  time.Duration
@@ -139,13 +144,15 @@ type ConsenterNodeConfig struct {
 	Directory     string
 	ListenAddress string
 	// Private config
-	PartyId            types.PartyID
-	TLSPrivateKeyFile  RawBytes
-	TLSCertificateFile RawBytes
-	SigningPrivateKey  RawBytes
-	WALDir             string
-	BFTConfig          smartbft_types.Configuration
-	MetricsLogInterval time.Duration
+	PartyId                 types.PartyID
+	TLSPrivateKeyFile       RawBytes
+	TLSCertificateFile      RawBytes
+	SigningPrivateKey       RawBytes
+	WALDir                  string
+	BFTConfig               smartbft_types.Configuration
+	MonitoringListenAddress string
+	MonitoringInterval      int32
+	MetricsLogInterval      time.Duration
 }
 
 func NodeConfigToYAML(config interface{}, path string) error {
