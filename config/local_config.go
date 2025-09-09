@@ -55,6 +55,10 @@ type GeneralConfig struct {
 	ListenAddress string `yaml:"ListenAddress,omitempty"`
 	// ListenPort is the port on which to bind to listen
 	ListenPort uint32 `yaml:"ListenPort,omitempty"`
+	// MonitoringListenPort is the port on which to expose the monitoring service
+	MonitoringListenPort uint32 `yaml:"MonitoringListenPort,omitempty"`
+	// MonitoringInterval is the interval in seconds in which the metrics are updated
+	MonitoringInterval int32 `yaml:"MonitoringInterval,omitempty"`
 	// TLSConfig is the TLS settings for the GRPC server
 	TLSConfig TLSConfigYaml `yaml:"TLS,omitempty"`
 	// Keepalive is the Keepalive settings for the GRPC server.

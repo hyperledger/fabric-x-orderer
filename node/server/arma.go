@@ -209,6 +209,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		}
 		r := router.NewRouter(routerConf, routerLogger)
 		ch := r.StartRouterService()
+		r.StartMonitoringService()
 
 		go func() {
 			<-ch
