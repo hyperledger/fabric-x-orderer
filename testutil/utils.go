@@ -43,6 +43,7 @@ const (
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string) {
 	nodeConfig := readNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
+	nodeConfig.GeneralConfig.MonitoringListenPort = 0
 	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
 	require.NoError(t, err)
 }
