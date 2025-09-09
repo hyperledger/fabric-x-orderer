@@ -79,6 +79,7 @@ type RouterNodeConfig struct {
 	ClientAuthRequired                  bool
 	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
+	ChannelID                           string
 }
 
 type AssemblerNodeConfig struct {

@@ -85,7 +85,7 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 				return nil, nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
 			}
 		} else {
-			return nil, nil, errors.Wrapf(err, "failed to read a cofig block, path is empty")
+			return nil, nil, errors.Wrapf(err, "failed to read a config block, path is empty")
 		}
 	default:
 		return nil, nil, errors.Errorf("bootstrap method %s is invalid", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method)

@@ -24,6 +24,22 @@ func ReadSharedConfigFromBootstrapConfigBlock(configBlock *common.Block) ([]byte
 	return consensusMetadata, nil
 }
 
+func ReadChannelIdFromConfigBlock(configBlock *common.Block) (string, error) {
+	env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
+	if err != nil {
+		return "", err
+	}
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	if err != nil {
+		return "", err
+	}
+	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	if err != nil {
+		return "", err
+	}
+	return chdr.ChannelId, nil
+}
+
 func ReadConsensusMetadataFromConfigBlock(configBlock *common.Block) ([]byte, error) {
 	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
 	if err != nil {
