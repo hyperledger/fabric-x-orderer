@@ -100,7 +100,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 
 		config := &nodeconfig.RouterNodeConfig{
 			ListenAddress:           "0.0.0.0:0",
-			MonitoringListenAddress: "127.0.0.1",
+			MonitoringListenAddress: "127.0.0.1:0",
 			MetricsLogInterval:      5 * time.Second,
 			ConfigStorePath:         t.TempDir(),
 			TLSPrivateKeyFile:       kp.Key,
