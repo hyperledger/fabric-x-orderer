@@ -9,6 +9,7 @@ package config
 import (
 	"sort"
 
+	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
@@ -33,4 +34,8 @@ func (rfc *RouterNodeConfig) GetClientSignatureVerificationRequired() bool {
 
 func (rfc *RouterNodeConfig) GetChannelID() string {
 	return rfc.ChannelID
+}
+
+func (rfc *RouterNodeConfig) GetPolicyManager() policies.Manager {
+	return rfc.PolicyManager
 }

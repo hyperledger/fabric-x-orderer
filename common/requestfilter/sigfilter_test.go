@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	policyMock "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -22,7 +24,7 @@ func TestSigVerifyFilter(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	fc := &mocks.FakeFilterConfig{}
 
-	v.AddRule(requestfilter.NewSigFilter(fc))
+	v.AddRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 	err := v.Verify(nil)
 	require.EqualError(t, err, "failed to convert request to signedData : nil request")
 
@@ -72,11 +74,17 @@ func TestSigValidationFlag(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	req := tx.CreateStructuredRequest([]byte("data"))
 	fc := &mocks.FakeFilterConfig{}
+	pm := &policyMock.FakePolicyManager{}
+	p := &policyMock.FakePolicy{}
+	p.EvaluateSignedDataReturns(nil)
+	pm.GetPolicyReturns(p, true)
 	fc.GetClientSignatureVerificationRequiredReturns(true)
-	v.AddRule(requestfilter.NewSigFilter(fc))
+	fc.GetPolicyManagerReturns(pm)
+
+	v.AddRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 
 	err := v.Verify(req)
-	require.EqualError(t, err, "error: signature validation is not implemented")
+	require.NoError(t, err)
 
 	fc.GetClientSignatureVerificationRequiredReturns(false)
 	v.Update(fc)

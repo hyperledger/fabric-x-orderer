@@ -11,8 +11,26 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
+	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
+
 	"github.com/pkg/errors"
+)
+
+//go:generate counterfeiter -o mocks/policy_manager.go . policyManager
+type policyManager interface {
+	policies.Manager
+}
+
+//go:generate counterfeiter -o mocks/policy.go . policy
+type policy interface {
+	policies.Policy
+}
+
+var (
+	_ policyManager = &mocks.FakePolicyManager{}
+	_ policy        = &mocks.FakePolicy{}
 )
 
 // BuildBundleFromBlock builds a bundle from block.

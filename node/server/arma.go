@@ -13,10 +13,13 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/msp"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
@@ -207,6 +210,20 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("failed to read channelID from genesis block: %s", err))
 		}
 		routerConf.ChannelID = channelID
+
+		bccsp, err := (&factory.SWFactory{}).Get(conf.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		if err != nil {
+			bccsp = factory.GetDefault()
+		}
+		env, err := protoutil.GetEnvelopeFromBlock(genesisBlock.Data.Data[0])
+		if err != nil {
+			panic(fmt.Sprintf("failed to get envelope from genesis block: %s", err))
+		}
+		bundle, err := policy.BuildBundleFromBlock(env, bccsp)
+		if err != nil {
+			panic(fmt.Sprintf("failed to build bundle from genesis block: %s", err))
+		}
+		routerConf.PolicyManager = bundle.PolicyManager()
 
 		var routerLogger *flogging.FabricLogger
 		if testLogger != nil {

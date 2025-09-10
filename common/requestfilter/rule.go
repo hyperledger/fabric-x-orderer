@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package requestfilter
 
 import (
+	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
@@ -23,6 +24,7 @@ type FilterConfig interface {
 	GetRequestMaxBytes() uint64
 	GetClientSignatureVerificationRequired() bool
 	GetChannelID() string
+	GetPolicyManager() policies.Manager
 }
 
 // AcceptRule - always returns nil as a result for Verify
