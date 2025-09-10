@@ -135,6 +135,7 @@ func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 				Batch:  ba.AvailableBatch,
 				Header: ba.OrderingInformation.BlockHeader,
 			}},
+			AvailableCommonBlocks: []*common.Block{{Header: &common.BlockHeader{Number: ba.OrderingInformation.BlockHeader.Number, DataHash: ba.OrderingInformation.BlockHeader.Digest}}},
 		}).Serialize(),
 	}
 

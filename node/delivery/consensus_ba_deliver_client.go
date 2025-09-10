@@ -118,6 +118,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan types.OrderedBatchAttestatio
 			abo := &state.AvailableBatchOrdered{
 				AvailableBatch: ab.Batch,
 				OrderingInformation: &state.OrderingInformation{
+					CommonBlock: header.AvailableCommonBlocks[index],
 					BlockHeader: ab.Header,
 					Signatures:  sigs[index],
 					DecisionNum: header.Num,
