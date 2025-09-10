@@ -10,20 +10,25 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
-	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
 )
 
 type SigFilter struct {
 	clientSignatureVerificationRequired bool
 	channelID                           string
+	policyName                          string
+	policyManager                       policies.Manager
 }
 
-func NewSigFilter(config FilterConfig) *SigFilter {
+func NewSigFilter(config FilterConfig, policyName string) *SigFilter {
 	return &SigFilter{
 		clientSignatureVerificationRequired: config.GetClientSignatureVerificationRequired(),
 		channelID:                           config.GetChannelID(),
+		policyName:                          policyName,
+		policyManager:                       config.GetPolicyManager(),
 	}
 }
 
@@ -33,11 +38,16 @@ func (sf *SigFilter) Verify(request *comm.Request) error {
 	if err != nil {
 		return fmt.Errorf("failed to convert request to signedData : %s", err)
 	}
-	_ = signedData
 
 	if sf.clientSignatureVerificationRequired {
-		// extract policy and validate the signature - TBD
-		return fmt.Errorf("error: signature validation is not implemented")
+		policy, exists := sf.policyManager.GetPolicy(sf.policyName)
+		if !exists {
+			return fmt.Errorf("no policies in config block")
+		}
+		err = policy.EvaluateSignedData([]*protoutil.SignedData{signedData})
+		if err != nil {
+			return fmt.Errorf("signature did not satisfy policy %s", sf.policyName)
+		}
 	}
 	return nil
 }
@@ -92,5 +102,6 @@ func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.Sign
 func (sf *SigFilter) Update(config FilterConfig) error {
 	sf.clientSignatureVerificationRequired = config.GetClientSignatureVerificationRequired()
 	sf.channelID = config.GetChannelID()
+	sf.policyManager = config.GetPolicyManager()
 	return nil
 }
