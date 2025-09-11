@@ -197,6 +197,7 @@ func (ps *PendingStore) checkFirstStrike(now time.Time) {
 			continue
 		}
 
+		ps.Logger.Infof("First strike occurred for bucket id %d of size %d", bucket.id, bucket.getSize())
 		bucket.setFirstStrikeTimestamp(now)
 		buckets = append(buckets, bucket)
 	}
