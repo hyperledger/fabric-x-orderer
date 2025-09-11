@@ -141,7 +141,7 @@ func TestAssembler(t *testing.T) {
 
 	for i := uint64(0); i < uint64(batchNum*shardCount); i++ {
 		noba := <-ledger
-		assert.Equal(t, fmt.Sprintf("DecisionNum: %d, BatchIndex: 0, BatchCount: 1; No. Sigs: 0, BlockHeader: Number: %d, PrevHash: 08, Digest: 09", i, i), noba.OrderingInfo().String())
+		assert.Equal(t, fmt.Sprintf("DecisionNum: %d, BatchIndex: 0, BatchCount: 1; No. Sigs: 0, BlockHeader: Number: %d, PrevHash: 08, Digest: 09, Common Block: <nil>", i, i), noba.OrderingInfo().String())
 		delete(digests, string(noba.BatchAttestation().Digest()))
 	}
 

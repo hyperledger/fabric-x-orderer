@@ -58,6 +58,7 @@ func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisi
 				PrevHash: obac.headerHash,
 				Digest:   batchId.Digest(),
 			},
+			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: uint64(decisionNum), DataHash: batchId.Digest()}},
 			DecisionNum: decisionNum,
 			BatchIndex:  batchIndex,
 			BatchCount:  batchCount,

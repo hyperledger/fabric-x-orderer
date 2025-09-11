@@ -10,10 +10,12 @@ import (
 	"fmt"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type OrderingInformation struct {
+	CommonBlock *common.Block
 	*BlockHeader
 	Signatures  []smartbft_types.Signature
 	DecisionNum types.DecisionNum
@@ -26,7 +28,7 @@ func (oi *OrderingInformation) String() string {
 		return "<nil>"
 	}
 
-	return fmt.Sprintf("DecisionNum: %d, BatchIndex: %d, BatchCount: %d; No. Sigs: %d, BlockHeader: %s", oi.DecisionNum, oi.BatchIndex, oi.BatchCount, len(oi.Signatures), oi.BlockHeader.String())
+	return fmt.Sprintf("DecisionNum: %d, BatchIndex: %d, BatchCount: %d; No. Sigs: %d, BlockHeader: %s, Common Block: %s", oi.DecisionNum, oi.BatchIndex, oi.BatchCount, len(oi.Signatures), oi.BlockHeader.String(), types.CommonBlockToString(oi.CommonBlock))
 }
 
 type AvailableBatchOrdered struct {

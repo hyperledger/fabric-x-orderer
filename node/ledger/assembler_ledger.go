@@ -141,15 +141,13 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 	}()
 
 	block := &common.Block{
-		Header: &common.BlockHeader{
-			Number:       ordInfo.Number, // TODO make sure we start from 0
-			DataHash:     ordInfo.Digest,
-			PreviousHash: ordInfo.PrevHash,
-		},
+		Header: ordInfo.CommonBlock.Header,
 		Data: &common.BlockData{
 			Data: batch.Requests(),
 		},
 	}
+
+	block.Header.PreviousHash = ordInfo.PrevHash
 
 	var metadataContents [][]byte
 	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
