@@ -43,6 +43,6 @@ func TestAvailableBatchOrdered(t *testing.T) {
 		"{AvailableBatch:Sh,Pr,Sq,Dg: <666,42,100,0000000000000000000000000000000000000000000000000000000000000000> OrderingInformation:DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, BlockHeader: Number: 3, PrevHash: 01020304, Digest: 0a0b0c0d, Common Block: <nil>}",
 		fmt.Sprintf("%+v", abo))
 
-	oi.CommonBlock = &common.Block{Header: &common.BlockHeader{Number: 1}}
-	assert.Equal(t, "DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, BlockHeader: Number: 3, PrevHash: 01020304, Digest: 0a0b0c0d, Common Block: header:{number:1}", oi.String())
+	oi.CommonBlock = &common.Block{Header: &common.BlockHeader{Number: 1, PreviousHash: []byte{1}, DataHash: []byte{2}}}
+	assert.Equal(t, "DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, BlockHeader: Number: 3, PrevHash: 01020304, Digest: 0a0b0c0d, Common Block: Number: 1, PreviousHash: 01, DataHash: 02", oi.String())
 }

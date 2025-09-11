@@ -11,6 +11,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 )
 
 func BatchIDToString(id BatchID) string {
@@ -26,4 +28,11 @@ func BatchIDEqual(a BatchID, b BatchID) bool {
 		return true
 	}
 	return false
+}
+
+func CommonBlockToString(b *common.Block) string {
+	if b == nil || b.Header == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("Number: %d, PreviousHash: %s, DataHash: %s", b.Header.Number, hex.EncodeToString(b.Header.PreviousHash), hex.EncodeToString(b.Header.DataHash))
 }
