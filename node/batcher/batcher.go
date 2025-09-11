@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -265,6 +266,10 @@ func (b *Batcher) FwdRequestStream(stream protos.BatcherControlService_FwdReques
 			b.logger.Infof("Failed verifying request before submitting from batcher %d; err: %v", from, err)
 		}
 		if err := b.batcher.Submit(msg.Request); err != nil {
+			if strings.Contains(err.Error(), "already inserted") {
+				b.logger.Debugf("Failed to submit request from batcher %d; err: %v", from, err)
+				continue
+			}
 			b.logger.Infof("Failed to submit request from batcher %d; err: %v", from, err)
 		}
 	}
