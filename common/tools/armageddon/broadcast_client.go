@@ -82,6 +82,7 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 			ticker := time.NewTicker(delay)
 			select {
 			case <-streamInfo.stopChan:
+				streamInfo.logger.Infof("Stop TryReconnect go routine")
 				return
 			case <-ticker.C:
 				newConn, newStream, err := createConnAndStream(userConfig, streamInfo.endpoint)
@@ -135,7 +136,7 @@ func (c *BroadcastTxClient) InitStreams() error {
 			maxRetryDelay: 8 * time.Second,
 			endpoint:      routerEndpoint,
 			lock:          sync.Mutex{},
-			logger:        flogging.MustGetLogger(fmt.Sprintf("BroadcastClient%d", i)),
+			logger:        flogging.MustGetLogger(fmt.Sprintf("BroadcastClientToRouter%d", i+1)),
 		}
 	}
 	return nil
@@ -165,7 +166,7 @@ func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
 		if !streamInfo.IsBroken() {
 			err := streamInfo.stream.Send(envelope)
 			if err != nil {
-				streamInfo.logger.Infof("Failed to send envelope to the router, mark router %s as broken and start reconnection", streamInfo.endpoint)
+				streamInfo.logger.Infof("Failed to send envelope to the router, err: %v, mark router %s as broken and start reconnection", err, streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(c.userConfig)
 			}
