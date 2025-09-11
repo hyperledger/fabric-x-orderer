@@ -24,7 +24,7 @@ func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelcon
 	}
 
 	if payload.Header == nil {
-		return nil, errors.New("missing channel header")
+		return nil, errors.New("envelope payload header is nil")
 	}
 
 	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
