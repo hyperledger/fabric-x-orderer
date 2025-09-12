@@ -11,6 +11,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +32,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
@@ -115,6 +120,58 @@ func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(20)
 	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestSubmitOnBatcherGetMetrics verifies that submitting a series of stream and broadcast requests
+// to the router correctly updates the incoming transaction metrics. It sets up a test router with TLS,
+// submits 100 stream and 100 broadcast requests, and then asserts that the monitoring service reports
+// the expected total number of incoming transactions within a specified timeout.
+func TestSubmitOnBatcherGetMetrics(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, errors.Wrap(err, "during TLS client connection setup"))
+	require.NotNil(t, testSetup.clientConn)
+
+	defer testSetup.Close()
+
+	URL := testSetup.router.StartMonitoringService()
+
+	res := submitStreamRequests(testSetup.clientConn, 100)
+	require.NoError(t, res.err)
+
+	res = submitBroadcastRequests(testSetup.clientConn, 100)
+	require.NoError(t, res.err)
+
+	require.Eventually(t, func() bool {
+		return getIncomingTxMetric(t, types.PartyID(1), URL) == 200
+	}, 30*time.Second, 10*time.Millisecond)
+}
+
+func getIncomingTxMetric(t *testing.T, partID types.PartyID, url string) int {
+	resp, err := http.Get(url)
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	pattern := fmt.Sprintf(`router_metrics_%d\{code="200",router_txs_metrics="incoming_txs"\} \d+`, partID)
+
+	re := regexp.MustCompile(pattern)
+
+	// Find all matches
+	matches := re.FindAllString(string(body), -1)
+
+	if len(matches) > 0 {
+		val, err := strconv.Atoi(strings.Split(matches[0], " ")[1])
+		if err != nil {
+			return -1
+		}
+		return val
+	}
+
+	return -1
 }
 
 // Scenario:
