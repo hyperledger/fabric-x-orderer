@@ -108,7 +108,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 	return routers
 }
 
-func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []nodeconfig.ConsenterInfo, shardInfo []nodeconfig.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, func()) {
+func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []nodeconfig.ConsenterInfo, shardInfo []nodeconfig.ShardInfo, routerInfo []nodeconfig.RouterInfo, genesisBlock *common.Block) ([]*consensus.Consensus, func()) {
 	var consensuses []*consensus.Consensus
 	var cleans []func()
 
@@ -137,6 +137,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shardInfo,
 			Consenters:         consenterInfos,
+			Router:             routerInfo[i],
 			PartyId:            partyID,
 			TLSPrivateKeyFile:  consenterNodes[i].TLSKey,
 			TLSCertificateFile: consenterNodes[i].TLSCert,
@@ -264,6 +265,21 @@ func createConsenterNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, 
 	}
 
 	return nodes, consentersInfo
+}
+
+func createRoutersInfo(t *testing.T, ca tlsgen.CA, num int) []nodeconfig.RouterInfo {
+	nodes := createNodes(t, num, ca)
+	var routersInfo []nodeconfig.RouterInfo
+	for i := 0; i < num; i++ {
+		routersInfo = append(routersInfo, nodeconfig.RouterInfo{
+			PartyID:    types.PartyID(i + 1),
+			Endpoint:   nodes[i].Address(),
+			TLSCert:    nodes[i].TLSCert,
+			TLSCACerts: []nodeconfig.RawBytes{ca.CertBytes()},
+		})
+	}
+
+	return routersInfo
 }
 
 func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {

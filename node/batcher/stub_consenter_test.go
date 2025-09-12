@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -79,6 +80,10 @@ func (sc *stubConsenter) NotifyEvent(stream protos.Consensus_NotifyEventServer) 
 		sc.receivedEvents = append(sc.receivedEvents, ce)
 		sc.receivedEventsLock.Unlock()
 	}
+}
+
+func (sc *stubConsenter) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (sc *stubConsenter) Stop() {

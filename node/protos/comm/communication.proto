@@ -39,6 +39,7 @@ message Event {
 
 service Consensus {
   rpc NotifyEvent(stream Event) returns (stream EventResponse);
+  rpc SubmitConfig(Request) returns (SubmitResponse);
 }
 
 message Ack {
