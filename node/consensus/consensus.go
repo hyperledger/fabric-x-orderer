@@ -10,9 +10,10 @@ import (
 	"bytes"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
-	"math"
+	"math/big"
 	"math/rand"
 	"sync"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -176,10 +178,12 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	c.stateLock.Unlock()
 
 	availableBlocks := make([]state.AvailableBlock, len(attestations))
+	availableCommonBlocks := make([]*common.Block, len(attestations))
+
 	for i, ba := range attestations {
 		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
 		if !bytes.Equal(hdr.AvailableCommonBlocks[i].Header.DataHash, ba[0].Digest()) {
-			return nil, fmt.Errorf("proposed available common block data hash in index %d isn't equal to computed digest", i)
+			return nil, fmt.Errorf("proposed available common block %s data hash in index %d isn't equal to computed digest %s", arma_types.CommonBlockToString(hdr.AvailableCommonBlocks[i]), i, arma_types.BatchIDToString(ba[0]))
 		}
 	}
 
@@ -189,24 +193,34 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		}
 	}
 
-	var lastBlockHeader state.BlockHeader
-	if err := lastBlockHeader.FromBytes(computedState.AppContext); err != nil {
-		c.Logger.Panicf("Failed deserializing app context to BlockHeader from state: %v", err)
+	lastHeader := &asn1Header{}
+	if _, err := asn1.Unmarshal(computedState.AppContext, lastHeader); err != nil {
+		c.Logger.Panicf("Failed deserializing app context to block header from state: %v", err)
 	}
 
-	lastBlockNumber := lastBlockHeader.Number
-	prevHash := lastBlockHeader.Hash()
-	if lastBlockNumber == math.MaxUint64 { // This is a signal that we bootstrap
-		prevHash = nil
+	lastCommonBlockHeader := &common.BlockHeader{
+		Number:       lastHeader.Number.Uint64(),
+		PreviousHash: lastHeader.PreviousHash,
+		DataHash:     lastHeader.DataHash,
 	}
+
+	lastBlockNumber := lastCommonBlockHeader.Number
+	prevHash := protoutil.BlockHeaderHash(lastCommonBlockHeader)
 
 	for i, ba := range attestations {
 		var bh state.BlockHeader
 		bh.Digest = ba[0].Digest()
 		lastBlockNumber++
+
+		if hex.EncodeToString(hdr.AvailableCommonBlocks[i].Header.PreviousHash) != hex.EncodeToString(prevHash) {
+			return nil, fmt.Errorf("proposed common block header prev hash %s in index %d isn't equal to computed prev hash %s, last block number is %d", hex.EncodeToString(hdr.AvailableCommonBlocks[i].Header.PreviousHash), i, hex.EncodeToString(prevHash), lastBlockNumber)
+		}
+
+		availableCommonBlocks[i] = protoutil.NewBlock(lastBlockNumber, prevHash)
+		availableCommonBlocks[i].Header.DataHash = ba[0].Digest()
 		bh.Number = lastBlockNumber
 		bh.PrevHash = prevHash
-		prevHash = bh.Hash()
+		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
 		availableBlocks[i].Header = &bh
 
 		if hdr.AvailableCommonBlocks[i].Header.Number != lastBlockNumber {
@@ -223,7 +237,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	if len(attestations) > 0 {
-		computedState.AppContext = availableBlocks[len(attestations)-1].Header.Bytes()
+		computedState.AppContext = protoutil.BlockHeaderBytes(availableCommonBlocks[len(attestations)-1].Header)
 	}
 
 	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
@@ -415,6 +429,12 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	}
 }
 
+type asn1Header struct {
+	Number       *big.Int
+	PreviousHash []byte
+	DataHash     []byte
+}
+
 // AssembleProposal creates a proposal which includes the given requests (when permitting) and metadata
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
@@ -422,13 +442,19 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	newState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
 
-	var lastBlockHeader state.BlockHeader
-	if err := lastBlockHeader.FromBytes(newState.AppContext); err != nil {
-		c.Logger.Panicf("Failed deserializing app context to BlockHeader from state: %v", err)
+	lastHeader := &asn1Header{}
+	if _, err := asn1.Unmarshal(newState.AppContext, lastHeader); err != nil {
+		c.Logger.Panicf("Failed deserializing app context to block header from state: %v", err)
 	}
 
-	lastBlockNumber := lastBlockHeader.Number
-	prevHash := lastBlockHeader.Hash()
+	lastCommonBlockHeader := &common.BlockHeader{
+		Number:       lastHeader.Number.Uint64(),
+		PreviousHash: lastHeader.PreviousHash,
+		DataHash:     lastHeader.DataHash,
+	}
+
+	lastBlockNumber := lastCommonBlockHeader.Number
+	prevHash := protoutil.BlockHeaderHash(lastCommonBlockHeader)
 
 	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
 
@@ -437,22 +463,22 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	for i, ba := range attestations {
 		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
-		availableCommonBlocks[i] = &common.Block{Header: &common.BlockHeader{DataHash: ba[0].Digest()}}
 	}
 
 	for i, ba := range attestations {
 		var hdr state.BlockHeader
 		hdr.Digest = ba[0].Digest()
 		lastBlockNumber++
+		availableCommonBlocks[i] = protoutil.NewBlock(lastBlockNumber, prevHash)
+		availableCommonBlocks[i].Header.DataHash = ba[0].Digest()
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash
-		prevHash = hdr.Hash()
+		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
 		availableBlocks[i].Header = &hdr
-		availableCommonBlocks[i].Header.Number = lastBlockNumber
 	}
 
 	if len(attestations) > 0 {
-		newState.AppContext = availableBlocks[len(attestations)-1].Header.Bytes()
+		newState.AppContext = protoutil.BlockHeaderBytes(availableCommonBlocks[len(attestations)-1].Header)
 	}
 
 	md := &smartbftprotos.ViewMetadata{}

@@ -340,9 +340,11 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		}
 		if n > 0 {
 			oi.BlockHeader.PrevHash = ordInfos[n-1].Hash()
+			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(ordInfos[n-1].CommonBlock.Header)
 		} else {
 			genesis := utils.EmptyGenesisBlock("arma")
 			oi.BlockHeader.PrevHash = protoutil.BlockHeaderHash(genesis.Header)
+			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesis.Header)
 		}
 
 		batches = append(batches, fb)

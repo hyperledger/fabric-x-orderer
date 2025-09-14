@@ -9,6 +9,7 @@ package consensus
 import (
 	"crypto/ecdsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
 	"math"
@@ -251,12 +252,12 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 	})
 
 	// TODO set right initial app context
-	initialAppContext := &state.BlockHeader{
-		Number:   0, // We want the first block to start with 0, this is how we signal bootstrap
-		PrevHash: nil,
-		Digest:   nil,
+	initialAppContext := &common.BlockHeader{
+		Number:       0, // We want the first block to start with 0, this is how we signal bootstrap
+		PreviousHash: nil,
+		DataHash:     nil,
 	}
-	initState.AppContext = initialAppContext.Bytes()
+	initState.AppContext = protoutil.BlockHeaderBytes(initialAppContext)
 
 	return &initState
 }
@@ -274,19 +275,26 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, ledg
 		Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest),
 	}
 
-	var lastBlockHeader state.BlockHeader
-	if err := lastBlockHeader.FromBytes(initState.AppContext); err != nil {
+	lastHeader := &asn1Header{}
+	if _, err := asn1.Unmarshal(initState.AppContext, lastHeader); err != nil {
 		panic(fmt.Sprintf("Failed deserializing app context to BlockHeader from initial state: %v", err))
 	}
-	lastBlockHeader.Digest = genesisDigest
-	initState.AppContext = lastBlockHeader.Bytes()
+
+	lastCommonBlockHeader := &common.BlockHeader{
+		Number:       lastHeader.Number.Uint64(),
+		PreviousHash: lastHeader.PreviousHash,
+		DataHash:     genesisDigest,
+	}
+
+	initState.AppContext = protoutil.BlockHeaderBytes(lastCommonBlockHeader)
 
 	genesisProposal := smartbft_types.Proposal{
 		Payload: protoutil.MarshalOrPanic(genesisBlock), // TODO create a correct payload
 		Header: (&state.Header{
-			AvailableBlocks: genesisBlocks,
-			State:           initState,
-			Num:             0,
+			AvailableCommonBlocks: []*common.Block{genesisBlock},
+			AvailableBlocks:       genesisBlocks,
+			State:                 initState,
+			Num:                   0,
 		}).Serialize(),
 		Metadata: nil, // TODO maybe use this metadata
 	}
