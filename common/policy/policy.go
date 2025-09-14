@@ -57,6 +57,7 @@ func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelcon
 	return bundle, nil
 }
 
+// TODO: revisit capabilities
 // checkResources makes sure that the channel config is compatible with this binary and logs sanity checks
 func checkResources(res channelconfig.Resources) error {
 	channelconfig.LogSanityChecks(res)
