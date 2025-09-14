@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -78,8 +79,9 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 
 	go func() {
 		delay := 2 * time.Second
+		ticker := time.NewTicker(delay)
+		defer ticker.Stop()
 		for {
-			ticker := time.NewTicker(delay)
 			select {
 			case <-streamInfo.stopChan:
 				streamInfo.logger.Infof("Stop TryReconnect go routine")
@@ -103,11 +105,21 @@ func (streamInfo *StreamInfo) TryReconnect(userConfig *UserConfig) {
 	}()
 }
 
+func (streamInfo *StreamInfo) GetStreamLogger() *flogging.FabricLogger {
+	streamInfo.lock.Lock()
+	defer streamInfo.lock.Unlock()
+	return streamInfo.logger
+}
+
 type BroadcastTxClient struct {
 	// userConfig is the client configuration that includes the TLS configuration and the endpoints of router and assembler nodes
 	userConfig *UserConfig
 	// streamsToRouters holds streams between client and routers.
 	streamsToRouters []*StreamInfo
+	// txsCounter is the number of transactions the client sent to every router, i.e. txsCounter[i] = the number of txs sent to router i
+	txsCounter []uint64
+	// stopChan stops the go routine that reports the number of txs sent to the routers in each determined interval time.
+	stopChan chan struct{}
 }
 
 // NewBroadcastTxClient initializes a Broadcast TXs Client that sends transactions to the all routers.
@@ -119,6 +131,8 @@ func NewBroadcastTxClient(userConfigFile *UserConfig) *BroadcastTxClient {
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
 		streamsToRouters: make([]*StreamInfo, len(userConfigFile.RouterEndpoints)),
+		txsCounter:       make([]uint64, len(userConfigFile.RouterEndpoints)),
+		stopChan:         make(chan struct{}),
 	}
 }
 
@@ -139,6 +153,25 @@ func (c *BroadcastTxClient) InitStreams() error {
 			logger:        flogging.MustGetLogger(fmt.Sprintf("BroadcastClientToRouter%d", i+1)),
 		}
 	}
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-c.stopChan:
+				return
+			case <-ticker.C:
+				for i := range c.txsCounter {
+					streamInfoLogger := c.streamsToRouters[i].GetStreamLogger()
+					sentTxs := atomic.LoadUint64(&c.txsCounter[i])
+					streamInfoLogger.Infof("BroadcastClient to Router %d sent %d transactions in the last 10 seconds", i+1, sentTxs)
+					atomic.StoreUint64(&c.txsCounter[i], 0)
+				}
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -162,27 +195,31 @@ func ReceiveResponseFromRouter(userConfig *UserConfig, streamInfo *StreamInfo) {
 }
 
 func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
-	for _, streamInfo := range c.streamsToRouters {
+	for i, streamInfo := range c.streamsToRouters {
 		if !streamInfo.IsBroken() {
 			err := streamInfo.stream.Send(envelope)
 			if err != nil {
 				streamInfo.logger.Infof("Failed to send envelope to the router, err: %v, mark router %s as broken and start reconnection", err, streamInfo.endpoint)
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(c.userConfig)
+			} else {
+				atomic.AddUint64(&c.txsCounter[i], 1)
 			}
 		}
 	}
 }
 
 func (c *BroadcastTxClient) Stop() error {
-	// close the reconnection go routine
 	// close all connections
+	// close the reconnection go routine
+	// close reporter
 	for _, streamInfo := range c.streamsToRouters {
 		if err := streamInfo.conn.Close(); err != nil {
 			return fmt.Errorf("failed to close connection to router %s", streamInfo.endpoint)
 		}
 		close(streamInfo.stopChan)
 	}
+	close(c.stopChan)
 	return nil
 }
 
