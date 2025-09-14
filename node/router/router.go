@@ -120,9 +120,12 @@ func (r *Router) Stop() {
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
-	clientHost := node.ExtractCertificateFromContext(stream.Context())
-	if clientHost != nil {
-		r.logger.Debugf("Client %s connected", clientHost.Raw)
+	clientAddr, err := node.ExtractClientAddressFromContext(stream.Context())
+	if err == nil {
+		r.logger.Infof("Client connected: %s", clientAddr)
+	}
+	if clientCert := node.ExtractCertificateFromContext(stream.Context()); clientCert != nil {
+		r.logger.Infof("Client's certificate: \n%s", node.CertificateToString(clientCert))
 	}
 
 	r.init()
@@ -133,14 +136,16 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 	}()
 
 	feedbackChan := make(chan Response, 1000)
-	go sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
+	go r.sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
 
 	for {
 		reqEnv, err := stream.Recv()
 		if err == io.EOF {
+			r.logger.Infof("Received EOF from stream, closing broadcast from client %s", clientAddr)
 			return nil
 		}
 		if err != nil {
+			r.logger.Infof("Received error from stream: %v, closing broadcastfrom client %s", err, clientAddr)
 			return err
 		}
 
@@ -222,7 +227,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 	}()
 
 	feedbackChan := make(chan Response, 100)
-	go sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
+	go r.sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
 
 	for {
 		req, err := stream.Recv()
@@ -284,25 +289,31 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	return responseToSubmitResponse(&response), nil
 }
 
-func sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, feedbackChan chan Response) {
+func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, feedbackChan chan Response) {
 	for {
 		select {
 		case <-exit:
 			return
 		case response := <-feedbackChan:
 			resp := responseToSubmitResponse(&response)
-			stream.Send(resp)
+			err := stream.Send(resp)
+			if err != nil {
+				r.logger.Errorf("error sending response to client: %v", err)
+			}
 		}
 	}
 }
 
-func sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
+func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
 	for {
 		select {
 		case <-exit:
 			return
 		case response := <-feedbackChan:
-			stream.Send(responseToBroadcastResponse(&response))
+			err := stream.Send(responseToBroadcastResponse(&response))
+			if err != nil {
+				r.logger.Errorf("error sending response to client: %v", err)
+			}
 		}
 	}
 }
