@@ -299,10 +299,10 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 		return nil, errors.Wrap(err, "failed deserializing proposal header")
 	}
 
-	for i, bh := range hdr.AvailableBlocks {
+	for i, bh := range hdr.AvailableCommonBlocks {
 		if err := c.VerifySignature(smartbft_types.Signature{
 			Value: values[i+1],
-			Msg:   bh.Header.Bytes(),
+			Msg:   protoutil.BlockHeaderBytes(bh.Header),
 			ID:    signature.ID,
 		}); err != nil {
 			return nil, errors.Wrap(err, "failed verifying signature over block header")
@@ -407,9 +407,9 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 
 	sigs = append(sigs, proposalSig)
 
-	for _, bh := range hdr.AvailableBlocks {
-		msg := bh.Header.Bytes()
-		sig, err := c.Signer.Sign(msg)
+	for _, bh := range hdr.AvailableCommonBlocks {
+		msg := protoutil.BlockHeaderBytes(bh.Header)
+		sig, err := c.Signer.Sign(msg) // TODO sign like we do in Fabric
 		if err != nil {
 			c.Logger.Panicf("Failed signing block header: %v", err)
 		}
