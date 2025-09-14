@@ -32,9 +32,17 @@ func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelcon
 		return nil, errors.WithMessage(err, "error unmarshalling channel header")
 	}
 
+	if chdr == nil {
+		return nil, errors.New("envelope payload header channel header is nil")
+	}
+
 	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
 	if err != nil {
 		return nil, errors.WithMessage(err, "error unmarshalling config envelope from payload data")
+	}
+
+	if configEnvelope == nil {
+		return nil, errors.New("config envelope is nil")
 	}
 
 	bundle, err := channelconfig.NewBundle(chdr.ChannelId, configEnvelope.Config, bccsp)
