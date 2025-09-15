@@ -34,9 +34,9 @@ type StreamInfo struct {
 	sentTxs               uint64
 }
 
-func (streamInfo *StreamInfo) Report() {
+func (streamInfo *StreamInfo) Report(tickInterval time.Duration) {
 	sentTxs := atomic.SwapUint64(&streamInfo.sentTxs, 0)
-	streamInfo.logger.Infof("BroadcastClient to Router %v sent %d transactions in the last 10 seconds", streamInfo.endpoint, sentTxs)
+	streamInfo.logger.Infof("BroadcastClient to Router %v sent %d transactions in the last %v", streamInfo.endpoint, sentTxs, tickInterval)
 }
 
 func (streamInfo *StreamInfo) IsBroken() bool {
@@ -152,7 +152,8 @@ func (c *BroadcastTxClient) InitStreams() error {
 	}
 
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		tickInterval := 10 * time.Second
+		ticker := time.NewTicker(tickInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -160,7 +161,7 @@ func (c *BroadcastTxClient) InitStreams() error {
 				return
 			case <-ticker.C:
 				for i := range c.streamsToRouters {
-					c.streamsToRouters[i].Report()
+					c.streamsToRouters[i].Report(tickInterval)
 				}
 			}
 		}
