@@ -164,9 +164,8 @@ func (c *BroadcastTxClient) InitStreams() error {
 			case <-ticker.C:
 				for i := range c.txsCounter {
 					streamInfoLogger := c.streamsToRouters[i].GetStreamLogger()
-					sentTxs := atomic.LoadUint64(&c.txsCounter[i])
+					sentTxs := atomic.SwapUint64(&c.txsCounter[i], 0)
 					streamInfoLogger.Infof("BroadcastClient to Router %d sent %d transactions in the last 10 seconds", i+1, sentTxs)
-					atomic.StoreUint64(&c.txsCounter[i], 0)
 				}
 			}
 		}
