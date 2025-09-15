@@ -95,7 +95,7 @@ func (rp *Pool) createPendingStore() *PendingStore {
 		Inspector:             rp.inspector,
 		ReqIDGCInterval:       rp.options.AutoRemoveTimeout / 4,
 		ReqIDLifetime:         rp.options.AutoRemoveTimeout,
-		Time:                  time.NewTicker(time.Second).C,
+		Time:                  time.NewTicker(rp.options.FirstStrikeThreshold / 10).C,
 		StartTime:             time.Now(),
 		Logger:                rp.logger,
 		SecondStrikeThreshold: rp.options.SecondStrikeThreshold,
@@ -104,7 +104,7 @@ func (rp *Pool) createPendingStore() *PendingStore {
 			rp.semaphore.Release(1)
 			atomic.AddInt64(&rp.size, -1)
 		},
-		Epoch:                time.Second,
+		Epoch:                rp.options.FirstStrikeThreshold / 10,
 		FirstStrikeCallback:  rp.striker.OnFirstStrikeTimeout,
 		SecondStrikeCallback: rp.striker.OnSecondStrikeTimeout,
 	}
