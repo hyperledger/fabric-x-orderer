@@ -8,7 +8,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
-type FakePolicy struct {
+type FakePolicyEvaluator struct {
 	EvaluateIdentitiesStub        func([]msp.Identity) error
 	evaluateIdentitiesMutex       sync.RWMutex
 	evaluateIdentitiesArgsForCall []struct {
@@ -35,7 +35,7 @@ type FakePolicy struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakePolicy) EvaluateIdentities(arg1 []msp.Identity) error {
+func (fake *FakePolicyEvaluator) EvaluateIdentities(arg1 []msp.Identity) error {
 	var arg1Copy []msp.Identity
 	if arg1 != nil {
 		arg1Copy = make([]msp.Identity, len(arg1))
@@ -58,26 +58,26 @@ func (fake *FakePolicy) EvaluateIdentities(arg1 []msp.Identity) error {
 	return fakeReturns.result1
 }
 
-func (fake *FakePolicy) EvaluateIdentitiesCallCount() int {
+func (fake *FakePolicyEvaluator) EvaluateIdentitiesCallCount() int {
 	fake.evaluateIdentitiesMutex.RLock()
 	defer fake.evaluateIdentitiesMutex.RUnlock()
 	return len(fake.evaluateIdentitiesArgsForCall)
 }
 
-func (fake *FakePolicy) EvaluateIdentitiesCalls(stub func([]msp.Identity) error) {
+func (fake *FakePolicyEvaluator) EvaluateIdentitiesCalls(stub func([]msp.Identity) error) {
 	fake.evaluateIdentitiesMutex.Lock()
 	defer fake.evaluateIdentitiesMutex.Unlock()
 	fake.EvaluateIdentitiesStub = stub
 }
 
-func (fake *FakePolicy) EvaluateIdentitiesArgsForCall(i int) []msp.Identity {
+func (fake *FakePolicyEvaluator) EvaluateIdentitiesArgsForCall(i int) []msp.Identity {
 	fake.evaluateIdentitiesMutex.RLock()
 	defer fake.evaluateIdentitiesMutex.RUnlock()
 	argsForCall := fake.evaluateIdentitiesArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakePolicy) EvaluateIdentitiesReturns(result1 error) {
+func (fake *FakePolicyEvaluator) EvaluateIdentitiesReturns(result1 error) {
 	fake.evaluateIdentitiesMutex.Lock()
 	defer fake.evaluateIdentitiesMutex.Unlock()
 	fake.EvaluateIdentitiesStub = nil
@@ -86,7 +86,7 @@ func (fake *FakePolicy) EvaluateIdentitiesReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakePolicy) EvaluateIdentitiesReturnsOnCall(i int, result1 error) {
+func (fake *FakePolicyEvaluator) EvaluateIdentitiesReturnsOnCall(i int, result1 error) {
 	fake.evaluateIdentitiesMutex.Lock()
 	defer fake.evaluateIdentitiesMutex.Unlock()
 	fake.EvaluateIdentitiesStub = nil
@@ -100,7 +100,7 @@ func (fake *FakePolicy) EvaluateIdentitiesReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
-func (fake *FakePolicy) EvaluateSignedData(arg1 []*protoutil.SignedData) error {
+func (fake *FakePolicyEvaluator) EvaluateSignedData(arg1 []*protoutil.SignedData) error {
 	var arg1Copy []*protoutil.SignedData
 	if arg1 != nil {
 		arg1Copy = make([]*protoutil.SignedData, len(arg1))
@@ -123,26 +123,26 @@ func (fake *FakePolicy) EvaluateSignedData(arg1 []*protoutil.SignedData) error {
 	return fakeReturns.result1
 }
 
-func (fake *FakePolicy) EvaluateSignedDataCallCount() int {
+func (fake *FakePolicyEvaluator) EvaluateSignedDataCallCount() int {
 	fake.evaluateSignedDataMutex.RLock()
 	defer fake.evaluateSignedDataMutex.RUnlock()
 	return len(fake.evaluateSignedDataArgsForCall)
 }
 
-func (fake *FakePolicy) EvaluateSignedDataCalls(stub func([]*protoutil.SignedData) error) {
+func (fake *FakePolicyEvaluator) EvaluateSignedDataCalls(stub func([]*protoutil.SignedData) error) {
 	fake.evaluateSignedDataMutex.Lock()
 	defer fake.evaluateSignedDataMutex.Unlock()
 	fake.EvaluateSignedDataStub = stub
 }
 
-func (fake *FakePolicy) EvaluateSignedDataArgsForCall(i int) []*protoutil.SignedData {
+func (fake *FakePolicyEvaluator) EvaluateSignedDataArgsForCall(i int) []*protoutil.SignedData {
 	fake.evaluateSignedDataMutex.RLock()
 	defer fake.evaluateSignedDataMutex.RUnlock()
 	argsForCall := fake.evaluateSignedDataArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakePolicy) EvaluateSignedDataReturns(result1 error) {
+func (fake *FakePolicyEvaluator) EvaluateSignedDataReturns(result1 error) {
 	fake.evaluateSignedDataMutex.Lock()
 	defer fake.evaluateSignedDataMutex.Unlock()
 	fake.EvaluateSignedDataStub = nil
@@ -151,7 +151,7 @@ func (fake *FakePolicy) EvaluateSignedDataReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakePolicy) EvaluateSignedDataReturnsOnCall(i int, result1 error) {
+func (fake *FakePolicyEvaluator) EvaluateSignedDataReturnsOnCall(i int, result1 error) {
 	fake.evaluateSignedDataMutex.Lock()
 	defer fake.evaluateSignedDataMutex.Unlock()
 	fake.EvaluateSignedDataStub = nil
@@ -165,7 +165,7 @@ func (fake *FakePolicy) EvaluateSignedDataReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
-func (fake *FakePolicy) Invocations() map[string][][]interface{} {
+func (fake *FakePolicyEvaluator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	fake.evaluateIdentitiesMutex.RLock()
@@ -179,7 +179,7 @@ func (fake *FakePolicy) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
-func (fake *FakePolicy) recordInvocation(key string, args []interface{}) {
+func (fake *FakePolicyEvaluator) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
 	if fake.invocations == nil {

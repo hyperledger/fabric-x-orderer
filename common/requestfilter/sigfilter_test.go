@@ -77,7 +77,7 @@ func TestSigValidationFlag(t *testing.T) {
 	req := tx.CreateStructuredRequest([]byte("data"))
 	fc := &mocks.FakeFilterConfig{}
 	pm := &policyMock.FakePolicyManager{}
-	p := &policyMock.FakePolicy{}
+	p := &policyMock.FakePolicyEvaluator{}
 
 	pm.GetPolicyReturns(p, false)
 	fc.GetPolicyManagerReturns(pm)
