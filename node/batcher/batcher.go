@@ -66,7 +66,7 @@ type Batcher struct {
 	stopOnce sync.Once
 	stopChan chan struct{}
 
-	primaryLock sync.Mutex
+	primaryLock sync.RWMutex
 	term        uint64
 	primaryID   types.PartyID
 }
@@ -113,15 +113,19 @@ func (b *Batcher) replicateState() {
 			b.stateRef.Store(state)
 			b.stateChan <- state
 			primaryID, term := b.getPrimaryIDAndTerm(state)
+			changed := false
 			b.primaryLock.Lock()
 			if b.primaryID != primaryID {
 				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
 				b.primaryID = primaryID
 				b.term = term
-				b.primaryAckConnector.ConnectToNewPrimary(b.primaryID)
-				b.primaryReqConnector.ConnectToNewPrimary(b.primaryID)
+				changed = true
 			}
 			b.primaryLock.Unlock()
+			if changed {
+				b.primaryAckConnector.ConnectToNewPrimary(primaryID)
+				b.primaryReqConnector.ConnectToNewPrimary(primaryID)
+			}
 		case <-b.stopChan:
 			return
 		}
@@ -314,9 +318,15 @@ func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shar
 	return baf
 }
 
+func (b *Batcher) GetTerm() uint64 {
+	b.primaryLock.RLock()
+	defer b.primaryLock.RUnlock()
+	return b.term
+}
+
 func (b *Batcher) GetPrimaryID() types.PartyID {
-	b.primaryLock.Lock()
-	defer b.primaryLock.Unlock()
+	b.primaryLock.RLock()
+	defer b.primaryLock.RUnlock()
 	return b.primaryID
 }
 
@@ -340,9 +350,7 @@ func (b *Batcher) getPrimaryIDAndTerm(state *state.State) (types.PartyID, uint64
 }
 
 func (b *Batcher) createComplaint(reason string) *state.Complaint {
-	b.primaryLock.Lock()
-	term := b.term
-	b.primaryLock.Unlock()
+	term := b.GetTerm()
 	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, reason)
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
@@ -368,13 +376,11 @@ func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 		b.logger.Debugf("Sending ack took %v", time.Since(t1))
 	}()
 
-	b.primaryLock.Lock()
-	if to != b.primaryID {
-		b.logger.Warnf("Trying to send ack to %d while primary is %d", to, b.primaryID)
-		b.primaryLock.Unlock()
+	primaryID := b.GetPrimaryID()
+	if to != primaryID {
+		b.logger.Warnf("Trying to send ack to %d while primary is %d", to, primaryID)
 		return
 	}
-	b.primaryLock.Unlock()
 
 	b.primaryAckConnector.SendAck(seq)
 }
