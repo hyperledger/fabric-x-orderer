@@ -41,6 +41,7 @@ type Router struct {
 	incoming         uint64
 	routerNodeConfig *nodeconfig.RouterNodeConfig
 	verifier         *requestfilter.RulesVerifier
+	stopChan         chan struct{}
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -107,6 +108,8 @@ func (r *Router) Address() string {
 
 func (r *Router) Stop() {
 	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
+
+	close(r.stopChan)
 
 	r.net.Stop()
 
@@ -180,6 +183,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		shardIDs:         shardIDs,
 		routerNodeConfig: rconfig,
 		verifier:         verifier,
+		stopChan:         make(chan struct{}),
 	}
 
 	for _, shardId := range shardIDs {
@@ -187,11 +191,19 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 	}
 
 	go func() {
+		r.logger.Infof("Reporting routine is starting")
+		interval := 10 * time.Second
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 		for {
-			time.Sleep(time.Second * 10)
-			tps := atomic.LoadUint64(&r.incoming)
-			r.logger.Infof("Received %d transactions per second", tps/10)
-			atomic.StoreUint64(&r.incoming, 0)
+			select {
+			case <-ticker.C:
+				txCount := atomic.SwapUint64(&r.incoming, 0)
+				r.logger.Infof("Received %.f transactions per second", float64(txCount)/interval.Seconds())
+			case <-r.stopChan:
+				r.logger.Infof("Reporting routine is stopping")
+				return
+			}
 		}
 	}()
 
