@@ -614,3 +614,72 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 
 	return r
 }
+
+func TestClientCloseSend(t *testing.T) {
+	grpclog.SetLoggerV2(&testutil.SilentLogger{})
+
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
+	defer testSetup.Close()
+	numOfRequests := 555
+	res := submitBroadcastRequestsWithCloseSend(testSetup.clientConn, numOfRequests)
+	require.NoError(t, res.err)
+
+	require.Eventually(t, func() bool {
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(numOfRequests)
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+func submitBroadcastRequestsWithCloseSend(conn *grpc.ClientConn, numOfRequests int) (res testStreamResult) {
+	res = testStreamResult{
+		failRequests: numOfRequests,
+	}
+
+	cl := ab.NewAtomicBroadcastClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	stream, err := cl.Broadcast(ctx)
+	if err != nil {
+		res.err = err
+		return
+	}
+
+	buff := make([]byte, 300)
+	for j := 0; j < numOfRequests; j++ {
+		binary.BigEndian.PutUint32(buff, uint32(j))
+		env := tx.CreateStructuredEnvelope(buff)
+		err := stream.Send(env)
+		if err != nil {
+			return
+		}
+	}
+
+	stream.CloseSend()
+
+	for j := 0; j < numOfRequests; j++ {
+		select {
+		default:
+			resp, err := stream.Recv()
+			if err != nil {
+				res.err = fmt.Errorf("error receiving response: %s", err)
+			}
+			if resp.Status != common.Status_SUCCESS {
+				requestErr := fmt.Errorf("receiving response with error: %s", resp.Info)
+				res.respondsErrors = append(res.respondsErrors, requestErr)
+				res.err = requestErr
+			} else {
+				res.successRequests++
+				res.failRequests--
+			}
+		case <-ctx.Done():
+			res.err = fmt.Errorf("a time out occured during submitting request: %w", ctx.Err())
+		}
+	}
+
+	return
+}

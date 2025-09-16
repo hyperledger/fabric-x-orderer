@@ -126,21 +126,24 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 	r.init()
 
-	exit := make(chan struct{})
-	defer func() {
-		close(exit)
-	}()
-
+	ctx := stream.Context()
 	feedbackChan := make(chan Response, 1000)
-	go sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
+	errCh := make(chan error, 2)
+
+	exit := make(chan struct{})
+	defer close(exit)
+
+	go sendFeedbackOnBroadcastStream(stream, errCh, exit, feedbackChan)
 
 	for {
 		reqEnv, err := stream.Recv()
 		if err == io.EOF {
-			return nil
+			errCh <- nil
+			break
 		}
 		if err != nil {
-			return err
+			errCh <- err
+			break
 		}
 
 		atomic.AddUint64(&r.incoming, 1)
@@ -151,6 +154,22 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		// creating a routing request with nil trace - request is not trce in router.
 		tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
 		shardRouter.NewForward(tr)
+	}
+
+	select {
+	case <-ctx.Done():
+		r.logger.Infof("broadcast is closing, context canceled: %v", ctx.Err())
+		return ctx.Err()
+	case err := <-errCh:
+		if err != nil {
+			r.logger.Infof("broadcast is closing, Received error: %v", err)
+			return err
+		} else {
+			r.logger.Infof("Received EOF from client, broadcast closing (recv)")
+			<-ctx.Done()
+			r.logger.Infof("broadcast is closing, context canceled: %v", ctx.Err())
+			return ctx.Err()
+		}
 	}
 }
 
@@ -295,13 +314,20 @@ func sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer
 	}
 }
 
-func sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
+func sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, errCh chan error, exit chan struct{}, feedbackChan chan Response) {
+	ctx := stream.Context()
 	for {
 		select {
-		case <-exit:
+		case <-ctx.Done():
+			errCh <- ctx.Err()
 			return
 		case response := <-feedbackChan:
-			stream.Send(responseToBroadcastResponse(&response))
+			if err := stream.Send(responseToBroadcastResponse(&response)); err != nil {
+				errCh <- err
+				return // or just print error and continue?
+			}
+		case <-exit:
+			return
 		}
 	}
 }
