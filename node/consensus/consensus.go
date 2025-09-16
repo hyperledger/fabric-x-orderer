@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/big"
 	"math/rand"
 	"sync"
 
@@ -193,15 +192,9 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		}
 	}
 
-	lastHeader := &asn1Header{}
-	if _, err := asn1.Unmarshal(computedState.AppContext, lastHeader); err != nil {
-		c.Logger.Panicf("Failed deserializing app context to block header from state: %v", err)
-	}
-
-	lastCommonBlockHeader := &common.BlockHeader{
-		Number:       lastHeader.Number.Uint64(),
-		PreviousHash: lastHeader.PreviousHash,
-		DataHash:     lastHeader.DataHash,
+	lastCommonBlockHeader := &common.BlockHeader{}
+	if err := proto.Unmarshal(computedState.AppContext, lastCommonBlockHeader); err != nil {
+		c.Logger.Panicf("Failed unmarshaling app context to block header from state: %v", err)
 	}
 
 	lastBlockNumber := lastCommonBlockHeader.Number
@@ -237,7 +230,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	if len(attestations) > 0 {
-		computedState.AppContext = protoutil.BlockHeaderBytes(availableCommonBlocks[len(attestations)-1].Header)
+		computedState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(attestations)-1].Header)
 	}
 
 	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
@@ -429,12 +422,6 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	}
 }
 
-type asn1Header struct {
-	Number       *big.Int
-	PreviousHash []byte
-	DataHash     []byte
-}
-
 // AssembleProposal creates a proposal which includes the given requests (when permitting) and metadata
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
@@ -442,15 +429,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	newState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
 
-	lastHeader := &asn1Header{}
-	if _, err := asn1.Unmarshal(newState.AppContext, lastHeader); err != nil {
-		c.Logger.Panicf("Failed deserializing app context to block header from state: %v", err)
-	}
-
-	lastCommonBlockHeader := &common.BlockHeader{
-		Number:       lastHeader.Number.Uint64(),
-		PreviousHash: lastHeader.PreviousHash,
-		DataHash:     lastHeader.DataHash,
+	lastCommonBlockHeader := &common.BlockHeader{}
+	if err := proto.Unmarshal(newState.AppContext, lastCommonBlockHeader); err != nil {
+		c.Logger.Panicf("Failed unmarshaling app context to block header from state: %v", err)
 	}
 
 	lastBlockNumber := lastCommonBlockHeader.Number
@@ -478,7 +459,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	}
 
 	if len(attestations) > 0 {
-		newState.AppContext = protoutil.BlockHeaderBytes(availableCommonBlocks[len(attestations)-1].Header)
+		newState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(attestations)-1].Header)
 	}
 
 	md := &smartbftprotos.ViewMetadata{}

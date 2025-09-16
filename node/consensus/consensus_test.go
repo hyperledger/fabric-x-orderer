@@ -145,7 +145,7 @@ func TestConsensus(t *testing.T) {
 				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
-				AppContext: protoutil.BlockHeaderBytes(&common.BlockHeader{Number: 0}),
+				AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0}),
 			}
 
 			nodeIDs := []uint64{1, 2, 3, 4}
@@ -561,7 +561,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
-				AppContext: protoutil.BlockHeaderBytes(tst.initialAppContext),
+				AppContext: protoutil.MarshalOrPanic(tst.initialAppContext),
 			}
 
 			consenter := &Consenter{
@@ -629,7 +629,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			require.Len(t, header.State.Complaints, tst.numComplaints)
 			require.Equal(t, tst.newTermForShard1, header.State.Shards[0].Term)
 
-			require.Equal(t, protoutil.BlockHeaderBytes(latestBlockHeader), header.State.AppContext)
+			require.Equal(t, protoutil.MarshalOrPanic(latestBlockHeader), header.State.AppContext)
 
 			_, err = c.VerifyProposal(proposal)
 			require.Nil(t, err)
@@ -676,7 +676,7 @@ func TestVerifyProposal(t *testing.T) {
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
-		AppContext: protoutil.BlockHeaderBytes(initialAppContext),
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
 	consenter := &Consenter{
@@ -720,7 +720,7 @@ func TestVerifyProposal(t *testing.T) {
 	header.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 
 	newState := initialState
-	newState.AppContext = protoutil.BlockHeaderBytes(latestBlockHeader)
+	newState.AppContext = protoutil.MarshalOrPanic(latestBlockHeader)
 
 	header.State = &newState
 
@@ -796,21 +796,21 @@ func TestVerifyProposal(t *testing.T) {
 		DataHash:     baf123id1p1s1.Digest(),
 		PreviousHash: protoutil.BlockHeaderHash(initialAppContext),
 	}
-	headerAppContext.State.AppContext = protoutil.BlockHeaderBytes(badAppContextNumber)
+	headerAppContext.State.AppContext = protoutil.MarshalOrPanic(badAppContextNumber)
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
 	badAppContextDataHash := &common.BlockHeader{
 		Number:       11,
 		DataHash:     []byte{9},
 		PreviousHash: protoutil.BlockHeaderHash(initialAppContext),
 	}
-	headerAppContext.State.AppContext = protoutil.BlockHeaderBytes(badAppContextDataHash)
+	headerAppContext.State.AppContext = protoutil.MarshalOrPanic(badAppContextDataHash)
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
 	badAppContextPrevHash := &common.BlockHeader{
 		Number:       11,
 		DataHash:     baf123id1p1s1.Digest(),
 		PreviousHash: []byte{9},
 	}
-	headerAppContext.State.AppContext = protoutil.BlockHeaderBytes(badAppContextPrevHash)
+	headerAppContext.State.AppContext = protoutil.MarshalOrPanic(badAppContextPrevHash)
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
 
 	// 9. mismatch available batch in header
@@ -882,7 +882,7 @@ func TestSignProposal(t *testing.T) {
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
-		AppContext: protoutil.BlockHeaderBytes(initialAppContext),
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
 	consenter := &Consenter{
@@ -939,7 +939,7 @@ func TestSignProposal(t *testing.T) {
 	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, Digest: latestBlockHeader.DataHash, PrevHash: latestBlockHeader.PreviousHash}, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 
 	newState := initialState
-	newState.AppContext = protoutil.BlockHeaderBytes(latestBlockHeader)
+	newState.AppContext = protoutil.MarshalOrPanic(latestBlockHeader)
 
 	header.State = &newState
 
@@ -973,7 +973,7 @@ func TestConsensusStartStop(t *testing.T) {
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  1,
 		Quorum:     1,
-		AppContext: protoutil.BlockHeaderBytes(initialAppContext),
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
 	nodeIDs := []uint64{1}
