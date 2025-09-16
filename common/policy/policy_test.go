@@ -9,15 +9,26 @@ package policy_test
 import (
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/common/policy"
-
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
+	"github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/stretchr/testify/require"
+)
+
+//go:generate counterfeiter -o mocks/policy_manager.go . policyManager
+type policyManager policies.Manager
+
+//go:generate counterfeiter -o mocks/policy_evaluator.go . policyEvaluator
+type policyEvaluator policies.Policy
+
+var (
+	_ policyManager   = &mocks.FakePolicyManager{}
+	_ policyEvaluator = &mocks.FakePolicyEvaluator{}
 )
 
 func TestBundleAndResourcesFromBlock(t *testing.T) {

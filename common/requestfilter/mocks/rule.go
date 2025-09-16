@@ -41,16 +41,15 @@ func (fake *FakeRule) Update(arg1 requestfilter.FilterConfig) error {
 	fake.updateArgsForCall = append(fake.updateArgsForCall, struct {
 		arg1 requestfilter.FilterConfig
 	}{arg1})
-	stub := fake.UpdateStub
-	fakeReturns := fake.updateReturns
 	fake.recordInvocation("Update", []interface{}{arg1})
 	fake.updateMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.UpdateStub != nil {
+		return fake.UpdateStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.updateReturns
 	return fakeReturns.result1
 }
 
@@ -102,16 +101,15 @@ func (fake *FakeRule) Verify(arg1 *comm.Request) error {
 	fake.verifyArgsForCall = append(fake.verifyArgsForCall, struct {
 		arg1 *comm.Request
 	}{arg1})
-	stub := fake.VerifyStub
-	fakeReturns := fake.verifyReturns
 	fake.recordInvocation("Verify", []interface{}{arg1})
 	fake.verifyMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.VerifyStub != nil {
+		return fake.VerifyStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.verifyReturns
 	return fakeReturns.result1
 }
 
@@ -160,6 +158,10 @@ func (fake *FakeRule) VerifyReturnsOnCall(i int, result1 error) {
 func (fake *FakeRule) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.updateMutex.RLock()
+	defer fake.updateMutex.RUnlock()
+	fake.verifyMutex.RLock()
+	defer fake.verifyMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
