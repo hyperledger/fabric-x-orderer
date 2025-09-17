@@ -9,6 +9,7 @@ package request
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -104,7 +105,7 @@ func (rp *Pool) createPendingStore() *PendingStore {
 			rp.semaphore.Release(1)
 			atomic.AddInt64(&rp.size, -1)
 		},
-		Epoch:                rp.options.FirstStrikeThreshold / 10,
+		Epoch:                time.Duration(rand.Intn(50))*time.Millisecond + rp.options.FirstStrikeThreshold/10,
 		FirstStrikeCallback:  rp.striker.OnFirstStrikeTimeout,
 		SecondStrikeCallback: rp.striker.OnSecondStrikeTimeout,
 	}
