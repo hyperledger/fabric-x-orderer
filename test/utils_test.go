@@ -32,7 +32,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
@@ -471,7 +470,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		}
 
 		if sigVerifier != nil && !isGenesisBlock {
-			bhdr := state.BlockHeader{Number: block.Header.Number, Digest: block.Header.DataHash, PrevHash: block.Header.PreviousHash}
+			bhdr := &common.BlockHeader{Number: block.Header.Number, DataHash: block.Header.DataHash, PreviousHash: block.Header.PreviousHash}
 			sigsBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
 			md := &common.Metadata{}
 			if err := proto.Unmarshal(sigsBytes, md); err != nil {
@@ -484,7 +483,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				if err != nil {
 					return fmt.Errorf("failed unmarshalling identifier header for block %d: %v", block.Header.GetNumber(), err)
 				}
-				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, bhdr.Bytes(), metadataSignature.GetSignature()); err != nil {
+				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, protoutil.BlockHeaderBytes(bhdr), metadataSignature.GetSignature()); err != nil {
 					t.Logf("failed verifying signature for block %d: %v", block.Header.GetNumber(), err)
 					continue
 				}

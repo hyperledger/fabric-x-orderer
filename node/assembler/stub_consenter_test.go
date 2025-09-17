@@ -135,7 +135,7 @@ func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 				Batch:  ba.AvailableBatch,
 				Header: ba.OrderingInformation.BlockHeader,
 			}},
-			AvailableCommonBlocks: []*common.Block{{Header: &common.BlockHeader{Number: ba.OrderingInformation.BlockHeader.Number, DataHash: ba.OrderingInformation.BlockHeader.Digest}}},
+			AvailableCommonBlocks: []*common.Block{ba.OrderingInformation.CommonBlock},
 		}).Serialize(),
 	}
 
@@ -149,10 +149,7 @@ func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 	bytes := state.DecisionToBytes(proposal, signatures)
 
 	sc.decisions <- &common.Block{
-		Header: &common.BlockHeader{
-			Number:       uint64(ba.OrderingInformation.DecisionNum),
-			PreviousHash: ba.OrderingInformation.PrevHash,
-		},
-		Data: &common.BlockData{Data: [][]byte{bytes}},
+		Header: ba.OrderingInformation.CommonBlock.Header,
+		Data:   &common.BlockData{Data: [][]byte{bytes}},
 	}
 }

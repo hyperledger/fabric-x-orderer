@@ -29,6 +29,7 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 	ba := &state.AvailableBatchOrdered{
 		AvailableBatch: state.NewAvailableBatch(0, math.MaxUint16, 0, genesisDigest),
 		OrderingInformation: &state.OrderingInformation{
+			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: 0, PreviousHash: nil, DataHash: genesisDigest}},
 			BlockHeader: &state.BlockHeader{
 				Number:   0,
 				PrevHash: nil,
@@ -41,7 +42,7 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 	}
 	orderedBatchAttestationCreator := &OrderedBatchAttestationCreator{
 		prevBa:     ba,
-		headerHash: calculateHeaderHash(ba.OrderingInformation.BlockHeader),
+		headerHash: protoutil.BlockHeaderHash(ba.OrderingInformation.CommonBlock.Header),
 	}
 	return orderedBatchAttestationCreator, ba
 }
@@ -58,22 +59,13 @@ func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisi
 				PrevHash: obac.headerHash,
 				Digest:   batchId.Digest(),
 			},
-			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: uint64(decisionNum), DataHash: batchId.Digest()}},
+			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: uint64(decisionNum), PreviousHash: obac.headerHash, DataHash: batchId.Digest()}},
 			DecisionNum: decisionNum,
 			BatchIndex:  batchIndex,
 			BatchCount:  batchCount,
 		},
 	}
-	obac.headerHash = calculateHeaderHash(ba.OrderingInformation.BlockHeader)
+	obac.headerHash = protoutil.BlockHeaderHash(ba.OrderingInformation.CommonBlock.Header)
 	obac.prevBa = ba
 	return ba
-}
-
-func calculateHeaderHash(bh *state.BlockHeader) []byte {
-	header := &common.BlockHeader{
-		Number:       bh.Number,
-		PreviousHash: bh.PrevHash,
-		DataHash:     bh.Digest,
-	}
-	return protoutil.BlockHeaderHash(header)
 }

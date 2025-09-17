@@ -250,13 +250,12 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 		return int(initState.Shards[i].Shard) < int(initState.Shards[j].Shard)
 	})
 
-	// TODO set right initial app context
-	initialAppContext := &state.BlockHeader{
-		Number:   0, // We want the first block to start with 0, this is how we signal bootstrap
-		PrevHash: nil,
-		Digest:   nil,
+	initialAppContext := &common.BlockHeader{
+		Number:       0, // We want the first block to start with 0, this is how we signal bootstrap
+		PreviousHash: nil,
+		DataHash:     nil,
 	}
-	initState.AppContext = initialAppContext.Bytes()
+	initState.AppContext = protoutil.MarshalOrPanic(initialAppContext)
 
 	return &initState
 }
@@ -274,21 +273,24 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, ledg
 		Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest),
 	}
 
-	var lastBlockHeader state.BlockHeader
-	if err := lastBlockHeader.FromBytes(initState.AppContext); err != nil {
-		panic(fmt.Sprintf("Failed deserializing app context to BlockHeader from initial state: %v", err))
+	lastCommonBlockHeader := &common.BlockHeader{}
+	if err := proto.Unmarshal(initState.AppContext, lastCommonBlockHeader); err != nil {
+		panic(fmt.Sprintf("Failed unmarshaling app context to BlockHeader from initial state: %v", err))
 	}
-	lastBlockHeader.Digest = genesisDigest
-	initState.AppContext = lastBlockHeader.Bytes()
+
+	lastCommonBlockHeader.DataHash = genesisDigest
+
+	initState.AppContext = protoutil.MarshalOrPanic(lastCommonBlockHeader)
 
 	genesisProposal := smartbft_types.Proposal{
-		Payload: protoutil.MarshalOrPanic(genesisBlock), // TODO create a correct payload
+		Payload: protoutil.MarshalOrPanic(genesisBlock),
 		Header: (&state.Header{
-			AvailableBlocks: genesisBlocks,
-			State:           initState,
-			Num:             0,
+			AvailableCommonBlocks: []*common.Block{genesisBlock},
+			AvailableBlocks:       genesisBlocks,
+			State:                 initState,
+			Num:                   0,
 		}).Serialize(),
-		Metadata: nil, // TODO maybe use this metadata
+		Metadata: nil,
 	}
 
 	ledger.Append(state.DecisionToBytes(genesisProposal, nil))

@@ -147,8 +147,6 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 		},
 	}
 
-	block.Header.PreviousHash = ordInfo.PrevHash
-
 	var metadataContents [][]byte
 	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
 		metadataContents = append(metadataContents, []byte{})

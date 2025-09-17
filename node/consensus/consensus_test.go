@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -138,19 +139,13 @@ func TestConsensus(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			verifier := make(crypto.ECDSAVerifier)
 
-			initialAppContext := &state.BlockHeader{
-				Number:   0,
-				PrevHash: nil,
-				Digest:   nil,
-			}
-
 			initialState := &state.State{
 				ShardCount: 2,
 				N:          4,
 				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
-				AppContext: initialAppContext.Bytes(),
+				AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0}),
 			}
 
 			nodeIDs := []uint64{1, 2, 3, 4}
@@ -335,11 +330,13 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 			},
 			Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, make([]byte, 32)),
 		}
+		genesisCommonBlock := &common.Block{Header: &common.BlockHeader{Number: 0}}
 		genesisProposal := smartbft_types.Proposal{
 			Header: (&state.Header{
-				AvailableBlocks: []state.AvailableBlock{genesisBlock},
-				State:           initState,
-				Num:             0,
+				AvailableBlocks:       []state.AvailableBlock{genesisBlock},
+				AvailableCommonBlocks: []*common.Block{genesisCommonBlock},
+				State:                 initState,
+				Num:                   0,
 			}).Serialize(),
 			Metadata: nil,
 		}
@@ -463,7 +460,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 	for _, tst := range []struct {
 		name                   string
-		initialAppContext      state.BlockHeader
+		initialAppContext      *common.BlockHeader
 		metadata               *smartbftprotos.ViewMetadata
 		ces                    []state.ControlEvent
 		bafsOfAvailableBatches []arma_types.BatchAttestationFragment
@@ -473,10 +470,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	}{
 		{
 			name: "single block",
-			initialAppContext: state.BlockHeader{
-				Number:   0,
-				PrevHash: make([]byte, 32),
-				Digest:   make([]byte, 32),
+			initialAppContext: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: nil,
+				DataHash:     nil,
 			},
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
@@ -487,10 +484,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		},
 		{
 			name: "pending",
-			initialAppContext: state.BlockHeader{
-				Number:   0,
-				PrevHash: make([]byte, 32),
-				Digest:   make([]byte, 32),
+			initialAppContext: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: nil,
+				DataHash:     nil,
 			},
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
@@ -500,10 +497,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		},
 		{
 			name: "single block too many bafs",
-			initialAppContext: state.BlockHeader{
-				Number:   0,
-				PrevHash: make([]byte, 32),
-				Digest:   make([]byte, 32),
+			initialAppContext: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: nil,
+				DataHash:     nil,
 			},
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
@@ -514,10 +511,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		},
 		{
 			name: "two blocks plus pending and one complaint",
-			initialAppContext: state.BlockHeader{
-				Number:   0,
-				PrevHash: make([]byte, 32),
-				Digest:   make([]byte, 32),
+			initialAppContext: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: nil,
+				DataHash:     nil,
 			},
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
@@ -529,10 +526,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		},
 		{
 			name: "block with different context and term change",
-			initialAppContext: state.BlockHeader{
-				Number:   10,
-				PrevHash: append(make([]byte, 31), byte(10)),
-				Digest:   append(make([]byte, 31), byte(20)),
+			initialAppContext: &common.BlockHeader{
+				Number:       10,
+				PreviousHash: append(make([]byte, 31), byte(10)),
+				DataHash:     append(make([]byte, 31), byte(20)),
 			},
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
@@ -544,10 +541,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		},
 		{
 			name: "no blocks with two pending and one complaint",
-			initialAppContext: state.BlockHeader{
-				Number:   10,
-				PrevHash: append(make([]byte, 31), byte(1)),
-				Digest:   append(make([]byte, 31), byte(2)),
+			initialAppContext: &common.BlockHeader{
+				Number:       10,
+				PreviousHash: append(make([]byte, 31), byte(1)),
+				DataHash:     append(make([]byte, 31), byte(2)),
 			},
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
@@ -564,7 +561,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
-				AppContext: tst.initialAppContext.Bytes(),
+				AppContext: protoutil.MarshalOrPanic(tst.initialAppContext),
 			}
 
 			consenter := &Consenter{
@@ -611,20 +608,20 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 			latestBlockHeader := tst.initialAppContext
 			latestBlockNumber := tst.initialAppContext.Number + 1
-			latestBlockHash := tst.initialAppContext.Hash()
+			latestBlockHash := protoutil.BlockHeaderHash(tst.initialAppContext)
 
 			for i, baf := range tst.bafsOfAvailableBatches {
-				latestBlockHeader = state.BlockHeader{
-					Number:   latestBlockNumber,
-					PrevHash: latestBlockHash,
-					Digest:   baf.Digest(),
+				latestBlockHeader = &common.BlockHeader{
+					Number:       latestBlockNumber,
+					PreviousHash: latestBlockHash,
+					DataHash:     baf.Digest(),
 				}
 
-				require.Equal(t, latestBlockHeader, *header.AvailableBlocks[i].Header)
-				require.Equal(t, latestBlockNumber, header.AvailableCommonBlocks[i].Header.Number)
+				require.Equal(t, latestBlockHeader.Number, header.AvailableBlocks[i].Header.Number)
+				require.Equal(t, latestBlockHeader, header.AvailableCommonBlocks[i].Header)
 
 				latestBlockNumber++
-				latestBlockHash = latestBlockHeader.Hash()
+				latestBlockHash = protoutil.BlockHeaderHash(latestBlockHeader)
 			}
 
 			require.NotNil(t, header.State)
@@ -632,7 +629,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			require.Len(t, header.State.Complaints, tst.numComplaints)
 			require.Equal(t, tst.newTermForShard1, header.State.Shards[0].Term)
 
-			require.Equal(t, latestBlockHeader.Bytes(), header.State.AppContext)
+			require.Equal(t, protoutil.MarshalOrPanic(latestBlockHeader), header.State.AppContext)
 
 			_, err = c.VerifyProposal(proposal)
 			require.Nil(t, err)
@@ -667,10 +664,10 @@ func TestVerifyProposal(t *testing.T) {
 		}
 	}
 
-	initialAppContext := state.BlockHeader{
-		Number:   10,
-		PrevHash: make([]byte, 32),
-		Digest:   make([]byte, 32),
+	initialAppContext := &common.BlockHeader{
+		Number:       10,
+		PreviousHash: nil,
+		DataHash:     nil,
 	}
 
 	initialState := state.State{
@@ -679,7 +676,7 @@ func TestVerifyProposal(t *testing.T) {
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
-		AppContext: initialAppContext.Bytes(),
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
 	consenter := &Consenter{
@@ -714,16 +711,16 @@ func TestVerifyProposal(t *testing.T) {
 	header := state.Header{}
 	header.Num = 0
 
-	latestBlockHeader := initialAppContext
-	latestBlockHeader.Number += 1
-	latestBlockHeader.Digest = baf123id1p1s1.Digest()
-	latestBlockHeader.PrevHash = initialAppContext.Hash()
+	latestBlockHeader := &common.BlockHeader{}
+	latestBlockHeader.Number = initialAppContext.Number + 1
+	latestBlockHeader.DataHash = baf123id1p1s1.Digest()
+	latestBlockHeader.PreviousHash = protoutil.BlockHeaderHash(initialAppContext)
 
-	header.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
-	header.AvailableCommonBlocks = []*common.Block{{Header: &common.BlockHeader{DataHash: baf123id1p1s1.Digest(), Number: latestBlockHeader.Number}}}
+	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, PrevHash: latestBlockHeader.PreviousHash, Digest: latestBlockHeader.DataHash}, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	header.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 
 	newState := initialState
-	newState.AppContext = latestBlockHeader.Bytes()
+	newState.AppContext = protoutil.MarshalOrPanic(latestBlockHeader)
 
 	header.State = &newState
 
@@ -793,33 +790,43 @@ func TestVerifyProposal(t *testing.T) {
 	// 8. mismatch state app context in header
 	t.Log("mismatch state app context in header")
 	headerAppContext := header
-	badState = newState
-	headerAppContext.State = &badState
-	badAppContext := latestBlockHeader
-	badAppContext.Number = 100
-	headerAppContext.State.AppContext = badAppContext.Bytes()
+	headerAppContext.State = &newState
+	badAppContextNumber := &common.BlockHeader{
+		Number:       100,
+		DataHash:     baf123id1p1s1.Digest(),
+		PreviousHash: protoutil.BlockHeaderHash(initialAppContext),
+	}
+	headerAppContext.State.AppContext = protoutil.MarshalOrPanic(badAppContextNumber)
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
-	badAppContext.Number = latestBlockHeader.Number
-	badAppContext.Digest[0]++
-	headerAppContext.State.AppContext = badAppContext.Bytes()
+	badAppContextDataHash := &common.BlockHeader{
+		Number:       11,
+		DataHash:     []byte{9},
+		PreviousHash: protoutil.BlockHeaderHash(initialAppContext),
+	}
+	headerAppContext.State.AppContext = protoutil.MarshalOrPanic(badAppContextDataHash)
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
-	badAppContext.Digest = latestBlockHeader.Digest
-	badAppContext.PrevHash[0]++
-	headerAppContext.State.AppContext = badAppContext.Bytes()
+	badAppContextPrevHash := &common.BlockHeader{
+		Number:       11,
+		DataHash:     baf123id1p1s1.Digest(),
+		PreviousHash: []byte{9},
+	}
+	headerAppContext.State.AppContext = protoutil.MarshalOrPanic(badAppContextPrevHash)
 	verifyProposalRequireError(t, c, headerAppContext.Serialize(), brs.Serialize(), mBytes)
 
 	// 9. mismatch available batch in header
 	t.Log("mismatch available batch in header")
 	headerAB := header
-	headerAB.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(10, baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	headerAB.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, PrevHash: latestBlockHeader.PreviousHash, Digest: latestBlockHeader.DataHash}, Batch: state.NewAvailableBatch(10, baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	headerAB.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 	verifyProposalRequireError(t, c, headerAB.Serialize(), brs.Serialize(), mBytes)
 
 	// 10. mismatch block header in header
 	t.Log("mismatch block header in header")
 	headerBH := header
 	badBH := latestBlockHeader
-	badBH.PrevHash[0]++
-	headerBH.AvailableBlocks = []state.AvailableBlock{{Header: &badBH, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	badBH.PreviousHash[0]++
+	headerBH.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: badBH.Number, PrevHash: badBH.PreviousHash, Digest: badBH.DataHash}, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	headerBH.AvailableCommonBlocks = []*common.Block{{Header: badBH}}
 	verifyProposalRequireError(t, c, headerBH.Serialize(), brs.Serialize(), mBytes)
 }
 
@@ -863,10 +870,10 @@ func TestSignProposal(t *testing.T) {
 		}
 	}
 
-	initialAppContext := state.BlockHeader{
-		Number:   10,
-		PrevHash: make([]byte, 32),
-		Digest:   make([]byte, 32),
+	initialAppContext := &common.BlockHeader{
+		Number:       10,
+		PreviousHash: nil,
+		DataHash:     nil,
 	}
 
 	initialState := state.State{
@@ -875,7 +882,7 @@ func TestSignProposal(t *testing.T) {
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
-		AppContext: initialAppContext.Bytes(),
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
 	consenter := &Consenter{
@@ -926,13 +933,13 @@ func TestSignProposal(t *testing.T) {
 
 	latestBlockHeader := initialAppContext
 	latestBlockHeader.Number += 1
-	latestBlockHeader.Digest = baf123id1p1s1.Digest()
-	latestBlockHeader.PrevHash = initialAppContext.Hash()
+	latestBlockHeader.DataHash = baf123id1p1s1.Digest()
+	latestBlockHeader.PreviousHash = protoutil.BlockHeaderHash(initialAppContext)
 
-	header.AvailableBlocks = []state.AvailableBlock{{Header: &latestBlockHeader, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, Digest: latestBlockHeader.DataHash, PrevHash: latestBlockHeader.PreviousHash}, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 
 	newState := initialState
-	newState.AppContext = latestBlockHeader.Bytes()
+	newState.AppContext = protoutil.MarshalOrPanic(latestBlockHeader)
 
 	header.State = &newState
 
@@ -954,10 +961,10 @@ func TestConsensusStartStop(t *testing.T) {
 
 	verifier := make(crypto.ECDSAVerifier)
 
-	initialAppContext := &state.BlockHeader{
-		Number:   1,
-		PrevHash: make([]byte, 32),
-		Digest:   make([]byte, 32),
+	initialAppContext := &common.BlockHeader{
+		Number:       1,
+		PreviousHash: nil,
+		DataHash:     nil,
 	}
 
 	initialState := &state.State{
@@ -966,7 +973,7 @@ func TestConsensusStartStop(t *testing.T) {
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  1,
 		Quorum:     1,
-		AppContext: initialAppContext.Bytes(),
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
 	nodeIDs := []uint64{1}
