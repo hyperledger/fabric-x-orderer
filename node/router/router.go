@@ -14,7 +14,9 @@ import (
 	"io"
 	"math"
 	rand2 "math/rand"
+	"net"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -22,10 +24,12 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Net interface {
@@ -34,15 +38,18 @@ type Net interface {
 }
 
 type Router struct {
-	mapper           ShardMapper
-	net              Net
-	shardRouters     map[types.ShardID]*ShardRouter
-	logger           types.Logger
-	shardIDs         []types.ShardID
-	incoming         uint64
-	routerNodeConfig *nodeconfig.RouterNodeConfig
-	verifier         *requestfilter.RulesVerifier
-	stopChan         chan struct{}
+	mapper                 ShardMapper
+	net                    Net
+	monitor                Net
+	shardRouters           map[types.ShardID]*ShardRouter
+	logger                 types.Logger
+	shardIDs               []types.ShardID
+	incoming               uint64
+	rejectedTxsWithCode400 uint64
+	rejectedTxsWithCode500 uint64
+	routerNodeConfig       *nodeconfig.RouterNodeConfig
+	verifier               *requestfilter.RulesVerifier
+	stopChan               chan struct{}
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -99,6 +106,47 @@ func (r *Router) StartRouterService() <-chan struct{} {
 	return stop
 }
 
+func (r *Router) StartMonitoringService() {
+	metrics := []monitoring.MonitoringMetric{{
+		Labels:   []string{"incoming_txs", "200"},
+		Interval: 10 * time.Second,
+		Value:    &r.incoming,
+	}, {
+		Labels:   []string{"rejected_txs", "400"},
+		Interval: 10 * time.Second,
+		Value:    &r.rejectedTxsWithCode400,
+	}, {
+		Labels:   []string{"rejected_txs", "500"},
+		Interval: 10 * time.Second,
+		Value:    &r.rejectedTxsWithCode500,
+	}}
+
+	host, _, err := net.SplitHostPort(r.routerNodeConfig.ListenAddress)
+	if err != nil {
+		r.logger.Panicf("failed to get hostname: %v", err)
+	}
+	monitorOpts := &monitoring.MonitorOpts{
+		CounterOpts: prometheus.CounterOpts{
+			Name: fmt.Sprintf("router_metrics_%d", r.routerNodeConfig.PartyID),
+			Help: "Router metrics grabbed in 10s intervals",
+		},
+		Labels:   []string{"router_txs_metrics", "code"},
+		Metrics:  metrics,
+		Endpoint: monitoring.Endpoint{Host: host, Port: 2112 + int(r.routerNodeConfig.PartyID)},
+	}
+	monitor := monitoring.NewMonitor(monitorOpts, r.logger)
+	monitor.Start()
+	r.monitor = monitor
+}
+
+func (r *Router) MonitoringServiceAddress() string {
+	if r.monitor == nil {
+		return ""
+	}
+
+	return r.monitor.Address()
+}
+
 func (r *Router) Address() string {
 	if r.net == nil {
 		return ""
@@ -113,6 +161,9 @@ func (r *Router) Stop() {
 	close(r.stopChan)
 
 	r.net.Stop()
+	if r.monitor != nil {
+		r.monitor.Stop()
+	}
 
 	for _, sr := range r.shardRouters {
 		sr.Stop()
@@ -133,7 +184,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 	}()
 
 	feedbackChan := make(chan Response, 1000)
-	go sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
+	go r.sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
 
 	for {
 		reqEnv, err := stream.Recv()
@@ -196,11 +247,13 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		interval := 10 * time.Second
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		lastTxcount := uint64(0)
 		for {
 			select {
 			case <-ticker.C:
-				txCount := atomic.SwapUint64(&r.incoming, 0)
-				r.logger.Infof("Received %.f transactions per second", float64(txCount)/interval.Seconds())
+				txCount := atomic.LoadUint64(&r.incoming)
+				r.logger.Infof("Received %.f transactions per second", float64(txCount-lastTxcount)/interval.Seconds())
+				lastTxcount = txCount
 			case <-r.stopChan:
 				r.logger.Infof("Reporting routine is stopping")
 				return
@@ -222,7 +275,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 	}()
 
 	feedbackChan := make(chan Response, 100)
-	go sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
+	go r.sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
 
 	for {
 		req, err := stream.Recv()
@@ -281,29 +334,44 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	r.logger.Debugf("Forwarded request %x", request.Payload)
 
 	response := <-feedbackChan // TODO: add select on shutdwon or timeout here
+	r.incrementRouterMetrics(response.err)
 	return responseToSubmitResponse(&response), nil
 }
 
-func sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, feedbackChan chan Response) {
+func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, feedbackChan chan Response) {
 	for {
 		select {
 		case <-exit:
 			return
 		case response := <-feedbackChan:
+			r.incrementRouterMetrics(response.err)
 			resp := responseToSubmitResponse(&response)
 			stream.Send(resp)
 		}
 	}
 }
 
-func sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
+func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
 	for {
 		select {
 		case <-exit:
 			return
 		case response := <-feedbackChan:
+			r.incrementRouterMetrics(response.err)
 			stream.Send(responseToBroadcastResponse(&response))
 		}
+	}
+}
+
+func (r *Router) incrementRouterMetrics(err error) {
+	if err == nil {
+		return
+	}
+	if strings.Contains(err.Error(), "request verification error") {
+		atomic.AddUint64(&r.rejectedTxsWithCode400, 1)
+	}
+	if strings.Contains(err.Error(), "server error: could not establish connection between router and batcher") {
+		atomic.AddUint64(&r.rejectedTxsWithCode500, 1)
 	}
 }
 
