@@ -9,6 +9,7 @@ package request
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,7 +94,7 @@ func (rp *Pool) createPendingStore() *PendingStore {
 		Inspector:             rp.inspector,
 		ReqIDGCInterval:       rp.options.AutoRemoveTimeout / 4,
 		ReqIDLifetime:         rp.options.AutoRemoveTimeout,
-		Time:                  time.NewTicker(time.Second).C,
+		Time:                  time.NewTicker(rp.options.FirstStrikeThreshold / 10).C,
 		StartTime:             time.Now(),
 		Logger:                rp.logger,
 		SecondStrikeThreshold: rp.options.SecondStrikeThreshold,
@@ -101,7 +102,7 @@ func (rp *Pool) createPendingStore() *PendingStore {
 		OnDelete: func(key string) {
 			rp.semaphore.Release(1)
 		},
-		Epoch:                time.Second,
+		Epoch:                time.Duration(rand.Intn(50))*time.Millisecond + rp.options.FirstStrikeThreshold/10,
 		FirstStrikeCallback:  rp.striker.OnFirstStrikeTimeout,
 		SecondStrikeCallback: rp.striker.OnSecondStrikeTimeout,
 	}
