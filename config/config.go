@@ -148,7 +148,7 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
 	channelID, err := ReadChannelIdFromConfigBlock(configBlock)
 	if err != nil {
-		panic(fmt.Sprintf("failed to read channelID from genesis block: %s", err))
+		panic(fmt.Sprintf("failed to read channelID from config block: %s", err))
 	}
 
 	bccsp, err := (&factory.SWFactory{}).Get(config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
@@ -157,11 +157,11 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 	}
 	env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
 	if err != nil {
-		panic(fmt.Sprintf("failed to get envelope from genesis block: %s", err))
+		panic(fmt.Sprintf("failed to get envelope from config block: %s", err))
 	}
 	bundle, err := policy.BuildBundleFromBlock(env, bccsp)
 	if err != nil {
-		panic(fmt.Sprintf("failed to build bundle from genesis block: %s", err))
+		panic(fmt.Sprintf("failed to build bundle from config block: %s", err))
 	}
 
 	routerConfig := &nodeconfig.RouterNodeConfig{
