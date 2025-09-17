@@ -9,8 +9,6 @@ package requestfilter_test
 import (
 	"testing"
 
-	"github.com/pkg/errors"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	policyMock "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
@@ -18,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )

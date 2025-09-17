@@ -17,10 +17,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hyperledger/fabric-x-common/protoutil"
-
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
@@ -144,7 +145,25 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 	return BFTConfig, nil
 }
 
-func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig {
+func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
+	channelID, err := ReadChannelIdFromConfigBlock(configBlock)
+	if err != nil {
+		panic(fmt.Sprintf("failed to read channelID from config block: %s", err))
+	}
+
+	bccsp, err := (&factory.SWFactory{}).Get(config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	if err != nil {
+		bccsp = factory.GetDefault()
+	}
+	env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
+	if err != nil {
+		panic(fmt.Sprintf("failed to get envelope from config block: %s", err))
+	}
+	bundle, err := policy.BuildBundleFromBlock(env, bccsp)
+	if err != nil {
+		panic(fmt.Sprintf("failed to build bundle from config block: %s", err))
+	}
+
 	routerConfig := &nodeconfig.RouterNodeConfig{
 		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
@@ -157,6 +176,8 @@ func (config *Configuration) ExtractRouterConfig() *nodeconfig.RouterNodeConfig 
 		ClientAuthRequired:                  config.LocalConfig.TLSConfig.ClientAuthRequired,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.RouterParams.ClientSignatureVerificationRequired,
+		ChannelID:                           channelID,
+		PolicyManager:                       bundle.PolicyManager(),
 	}
 	return routerConfig
 }
