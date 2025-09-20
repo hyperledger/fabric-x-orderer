@@ -8,6 +8,7 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
@@ -529,4 +530,8 @@ func (c *Consensus) pickEndpoint() string {
 	}
 	c.Logger.Debugf("Returning random node (ID=%d) endpoint : %s", c.Config.Consenters[r].PartyID, c.Config.Consenters[r].Endpoint)
 	return c.Config.Consenters[r].Endpoint
+}
+
+func (sc *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	return nil, fmt.Errorf("SubmitConfig not implemented")
 }
