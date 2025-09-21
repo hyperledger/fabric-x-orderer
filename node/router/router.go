@@ -20,6 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -43,6 +44,7 @@ type Router struct {
 	routerNodeConfig *nodeconfig.RouterNodeConfig
 	verifier         *requestfilter.RulesVerifier
 	stopChan         chan struct{}
+	configStore      *configstore.Store
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -179,6 +181,11 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		rconfig.NumOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
 	}
 
+	configStore, err := configstore.NewStore(rconfig.ConfigStorePath)
+	if err != nil {
+		logger.Panicf("Failed creating router config store: %s", err)
+	}
+
 	r := &Router{
 		mapper: MapperCRC64{
 			Logger:     logger,
@@ -190,6 +197,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		routerNodeConfig: rconfig,
 		verifier:         verifier,
 		stopChan:         make(chan struct{}),
+		configStore:      configStore,
 	}
 
 	for _, shardId := range shardIDs {
