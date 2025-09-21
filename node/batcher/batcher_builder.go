@@ -127,6 +127,7 @@ func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) MemPool {
 		BatchMaxSize:          config.BatchMaxSize,
 		BatchMaxSizeBytes:     config.BatchMaxBytes,
 		RequestMaxBytes:       config.RequestMaxBytes,
+		BatchTimeout:          config.BatchCreationTimeout,
 		SubmitTimeout:         config.SubmitTimeout,
 		FirstStrikeThreshold:  config.FirstStrikeThreshold,
 		SecondStrikeThreshold: config.SecondStrikeThreshold,
