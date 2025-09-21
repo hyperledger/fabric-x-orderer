@@ -10,11 +10,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/msp"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -55,9 +53,9 @@ func (cli *CLI) Command(name, help string, onCmd func(configFile *os.File)) {
 func (cli *CLI) configureNodesCommands() {
 	for name, f := range map[string]func(configFile *os.File){
 		"router":    launchRouter(cli.stop),
-		"assembler": launchAssembler(cli.stop, loadConfigAndGenesis),
+		"assembler": launchAssembler(cli.stop),
 		"batcher":   launchBatcher(cli.stop),
-		"consensus": launchConsensus(cli.stop, loadConfigAndGenesis),
+		"consensus": launchConsensus(cli.stop),
 	} {
 		cli.Command(name, help[name], f)
 	}
@@ -79,12 +77,12 @@ func stopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr 
 	}()
 }
 
-func launchAssembler(
-	stop chan struct{},
-	loadConfigAndGenesis func(configFile *os.File) (*config.Configuration, *common.Block),
-) func(configFile *os.File) {
+func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent, genesisBlock := loadConfigAndGenesis(configFile)
+		configContent, genesisBlock, err := config.ReadConfig(configFile.Name())
+		if err != nil {
+			panic(fmt.Sprintf("error launching assembler, err: %s", err))
+		}
 		conf := configContent.ExtractAssemblerConfig()
 
 		var assemblerLogger *flogging.FabricLogger
@@ -110,12 +108,13 @@ func launchAssembler(
 	}
 }
 
-func launchConsensus(
-	stop chan struct{},
-	loadConfigAndGenesis func(configFile *os.File) (*config.Configuration, *common.Block),
-) func(configFile *os.File) {
+func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent, genesisBlock := loadConfigAndGenesis(configFile)
+		configContent, genesisBlock, err := config.ReadConfig(configFile.Name())
+		if err != nil {
+			panic(fmt.Sprintf("error launching consensus, err: %s", err))
+		}
+
 		conf := configContent.ExtractConsenterConfig()
 
 		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
@@ -247,20 +246,6 @@ func NewCLI() *CLI {
 	}
 	cli.configureNodesCommands()
 	return cli
-}
-
-func loadConfigAndGenesis(configFile *os.File) (*config.Configuration, *common.Block) {
-	absConfigFileName, err := filepath.Abs(configFile.Name())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed extracting absolute path from file %s: %v \n", configFile.Name(), err)
-		os.Exit(2)
-	}
-	config, block, err := config.ReadConfig(absConfigFileName)
-	if err != nil {
-		panic(fmt.Sprintf("error reading local config, err: %s", err))
-	}
-
-	return config, block
 }
 
 type silentLogger struct{}
