@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -217,6 +218,10 @@ func (b *BatcherRole) resubmitPendingBAFs(state *state.State, prevPrimary types.
 			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
 			for _, req := range batch.Requests() {
 				if err := b.MemPool.Submit(req); err != nil {
+					if strings.Contains(err.Error(), "already inserted") {
+						b.Logger.Debugf("Failed submitting request to pool; err: %v", err)
+						continue
+					}
 					b.Logger.Errorf("Failed submitting request to pool; err: %v", err)
 				}
 			}
