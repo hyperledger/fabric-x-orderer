@@ -194,12 +194,12 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 
 func launchRouter(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		conf, genesisBlock, err := config.ReadConfig(configFile.Name())
+		conf, lastConfigBlock, err := config.ReadConfig(configFile.Name())
 		if err != nil {
 			panic(fmt.Sprintf("error launching router, err: %s", err))
 		}
 
-		routerConf := conf.ExtractRouterConfig(genesisBlock)
+		routerConf := conf.ExtractRouterConfig(lastConfigBlock)
 
 		var routerLogger *flogging.FabricLogger
 		if testLogger != nil {
