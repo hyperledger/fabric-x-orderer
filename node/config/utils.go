@@ -33,9 +33,9 @@ func (rfc *RouterNodeConfig) GetClientSignatureVerificationRequired() bool {
 }
 
 func (rfc *RouterNodeConfig) GetChannelID() string {
-	return rfc.ChannelID
+	return rfc.Bundle.ConfigtxValidator().ChannelID()
 }
 
 func (rfc *RouterNodeConfig) GetPolicyManager() policies.Manager {
-	return rfc.PolicyManager
+	return rfc.Bundle.PolicyManager()
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -26,9 +27,13 @@ type policyManager policies.Manager
 //go:generate counterfeiter -o mocks/policy_evaluator.go . policyEvaluator
 type policyEvaluator policies.Policy
 
+//go:generate counterfeiter -o mocks/configtx_validator.go . configtxValidator
+type configtxValidator configtx.Validator
+
 var (
-	_ policyManager   = &mocks.FakePolicyManager{}
-	_ policyEvaluator = &mocks.FakePolicyEvaluator{}
+	_ policyManager     = &mocks.FakePolicyManager{}
+	_ policyEvaluator   = &mocks.FakePolicyEvaluator{}
+	_ configtxValidator = &mocks.FakeConfigtxValidator{}
 )
 
 func TestBundleAndResourcesFromBlock(t *testing.T) {

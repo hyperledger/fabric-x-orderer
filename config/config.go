@@ -146,11 +146,6 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
-	channelID, err := ReadChannelIdFromConfigBlock(configBlock)
-	if err != nil {
-		panic(fmt.Sprintf("failed to read channelID from config block: %s", err))
-	}
-
 	bccsp, err := (&factory.SWFactory{}).Get(config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 	if err != nil {
 		bccsp = factory.GetDefault()
@@ -176,8 +171,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		ClientAuthRequired:                  config.LocalConfig.TLSConfig.ClientAuthRequired,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.RouterParams.ClientSignatureVerificationRequired,
-		ChannelID:                           channelID,
-		PolicyManager:                       bundle.PolicyManager(),
+		Bundle:                              bundle,
 	}
 	return routerConfig
 }
