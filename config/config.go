@@ -57,6 +57,8 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 	nodeRole := findRoleFromLocalConfig(conf.LocalConfig)
 
 	var lastConfigBlock *common.Block
+	var configStore *configstore.Store
+
 	switch conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method {
 	case "yaml":
 		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
@@ -70,7 +72,7 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 	case "block":
 		// If node is router or batcher, check if config store has blocks, and if yes bootstrap from the last block
 		if nodeRole == "router" || nodeRole == "batcher" {
-			configStore, err := configstore.NewStore(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
+			configStore, err = configstore.NewStore(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed creating router config store: %s", err)
 			}
@@ -89,6 +91,13 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 			lastConfigBlock, err = readGenesisBlockFromBootstrapPath(conf.LocalConfig)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to read genesis block from bootstrap file, err: %v", err)
+			}
+
+			if configStore != nil {
+				err = configStore.Add(lastConfigBlock)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to add the genesis block to the config store: %s", err)
+				}
 			}
 		}
 
