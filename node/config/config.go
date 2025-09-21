@@ -71,6 +71,7 @@ type RouterNodeConfig struct {
 	TLSCertificateFile RawBytes
 	TLSPrivateKeyFile  RawBytes
 	ListenAddress      string
+	ConfigStorePath    string
 	// Shared config
 	Shards                              []ShardInfo
 	NumOfConnectionsForBatcher          int
