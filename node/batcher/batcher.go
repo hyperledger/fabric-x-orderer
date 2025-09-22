@@ -69,6 +69,9 @@ type Batcher struct {
 	primaryLock sync.RWMutex
 	term        uint64
 	primaryID   types.PartyID
+
+	Metrics       *BatcherMetrics
+	metricsCancel context.CancelFunc
 }
 
 func (b *Batcher) Run() {
@@ -80,6 +83,10 @@ func (b *Batcher) Run() {
 
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
+
+	metricsCtx, metricsCancel := context.WithCancel(context.Background())
+	b.metricsCancel = metricsCancel
+	go b.Metrics.trackMetrics(metricsCtx, b.logger, b.config.PartyId, b.config.ShardId, 10*time.Second)
 }
 
 func (b *Batcher) Stop() {
@@ -94,6 +101,7 @@ func (b *Batcher) Stop() {
 	b.primaryAckConnector.Stop()
 	b.primaryReqConnector.Stop()
 	b.Ledger.Close()
+	b.metricsCancel()
 	b.running.Wait()
 }
 
@@ -120,6 +128,7 @@ func (b *Batcher) replicateState() {
 				b.primaryID = primaryID
 				b.term = term
 				changed = true
+				b.Metrics.roleChangesTotal.Add(1)
 			}
 			b.primaryLock.Unlock()
 			if changed {
@@ -163,6 +172,8 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 	}
 	if err := b.batcher.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
+	} else {
+		b.Metrics.routerTxsTotal.Add(1)
 	}
 
 	return &resp, nil
@@ -211,6 +222,8 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 		}
 		if err := b.batcher.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
+		} else {
+			b.Metrics.routerTxsTotal.Add(1)
 		}
 
 		if len(traceId) > 0 {
@@ -389,6 +402,7 @@ func (b *Batcher) Complain(reason string) {
 	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
+	b.Metrics.complaintsTotal.Add(1)
 }
 
 func (b *Batcher) SendBAF(baf types.BatchAttestationFragment) {
