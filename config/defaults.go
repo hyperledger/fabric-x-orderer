@@ -63,3 +63,5 @@ var DefaultBatchingConfig = BatchingConfig{
 	},
 	RequestMaxBytes: 1024 * 1024,
 }
+
+var DefaultClientSignatureVerificationRequired = false
