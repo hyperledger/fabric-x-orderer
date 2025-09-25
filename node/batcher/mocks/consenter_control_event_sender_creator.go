@@ -92,8 +92,6 @@ func (fake *FakeConsenterControlEventSenderCreator) CreateConsenterControlEventS
 func (fake *FakeConsenterControlEventSenderCreator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.createConsenterControlEventSenderMutex.RLock()
-	defer fake.createConsenterControlEventSenderMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -88,8 +88,6 @@ func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsReturnsOnCall(i in
 func (fake *FakeBatchedRequestsVerifier) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.verifyBatchedRequestsMutex.RLock()
-	defer fake.verifyBatchedRequestsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
