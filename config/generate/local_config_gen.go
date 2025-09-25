@@ -218,7 +218,7 @@ func NewRouterLocalConfig(routerGeneralParams GeneralConfigParams) *config.NodeL
 	return &config.NodeLocalConfig{
 		PartyID:       routerGeneralParams.partyID,
 		GeneralConfig: NewGeneralConfig(routerGeneralParams),
-		FileStore:     &config.FileStore{},
+		FileStore:     &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
 		RouterParams:  &params,
 	}
 }

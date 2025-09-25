@@ -52,7 +52,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 	// 3.
 	for i := 1; i <= len(networkLocalConfig.PartiesLocalConfig); i++ {
 		configPath := path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_router.yaml")
-		routerLocalConfigLoaded, err := config.LoadLocalConfig(configPath)
+		routerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
 		require.NoError(t, err)
 		require.NotNil(t, routerLocalConfigLoaded)
 		require.NotNil(t, routerLocalConfigLoaded.NodeLocalConfig)
@@ -60,31 +60,35 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.NotNil(t, routerLocalConfigLoaded.ClusterConfig)
 		require.Equal(t, routerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.Enabled, true)
 		require.Equal(t, routerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.ClientAuthRequired, true)
+		require.Equal(t, role, "Router")
 
 		for j := 1; j <= len(networkLocalConfig.PartiesLocalConfig[i-1].BatchersLocalConfig); j++ {
 			configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), fmt.Sprintf("local_config_batcher%d.yaml", j))
-			batcherLocalConfigLoaded, err := config.LoadLocalConfig(configPath)
+			batcherLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
 			require.NoError(t, err)
 			require.NotNil(t, batcherLocalConfigLoaded.NodeLocalConfig)
 			require.NotNil(t, batcherLocalConfigLoaded.TLSConfig)
 			require.NotNil(t, batcherLocalConfigLoaded.ClusterConfig)
+			require.Equal(t, role, "Batcher")
 		}
 
 		configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		consenterLocalConfigLoaded, err := config.LoadLocalConfig(configPath)
+		consenterLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
 		require.NoError(t, err)
 		require.NotNil(t, consenterLocalConfigLoaded.NodeLocalConfig)
 		require.NotNil(t, consenterLocalConfigLoaded.TLSConfig)
 		require.NotNil(t, consenterLocalConfigLoaded.ClusterConfig)
+		require.Equal(t, role, "Consensus")
 
 		configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_assembler.yaml")
-		assemblerLocalConfigLoaded, err := config.LoadLocalConfig(configPath)
+		assemblerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLocalConfigLoaded.NodeLocalConfig)
 		require.NotNil(t, assemblerLocalConfigLoaded.TLSConfig)
 		require.NotNil(t, assemblerLocalConfigLoaded.ClusterConfig)
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.Enabled, true)
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.ClientAuthRequired, true)
+		require.Equal(t, role, "Assembler")
 	}
 }
 
