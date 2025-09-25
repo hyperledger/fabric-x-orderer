@@ -213,7 +213,7 @@ func (b *BatcherRole) getTermAndNotifyChange() {
 // all batchers resubmit to their pools txs in batches with their BAFs still in pending state
 func (b *BatcherRole) resubmitPendingBAFs(state *state.State, prevPrimary types.PartyID) {
 	for _, baf := range state.Pending {
-		if baf.Signer() == b.ID && baf.Primary() == prevPrimary {
+		if baf.Shard() == b.Shard && baf.Signer() == b.ID && baf.Primary() == prevPrimary {
 			b.Logger.Debugf("found pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())
 			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
 			for _, req := range batch.Requests() {
