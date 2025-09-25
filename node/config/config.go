@@ -12,7 +12,7 @@ import (
 	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
-	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"gopkg.in/yaml.v3"
 )
@@ -79,8 +79,8 @@ type RouterNodeConfig struct {
 	ClientAuthRequired                  bool
 	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
-	ChannelID                           string
-	PolicyManager                       policies.Manager
+	// Bundle collects resources (e.g., policy manager, configTx validator, etc.) that are used by the router for validation of transactions
+	Bundle channelconfig.Resources
 }
 
 type AssemblerNodeConfig struct {

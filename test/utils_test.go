@@ -23,7 +23,9 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config "github.com/hyperledger/fabric-x-orderer/config"
@@ -35,6 +37,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -43,6 +46,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
+
+//go:generate counterfeiter -o mocks/config_resources.go . configResources
+type configResources channelconfig.Resources
+
+var _ configResources = &configMocks.FakeConfigResources{}
 
 type node struct {
 	*comm.GRPCServer
@@ -85,6 +93,11 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
 
+		bundle := &configMocks.FakeConfigResources{}
+		configtxValidator := &policyMocks.FakeConfigtxValidator{}
+		configtxValidator.ChannelIDReturns("arma")
+		bundle.ConfigtxValidatorReturns(configtxValidator)
+
 		config := &nodeconfig.RouterNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			TLSPrivateKeyFile:  kp.Key,
@@ -97,7 +110,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 			UseTLS:                              true,
 			RequestMaxBytes:                     1 << 10,
 			ClientSignatureVerificationRequired: false,
-			ChannelID:                           "arma",
+			Bundle:                              bundle,
 		}
 
 		router := router.NewRouter(config, l)
