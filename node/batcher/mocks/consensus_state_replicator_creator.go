@@ -91,8 +91,6 @@ func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicatorR
 func (fake *FakeConsensusStateReplicatorCreator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.createStateConsensusReplicatorMutex.RLock()
-	defer fake.createStateConsensusReplicatorMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

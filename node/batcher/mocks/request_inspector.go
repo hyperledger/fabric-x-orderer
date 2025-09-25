@@ -92,8 +92,6 @@ func (fake *FakeRequestInspector) RequestIDReturnsOnCall(i int, result1 string) 
 func (fake *FakeRequestInspector) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.requestIDMutex.RLock()
-	defer fake.requestIDMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -107,10 +107,6 @@ func (fake *FakeStateReplicator) StopCalls(stub func()) {
 func (fake *FakeStateReplicator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.replicateStateMutex.RLock()
-	defer fake.replicateStateMutex.RUnlock()
-	fake.stopMutex.RLock()
-	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

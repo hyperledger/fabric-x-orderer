@@ -28,7 +28,7 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		BatchMaxBytes:   10,
 		RequestMaxBytes: 10,
 	}
-	verifier := batcher.NewRequestsInspectorVerifier(logger, config, &batcher.NoopClientRequestSigVerifier{}, nil)
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, nil)
 
 	t.Run("empty request ID", func(t *testing.T) {
 		emptyReq := []byte{}
@@ -49,10 +49,10 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	})
 
 	t.Run("verify request max bytes", func(t *testing.T) {
-		largeReq := make([]byte, 11)
+		largeReq := make([]byte, 12)
 		rawReq, err := proto.Marshal(&protos.Request{Payload: largeReq})
 		require.NoError(t, err)
-		require.ErrorContains(t, verifier.VerifyRequest(rawReq), "bigger than request max bytes")
+		require.ErrorContains(t, verifier.VerifyRequest(rawReq), "request's size exceeds the maximum size")
 	})
 
 	t.Run("verify batched requests with max batch bytes", func(t *testing.T) {
@@ -128,7 +128,7 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 	}
 	reqVerifier := &mocks.FakeRequestVerifier{}
 
-	verifier := batcher.NewRequestsInspectorVerifier(logger, config, &batcher.NoopClientRequestSigVerifier{}, reqVerifier)
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier)
 
 	reqs := make([][]byte, 100)
 	for i := 0; i < 100; i++ {
@@ -137,16 +137,16 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 		reqs[i] = rawReq
 	}
 
-	reqVerifier.VerifyRequestReturns(nil)
+	reqVerifier.VerifyReturns(nil)
 
 	require.NoError(t, verifier.VerifyBatchedRequests(reqs))
 
-	require.Equal(t, 100, reqVerifier.VerifyRequestCallCount())
+	require.Equal(t, 100, reqVerifier.VerifyCallCount())
 
-	reqVerifier.VerifyRequestReturns(errors.New("error"))
+	reqVerifier.VerifyReturns(errors.New("error"))
 
 	require.Error(t, verifier.VerifyBatchedRequests(reqs))
 
-	require.Less(t, reqVerifier.VerifyRequestCallCount(), 200)
-	t.Log(reqVerifier.VerifyRequestCallCount())
+	require.Less(t, reqVerifier.VerifyCallCount(), 200)
+	t.Log(reqVerifier.VerifyCallCount())
 }

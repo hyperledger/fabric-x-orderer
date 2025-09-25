@@ -50,7 +50,7 @@ func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net
 }
 
 func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp BatchesPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, &NoopClientRequestSigVerifier{}, nil)
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
 		batcherDeliverService:     ds,
