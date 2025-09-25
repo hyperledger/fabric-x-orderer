@@ -194,9 +194,15 @@ func TestLaunchArmaNode(t *testing.T) {
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
+		testLogger = flogging.MustGetLogger("arma")
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
 
 		// ReadConfig, expect for genesis block
-		_, genesisBlock, err := config.ReadConfig(configPath)
+		_, genesisBlock, err := config.ReadConfig(configPath, testLogger)
 		require.NoError(t, err)
 		require.NotNil(t, genesisBlock)
 
@@ -216,7 +222,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		err = configStore.Add(newConfigBlock)
 		require.NoError(t, err)
 
-		_, lastConfigBlock, err := config.ReadConfig(configPath)
+		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)
 		require.NoError(t, err)
 		require.NotNil(t, lastConfigBlock)
 

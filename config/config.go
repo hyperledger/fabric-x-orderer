@@ -38,23 +38,22 @@ type Configuration struct {
 }
 
 // ReadConfig reads the configurations from the config file and returns it. The configuration includes both local and shared.
-func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
+func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *common.Block, error) {
 	if configFilePath == "" {
 		return nil, nil, errors.New("path to the configuration file is empty")
 	}
 
 	var err error
+	var nodeRole string
 	conf := &Configuration{
 		LocalConfig:  &LocalConfig{},
 		SharedConfig: &protos.SharedConfig{},
 	}
 
-	conf.LocalConfig, err = LoadLocalConfig(configFilePath)
+	conf.LocalConfig, nodeRole, err = LoadLocalConfig(configFilePath)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	nodeRole := findRoleFromLocalConfig(conf.LocalConfig)
 
 	var lastConfigBlock *common.Block
 	var configStore *configstore.Store
@@ -70,20 +69,26 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 			return nil, nil, errors.Wrapf(err, "failed to read shared config, path is empty")
 		}
 	case "block":
+		logger.Infof("reading shared config from block for %s node", nodeRole)
 		// If node is router or batcher, check if config store has blocks, and if yes bootstrap from the last block
-		if nodeRole == "router" || nodeRole == "batcher" {
+		if nodeRole == Router || nodeRole == Batcher {
 			configStore, err = configstore.NewStore(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed creating router config store: %s", err)
+				return nil, nil, fmt.Errorf("failed creating %s config store: %s", nodeRole, err)
 			}
 
-			listBlocks, err := configStore.ListBlocks()
+			listBlockNumbers, err := configStore.ListBlockNumbers()
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed retrieve a sorted array of all block numbers: %s", err)
+				return nil, nil, fmt.Errorf("failed to list blocks from %s config store: %s", nodeRole, err)
 			}
 
-			if len(listBlocks) > 0 {
-				lastConfigBlock = listBlocks[len(listBlocks)-1]
+			if len(listBlockNumbers) > 0 {
+				lastBlockNumber := uint64(len(listBlockNumbers) - 1)
+				lastConfigBlock, err = configStore.GetByNumber(lastBlockNumber)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to retrieve the last block from %s config store: %s", nodeRole, err)
+				}
+				logger.Infof("last block number %d was retrieved from %s config store", lastBlockNumber, nodeRole)
 			}
 		}
 
@@ -98,6 +103,7 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to add the genesis block to the config store: %s", err)
 				}
+				logger.Infof("Append genesis block to the %s config store", nodeRole)
 			}
 		}
 
@@ -143,22 +149,6 @@ func sharedConfigFromBlock(block *common.Block) (*protos.SharedConfig, error) {
 	}
 
 	return sharedConfig, nil
-}
-
-func findRoleFromLocalConfig(config *LocalConfig) string {
-	if config.NodeLocalConfig.RouterParams != nil {
-		return "router"
-	}
-	if config.NodeLocalConfig.BatcherParams != nil {
-		return "batcher"
-	}
-	if config.NodeLocalConfig.ConsensusParams != nil {
-		return "consenter"
-	}
-	if config.NodeLocalConfig.AssemblerParams != nil {
-		return "assembler"
-	}
-	return ""
 }
 
 func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types.Configuration, error) {
