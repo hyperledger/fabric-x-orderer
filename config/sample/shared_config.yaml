@@ -201,3 +201,4 @@ Batching:
     PreferredMaxBytes: 2 MB
   # RequestMaxBytes is the maximal number of bytes allowed in a request.
   RequestMaxBytes: 1048576
+ClientSignatureVerificationRequired: false

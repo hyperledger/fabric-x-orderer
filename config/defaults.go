@@ -14,9 +14,8 @@ import (
 )
 
 var DefaultRouterParams = RouterParams{
-	NumberOfConnectionsPerBatcher:       10,
-	NumberOfStreamsPerConnection:        5,
-	ClientSignatureVerificationRequired: false,
+	NumberOfConnectionsPerBatcher: 10,
+	NumberOfStreamsPerConnection:  5,
 }
 
 var DefaultBatcherParams = BatcherParams{
@@ -63,3 +62,5 @@ var DefaultBatchingConfig = BatchingConfig{
 	},
 	RequestMaxBytes: 1024 * 1024,
 }
+
+var DefaultClientSignatureVerificationRequired = false

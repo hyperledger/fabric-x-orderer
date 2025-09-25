@@ -34,9 +34,10 @@ func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 
 func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) config.SharedConfigYaml {
 	sharedConfig := config.SharedConfigYaml{
-		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
-		ConsensusConfig: config.ConsensusConfig{BFTConfig: config.DefaultArmaBFTConfig()},
-		BatchingConfig:  createBatchingConfig(),
+		PartiesConfig:                       createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
+		ConsensusConfig:                     config.ConsensusConfig{BFTConfig: config.DefaultArmaBFTConfig()},
+		BatchingConfig:                      createBatchingConfig(),
+		ClientSignatureVerificationRequired: config.DefaultClientSignatureVerificationRequired,
 	}
 	return sharedConfig
 }

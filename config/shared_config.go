@@ -17,9 +17,10 @@ import (
 // SharedConfigYaml holds the initial configuration that will be used to bootstrap new nodes.
 // This configuration is common to all Arma nodes.
 type SharedConfigYaml struct {
-	PartiesConfig   []PartyConfig   `yaml:"Parties,omitempty"`
-	ConsensusConfig ConsensusConfig `yaml:"Consensus,omitempty"`
-	BatchingConfig  BatchingConfig  `yaml:"Batching,omitempty"`
+	PartiesConfig                       []PartyConfig   `yaml:"Parties,omitempty"`
+	ConsensusConfig                     ConsensusConfig `yaml:"Consensus,omitempty"`
+	BatchingConfig                      BatchingConfig  `yaml:"Batching,omitempty"`
+	ClientSignatureVerificationRequired bool            `yaml:"ClientSignatureVerificationRequired,omitempty"`
 }
 
 // LoadSharedConfig reads the shared config yaml and translate it to the proto shared config.
@@ -132,6 +133,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*protos.SharedCo
 			},
 			RequestMaxBytes: sharedConfigYaml.BatchingConfig.RequestMaxBytes,
 		},
+		ClientSignatureVerificationRequired: sharedConfigYaml.ClientSignatureVerificationRequired,
 	}
 	return &sharedConfig, nil
 }
