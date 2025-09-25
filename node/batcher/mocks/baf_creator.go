@@ -99,8 +99,6 @@ func (fake *FakeBAFCreator) CreateBAFReturnsOnCall(i int, result1 types.BatchAtt
 func (fake *FakeBAFCreator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.createBAFMutex.RLock()
-	defer fake.createBAFMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

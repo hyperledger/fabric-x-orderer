@@ -267,16 +267,6 @@ func (fake *FakeMemPool) SubmitReturnsOnCall(i int, result1 error) {
 func (fake *FakeMemPool) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.closeMutex.RLock()
-	defer fake.closeMutex.RUnlock()
-	fake.nextRequestsMutex.RLock()
-	defer fake.nextRequestsMutex.RUnlock()
-	fake.removeRequestsMutex.RLock()
-	defer fake.removeRequestsMutex.RUnlock()
-	fake.restartMutex.RLock()
-	defer fake.restartMutex.RUnlock()
-	fake.submitMutex.RLock()
-	defer fake.submitMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

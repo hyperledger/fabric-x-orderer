@@ -55,8 +55,6 @@ func (fake *FakeBatchAcker) AckArgsForCall(i int) (types.BatchSequence, types.Pa
 func (fake *FakeBatchAcker) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.ackMutex.RLock()
-	defer fake.ackMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
