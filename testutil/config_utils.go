@@ -37,9 +37,8 @@ func CreateTestRouterLocalConfig() *config.NodeLocalConfig {
 		},
 		FileStore: &config.FileStore{Path: "path/to/file_store"},
 		RouterParams: &config.RouterParams{
-			NumberOfConnectionsPerBatcher:       10,
-			NumberOfStreamsPerConnection:        20,
-			ClientSignatureVerificationRequired: false,
+			NumberOfConnectionsPerBatcher: 10,
+			NumberOfStreamsPerConnection:  20,
 		},
 	}
 	return routerLocalConfig
