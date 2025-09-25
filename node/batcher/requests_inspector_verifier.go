@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"runtime"
 
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -21,52 +22,49 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// ClientRequestSigVerifier verifies a single client's requests (signatures)
-type ClientRequestSigVerifier interface {
-	VerifyClientRequestSig(req []byte) error
-}
-
-type NoopClientRequestSigVerifier struct{}
-
-func (v *NoopClientRequestSigVerifier) VerifyClientRequestSig(req []byte) error {
-	return nil
-}
-
 //go:generate counterfeiter -o mocks/request_verifier.go . RequestVerifier
 
 // RequestVerifier verifies a single request (format and signatures)
 type RequestVerifier interface {
-	VerifyRequest(req []byte) error
+	Verify(req *comm.Request) error
 }
 
 type RequestsInspectorVerifier struct {
-	requestMaxBytes          uint64
-	batchMaxBytes            uint32
-	batchMaxSize             uint32
-	shards                   []types.ShardID
-	shardID                  types.ShardID
-	logger                   types.Logger
-	mapper                   router.ShardMapper
-	requestClientSigVerifier ClientRequestSigVerifier
-	requestVerifier          RequestVerifier
+	requestMaxBytes uint64
+	batchMaxBytes   uint32
+	batchMaxSize    uint32
+	shards          []types.ShardID
+	shardID         types.ShardID
+	logger          types.Logger
+	mapper          router.ShardMapper
+	requestVerifier RequestVerifier
 }
 
-func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNodeConfig, clientRequestVerifier ClientRequestSigVerifier, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
+func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
 	riv := &RequestsInspectorVerifier{
-		logger:                   logger,
-		shardID:                  config.ShardId,
-		shards:                   config.GetShardsIDs(),
-		batchMaxSize:             config.BatchMaxSize,
-		batchMaxBytes:            config.BatchMaxBytes,
-		requestMaxBytes:          config.RequestMaxBytes,
-		requestClientSigVerifier: clientRequestVerifier,
-		requestVerifier:          requestVerifier,
+		logger:          logger,
+		shardID:         config.ShardId,
+		shards:          config.GetShardsIDs(),
+		batchMaxSize:    config.BatchMaxSize,
+		batchMaxBytes:   config.BatchMaxBytes,
+		requestMaxBytes: config.RequestMaxBytes,
 	}
-	if requestVerifier == nil {
-		riv.requestVerifier = riv
+	if requestVerifier != nil {
+		riv.requestVerifier = requestVerifier
+	} else {
+		riv.requestVerifier = createBatcherRulesVerifier(config)
 	}
 	riv.mapper = router.MapperCRC64{Logger: riv.logger, ShardCount: uint16(len(riv.shards))}
 	return riv
+}
+
+func createBatcherRulesVerifier(config *config.BatcherNodeConfig) *requestfilter.RulesVerifier {
+	rv := requestfilter.NewRulesVerifier(nil)
+	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
+	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
+	// TODO - add policy and sig filter
+	// rv.AddRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
+	return rv
 }
 
 func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequests) error {
@@ -102,7 +100,7 @@ func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequ
 				if workerID != j%numWorkers {
 					continue
 				}
-				if err := r.requestVerifier.VerifyRequest(reqs[j]); err != nil {
+				if err := r.VerifyRequest(reqs[j]); err != nil {
 					return errors.Errorf("failed verifying request in index %d; req ID: %s; err: %v", j, r.RequestID(reqs[j]), err)
 				}
 			}
@@ -117,28 +115,37 @@ func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequ
 	return nil
 }
 
-func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
-	reqID := r.RequestID(req)
-	if reqID == "" {
-		return errors.Errorf("empty req")
-	}
-	if uint64(len(req)) > r.requestMaxBytes {
-		return errors.Errorf("request size (%d) is bigger than request max bytes (%d); request ID %s", len(req), r.requestMaxBytes, reqID)
-	}
+func (r *RequestsInspectorVerifier) VerifyRequestShard(req *comm.Request) error {
 	if len(r.shards) != 1 {
-		var request comm.Request
-		err := proto.Unmarshal(req, &request) // TODO avoid unmarshaling here by unifying the batcher and router behavior
-		if err != nil {
-			return errors.Errorf("failed to unmarshal req")
-		}
-		shardIndex, _ := r.mapper.Map(request.Payload)
+		shardIndex, _ := r.mapper.Map(req.Payload)
 		if r.shardID != r.shards[shardIndex] {
-			return errors.Errorf("request maps to shard %d but our shard is %d; request ID %s", r.shards[shardIndex], r.shardID, reqID)
+			rawReq, _ := proto.Marshal(req)
+			return errors.Errorf("request maps to shard %d but our shard is %d; request ID %s", r.shards[shardIndex], r.shardID, r.RequestID(rawReq))
 		}
 	}
-	if err := r.requestClientSigVerifier.VerifyClientRequestSig(req); err != nil { // TODO actually verify the request (for example client's signature)
-		return errors.Errorf("failed verifying request with id: %s; err: %v", reqID, err)
+	return nil
+}
+
+// VerifyRequestFromRouter verifies a request that comes from the router in the batcher's party.
+func (r *RequestsInspectorVerifier) VerifyRequestFromRouter(req *comm.Request) error {
+	// TODO - check config sequence, and verify again if needed.
+	return nil
+}
+
+func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
+	var request comm.Request
+	if err := proto.Unmarshal(req, &request); err != nil {
+		return errors.Errorf("failed to unmarshall req")
 	}
+
+	if err := r.VerifyRequestShard(&request); err != nil {
+		return errors.Errorf("failed verifying request with id: %s; err: %v", r.RequestID(req), err)
+	}
+
+	if err := r.requestVerifier.Verify(&request); err != nil {
+		return errors.Errorf("failed verifying request with id: %s; err: %v", r.RequestID(req), err)
+	}
+
 	return nil
 }
 

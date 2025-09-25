@@ -88,8 +88,6 @@ func (fake *FakeConsenterControlEventSender) SendControlEventReturnsOnCall(i int
 func (fake *FakeConsenterControlEventSender) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.sendControlEventMutex.RLock()
-	defer fake.sendControlEventMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

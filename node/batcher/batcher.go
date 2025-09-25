@@ -142,22 +142,24 @@ func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
+	// TODO: certificate pinning (bathcer trust router from his own party.)
+	b.logger.Debugf("Received request %x", req.Payload)
+
+	if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
+		b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
+		// TODO should return response with error?
+	}
+
 	traceId := req.TraceId
 	req.TraceId = nil
-
 	rawReq, err := proto.Marshal(req)
 	if err != nil {
 		b.logger.Panicf("Failed marshaling request: %v", err)
 	}
 
-	b.logger.Infof("Received request %x", req.Payload)
-
 	var resp protos.SubmitResponse
 	resp.TraceId = traceId
-	if err := b.requestsInspectorVerifier.VerifyRequest(rawReq); err != nil {
-		// TODO make sure the router verifies the request
-		b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
-	}
+
 	if err := b.batcher.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
 	}
@@ -166,6 +168,7 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 }
 
 func (b *Batcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
+	// TODO: certificate pinning (bathcer trust router form his own party.)
 	stop := make(chan struct{})
 	defer close(stop)
 
@@ -191,9 +194,13 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 			return err
 		}
 
+		if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
+			b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
+			// TODO should return response with error?
+		}
+
 		traceId := req.TraceId
 		req.TraceId = nil
-
 		rawReq, err := proto.Marshal(req)
 		if err != nil {
 			b.logger.Panicf("Failed marshaling request: %v", err)
@@ -202,10 +209,6 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 		var resp protos.SubmitResponse
 		resp.TraceId = traceId
 
-		if err := b.requestsInspectorVerifier.VerifyRequest(rawReq); err != nil {
-			// TODO make sure the router verifies the request
-			b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
-		}
 		if err := b.batcher.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
 		}
@@ -265,6 +268,7 @@ func (b *Batcher) FwdRequestStream(stream protos.BatcherControlService_FwdReques
 		b.logger.Debugf("Calling submit request from batcher %d", from)
 		if err := b.requestsInspectorVerifier.VerifyRequest(msg.Request); err != nil {
 			b.logger.Infof("Failed verifying request before submitting from batcher %d; err: %v", from, err)
+			continue
 		}
 		if err := b.batcher.Submit(msg.Request); err != nil {
 			if strings.Contains(err.Error(), "already inserted") {
