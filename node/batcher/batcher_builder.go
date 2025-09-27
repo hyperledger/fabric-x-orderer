@@ -74,7 +74,6 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	}
 
 	initState := computeZeroState(config)
-	b.stateRef.Store(&initState)
 
 	b.primaryID, b.term = b.getPrimaryIDAndTerm(&initState)
 

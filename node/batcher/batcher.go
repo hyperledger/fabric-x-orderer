@@ -13,7 +13,6 @@ import (
 	"math"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -59,7 +58,6 @@ type Batcher struct {
 	batchers                  []node_config.BatcherInfo
 	signer                    Signer
 
-	stateRef  atomic.Value
 	stateChan chan *state.State
 
 	running  sync.WaitGroup
@@ -110,7 +108,6 @@ func (b *Batcher) replicateState() {
 	for {
 		select {
 		case state := <-stateChan:
-			b.stateRef.Store(state)
 			b.stateChan <- state
 			primaryID, term := b.getPrimaryIDAndTerm(state)
 			changed := false
