@@ -18,12 +18,17 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/node"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,9 +38,9 @@ import (
 
 const (
 	RouterBaseListenPort    = 6022
-	AssemblerBaseListenPort = 6032
-	BatcherBaseListenPort   = 6042
-	ConsensusBaseListenPort = 6052
+	AssemblerBaseListenPort = 7042
+	BatcherBaseListenPort   = 6062
+	ConsensusBaseListenPort = 7082
 )
 
 func TestCLI(t *testing.T) {
@@ -231,6 +236,69 @@ func TestLaunchArmaNode(t *testing.T) {
 		require.Equal(t, len(listBlocks), 2)
 		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
 		require.Equal(t, listBlocks[1].Header.Number, uint64(5))
+	})
+
+	t.Run("TestAssemblerWithLastConfigBlock", func(t *testing.T) {
+		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "assemblerWithLastConfigBlock")
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
+		err := editBatchersInSharedConfig(dir, 4, 2)
+		require.NoError(t, err)
+		testLogger = flogging.MustGetLogger("arma")
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		// ReadConfig, expect for genesis block
+		configContent, genesisBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, genesisBlock)
+
+		// Read assembler ledger and check it is empty
+		assemblerLedgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
+		assemblerLedger, err := assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
+		require.NoError(t, err)
+		require.NotNil(t, assemblerLedger)
+		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(0))
+		require.Equal(t, assemblerLedger.GetTxCount(), uint64(0))
+		assemblerLedger.Close()
+
+		// Create the assembler and check genesis block was appended
+		conf := configContent.ExtractAssemblerConfig()
+		conf.ListenAddress = "127.0.0.1:5020"
+		srv := node.CreateGRPCAssembler(conf)
+		assembler := assembler.NewAssembler(conf, srv, genesisBlock, testLogger)
+		require.NotNil(t, assembler)
+		assembler.Stop()
+
+		assemblerLedger, err = assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
+		require.NoError(t, err)
+		require.NotNil(t, assemblerLedger)
+		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(1))
+
+		// Add a fake config block with block number 1 to the ledger
+		// ReadConfig again, expect for the fake block to be the last block
+		newConfigBlock := &common.Block{
+			Header:   &common.BlockHeader{},
+			Data:     genesisBlock.Data,
+			Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}}},
+		}
+		newConfigBlock.Header.Number = 1
+		newConfigBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesisBlock.Header)
+		newConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 1}),
+		})
+		assemblerLedger.AppendConfig(newConfigBlock, 1)
+		assemblerLedger.Close()
+
+		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, lastConfigBlock)
+
+		require.Equal(t, lastConfigBlock.Header.Number, uint64(1))
 	})
 }
 
