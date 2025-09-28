@@ -271,6 +271,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Logger:          l,
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
+	metrics := NewConsensusMetrics(partyID, l, 10*time.Second, true)
 
 	c := &Consensus{
 		BFTConfig:    smartbft_types.DefaultConfig,
@@ -284,6 +285,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		BADB:         db,
 		Net:          &mockNet{},
 		Synchronizer: &synchronizer{stopSync: func() {}},
+		Metrics:      metrics,
 	}
 
 	c.BFTConfig.SelfID = uint64(partyID)

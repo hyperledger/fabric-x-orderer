@@ -80,9 +80,11 @@ type Consensus struct {
 	State        *state.State
 	Logger       arma_types.Logger
 	Synchronizer *synchronizer
+	Metrics      *ConsensusMetrics
 }
 
 func (c *Consensus) Start() error {
+	c.Metrics.Start()
 	return c.BFT.Start()
 }
 
@@ -92,6 +94,7 @@ func (c *Consensus) Stop() {
 	c.BADB.Close()
 	c.Storage.Close()
 	c.Net.Stop()
+	c.Metrics.Stop()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
@@ -141,6 +144,18 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 		c.Logger.Warnf("Received bad request: %v", err)
 		return err
 	}
+
+	// update metrics
+	var ce state.ControlEvent
+	if err := ce.FromBytes(req, (&state.BAFDeserialize{}).Deserialize); err == nil {
+		if ce.BAF != nil {
+			c.Metrics.bafsCount.Add(1)
+		}
+		if ce.Complaint != nil {
+			c.Metrics.complaintsCount.Add(1)
+		}
+	}
+
 	return c.BFT.SubmitRequest(req)
 }
 
@@ -508,6 +523,11 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// This is true because a Commit(controlEvents) with the same controlEvents is idempotent.
 	c.Arma.Commit(controlEvents)
 	c.Storage.Append(rawDecision)
+
+	// update metrics
+	c.Metrics.decisionsCount.Add(1)
+	c.Metrics.decisionsSize.Add(uint64(len(rawDecision)))
+	c.Metrics.AddBlocksMetrics(hdr)
 
 	c.stateLock.Lock()
 	c.State = hdr.State
