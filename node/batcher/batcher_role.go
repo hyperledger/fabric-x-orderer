@@ -216,6 +216,9 @@ func (b *BatcherRole) resubmitPendingBAFs(state *state.State, prevPrimary types.
 		if baf.Shard() == b.Shard && baf.Signer() == b.ID && baf.Primary() == prevPrimary {
 			b.Logger.Debugf("found pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())
 			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
+			if batch == nil {
+				b.Logger.Panicf("Error: No such batch; pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())
+			}
 			for _, req := range batch.Requests() {
 				if err := b.MemPool.Submit(req); err != nil {
 					if strings.Contains(err.Error(), "already inserted") {
