@@ -215,10 +215,10 @@ func TestLaunchArmaNode(t *testing.T) {
 		require.Equal(t, genesisBlock.Header.Number, uint64(0))
 		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
 
-		// Add a fake block to the config store
+		// Add a fake block with block number 5 to the config store
 		// ReadConfig again, expect for the fake block to be the last block
 		newConfigBlock := genesisBlock
-		newConfigBlock.Header.Number = 1
+		newConfigBlock.Header.Number = 5
 		err = configStore.Add(newConfigBlock)
 		require.NoError(t, err)
 
@@ -229,8 +229,8 @@ func TestLaunchArmaNode(t *testing.T) {
 		listBlocks, err = configStore.ListBlocks()
 		require.NoError(t, err)
 		require.Equal(t, len(listBlocks), 2)
-		require.Equal(t, genesisBlock.Header.Number, uint64(1))
-		require.Equal(t, listBlocks[1].Header.Number, uint64(1))
+		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
+		require.Equal(t, listBlocks[1].Header.Number, uint64(5))
 	})
 }
 

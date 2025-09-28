@@ -83,7 +83,8 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			}
 
 			if len(listBlockNumbers) > 0 {
-				lastBlockNumber := uint64(len(listBlockNumbers) - 1)
+				lastBlockNumberIdx := uint64(len(listBlockNumbers) - 1)
+				lastBlockNumber := listBlockNumbers[lastBlockNumberIdx]
 				lastConfigBlock, err = configStore.GetByNumber(lastBlockNumber)
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to retrieve the last block from %s config store: %s", nodeRole, err)

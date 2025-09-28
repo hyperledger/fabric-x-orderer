@@ -8,14 +8,15 @@ package config_test
 
 import (
 	"fmt"
+	"path"
+	"testing"
+
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
-	"path"
-	"testing"
 )
 
 func TestLocalConfigLoadSingleYaml(t *testing.T) {
@@ -101,7 +102,7 @@ func TestLoadLocalConfigYaml_Errors(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestLoadLocalConfigYaml_MultipleRoles(t *testing.T) {
+func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 	dir := t.TempDir()
 	require.DirExists(t, dir)
 
