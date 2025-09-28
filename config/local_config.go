@@ -229,19 +229,19 @@ func LoadLocalConfigYaml(filePath string) (*NodeLocalConfig, error) {
 func validateNodeLocalConfigParams(nodeLocalConfig *NodeLocalConfig) (string, error) {
 	var nonNilRoles []string
 
-	if nodeLocalConfig.RouterParams != nil {
+	if nodeLocalConfig.RouterParams != nil && !isEmptyRouterParams(nodeLocalConfig.RouterParams) {
 		nonNilRoles = append(nonNilRoles, Router)
 	}
 
-	if nodeLocalConfig.BatcherParams != nil {
+	if nodeLocalConfig.BatcherParams != nil && !isEmptyBatcherParams(nodeLocalConfig.BatcherParams) {
 		nonNilRoles = append(nonNilRoles, Batcher)
 	}
 
-	if nodeLocalConfig.ConsensusParams != nil {
+	if nodeLocalConfig.ConsensusParams != nil && !isEmptyConsensusParams(nodeLocalConfig.ConsensusParams) {
 		nonNilRoles = append(nonNilRoles, Consensus)
 	}
 
-	if nodeLocalConfig.AssemblerParams != nil {
+	if nodeLocalConfig.AssemblerParams != nil && !isEmptyAssemblerParams(nodeLocalConfig.AssemblerParams) {
 		nonNilRoles = append(nonNilRoles, Assembler)
 	}
 
@@ -250,10 +250,26 @@ func validateNodeLocalConfigParams(nodeLocalConfig *NodeLocalConfig) (string, er
 	}
 
 	if len(nonNilRoles) > 1 {
-		return "", fmt.Errorf("node local config is not valid, multiple params were set %v", nonNilRoles)
+		return "", fmt.Errorf("node local config is not valid, multiple params were set: %v", nonNilRoles)
 	}
 
 	return nonNilRoles[0], nil
+}
+
+func isEmptyRouterParams(routerParams *RouterParams) bool {
+	return routerParams != nil && *routerParams == RouterParams{}
+}
+
+func isEmptyBatcherParams(batcherParams *BatcherParams) bool {
+	return batcherParams != nil && *batcherParams == BatcherParams{}
+}
+
+func isEmptyConsensusParams(consensusParams *ConsensusParams) bool {
+	return consensusParams != nil && *consensusParams == ConsensusParams{}
+}
+
+func isEmptyAssemblerParams(assemblerParams *AssemblerParams) bool {
+	return assemblerParams != nil && *assemblerParams == AssemblerParams{}
 }
 
 func loadTLSCryptoConfig(tlsConfig *TLSConfigYaml) (*TLSConfig, error) {
