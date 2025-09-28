@@ -38,9 +38,9 @@ import (
 
 const (
 	RouterBaseListenPort    = 6022
-	AssemblerBaseListenPort = 7042
-	BatcherBaseListenPort   = 6062
-	ConsensusBaseListenPort = 7082
+	AssemblerBaseListenPort = 6032
+	BatcherBaseListenPort   = 6042
+	ConsensusBaseListenPort = 6052
 )
 
 func TestCLI(t *testing.T) {
@@ -236,6 +236,52 @@ func TestLaunchArmaNode(t *testing.T) {
 		require.Equal(t, len(listBlocks), 2)
 		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
 		require.Equal(t, listBlocks[1].Header.Number, uint64(5))
+	})
+
+	t.Run("TestBatcherWithLastConfigBlock", func(t *testing.T) {
+		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "batcher1")
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
+		err := editBatchersInSharedConfig(dir, 4, 2)
+		require.NoError(t, err)
+		testLogger = flogging.MustGetLogger("arma")
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		// ReadConfig, expect for genesis block
+		_, genesisBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, genesisBlock)
+
+		configStore, err := configstore.NewStore(storagePath)
+		require.NoError(t, err)
+		require.NotNil(t, configStore)
+		listBlocks, err := configStore.ListBlocks()
+		require.NoError(t, err)
+		require.Equal(t, len(listBlocks), 1)
+		require.Equal(t, genesisBlock.Header.Number, uint64(0))
+		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
+
+		// Add a fake block with block number 5 to the config store
+		// ReadConfig again, expect for the fake block to be the last block
+		newConfigBlock := genesisBlock
+		newConfigBlock.Header.Number = 6
+		err = configStore.Add(newConfigBlock)
+		require.NoError(t, err)
+
+		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, lastConfigBlock)
+
+		listBlocks, err = configStore.ListBlocks()
+		require.NoError(t, err)
+		require.Equal(t, len(listBlocks), 2)
+		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
+		require.Equal(t, listBlocks[1].Header.Number, uint64(6))
 	})
 
 	t.Run("TestAssemblerWithLastConfigBlock", func(t *testing.T) {

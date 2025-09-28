@@ -107,13 +107,14 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		loggers = append(loggers, logger)
 
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
+		require.NoError(t, err)
 		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
-		require.NoError(t, err)
 		conf := &config.BatcherNodeConfig{
 			Shards:                []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
 			Consenters:            consentersInfo,
 			Directory:             t.TempDir(),
+			ConfigStorePath:       t.TempDir(),
 			PartyId:               parties[i],
 			ShardId:               shardID,
 			SigningPrivateKey:     config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),

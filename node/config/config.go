@@ -106,10 +106,11 @@ type AssemblerNodeConfig struct {
 
 type BatcherNodeConfig struct {
 	// Shared config
-	Shards        []ShardInfo
-	Consenters    []ConsenterInfo
-	Directory     string
-	ListenAddress string
+	Shards          []ShardInfo
+	Consenters      []ConsenterInfo
+	Directory       string
+	ListenAddress   string
+	ConfigStorePath string
 	// Private config
 	PartyId                             types.PartyID
 	ShardId                             types.ShardID

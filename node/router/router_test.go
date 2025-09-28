@@ -11,7 +11,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -602,16 +601,13 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	configtxValidator.ChannelIDReturns("arma")
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
-	configStore, err := os.MkdirTemp("", fmt.Sprintf("config-store-router%d", partyID))
-	require.NoError(t, err)
-
 	conf := &config.RouterNodeConfig{
 		PartyID:                             partyID,
 		TLSCertificateFile:                  ckp.Cert,
 		UseTLS:                              useTLS,
 		TLSPrivateKeyFile:                   ckp.Key,
 		ListenAddress:                       "127.0.0.1:0",
-		ConfigStorePath:                     configStore,
+		ConfigStorePath:                     t.TempDir(),
 		ClientAuthRequired:                  clientAuthRequired,
 		Shards:                              shards,
 		RequestMaxBytes:                     1 << 10,
