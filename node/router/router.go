@@ -158,7 +158,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		// creating a routing request with nil trace - request is not trce in router.
 		tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
-		shardRouter.NewForward(tr)
+		shardRouter.Forward(tr)
 	}
 }
 
@@ -252,7 +252,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		trace := createTraceID(rand)
 		tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
-		shardRouter.NewForward(tr)
+		shardRouter.Forward(tr)
 	}
 }
 
@@ -289,7 +289,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	feedbackChan := make(chan Response, 1)
 
 	tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
-	shardRouter.NewForward(tr)
+	shardRouter.Forward(tr)
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)
 

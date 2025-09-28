@@ -45,7 +45,7 @@ func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 	responses := make(chan router.Response, 1)
 	reqID, request := createRequestAndRequestId(1, uint32(10000))
 	tr := router.CreateTrackedRequest(request, responses, reqID, trace)
-	testSetup.shardRouter.NewForward(tr)
+	testSetup.shardRouter.Forward(tr)
 
 	response := <-responses
 	require.NotNil(t, response)
@@ -73,7 +73,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	responses := make(chan router.Response, 1)
 	reqID, request := createRequestAndRequestId(1, uint32(10000))
 	tr := router.CreateTrackedRequest(request, responses, reqID, trace)
-	testSetup.shardRouter.NewForward(tr)
+	testSetup.shardRouter.Forward(tr)
 
 	var response router.Response
 	response = <-responses
@@ -92,7 +92,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	responses = make(chan router.Response, 1)
 	reqID, request = createRequestAndRequestId(1, uint32(10000))
 	tr = router.CreateTrackedRequest(request, responses, reqID, trace)
-	testSetup.shardRouter.NewForward(tr)
+	testSetup.shardRouter.Forward(tr)
 	response = <-responses
 	require.NotNil(t, response)
 	require.EqualError(t, response.GetResponseError(), "server error: connection between router and batcher "+testSetup.stubBatcher.server.Address()+" is broken, try again later")
@@ -109,7 +109,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	responses = make(chan router.Response, 1)
 	reqID, request = createRequestAndRequestId(1, uint32(10000))
 	tr = router.CreateTrackedRequest(request, responses, reqID, trace)
-	testSetup.shardRouter.NewForward(tr)
+	testSetup.shardRouter.Forward(tr)
 	response = <-responses
 	require.NotNil(t, response)
 	require.Nil(t, response.GetResponseError())
