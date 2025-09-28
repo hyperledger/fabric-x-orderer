@@ -16,6 +16,13 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
+const (
+	Router    = "Router"
+	Batcher   = "Batcher"
+	Consensus = "Consensus"
+	Assembler = "Assembler"
+)
+
 // NodeLocalConfig controls the local configuration of an Arma node.
 // The relevant information will be filled corresponding to the specific node type.
 // Every time a node starts, it is expected to load this file.
@@ -176,42 +183,93 @@ type Cluster struct {
 }
 
 // LoadLocalConfig reads the local config yaml and certs and returns the local configuration.
-func LoadLocalConfig(filePath string) (*LocalConfig, error) {
+func LoadLocalConfig(filePath string) (*LocalConfig, string, error) {
 	nodeLocalConfig, err := LoadLocalConfigYaml(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
+		return nil, "", fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
+	}
+
+	role, err := validateNodeLocalConfigParams(nodeLocalConfig)
+	if err != nil {
+		return nil, "", err
 	}
 
 	tlsConfig, err := loadTLSCryptoConfig(&nodeLocalConfig.GeneralConfig.TLSConfig)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load local tls config, err: %s", err)
+		return nil, "", fmt.Errorf("cannot load local tls config, err: %s", err)
 	}
 
 	// load cluster crypto config return cluster config with empty fields except for the consenter node
 	var clusterConfig *Cluster
 	clusterConfig, err = loadClusterCryptoConfig(&nodeLocalConfig.GeneralConfig.Cluster)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
+		return nil, "", fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
 	}
 
 	return &LocalConfig{
 		NodeLocalConfig: nodeLocalConfig,
 		TLSConfig:       tlsConfig,
 		ClusterConfig:   clusterConfig,
-	}, nil
+	}, role, nil
 }
 
 func LoadLocalConfigYaml(filePath string) (*NodeLocalConfig, error) {
 	if filePath == "" {
 		return nil, fmt.Errorf("cannot load local node configuration, path: %s is empty", filePath)
 	}
-	nodeLocalConfig := NodeLocalConfig{}
-	err := utils.ReadFromYAML(&nodeLocalConfig, filePath)
+	nodeLocalConfig := &NodeLocalConfig{}
+	err := utils.ReadFromYAML(nodeLocalConfig, filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &nodeLocalConfig, nil
+	return nodeLocalConfig, nil
+}
+
+func validateNodeLocalConfigParams(nodeLocalConfig *NodeLocalConfig) (string, error) {
+	var nonNilRoles []string
+
+	if nodeLocalConfig.RouterParams != nil && !isEmptyRouterParams(nodeLocalConfig.RouterParams) {
+		nonNilRoles = append(nonNilRoles, Router)
+	}
+
+	if nodeLocalConfig.BatcherParams != nil && !isEmptyBatcherParams(nodeLocalConfig.BatcherParams) {
+		nonNilRoles = append(nonNilRoles, Batcher)
+	}
+
+	if nodeLocalConfig.ConsensusParams != nil && !isEmptyConsensusParams(nodeLocalConfig.ConsensusParams) {
+		nonNilRoles = append(nonNilRoles, Consensus)
+	}
+
+	if nodeLocalConfig.AssemblerParams != nil && !isEmptyAssemblerParams(nodeLocalConfig.AssemblerParams) {
+		nonNilRoles = append(nonNilRoles, Assembler)
+	}
+
+	if len(nonNilRoles) == 0 {
+		return "", fmt.Errorf("node local config is not valid, node params are missing")
+	}
+
+	if len(nonNilRoles) > 1 {
+		return "", fmt.Errorf("node local config is not valid, multiple params were set: %v", nonNilRoles)
+	}
+
+	return nonNilRoles[0], nil
+}
+
+func isEmptyRouterParams(routerParams *RouterParams) bool {
+	return routerParams != nil && *routerParams == RouterParams{}
+}
+
+func isEmptyBatcherParams(batcherParams *BatcherParams) bool {
+	return batcherParams != nil && *batcherParams == BatcherParams{}
+}
+
+func isEmptyConsensusParams(consensusParams *ConsensusParams) bool {
+	return consensusParams != nil && *consensusParams == ConsensusParams{}
+}
+
+func isEmptyAssemblerParams(assemblerParams *AssemblerParams) bool {
+	return assemblerParams != nil && *assemblerParams == AssemblerParams{}
 }
 
 func loadTLSCryptoConfig(tlsConfig *TLSConfigYaml) (*TLSConfig, error) {

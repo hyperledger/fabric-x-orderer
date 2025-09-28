@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -184,6 +185,52 @@ func TestLaunchArmaNode(t *testing.T) {
 		cli := NewCLI()
 		cli.Run([]string{"assembler", "--config", configPath})
 		wg.Wait()
+	})
+
+	t.Run("TestRouterWithLastConfigBlock", func(t *testing.T) {
+		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "router")
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
+		err := editBatchersInSharedConfig(dir, 4, 2)
+		require.NoError(t, err)
+		testLogger = flogging.MustGetLogger("arma")
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		// ReadConfig, expect for genesis block
+		_, genesisBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, genesisBlock)
+
+		configStore, err := configstore.NewStore(storagePath)
+		require.NoError(t, err)
+		require.NotNil(t, configStore)
+		listBlocks, err := configStore.ListBlocks()
+		require.NoError(t, err)
+		require.Equal(t, len(listBlocks), 1)
+		require.Equal(t, genesisBlock.Header.Number, uint64(0))
+		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
+
+		// Add a fake block with block number 5 to the config store
+		// ReadConfig again, expect for the fake block to be the last block
+		newConfigBlock := genesisBlock
+		newConfigBlock.Header.Number = 5
+		err = configStore.Add(newConfigBlock)
+		require.NoError(t, err)
+
+		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, lastConfigBlock)
+
+		listBlocks, err = configStore.ListBlocks()
+		require.NoError(t, err)
+		require.Equal(t, len(listBlocks), 2)
+		require.Equal(t, listBlocks[0].Header.Number, uint64(0))
+		require.Equal(t, listBlocks[1].Header.Number, uint64(5))
 	})
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -37,23 +38,26 @@ type Configuration struct {
 }
 
 // ReadConfig reads the configurations from the config file and returns it. The configuration includes both local and shared.
-func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
+func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *common.Block, error) {
 	if configFilePath == "" {
 		return nil, nil, errors.New("path to the configuration file is empty")
 	}
 
 	var err error
+	var nodeRole string
 	conf := &Configuration{
 		LocalConfig:  &LocalConfig{},
 		SharedConfig: &protos.SharedConfig{},
 	}
 
-	conf.LocalConfig, err = LoadLocalConfig(configFilePath)
+	conf.LocalConfig, nodeRole, err = LoadLocalConfig(configFilePath)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	var genesisBlock *common.Block
+	var lastConfigBlock *common.Block
+	var configStore *configstore.Store
+
 	switch conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method {
 	case "yaml":
 		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
@@ -65,34 +69,87 @@ func ReadConfig(configFilePath string) (*Configuration, *common.Block, error) {
 			return nil, nil, errors.Wrapf(err, "failed to read shared config, path is empty")
 		}
 	case "block":
-		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
-			blockPath := conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File
-			data, err := os.ReadFile(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+		logger.Infof("reading shared config from block for %s node", nodeRole)
+		// If node is router or batcher, check if config store has blocks, and if yes bootstrap from the last block
+		if nodeRole == Router || nodeRole == Batcher {
+			configStore, err = configstore.NewStore(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
 			if err != nil {
-				return nil, nil, fmt.Errorf("could not read block %s", blockPath)
-			}
-			genesisBlock, err = protoutil.UnmarshalBlock(data)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error unmarshalling to block: %s", err)
+				return nil, nil, fmt.Errorf("failed creating %s config store: %s", nodeRole, err)
 			}
 
-			consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(genesisBlock)
+			listBlockNumbers, err := configStore.ListBlockNumbers()
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, fmt.Errorf("failed to list blocks from %s config store: %s", nodeRole, err)
 			}
 
-			err = proto.Unmarshal(consensusMetaData, conf.SharedConfig)
-			if err != nil {
-				return nil, nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
+			if len(listBlockNumbers) > 0 {
+				lastBlockNumberIdx := uint64(len(listBlockNumbers) - 1)
+				lastBlockNumber := listBlockNumbers[lastBlockNumberIdx]
+				lastConfigBlock, err = configStore.GetByNumber(lastBlockNumber)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to retrieve the last block from %s config store: %s", nodeRole, err)
+				}
+				logger.Infof("last block number %d was retrieved from %s config store", lastBlockNumber, nodeRole)
 			}
-		} else {
-			return nil, nil, errors.Wrapf(err, "failed to read a config block, path is empty")
 		}
+
+		if lastConfigBlock == nil {
+			lastConfigBlock, err = readGenesisBlockFromBootstrapPath(conf.LocalConfig)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to read genesis block from bootstrap file, err: %v", err)
+			}
+
+			if configStore != nil {
+				err = configStore.Add(lastConfigBlock)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to add the genesis block to the config store: %s", err)
+				}
+				logger.Infof("Append genesis block to the %s config store", nodeRole)
+			}
+		}
+
+		conf.SharedConfig, err = sharedConfigFromBlock(lastConfigBlock)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read the shared configuration from block, err: %v", err)
+		}
+
 	default:
 		return nil, nil, errors.Errorf("bootstrap method %s is invalid", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method)
 	}
 
-	return conf, genesisBlock, nil
+	return conf, lastConfigBlock, nil
+}
+
+func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error) {
+	if conf.NodeLocalConfig.GeneralConfig.Bootstrap.File == "" {
+		return nil, errors.Errorf("failed to read a config block, path is empty")
+	}
+
+	blockPath := conf.NodeLocalConfig.GeneralConfig.Bootstrap.File
+	data, err := os.ReadFile(blockPath)
+	if err != nil {
+		return nil, fmt.Errorf("could not read block %s", blockPath)
+	}
+	genesisBlock, err := protoutil.UnmarshalBlock(data)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling to block: %s", err)
+	}
+	return genesisBlock, nil
+}
+
+func sharedConfigFromBlock(block *common.Block) (*protos.SharedConfig, error) {
+	consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(block)
+	if err != nil {
+		return nil, err
+	}
+
+	sharedConfig := &protos.SharedConfig{}
+	err = proto.Unmarshal(consensusMetaData, sharedConfig)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
+	}
+
+	return sharedConfig, nil
 }
 
 func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types.Configuration, error) {
@@ -164,6 +221,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		Shards:                              config.ExtractShards(),
 		NumOfConnectionsForBatcher:          config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
 		NumOfgRPCStreamsPerConnection:       config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,

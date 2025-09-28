@@ -79,7 +79,7 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 
 	// 4.
-	conf, _, err := config.ReadConfig(filepath.Join(dir, "config/party1/local_config_consenter.yaml"))
+	conf, _, err := config.ReadConfig(filepath.Join(dir, "config/party1/local_config_consenter.yaml"), logger)
 	assert.NoError(t, err)
 	consenterInfos := conf.ExtractConsenters()
 
