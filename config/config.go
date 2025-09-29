@@ -228,7 +228,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		UseTLS:                              config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:                  config.LocalConfig.TLSConfig.ClientAuthRequired,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
-		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.RouterParams.ClientSignatureVerificationRequired,
+		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
 	}
 	return routerConfig
@@ -241,21 +241,22 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 	}
 
 	batcherConfig := &nodeconfig.BatcherNodeConfig{
-		Shards:             config.ExtractShards(),
-		Consenters:         config.ExtractConsenters(),
-		Directory:          config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:      config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
-		PartyId:            config.LocalConfig.NodeLocalConfig.PartyID,
-		ShardId:            config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID,
-		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
-		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
-		SigningPrivateKey:  signingPrivateKey,
-		MemPoolMaxSize:     config.LocalConfig.NodeLocalConfig.BatcherParams.MemPoolMaxSize,
-		BatchMaxSize:       config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
-		BatchMaxBytes:      config.SharedConfig.BatchingConfig.BatchSize.AbsoluteMaxBytes,
-		RequestMaxBytes:    config.SharedConfig.BatchingConfig.RequestMaxBytes,
-		SubmitTimeout:      config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
-		BatchSequenceGap:   types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
+		Shards:                              config.ExtractShards(),
+		Consenters:                          config.ExtractConsenters(),
+		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
+		ShardId:                             config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID,
+		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
+		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
+		SigningPrivateKey:                   signingPrivateKey,
+		MemPoolMaxSize:                      config.LocalConfig.NodeLocalConfig.BatcherParams.MemPoolMaxSize,
+		BatchMaxSize:                        config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
+		BatchMaxBytes:                       config.SharedConfig.BatchingConfig.BatchSize.AbsoluteMaxBytes,
+		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
+		SubmitTimeout:                       config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
+		BatchSequenceGap:                    types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
+		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 	}
 
 	if batcherConfig.FirstStrikeThreshold, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.FirstStrikeThreshold); err != nil {

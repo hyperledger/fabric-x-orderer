@@ -32,8 +32,8 @@ General:
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/msp
     LocalMSPID: OrdererOrg3
     LogSpec: info
+    ClientSignatureVerificationRequired: false
 FileStore: {}
 Router:
     NumberOfConnectionsPerBatcher: 10
     NumberOfStreamsPerConnection: 5
-    ClientSignatureVerificationRequired: false

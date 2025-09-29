@@ -77,6 +77,8 @@ type GeneralConfig struct {
 	BCCSP *factory.FactoryOpts `yaml:"BCCSP,omitempty"`
 	// LogSpec controls the logging level of the node
 	LogSpec string `yaml:"LogSpec,omitempty"`
+	// ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
+	ClientSignatureVerificationRequired bool `yaml:"ClientSignatureVerificationRequired,omitempty"`
 }
 
 type TLSConfigYaml struct {
@@ -126,8 +128,6 @@ type RouterParams struct {
 	NumberOfConnectionsPerBatcher int `yaml:"NumberOfConnectionsPerBatcher,omitempty"`
 	// NumberOfStreamsPerConnection specifies the number of streams per connection that are opened between Router and Batcher
 	NumberOfStreamsPerConnection int `yaml:"NumberOfStreamsPerConnection,omitempty"`
-	// ClientSignatureVerificationRequired specifies if the router will validate the signature in the requests
-	ClientSignatureVerificationRequired bool `yaml:"ClientSignatureVerificationRequired,omitempty"`
 }
 
 type ConsensusParams struct {

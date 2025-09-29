@@ -118,9 +118,8 @@ func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 	// Override consenter params - add router params
 	consenterLocalConfig := networkLocalConfig.PartiesLocalConfig[0].ConsenterLocalConfig
 	consenterLocalConfig.RouterParams = &config.RouterParams{
-		NumberOfConnectionsPerBatcher:       5,
-		NumberOfStreamsPerConnection:        5,
-		ClientSignatureVerificationRequired: false,
+		NumberOfConnectionsPerBatcher: 5,
+		NumberOfStreamsPerConnection:  5,
 	}
 
 	configPath := path.Join(dir, "config", "party1", "local_config_consenter.yaml")
