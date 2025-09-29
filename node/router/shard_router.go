@@ -115,7 +115,7 @@ func NewShardRouter(l types.Logger,
 	return sr
 }
 
-func (sr *ShardRouter) NewForward(trackedReq *TrackedRequest) {
+func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
 	connIndex := int(binary.BigEndian.Uint16(trackedReq.reqID)) % len(sr.connPool)
 	streamInConnIndex := int(binary.BigEndian.Uint16(trackedReq.reqID)) % sr.router2batcherStreamsPerConn
 
