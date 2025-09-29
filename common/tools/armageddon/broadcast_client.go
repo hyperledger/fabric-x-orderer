@@ -174,6 +174,7 @@ func ReceiveResponseFromRouter(userConfig *UserConfig, streamInfo *StreamInfo) {
 	for {
 		select {
 		case <-streamInfo.stopChan:
+			streamInfo.logger.Infof("Stop ReceiveResponseFromRouter go routine")
 			return
 		default:
 			_, err := streamInfo.stream.Recv()
