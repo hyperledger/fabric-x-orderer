@@ -78,6 +78,24 @@ func (n naiveAssemblerLedger) Close() {
 	close(n)
 }
 
+// GetBlocksCount implements the assembler.AssemblerLedgerWriter interface.
+func (n naiveAssemblerLedger) GetBlocksCount() uint64 {
+	// For testing, return 0 or a mock value as needed.
+	return 0
+}
+
+// GetTxCount implements the assembler.AssemblerLedgerWriter interface.
+func (n naiveAssemblerLedger) GetTxCount() uint64 {
+	// For testing, return 0 or a mock value as needed.
+	return 0
+}
+
+// GetBlocksSize implements the assembler.AssemblerLedgerWriter interface.
+func (n naiveAssemblerLedger) GetBlocksSize() uint64 {
+	// For testing, return 0 or a mock value as needed.
+	return 0
+}
+
 func TestAssembler(t *testing.T) {
 	shardCount := 4
 	batchNum := 20
