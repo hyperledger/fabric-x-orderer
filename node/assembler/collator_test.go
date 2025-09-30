@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
@@ -243,6 +244,9 @@ func createCollator(t *testing.T, shardCount int, AssemblerRestarter assembler.A
 	ledgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
 	ledger, err := ledgerFactory.Create(logger, tempDir)
 	require.NoError(t, err)
+
+	ledger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, t.Name()).Provider, "test_party", testutil.CreateLogger(t, 0))
+
 	ledger.AppendConfig(utils.EmptyGenesisBlock("test"), 0)
 
 	ordBARep := make(naiveOrderedBatchAttestationReplicator)
