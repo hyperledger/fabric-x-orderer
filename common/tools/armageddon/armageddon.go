@@ -795,7 +795,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 			logger.Debugf("block with %d txs was pulled from the assembler, overall %d txs were received at this moment", len(blockWithTime.block.Data.Data), txsTotal)
 
 			if expectedNumOfTxs > 0 && expectedNumOfTxs <= txsTotal {
-				logger.Debugf("overall %d txs were received, finished pulling", txsTotal)
+				logger.Infof("overall %d txs were received, finished pulling", txsTotal)
 				waitToFinish.Done()
 				return
 			}
