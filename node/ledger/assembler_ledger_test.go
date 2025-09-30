@@ -13,6 +13,7 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -27,8 +28,7 @@ func TestAssemblerLedger_Create(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
-	al, err := createAssemblerLedger(tmpDir, logger)
-	require.NoError(t, err)
+	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
 	count := al.GetTxCount()
@@ -41,8 +41,7 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -68,8 +67,7 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -94,8 +92,7 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
-	al, err := createAssemblerLedger(tmpDir, logger)
-	require.NoError(t, err)
+	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
 	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -149,8 +146,7 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
-	al, err := createAssemblerLedger(tmpDir, logger)
-	require.NoError(t, err)
+	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
 	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -180,8 +176,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -211,8 +206,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -229,8 +223,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -258,8 +251,7 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
@@ -286,8 +278,7 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		genBlock := utils.EmptyGenesisBlock("arma")
@@ -314,8 +305,7 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
 		genBlock := utils.EmptyGenesisBlock("arma")
@@ -359,9 +349,12 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 	})
 }
 
-func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_ledger.AssemblerLedger, error) {
+func createAssemblerLedger(t *testing.T, tmpDir string, logger *flogging.FabricLogger) *node_ledger.AssemblerLedger {
 	al, err := node_ledger.NewAssemblerLedger(logger, tmpDir)
-	return al, err
+	require.NoError(t, err)
+	require.NotNil(t, al)
+	al.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", logger)
+	return al
 }
 
 // createBatchesAndOrdInfo creates a series of batches and their corresponding ordering information, emulating the
