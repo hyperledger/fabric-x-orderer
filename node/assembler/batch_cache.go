@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package assembler
 
 import (
+	"sync/atomic"
+
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
@@ -14,7 +16,7 @@ type BatchCache struct {
 	tag              string
 	shardBatchMapper *BatchMapper[types.BatchID, types.Batch]
 	partition        ShardPrimary
-	sizeBytes        int
+	sizeBytes        uint64
 }
 
 //go:generate counterfeiter -o ./mocks/batch_cache_factory.go . BatchCacheFactory
@@ -47,7 +49,7 @@ func (bc *BatchCache) Pop(batchId types.BatchID) (types.Batch, error) {
 	if err != nil {
 		return nil, err
 	}
-	bc.sizeBytes -= batchSizeBytes(batch)
+	atomic.AddUint64(&bc.sizeBytes, ^(uint64(batchSizeBytes(batch)) - 1))
 	return batch, nil
 }
 
@@ -57,7 +59,7 @@ func (bc *BatchCache) Put(batch types.Batch) error {
 		return ErrBatchAlreadyExists
 	}
 	if inserted {
-		bc.sizeBytes += batchSizeBytes(batch)
+		atomic.AddUint64(&bc.sizeBytes, uint64(batchSizeBytes(batch)))
 	}
 	return nil
 }
@@ -71,5 +73,5 @@ func (bc *BatchCache) Get(batchId types.BatchID) (types.Batch, error) {
 }
 
 func (bc *BatchCache) SizeBytes() int {
-	return bc.sizeBytes
+	return int(atomic.LoadUint64(&bc.sizeBytes))
 }

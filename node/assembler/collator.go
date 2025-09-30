@@ -25,6 +25,7 @@ type AssemblerIndex interface {
 
 type AssemblerLedgerWriter interface {
 	Append(batch types.Batch, orderingInfo *state.OrderingInformation)
+	GetTxCount() uint64
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	Close()
 }
