@@ -346,6 +346,7 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		Consenter:                 consenterFromMyParty,
 		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
+		MetricsLogInterval:        config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return assemblerConfig
 }
