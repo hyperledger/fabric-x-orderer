@@ -18,6 +18,7 @@ type PrefetchIndexer interface {
 	Put(batch types.Batch) error
 	PutForce(batch types.Batch) error
 	Requests() <-chan types.BatchID
+	PrefetchBufferSize(shardPrimary ShardPrimary) int
 	Stop()
 }
 
@@ -104,6 +105,11 @@ func NewPrefetchIndex(
 		}
 	}
 	return pi
+}
+
+func (pi *PrefetchIndex) PrefetchBufferSize(shardPrimary ShardPrimary) int {
+	partitionIndex := pi.partitionToIndex[shardPrimary]
+	return partitionIndex.PrefetchBufferSize()
 }
 
 func (pi *PrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch, error) {

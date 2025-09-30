@@ -31,6 +31,8 @@ type (
 //go:generate counterfeiter -o ./mocks/assembler_ledger.go . AssemblerLedgerReaderWriter
 type AssemblerLedgerReaderWriter interface {
 	GetTxCount() uint64
+	GetBlocksCount() uint64
+	GetBlocksSize() uint64
 	Append(batch types.Batch, orderingInfo types.OrderingInfo)
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	LastOrderingInfo() (*state.OrderingInformation, error)
@@ -54,6 +56,8 @@ type AssemblerLedger struct {
 	Logger               types.Logger
 	Ledger               blockledger.ReadWriter
 	transactionCount     uint64
+	blocksCount          uint64
+	blocksSize           uint64
 	blockStorageProvider *blkstorage.BlockStoreProvider
 	blockStore           *blkstorage.BlockStore
 	cancellationContext  context.Context
@@ -132,6 +136,20 @@ func (l *AssemblerLedger) GetTxCount() uint64 {
 	return c
 }
 
+func (l *AssemblerLedger) GetBlocksCount() uint64 {
+	c := atomic.LoadUint64(&l.blocksCount)
+	return c
+}
+
+func (l *AssemblerLedger) GetBlocksSize() uint64 {
+	c := atomic.LoadUint64(&l.blocksSize)
+	return c
+}
+
+func blockSize(block *common.Block) uint64 {
+	return uint64(len(protoutil.MarshalOrPanic(block)))
+}
+
 func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingInfo) {
 	ordInfo := orderingInfo.(*state.OrderingInformation)
 	t1 := time.Now()
@@ -198,6 +216,8 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 	}
 
 	atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
+	atomic.AddUint64(&l.blocksCount, uint64(1))
+	atomic.AddUint64(&l.blocksSize, blockSize(block))
 }
 
 func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum) {
@@ -211,6 +231,8 @@ func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum ty
 		l.Logger.Panicf("attempting to AppendConfig a block which is not a config block: %d", configBlock.GetHeader().GetNumber())
 	}
 
+	atomic.AddUint64(&l.blocksCount, uint64(1))
+	atomic.AddUint64(&l.blocksSize, blockSize(configBlock))
 	transactionCount := atomic.AddUint64(&l.transactionCount, 1) // len(configBlock.GetData().GetData()) = should always be a single TX
 	batchID := types.NewSimpleBatch(types.ShardIDConsensus, 0, 0, nil, 0)
 	ordInfo := &state.OrderingInformation{
