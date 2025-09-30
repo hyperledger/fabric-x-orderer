@@ -56,6 +56,7 @@ type PartitionPrefetchIndexer interface {
 	Put(batch types.Batch) error
 	PutForce(batch types.Batch) error
 	Stop()
+	Metrics() *PartitionPrefetchIndexMetrics
 }
 
 //go:generate counterfeiter -o ./mocks/partition_prefetch_index_factory.go . PartitionPrefetchIndexerFactory
@@ -170,6 +171,7 @@ type PartitionPrefetchIndex struct {
 	cancelContextFunc   context.CancelFunc
 	// delay before PopOrWait requests the batch
 	popWaitMonitorTimeout time.Duration
+	metrics               PartitionPrefetchIndexMetrics
 }
 
 func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) *PartitionPrefetchIndex {
@@ -189,7 +191,15 @@ func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defa
 		cancelContextFunc:     cancel,
 		popWaitMonitorTimeout: popWaitMonitorTimeout,
 	}
+	pi.metrics = PartitionPrefetchIndexMetrics{
+		cacheSize:          &pi.cache.sizeBytes,
+		forcedPutCacheSize: &pi.forcedPutCache.sizeBytes,
+	}
 	return pi
+}
+
+func (pi *PartitionPrefetchIndex) Metrics() *PartitionPrefetchIndexMetrics {
+	return &pi.metrics
 }
 
 func (pi *PartitionPrefetchIndex) getName() string {
