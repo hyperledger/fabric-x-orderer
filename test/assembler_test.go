@@ -142,14 +142,17 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
 }
 
-// TestStartAssemblerGetMetrics verifies that an assembler exposes Prometheus metrics
-// reflecting the ledger transaction count after transactions are submitted.
+// TestStartAssemblerGetMetrics verifies that the assembler node correctly exposes
+// transaction and block count metrics via Prometheus.
 //
-//  1. Create a temporary directory and generate a network configuration for a single
-//     party/node, then generate network artifacts into that directory.
-//  2. Build the arma CLI binary and start the arma network nodes.
-//  3. Use the armageddon CLI to load a fixed number of transactions
-//  4. Capture the Prometheus metrics URL for the assembler process corresponding to party 1
+// The test performs the following steps:
+// 1. Creates a test network configuration with 1 node
+// 2. Generates network artifacts using armageddon CLI
+// 3. Builds and starts the arma node binary
+// 4. Sends a configurable number of transactions (10) using a rate-limited broadcast client
+// 5. Monitors Prometheus metrics to verify transaction count (totalTxNumber+1) and block count (2)
+// 6. Stops and restarts the monitored assembler node
+// 7. Verifies that the metrics remain accurate after the node restart
 func TestStartAssemblerGetMetrics(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -199,7 +202,7 @@ func TestStartAssemblerGetMetrics(t *testing.T) {
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
@@ -215,10 +218,29 @@ func TestStartAssemblerGetMetrics(t *testing.T) {
 	assemblerToMonitor := armaNetwork.GetAssembler(t, types.PartyID(1))
 	url := testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
 
-	pattern := fmt.Sprintf(`assembler_ledger_transaction_count_total\{party_id="%d"\} \d+`, types.PartyID(1))
-	re := regexp.MustCompile(pattern)
+	txsCountPattern := fmt.Sprintf(`assembler_ledger_transaction_count_total\{party_id="%d"\} \d+`, types.PartyID(1))
+	txsCountRe := regexp.MustCompile(txsCountPattern)
+
+	blocksCountPattern := fmt.Sprintf(`assembler_ledger_blocks_count_total\{party_id="%d"\} \d+`, types.PartyID(1))
+	blocksCountRe := regexp.MustCompile(blocksCountPattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber+1
+		return testutil.FetchPrometheusMetricValue(t, txsCountRe, url) == totalTxNumber+1
 	}, 30*time.Second, 100*time.Millisecond)
+
+	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
+
+	// 6.
+	assemblerToMonitor.StopArmaNode()
+	assemblerToMonitor.RestartArmaNode(t, readyChan)
+
+	// 7.
+	testutil.WaitReady(t, readyChan, 1, 10)
+	url = testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
+
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, txsCountRe, url) == totalTxNumber+1
+	}, 30*time.Second, 100*time.Millisecond)
+
+	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
 }
