@@ -108,7 +108,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
 		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer)
 
-	metrics := NewRouterMetrics(config, logger, config.MetricsLogInterval)
+	metrics := NewRouterMetrics(config, logger)
 
 	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, configPuller)
 	r.init()

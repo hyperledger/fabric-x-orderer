@@ -322,6 +322,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Consenter:                 consenterInfo,
 		UseTLS:                    true,
 		ClientAuthRequired:        false,
+		MonitoringListenAddress:   "127.0.0.1:0",
 	}
 
 	assemblerGRPC := node.CreateGRPCAssembler(nodeConfig)

@@ -197,7 +197,7 @@ func GetMetricValue(m prometheus.Metric, logger types.Logger) float64 {
 	gm := promgo.Metric{}
 	err := m.Write(&gm)
 	if err != nil {
-		logger.Infof("%v", err.Error())
+		logger.Errorf("%v", err.Error())
 		return 0
 	}
 
@@ -213,7 +213,7 @@ func GetMetricValue(m prometheus.Metric, logger types.Logger) float64 {
 	case gm.Histogram != nil:
 		return gm.Histogram.GetSampleSum()
 	default:
-		logger.Infof("unsupported metric")
+		logger.Errorf("unsupported metric")
 		return 0
 	}
 }

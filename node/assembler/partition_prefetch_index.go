@@ -175,6 +175,7 @@ type PartitionPrefetchIndex struct {
 
 	cancellationContext context.Context
 	cancelContextFunc   context.CancelFunc
+	// delay before PopOrWait requests the batch
 }
 
 func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) *PartitionPrefetchIndex {
@@ -194,6 +195,7 @@ func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defa
 		cancelContextFunc:     cancel,
 		popWaitMonitorTimeout: popWaitMonitorTimeout,
 	}
+
 	return pi
 }
 
