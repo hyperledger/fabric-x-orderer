@@ -140,7 +140,7 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
-	_, ce, err := c.verifyRequestFromBytes(req)
+	_, ce, err := c.verifyCE(req)
 	if err != nil {
 		c.Logger.Warnf("Received bad request: %v", err)
 		return err
@@ -266,7 +266,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 // VerifyRequest verifies the given request and returns its info
 // (from SmartBFT API)
 func (c *Consensus) VerifyRequest(req []byte) (smartbft_types.RequestInfo, error) {
-	reqID, _, err := c.verifyRequestFromBytes(req)
+	reqID, _, err := c.verifyCE(req)
 	return reqID, err
 }
 
@@ -535,8 +535,8 @@ func (c *Consensus) pickEndpoint() string {
 	return c.Config.Consenters[r].Endpoint
 }
 
-func (c *Consensus) verifyRequestFromBytes(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
-	var ce state.ControlEvent
+func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
+	ce := &state.ControlEvent{}
 	bafd := &state.BAFDeserialize{}
 	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
 		return smartbft_types.RequestInfo{}, nil, err
@@ -545,10 +545,10 @@ func (c *Consensus) verifyRequestFromBytes(req []byte) (smartbft_types.RequestIn
 	reqID := c.RequestID(req)
 
 	if ce.Complaint != nil {
-		return reqID, &ce, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
+		return reqID, ce, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
-		return reqID, &ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
+		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else {
-		return smartbft_types.RequestInfo{}, &ce, fmt.Errorf("empty control event")
+		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
 }
