@@ -284,6 +284,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		BADB:         db,
 		Net:          &mockNet{},
 		Synchronizer: &synchronizer{stopSync: func() {}},
+		Metrics:      NewConsensusMetrics(partyID, l, 10*time.Second),
 	}
 
 	c.BFTConfig.SelfID = uint64(partyID)
