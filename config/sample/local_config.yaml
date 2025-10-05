@@ -160,6 +160,9 @@ General:
   # See: https://hyperledger-fabric.readthedocs.io/en/release-2.5/logging-control.html
   LogSpec: info
 
+  # ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
+  ClientSignatureVerificationRequired: false
+
 ################################################################################
 #
 #   SECTION: File Store
@@ -181,7 +184,6 @@ FileStore:
 Router:
   NumberOfConnectionsPerBatcher: 10
   NumberOfStreamsPerConnection: 20
-  ClientSignatureVerificationRequired: false
 
 # Consensus specific parameters
 Consensus:

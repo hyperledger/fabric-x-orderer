@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	DefaultMaxRecvMsgSize = 100 * 1024 * 1024
-	DefaultMaxSendMsgSize = 100 * 1024 * 1024
-	DefaultSendBufferSize = 2000
+	DefaultMaxRecvMsgSize                      = 100 * 1024 * 1024
+	DefaultMaxSendMsgSize                      = 100 * 1024 * 1024
+	DefaultSendBufferSize                      = 2000
+	DefaultClientSignatureVerificationRequired = false
 )
 
 var (
@@ -196,10 +197,11 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 			Method: "block",
 			File:   filepath.Join(generalConfigParams.configBaseDir, "bootstrap", "bootstrap.block"),
 		},
-		LocalMSPDir: filepath.Join(partyPath, nodeRole, "msp"),
-		LocalMSPID:  fmt.Sprintf("OrdererOrg%d", generalConfigParams.partyID),
-		BCCSP:       &factory.FactoryOpts{},
-		LogSpec:     generalConfigParams.logLevel,
+		LocalMSPDir:                         filepath.Join(partyPath, nodeRole, "msp"),
+		LocalMSPID:                          fmt.Sprintf("OrdererOrg%d", generalConfigParams.partyID),
+		BCCSP:                               &factory.FactoryOpts{},
+		LogSpec:                             generalConfigParams.logLevel,
+		ClientSignatureVerificationRequired: DefaultClientSignatureVerificationRequired,
 	}
 
 	if generalConfigParams.role == "consenter" {
