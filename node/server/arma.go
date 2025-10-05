@@ -79,7 +79,7 @@ func stopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr 
 
 func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent, genesisBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigAssembler"))
+		configContent, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigAssembler"))
 		if err != nil {
 			panic(fmt.Sprintf("error launching assembler, err: %s", err))
 		}
@@ -93,7 +93,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 		}
 
 		srv := node.CreateGRPCAssembler(conf)
-		assembler := assembler.NewAssembler(conf, srv, genesisBlock, assemblerLogger)
+		assembler := assembler.NewAssembler(conf, srv, lastConfigBlock, assemblerLogger)
 
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
 

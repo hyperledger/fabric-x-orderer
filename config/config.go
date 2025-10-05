@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -91,6 +92,31 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 				}
 				logger.Infof("last block number %d was retrieved from %s config store", lastBlockNumber, nodeRole)
 			}
+		}
+
+		// If node is assembler, check if its ledger has blocks, and if yes bootstrap from the last block
+		if nodeRole == "Assembler" {
+			assemblerLedgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
+			assemblerLedger, err := assemblerLedgerFactory.Create(logger, conf.LocalConfig.NodeLocalConfig.FileStore.Path)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create assembler ledger instance: %s", err)
+			}
+			if assemblerLedger.LedgerReader().Height() > 0 {
+				lastBlockIdx := assemblerLedger.LedgerReader().Height() - 1
+				lastBlock, err := assemblerLedger.LedgerReader().RetrieveBlockByNumber(lastBlockIdx)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to retrieve last block from assembler ledger: %s", err)
+				}
+				index, err := protoutil.GetLastConfigIndexFromBlock(lastBlock)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to get last config index from assebmler's last block: %s", err)
+				}
+				lastConfigBlock, err = assemblerLedger.LedgerReader().RetrieveBlockByNumber(index)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to retrieve last config block from assembler ledger: %s", err)
+				}
+			}
+			assemblerLedger.Close()
 		}
 
 		if lastConfigBlock == nil {
