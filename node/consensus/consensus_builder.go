@@ -57,7 +57,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 	if err != nil {
 		logger.Panicf("Failed creating Batch attestation DB: %v", err)
 	}
-	metrics := NewConsensusMetrics(conf.PartyId, logger, 10*time.Second, true)
 
 	c := &Consensus{
 		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
@@ -77,7 +76,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 		Storage:      consLedger,
 		SigVerifier:  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:       signer,
-		Metrics:      metrics,
+		Metrics:      NewConsensusMetrics(conf.PartyId, logger, 10*time.Second),
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)

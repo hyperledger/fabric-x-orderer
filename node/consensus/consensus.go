@@ -140,20 +140,18 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
-	if _, err := c.VerifyRequest(req); err != nil {
+	_, ce, err := c.verifyRequestFromBytes(req)
+	if err != nil {
 		c.Logger.Warnf("Received bad request: %v", err)
 		return err
 	}
 
 	// update metrics
-	var ce state.ControlEvent
-	if err := ce.FromBytes(req, (&state.BAFDeserialize{}).Deserialize); err == nil {
-		if ce.BAF != nil {
-			c.Metrics.bafsCount.Add(1)
-		}
-		if ce.Complaint != nil {
-			c.Metrics.complaintsCount.Add(1)
-		}
+	if ce.BAF != nil {
+		c.Metrics.bafsCount.Add(1)
+	}
+	if ce.Complaint != nil {
+		c.Metrics.complaintsCount.Add(1)
 	}
 
 	return c.BFT.SubmitRequest(req)
@@ -268,21 +266,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 // VerifyRequest verifies the given request and returns its info
 // (from SmartBFT API)
 func (c *Consensus) VerifyRequest(req []byte) (smartbft_types.RequestInfo, error) {
-	var ce state.ControlEvent
-	bafd := &state.BAFDeserialize{}
-	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
-		return smartbft_types.RequestInfo{}, err
-	}
-
-	reqID := c.RequestID(req)
-
-	if ce.Complaint != nil {
-		return reqID, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
-	} else if ce.BAF != nil {
-		return reqID, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
-	} else {
-		return smartbft_types.RequestInfo{}, fmt.Errorf("empty control event")
-	}
+	reqID, _, err := c.verifyRequestFromBytes(req)
+	return reqID, err
 }
 
 // VerifyConsenterSig verifies the signature for the given proposal
@@ -526,8 +511,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)
-	c.Metrics.decisionsSize.Add(uint64(len(rawDecision)))
-	c.Metrics.AddBlocksMetrics(hdr)
+	c.Metrics.blocksCount.Add(uint64(len(hdr.AvailableCommonBlocks)))
 
 	c.stateLock.Lock()
 	c.State = hdr.State
@@ -549,4 +533,22 @@ func (c *Consensus) pickEndpoint() string {
 	}
 	c.Logger.Debugf("Returning random node (ID=%d) endpoint : %s", c.Config.Consenters[r].PartyID, c.Config.Consenters[r].Endpoint)
 	return c.Config.Consenters[r].Endpoint
+}
+
+func (c *Consensus) verifyRequestFromBytes(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
+	var ce state.ControlEvent
+	bafd := &state.BAFDeserialize{}
+	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
+		return smartbft_types.RequestInfo{}, nil, err
+	}
+
+	reqID := c.RequestID(req)
+
+	if ce.Complaint != nil {
+		return reqID, &ce, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
+	} else if ce.BAF != nil {
+		return reqID, &ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
+	} else {
+		return smartbft_types.RequestInfo{}, &ce, fmt.Errorf("empty control event")
+	}
 }
