@@ -98,12 +98,9 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
-		configStore, err := os.MkdirTemp("", fmt.Sprintf("config-store-router%d", i))
-		require.NoError(t, err)
-
 		config := &nodeconfig.RouterNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
-			ConfigStorePath:    configStore,
+			ConfigStorePath:    t.TempDir(),
 			TLSPrivateKeyFile:  kp.Key,
 			TLSCertificateFile: kp.Cert,
 			PartyID:            types.PartyID(i + 1),
@@ -200,6 +197,7 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			ListenAddress:         "0.0.0.0:0",
 			Shards:                shards,
 			ShardId:               shardID,
+			ConfigStorePath:       t.TempDir(),
 			PartyId:               types.PartyID(i + 1),
 			Consenters:            consenterInfos,
 			TLSPrivateKeyFile:     batcherNodes[i].TLSKey,

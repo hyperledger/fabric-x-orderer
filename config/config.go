@@ -260,7 +260,8 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 	return routerConfig
 }
 
-func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfig {
+func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *nodeconfig.BatcherNodeConfig {
+	// TODO: use config block to build bundle in the batcher
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
@@ -271,6 +272,7 @@ func (config *Configuration) ExtractBatcherConfig() *nodeconfig.BatcherNodeConfi
 		Consenters:                          config.ExtractConsenters(),
 		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		ShardId:                             config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,

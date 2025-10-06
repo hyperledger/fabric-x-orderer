@@ -12,6 +12,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -51,6 +52,12 @@ func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net
 
 func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp BatchesPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, &NoopClientRequestSigVerifier{}, nil)
+
+	configStore, err := configstore.NewStore(config.ConfigStorePath)
+	if err != nil {
+		logger.Panicf("Failed creating batcher config store: %s", err)
+	}
+
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
 		batcherDeliverService:     ds,
@@ -59,6 +66,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		logger:                    logger,
 		Net:                       net,
 		Ledger:                    ledger,
+		ConfigStore:               configStore,
 		batcherCerts2IDs:          make(map[string]types.PartyID),
 		config:                    config,
 	}

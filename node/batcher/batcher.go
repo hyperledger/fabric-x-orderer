@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
@@ -54,6 +55,7 @@ type Batcher struct {
 	primaryReqConnector       *PrimaryReqConnector
 	Net                       Net
 	Ledger                    *node_ledger.BatchLedgerArray
+	ConfigStore               *configstore.Store
 	config                    *node_config.BatcherNodeConfig
 	batchers                  []node_config.BatcherInfo
 	signer                    Signer
