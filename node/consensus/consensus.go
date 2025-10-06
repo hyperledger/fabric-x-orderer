@@ -8,6 +8,7 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
@@ -137,6 +138,12 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 			c.Logger.Warnf("Failed submitting request: %v", err)
 		}
 	}
+}
+
+// SubmitConfig is used to submit a config request from the router in the consenter's party.
+// TODO - add certificate pinning of the router, and forward the request.
+func (sc *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	return nil, fmt.Errorf("SubmitConfig not implemented")
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
