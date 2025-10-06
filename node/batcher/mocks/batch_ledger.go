@@ -203,12 +203,6 @@ func (fake *FakeBatchLedger) RetrieveBatchByNumberReturnsOnCall(i int, result1 t
 func (fake *FakeBatchLedger) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.appendMutex.RLock()
-	defer fake.appendMutex.RUnlock()
-	fake.heightMutex.RLock()
-	defer fake.heightMutex.RUnlock()
-	fake.retrieveBatchByNumberMutex.RLock()
-	defer fake.retrieveBatchByNumberMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

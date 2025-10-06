@@ -5,39 +5,35 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
 type FakeRequestVerifier struct {
-	VerifyRequestStub        func([]byte) error
-	verifyRequestMutex       sync.RWMutex
-	verifyRequestArgsForCall []struct {
-		arg1 []byte
+	VerifyStub        func(*comm.Request) error
+	verifyMutex       sync.RWMutex
+	verifyArgsForCall []struct {
+		arg1 *comm.Request
 	}
-	verifyRequestReturns struct {
+	verifyReturns struct {
 		result1 error
 	}
-	verifyRequestReturnsOnCall map[int]struct {
+	verifyReturnsOnCall map[int]struct {
 		result1 error
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeRequestVerifier) VerifyRequest(arg1 []byte) error {
-	var arg1Copy []byte
-	if arg1 != nil {
-		arg1Copy = make([]byte, len(arg1))
-		copy(arg1Copy, arg1)
-	}
-	fake.verifyRequestMutex.Lock()
-	ret, specificReturn := fake.verifyRequestReturnsOnCall[len(fake.verifyRequestArgsForCall)]
-	fake.verifyRequestArgsForCall = append(fake.verifyRequestArgsForCall, struct {
-		arg1 []byte
-	}{arg1Copy})
-	stub := fake.VerifyRequestStub
-	fakeReturns := fake.verifyRequestReturns
-	fake.recordInvocation("VerifyRequest", []interface{}{arg1Copy})
-	fake.verifyRequestMutex.Unlock()
+func (fake *FakeRequestVerifier) Verify(arg1 *comm.Request) error {
+	fake.verifyMutex.Lock()
+	ret, specificReturn := fake.verifyReturnsOnCall[len(fake.verifyArgsForCall)]
+	fake.verifyArgsForCall = append(fake.verifyArgsForCall, struct {
+		arg1 *comm.Request
+	}{arg1})
+	stub := fake.VerifyStub
+	fakeReturns := fake.verifyReturns
+	fake.recordInvocation("Verify", []interface{}{arg1})
+	fake.verifyMutex.Unlock()
 	if stub != nil {
 		return stub(arg1)
 	}
@@ -47,44 +43,44 @@ func (fake *FakeRequestVerifier) VerifyRequest(arg1 []byte) error {
 	return fakeReturns.result1
 }
 
-func (fake *FakeRequestVerifier) VerifyRequestCallCount() int {
-	fake.verifyRequestMutex.RLock()
-	defer fake.verifyRequestMutex.RUnlock()
-	return len(fake.verifyRequestArgsForCall)
+func (fake *FakeRequestVerifier) VerifyCallCount() int {
+	fake.verifyMutex.RLock()
+	defer fake.verifyMutex.RUnlock()
+	return len(fake.verifyArgsForCall)
 }
 
-func (fake *FakeRequestVerifier) VerifyRequestCalls(stub func([]byte) error) {
-	fake.verifyRequestMutex.Lock()
-	defer fake.verifyRequestMutex.Unlock()
-	fake.VerifyRequestStub = stub
+func (fake *FakeRequestVerifier) VerifyCalls(stub func(*comm.Request) error) {
+	fake.verifyMutex.Lock()
+	defer fake.verifyMutex.Unlock()
+	fake.VerifyStub = stub
 }
 
-func (fake *FakeRequestVerifier) VerifyRequestArgsForCall(i int) []byte {
-	fake.verifyRequestMutex.RLock()
-	defer fake.verifyRequestMutex.RUnlock()
-	argsForCall := fake.verifyRequestArgsForCall[i]
+func (fake *FakeRequestVerifier) VerifyArgsForCall(i int) *comm.Request {
+	fake.verifyMutex.RLock()
+	defer fake.verifyMutex.RUnlock()
+	argsForCall := fake.verifyArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakeRequestVerifier) VerifyRequestReturns(result1 error) {
-	fake.verifyRequestMutex.Lock()
-	defer fake.verifyRequestMutex.Unlock()
-	fake.VerifyRequestStub = nil
-	fake.verifyRequestReturns = struct {
+func (fake *FakeRequestVerifier) VerifyReturns(result1 error) {
+	fake.verifyMutex.Lock()
+	defer fake.verifyMutex.Unlock()
+	fake.VerifyStub = nil
+	fake.verifyReturns = struct {
 		result1 error
 	}{result1}
 }
 
-func (fake *FakeRequestVerifier) VerifyRequestReturnsOnCall(i int, result1 error) {
-	fake.verifyRequestMutex.Lock()
-	defer fake.verifyRequestMutex.Unlock()
-	fake.VerifyRequestStub = nil
-	if fake.verifyRequestReturnsOnCall == nil {
-		fake.verifyRequestReturnsOnCall = make(map[int]struct {
+func (fake *FakeRequestVerifier) VerifyReturnsOnCall(i int, result1 error) {
+	fake.verifyMutex.Lock()
+	defer fake.verifyMutex.Unlock()
+	fake.VerifyStub = nil
+	if fake.verifyReturnsOnCall == nil {
+		fake.verifyReturnsOnCall = make(map[int]struct {
 			result1 error
 		})
 	}
-	fake.verifyRequestReturnsOnCall[i] = struct {
+	fake.verifyReturnsOnCall[i] = struct {
 		result1 error
 	}{result1}
 }
@@ -92,8 +88,6 @@ func (fake *FakeRequestVerifier) VerifyRequestReturnsOnCall(i int, result1 error
 func (fake *FakeRequestVerifier) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.verifyRequestMutex.RLock()
-	defer fake.verifyRequestMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestPrimaryConnector(t *testing.T) {
@@ -57,7 +58,8 @@ func TestPrimaryConnector(t *testing.T) {
 	// send request to primary via connector
 	req = make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(2))
-	connector.SendReq(req)
+	reqBytes, _ := proto.Marshal(&protos.Request{Payload: req})
+	connector.SendReq(reqBytes)
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
@@ -96,7 +98,8 @@ func TestPrimaryConnector(t *testing.T) {
 	// send request via the connector to a new primary
 	req = make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(4))
-	connector.SendReq(req)
+	reqBytes, _ = proto.Marshal(&protos.Request{Payload: req})
+	connector.SendReq(reqBytes)
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
