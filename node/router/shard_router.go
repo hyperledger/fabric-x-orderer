@@ -71,6 +71,7 @@ type ShardRouter struct {
 	reconnectRequests            chan reconnectReq
 	closeReconnect               chan bool
 	verifier                     *requestfilter.RulesVerifier
+	configSubmitter              *configSubmitter
 }
 
 func NewShardRouter(l types.Logger,
@@ -81,6 +82,7 @@ func NewShardRouter(l types.Logger,
 	numOfConnectionsForBatcher int,
 	numOfgRPCStreamsPerConnection int,
 	verifier *requestfilter.RulesVerifier,
+	configSubmitter *configSubmitter,
 ) *ShardRouter {
 	cc := comm.ClientConfig{
 		AsyncConnect: false,
@@ -110,6 +112,7 @@ func NewShardRouter(l types.Logger,
 		reconnectRequests:            make(chan reconnectReq, 2*numOfgRPCStreamsPerConnection*numOfConnectionsForBatcher),
 		closeReconnect:               make(chan bool),
 		verifier:                     verifier,
+		configSubmitter:              configSubmitter,
 	}
 
 	return sr
@@ -317,6 +320,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			srReconnectChan:                   sr.reconnectRequests,
 			notifiedReconnect:                 false,
 			verifier:                          sr.verifier,
+			configSubmitter:                   sr.configSubmitter,
 		}
 		go s.sendRequests()
 		go s.readResponses()
