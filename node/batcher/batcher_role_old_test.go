@@ -225,6 +225,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		StateProvider:           &mocks.FakeStateProvider{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
+		Metrics:                 batcher.NewBatcherMetrics(nodeID, shardID, sugaredLogger, 0),
 	}
 
 	return batcher
@@ -369,6 +370,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		Complainer:              &mocks.FakeComplainer{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
+		Metrics:                 batcher.NewBatcherMetrics(nodeID, shardID, sugaredLogger, 0),
 	}
 
 	return b

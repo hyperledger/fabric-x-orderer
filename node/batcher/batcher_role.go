@@ -32,6 +32,7 @@ type MemPool interface {
 	RemoveRequests(requests ...string)
 	Submit(request []byte) error
 	Restart(bool)
+	RequestCount() int64
 	Close()
 }
 
@@ -118,6 +119,7 @@ type BatcherRole struct {
 	termChan                chan uint64
 	ackerLock               sync.RWMutex
 	acker                   SeqAcker
+	Metrics                 *BatcherMetrics
 }
 
 func (b *BatcherRole) Start() {
@@ -201,6 +203,7 @@ func (b *BatcherRole) getTermAndNotifyChange() {
 				atomic.StoreUint64(&b.term, newTerm)
 				b.termChan <- newTerm
 				b.resubmitPendingBAFs(state, b.getPrimaryID(currentTerm))
+				b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
 			}
 		}
 	}
@@ -233,7 +236,12 @@ func (b *BatcherRole) resubmitPendingBAFs(state *state.State, prevPrimary types.
 }
 
 func (b *BatcherRole) Submit(request []byte) error {
-	return b.MemPool.Submit(request)
+	if err := b.MemPool.Submit(request); err != nil {
+		return err
+	}
+
+	b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
+	return nil
 }
 
 func (b *BatcherRole) HandleAck(seq types.BatchSequence, from types.PartyID) {
@@ -246,6 +254,7 @@ func (b *BatcherRole) HandleAck(seq types.BatchSequence, from types.PartyID) {
 
 func (b *BatcherRole) runPrimary() {
 	b.Logger.Infof("Batcher %d acting as primary (shard %d)", b.ID, b.Shard)
+	b.Metrics.currentRole.Store(1)
 
 	defer func() {
 		b.Logger.Infof("Batcher %d stopped acting as primary (shard %d)", b.ID, b.Shard)
@@ -293,6 +302,7 @@ func (b *BatcherRole) runPrimary() {
 
 		// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 		b.BAFSender.SendBAF(baf)
+		b.Metrics.batchedTxsTotal.Add(uint64(len(currentBatch)))
 
 		b.ackerLock.RLock()
 		b.acker.HandleAck(b.seq, b.ID)
@@ -312,11 +322,14 @@ func (b *BatcherRole) removeRequests(batch types.BatchedRequests) {
 		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
 	}
 	b.MemPool.RemoveRequests(reqInfos...)
+	b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
 }
 
 func (b *BatcherRole) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
+	b.Metrics.currentRole.Store(2)
+
 	for {
 		out := b.BatchPuller.PullBatches(b.primary)
 		for {
@@ -339,6 +352,7 @@ func (b *BatcherRole) runSecondary() {
 				b.BatchPuller.Stop()
 				break // TODO maybe add backoff
 			}
+			b.Metrics.batchesPulledTotal.Add(1)
 			requests := batch.Requests()
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			b.Ledger.Append(b.primary, b.seq, requests)
@@ -346,6 +360,7 @@ func (b *BatcherRole) runSecondary() {
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
 			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 			b.BAFSender.SendBAF(baf)
+			b.Metrics.batchedTxsTotal.Add(uint64(len(requests)))
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
 		}

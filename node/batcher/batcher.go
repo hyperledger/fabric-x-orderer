@@ -69,6 +69,8 @@ type Batcher struct {
 	primaryLock sync.RWMutex
 	term        uint64
 	primaryID   types.PartyID
+
+	Metrics *BatcherMetrics
 }
 
 func (b *Batcher) Run() {
@@ -80,6 +82,7 @@ func (b *Batcher) Run() {
 
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
+	b.Metrics.Start()
 }
 
 func (b *Batcher) Stop() {
@@ -95,6 +98,7 @@ func (b *Batcher) Stop() {
 	b.primaryReqConnector.Stop()
 	b.Ledger.Close()
 	b.running.Wait()
+	b.Metrics.Stop()
 }
 
 // replicateState runs by a separate go routine
@@ -119,6 +123,7 @@ func (b *Batcher) replicateState() {
 				b.primaryID = primaryID
 				b.term = term
 				changed = true
+				b.Metrics.roleChangesTotal.Add(1)
 			}
 			b.primaryLock.Unlock()
 			if changed {
@@ -152,6 +157,7 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 		// TODO should return response with error?
 	}
 
+	b.Metrics.routerTxsTotal.Add(1)
 	traceId := req.TraceId
 	req.TraceId = nil
 	rawReq, err := proto.Marshal(req)
@@ -201,6 +207,7 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 			// TODO should return response with error?
 		}
 
+		b.Metrics.routerTxsTotal.Add(1)
 		traceId := req.TraceId
 		req.TraceId = nil
 		rawReq, err := proto.Marshal(req)
@@ -303,6 +310,7 @@ func (b *Batcher) NotifyAck(stream protos.BatcherControlService_NotifyAckServer)
 }
 
 func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
+	b.Metrics.firstResendsTotal.Add(1)
 	b.logger.Debugf("First strike timeout occurred on request %s", b.requestsInspectorVerifier.RequestID(req))
 	b.sendReq(req)
 }
@@ -318,6 +326,7 @@ func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shar
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
 
+	b.Metrics.batchesCreatedTotal.Add(1)
 	return baf
 }
 
@@ -392,6 +401,7 @@ func (b *Batcher) Complain(reason string) {
 	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
+	b.Metrics.complaintsTotal.Add(1)
 }
 
 func (b *Batcher) SendBAF(baf types.BatchAttestationFragment) {

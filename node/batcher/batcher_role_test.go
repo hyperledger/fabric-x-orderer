@@ -772,6 +772,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		MemPool:                 &mocks.FakeMemPool{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
+		Metrics:                 batcher.NewBatcherMetrics(batcherID, shardID, logger, 0),
 	}
 
 	return batcher
