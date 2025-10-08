@@ -71,6 +71,11 @@ type PoolOptions struct {
 
 // NewPool constructs a new requests pool
 func NewPool(logger types.Logger, inspector RequestInspector, options PoolOptions, striker Striker) *Pool {
+	if options.FirstStrikeThreshold < 2*options.BatchTimeout {
+		logger.Warnf("FirstStrikeThreshold should be at least 2*BatchTimeout")
+		return nil
+	}
+
 	rp := &Pool{
 		logger:    logger,
 		inspector: inspector,
