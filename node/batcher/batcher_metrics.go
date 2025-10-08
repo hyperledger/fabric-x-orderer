@@ -53,24 +53,24 @@ func (m *BatcherMetrics) Start() {
 func (m *BatcherMetrics) Stop() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
-		m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, first_resends_total=%d",
+		m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
 			m.partyID,
 			m.shardID,
 			m.role(),
 			m.batchesCreatedTotal.Load(),
 			m.batchesPulledTotal.Load(),
+			m.firstResendsTotal.Load(),
 			m.batchedTxsTotal.Load(),
 			m.memPoolSize.Load(),
 			m.routerTxsTotal.Load(),
 			m.roleChangesTotal.Load(),
 			m.complaintsTotal.Load(),
-			m.firstResendsTotal.Load(),
 		)
 	})
 }
 
 func (m *BatcherMetrics) trackMetrics() {
-	prevC, prevP := uint64(0), uint64(0)
+	prevC, prevP, prevR := uint64(0), uint64(0), uint64(0)
 	sec := m.interval.Seconds()
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
@@ -80,22 +80,23 @@ func (m *BatcherMetrics) trackMetrics() {
 		case <-t.C:
 			created := m.batchesCreatedTotal.Load()
 			pulled := m.batchesPulledTotal.Load()
+			resends := m.firstResendsTotal.Load()
 
-			m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, first_resends_total=%d",
+			m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resend_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
 				m.partyID,
 				m.shardID,
 				m.role(),
 				sec,
 				created-prevC, float64(created-prevC)/sec, created,
 				pulled-prevP, float64(pulled-prevP)/sec, pulled,
+				resends-prevR, float64(resends-prevR)/sec, resends,
 				m.batchedTxsTotal.Load(),
 				m.memPoolSize.Load(),
 				m.routerTxsTotal.Load(),
 				m.roleChangesTotal.Load(),
 				m.complaintsTotal.Load(),
-				m.firstResendsTotal.Load(),
 			)
-			prevC, prevP = created, pulled
+			prevC, prevP, prevR = created, pulled, resends
 
 		case <-m.stopChan:
 			return
