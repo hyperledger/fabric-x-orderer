@@ -45,6 +45,7 @@ type Router struct {
 	verifier         *requestfilter.RulesVerifier
 	stopChan         chan struct{}
 	configStore      *configstore.Store
+	configSubmitter  *configSubmitter
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -73,9 +74,16 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 		return int(shardIDs[i]) < int(shardIDs[j])
 	})
 
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCA := range config.Consenter.TLSCACerts {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
+	}
+	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
+		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
+
 	verifier := createVerifier(config)
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config, logger, verifier)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config, logger, verifier, configSubmitter)
 	r.init()
 	return r
 }
@@ -98,6 +106,8 @@ func (r *Router) StartRouterService() <-chan struct{} {
 
 	r.net = srv
 
+	r.configSubmitter.Start()
+
 	return stop
 }
 
@@ -113,6 +123,8 @@ func (r *Router) Stop() {
 	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
 
 	close(r.stopChan)
+
+	r.configSubmitter.Stop()
 
 	r.net.Stop()
 
@@ -172,7 +184,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configSubmitter *configSubmitter) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -198,10 +210,11 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		verifier:         verifier,
 		stopChan:         make(chan struct{}),
 		configStore:      configStore,
+		configSubmitter:  configSubmitter,
 	}
 
 	for _, shardId := range shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier)
+		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier, configSubmitter)
 	}
 
 	go func() {

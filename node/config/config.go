@@ -65,6 +65,13 @@ type ConsenterInfo struct {
 	TLSCACerts []RawBytes
 }
 
+type RouterInfo struct {
+	PartyID    types.PartyID
+	Endpoint   string
+	TLSCACerts []RawBytes
+	TLSCert    RawBytes
+}
+
 type RouterNodeConfig struct {
 	// Private config
 	PartyID            types.PartyID
@@ -74,6 +81,7 @@ type RouterNodeConfig struct {
 	ConfigStorePath    string
 	// Shared config
 	Shards                              []ShardInfo
+	Consenter                           ConsenterInfo
 	NumOfConnectionsForBatcher          int
 	NumOfgRPCStreamsPerConnection       int
 	UseTLS                              bool
@@ -141,6 +149,7 @@ type ConsenterNodeConfig struct {
 	// Shared config
 	Shards        []ShardInfo
 	Consenters    []ConsenterInfo
+	Router        RouterInfo
 	Directory     string
 	ListenAddress string
 	// Private config

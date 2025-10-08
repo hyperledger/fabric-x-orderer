@@ -12,6 +12,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"math/rand"
@@ -23,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
@@ -142,9 +144,14 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 }
 
 // SubmitConfig is used to submit a config request from the router in the consenter's party.
-// TODO - add certificate pinning of the router, and forward the request.
-func (sc *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
-	return nil, fmt.Errorf("SubmitConfig not implemented")
+func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	if err := c.validateRouterFromContext(ctx); err != nil {
+		return nil, errors.Wrap(err, "failed to validate router from context")
+	}
+
+	c.Logger.Infof("Received config request from router %s", c.Config.Router.Endpoint)
+
+	return &protos.SubmitResponse{Error: "SubmitConfig is not implemented in consenter", TraceId: request.TraceId}, nil
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
@@ -561,4 +568,26 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
+}
+
+func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
+	// extract the client certificate from the context
+	cert := node.ExtractCertificateFromContext(ctx)
+	if cert == nil {
+		return errors.New("error: access denied; could not extract certificate from context")
+	}
+
+	// extract the router certificate from the ConsenterNodeConfig
+	rawRouterCert := c.Config.Router.TLSCert
+	pemBlock, _ := pem.Decode(rawRouterCert)
+	if pemBlock == nil || pemBlock.Bytes == nil {
+		return errors.New("error decoding router TLS certificate")
+	}
+
+	// compare the two certificates
+	if !bytes.Equal(pemBlock.Bytes, cert.Raw) {
+		c.Logger.Errorf("error: access denied. The client certificate does not match the router's certificate. \n client's certificate: \n %s \n %x \n ", node.CertificateToString(cert), cert.Raw)
+		return errors.New("error: access denied. The client certificate does not match the router's certificate")
+	}
+	return nil
 }
