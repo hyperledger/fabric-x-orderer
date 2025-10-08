@@ -34,6 +34,7 @@ type stream struct {
 	srReconnectChan                   chan reconnectReq
 	notifiedReconnect                 bool
 	verifier                          *requestfilter.RulesVerifier
+	configSubmitter                   *configSubmitter
 }
 
 // readResponses listens for responses from the batcher.
@@ -80,6 +81,8 @@ func (s *stream) sendRequests() {
 				// send error to the client
 				s.responseToClientWithError(tr, fmt.Errorf("request verification error: %s", err))
 			} else {
+				// TODO - if request is config, forward it to the consenter using configSubmitter
+
 				s.logger.Debugf("send request with trace id %x to batcher %s", tr.trace, s.endpoint)
 				err := s.requestTransmitSubmitStreamClient.Send(tr.request)
 				if err != nil {
@@ -251,6 +254,7 @@ CopyChannelLoop:
 		srReconnectChan:                   s.srReconnectChan,
 		notifiedReconnect:                 false,
 		verifier:                          s.verifier,
+		configSubmitter:                   s.configSubmitter,
 	}
 	s.lock.Unlock()
 
