@@ -29,6 +29,16 @@ type FakeMemPool struct {
 	removeRequestsArgsForCall []struct {
 		arg1 []string
 	}
+	RequestCountStub        func() int64
+	requestCountMutex       sync.RWMutex
+	requestCountArgsForCall []struct {
+	}
+	requestCountReturns struct {
+		result1 int64
+	}
+	requestCountReturnsOnCall map[int]struct {
+		result1 int64
+	}
 	RestartStub        func(bool)
 	restartMutex       sync.RWMutex
 	restartArgsForCall []struct {
@@ -164,6 +174,59 @@ func (fake *FakeMemPool) RemoveRequestsArgsForCall(i int) []string {
 	defer fake.removeRequestsMutex.RUnlock()
 	argsForCall := fake.removeRequestsArgsForCall[i]
 	return argsForCall.arg1
+}
+
+func (fake *FakeMemPool) RequestCount() int64 {
+	fake.requestCountMutex.Lock()
+	ret, specificReturn := fake.requestCountReturnsOnCall[len(fake.requestCountArgsForCall)]
+	fake.requestCountArgsForCall = append(fake.requestCountArgsForCall, struct {
+	}{})
+	stub := fake.RequestCountStub
+	fakeReturns := fake.requestCountReturns
+	fake.recordInvocation("RequestCount", []interface{}{})
+	fake.requestCountMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeMemPool) RequestCountCallCount() int {
+	fake.requestCountMutex.RLock()
+	defer fake.requestCountMutex.RUnlock()
+	return len(fake.requestCountArgsForCall)
+}
+
+func (fake *FakeMemPool) RequestCountCalls(stub func() int64) {
+	fake.requestCountMutex.Lock()
+	defer fake.requestCountMutex.Unlock()
+	fake.RequestCountStub = stub
+}
+
+func (fake *FakeMemPool) RequestCountReturns(result1 int64) {
+	fake.requestCountMutex.Lock()
+	defer fake.requestCountMutex.Unlock()
+	fake.RequestCountStub = nil
+	fake.requestCountReturns = struct {
+		result1 int64
+	}{result1}
+}
+
+func (fake *FakeMemPool) RequestCountReturnsOnCall(i int, result1 int64) {
+	fake.requestCountMutex.Lock()
+	defer fake.requestCountMutex.Unlock()
+	fake.RequestCountStub = nil
+	if fake.requestCountReturnsOnCall == nil {
+		fake.requestCountReturnsOnCall = make(map[int]struct {
+			result1 int64
+		})
+	}
+	fake.requestCountReturnsOnCall[i] = struct {
+		result1 int64
+	}{result1}
 }
 
 func (fake *FakeMemPool) Restart(arg1 bool) {

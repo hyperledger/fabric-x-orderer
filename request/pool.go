@@ -47,6 +47,7 @@ type Pool struct {
 	closed          uint32
 	stopped         uint32
 	batchingEnabled bool
+	size            int64
 }
 
 // requestItem captures request related information
@@ -74,6 +75,7 @@ func NewPool(logger types.Logger, inspector RequestInspector, options PoolOption
 		semaphore: semaphore.NewWeighted(int64(options.MaxSize)),
 		options:   options,
 		striker:   striker,
+		size:      0,
 	}
 
 	rp.start()
@@ -100,6 +102,7 @@ func (rp *Pool) createPendingStore() *PendingStore {
 		FirstStrikeThreshold:  rp.options.FirstStrikeThreshold,
 		OnDelete: func(key string) {
 			rp.semaphore.Release(1)
+			atomic.AddInt64(&rp.size, -1)
 		},
 		Epoch:                time.Second,
 		FirstStrikeCallback:  rp.striker.OnFirstStrikeTimeout,
@@ -110,6 +113,7 @@ func (rp *Pool) createPendingStore() *PendingStore {
 func (rp *Pool) createBatchStore() *BatchStore {
 	return NewBatchStore(rp.options.BatchMaxSize, rp.options.BatchMaxSizeBytes, func(key string) {
 		rp.semaphore.Release(1)
+		atomic.AddInt64(&rp.size, -1)
 	}, rp.logger)
 }
 
@@ -155,6 +159,7 @@ func (rp *Pool) submitToPendingStore(reqID string, request []byte) error {
 		rp.logger.Debugf("request %s has been already added to the pool", reqID)
 		return err
 	}
+	atomic.AddInt64(&rp.size, 1)
 	rp.logger.Debugf("submitted request %s to pending store", reqID)
 	return nil
 }
@@ -176,6 +181,7 @@ func (rp *Pool) submitToBatchStore(reqID string, request []byte) error {
 		return errors.Errorf("request %s already inserted", reqID)
 	}
 
+	atomic.AddInt64(&rp.size, 1)
 	rp.logger.Debugf("submitted request %s to batch store", reqID)
 	return nil
 }
@@ -221,6 +227,11 @@ func (rp *Pool) RemoveRequests(requestsIDs ...string) {
 	for _, requestID := range requestsIDs {
 		rp.batchStore.Remove(requestID)
 	}
+}
+
+// RequestCount returns the current number of requests in the pool.
+func (rp *Pool) RequestCount() int64 {
+	return atomic.LoadInt64(&rp.size)
 }
 
 func (rp *Pool) Prune(predicate func([]byte) error) {
@@ -313,8 +324,10 @@ func (rp *Pool) isBatchingEnabled() bool {
 
 func (rp *Pool) moveToPendingStore() {
 	requests := make([][]byte, 0, rp.options.MaxSize)
+	cnt := 0
 	rp.batchStore.ForEach(func(_, v interface{}) {
 		requests = append(requests, v.(*requestItem).request)
+		cnt++
 	})
 	rp.pending = rp.createPendingStore()
 	rp.pending.Init()
@@ -327,6 +340,8 @@ func (rp *Pool) moveToPendingStore() {
 	}
 	rp.pending.Start()
 	rp.batchStore = nil
+
+	atomic.StoreInt64(&rp.size, int64(cnt))
 }
 
 func (rp *Pool) moveToBatchStore() {
@@ -341,4 +356,5 @@ func (rp *Pool) moveToBatchStore() {
 		}
 	}
 	rp.pending = nil
+	atomic.StoreInt64(&rp.size, int64(len(requests)))
 }
