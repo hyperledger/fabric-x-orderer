@@ -76,7 +76,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 		Storage:      consLedger,
 		SigVerifier:  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:       signer,
-		Metrics:      NewConsensusMetrics(conf.PartyId, logger, 10*time.Second),
+		Metrics:      NewConsensusMetrics(conf.PartyId, logger, conf.MetricsLogInterval),
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)

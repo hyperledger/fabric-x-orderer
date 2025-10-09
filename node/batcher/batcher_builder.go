@@ -69,7 +69,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		ConfigStore:               configStore,
 		batcherCerts2IDs:          make(map[string]types.PartyID),
 		config:                    config,
-		Metrics:                   NewBatcherMetrics(config.PartyId, config.ShardId, logger, 10*time.Second),
+		Metrics:                   NewBatcherMetrics(config.PartyId, config.ShardId, logger, config.MetricsLogInterval),
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))

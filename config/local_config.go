@@ -79,6 +79,8 @@ type GeneralConfig struct {
 	LogSpec string `yaml:"LogSpec,omitempty"`
 	// ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
 	ClientSignatureVerificationRequired bool `yaml:"ClientSignatureVerificationRequired,omitempty"`
+	// MetricsLogInterval defines metrics log period; 0 disables.
+	MetricsLogInterval time.Duration `yaml:"MetricsLogInterval,omitempty"`
 }
 
 type TLSConfigYaml struct {

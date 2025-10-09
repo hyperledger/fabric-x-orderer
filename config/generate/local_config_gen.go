@@ -28,6 +28,7 @@ const (
 	DefaultMaxSendMsgSize                      = 100 * 1024 * 1024
 	DefaultSendBufferSize                      = 2000
 	DefaultClientSignatureVerificationRequired = false
+	DefaultMetricsLogInterval                  = 0
 )
 
 var (
@@ -202,6 +203,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 		BCCSP:                               &factory.FactoryOpts{},
 		LogSpec:                             generalConfigParams.logLevel,
 		ClientSignatureVerificationRequired: DefaultClientSignatureVerificationRequired,
+		MetricsLogInterval:                  DefaultMetricsLogInterval,
 	}
 
 	if generalConfigParams.role == "consenter" {
