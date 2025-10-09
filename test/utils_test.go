@@ -214,6 +214,7 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			AutoRemoveTimeout:     time.Second * 10,
 			BatchCreationTimeout:  time.Millisecond * 500,
 			BatchSequenceGap:      types.BatchSequence(10),
+			MetricsLogInterval:    0,
 		}
 
 		configs = append(configs, batcherConf)

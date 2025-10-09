@@ -33,6 +33,7 @@ General:
     LocalMSPID: OrdererOrg2
     LogSpec: info
     ClientSignatureVerificationRequired: false
+    MetricsLogInterval: 0s
 FileStore:
     Location: /var/dec-trust/production/orderer/store
 Batcher:

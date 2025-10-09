@@ -130,6 +130,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 			AutoRemoveTimeout:     10 * time.Second,
 			BatchCreationTimeout:  time.Millisecond * 500,
 			BatchSequenceGap:      types.BatchSequence(10),
+			MetricsLogInterval:    0,
 		}
 		configs = append(configs, conf)
 

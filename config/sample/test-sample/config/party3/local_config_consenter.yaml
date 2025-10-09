@@ -36,6 +36,7 @@ General:
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/msp
     LocalMSPID: OrdererOrg3
     LogSpec: info
+    MetricsLogInterval: 0s
 FileStore:
     Location: /var/dec-trust/production/orderer/store
 Consensus:

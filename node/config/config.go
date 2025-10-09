@@ -128,6 +128,7 @@ type BatcherNodeConfig struct {
 	BatchCreationTimeout                time.Duration
 	BatchSequenceGap                    types.BatchSequence
 	ClientSignatureVerificationRequired bool
+	MetricsLogInterval                  time.Duration
 }
 
 type ConsenterNodeConfig struct {
@@ -143,6 +144,7 @@ type ConsenterNodeConfig struct {
 	SigningPrivateKey  RawBytes
 	WALDir             string
 	BFTConfig          smartbft_types.Configuration
+	MetricsLogInterval time.Duration
 }
 
 func NodeConfigToYAML(config interface{}, path string) error {
