@@ -33,11 +33,11 @@ func (c *BatcherNodeConfig) GetClientSignatureVerificationRequired() bool {
 }
 
 func (c *BatcherNodeConfig) GetChannelID() string {
-	return "" // TODO
+	return c.Bundle.ConfigtxValidator().ChannelID()
 }
 
 func (c *BatcherNodeConfig) GetPolicyManager() policies.Manager {
-	return nil // TODO
+	return c.Bundle.PolicyManager()
 }
 
 func (rfc *RouterNodeConfig) GetRequestMaxBytes() uint64 {

@@ -152,12 +152,12 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 
 func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		config, _, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigBatcher"))
+		config, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigBatcher"))
 		if err != nil {
 			panic(fmt.Sprintf("error launching batcher, err: %s", err))
 		}
 
-		conf := config.ExtractBatcherConfig()
+		conf := config.ExtractBatcherConfig(lastConfigBlock)
 
 		localmsp := msp.BuildLocalMSP(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()

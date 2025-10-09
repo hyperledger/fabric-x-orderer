@@ -8,7 +8,6 @@ package batcher_test
 
 import (
 	"context"
-	"encoding/binary"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
@@ -46,9 +45,7 @@ func TestPrimaryConnector(t *testing.T) {
 	connector.ConnectToPrimary()
 
 	// send request via normal submit
-	req := make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(1))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
@@ -56,10 +53,8 @@ func TestPrimaryConnector(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// send request to primary via connector
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(2))
-	reqBytes, _ := proto.Marshal(&protos.Request{Payload: req})
-	connector.SendReq(reqBytes)
+	req2, _ := proto.Marshal(tx.CreateStructuredRequest([]byte{2}))
+	connector.SendReq(req2)
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
@@ -86,9 +81,7 @@ func TestPrimaryConnector(t *testing.T) {
 	connector.ConnectToNewPrimary(2)
 
 	// send request via normal submit
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(3))
-	batchers[1].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
@@ -96,10 +89,8 @@ func TestPrimaryConnector(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// send request via the connector to a new primary
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(4))
-	reqBytes, _ = proto.Marshal(&protos.Request{Payload: req})
-	connector.SendReq(reqBytes)
+	req4, _ := proto.Marshal(tx.CreateStructuredRequest([]byte{4}))
+	connector.SendReq(req4)
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {

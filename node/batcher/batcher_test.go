@@ -8,15 +8,14 @@ package batcher_test
 
 import (
 	"context"
-	"encoding/binary"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"
@@ -42,9 +41,7 @@ func TestBatcherRun(t *testing.T) {
 	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
 	defer clean()
 
-	req := make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(1))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -58,9 +55,7 @@ func TestBatcherRun(t *testing.T) {
 	require.Equal(t, types.PartyID(1), ce.BAF.Primary())
 	require.Equal(t, types.BatchSequence(0), ce.BAF.Seq())
 
-	req2 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req2, uint64(2))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req2})
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
 
 	require.Eventually(t, func() bool {
 		return batchers[2].Ledger.Height(1) == uint64(2) && batchers[3].Ledger.Height(1) == uint64(2)
@@ -98,9 +93,7 @@ func TestBatcherRun(t *testing.T) {
 	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], batcherNodes[3], stubConsenters[3])
 	stubConsenters[3].UpdateState(termChangeState)
 
-	req3 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req3, uint64(3))
-	batchers[1].Submit(context.Background(), &protos.Request{Payload: req3})
+	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(1) && batchers[1].Ledger.Height(2) == uint64(1)
@@ -124,9 +117,7 @@ func TestBatcherRun(t *testing.T) {
 	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], batcherNodes[1], stubConsenters[1])
 	stubConsenters[1].UpdateState(termChangeState)
 
-	req4 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req4, uint64(4))
-	batchers[1].Submit(context.Background(), &protos.Request{Payload: req4})
+	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{4}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(2) && batchers[1].Ledger.Height(2) == uint64(2) && batchers[3].Ledger.Height(2) == uint64(2)
@@ -143,9 +134,7 @@ func TestBatcherRun(t *testing.T) {
 	// stop secondary and recover after a batch
 	batchers[2].Stop()
 
-	req5 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req5, uint64(5))
-	batchers[1].Submit(context.Background(), &protos.Request{Payload: req5})
+	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{5}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(3) && batchers[1].Ledger.Height(2) == uint64(3) && batchers[3].Ledger.Height(2) == uint64(3)
@@ -180,9 +169,7 @@ func TestBatcherRun(t *testing.T) {
 	require.Equal(t, uint64(0), batchers[2].Ledger.Height(3))
 	require.Equal(t, uint64(0), batchers[3].Ledger.Height(3))
 
-	req6 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req6, uint64(6))
-	batchers[2].Submit(context.Background(), &protos.Request{Payload: req6})
+	batchers[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{6}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(3) == uint64(1) && batchers[2].Ledger.Height(3) == uint64(1) && batchers[3].Ledger.Height(3) == uint64(1)
@@ -213,9 +200,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
 	defer clean()
 
-	req := make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(1))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -236,10 +221,9 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	batchers[0].Stop()
 
 	// submit request to other batchers
-	req2 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req2, uint64(2))
-	batchers[1].Submit(context.Background(), &protos.Request{Payload: req2})
-	batchers[2].Submit(context.Background(), &protos.Request{Payload: req2})
+	req2 := tx.CreateStructuredRequest([]byte{2})
+	batchers[1].Submit(context.Background(), req2)
+	batchers[2].Submit(context.Background(), req2)
 
 	// wait for complaints
 	require.Eventually(t, func() bool {
@@ -267,7 +251,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 
 	// make sure req2 did not disappear
 	require.Equal(t, 1, len(batchers[1].Ledger.RetrieveBatchByNumber(2, 0).Requests()))
-	rawReq, err := proto.Marshal(&protos.Request{Payload: req2})
+	rawReq, err := proto.Marshal(req2)
 	require.NoError(t, err)
 	require.Equal(t, rawReq, batchers[1].Ledger.RetrieveBatchByNumber(2, 0).Requests()[0])
 
@@ -283,9 +267,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	}
 
 	// submit another request only to a secondary
-	req3 := make([]byte, 8)
-	binary.BigEndian.PutUint64(req3, uint64(4))
-	batchers[2].Submit(context.Background(), &protos.Request{Payload: req3})
+	batchers[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
 
 	// after a timeout the request is forwarded
 	require.Eventually(t, func() bool {
@@ -316,9 +298,9 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	defer clean()
 
 	// submit the first request and verify it was received
-	req := make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(1))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+	// req := make([]byte, 8)
+	// binary.BigEndian.PutUint64(req, uint64(1))
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -332,9 +314,9 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	stubConsenters[0].StopNet()
 
 	// submit the second request
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(2))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+	// req = make([]byte, 8)
+	// binary.BigEndian.PutUint64(req, uint64(2))
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(2) && batchers[1].Ledger.Height(1) == uint64(2)
@@ -348,9 +330,9 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	stubConsenters[1].StopNet()
 
 	// submit another request, batch will be created but waiting for quorum
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(3))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+	// req = make([]byte, 8)
+	// binary.BigEndian.PutUint64(req, uint64(3))
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(3) && batchers[1].Ledger.Height(1) == uint64(3)
@@ -361,9 +343,9 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// submit a fourth request – batcher should wait until the previous batch reaches quorum
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(4))
-	batchers[0].Submit(context.Background(), &protos.Request{Payload: req})
+	// req = make([]byte, 8)
+	// binary.BigEndian.PutUint64(req, uint64(4))
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{4}))
 
 	time.Sleep(5 * time.Second)
 

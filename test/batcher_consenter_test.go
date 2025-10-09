@@ -8,7 +8,6 @@ package test
 
 import (
 	"context"
-	"encoding/binary"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
 )
@@ -53,9 +52,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}
 
 	// Submit request to primary in shard 0
-	req := make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(0))
-	batchers0[0].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers0[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
 	// Verify the batchers created a batch in shard 0
 	require.Eventually(t, func() bool {
@@ -63,9 +60,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Submit a request to primary of shard 1
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint32(req, uint32(4))
-	batchers1[1].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers1[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{11}))
 
 	// Verify the batchers created a batch in shard 1
 	require.Eventually(t, func() bool {
@@ -81,10 +76,8 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	batchers0[0].Stop()
 
 	// Submit request to other batchers in shard 0
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(3))
-	batchers0[1].Submit(context.Background(), &protos.Request{Payload: req})
-	batchers0[2].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers0[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{22}))
+	batchers0[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{22}))
 
 	// Validate a term change occurred in shard 0
 	require.Eventually(t, func() bool {
@@ -97,9 +90,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Submit a request to primary of shard 1
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(7))
-	batchers1[1].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers1[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
 
 	// Verify the batchers created a batch in shard 1
 	require.Eventually(t, func() bool {
@@ -119,13 +110,9 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}
 
 	// Submit another request only to a secondary in shard 0 and shard 1
-	req = make([]byte, 8)
-	binary.BigEndian.PutUint64(req, uint64(8))
-	batchers0[2].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers0[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{9}))
 
-	req = make([]byte, 9)
-	binary.BigEndian.PutUint64(req, uint64(10))
-	batchers1[2].Submit(context.Background(), &protos.Request{Payload: req})
+	batchers1[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{8}))
 
 	// Verify the batchers created batches in shard 0 and shard 1
 	require.Eventually(t, func() bool {

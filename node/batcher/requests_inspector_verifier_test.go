@@ -9,6 +9,11 @@ package batcher_test
 import (
 	"testing"
 
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -21,14 +26,25 @@ import (
 
 func TestRequestsInspectAndVerify(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	config := &config.BatcherNodeConfig{
 		ShardId:         1,
-		Shards:          []config.ShardInfo{{ShardId: 1}, {ShardId: 2}},
+		Shards:          []config.ShardInfo{{ShardId: types.ShardID(1)}, {ShardId: types.ShardID(2)}},
 		BatchMaxSize:    3,
-		BatchMaxBytes:   10,
-		RequestMaxBytes: 10,
+		BatchMaxBytes:   180,
+		RequestMaxBytes: 60,
+		Bundle:          bundle,
 	}
 	verifier := batcher.NewRequestsInspectorVerifier(logger, config, nil)
+
+	req1, _ := proto.Marshal(tx.CreateStructuredRequest([]byte{1}))             // should map to shard 1
+	req2, _ := proto.Marshal(tx.CreateStructuredRequest([]byte{11}))            // should map to shard 2
+	largeReq, _ := proto.Marshal(tx.CreateStructuredRequest(make([]byte, 101))) // large request, mapped to shard 1
 
 	t.Run("empty request ID", func(t *testing.T) {
 		emptyReq := []byte{}
@@ -37,40 +53,34 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	})
 
 	t.Run("verify empty request", func(t *testing.T) {
-		rawReq0, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
+		// non-empty request
+		require.NoError(t, verifier.VerifyRequest(req1))
+
+		// request with empty payload
+		emptyPayloadReq, err := proto.Marshal(&protos.Request{Payload: nil})
 		require.NoError(t, err)
-		require.NoError(t, verifier.VerifyRequest(rawReq0))
-		rawReq1, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
-		require.NoError(t, err)
-		require.NoError(t, verifier.VerifyRequest(rawReq1))
-		rawReq2, err := proto.Marshal(&protos.Request{Payload: []byte{}})
-		require.NoError(t, err)
-		require.ErrorContains(t, verifier.VerifyRequest(rawReq2), "empty")
+		require.ErrorContains(t, verifier.VerifyRequest(emptyPayloadReq), "empty")
 	})
 
 	t.Run("verify request max bytes", func(t *testing.T) {
-		largeReq := make([]byte, 12)
-		rawReq, err := proto.Marshal(&protos.Request{Payload: largeReq})
-		require.NoError(t, err)
-		require.ErrorContains(t, verifier.VerifyRequest(rawReq), "request's size exceeds the maximum size")
+		require.ErrorContains(t, verifier.VerifyRequest(largeReq), "request's size exceeds the maximum size")
 	})
 
 	t.Run("verify batched requests with max batch bytes", func(t *testing.T) {
-		largeReq := make([]byte, 11)
-		rawReq, err := proto.Marshal(&protos.Request{Payload: largeReq})
-		require.NoError(t, err)
 		reqs := make([][]byte, 3)
-		reqs[0] = rawReq
+		reqs[0] = largeReq
+		reqs[1] = largeReq
+		reqs[2] = largeReq
 		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "too big")
 	})
 
 	t.Run("verify request with mapping", func(t *testing.T) {
-		rawReq0, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
-		require.NoError(t, err)
-		require.NoError(t, verifier.VerifyRequest(rawReq0))
-		rawReq1, err := proto.Marshal(&protos.Request{Payload: []byte{5}})
-		require.NoError(t, err)
-		require.ErrorContains(t, verifier.VerifyRequest(rawReq1), "map")
+		req := tx.CreateStructuredRequest([]byte("123345"))
+		_ = req
+		// req1 - should be mapped to shard 1
+		require.NoError(t, verifier.VerifyRequest(req1))
+		// req2 - should be mapped to shard 2
+		require.ErrorContains(t, verifier.VerifyRequest(req2), "map")
 	})
 
 	t.Run("verify request with unmarshal", func(t *testing.T) {
@@ -83,47 +93,40 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	})
 
 	t.Run("verify batched requests with empty request", func(t *testing.T) {
-		rawReq0, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
-		require.NoError(t, err)
-		rawReq1, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
-		require.NoError(t, err)
-		rawReq2, err := proto.Marshal(&protos.Request{Payload: []byte{}})
+		rawEmptyReq, err := proto.Marshal(&protos.Request{Payload: nil})
 		require.NoError(t, err)
 
 		reqs := make([][]byte, 3)
-		reqs[0] = rawReq0
-		reqs[1] = rawReq1
-		reqs[2] = rawReq2
+		reqs[0] = req1
+		reqs[1] = req1
+		reqs[2] = rawEmptyReq
 		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "empty")
 
-		reqs[2] = rawReq0
+		reqs[2] = req1
 		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
 	})
 
 	t.Run("verify batched requests with too many requests", func(t *testing.T) {
-		rawReq0, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
-		require.NoError(t, err)
-		rawReq1, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
-		require.NoError(t, err)
-
 		reqs := make([][]byte, 3)
-		reqs[0] = rawReq0
-		reqs[1] = rawReq1
-		reqs[2] = rawReq0
+		reqs[0] = req1
+		reqs[1] = req1
+		reqs[2] = req1
 		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
 
-		reqs = append(reqs, rawReq1)
+		reqs = append(reqs, req1)
 		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "too big")
 	})
 }
 
 func TestRequestVerificationStopEarly(t *testing.T) {
+	req1, _ := proto.Marshal(tx.CreateStructuredRequest([]byte{1})) // should map to shard 1
+
 	logger := testutil.CreateLogger(t, 1)
 	config := &config.BatcherNodeConfig{
 		ShardId:         1,
 		Shards:          []config.ShardInfo{{ShardId: 1}, {ShardId: 2}},
 		BatchMaxSize:    500,
-		BatchMaxBytes:   1000,
+		BatchMaxBytes:   10000,
 		RequestMaxBytes: 1000,
 	}
 	reqVerifier := &mocks.FakeRequestVerifier{}
@@ -132,9 +135,7 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 
 	reqs := make([][]byte, 100)
 	for i := 0; i < 100; i++ {
-		rawReq, err := proto.Marshal(&protos.Request{Payload: []byte{1}})
-		require.NoError(t, err)
-		reqs[i] = rawReq
+		reqs[i] = req1
 	}
 
 	reqVerifier.VerifyReturns(nil)
