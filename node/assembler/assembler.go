@@ -9,6 +9,7 @@ package assembler
 import (
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	"github.com/hyperledger/fabric/protoutil"
 
@@ -32,6 +33,7 @@ type Assembler struct {
 	prefetcher   PrefetcherController
 	baReplicator delivery.ConsensusBringer
 	netStopper   NetStopper
+	metrics      *AssemblerMetrics
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -43,8 +45,15 @@ func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error 
 }
 
 func (a *Assembler) GetTxCount() uint64 {
-	// TODO do this in a cleaner fashion
-	return a.assembler.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
+	return a.assembler.Ledger.GetTxCount()
+}
+
+func (a *Assembler) GetBlocksCount() uint64 {
+	return a.assembler.Ledger.GetBlocksCount()
+}
+
+func (a *Assembler) GetBlocksSize() uint64 {
+	return a.assembler.Ledger.GetBlocksSize()
 }
 
 func (a *Assembler) Stop() {
@@ -53,6 +62,7 @@ func (a *Assembler) Stop() {
 	a.assembler.Index.Stop()
 	a.baReplicator.Stop()
 	a.assembler.WaitTermination()
+	a.metrics.Stop()
 	a.assembler.Ledger.Close()
 }
 
@@ -126,6 +136,9 @@ func NewDefaultAssembler(
 	assembler.ds["arma"] = al.LedgerReader()
 
 	assembler.assembler.Run()
+
+	assembler.metrics = NewAssemblerMetrics(assembler, al, index, shardIds, partyIds, logger, 10*time.Second)
+	assembler.metrics.Start()
 
 	return assembler
 }
