@@ -12,27 +12,52 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"google.golang.org/protobuf/proto"
 )
 
+func createChannelHeader(headerType common.HeaderType, version int32, channelId string, epoch uint64) *common.ChannelHeader {
+	return &common.ChannelHeader{
+		Type:      int32(headerType),
+		Version:   version,
+		ChannelId: channelId,
+		Epoch:     epoch,
+	}
+}
+
+func createPayloadHeader(ch *common.ChannelHeader, sh *common.SignatureHeader) *common.Header {
+	return &common.Header{
+		ChannelHeader:   deterministicMarshall(ch),
+		SignatureHeader: deterministicMarshall(sh),
+	}
+}
+
 func createStructuredPayload(data []byte) *common.Payload {
-	payloadChannelHeader := protoutil.MakeChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
+	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
 	payloadSignatureHeader := &common.SignatureHeader{
 		Creator: []byte("creator"),
 		Nonce:   []byte("nonce"),
 	}
 	return &common.Payload{
-		Header: protoutil.MakePayloadHeader(payloadChannelHeader, payloadSignatureHeader),
+		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
 	}
 }
 
+func deterministicMarshall(msg proto.Message) []byte {
+	opts := proto.MarshalOptions{Deterministic: true}
+	bytes, err := opts.Marshal(msg)
+	if err != nil {
+		panic(err)
+	}
+	return bytes
+}
+
 func CreateStructuredEnvelope(data []byte) *common.Envelope {
 	payload := createStructuredPayload(data)
-	payloadBytes := protoutil.MarshalOrPanic(payload)
+	payloadBytes := deterministicMarshall(payload)
 	return &common.Envelope{
 		Payload:   payloadBytes,
 		Signature: []byte("signature"),
@@ -41,7 +66,7 @@ func CreateStructuredEnvelope(data []byte) *common.Envelope {
 
 func CreateStructuredRequest(data []byte) *protos.Request {
 	payload := createStructuredPayload(data)
-	payloadBytes := protoutil.MarshalOrPanic(payload)
+	payloadBytes := deterministicMarshall(payload)
 	return &protos.Request{
 		Payload:   payloadBytes,
 		Signature: []byte("signature"),

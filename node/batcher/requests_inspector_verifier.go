@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"runtime"
 
+	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -62,8 +63,7 @@ func createBatcherRulesVerifier(config *config.BatcherNodeConfig) *requestfilter
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
-	// TODO - add policy and sig filter
-	// rv.AddRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
+	rv.AddRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
 	return rv
 }
 

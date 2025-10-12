@@ -193,27 +193,34 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
 
+		bundle := &configMocks.FakeConfigResources{}
+		configtxValidator := &policyMocks.FakeConfigtxValidator{}
+		configtxValidator.ChannelIDReturns("arma")
+		bundle.ConfigtxValidatorReturns(configtxValidator)
+
 		batcherConf := &nodeconfig.BatcherNodeConfig{
-			ListenAddress:         "0.0.0.0:0",
-			Shards:                shards,
-			ShardId:               shardID,
-			ConfigStorePath:       t.TempDir(),
-			PartyId:               types.PartyID(i + 1),
-			Consenters:            consenterInfos,
-			TLSPrivateKeyFile:     batcherNodes[i].TLSKey,
-			TLSCertificateFile:    batcherNodes[i].TLSCert,
-			SigningPrivateKey:     nodeconfig.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
-			Directory:             dir,
-			MemPoolMaxSize:        1000000,
-			BatchMaxSize:          10000,
-			BatchMaxBytes:         1024 * 1024 * 10,
-			RequestMaxBytes:       1024 * 1024,
-			SubmitTimeout:         time.Millisecond * 500,
-			FirstStrikeThreshold:  time.Second * 10,
-			SecondStrikeThreshold: time.Second * 10,
-			AutoRemoveTimeout:     time.Second * 10,
-			BatchCreationTimeout:  time.Millisecond * 500,
-			BatchSequenceGap:      types.BatchSequence(10),
+			ListenAddress:                       "0.0.0.0:0",
+			Shards:                              shards,
+			ShardId:                             shardID,
+			ConfigStorePath:                     t.TempDir(),
+			PartyId:                             types.PartyID(i + 1),
+			Consenters:                          consenterInfos,
+			TLSPrivateKeyFile:                   batcherNodes[i].TLSKey,
+			TLSCertificateFile:                  batcherNodes[i].TLSCert,
+			SigningPrivateKey:                   nodeconfig.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
+			Directory:                           dir,
+			MemPoolMaxSize:                      1000000,
+			BatchMaxSize:                        10000,
+			BatchMaxBytes:                       1024 * 1024 * 10,
+			RequestMaxBytes:                     1024 * 1024,
+			SubmitTimeout:                       time.Millisecond * 500,
+			FirstStrikeThreshold:                time.Second * 10,
+			SecondStrikeThreshold:               time.Second * 10,
+			AutoRemoveTimeout:                   time.Second * 10,
+			BatchCreationTimeout:                time.Millisecond * 500,
+			BatchSequenceGap:                    types.BatchSequence(10),
+			ClientSignatureVerificationRequired: false,
+			Bundle:                              bundle,
 		}
 
 		configs = append(configs, batcherConf)

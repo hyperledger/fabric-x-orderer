@@ -20,6 +20,7 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -229,19 +230,6 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
-	bccsp, err := (&factory.SWFactory{}).Get(config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
-	if err != nil {
-		bccsp = factory.GetDefault()
-	}
-	env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
-	if err != nil {
-		panic(fmt.Sprintf("failed to get envelope from config block: %s", err))
-	}
-	bundle, err := policy.BuildBundleFromBlock(env, bccsp)
-	if err != nil {
-		panic(fmt.Sprintf("failed to build bundle from config block: %s", err))
-	}
-
 	routerConfig := &nodeconfig.RouterNodeConfig{
 		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
@@ -255,13 +243,12 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		ClientAuthRequired:                  config.LocalConfig.TLSConfig.ClientAuthRequired,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
-		Bundle:                              bundle,
+		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
 	}
 	return routerConfig
 }
 
 func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *nodeconfig.BatcherNodeConfig {
-	// TODO: use config block to build bundle in the batcher
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
@@ -286,6 +273,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		BatchSequenceGap:                    types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
 	}
 
 	if batcherConfig.FirstStrikeThreshold, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.FirstStrikeThreshold); err != nil {
@@ -478,4 +466,20 @@ func blockToPublicKey(block *pem.Block) []byte {
 	})
 
 	return pemPublicKey
+}
+
+func (config *Configuration) extractBundleFromConfigBlock(configBlock *common.Block) channelconfig.Resources {
+	bccsp, err := (&factory.SWFactory{}).Get(config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	if err != nil {
+		bccsp = factory.GetDefault()
+	}
+	env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
+	if err != nil {
+		panic(fmt.Sprintf("failed to get envelope from config block: %s", err))
+	}
+	bundle, err := policy.BuildBundleFromBlock(env, bccsp)
+	if err != nil {
+		panic(fmt.Sprintf("failed to build bundle from config block: %s", err))
+	}
+	return bundle
 }
