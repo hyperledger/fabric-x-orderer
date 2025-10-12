@@ -44,6 +44,8 @@ var DefaultArmaBFTConfig = func() smartbft_types.Configuration {
 	config.RequestForwardTimeout = time.Second * 10
 	config.DecisionsPerLeader = 0
 	config.LeaderRotation = false
+	config.IncomingMessageBufferSize = 10000
+	config.RequestPoolSize = 50000
 
 	return config
 }

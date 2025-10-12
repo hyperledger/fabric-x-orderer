@@ -126,8 +126,8 @@ Consensus:
     requestbatchmaxcount: 100
     requestbatchmaxbytes: 10485760
     requestbatchmaxinterval: 500ms
-    incomingmessagebuffersize: 200
-    requestpoolsize: 400
+    incomingmessagebuffersize: 10000
+    requestpoolsize: 50000
     requestforwardtimeout: 10s
     requestcomplaintimeout: 20s
     requestautoremovetimeout: 3m0s
