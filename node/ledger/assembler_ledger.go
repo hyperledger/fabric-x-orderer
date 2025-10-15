@@ -137,7 +137,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 	t1 := time.Now()
 	defer func() {
 		l.Logger.Infof("Appended block %d of %d requests to ledger in %v",
-			ordInfo.BlockHeader.Number, len(batch.Requests()), time.Since(t1))
+			ordInfo.CommonBlock.Header.Number, len(batch.Requests()), time.Since(t1))
 	}()
 
 	block := &common.Block{
