@@ -329,6 +329,7 @@ func (b *BatcherRole) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
 	b.Metrics.currentRole.Store(2)
+	first := true
 
 	for {
 		out := b.BatchPuller.PullBatches(b.primary)
@@ -363,6 +364,10 @@ func (b *BatcherRole) runSecondary() {
 			b.Metrics.batchedTxsTotal.Add(uint64(len(requests)))
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
+			if first {
+				b.MemPool.Restart(false) // resets the timestamps, just to give the new primary more time
+				first = false
+			}
 		}
 	}
 }

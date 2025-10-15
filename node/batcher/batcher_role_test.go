@@ -267,10 +267,10 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.RestartCallCount() == 2
+		return pool.RestartCallCount() == 3
 	}, 10*time.Second, 10*time.Millisecond)
 
-	require.True(t, pool.RestartArgsForCall(1))
+	require.True(t, pool.RestartArgsForCall(2))
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -285,7 +285,8 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	batcher.Stop()
 
 	require.False(t, pool.RestartArgsForCall(0))
-	require.True(t, pool.RestartArgsForCall(1))
+	require.False(t, pool.RestartArgsForCall(1))
+	require.True(t, pool.RestartArgsForCall(2))
 
 	require.Equal(t, arma_types.PartyID(1), ledger.HeightArgsForCall(0))
 	require.Equal(t, arma_types.PartyID(2), ledger.HeightArgsForCall(1))
@@ -354,7 +355,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.RestartCallCount() == 2
+		return pool.RestartCallCount() == 3
 	}, 10*time.Second, 10*time.Millisecond)
 
 	require.False(t, pool.RestartArgsForCall(1))
@@ -650,10 +651,10 @@ func TestResubmitPending(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		return pool.RestartCallCount() == 2
+		return pool.RestartCallCount() == 3
 	}, 10*time.Second, 10*time.Millisecond)
 
-	require.True(t, pool.RestartArgsForCall(1))
+	require.True(t, pool.RestartArgsForCall(2))
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -668,7 +669,8 @@ func TestResubmitPending(t *testing.T) {
 	batcher.Stop()
 
 	require.False(t, pool.RestartArgsForCall(0))
-	require.True(t, pool.RestartArgsForCall(1))
+	require.False(t, pool.RestartArgsForCall(1))
+	require.True(t, pool.RestartArgsForCall(2))
 
 	require.Equal(t, arma_types.PartyID(1), ledger.HeightArgsForCall(0))
 	require.Equal(t, arma_types.PartyID(2), ledger.HeightArgsForCall(1))
