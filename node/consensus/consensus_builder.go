@@ -261,7 +261,7 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 	return &initState
 }
 
-func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, ledger *ledger.ConsensusLedger) {
+func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) {
 	genesisBlocks := make([]state.AvailableBlock, 1)
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
 
@@ -283,10 +283,25 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, ledg
 
 	initState.AppContext = protoutil.MarshalOrPanic(lastCommonBlockHeader)
 
+	availableCommonBlocks := []*common.Block{genesisBlock}
+
+	var metadataContents [][]byte
+	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
+		metadataContents = append(metadataContents, []byte{})
+	}
+	availableCommonBlocks[0].Metadata = &common.BlockMetadata{Metadata: metadataContents}
+
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest), &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 0)
+	if err != nil {
+		panic("failed to invoke AssemblerBlockMetadataToBytes")
+	}
+
+	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
+
 	genesisProposal := smartbft_types.Proposal{
 		Payload: protoutil.MarshalOrPanic(genesisBlock),
 		Header: (&state.Header{
-			AvailableCommonBlocks: []*common.Block{genesisBlock},
+			AvailableCommonBlocks: availableCommonBlocks,
 			AvailableBlocks:       genesisBlocks,
 			State:                 initState,
 			Num:                   0,
@@ -294,7 +309,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, ledg
 		Metadata: nil,
 	}
 
-	ledger.Append(state.DecisionToBytes(genesisProposal, nil))
+	consensusLedger.Append(state.DecisionToBytes(genesisProposal, nil))
 }
 
 func (c *Consensus) clientConfig() comm.ClientConfig {
