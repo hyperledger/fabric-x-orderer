@@ -197,6 +197,8 @@ func isFiltered(srv *Server) bool {
 	return false
 }
 
+// deliverBlocks handles delivering blocks to the client from the blockchain channel.
+// It processes a signed envelope from a client and responds with the requested blocks.
 func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.Envelope) (status cb.Status, err error) {
 	addr := util.ExtractRemoteAddress(ctx)
 	payload, chdr, shdr, err := h.parseEnvelope(ctx, envelope)
@@ -410,22 +412,4 @@ func (h *Handler) validateChannelHeader(ctx context.Context, chdr *cb.ChannelHea
 
 func noExpiration(_ []byte) time.Time {
 	return time.Time{}
-}
-
-func (h *Handler) HandleAttestation(ctx context.Context, srv *Server, env *cb.Envelope) error {
-	status, err := h.deliverBlocks(ctx, srv, env)
-	if err != nil {
-		return err
-	}
-
-	err = srv.SendStatusResponse(status)
-	if status != cb.Status_SUCCESS {
-		return err
-	}
-	if err != nil {
-		addr := util.ExtractRemoteAddress(ctx)
-		logger.Warningf("Error sending to %s: %s", addr, err)
-		return err
-	}
-	return nil
 }
