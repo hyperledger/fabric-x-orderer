@@ -717,8 +717,19 @@ func TestVerifyProposal(t *testing.T) {
 	latestBlockHeader.DataHash = baf123id1p1s1.Digest()
 	latestBlockHeader.PreviousHash = protoutil.BlockHeaderHash(initialAppContext)
 
-	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, PrevHash: latestBlockHeader.PreviousHash, Digest: latestBlockHeader.DataHash}, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
+	ab := state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())
+
+	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, PrevHash: latestBlockHeader.PreviousHash, Digest: latestBlockHeader.DataHash}, Batch: ab}}
 	header.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
+
+	var metadataContents [][]byte
+	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
+		metadataContents = append(metadataContents, []byte{})
+	}
+	header.AvailableCommonBlocks[0].Metadata = &common.BlockMetadata{Metadata: metadataContents}
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ab, &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 0)
+	require.Nil(t, err)
+	header.AvailableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 
 	newState := initialState
 	newState.AppContext = protoutil.MarshalOrPanic(latestBlockHeader)

@@ -245,7 +245,18 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 			return nil, fmt.Errorf("proposed common block header number %d in index %d isn't equal to computed number %d", hdr.AvailableCommonBlocks[i].Header.Number, i, lastBlockNumber)
 		}
 
-		// TODO add metadata verification
+		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ba[0], &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations), BatchIndex: i}, 0)
+		if err != nil {
+			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+		}
+
+		if hdr.AvailableCommonBlocks[i].Metadata == nil || hdr.AvailableCommonBlocks[i].Metadata.Metadata == nil {
+			return nil, fmt.Errorf("proposed common block metadata in index %d is nil", i)
+		}
+
+		if !bytes.Equal(blockMetadata, hdr.AvailableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {
+			return nil, fmt.Errorf("proposed common block metadata in index %d isn't equal to computed metadata", i)
+		}
 
 	}
 
