@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -23,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -110,26 +112,33 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		require.NoError(t, err)
 		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
+		bundle := &configMocks.FakeConfigResources{}
+		configtxValidator := &policyMocks.FakeConfigtxValidator{}
+		configtxValidator.ChannelIDReturns("arma")
+		bundle.ConfigtxValidatorReturns(configtxValidator)
+
 		conf := &config.BatcherNodeConfig{
-			Shards:                []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
-			Consenters:            consentersInfo,
-			Directory:             t.TempDir(),
-			ConfigStorePath:       t.TempDir(),
-			PartyId:               parties[i],
-			ShardId:               shardID,
-			SigningPrivateKey:     config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
-			TLSPrivateKeyFile:     batcherNodes[i].TLSKey,
-			TLSCertificateFile:    batcherNodes[i].TLSCert,
-			MemPoolMaxSize:        1000000,
-			BatchMaxSize:          10000,
-			BatchMaxBytes:         1024 * 1024 * 10,
-			RequestMaxBytes:       1024 * 1024,
-			SubmitTimeout:         time.Millisecond * 500,
-			FirstStrikeThreshold:  10 * time.Second,
-			SecondStrikeThreshold: 10 * time.Second,
-			AutoRemoveTimeout:     10 * time.Second,
-			BatchCreationTimeout:  time.Millisecond * 500,
-			BatchSequenceGap:      types.BatchSequence(10),
+			Shards:                              []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
+			Consenters:                          consentersInfo,
+			Directory:                           t.TempDir(),
+			ConfigStorePath:                     t.TempDir(),
+			PartyId:                             parties[i],
+			ShardId:                             shardID,
+			SigningPrivateKey:                   config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
+			TLSPrivateKeyFile:                   batcherNodes[i].TLSKey,
+			TLSCertificateFile:                  batcherNodes[i].TLSCert,
+			MemPoolMaxSize:                      1000000,
+			BatchMaxSize:                        10000,
+			BatchMaxBytes:                       1024 * 1024 * 10,
+			RequestMaxBytes:                     1024 * 1024,
+			SubmitTimeout:                       time.Millisecond * 500,
+			FirstStrikeThreshold:                10 * time.Second,
+			SecondStrikeThreshold:               10 * time.Second,
+			AutoRemoveTimeout:                   10 * time.Second,
+			BatchCreationTimeout:                time.Millisecond * 500,
+			BatchSequenceGap:                    types.BatchSequence(10),
+			ClientSignatureVerificationRequired: false,
+			Bundle:                              bundle,
 		}
 		configs = append(configs, conf)
 
