@@ -102,6 +102,7 @@ type AssemblerNodeConfig struct {
 	Consenter          ConsenterInfo
 	UseTLS             bool
 	ClientAuthRequired bool
+	MetricsLogInterval time.Duration
 }
 
 type BatcherNodeConfig struct {

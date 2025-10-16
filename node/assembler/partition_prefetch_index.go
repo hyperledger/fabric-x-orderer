@@ -56,6 +56,7 @@ type PartitionPrefetchIndexer interface {
 	Put(batch types.Batch) error
 	PutForce(batch types.Batch) error
 	Stop()
+	PrefetchBufferSize() int
 }
 
 //go:generate counterfeiter -o ./mocks/partition_prefetch_index_factory.go . PartitionPrefetchIndexerFactory
@@ -190,6 +191,10 @@ func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defa
 		popWaitMonitorTimeout: popWaitMonitorTimeout,
 	}
 	return pi
+}
+
+func (pi *PartitionPrefetchIndex) PrefetchBufferSize() int {
+	return pi.cache.SizeBytes() + pi.forcedPutCache.SizeBytes()
 }
 
 func (pi *PartitionPrefetchIndex) getName() string {
