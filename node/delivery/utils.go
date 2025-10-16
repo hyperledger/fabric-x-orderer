@@ -55,7 +55,7 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 		return stateHeader, sigs, nil
 	}
 
-	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableBlocks))
+	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableCommonBlocks))
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to extract header signatures from compound signature, block %d", block.GetHeader().GetNumber())
 	}
