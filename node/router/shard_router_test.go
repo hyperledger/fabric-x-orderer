@@ -53,16 +53,6 @@ func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 	require.Equal(t, uint32(1), testSetup.stubBatcher.ReceivedMessageCount())
 }
 
-// func TestShardRouterConnectivityToBatcherByForwardBestEffort(t *testing.T) {
-// 	testSetup := createTestSetup(t, 1)
-// 	testSetup.shardRouter.MaybeInit()
-
-// 	reqID, payload := createRequestAndRequestId(1, uint32(10000))
-// 	err := testSetup.shardRouter.ForwardBestEffort(reqID, payload)
-// 	require.NoError(t, err)
-// 	require.Eventually(t, func() bool { return testSetup.stubBatcher.ReceivedMessageCount() == uint32(1) }, 60*time.Second, 10*time.Millisecond)
-// }
-
 func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	testSetup := createTestSetup(t, 1)
 	testSetup.shardRouter.MaybeInit()
@@ -116,42 +106,6 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	require.Equal(t, trace, response.SubmitResponse.TraceId)
 }
 
-// func TestShardRouterRetryConnectToBatcherAndForwardBestEffortReq(t *testing.T) {
-// 	testSetup := createTestSetup(t, 1)
-// 	testSetup.shardRouter.MaybeInit()
-
-// 	// send a request, expect no error
-// 	reqID1, payload1 := createRequestAndRequestId(1, uint32(10000))
-// 	err := testSetup.shardRouter.ForwardBestEffort(reqID1, payload1)
-// 	require.NoError(t, err)
-
-// 	// stop the batcher
-// 	testSetup.stubBatcher.Stop()
-
-// 	// wait for the streams to become faulty
-// 	require.Eventually(t, func() bool {
-// 		return testSetup.shardRouter.IsConnectionsToBatcherDown()
-// 	}, 10*time.Second, 200*time.Millisecond)
-
-// 	// send a request, expect server error
-// 	reqID2, payload2 := createRequestAndRequestId(1, uint32(10001))
-// 	err = testSetup.shardRouter.ForwardBestEffort(reqID2, payload2)
-// 	require.EqualError(t, err, "server error: connection between router and batcher "+testSetup.stubBatcher.server.Address()+" is broken, try again later")
-
-// 	// restart the batcher
-// 	testSetup.stubBatcher.Restart()
-
-// 	// wait for reconnection.
-// 	require.Eventually(t, func() bool {
-// 		return testSetup.shardRouter.IsAllStreamsOKinSR()
-// 	}, 10*time.Second, 200*time.Millisecond)
-
-// 	// send another request, expect no error
-// 	reqID3, payload3 := createRequestAndRequestId(1, uint32(10002))
-// 	err = testSetup.shardRouter.ForwardBestEffort(reqID3, payload3)
-// 	require.NoError(t, err)
-// }
-
 func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	// create a CA that issues a certificate for the router and the primary stub batcher
 	ca, err := tlsgen.NewCA()
@@ -170,7 +124,7 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	batcher := NewStubBatcher(t, ca, partyID, types.ShardID(1))
 
 	// create shard router
-	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier)
+	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil)
 
 	// start the batcher
 	batcher.Start()
