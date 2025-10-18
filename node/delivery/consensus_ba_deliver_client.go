@@ -111,19 +111,26 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan types.OrderedBatchAttestatio
 			cr.logger.Panicf("Failed extracting ordered batch attestation from decision: %s", err2)
 		}
 
-		cr.logger.Infof("Decision %d, with %d AvailableBlocks", block.GetHeader().GetNumber(), len(header.AvailableBlocks))
-		for index, ab := range header.AvailableBlocks {
-			cr.logger.Infof("BA index: %d; BatchID: %s; BA block header: %s; BA block signers: %+v", index, types.BatchIDToString(ab.Batch), ab.Header.String(), signersFromSigs(sigs[index]))
+		cr.logger.Infof("Decision %d, with %d AvailableCommonBlocks", block.GetHeader().GetNumber(), len(header.AvailableCommonBlocks))
+		for index, acb := range header.AvailableCommonBlocks {
+
+			primary, shard, seq, _, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(acb.Metadata.Metadata[common.BlockMetadataIndex_ORDERER])
+			if err != nil {
+				cr.logger.Panicf("Failed extracting info from metadata: %s", err)
+			}
+
+			acbBatch := state.NewAvailableBatch(primary, shard, seq, acb.Header.DataHash)
+
+			cr.logger.Infof("BA index: %d; BatchID: %s; Common Block: %s; BA block signers: %+v", index, types.BatchIDToString(acbBatch), types.CommonBlockToString(acb), signersFromSigs(sigs[index]))
 
 			abo := &state.AvailableBatchOrdered{
-				AvailableBatch: ab.Batch,
+				AvailableBatch: acbBatch,
 				OrderingInformation: &state.OrderingInformation{
 					CommonBlock: header.AvailableCommonBlocks[index],
-					BlockHeader: ab.Header,
 					Signatures:  sigs[index],
 					DecisionNum: header.Num,
 					BatchIndex:  index,
-					BatchCount:  len(header.AvailableBlocks),
+					BatchCount:  len(header.AvailableCommonBlocks),
 				},
 			}
 
