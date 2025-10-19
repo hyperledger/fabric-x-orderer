@@ -226,6 +226,7 @@ func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 
 		bucket.resetTimestamp(ps.now())
 		detectedCensorship = true
+		ps.Logger.Infof("Second strike occurred for bucket id %d of size %d", bucket.id, bucket.getSize())
 		break
 	}
 
