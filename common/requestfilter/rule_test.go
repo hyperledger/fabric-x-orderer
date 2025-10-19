@@ -18,6 +18,6 @@ func TestAcceptFilter(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	v.AddRule(requestfilter.AcceptRule{})
 	request := &comm.Request{Payload: nil}
-	err := v.Verify(request)
+	_, err := v.Verify(request)
 	require.NoError(t, err)
 }

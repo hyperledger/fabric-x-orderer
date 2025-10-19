@@ -26,14 +26,14 @@ func TestRulesVerifier(t *testing.T) {
 	t.Run("Verify Test", func(t *testing.T) {
 		r.VerifyReturns(nil)
 		v.AddRule(r)
-		err := v.Verify(&comm.Request{})
+		_, err := v.Verify(&comm.Request{})
 		require.NoError(t, err)
 	})
 
 	t.Run("Verify Fail Test", func(t *testing.T) {
 		r.VerifyReturns(errors.New("verify error"))
 		v.AddRule(r)
-		err := v.Verify(&comm.Request{})
+		_, err := v.Verify(&comm.Request{})
 		require.EqualError(t, err, "verify error")
 	})
 
@@ -49,6 +49,39 @@ func TestRulesVerifier(t *testing.T) {
 		v.AddRule(r)
 		err := v.Update(&mocks.FakeFilterConfig{})
 		require.EqualError(t, err, "update error")
+	})
+
+	t.Run("Verify Request type error", func(t *testing.T) {
+		ver := requestfilter.NewRulesVerifier(nil)
+		sr := &mocks.FakeStructureRule{}
+		sr.VerifyReturns("", errors.New("some error"))
+		ver.AddStructureRule(sr)
+		reqType, err := ver.Verify(&comm.Request{})
+		require.EqualError(t, err, "some error")
+		require.Equal(t, reqType, "")
+	})
+
+	t.Run("Verify Request type", func(t *testing.T) {
+		ver := requestfilter.NewRulesVerifier(nil)
+		sr := &mocks.FakeStructureRule{}
+		sr.VerifyReturns("data", nil)
+		ver.AddStructureRule(sr)
+		reqType, err := ver.Verify(&comm.Request{})
+		require.NoError(t, err)
+		require.Equal(t, reqType, "data")
+	})
+
+	t.Run("Verify Request type", func(t *testing.T) {
+		ver := requestfilter.NewRulesVerifier(nil)
+		sr1 := &mocks.FakeStructureRule{}
+		sr1.VerifyReturns("data", nil)
+		ver.AddStructureRule(sr1)
+		sr2 := &mocks.FakeStructureRule{}
+		sr2.VerifyReturns("config", nil)
+		ver.AddStructureRule(sr2)
+		reqType, err := ver.Verify(&comm.Request{})
+		require.ErrorContains(t, err, "different type from different rules")
+		require.Equal(t, reqType, "")
 	})
 }
 
@@ -77,7 +110,7 @@ func TestConcurrentVeirfy(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			err := v.Verify(&comm.Request{})
+			_, err := v.Verify(&comm.Request{})
 			require.NoError(t, err)
 		}()
 	}
@@ -103,7 +136,7 @@ func TestConcurrentUpdateAndVerify(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			err := v.Verify(&comm.Request{})
+			_, err := v.Verify(&comm.Request{})
 			require.NoError(t, err)
 		}()
 		go func(i int) {

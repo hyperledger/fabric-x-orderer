@@ -8,7 +8,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
-type FakeRule struct {
+type FakeStructureRule struct {
 	UpdateStub        func(requestfilter.FilterConfig) error
 	updateMutex       sync.RWMutex
 	updateArgsForCall []struct {
@@ -20,22 +20,24 @@ type FakeRule struct {
 	updateReturnsOnCall map[int]struct {
 		result1 error
 	}
-	VerifyStub        func(*comm.Request) error
+	VerifyStub        func(*comm.Request) (string, error)
 	verifyMutex       sync.RWMutex
 	verifyArgsForCall []struct {
 		arg1 *comm.Request
 	}
 	verifyReturns struct {
-		result1 error
+		result1 string
+		result2 error
 	}
 	verifyReturnsOnCall map[int]struct {
-		result1 error
+		result1 string
+		result2 error
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeRule) Update(arg1 requestfilter.FilterConfig) error {
+func (fake *FakeStructureRule) Update(arg1 requestfilter.FilterConfig) error {
 	fake.updateMutex.Lock()
 	ret, specificReturn := fake.updateReturnsOnCall[len(fake.updateArgsForCall)]
 	fake.updateArgsForCall = append(fake.updateArgsForCall, struct {
@@ -54,26 +56,26 @@ func (fake *FakeRule) Update(arg1 requestfilter.FilterConfig) error {
 	return fakeReturns.result1
 }
 
-func (fake *FakeRule) UpdateCallCount() int {
+func (fake *FakeStructureRule) UpdateCallCount() int {
 	fake.updateMutex.RLock()
 	defer fake.updateMutex.RUnlock()
 	return len(fake.updateArgsForCall)
 }
 
-func (fake *FakeRule) UpdateCalls(stub func(requestfilter.FilterConfig) error) {
+func (fake *FakeStructureRule) UpdateCalls(stub func(requestfilter.FilterConfig) error) {
 	fake.updateMutex.Lock()
 	defer fake.updateMutex.Unlock()
 	fake.UpdateStub = stub
 }
 
-func (fake *FakeRule) UpdateArgsForCall(i int) requestfilter.FilterConfig {
+func (fake *FakeStructureRule) UpdateArgsForCall(i int) requestfilter.FilterConfig {
 	fake.updateMutex.RLock()
 	defer fake.updateMutex.RUnlock()
 	argsForCall := fake.updateArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakeRule) UpdateReturns(result1 error) {
+func (fake *FakeStructureRule) UpdateReturns(result1 error) {
 	fake.updateMutex.Lock()
 	defer fake.updateMutex.Unlock()
 	fake.UpdateStub = nil
@@ -82,7 +84,7 @@ func (fake *FakeRule) UpdateReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakeRule) UpdateReturnsOnCall(i int, result1 error) {
+func (fake *FakeStructureRule) UpdateReturnsOnCall(i int, result1 error) {
 	fake.updateMutex.Lock()
 	defer fake.updateMutex.Unlock()
 	fake.UpdateStub = nil
@@ -96,7 +98,7 @@ func (fake *FakeRule) UpdateReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
-func (fake *FakeRule) Verify(arg1 *comm.Request) error {
+func (fake *FakeStructureRule) Verify(arg1 *comm.Request) (string, error) {
 	fake.verifyMutex.Lock()
 	ret, specificReturn := fake.verifyReturnsOnCall[len(fake.verifyArgsForCall)]
 	fake.verifyArgsForCall = append(fake.verifyArgsForCall, struct {
@@ -110,54 +112,57 @@ func (fake *FakeRule) Verify(arg1 *comm.Request) error {
 		return stub(arg1)
 	}
 	if specificReturn {
-		return ret.result1
+		return ret.result1, ret.result2
 	}
-	return fakeReturns.result1
+	return fakeReturns.result1, fakeReturns.result2
 }
 
-func (fake *FakeRule) VerifyCallCount() int {
+func (fake *FakeStructureRule) VerifyCallCount() int {
 	fake.verifyMutex.RLock()
 	defer fake.verifyMutex.RUnlock()
 	return len(fake.verifyArgsForCall)
 }
 
-func (fake *FakeRule) VerifyCalls(stub func(*comm.Request) error) {
+func (fake *FakeStructureRule) VerifyCalls(stub func(*comm.Request) (string, error)) {
 	fake.verifyMutex.Lock()
 	defer fake.verifyMutex.Unlock()
 	fake.VerifyStub = stub
 }
 
-func (fake *FakeRule) VerifyArgsForCall(i int) *comm.Request {
+func (fake *FakeStructureRule) VerifyArgsForCall(i int) *comm.Request {
 	fake.verifyMutex.RLock()
 	defer fake.verifyMutex.RUnlock()
 	argsForCall := fake.verifyArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakeRule) VerifyReturns(result1 error) {
+func (fake *FakeStructureRule) VerifyReturns(result1 string, result2 error) {
 	fake.verifyMutex.Lock()
 	defer fake.verifyMutex.Unlock()
 	fake.VerifyStub = nil
 	fake.verifyReturns = struct {
-		result1 error
-	}{result1}
+		result1 string
+		result2 error
+	}{result1, result2}
 }
 
-func (fake *FakeRule) VerifyReturnsOnCall(i int, result1 error) {
+func (fake *FakeStructureRule) VerifyReturnsOnCall(i int, result1 string, result2 error) {
 	fake.verifyMutex.Lock()
 	defer fake.verifyMutex.Unlock()
 	fake.VerifyStub = nil
 	if fake.verifyReturnsOnCall == nil {
 		fake.verifyReturnsOnCall = make(map[int]struct {
-			result1 error
+			result1 string
+			result2 error
 		})
 	}
 	fake.verifyReturnsOnCall[i] = struct {
-		result1 error
-	}{result1}
+		result1 string
+		result2 error
+	}{result1, result2}
 }
 
-func (fake *FakeRule) Invocations() map[string][][]interface{} {
+func (fake *FakeStructureRule) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
@@ -167,7 +172,7 @@ func (fake *FakeRule) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
-func (fake *FakeRule) recordInvocation(key string, args []interface{}) {
+func (fake *FakeStructureRule) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
 	if fake.invocations == nil {
@@ -179,4 +184,4 @@ func (fake *FakeRule) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ requestfilter.Rule = new(FakeRule)
+var _ requestfilter.StructureRule = new(FakeStructureRule)

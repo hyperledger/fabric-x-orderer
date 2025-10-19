@@ -76,7 +76,7 @@ func (s *stream) sendRequests() {
 				return
 			}
 			// verify the request
-			if err := s.verifier.Verify(tr.request); err != nil {
+			if _, err := s.verifier.Verify(tr.request); err != nil {
 				s.logger.Debugf("request is invalid: %s", err)
 				// send error to the client
 				s.responseToClientWithError(tr, fmt.Errorf("request verification error: %s", err))

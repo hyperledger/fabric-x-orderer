@@ -27,7 +27,7 @@ import (
 
 // RequestVerifier verifies a single request (format and signatures)
 type RequestVerifier interface {
-	Verify(req *comm.Request) error
+	Verify(req *comm.Request) (string, error)
 }
 
 type RequestsInspectorVerifier struct {
@@ -63,7 +63,7 @@ func createBatcherRulesVerifier(config *config.BatcherNodeConfig) *requestfilter
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
-	rv.AddRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
+	rv.AddStructureRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
 	return rv
 }
 
@@ -142,7 +142,7 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 		return errors.Errorf("failed verifying request with id: %s; err: %v", r.RequestID(req), err)
 	}
 
-	if err := r.requestVerifier.Verify(&request); err != nil {
+	if _, err := r.requestVerifier.Verify(&request); err != nil {
 		return errors.Errorf("failed verifying request with id: %s; err: %v", r.RequestID(req), err)
 	}
 

@@ -17,6 +17,12 @@ type Rule interface {
 	Update(config FilterConfig) error
 }
 
+//go:generate counterfeiter -o ./mocks/structureRule.go . StructureRule
+type StructureRule interface {
+	Verify(request *comm.Request) (string, error)
+	Update(config FilterConfig) error
+}
+
 // FilterConfig is an interface that gives the necessary information to verify rules.
 //
 //go:generate counterfeiter -o ./mocks/filter_config.go . FilterConfig

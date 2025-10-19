@@ -20,13 +20,13 @@ func TestNonEmptyFilter(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	v.AddRule(requestfilter.PayloadNotEmptyRule{})
 	request := &comm.Request{Payload: nil}
-	err := v.Verify(request)
+	_, err := v.Verify(request)
 	require.EqualError(t, err, "empty payload field")
 
 	buff := make([]byte, 300)
 	binary.BigEndian.PutUint32(buff, uint32(12345))
 	request = &comm.Request{Payload: buff}
-	err = v.Verify(request)
+	_, err = v.Verify(request)
 	require.NoError(t, err)
 }
 
@@ -40,25 +40,25 @@ func TestMaxSizeFilter(t *testing.T) {
 		buff := make([]byte, 3000)
 		binary.BigEndian.PutUint32(buff, uint32(12345))
 		request := &comm.Request{Payload: buff}
-		err := v.Verify(request)
+		_, err := v.Verify(request)
 		require.EqualError(t, err, "the request's size exceeds the maximum size: actual = 3000, limit = 1000")
 
 		buff = make([]byte, 300)
 		binary.BigEndian.PutUint32(buff, uint32(12345))
 		request = &comm.Request{Payload: buff}
-		err = v.Verify(request)
+		_, err = v.Verify(request)
 		require.NoError(t, err)
 	})
 
 	t.Run("Update Size Test", func(t *testing.T) {
 		request := &comm.Request{Payload: make([]byte, 300)}
-		err := v.Verify(request)
+		_, err := v.Verify(request)
 		require.NoError(t, err)
 
 		fc2 := &mocks.FakeFilterConfig{}
 		fc2.GetRequestMaxBytesReturns(100)
 		v.Update(fc2)
-		err = v.Verify(request)
+		_, err = v.Verify(request)
 		require.EqualError(t, err, "the request's size exceeds the maximum size: actual = 300, limit = 100")
 	})
 }
