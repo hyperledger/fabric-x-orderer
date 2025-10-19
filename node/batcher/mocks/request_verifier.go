@@ -9,22 +9,24 @@ import (
 )
 
 type FakeRequestVerifier struct {
-	VerifyStub        func(*comm.Request) error
+	VerifyStub        func(*comm.Request) (string, error)
 	verifyMutex       sync.RWMutex
 	verifyArgsForCall []struct {
 		arg1 *comm.Request
 	}
 	verifyReturns struct {
-		result1 error
+		result1 string
+		result2 error
 	}
 	verifyReturnsOnCall map[int]struct {
-		result1 error
+		result1 string
+		result2 error
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeRequestVerifier) Verify(arg1 *comm.Request) error {
+func (fake *FakeRequestVerifier) Verify(arg1 *comm.Request) (string, error) {
 	fake.verifyMutex.Lock()
 	ret, specificReturn := fake.verifyReturnsOnCall[len(fake.verifyArgsForCall)]
 	fake.verifyArgsForCall = append(fake.verifyArgsForCall, struct {
@@ -38,9 +40,9 @@ func (fake *FakeRequestVerifier) Verify(arg1 *comm.Request) error {
 		return stub(arg1)
 	}
 	if specificReturn {
-		return ret.result1
+		return ret.result1, ret.result2
 	}
-	return fakeReturns.result1
+	return fakeReturns.result1, fakeReturns.result2
 }
 
 func (fake *FakeRequestVerifier) VerifyCallCount() int {
@@ -49,7 +51,7 @@ func (fake *FakeRequestVerifier) VerifyCallCount() int {
 	return len(fake.verifyArgsForCall)
 }
 
-func (fake *FakeRequestVerifier) VerifyCalls(stub func(*comm.Request) error) {
+func (fake *FakeRequestVerifier) VerifyCalls(stub func(*comm.Request) (string, error)) {
 	fake.verifyMutex.Lock()
 	defer fake.verifyMutex.Unlock()
 	fake.VerifyStub = stub
@@ -62,27 +64,30 @@ func (fake *FakeRequestVerifier) VerifyArgsForCall(i int) *comm.Request {
 	return argsForCall.arg1
 }
 
-func (fake *FakeRequestVerifier) VerifyReturns(result1 error) {
+func (fake *FakeRequestVerifier) VerifyReturns(result1 string, result2 error) {
 	fake.verifyMutex.Lock()
 	defer fake.verifyMutex.Unlock()
 	fake.VerifyStub = nil
 	fake.verifyReturns = struct {
-		result1 error
-	}{result1}
+		result1 string
+		result2 error
+	}{result1, result2}
 }
 
-func (fake *FakeRequestVerifier) VerifyReturnsOnCall(i int, result1 error) {
+func (fake *FakeRequestVerifier) VerifyReturnsOnCall(i int, result1 string, result2 error) {
 	fake.verifyMutex.Lock()
 	defer fake.verifyMutex.Unlock()
 	fake.VerifyStub = nil
 	if fake.verifyReturnsOnCall == nil {
 		fake.verifyReturnsOnCall = make(map[int]struct {
-			result1 error
+			result1 string
+			result2 error
 		})
 	}
 	fake.verifyReturnsOnCall[i] = struct {
-		result1 error
-	}{result1}
+		result1 string
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeRequestVerifier) Invocations() map[string][][]interface{} {

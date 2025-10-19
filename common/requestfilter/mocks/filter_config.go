@@ -58,15 +58,16 @@ func (fake *FakeFilterConfig) GetChannelID() string {
 	ret, specificReturn := fake.getChannelIDReturnsOnCall[len(fake.getChannelIDArgsForCall)]
 	fake.getChannelIDArgsForCall = append(fake.getChannelIDArgsForCall, struct {
 	}{})
+	stub := fake.GetChannelIDStub
+	fakeReturns := fake.getChannelIDReturns
 	fake.recordInvocation("GetChannelID", []interface{}{})
 	fake.getChannelIDMutex.Unlock()
-	if fake.GetChannelIDStub != nil {
-		return fake.GetChannelIDStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.getChannelIDReturns
 	return fakeReturns.result1
 }
 
@@ -110,15 +111,16 @@ func (fake *FakeFilterConfig) GetClientSignatureVerificationRequired() bool {
 	ret, specificReturn := fake.getClientSignatureVerificationRequiredReturnsOnCall[len(fake.getClientSignatureVerificationRequiredArgsForCall)]
 	fake.getClientSignatureVerificationRequiredArgsForCall = append(fake.getClientSignatureVerificationRequiredArgsForCall, struct {
 	}{})
+	stub := fake.GetClientSignatureVerificationRequiredStub
+	fakeReturns := fake.getClientSignatureVerificationRequiredReturns
 	fake.recordInvocation("GetClientSignatureVerificationRequired", []interface{}{})
 	fake.getClientSignatureVerificationRequiredMutex.Unlock()
-	if fake.GetClientSignatureVerificationRequiredStub != nil {
-		return fake.GetClientSignatureVerificationRequiredStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.getClientSignatureVerificationRequiredReturns
 	return fakeReturns.result1
 }
 
@@ -162,15 +164,16 @@ func (fake *FakeFilterConfig) GetPolicyManager() policies.Manager {
 	ret, specificReturn := fake.getPolicyManagerReturnsOnCall[len(fake.getPolicyManagerArgsForCall)]
 	fake.getPolicyManagerArgsForCall = append(fake.getPolicyManagerArgsForCall, struct {
 	}{})
+	stub := fake.GetPolicyManagerStub
+	fakeReturns := fake.getPolicyManagerReturns
 	fake.recordInvocation("GetPolicyManager", []interface{}{})
 	fake.getPolicyManagerMutex.Unlock()
-	if fake.GetPolicyManagerStub != nil {
-		return fake.GetPolicyManagerStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.getPolicyManagerReturns
 	return fakeReturns.result1
 }
 
@@ -214,15 +217,16 @@ func (fake *FakeFilterConfig) GetRequestMaxBytes() uint64 {
 	ret, specificReturn := fake.getRequestMaxBytesReturnsOnCall[len(fake.getRequestMaxBytesArgsForCall)]
 	fake.getRequestMaxBytesArgsForCall = append(fake.getRequestMaxBytesArgsForCall, struct {
 	}{})
+	stub := fake.GetRequestMaxBytesStub
+	fakeReturns := fake.getRequestMaxBytesReturns
 	fake.recordInvocation("GetRequestMaxBytes", []interface{}{})
 	fake.getRequestMaxBytesMutex.Unlock()
-	if fake.GetRequestMaxBytesStub != nil {
-		return fake.GetRequestMaxBytesStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.getRequestMaxBytesReturns
 	return fakeReturns.result1
 }
 
@@ -264,14 +268,6 @@ func (fake *FakeFilterConfig) GetRequestMaxBytesReturnsOnCall(i int, result1 uin
 func (fake *FakeFilterConfig) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.getChannelIDMutex.RLock()
-	defer fake.getChannelIDMutex.RUnlock()
-	fake.getClientSignatureVerificationRequiredMutex.RLock()
-	defer fake.getClientSignatureVerificationRequiredMutex.RUnlock()
-	fake.getPolicyManagerMutex.RLock()
-	defer fake.getPolicyManagerMutex.RUnlock()
-	fake.getRequestMaxBytesMutex.RLock()
-	defer fake.getRequestMaxBytesMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

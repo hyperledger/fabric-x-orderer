@@ -150,13 +150,13 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 		reqs[i] = req1
 	}
 
-	reqVerifier.VerifyReturns(nil)
+	reqVerifier.VerifyReturns("", nil)
 
 	require.NoError(t, verifier.VerifyBatchedRequests(reqs))
 
 	require.Equal(t, 100, reqVerifier.VerifyCallCount())
 
-	reqVerifier.VerifyReturns(errors.New("error"))
+	reqVerifier.VerifyReturns("", errors.New("error"))
 
 	require.Error(t, verifier.VerifyBatchedRequests(reqs))
 
