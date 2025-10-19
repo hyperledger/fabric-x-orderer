@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package requestfilter
 
 import (
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
@@ -14,6 +15,12 @@ import (
 //go:generate counterfeiter -o ./mocks/rule.go . Rule
 type Rule interface {
 	Verify(request *comm.Request) error
+	Update(config FilterConfig) error
+}
+
+//go:generate counterfeiter -o ./mocks/structureRule.go . StructureRule
+type StructureRule interface {
+	VerifyAndClassify(request *comm.Request) (common.HeaderType, error)
 	Update(config FilterConfig) error
 }
 

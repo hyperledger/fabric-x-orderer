@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"runtime"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -28,6 +29,7 @@ import (
 // RequestVerifier verifies a single request (format and signatures)
 type RequestVerifier interface {
 	Verify(req *comm.Request) error
+	VerifyStructureAndClassify(request *comm.Request) (common.HeaderType, error)
 }
 
 type RequestsInspectorVerifier struct {
@@ -63,7 +65,7 @@ func createBatcherRulesVerifier(config *config.BatcherNodeConfig) *requestfilter
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
-	rv.AddRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
+	rv.AddStructureRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
 	return rv
 }
 
@@ -144,6 +146,9 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 
 	if err := r.requestVerifier.Verify(&request); err != nil {
 		return errors.Errorf("failed verifying request with id: %s; err: %v", r.RequestID(req), err)
+	}
+	if _, err := r.requestVerifier.VerifyStructureAndClassify(&request); err != nil {
+		return errors.Errorf("failed verifying request 's structure with id: %s; err: %v", r.RequestID(req), err)
 	}
 
 	return nil

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -49,6 +50,25 @@ func TestRulesVerifier(t *testing.T) {
 		v.AddRule(r)
 		err := v.Update(&mocks.FakeFilterConfig{})
 		require.EqualError(t, err, "update error")
+	})
+
+	t.Run("Verify Structure error", func(t *testing.T) {
+		ver := requestfilter.NewRulesVerifier(nil)
+		sr := &mocks.FakeStructureRule{}
+		sr.VerifyAndClassifyReturns(common.HeaderType_MESSAGE, errors.New("some error"))
+		ver.AddStructureRule(sr)
+		_, err := ver.VerifyStructureAndClassify(&comm.Request{})
+		require.EqualError(t, err, "some error")
+	})
+
+	t.Run("Verify Structure Request type", func(t *testing.T) {
+		ver := requestfilter.NewRulesVerifier(nil)
+		sr := &mocks.FakeStructureRule{}
+		sr.VerifyAndClassifyReturns(common.HeaderType_MESSAGE, nil)
+		ver.AddStructureRule(sr)
+		reqType, err := ver.VerifyStructureAndClassify(&comm.Request{})
+		require.NoError(t, err)
+		require.Equal(t, common.HeaderType_MESSAGE, reqType)
 	})
 }
 

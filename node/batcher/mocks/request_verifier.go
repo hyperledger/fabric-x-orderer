@@ -4,6 +4,7 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
@@ -19,6 +20,19 @@ type FakeRequestVerifier struct {
 	}
 	verifyReturnsOnCall map[int]struct {
 		result1 error
+	}
+	VerifyStructureAndClassifyStub        func(*comm.Request) (common.HeaderType, error)
+	verifyStructureAndClassifyMutex       sync.RWMutex
+	verifyStructureAndClassifyArgsForCall []struct {
+		arg1 *comm.Request
+	}
+	verifyStructureAndClassifyReturns struct {
+		result1 common.HeaderType
+		result2 error
+	}
+	verifyStructureAndClassifyReturnsOnCall map[int]struct {
+		result1 common.HeaderType
+		result2 error
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -83,6 +97,70 @@ func (fake *FakeRequestVerifier) VerifyReturnsOnCall(i int, result1 error) {
 	fake.verifyReturnsOnCall[i] = struct {
 		result1 error
 	}{result1}
+}
+
+func (fake *FakeRequestVerifier) VerifyStructureAndClassify(arg1 *comm.Request) (common.HeaderType, error) {
+	fake.verifyStructureAndClassifyMutex.Lock()
+	ret, specificReturn := fake.verifyStructureAndClassifyReturnsOnCall[len(fake.verifyStructureAndClassifyArgsForCall)]
+	fake.verifyStructureAndClassifyArgsForCall = append(fake.verifyStructureAndClassifyArgsForCall, struct {
+		arg1 *comm.Request
+	}{arg1})
+	stub := fake.VerifyStructureAndClassifyStub
+	fakeReturns := fake.verifyStructureAndClassifyReturns
+	fake.recordInvocation("VerifyStructureAndClassify", []interface{}{arg1})
+	fake.verifyStructureAndClassifyMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeRequestVerifier) VerifyStructureAndClassifyCallCount() int {
+	fake.verifyStructureAndClassifyMutex.RLock()
+	defer fake.verifyStructureAndClassifyMutex.RUnlock()
+	return len(fake.verifyStructureAndClassifyArgsForCall)
+}
+
+func (fake *FakeRequestVerifier) VerifyStructureAndClassifyCalls(stub func(*comm.Request) (common.HeaderType, error)) {
+	fake.verifyStructureAndClassifyMutex.Lock()
+	defer fake.verifyStructureAndClassifyMutex.Unlock()
+	fake.VerifyStructureAndClassifyStub = stub
+}
+
+func (fake *FakeRequestVerifier) VerifyStructureAndClassifyArgsForCall(i int) *comm.Request {
+	fake.verifyStructureAndClassifyMutex.RLock()
+	defer fake.verifyStructureAndClassifyMutex.RUnlock()
+	argsForCall := fake.verifyStructureAndClassifyArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FakeRequestVerifier) VerifyStructureAndClassifyReturns(result1 common.HeaderType, result2 error) {
+	fake.verifyStructureAndClassifyMutex.Lock()
+	defer fake.verifyStructureAndClassifyMutex.Unlock()
+	fake.VerifyStructureAndClassifyStub = nil
+	fake.verifyStructureAndClassifyReturns = struct {
+		result1 common.HeaderType
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeRequestVerifier) VerifyStructureAndClassifyReturnsOnCall(i int, result1 common.HeaderType, result2 error) {
+	fake.verifyStructureAndClassifyMutex.Lock()
+	defer fake.verifyStructureAndClassifyMutex.Unlock()
+	fake.VerifyStructureAndClassifyStub = nil
+	if fake.verifyStructureAndClassifyReturnsOnCall == nil {
+		fake.verifyStructureAndClassifyReturnsOnCall = make(map[int]struct {
+			result1 common.HeaderType
+			result2 error
+		})
+	}
+	fake.verifyStructureAndClassifyReturnsOnCall[i] = struct {
+		result1 common.HeaderType
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeRequestVerifier) Invocations() map[string][][]interface{} {

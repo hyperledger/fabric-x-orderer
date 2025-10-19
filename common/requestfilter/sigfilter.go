@@ -32,61 +32,64 @@ func NewSigFilter(config FilterConfig, policyName string) *SigFilter {
 	}
 }
 
-func (sf *SigFilter) Verify(request *comm.Request) error {
+func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType, error) {
 	// extract signedData, while verifying the structure of the request
-	signedData, err := sf.requestToSignedData(request)
+	signedData, reqType, err := sf.requestToSignedData(request)
 	if err != nil {
-		return fmt.Errorf("failed to convert request to signedData : %s", err)
+		return reqType, fmt.Errorf("failed to convert request to signedData : %s", err)
 	}
 
 	if sf.clientSignatureVerificationRequired {
 		policy, exists := sf.policyManager.GetPolicy(sf.policyName)
 		if !exists {
-			return fmt.Errorf("no policies in config block")
+			return reqType, fmt.Errorf("no policies in config block")
 		}
 		err = policy.EvaluateSignedData([]*protoutil.SignedData{signedData})
 		if err != nil {
-			return fmt.Errorf("signature did not satisfy policy %s", sf.policyName)
+			return reqType, fmt.Errorf("signature did not satisfy policy %s", sf.policyName)
 		}
 	}
-	return nil
+	return reqType, nil
 }
 
-// requestToSignedData verifies the request structure and returns the payload, identity and signature in a SignedData
-func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.SignedData, error) {
+// requestToSignedData verifies the request structure and returns the payload, identity and signature in a SignedData.
+// additionally, the request tyoe is extracted and returned.
+func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.SignedData, common.HeaderType, error) {
+	var reqType common.HeaderType
 	if request == nil {
-		return nil, fmt.Errorf("nil request")
+		return nil, reqType, fmt.Errorf("nil request")
 	}
 
 	payload := &common.Payload{}
 	err := proto.Unmarshal(request.Payload, payload)
 	if err != nil {
-		return nil, err
+		return nil, reqType, err
 	}
 
 	if payload.Header == nil {
-		return nil, fmt.Errorf("missing header in request's payload")
+		return nil, reqType, fmt.Errorf("missing header in request's payload")
 	}
 
 	if payload.Header.SignatureHeader == nil {
-		return nil, fmt.Errorf("missing signature header in payload's header")
+		return nil, reqType, fmt.Errorf("missing signature header in payload's header")
 	}
 
 	shdr := &common.SignatureHeader{}
 	err = proto.Unmarshal(payload.Header.SignatureHeader, shdr)
 	if err != nil {
-		return nil, fmt.Errorf("failed unmarshalling signature header, err %s", err)
+		return nil, reqType, fmt.Errorf("failed unmarshalling signature header, err %s", err)
 	}
 
 	if payload.Header.ChannelHeader == nil {
-		return nil, fmt.Errorf("missing channel header in request's payload")
+		return nil, reqType, fmt.Errorf("missing channel header in request's payload")
 	}
 
 	chdr := &common.ChannelHeader{}
 	err = proto.Unmarshal(payload.Header.ChannelHeader, chdr)
 	if err != nil {
-		return nil, fmt.Errorf("failed unmarshalling channel header, err %s", err.Error())
+		return nil, reqType, fmt.Errorf("failed unmarshalling channel header, err %s", err.Error())
 	}
+
 	// TODO: check channel ID
 	// if sf.channelID != chdr.ChannelId {
 	// 	return nil, fmt.Errorf("channelID is incorrect. expected: %s, actual: %s", sf.channelID, chdr.ChannelId)
@@ -96,7 +99,7 @@ func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.Sign
 		Data:      request.Payload,
 		Identity:  shdr.Creator,
 		Signature: request.Signature,
-	}, nil
+	}, common.HeaderType(chdr.Type), nil
 }
 
 func (sf *SigFilter) Update(config FilterConfig) error {
