@@ -192,6 +192,10 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed number %d isn't equal to computed number %x", hdr.Num, md.LatestSequence)
 	}
 
+	if hdr.DecisionNumOfLastConfigBlock != arma_types.DecisionNum(0) {
+		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to 0", hdr.DecisionNumOfLastConfigBlock) // TODO change when reconfig
+	}
+
 	c.stateLock.Lock()
 	computedState, attestations := c.Arma.SimulateStateTransition(c.State, batch)
 	c.stateLock.Unlock()
@@ -478,10 +482,11 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	return smartbft_types.Proposal{
 		Header: (&state.Header{
-			AvailableBlocks:       availableBlocks,
-			AvailableCommonBlocks: availableCommonBlocks,
-			State:                 newState,
-			Num:                   arma_types.DecisionNum(md.LatestSequence),
+			AvailableBlocks:              availableBlocks,
+			AvailableCommonBlocks:        availableCommonBlocks,
+			State:                        newState,
+			Num:                          arma_types.DecisionNum(md.LatestSequence),
+			DecisionNumOfLastConfigBlock: arma_types.DecisionNum(0), // TODO update when reconfig
 		}).Serialize(),
 		Metadata: metadata,
 		Payload:  reqs.Serialize(),

@@ -18,22 +18,24 @@ import (
 )
 
 type Header struct {
-	Num                   types.DecisionNum
-	AvailableBlocks       []AvailableBlock
-	AvailableCommonBlocks []*common.Block
-	State                 *State
+	Num                          types.DecisionNum
+	AvailableBlocks              []AvailableBlock
+	AvailableCommonBlocks        []*common.Block
+	State                        *State
+	DecisionNumOfLastConfigBlock types.DecisionNum
 }
 
 func (h *Header) Deserialize(bytes []byte) error {
 	if bytes == nil {
 		return errors.Errorf("nil bytes")
 	}
-	if len(bytes) < 8+4+4 { // at least header number (uint64) and number of available blocks (uint32) and number of available common blocks (uint32)
-		return errors.Errorf("len of bytes is just %d; expected at least 16", len(bytes))
+	if len(bytes) < 8+8+4+4 { // at least header number (uint64) and config num (uint64) and number of available blocks (uint32) and number of available common blocks (uint32)
+		return errors.Errorf("len of bytes is just %d; expected at least 24", len(bytes))
 	}
 	h.Num = types.DecisionNum(binary.BigEndian.Uint64(bytes[0:8]))
-	availableBlockCount := int(binary.BigEndian.Uint32(bytes[8:12]))
-	pos := 12
+	h.DecisionNumOfLastConfigBlock = types.DecisionNum(binary.BigEndian.Uint64(bytes[8:16]))
+	availableBlockCount := int(binary.BigEndian.Uint32(bytes[16:20]))
+	pos := 20
 	h.AvailableBlocks = nil
 	if availableBlockCount > 0 {
 		h.AvailableBlocks = make([]AvailableBlock, availableBlockCount)
@@ -85,12 +87,13 @@ func (h *Header) Serialize() []byte {
 		rawState = h.State.Serialize()
 	}
 
-	buff := make([]byte, 8+len(availableBlocksBytes)+len(availableCommonBlocksBytes)+len(rawState))
+	buff := make([]byte, 8+8+len(availableBlocksBytes)+len(availableCommonBlocksBytes)+len(rawState))
 
 	binary.BigEndian.PutUint64(buff, uint64(h.Num))
-	copy(buff[8:], availableBlocksBytes)
-	copy(buff[8+len(availableBlocksBytes):], availableCommonBlocksBytes)
-	copy(buff[8+len(availableBlocksBytes)+len(availableCommonBlocksBytes):], rawState)
+	binary.BigEndian.PutUint64(buff[8:16], uint64(h.DecisionNumOfLastConfigBlock))
+	copy(buff[16:], availableBlocksBytes)
+	copy(buff[16+len(availableBlocksBytes):], availableCommonBlocksBytes)
+	copy(buff[16+len(availableBlocksBytes)+len(availableCommonBlocksBytes):], rawState)
 
 	return buff
 }
