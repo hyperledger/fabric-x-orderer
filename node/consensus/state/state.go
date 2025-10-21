@@ -439,7 +439,7 @@ func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.Ba
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
 	extracted := ExtractBatchAttestationsFromPending(s2, l)
-	configRequests := ExtractConfigRequests(ces)
+	configRequests := ExtractConfigRequest(ces)
 	return s2, extracted, configRequests
 }
 
@@ -705,7 +705,8 @@ func shardExists(shard types.ShardID, shardTerms []ShardTerm) (int, bool) {
 	return -1, false
 }
 
-func ExtractConfigRequests(ces []ControlEvent) *ConfigRequest {
+func ExtractConfigRequest(ces []ControlEvent) *ConfigRequest {
+	// TODO: decide how to handle multiple config requests
 	for _, ce := range ces {
 		if ce.ConfigRequest != nil {
 			return ce.ConfigRequest
