@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
@@ -82,6 +83,9 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 		org.ID = fmt.Sprintf("org%d", i+1)
 		org.Name = fmt.Sprintf("org%d", i+1)
 		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
+		for _, policy := range org.Policies {
+			policy.Rule = strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1))
+		}
 	}
 
 	for i, org := range profile.Orderer.Organizations {
@@ -89,6 +93,9 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 		org.Name = fmt.Sprintf("org%d", i+1)
 		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
 		org.OrdererEndpoints = routerAndAssemblerEndpoints
+		for _, policy := range org.Policies {
+			policy.Rule = strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1))
+		}
 	}
 
 	profile.Orderer.ConsenterMapping = consenterMapping
