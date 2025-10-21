@@ -240,10 +240,10 @@ func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 }
 
 func (ps *PendingStore) calcSecondStrike() time.Duration {
-	// now := ps.now()
-	// if now.Sub(ps.StartTime) <= 20 * ps.SecondStrikeThreshold {
-	// 	return 5 * ps.SecondStrikeThreshold
-	// }
+	now := ps.now()
+	if now.Sub(ps.StartTime) <= 5*ps.SecondStrikeThreshold {
+		return 3 * ps.SecondStrikeThreshold
+	}
 	return ps.SecondStrikeThreshold
 }
 
