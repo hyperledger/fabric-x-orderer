@@ -84,6 +84,10 @@ func (p *PrimaryAckConnector) ConnectToNewPrimary(primaryID types.PartyID) {
 	p.lock.Lock()
 	p.primaryID = primaryID
 	p.lock.Unlock()
+	if p.config.PartyId == primaryID {
+		p.ResetConnection()
+		return
+	}
 	p.ConnectToPrimary()
 }
 
