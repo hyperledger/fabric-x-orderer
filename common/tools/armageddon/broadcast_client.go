@@ -128,14 +128,14 @@ type BroadcastTxClient struct {
 func NewBroadcastTxClient(userConfigFile *UserConfig) *BroadcastTxClient {
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
-		streamsToRouters: make([]*StreamInfo, len(userConfigFile.RouterEndpoints)),
+		streamsToRouters: make([]*StreamInfo, len(userConfigFile.RouterUserConfigs)),
 		stopChan:         make(chan struct{}),
 	}
 }
 
 func (c *BroadcastTxClient) InitStreams() error {
-	for i, routerEndpoint := range c.userConfig.RouterEndpoints {
-		conn, stream, err := createConnAndStream(c.userConfig, routerEndpoint)
+	for i, routerUserConfig := range c.userConfig.RouterUserConfigs {
+		conn, stream, err := createConnAndStream(c.userConfig, routerUserConfig.Endpoint)
 		if err != nil {
 			return err
 		}
@@ -145,7 +145,7 @@ func (c *BroadcastTxClient) InitStreams() error {
 			stream:        stream,
 			stopChan:      make(chan struct{}),
 			maxRetryDelay: 8 * time.Second,
-			endpoint:      routerEndpoint,
+			endpoint:      routerUserConfig.Endpoint,
 			lock:          sync.Mutex{},
 			logger:        flogging.MustGetLogger(fmt.Sprintf("BroadcastClientToRouter%d", i+1)),
 		}

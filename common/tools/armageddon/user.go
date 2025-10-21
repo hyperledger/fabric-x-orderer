@@ -8,29 +8,41 @@ package armageddon
 
 import (
 	"fmt"
+	"path/filepath"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 )
 
+type RouterUserConfig struct {
+	Endpoint   string        `yaml:"Endpoint,omitempty"`
+	PartyID    types.PartyID `yaml:"PartyID,omitempty"`
+	UserMSPDir string        `yaml:"UserMSPDir,omitempty"`
+}
+
 // UserConfig holds the user information needed for connection to routers and assemblers
 // Note: a user will be created for each party. One of the users will be chosen as a grpc client that sends tx to all router and receives blocks from the assemblers.
 type UserConfig struct {
-	TLSPrivateKey      []byte   `yaml:"TLSPrivateKey,omitempty"`
-	TLSCertificate     []byte   `yaml:"TLSCertificate,omitempty"`
-	RouterEndpoints    []string `yaml:"RouterEndpoints,omitempty"`
-	AssemblerEndpoints []string `yaml:"AssemblerEndpoints,omitempty"`
-	TLSCACerts         [][]byte `yaml:"TLSCACerts,omitempty"`
-	UseTLSRouter       string   `yaml:"UseTLSRouter,omitempty"`
-	UseTLSAssembler    string   `yaml:"UseTLSAssembler,omitempty"`
+	TLSPrivateKey      []byte             `yaml:"TLSPrivateKey,omitempty"`
+	TLSCertificate     []byte             `yaml:"TLSCertificate,omitempty"`
+	RouterUserConfigs  []RouterUserConfig `yaml:"RouterUserConfigs,omitempty"`
+	AssemblerEndpoints []string           `yaml:"AssemblerEndpoints,omitempty"`
+	TLSCACerts         [][]byte           `yaml:"TLSCACerts,omitempty"`
+	UseTLSRouter       string             `yaml:"UseTLSRouter,omitempty"`
+	UseTLSAssembler    string             `yaml:"UseTLSAssembler,omitempty"`
 }
 
-func NewUserConfig(privateKeyPath string, tlsCertPath string, tlsCACerts [][]byte, network *genconfig.Network) (*UserConfig, error) {
+func NewUserConfig(outputDir string, privateKeyPath string, tlsCertPath string, tlsCACerts [][]byte, network *genconfig.Network) (*UserConfig, error) {
 	// collect router and assembler endpoints, required for defining a user
-	var routerEndpoints []string
+	var routerUserConfigs []RouterUserConfig
 	var assemblerEndpoints []string
 	for _, party := range network.Parties {
-		routerEndpoints = append(routerEndpoints, party.RouterEndpoint)
+		routerUserConfigs = append(routerUserConfigs, RouterUserConfig{
+			Endpoint:   party.RouterEndpoint,
+			PartyID:    party.ID,
+			UserMSPDir: filepath.Join(outputDir, fmt.Sprintf("crypto/ordererOrganizations/org%d/users/user/msp", party.ID)),
+		})
 		assemblerEndpoints = append(assemblerEndpoints, party.AssemblerEndpoint)
 	}
 
@@ -47,7 +59,7 @@ func NewUserConfig(privateKeyPath string, tlsCertPath string, tlsCACerts [][]byt
 	return &UserConfig{
 		TLSPrivateKey:      privateKey,
 		TLSCertificate:     tlsCert,
-		RouterEndpoints:    routerEndpoints,
+		RouterUserConfigs:  routerUserConfigs,
 		AssemblerEndpoints: assemblerEndpoints,
 		TLSCACerts:         tlsCACerts,
 		UseTLSRouter:       network.UseTLSRouter,

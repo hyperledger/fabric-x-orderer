@@ -16,6 +16,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -349,4 +351,82 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testutil.RouterIncomingTxMetric(t, types.PartyID(1), url) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// TestVerifySignedTxsByRouterSingleParty verifies that a router running in a single-party,
+// single-shard configuration correctly enforces client signature verification when accepting
+// and broadcasting transactions.
+func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
+	// 1. compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	t.Logf("Running test with %d parties and %d shards", 1, 1)
+
+	// 2. Create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 3. Create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "none", "none")
+	require.NoError(t, err)
+	numOfArmaNodes := len(netInfo)
+
+	// 4. Generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", types.PartyID(1)))
+	conf, _, err := config.LoadLocalConfig(configFilePath)
+	require.NoError(t, err)
+
+	// Modify the router configuration to require client signature verification.
+	conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+	utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+
+	conf, _, err = config.LoadLocalConfig(configFilePath)
+	require.NoError(t, err)
+	require.True(t, conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired)
+
+	// 5. Run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	// Obtains a test user configuration and constructs a broadcast client.
+	readyChan := make(chan struct{}, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
+
+	totalTxNumber := 1000
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	for i := range totalTxNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		err = broadcastClient.SendTx(txContent)
+		require.NoError(t, err)
+	}
 }

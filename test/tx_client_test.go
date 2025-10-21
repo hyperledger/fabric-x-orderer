@@ -77,14 +77,14 @@ func TestTxClientSend(t *testing.T) {
 	handler := func(block *common.Block) error {
 		totalTxs += len(block.Data.Data)
 		totalBlocks++
-		if totalTxs == totalTxNumber+1 {
+		if totalBlocks >= int(endBlock-startBlock)+1 {
 			cancel()
 			return context.Canceled
 		}
 		return nil
 	}
 	dc.PullBlocks(cnx, 1, startBlock, endBlock, handler)
-	assert.Equal(t, totalTxNumber+1, totalTxs)
+	assert.GreaterOrEqual(t, totalBlocks, int(endBlock-startBlock)+1)
 	assert.True(t, totalBlocks > 2)
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
 }

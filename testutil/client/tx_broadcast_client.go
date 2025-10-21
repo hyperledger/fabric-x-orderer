@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +20,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 )
 
@@ -27,6 +31,8 @@ type StreamInfo struct {
 	totalTxSent uint32
 	endpoint    string
 	streamLock  sync.Mutex
+	partyID     types.PartyID
+	certKeyPair *tlsgen.CertKeyPair
 }
 
 var logger = flogging.MustGetLogger("BroadcastClient")
@@ -42,7 +48,7 @@ func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Du
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
 		timeOut:          timeOut,
-		streamRoutersMap: make(map[string]*StreamInfo, len(userConfigFile.RouterEndpoints)),
+		streamRoutersMap: make(map[string]*StreamInfo, len(userConfigFile.RouterUserConfigs)),
 	}
 }
 
@@ -78,7 +84,7 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 			streamInfo.streamLock.Lock()
 			defer streamInfo.streamLock.Unlock()
 
-			env := tx.CreateStructuredEnvelope(txContent)
+			env := tx.CreateSignedStructuredEnvelope(txContent, streamInfo.certKeyPair, fmt.Sprintf("org%d", streamInfo.partyID))
 			err := streamInfo.stream.Send(env)
 			if err != nil {
 				updateStateLock.Lock()
@@ -115,9 +121,9 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 
 	waitForReceiveDone.Wait()
 	// check if we had any failures
-	possibleNumOfFailures := len(c.userConfig.RouterEndpoints)
-	if len(c.userConfig.RouterEndpoints) >= 3 {
-		possibleNumOfFailures = len(c.userConfig.RouterEndpoints) / 3
+	possibleNumOfFailures := len(c.userConfig.RouterUserConfigs)
+	if len(c.userConfig.RouterUserConfigs) >= 3 {
+		possibleNumOfFailures = len(c.userConfig.RouterUserConfigs) / 3
 	}
 	if failures > possibleNumOfFailures {
 		er := fmt.Sprintf("\nfailed to send tx to %d out of %d send streams", failures, len(c.streamRoutersMap))
@@ -165,15 +171,20 @@ func (c *BroadcastTxClient) createSendStreams() error {
 	}
 
 	// create gRPC clients and streams to the routers
-	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
-		routerEndpoint := userConfig.RouterEndpoints[i]
+	// routerEnpoints are sorted in the userConfig in the same order as party IDs
+	for _, routerUserConfig := range userConfig.RouterUserConfigs {
+		routerEndpoint := routerUserConfig.Endpoint
 		streamInfo, ok := c.streamRoutersMap[routerEndpoint]
 		if !ok {
 			// create a gRPC connection to the router
 			stream := createSendStream(userConfig, serverRootCAs, routerEndpoint)
 			// if stream is created successfully, add it to the map
 			if stream != nil {
-				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endpoint: routerEndpoint}
+				ckPair, err := buildCryptoMaterials(routerUserConfig.UserMSPDir)
+				if err != nil {
+					return fmt.Errorf("failed to build crypto materials: %v", err)
+				}
+				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endpoint: routerEndpoint, partyID: routerUserConfig.PartyID, certKeyPair: ckPair}
 			}
 		} else {
 			if streamInfo.stream == nil {
@@ -190,6 +201,24 @@ func (c *BroadcastTxClient) createSendStreams() error {
 		}
 	}
 	return nil
+}
+
+func buildCryptoMaterials(configDir string) (*tlsgen.CertKeyPair, error) {
+	keyBytes, err := os.ReadFile(filepath.Join(configDir, "keystore/priv_sk"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key file: %v", err)
+	}
+	signer, err := tx.CreateECDSAPrivateKey(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signer from private key: %v", err)
+	}
+
+	certBytes, err := os.ReadFile(filepath.Join(configDir, "signcerts/sign-cert.pem"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read sign certificate file: %v", err)
+	}
+
+	return &tlsgen.CertKeyPair{Key: keyBytes, Cert: certBytes, Signer: signer}, nil
 }
 
 func (c *BroadcastTxClient) Stop() {

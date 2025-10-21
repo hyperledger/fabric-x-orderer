@@ -352,7 +352,7 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 		userTLSPrivateKeyPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "tls", "user-key.pem")
 		userTLSCertPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "tls", "user-tls-cert.pem")
 
-		userConfig, err := NewUserConfig(userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
+		userConfig, err := NewUserConfig(*outputDir, userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating user config: %s", err)
 			os.Exit(-1)
@@ -596,9 +596,9 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	var streams []ab.AtomicBroadcast_BroadcastClient
 
 	// create gRPC clients and streams to the routers
-	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
+	for i := 0; i < len(userConfig.RouterUserConfigs); i++ {
 		// create a gRPC connection to the router
-		gRPCRouterClientConn, stream, err := createConnAndStream(userConfig, userConfig.RouterEndpoints[i])
+		gRPCRouterClientConn, stream, err := createConnAndStream(userConfig, userConfig.RouterUserConfigs[i].Endpoint)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection and stream to router %d, err: %v", i+1, err)
 			os.Exit(3)
