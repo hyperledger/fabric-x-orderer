@@ -71,7 +71,7 @@ type ShardRouter struct {
 	reconnectRequests            chan reconnectReq
 	closeReconnect               chan bool
 	verifier                     *requestfilter.RulesVerifier
-	configSubmitter              *configSubmitter
+	configSubmitter              ConfigurationSubmitter
 }
 
 func NewShardRouter(l types.Logger,

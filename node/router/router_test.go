@@ -40,6 +40,7 @@ func init() {
 type routerTestSetup struct {
 	ca         tlsgen.CA
 	batchers   []*stubBatcher
+	consenter  *router.StubConsenter
 	clientConn *grpc.ClientConn
 	router     *router.Router
 }
@@ -56,6 +57,8 @@ func (r *routerTestSetup) Close() {
 	for _, batcher := range r.batchers {
 		batcher.server.Stop()
 	}
+
+	r.consenter.Stop()
 }
 
 func (r *routerTestSetup) isReconnectComplete() bool {
@@ -83,13 +86,18 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int,
 		batcher.Start()
 	}
 
+	// create and start stub-consenter
+	stubConsenter := router.NewStubConsenter(t, ca, partyID)
+	stubConsenter.Start()
+
 	// create and start router
-	router := createAndStartRouter(t, partyID, ca, batchers, useTLS, clientAuthRequired)
+	router := createAndStartRouter(t, partyID, ca, batchers, &stubConsenter, useTLS, clientAuthRequired)
 
 	return &routerTestSetup{
-		ca:       ca,
-		batchers: batchers,
-		router:   router,
+		ca:        ca,
+		batchers:  batchers,
+		consenter: &stubConsenter,
+		router:    router,
 	}
 }
 
@@ -427,6 +435,87 @@ func TestRequestFilters(t *testing.T) {
 	// 5) send request with invalid signature. Not implemented
 }
 
+// Scenario:
+// 1) Start a client, router and stub consenter
+// 2) Send valid config request, expect response from stub consenter
+func TestConfigSubmitter(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
+	defer testSetup.Close()
+
+	err = submitConfigRequest(t, testSetup.clientConn)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return testSetup.consenter.ReceivedMessageCount() == uint32(1)
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+func TestConfigSubmitterConsenterDown(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
+	defer testSetup.Close()
+
+	// submit one request, and wait for the response
+	err = submitConfigRequest(t, testSetup.clientConn)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return testSetup.consenter.ReceivedMessageCount() == uint32(1)
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// stop the consenter and wait until it is down
+	testSetup.consenter.Stop()
+	time.Sleep(250 * time.Millisecond)
+
+	// wait and restart the consenter
+	go func() {
+		time.Sleep(250 * time.Millisecond)
+		testSetup.consenter.Restart()
+	}()
+
+	// meanwhile, forward another request
+	err = submitConfigRequest(t, testSetup.clientConn)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return testSetup.consenter.ReceivedMessageCount() == uint32(2)
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+func submitConfigRequest(t *testing.T, conn *grpc.ClientConn) error {
+	cl := ab.NewAtomicBroadcastClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	stream, err := cl.Broadcast(ctx)
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		env := tx.CreateStructuredConfigEnvelope([]byte("123"))
+		err := stream.Send(env)
+		require.NoError(t, err)
+	}()
+
+	resp, err := stream.Recv()
+	require.NoError(t, err)
+	require.Equal(t, common.Status_INTERNAL_SERVER_ERROR, resp.Status)
+	require.Equal(t, "dummy submit config", resp.Info)
+	wg.Wait()
+
+	return nil
+}
+
 func createServerTLSClientConnection(testSetup *routerTestSetup, ca tlsgen.CA) error {
 	cc := comm.ClientConfig{
 		SecOpts: comm.SecureOptions{
@@ -584,7 +673,7 @@ func submitRequest(conn *grpc.ClientConn) error {
 	return nil
 }
 
-func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher, useTLS bool, clientAuthRequired bool) *router.Router {
+func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher, consenter *router.StubConsenter, useTLS bool, clientAuthRequired bool) *router.Router {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
@@ -601,6 +690,8 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	configtxValidator.ChannelIDReturns("arma")
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
+	stubConsenterInfo := config.ConsenterInfo{PartyID: partyID, Endpoint: consenter.GetConsenterEndpoint(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}
+
 	conf := &config.RouterNodeConfig{
 		PartyID:                             partyID,
 		TLSCertificateFile:                  ckp.Cert,
@@ -610,6 +701,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		ConfigStorePath:                     t.TempDir(),
 		ClientAuthRequired:                  clientAuthRequired,
 		Shards:                              shards,
+		Consenter:                           stubConsenterInfo,
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,

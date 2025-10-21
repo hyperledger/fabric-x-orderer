@@ -15,12 +15,17 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +48,7 @@ func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 	binary.BigEndian.PutUint16(trace, math.MaxInt16)
 
 	responses := make(chan router.Response, 1)
-	reqID, request := createRequestAndRequestId(1, uint32(10000))
+	reqID, request := createRequestAndRequestId(1)
 	tr := router.CreateTrackedRequest(request, responses, reqID, trace)
 	testSetup.shardRouter.Forward(tr)
 
@@ -61,7 +66,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	binary.BigEndian.PutUint16(trace, math.MaxInt16)
 
 	responses := make(chan router.Response, 1)
-	reqID, request := createRequestAndRequestId(1, uint32(10000))
+	reqID, request := createRequestAndRequestId(1)
 	tr := router.CreateTrackedRequest(request, responses, reqID, trace)
 	testSetup.shardRouter.Forward(tr)
 
@@ -80,7 +85,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 
 	// send a request, expect failure
 	responses = make(chan router.Response, 1)
-	reqID, request = createRequestAndRequestId(1, uint32(10000))
+	reqID, request = createRequestAndRequestId(1)
 	tr = router.CreateTrackedRequest(request, responses, reqID, trace)
 	testSetup.shardRouter.Forward(tr)
 	response = <-responses
@@ -97,7 +102,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 
 	// send a request, expect success
 	responses = make(chan router.Response, 1)
-	reqID, request = createRequestAndRequestId(1, uint32(10000))
+	reqID, request = createRequestAndRequestId(1)
 	tr = router.CreateTrackedRequest(request, responses, reqID, trace)
 	testSetup.shardRouter.Forward(tr)
 	response = <-responses
@@ -117,8 +122,20 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	conf := &config.RouterNodeConfig{
+		RequestMaxBytes:                     1 << 10,
+		ClientSignatureVerificationRequired: false,
+		Bundle:                              bundle,
+	}
+
 	verifier := requestfilter.NewRulesVerifier(nil)
-	verifier.AddRule(requestfilter.AcceptRule{})
+	verifier.AddRule(requestfilter.PayloadNotEmptyRule{})
+	verifier.AddRule(requestfilter.NewMaxSizeFilter(conf))
+	verifier.AddStructureRule(requestfilter.NewSigFilter(conf, policies.ChannelWriters))
 
 	// create stub batcher
 	batcher := NewStubBatcher(t, ca, partyID, types.ShardID(1))
@@ -136,9 +153,8 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	}
 }
 
-func createRequestAndRequestId(shardCount uint16, content uint32) ([]byte, *protos.Request) {
-	payload := make([]byte, 300)
-	binary.BigEndian.PutUint32(payload, content)
-	reqID, _ := router.CRC64RequestToShard(shardCount)(payload)
-	return reqID, &protos.Request{Payload: payload}
+func createRequestAndRequestId(shardCount uint16) ([]byte, *protos.Request) {
+	req := tx.CreateStructuredRequest([]byte("12345"))
+	reqID, _ := router.CRC64RequestToShard(shardCount)(req.Payload)
+	return reqID, req
 }

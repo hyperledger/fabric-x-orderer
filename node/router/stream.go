@@ -34,7 +34,7 @@ type stream struct {
 	srReconnectChan                   chan reconnectReq
 	notifiedReconnect                 bool
 	verifier                          *requestfilter.RulesVerifier
-	configSubmitter                   *configSubmitter
+	configSubmitter                   ConfigurationSubmitter
 }
 
 // readResponses listens for responses from the batcher.
@@ -76,28 +76,35 @@ func (s *stream) sendRequests() {
 				return
 			}
 			// verify the request
-			if _, err := s.verifier.Verify(tr.request); err != nil {
+			if requestType, err := s.verifier.Verify(tr.request); err != nil {
 				s.logger.Debugf("request is invalid: %s", err)
 				// send error to the client
 				s.responseToClientWithError(tr, fmt.Errorf("request verification error: %s", err))
 			} else {
-				// TODO - if request is config, forward it to the consenter using configSubmitter
-
-				s.logger.Debugf("send request with trace id %x to batcher %s", tr.trace, s.endpoint)
-				err := s.requestTransmitSubmitStreamClient.Send(tr.request)
-				if err != nil {
-					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-					if tr.trace == nil {
-						// send error to client, in case request is not traced.
-						tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
+				switch requestType {
+				case "data":
+					s.logger.Debugf("received request with type %s, forwarding to batcher %s", requestType, s.endpoint)
+					err := s.requestTransmitSubmitStreamClient.Send(tr.request)
+					if err != nil {
+						s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+						if tr.trace == nil {
+							// send error to client, in case request is not traced.
+							tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
+						}
+						s.cancelOnServerError()
+						return
 					}
-					s.cancelOnServerError()
-					return
-				}
-				// fast response to client
-				if tr.trace == nil {
-					// request is untraced, send no-error to client.
-					tr.responses <- Response{err: nil}
+					// fast response to client
+					if tr.trace == nil {
+						// request is untraced, send no-error to client.
+						tr.responses <- Response{err: nil}
+					}
+				case "config_update":
+					s.logger.Debugf("received request with type %s, forwarding to consenter", requestType)
+					s.configSubmitter.Forward(tr)
+				default:
+					s.logger.Errorf("received request with unsupported type %s", requestType)
+					s.responseToClientWithError(tr, fmt.Errorf("received request with unsupported type: %s", requestType))
 				}
 			}
 		}

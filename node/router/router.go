@@ -45,7 +45,7 @@ type Router struct {
 	verifier         *requestfilter.RulesVerifier
 	stopChan         chan struct{}
 	configStore      *configstore.Store
-	configSubmitter  *configSubmitter
+	configSubmitter  ConfigurationSubmitter
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {

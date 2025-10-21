@@ -14,9 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	commMocks "github.com/hyperledger/fabric-x-orderer/node/protos/comm/mocks"
 
@@ -396,11 +401,25 @@ func (srp *safeReqPool) getElement(i int) *protos.Request {
 }
 
 func createTestVerifier() *requestfilter.RulesVerifier {
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	conf := &config.RouterNodeConfig{
+		RequestMaxBytes:                     1 << 10,
+		ClientSignatureVerificationRequired: false,
+		Bundle:                              bundle,
+	}
+
 	rv := requestfilter.NewRulesVerifier(nil)
-	rv.AddRule(requestfilter.AcceptRule{})
+	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
+	rv.AddRule(requestfilter.NewMaxSizeFilter(conf))
+	rv.AddStructureRule(requestfilter.NewSigFilter(conf, policies.ChannelWriters))
 	return rv
 }
 
 func createTestTrackedRequestFromTrace(trace []byte) *TrackedRequest {
-	return CreateTrackedRequest(&protos.Request{TraceId: trace}, make(chan Response, 10), nil, trace)
+	req := tx.CreateStructuredRequest([]byte("123"))
+	req.TraceId = trace
+	return CreateTrackedRequest(req, make(chan Response, 10), nil, trace)
 }
