@@ -79,8 +79,14 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 
 	// 4.
-	conf, _, err := config.ReadConfig(filepath.Join(dir, "config/party1/local_config_consenter.yaml"), logger)
+	localConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config/party1/local_config_consenter.yaml"))
 	assert.NoError(t, err)
+	sharedConfig, _, err := config.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
+	assert.NoError(t, err)
+	conf := &config.Configuration{
+		LocalConfig:  localConfig,
+		SharedConfig: sharedConfig,
+	}
 	consenterInfos := conf.ExtractConsenters()
 
 	// 5.
