@@ -32,6 +32,7 @@ type PendingStore struct {
 	lastTick              atomic.Value
 	lastEpochChange       time.Time
 	lastProcessedGC       time.Time
+	lastSecondStrikeTime  atomic.Value
 	reqID2Bucket          *sync.Map
 	currentBucket         atomic.Value
 	buckets               []*bucket
@@ -47,6 +48,7 @@ func (ps *PendingStore) Init() {
 	ps.reqID2Bucket = new(sync.Map)
 	ps.currentBucket.Store(newBucket(ps.reqID2Bucket, 1))
 	ps.lastTick.Store(ps.StartTime)
+	ps.lastSecondStrikeTime.Store(time.Time{})
 	ps.closeChan = make(chan struct{})
 	ps.closeOnce = sync.Once{}
 	ps.resetChan = make(chan struct{})
@@ -220,17 +222,29 @@ func (ps *PendingStore) checkSecondStrike(now time.Time) bool {
 			continue
 		}
 
-		if now.Sub(bucket.getFirstStrikeTimestamp()) <= ps.SecondStrikeThreshold {
+		secondStrike := ps.calcSecondStrike()
+
+		if now.Sub(bucket.getFirstStrikeTimestamp()) <= secondStrike {
 			continue
 		}
 
-		bucket.resetTimestamp(ps.now())
+		now := ps.now()
+		bucket.resetTimestamp(now)
 		detectedCensorship = true
-		ps.Logger.Infof("Second strike occurred for bucket id %d of size %d", bucket.id, bucket.getSize())
+		ps.lastSecondStrikeTime.Store(now)
+		ps.Logger.Infof("Second strike occurred for bucket id %d of size %d (threshold is currently %s)", bucket.id, bucket.getSize(), secondStrike.String())
 		break
 	}
 
 	return detectedCensorship
+}
+
+func (ps *PendingStore) calcSecondStrike() time.Duration {
+	// now := ps.now()
+	// if now.Sub(ps.StartTime) <= 20 * ps.SecondStrikeThreshold {
+	// 	return 5 * ps.SecondStrikeThreshold
+	// }
+	return ps.SecondStrikeThreshold
 }
 
 func (ps *PendingStore) rotateBuckets(now time.Time) {
@@ -315,6 +329,10 @@ func (ps *PendingStore) Submit(request []byte) error {
 
 	reqID := ps.Inspector.RequestID(request)
 
+	if ps.now().Sub(ps.lastSecondStrike()) <= 2*ps.SecondStrikeThreshold {
+		return errors.Errorf("there was a second strike not long ago")
+	}
+
 	// Insertion may fail if we have a concurrent sealing of the bucket.
 	// In such a case, wait for a new un-sealed bucket to replace the current bucket.
 	for {
@@ -328,6 +346,10 @@ func (ps *PendingStore) Submit(request []byte) error {
 
 func (ps *PendingStore) now() time.Time {
 	return ps.lastTick.Load().(time.Time)
+}
+
+func (ps *PendingStore) lastSecondStrike() time.Time {
+	return ps.lastSecondStrikeTime.Load().(time.Time)
 }
 
 // GetAllRequests returns all stored requests in the same order of their arrival, the oldest one will be the first
