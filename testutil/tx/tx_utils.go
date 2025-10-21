@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -80,8 +81,7 @@ func CreateSignedEnvelope(payloadData []byte, signer *crypto.ECDSASigner) (*comm
 	return signedEnvelope, nil
 }
 
-// CreateECDSASigner reads a private key from the given path and creates a signer.
-func CreateECDSASigner(privateKeyBytes []byte) (*crypto.ECDSASigner, error) {
+func CreateECDSAPrivateKey(privateKeyBytes []byte) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode(privateKeyBytes)
 	if block == nil || block.Bytes == nil {
 		return nil, fmt.Errorf("failed decoding private key PEM")
@@ -96,7 +96,7 @@ func CreateECDSASigner(privateKeyBytes []byte) (*crypto.ECDSASigner, error) {
 		return nil, fmt.Errorf("failed parsing private key DER: %v", err)
 	}
 
-	return (*crypto.ECDSASigner)(priv.(*ecdsa.PrivateKey)), nil
+	return priv.(*ecdsa.PrivateKey), nil
 }
 
 func signEnvelope(payload []byte, signer *crypto.ECDSASigner) (*common.Envelope, error) {
@@ -217,4 +217,38 @@ func PrepareEnvWithTimestamp(txNumber int, envSize int, sessionNumber []byte) *c
 	}
 	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
 	return CreateStructuredEnvelope(data)
+}
+
+func CreateSignedStructuredEnvelope(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
+	payload := createSignedStructuredPayload(data, certBytes, org)
+	payloadBytes := deterministicMarshall(payload)
+
+	// Sign the payload
+	signature, err := signer.Sign(payloadBytes)
+	if err != nil {
+		return nil
+	}
+	return &common.Envelope{
+		Payload:   payloadBytes,
+		Signature: signature,
+	}
+}
+
+// TODO: Revise it when cert registry is integrated into orderer
+func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *common.Payload {
+	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
+
+	sId := msp.SerializedIdentity{
+		Mspid:   org,
+		IdBytes: certBytes,
+	}
+
+	payloadSignatureHeader := &common.SignatureHeader{
+		Creator: deterministicMarshall(&sId),
+		Nonce:   []byte("nonce"),
+	}
+	return &common.Payload{
+		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
+		Data:   data,
+	}
 }
