@@ -9,6 +9,7 @@ package consensus_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
@@ -39,7 +40,7 @@ func TestConsenter(t *testing.T) {
 
 	// Test with an event that should be filtered out
 	db.ExistsReturns(true)
-	newState, batchAttestations := consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ := consenter.SimulateStateTransition(s, events)
 	assert.Empty(t, batchAttestations)
 	assert.Empty(t, newState.Pending)
 
@@ -49,7 +50,7 @@ func TestConsenter(t *testing.T) {
 
 	// Test a valid event below threshold
 	db.ExistsReturns(false)
-	newState, batchAttestations = consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
 	assert.Empty(t, batchAttestations)
 	assert.Len(t, newState.Pending, 1)
 
@@ -62,7 +63,7 @@ func TestConsenter(t *testing.T) {
 	ba2.SetSignature([]byte{1})
 	events = append(events, (&state.ControlEvent{BAF: ba2}).Bytes())
 
-	newState, batchAttestations = consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
 	assert.Len(t, batchAttestations[0], 2)
 	assert.Empty(t, newState.Pending)
 
@@ -82,6 +83,19 @@ func TestConsenter(t *testing.T) {
 	consenter.Commit(events)
 	assert.Equal(t, db.PutCallCount(), 1)
 	assert.Len(t, consenter.State.Complaints, 1)
+
+	// Test ConfigRequest is returned by SimulateStateTransition
+	cr := &state.ConfigRequest{
+		Envelope: &common.Envelope{
+			Payload:   []byte("config-payload"),
+			Signature: []byte("config-signature"),
+		},
+	}
+	events = [][]byte{(&state.ControlEvent{ConfigRequest: cr}).Bytes()}
+
+	_, _, configRequest := consenter.SimulateStateTransition(s, events)
+	assert.Equal(t, cr.Envelope.Payload, configRequest.Envelope.Payload)
+	assert.Equal(t, cr.Envelope.Signature, configRequest.Envelope.Signature)
 }
 
 func createConsenter(s *state.State, logger arma_types.Logger) *consensus.Consenter {
