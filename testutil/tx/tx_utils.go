@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -208,4 +209,35 @@ func PrepareEnvWithTimestamp(txNumber int, envSize int, sessionNumber []byte) *c
 	}
 	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
 	return CreateStructuredEnvelope(data)
+}
+
+func CreateSignedStructuredEnvelope(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
+	payload := createSignedStructuredPayload(data, certBytes, org)
+	payloadBytes := deterministicMarshall(payload)
+	signature, err := signer.Sign(payloadBytes)
+	if err != nil {
+		return nil
+	}
+	return &common.Envelope{
+		Payload:   payloadBytes,
+		Signature: signature,
+	}
+}
+
+func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *common.Payload {
+	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
+
+	sId := msp.SerializedIdentity{
+		Mspid:   org,
+		IdBytes: certBytes,
+	}
+
+	payloadSignatureHeader := &common.SignatureHeader{
+		Creator: deterministicMarshall(&sId),
+		Nonce:   []byte("nonce"),
+	}
+	return &common.Payload{
+		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
+		Data:   data,
+	}
 }

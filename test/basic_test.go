@@ -103,14 +103,14 @@ func TestSubmitAndReceive(t *testing.T) {
 			rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
 			require.NoError(t, err)
 
-			broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+			broadcastClient := client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 			defer broadcastClient.Stop()
 
 			for i := 0; i < totalTxNumber; i++ {
 				status := rl.GetToken()
 				require.True(t, status)
 				txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-				err = broadcastClient.SendTx(txContent)
+				err = broadcastClient.SendTx(txContent, []byte("signature"))
 				require.NoError(t, err)
 			}
 
@@ -211,14 +211,14 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
 	require.NoError(t, err)
 
-	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient := client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 	defer broadcastClient.Stop()
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
 		require.True(t, status)
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		require.NoError(t, err)
 	}
 

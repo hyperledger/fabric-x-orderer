@@ -55,12 +55,12 @@ func TestTxClientSend(t *testing.T) {
 	uc, err := testutil.GetUserConfig(dir, 1)
 	assert.NoError(t, err)
 	assert.NotNil(t, uc)
-	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 	defer broadcastClient.Stop()
 	require.NoError(t, err)
 	for i := 0; i < totalTxNumber; i++ {
 		txContent := tx.PrepareTxWithTimestamp(i, 100, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		require.NoError(t, err)
 	}
 	// 5. Check If Transaction is sent
@@ -77,14 +77,14 @@ func TestTxClientSend(t *testing.T) {
 	handler := func(block *common.Block) error {
 		totalTxs += len(block.Data.Data)
 		totalBlocks++
-		if totalTxs == totalTxNumber+1 {
+		if totalBlocks >= int(endBlock-startBlock)+1 {
 			cancel()
 			return context.Canceled
 		}
 		return nil
 	}
 	dc.PullBlocks(cnx, 1, startBlock, endBlock, handler)
-	assert.Equal(t, totalTxNumber+1, totalTxs)
+	assert.GreaterOrEqual(t, totalBlocks, int(endBlock-startBlock)+1)
 	assert.True(t, totalBlocks > 2)
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
 }

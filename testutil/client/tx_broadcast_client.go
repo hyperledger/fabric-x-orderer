@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +20,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 )
 
@@ -27,6 +31,9 @@ type StreamInfo struct {
 	totalTxSent uint32
 	endpoint    string
 	streamLock  sync.Mutex
+	partyID     types.PartyID
+	signer      *crypto.ECDSASigner
+	certBytes   []byte
 }
 
 var logger = flogging.MustGetLogger("BroadcastClient")
@@ -36,17 +43,19 @@ type BroadcastTxClient struct {
 	timeOut          time.Duration
 	streamRoutersMap map[string]*StreamInfo
 	streamsMapLock   sync.Mutex
+	configDir        string
 }
 
-func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Duration) *BroadcastTxClient {
+func NewBroadcastTxClient(configDir string, userConfigFile *armageddon.UserConfig, timeOut time.Duration) *BroadcastTxClient {
 	return &BroadcastTxClient{
 		userConfig:       userConfigFile,
 		timeOut:          timeOut,
 		streamRoutersMap: make(map[string]*StreamInfo, len(userConfigFile.RouterEndpoints)),
+		configDir:        configDir,
 	}
 }
 
-func (c *BroadcastTxClient) SendTx(txContent []byte) error {
+func (c *BroadcastTxClient) SendTx(txContent []byte, signature []byte) error {
 	c.streamsMapLock.Lock()
 	defer c.streamsMapLock.Unlock()
 
@@ -78,7 +87,7 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 			streamInfo.streamLock.Lock()
 			defer streamInfo.streamLock.Unlock()
 
-			env := tx.CreateStructuredEnvelope(txContent)
+			env := tx.CreateSignedStructuredEnvelope(txContent, streamInfo.signer, streamInfo.certBytes, "org1")
 			err := streamInfo.stream.Send(env)
 			if err != nil {
 				updateStateLock.Lock()
@@ -173,13 +182,24 @@ func (c *BroadcastTxClient) createSendStreams() error {
 			stream := createSendStream(userConfig, serverRootCAs, routerEndpoint)
 			// if stream is created successfully, add it to the map
 			if stream != nil {
-				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endpoint: routerEndpoint}
+				// org := fmt.Sprintf("org%d", i+1)
+				signer, certBytes, err := c.buildCryptoMaterials("org1")
+				if err != nil {
+					return fmt.Errorf("failed to build crypto materials: %v", err)
+				}
+				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endpoint: routerEndpoint, partyID: types.PartyID(i + 1), signer: signer, certBytes: certBytes}
 			}
 		} else {
 			if streamInfo.stream == nil {
 				stream := createSendStream(userConfig, serverRootCAs, routerEndpoint)
 				if stream != nil {
 					streamInfo.stream = stream
+					// org := fmt.Sprintf("org%d", streamInfo.partyID)
+					signer, certBytes, err := c.buildCryptoMaterials("org1")
+					if err != nil {
+						return fmt.Errorf("failed to build crypto materials: %v", err)
+					}
+					streamInfo.signer, streamInfo.certBytes = signer, certBytes
 				} else {
 					// if stream is nil, it means we failed to create a gRPC connection to the router
 					// so we remove it from the map
@@ -190,6 +210,24 @@ func (c *BroadcastTxClient) createSendStreams() error {
 		}
 	}
 	return nil
+}
+
+func (c *BroadcastTxClient) buildCryptoMaterials(org string) (*crypto.ECDSASigner, []byte, error) {
+	keyBytes, err := os.ReadFile(filepath.Join(c.configDir, fmt.Sprintf("crypto/ordererOrganizations/%s/users/user/msp/keystore/priv_sk", org)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read private key file: %v", err)
+	}
+	signer, err := tx.CreateECDSASigner(keyBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create signer from private key: %v", err)
+	}
+
+	certBytes, err := os.ReadFile(filepath.Join(c.configDir, fmt.Sprintf("crypto/ordererOrganizations/%s/users/user/msp/signcerts/sign-cert.pem", org)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read sign certificate file: %v", err)
+	}
+
+	return signer, certBytes, nil
 }
 
 func (c *BroadcastTxClient) Stop() {

@@ -24,7 +24,6 @@ import (
 )
 
 type stubBatcher struct {
-	ca          tlsgen.CA // Certificate authority that issues a certificate for the batcher
 	certificate []byte
 	key         []byte
 	server      *comm.GRPCServer // GRPCServer instance represents the batcher
@@ -34,11 +33,7 @@ type stubBatcher struct {
 	logger      types.Logger
 }
 
-func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID types.ShardID) stubBatcher {
-	// create a (cert,key) pair for the batcher
-	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
+func NewStubBatcher(t *testing.T, certKeyPair *tlsgen.CertKeyPair, partyID types.PartyID, shardID types.ShardID) stubBatcher {
 	// create a GRPC Server which will listen for incoming connections on some available port
 	server, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
@@ -51,7 +46,6 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 
 	// return a stub batcher that includes all server setup
 	stubBatcher := stubBatcher{
-		ca:          ca,
 		certificate: certKeyPair.Cert,
 		key:         certKeyPair.Key,
 		server:      server,
