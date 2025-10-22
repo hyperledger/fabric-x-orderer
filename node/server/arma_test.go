@@ -17,10 +17,12 @@ import (
 	"sync"
 	"testing"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/msp"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -28,6 +30,8 @@ import (
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
@@ -346,6 +350,123 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		require.Equal(t, lastConfigBlock.Header.Number, uint64(1))
 	})
+
+	t.Run("TestConsensusWithLastConfigBlock", func(t *testing.T) {
+		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
+		storagePath := path.Join(dir, "storage", "party1", "consenterWithLastConfigBlock")
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
+		err := editBatchersInSharedConfig(dir, 4, 2)
+		require.NoError(t, err)
+		testLogger = flogging.MustGetLogger("arma")
+
+		originalLogger := testLogger
+		defer func() {
+			testLogger = originalLogger
+		}()
+
+		// ReadConfig, expect for genesis block
+		configContent, genesisBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, genesisBlock)
+
+		// Read consensus ledger and check it is empty
+		consensusLedger, err := node_ledger.NewConsensusLedger(configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
+		require.NoError(t, err)
+		require.NotNil(t, consensusLedger)
+		require.Equal(t, consensusLedger.Height(), uint64(0))
+		consensusLedger.Close()
+
+		// Create the consenter and check genesis block was appended
+		conf := configContent.ExtractConsenterConfig()
+		conf.ListenAddress = "127.0.0.1:5020"
+		srv := node.CreateGRPCConsensus(conf)
+		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := localmsp.GetDefaultSigningIdentity()
+		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, signer)
+		require.NotNil(t, consensus)
+		consensus.Storage.Close()
+
+		consensusLedger, err = node_ledger.NewConsensusLedger(configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
+		require.NoError(t, err)
+		require.NotNil(t, consensusLedger)
+		require.Equal(t, consensusLedger.Height(), uint64(1))
+
+		// Add two fake decisions:
+		// Decision 1 with one data block (header.Number = 1) and one config block (header.Number = 2)
+		// Decision 2 with one data block (header.Number = 3)
+		// ReadConfig again, expect for the fake config block to be the last block
+		dataBlock1 := state.AvailableBlock{
+			Header: &state.BlockHeader{
+				Number:   1,
+				PrevHash: nil,
+				Digest:   make([]byte, 32),
+			},
+			Batch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, make([]byte, 32)),
+		}
+		dataCommonBlock1 := createDataBlock(uint64(1))
+
+		initialState := &state.State{
+			ShardCount: 2,
+			N:          4,
+			Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
+			Threshold:  2,
+			Quorum:     3,
+			AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0}),
+		}
+
+		newConfigBlock := state.AvailableBlock{
+			Header: &state.BlockHeader{
+				Number:   2,
+				PrevHash: nil,
+				Digest:   make([]byte, 32),
+			},
+			Batch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, make([]byte, 32)),
+		}
+
+		newConfigCommonBlock := &common.Block{Header: &common.BlockHeader{Number: 2}, Data: genesisBlock.Data}
+		newConfigProposal := smartbft_types.Proposal{
+			Header: (&state.Header{
+				AvailableBlocks:              []state.AvailableBlock{dataBlock1, newConfigBlock},
+				AvailableCommonBlocks:        []*common.Block{dataCommonBlock1, newConfigCommonBlock},
+				State:                        initialState,
+				Num:                          1,
+				DecisionNumOfLastConfigBlock: 1,
+			}).Serialize(),
+			Metadata: nil,
+		}
+
+		dataBlock2 := state.AvailableBlock{
+			Header: &state.BlockHeader{
+				Number:   3,
+				PrevHash: nil,
+				Digest:   make([]byte, 32),
+			},
+			Batch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, make([]byte, 32)),
+		}
+		dataCommonBlock2 := createDataBlock(uint64(3))
+
+		newProposal := smartbft_types.Proposal{
+			Header: (&state.Header{
+				AvailableBlocks:              []state.AvailableBlock{dataBlock2},
+				AvailableCommonBlocks:        []*common.Block{dataCommonBlock2},
+				State:                        initialState,
+				Num:                          2,
+				DecisionNumOfLastConfigBlock: 1,
+			}).Serialize(),
+			Metadata: nil,
+		}
+
+		consensusLedger.Append(state.DecisionToBytes(newConfigProposal, nil))
+		consensusLedger.Append(state.DecisionToBytes(newProposal, nil))
+		consensusLedger.Close()
+
+		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, lastConfigBlock)
+
+		require.Equal(t, lastConfigBlock.Header.Number, uint64(2))
+	})
 }
 
 func setup(t *testing.T, offset int) string {
@@ -431,4 +552,25 @@ func CreateNetworkWithDefaultPorts(t *testing.T, path string, offset int) {
 
 	err := utils.WriteToYAML(network, path)
 	require.NoError(t, err)
+}
+
+func createDataBlock(blockNum uint64) *common.Block {
+	block := protoutil.NewBlock(blockNum, []byte{})
+	block.Data = &common.BlockData{
+		Data: [][]byte{
+			protoutil.MarshalOrPanic(&common.Envelope{
+				Payload: protoutil.MarshalOrPanic(&common.Payload{
+					Header: &common.Header{
+						ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
+							Type: int32(common.HeaderType_ENDORSER_TRANSACTION),
+						}),
+					},
+				}),
+			}),
+		},
+	}
+	block.Header.DataHash, _ = protoutil.BlockDataHash(block.Data)
+	protoutil.InitBlockMetadata(block)
+
+	return block
 }
