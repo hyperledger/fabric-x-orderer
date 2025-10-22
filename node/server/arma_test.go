@@ -383,6 +383,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		srv := node.CreateGRPCConsensus(conf)
 		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
+		require.NoError(t, err)
 		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, signer)
 		require.NotNil(t, consensus)
 		consensus.Storage.Close()

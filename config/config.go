@@ -127,7 +127,7 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create consensus ledger instance: %s", err)
 			}
-			lastConfigBlock, err = GetLastConfigBlockFromConsensusLedger(consensusLedger)
+			lastConfigBlock, err = GetLastConfigBlockFromConsensusLedger(consensusLedger, logger)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to get the last config block from consensus ledger instance: %s", err)
 			}
@@ -516,12 +516,13 @@ func (config *Configuration) extractBundleFromConfigBlock(configBlock *common.Bl
 	return bundle
 }
 
-func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.ConsensusLedger) (*common.Block, error) {
+func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.ConsensusLedger, logger types.Logger) (*common.Block, error) {
 	if consensusLedger.Height() > 0 {
+		logger.Infof("Consensus ledger height is: %d", consensusLedger.Height())
 		lastBlockIdx := consensusLedger.Height() - 1
 		lastBlock, err := consensusLedger.RetrieveBlockByNumber(lastBlockIdx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve last block from consensus ledger: %s", err)
+			return nil, fmt.Errorf("failed to retrieve last block %d from consensus ledger: %s", lastBlockIdx, err)
 		}
 		proposal, _, err := state.BytesToDecision(lastBlock.Data.Data[0])
 		if err != nil {
@@ -534,6 +535,7 @@ func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.Consensu
 		}
 
 		decisionNumOfLastConfigBlock := header.DecisionNumOfLastConfigBlock
+		logger.Infof("Decision number of last config block: %d", decisionNumOfLastConfigBlock)
 		decisionOfLastConfigBlock, err := consensusLedger.RetrieveBlockByNumber(uint64(decisionNumOfLastConfigBlock))
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve decision of the last config block from consensus ledger: %s", err)
