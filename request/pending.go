@@ -329,7 +329,7 @@ func (ps *PendingStore) Submit(request []byte) error {
 
 	reqID := ps.Inspector.RequestID(request)
 
-	if ps.now().Sub(ps.lastSecondStrike()) <= 2*ps.SecondStrikeThreshold {
+	if ps.now().Sub(ps.lastSecondStrike()) <= 3*ps.SecondStrikeThreshold {
 		return errors.Errorf("there was a second strike not long ago")
 	}
 
