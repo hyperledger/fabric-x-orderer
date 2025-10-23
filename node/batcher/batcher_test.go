@@ -267,7 +267,10 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	}
 
 	// submit another request only to a secondary
-	batchers[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	require.Eventually(t, func() bool {
+		resp, err := batchers[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+		return err == nil && resp.Error == ""
+	}, 30*time.Second, 10*time.Millisecond)
 
 	// after a timeout the request is forwarded
 	require.Eventually(t, func() bool {

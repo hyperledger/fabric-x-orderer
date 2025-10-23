@@ -90,7 +90,10 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Submit a request to primary of shard 1
-	batchers1[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	require.Eventually(t, func() bool {
+		resp, err := batchers1[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+		return err == nil && resp.Error == ""
+	}, 30*time.Second, 100*time.Millisecond)
 
 	// Verify the batchers created a batch in shard 1
 	require.Eventually(t, func() bool {
@@ -110,8 +113,14 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}
 
 	// Submit another request only to a secondary in shard 0 and shard 1
-	batchers0[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{9}))
-	batchers1[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{8}))
+	require.Eventually(t, func() bool {
+		resp, err := batchers0[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{9}))
+		return err == nil && resp.Error == ""
+	}, 30*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool {
+		resp, err := batchers1[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{8}))
+		return err == nil && resp.Error == ""
+	}, 30*time.Second, 100*time.Millisecond)
 
 	// Verify the batchers created batches in shard 0 and shard 1
 	require.Eventually(t, func() bool {
