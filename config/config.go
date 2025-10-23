@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
@@ -96,7 +97,7 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 		}
 
 		// If node is assembler, check if its ledger has blocks, and if yes bootstrap from the last block
-		if nodeRole == "Assembler" {
+		if nodeRole == Assembler {
 			assemblerLedgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
 			assemblerLedger, err := assemblerLedgerFactory.Create(logger, conf.LocalConfig.NodeLocalConfig.FileStore.Path)
 			if err != nil {
@@ -118,6 +119,19 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 				}
 			}
 			assemblerLedger.Close()
+		}
+
+		// If node is consensus, get the last decision from the ledger, extract the decision number of the last config block and get the last available block from it.
+		if nodeRole == Consensus {
+			consensusLedger, err := node_ledger.NewConsensusLedger(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create consensus ledger instance: %s", err)
+			}
+			lastConfigBlock, err = GetLastConfigBlockFromConsensusLedger(consensusLedger, logger)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get the last config block from consensus ledger instance: %s", err)
+			}
+			consensusLedger.Close()
 		}
 
 		if lastConfigBlock == nil {
@@ -482,4 +496,42 @@ func (config *Configuration) extractBundleFromConfigBlock(configBlock *common.Bl
 		panic(fmt.Sprintf("failed to build bundle from config block: %s", err))
 	}
 	return bundle
+}
+
+func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.ConsensusLedger, logger types.Logger) (*common.Block, error) {
+	if consensusLedger.Height() > 0 {
+		logger.Infof("Consensus ledger height is: %d", consensusLedger.Height())
+		lastBlockIdx := consensusLedger.Height() - 1
+		lastBlock, err := consensusLedger.RetrieveBlockByNumber(lastBlockIdx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve last block %d from consensus ledger: %s", lastBlockIdx, err)
+		}
+		proposal, _, err := state.BytesToDecision(lastBlock.Data.Data[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to read decision from last block in consensus ledger: %s", err)
+		}
+
+		header := &state.Header{}
+		if err := header.Deserialize(proposal.Header); err != nil {
+			return nil, fmt.Errorf("failed to deserialize decision header from last block: %s", err)
+		}
+
+		decisionNumOfLastConfigBlock := header.DecisionNumOfLastConfigBlock
+		logger.Infof("Decision number of last config block: %d", decisionNumOfLastConfigBlock)
+		decisionOfLastConfigBlock, err := consensusLedger.RetrieveBlockByNumber(uint64(decisionNumOfLastConfigBlock))
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve decision of the last config block from consensus ledger: %s", err)
+		}
+		proposal, _, err = state.BytesToDecision(decisionOfLastConfigBlock.Data.Data[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to read decision from last config block in consensus ledger: %s", err)
+		}
+		header = &state.Header{}
+		if err := header.Deserialize(proposal.Header); err != nil {
+			return nil, fmt.Errorf("failed to deserialize decision header from last block: %s", err)
+		}
+		lastConfigBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+		return lastConfigBlock, nil
+	}
+	return nil, nil
 }
