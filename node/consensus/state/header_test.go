@@ -25,6 +25,7 @@ func TestHeaderBytes(t *testing.T) {
 			{Header: &BlockHeader{10, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(3, 2, 1, make([]byte, 32))},
 			{Header: &BlockHeader{11, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(6, 5, 4, make([]byte, 32))},
 		},
+		DecisionNumOfLastConfigBlock: 10,
 	}
 
 	var hdr2 Header
@@ -80,7 +81,7 @@ func TestHeaderBytes(t *testing.T) {
 
 	require.Equal(t, hdr.Serialize(), hdr2.Serialize())
 
-	err = hdr.Deserialize([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7})
+	err = hdr.Deserialize([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7})
 	require.Error(t, err)
 	t.Log(err)
 
@@ -91,21 +92,23 @@ func TestHeaderBytes(t *testing.T) {
 	require.Error(t, err)
 	t.Log(err)
 
-	// len of bytes is just 12 which is not enough to read the available blocks
-	bytes = make([]byte, 12)
+	// len of bytes is just 24 which is not enough to read the available blocks
+	bytes = make([]byte, 24)
 	binary.BigEndian.PutUint64(bytes, 100)
-	binary.BigEndian.PutUint32(bytes[8:], 1)
+	binary.BigEndian.PutUint64(bytes[8:16], 10)
+	binary.BigEndian.PutUint32(bytes[16:], 1)
 	err = hdr.Deserialize(bytes)
 	require.Error(t, err)
 	t.Log(err)
 
 	// no error (nil state)
-	bytes = make([]byte, 8+4+availableBlockSerializedSize+4)
+	bytes = make([]byte, 8+8+4+availableBlockSerializedSize+4)
 	binary.BigEndian.PutUint64(bytes, 100)
-	binary.BigEndian.PutUint32(bytes[8:], 1)
+	binary.BigEndian.PutUint64(bytes[8:16], 10)
+	binary.BigEndian.PutUint32(bytes[16:], 1)
 	ab := AvailableBlock{Header: &BlockHeader{10, make([]byte, 32), make([]byte, 32)}, Batch: NewAvailableBatch(3, 2, 1, make([]byte, 32))}
-	copy(bytes[12:], ab.Serialize())
-	binary.BigEndian.PutUint32(bytes[12+availableBlockSerializedSize:], 0)
+	copy(bytes[20:], ab.Serialize())
+	binary.BigEndian.PutUint32(bytes[20+availableBlockSerializedSize:], 0)
 	err = hdr.Deserialize(bytes)
 	require.NoError(t, err)
 	require.Nil(t, hdr.State)
