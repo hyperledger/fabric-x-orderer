@@ -346,7 +346,7 @@ func createVerifier(config *nodeconfig.RouterNodeConfig) *requestfilter.RulesVer
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
-	rv.AddRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
+	rv.AddStructureRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
 	return rv
 }
 
