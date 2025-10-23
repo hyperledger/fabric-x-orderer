@@ -285,11 +285,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 
 	availableCommonBlocks := []*common.Block{genesisBlock}
 
-	var metadataContents [][]byte
-	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
-		metadataContents = append(metadataContents, []byte{})
-	}
-	availableCommonBlocks[0].Metadata = &common.BlockMetadata{Metadata: metadataContents}
+	protoutil.InitBlockMetadata(availableCommonBlocks[0])
 
 	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest), &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 0)
 	if err != nil {
