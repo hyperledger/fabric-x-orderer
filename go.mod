@@ -18,7 +18,7 @@ require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/hyperledger-labs/SmartBFT v0.0.0-20250503203013-eb005eef8866
-	github.com/hyperledger/fabric v1.4.0-rc1.0.20250510200036-435a7f1a780a // commit 94590aa4332b20350e8aee5572a8cfd29164221c (tag: v3.0.0-rc1, tag: v3.0.0)
+	github.com/hyperledger/fabric v1.4.0-rc1.0.20250510200036-435a7f1a780a // commit 435a7f1a780a128756fb2f72bf4cad164bf13fbb (tag: v3.1.1)
 	github.com/hyperledger/fabric-config v0.3.0
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
