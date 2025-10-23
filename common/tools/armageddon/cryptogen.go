@@ -182,6 +182,12 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		if err != nil {
 			return err
 		}
+
+		// signing crypto to user
+		err = createUserSignCertAndPrivateKey(signCA, dir, party.ID, nil)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -270,6 +276,25 @@ func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, 
 
 	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "signcerts"), "sign", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// createUserSignCertAndPrivateKey creates for user a signed certificate with a corresponding private key used for signing and write them into files.
+func createUserSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.PartyID, nodesIPs []string) error {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed creating private key for user of party %d", err, partyID)
+	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for user of party %d", err, partyID)
+	}
+
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users"), "sign", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
