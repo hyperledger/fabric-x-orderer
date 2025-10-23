@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
@@ -244,6 +245,19 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 			return nil, fmt.Errorf("proposed common block header number %d in index %d isn't equal to computed number %d", hdr.AvailableCommonBlocks[i].Header.Number, i, lastBlockNumber)
 		}
 
+		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ba[0], &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations), BatchIndex: i}, 0)
+		if err != nil {
+			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+		}
+
+		if hdr.AvailableCommonBlocks[i].Metadata == nil || hdr.AvailableCommonBlocks[i].Metadata.Metadata == nil {
+			return nil, fmt.Errorf("proposed common block metadata in index %d is nil", i)
+		}
+
+		if !bytes.Equal(blockMetadata, hdr.AvailableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {
+			return nil, fmt.Errorf("proposed common block metadata in index %d isn't equal to computed metadata", i)
+		}
+
 	}
 
 	for i, availableBlock := range hdr.AvailableBlocks {
@@ -325,7 +339,7 @@ func (c *Consensus) VerifySignature(signature smartbft_types.Signature) error {
 // VerificationSequence returns the current verification sequence
 // (from SmartBFT API)
 func (c *Consensus) VerificationSequence() uint64 {
-	return 0
+	return 0 // TODO save current verification sequence and return it here
 }
 
 // RequestsFromProposal returns from the given proposal the included requests' info
@@ -448,6 +462,11 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	lastBlockNumber := lastCommonBlockHeader.Number
 	prevHash := protoutil.BlockHeaderHash(lastCommonBlockHeader)
 
+	md := &smartbftprotos.ViewMetadata{}
+	if err := proto.Unmarshal(metadata, md); err != nil {
+		panic(err)
+	}
+
 	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
 
 	availableBlocks := make([]state.AvailableBlock, len(attestations))
@@ -463,6 +482,12 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		lastBlockNumber++
 		availableCommonBlocks[i] = protoutil.NewBlock(lastBlockNumber, prevHash)
 		availableCommonBlocks[i].Header.DataHash = ba[0].Digest()
+		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ba[0], &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations), BatchIndex: i}, 0)
+		if err != nil {
+			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+		}
+		protoutil.InitBlockMetadata(availableCommonBlocks[i])
+		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash
 		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
@@ -471,11 +496,6 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	if len(attestations) > 0 {
 		newState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(attestations)-1].Header)
-	}
-
-	md := &smartbftprotos.ViewMetadata{}
-	if err := proto.Unmarshal(metadata, md); err != nil {
-		panic(err)
 	}
 
 	reqs := arma_types.BatchedRequests(requests)
