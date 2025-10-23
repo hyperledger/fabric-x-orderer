@@ -582,7 +582,7 @@ func checkCryptoDir(outputDir string) error {
 			return fmt.Errorf("error reading directory %s\n", usersDir)
 		}
 		for _, file := range files {
-			if !strings.HasSuffix(file.Name(), ".pem") {
+			if !strings.HasSuffix(file.Name(), ".pem") && !strings.Contains(file.Name(), "priv_sk") {
 				return fmt.Errorf("error reading %s files, suffix file is not pem\n", filepath.Join(orgDir, usersDir))
 			}
 		}
