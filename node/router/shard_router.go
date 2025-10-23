@@ -152,8 +152,7 @@ func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int
 	sr.lock.RUnlock()
 	sr.logger.Debugf("Checking stream %d,%d that was reported", connIndex, streamInConnIndex)
 
-	// check the connection, and if it's bad - try to reconnect untill success
-	sr.logger.Debugf("connection %d has state %s", connIndex, conn.GetState())
+	// check the connection, and if it's bad - try to reconnect until success
 	if conn == nil || conn.GetState() == connectivity.Shutdown || conn.GetState() == connectivity.TransientFailure {
 		if err = sr.reconnect(connIndex); err != nil {
 			return err
@@ -218,8 +217,8 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 
 func (sr *ShardRouter) MaybeInit() {
 	sr.initConnPoolAndStreamsOnce()
-	sr.startReconnectionRoutineOnce()
 	sr.maybeConnect()
+	sr.startReconnectionRoutineOnce()
 }
 
 func (sr *ShardRouter) maybeConnect() {
