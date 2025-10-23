@@ -19,17 +19,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubConsenter struct {
+type StubConsenter struct {
 	ca          tlsgen.CA // Certificate authority that issues a certificate for the consenter
 	certificate []byte
 	key         []byte
 	server      *comm.GRPCServer // GRPCServer instance represents the consenter
 	txs         uint32           // Number of txs received from router
 	partyID     types.PartyID
-	logger      types.Logger
 }
 
-func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID, logger types.Logger) stubConsenter {
+func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubConsenter {
 	// create a (cert,key) pair for the consenter
 	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
@@ -45,18 +44,17 @@ func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID, logger 
 	require.NoError(t, err)
 
 	// return a stub consenter that includes all server setup
-	stubConsenter := stubConsenter{
+	stubConsenter := StubConsenter{
 		ca:          ca,
 		certificate: certKeyPair.Cert,
 		key:         certKeyPair.Key,
 		server:      server,
 		partyID:     partyID,
-		logger:      logger,
 	}
 	return stubConsenter
 }
 
-func (sc *stubConsenter) Start() {
+func (sc *StubConsenter) Start() {
 	protos.RegisterConsensusServer(sc.server.Server(), sc)
 	go func() {
 		if err := sc.server.Start(); err != nil {
@@ -65,11 +63,11 @@ func (sc *stubConsenter) Start() {
 	}()
 }
 
-func (sc *stubConsenter) Stop() {
+func (sc *StubConsenter) Stop() {
 	sc.server.Stop()
 }
 
-func (sc *stubConsenter) Restart() {
+func (sc *StubConsenter) Restart() {
 	// save the current server address
 	addr := sc.server.Address()
 
@@ -96,20 +94,20 @@ func (sc *stubConsenter) Restart() {
 	}()
 }
 
-func (sc *stubConsenter) ReceivedMessageCount() uint32 {
+func (sc *StubConsenter) ReceivedMessageCount() uint32 {
 	receivedTxs := atomic.LoadUint32(&sc.txs)
 	return receivedTxs
 }
 
-func (sc *stubConsenter) GetConsenterEndpoint() string {
+func (sc *StubConsenter) GetConsenterEndpoint() string {
 	return sc.server.Address()
 }
 
-func (sc *stubConsenter) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
+func (sc *StubConsenter) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
 	return fmt.Errorf("NotifyEvent not implemented")
 }
 
-func (sc *stubConsenter) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+func (sc *StubConsenter) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	resp := &protos.SubmitResponse{
 		Error:   "dummy submit config",
 		ReqID:   request.Identity,
