@@ -147,11 +147,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 		},
 	}
 
-	var metadataContents [][]byte
-	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
-		metadataContents = append(metadataContents, []byte{})
-	}
-	block.Metadata = &common.BlockMetadata{Metadata: metadataContents}
+	protoutil.InitBlockMetadata(block)
 
 	var sigs []*common.MetadataSignature
 	var signers []uint64

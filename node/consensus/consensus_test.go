@@ -722,11 +722,7 @@ func TestVerifyProposal(t *testing.T) {
 	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, PrevHash: latestBlockHeader.PreviousHash, Digest: latestBlockHeader.DataHash}, Batch: ab}}
 	header.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 
-	var metadataContents [][]byte
-	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
-		metadataContents = append(metadataContents, []byte{})
-	}
-	header.AvailableCommonBlocks[0].Metadata = &common.BlockMetadata{Metadata: metadataContents}
+	protoutil.InitBlockMetadata(header.AvailableCommonBlocks[0])
 	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ab, &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 0)
 	require.Nil(t, err)
 	header.AvailableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata

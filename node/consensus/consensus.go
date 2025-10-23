@@ -486,11 +486,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		if err != nil {
 			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 		}
-		var metadataContents [][]byte
-		for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
-			metadataContents = append(metadataContents, []byte{})
-		}
-		availableCommonBlocks[i].Metadata = &common.BlockMetadata{Metadata: metadataContents}
+		protoutil.InitBlockMetadata(availableCommonBlocks[i])
 		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash

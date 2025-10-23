@@ -70,11 +70,7 @@ func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisi
 	if err != nil {
 		panic("Failed to invoke AssemblerBlockMetadataToBytes")
 	}
-	var metadataContents [][]byte
-	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
-		metadataContents = append(metadataContents, []byte{})
-	}
-	ba.OrderingInformation.CommonBlock.Metadata = &common.BlockMetadata{Metadata: metadataContents}
+	protoutil.InitBlockMetadata(ba.OrderingInformation.CommonBlock)
 	ba.OrderingInformation.CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 	obac.headerHash = protoutil.BlockHeaderHash(ba.OrderingInformation.CommonBlock.Header)
 	obac.prevBa = ba
