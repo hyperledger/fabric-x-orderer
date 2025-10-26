@@ -7,10 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -355,4 +357,44 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	for i := 0; i < numParties; i++ {
 		require.Equal(t, uint64(4), batchers[i].Ledger.Height(1))
 	}
+}
+
+func TestBatcheddRequestsHasEnvelopeBytes(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	req := tx.CreateStructuredRequest([]byte{1})
+	req.TraceId = []byte("123")
+	req.Identity = []byte("123")
+	req.IdentityId = 123
+
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	rawReq := batchers[0].Ledger.RetrieveBatchByNumber(1, 0).Requests()[0]
+
+	// Unmarshal as Envelope, and check that there are no unknown fields
+	env := &common.Envelope{}
+	err = proto.Unmarshal(rawReq, env)
+	require.NoError(t, err)
+	require.Zero(t, len(env.ProtoReflect().GetUnknown()))
+
+	require.True(t, bytes.Equal(req.Payload, env.Payload))
+	require.True(t, bytes.Equal(req.Signature, env.Signature))
 }
