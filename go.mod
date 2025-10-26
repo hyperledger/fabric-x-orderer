@@ -4,7 +4,6 @@ go 1.24.3
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/golang/protobuf v1.5.4
 	github.com/hyperledger/fabric-x-common v0.0.0-20250702121055-42b021047999
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/pkg/errors v0.9.1
@@ -45,6 +44,7 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/pprof v0.0.0-20241001023024-f4c0cfd0cf1d // indirect
