@@ -918,8 +918,6 @@ func runMutualAuth(t *testing.T, servers []testServer, trustedClients, unTrusted
 }
 
 func TestMutualAuth(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name             string
 		servers          []testServer
