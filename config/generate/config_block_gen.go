@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -55,8 +56,8 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	var consenterMapping []*genesisconfig.Consenter
 	var routerAndAssemblerEndpoints []string
 	for _, party := range sharedConfigYaml.PartiesConfig {
-		routerAndAssemblerEndpoints = append(routerAndAssemblerEndpoints, party.RouterConfig.Host+":"+strconv.Itoa(int(party.RouterConfig.Port)))
-		routerAndAssemblerEndpoints = append(routerAndAssemblerEndpoints, party.AssemblerConfig.Host+":"+strconv.Itoa(int(party.AssemblerConfig.Port)))
+		routerAndAssemblerEndpoints = append(routerAndAssemblerEndpoints, net.JoinHostPort(party.RouterConfig.Host, strconv.Itoa(int(party.RouterConfig.Port))))
+		routerAndAssemblerEndpoints = append(routerAndAssemblerEndpoints, net.JoinHostPort(party.AssemblerConfig.Host, strconv.Itoa(int(party.AssemblerConfig.Port))))
 
 		consenter := &genesisconfig.Consenter{
 			ID:            uint32(party.PartyID),
