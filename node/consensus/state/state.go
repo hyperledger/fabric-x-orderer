@@ -328,7 +328,7 @@ func (c *ConfigRequest) FromBytes(bytes []byte) error {
 }
 
 func (c *ConfigRequest) String() string {
-	// TODO: add more info to this string
+	// TODO: add more info to this string, at least the config sequence
 	return "Config Request"
 }
 
@@ -352,23 +352,27 @@ func (ce *ControlEvent) String() string {
 // ID returns a string representing the specific control event
 func (ce *ControlEvent) ID() string {
 	var payloadToHash []byte
-	if ce.Complaint != nil {
-		ce.Complaint.Signature = nil
-		payloadToHash = ce.Complaint.Bytes()
-	} else if ce.BAF != nil {
-		payloadToHash = make([]byte, 22+32) // seq and confog sequence are uint64, signer, primary and shard are uint16, and digest is 32 bytes
+	switch {
+	case ce.BAF != nil:
+		payloadToHash = make([]byte, 22+32) // seq and config sequence are uint64, signer, primary and shard are uint16, and digest is 32 bytes
 		binary.BigEndian.PutUint64(payloadToHash, uint64(ce.BAF.Seq()))
 		binary.BigEndian.PutUint64(payloadToHash[8:], uint64(ce.BAF.ConfigSequence()))
 		binary.BigEndian.PutUint16(payloadToHash[16:], uint16(ce.BAF.Signer()))
 		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))
 		binary.BigEndian.PutUint16(payloadToHash[20:], uint16(ce.BAF.Shard()))
 		copy(payloadToHash[22:], ce.BAF.Digest())
-	} else if ce.ConfigRequest != nil {
+	case ce.Complaint != nil:
+		complaintWithNoSig := &Complaint{
+			ShardTerm: ce.Complaint.ShardTerm,
+			Signer:    ce.Complaint.Signer,
+			Reason:    ce.Complaint.Reason,
+		}
+		payloadToHash = complaintWithNoSig.Bytes()
+	case ce.ConfigRequest != nil:
 		// TODO: maybe use a different ID for ConfigRequest
-		ce.ConfigRequest.Envelope.Signature = nil
 		payloadToHash = ce.ConfigRequest.Bytes()
-	} else {
-		return string("")
+	default:
+		return ""
 	}
 	dig := sha256.Sum256(payloadToHash)
 	return hex.EncodeToString(dig[:])
@@ -376,16 +380,17 @@ func (ce *ControlEvent) ID() string {
 
 // SignerID returns a string representing the signer of the specific control event
 func (ce *ControlEvent) SignerID() string {
-	var signerID string
-	if ce.Complaint != nil {
-		signerID = fmt.Sprintf("%d", ce.Complaint.Signer)
-	} else if ce.BAF != nil {
-		signerID = fmt.Sprintf("%d", ce.BAF.Signer())
+	switch {
+	case ce.BAF != nil:
+		return fmt.Sprintf("%d", ce.BAF.Signer())
+	case ce.Complaint != nil:
+		return fmt.Sprintf("%d", ce.Complaint.Signer)
+	case ce.ConfigRequest != nil:
 		// TODO: add ConfigRequest SignerID
-	} else {
-		return string("")
+		return ""
+	default:
+		return ""
 	}
-	return signerID
 }
 
 func (ce *ControlEvent) Bytes() []byte {
@@ -430,17 +435,17 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, *ConfigRequest) {
-	s2 := s.Clone()
+func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
+	nextState := s.Clone()
 
 	for _, rule := range Rules {
-		rule(s2, l, ces...)
+		rule(nextState, l, ces...)
 	}
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
-	extracted := ExtractBatchAttestationsFromPending(s2, l)
-	configRequests := ExtractConfigRequest(ces)
-	return s2, extracted, configRequests
+	extracted := ExtractBatchAttestationsFromPending(nextState, l)
+	configRequests := ExtractConfigRequests(ces)
+	return nextState, extracted, configRequests
 }
 
 func (s *State) Clone() *State {
@@ -705,12 +710,13 @@ func shardExists(shard types.ShardID, shardTerms []ShardTerm) (int, bool) {
 	return -1, false
 }
 
-func ExtractConfigRequest(ces []ControlEvent) *ConfigRequest {
+func ExtractConfigRequests(ces []ControlEvent) []*ConfigRequest {
 	// TODO: decide how to handle multiple config requests
+	var reqs []*ConfigRequest
 	for _, ce := range ces {
 		if ce.ConfigRequest != nil {
-			return ce.ConfigRequest
+			reqs = append(reqs, ce.ConfigRequest)
 		}
 	}
-	return nil
+	return reqs
 }

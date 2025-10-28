@@ -93,9 +93,9 @@ func TestConsenter(t *testing.T) {
 	}
 	events = [][]byte{(&state.ControlEvent{ConfigRequest: cr}).Bytes()}
 
-	_, _, configRequest := consenter.SimulateStateTransition(s, events)
-	assert.Equal(t, cr.Envelope.Payload, configRequest.Envelope.Payload)
-	assert.Equal(t, cr.Envelope.Signature, configRequest.Envelope.Signature)
+	_, _, configRequests := consenter.SimulateStateTransition(s, events)
+	assert.Equal(t, cr.Envelope.Payload, configRequests[0].Envelope.Payload)
+	assert.Equal(t, cr.Envelope.Signature, configRequests[0].Envelope.Signature)
 }
 
 func createConsenter(s *state.State, logger arma_types.Logger) *consensus.Consenter {

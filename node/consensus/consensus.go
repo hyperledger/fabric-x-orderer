@@ -55,7 +55,7 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, *state.ConfigRequest)
+	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
 	Commit(events [][]byte)
 }
 
@@ -379,7 +379,7 @@ func (c *Consensus) RequestID(req []byte) smartbft_types.RequestInfo {
 		return smartbft_types.RequestInfo{}
 	}
 
-	if ce.Complaint == nil && ce.BAF == nil {
+	if ce.Complaint == nil && ce.BAF == nil && ce.ConfigRequest == nil {
 		c.Logger.Warnf("Empty control event")
 		return smartbft_types.RequestInfo{}
 	}
