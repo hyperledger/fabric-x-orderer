@@ -287,7 +287,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 
 	protoutil.InitBlockMetadata(availableCommonBlocks[0])
 
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest), &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 0)
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest), &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 1)
 	if err != nil {
 		panic("failed to invoke AssemblerBlockMetadataToBytes")
 	}
