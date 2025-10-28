@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -65,6 +66,12 @@ func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisi
 			BatchCount:  batchCount,
 		},
 	}
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchId, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
+	if err != nil {
+		panic("Failed to invoke AssemblerBlockMetadataToBytes")
+	}
+	protoutil.InitBlockMetadata(ba.OrderingInformation.CommonBlock)
+	ba.OrderingInformation.CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 	obac.headerHash = protoutil.BlockHeaderHash(ba.OrderingInformation.CommonBlock.Header)
 	obac.prevBa = ba
 	return ba

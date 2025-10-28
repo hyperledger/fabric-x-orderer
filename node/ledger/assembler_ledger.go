@@ -137,7 +137,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 	t1 := time.Now()
 	defer func() {
 		l.Logger.Infof("Appended block %d of %d requests to ledger in %v",
-			ordInfo.BlockHeader.Number, len(batch.Requests()), time.Since(t1))
+			ordInfo.CommonBlock.Header.Number, len(batch.Requests()), time.Since(t1))
 	}()
 
 	block := &common.Block{
@@ -147,11 +147,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 		},
 	}
 
-	var metadataContents [][]byte
-	for i := 0; i < len(common.BlockMetadataIndex_name); i++ {
-		metadataContents = append(metadataContents, []byte{})
-	}
-	block.Metadata = &common.BlockMetadata{Metadata: metadataContents}
+	protoutil.InitBlockMetadata(block)
 
 	var sigs []*common.MetadataSignature
 	var signers []uint64
