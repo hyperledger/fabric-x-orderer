@@ -29,7 +29,7 @@ type Consenter struct {
 	State           *state.State
 }
 
-func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment) {
+func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, *state.ConfigRequest) {
 	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)
@@ -48,17 +48,17 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][
 		filteredControlEvents = append(filteredControlEvents, ce)
 	}
 
-	newState, fragments := prevState.Process(c.Logger, filteredControlEvents...)
+	newState, fragments, configRequest := prevState.Process(c.Logger, filteredControlEvents...)
 	batchAttestations := aggregateFragments(fragments)
 
-	return newState, batchAttestations
+	return newState, batchAttestations, configRequest
 }
 
 // Commit indexes BAs and updates the state.
 // Note that this must hold: Commit(controlEvents) with the same controlEvents is idempotent.
 // TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
 func (c *Consenter) Commit(events [][]byte) {
-	state, batchAttestations := c.SimulateStateTransition(c.State, events)
+	state, batchAttestations, _ := c.SimulateStateTransition(c.State, events)
 	if len(batchAttestations) > 0 {
 		c.indexAttestationsInDB(batchAttestations)
 	}

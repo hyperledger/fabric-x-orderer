@@ -16,7 +16,9 @@ import (
 	"math"
 	"slices"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric/protoutil"
 )
 
 type Rule func(*State, types.Logger, ...ControlEvent)
@@ -302,9 +304,38 @@ func (c *Complaint) String() string {
 	return fmt.Sprintf("Complaint: Signer: %d; Shard: %d; Term %d; Reason: %s", c.Signer, c.Shard, c.Term, c.Reason)
 }
 
+type ConfigRequest struct {
+	Envelope *common.Envelope
+}
+
+func (c *ConfigRequest) Bytes() []byte {
+	bytes, err := protoutil.Marshal(c.Envelope)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal envelope: %v", err))
+	}
+
+	return bytes
+}
+
+func (c *ConfigRequest) FromBytes(bytes []byte) error {
+	envelope, err := protoutil.UnmarshalEnvelope(bytes)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal envelope: %v", err)
+	}
+
+	c.Envelope = envelope
+	return nil
+}
+
+func (c *ConfigRequest) String() string {
+	// TODO: add more info to this string
+	return "Config Request"
+}
+
 type ControlEvent struct {
-	BAF       types.BatchAttestationFragment
-	Complaint *Complaint
+	BAF           types.BatchAttestationFragment
+	Complaint     *Complaint
+	ConfigRequest *ConfigRequest
 }
 
 func (ce *ControlEvent) String() string {
@@ -312,6 +343,8 @@ func (ce *ControlEvent) String() string {
 		return ce.Complaint.String()
 	} else if ce.BAF != nil {
 		return ce.BAF.String()
+	} else if ce.ConfigRequest != nil {
+		return ce.ConfigRequest.String()
 	}
 	return "empty control event"
 }
@@ -330,6 +363,10 @@ func (ce *ControlEvent) ID() string {
 		binary.BigEndian.PutUint16(payloadToHash[18:], uint16(ce.BAF.Primary()))
 		binary.BigEndian.PutUint16(payloadToHash[20:], uint16(ce.BAF.Shard()))
 		copy(payloadToHash[22:], ce.BAF.Digest())
+	} else if ce.ConfigRequest != nil {
+		// TODO: maybe use a different ID for ConfigRequest
+		ce.ConfigRequest.Envelope.Signature = nil
+		payloadToHash = ce.ConfigRequest.Bytes()
 	} else {
 		return string("")
 	}
@@ -344,6 +381,7 @@ func (ce *ControlEvent) SignerID() string {
 		signerID = fmt.Sprintf("%d", ce.Complaint.Signer)
 	} else if ce.BAF != nil {
 		signerID = fmt.Sprintf("%d", ce.BAF.Signer())
+		// TODO: add ConfigRequest SignerID
 	} else {
 		return string("")
 	}
@@ -363,6 +401,11 @@ func (ce *ControlEvent) Bytes() []byte {
 		bytes = make([]byte, len(rawComplaint)+1)
 		bytes[0] = 2
 		copy(bytes[1:], rawComplaint)
+	case ce.ConfigRequest != nil:
+		rawConfig := ce.ConfigRequest.Bytes()
+		bytes = make([]byte, len(rawConfig)+1)
+		bytes[0] = 3
+		copy(bytes[1:], rawConfig)
 	default:
 		panic("empty control event")
 	}
@@ -379,12 +422,15 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	case 2:
 		ce.Complaint = &Complaint{}
 		return ce.Complaint.FromBytes(bytes[1:])
+	case 3:
+		ce.ConfigRequest = &ConfigRequest{}
+		return ce.ConfigRequest.FromBytes(bytes[1:])
 	}
 
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.BatchAttestationFragment) {
+func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, *ConfigRequest) {
 	s2 := s.Clone()
 
 	for _, rule := range Rules {
@@ -393,8 +439,8 @@ func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.Ba
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
 	extracted := ExtractBatchAttestationsFromPending(s2, l)
-
-	return s2, extracted
+	configRequests := ExtractConfigRequest(ces)
+	return s2, extracted, configRequests
 }
 
 func (s *State) Clone() *State {
@@ -657,4 +703,14 @@ func shardExists(shard types.ShardID, shardTerms []ShardTerm) (int, bool) {
 		}
 	}
 	return -1, false
+}
+
+func ExtractConfigRequest(ces []ControlEvent) *ConfigRequest {
+	// TODO: decide how to handle multiple config requests
+	for _, ce := range ces {
+		if ce.ConfigRequest != nil {
+			return ce.ConfigRequest
+		}
+	}
+	return nil
 }

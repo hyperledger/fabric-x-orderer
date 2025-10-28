@@ -53,7 +53,7 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment)
+	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, *state.ConfigRequest)
 	Commit(events [][]byte)
 }
 
@@ -198,7 +198,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	c.stateLock.Lock()
-	computedState, attestations := c.Arma.SimulateStateTransition(c.State, batch)
+	computedState, attestations, _ := c.Arma.SimulateStateTransition(c.State, batch)
 	c.stateLock.Unlock()
 
 	availableBlocks := make([]state.AvailableBlock, len(attestations))
@@ -413,7 +413,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	}
 
 	c.stateLock.Lock()
-	_, bafs := c.Arma.SimulateStateTransition(c.State, requests)
+	_, bafs, _ := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
 
 	sigs := make([][]byte, 0, len(bafs)+1)
@@ -451,7 +451,8 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
 	c.stateLock.Lock()
-	newState, attestations := c.Arma.SimulateStateTransition(c.State, requests)
+	// TODO: config request not handled yet
+	newState, attestations, _ := c.Arma.SimulateStateTransition(c.State, requests)
 	c.stateLock.Unlock()
 
 	lastCommonBlockHeader := &common.BlockHeader{}

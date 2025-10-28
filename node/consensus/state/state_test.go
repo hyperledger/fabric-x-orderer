@@ -10,6 +10,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -94,7 +95,7 @@ func TestComplaintSerialization(t *testing.T) {
 
 func TestControlEventSerialization(t *testing.T) {
 	// Serialization and deserialization of ControlEvent with Complaint
-	ce := consensus_state.ControlEvent{nil, &complaint}
+	ce := consensus_state.ControlEvent{Complaint: &complaint}
 
 	var ce2 consensus_state.ControlEvent
 
@@ -115,12 +116,28 @@ func TestControlEventSerialization(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, ce, ce2)
+
+	// Serialization and deserialization of ControlEvent with ConfigRequest
+	cr := &consensus_state.ConfigRequest{
+		Envelope: &common.Envelope{
+			Payload:   []byte("config-payload"),
+			Signature: []byte("config-signature"),
+		},
+	}
+	ce = consensus_state.ControlEvent{ConfigRequest: cr}
+
+	var ce3 consensus_state.ControlEvent
+	err = ce3.FromBytes(ce.Bytes(), bafd.Deserialize)
+	assert.NoError(t, err)
+	assert.NotNil(t, ce3.ConfigRequest)
+	assert.Equal(t, cr.Envelope.Payload, ce3.ConfigRequest.Envelope.Payload)
+	assert.Equal(t, cr.Envelope.Signature, ce3.ConfigRequest.Envelope.Signature)
 }
 
 func TestCollectAndDeduplicateEvents(t *testing.T) {
 	state := initialState
-	ce := consensus_state.ControlEvent{nil, &complaint}
-	ce2 := consensus_state.ControlEvent{nil, &complaint}
+	ce := consensus_state.ControlEvent{Complaint: &complaint}
+	ce2 := consensus_state.ControlEvent{Complaint: &complaint}
 	logger := testutil.CreateLogger(t, 0)
 
 	// Add a valid Complaint and ensure no duplicates are accepted in the same round
@@ -150,7 +167,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 		Signature: []byte{4},
 	}
 
-	ce = consensus_state.ControlEvent{nil, &c}
+	ce = consensus_state.ControlEvent{Complaint: &c}
 	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 
@@ -164,7 +181,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 		Signature: []byte{4},
 	}
 
-	ce = consensus_state.ControlEvent{nil, &c}
+	ce = consensus_state.ControlEvent{Complaint: &c}
 	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
 	assert.Equal(t, state, expectedState)
 
