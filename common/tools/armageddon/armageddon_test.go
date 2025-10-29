@@ -577,13 +577,50 @@ func checkCryptoDir(outputDir string) error {
 
 		// check users dir
 		usersDir := filepath.Join(orgDir, "users")
-		files, err := os.ReadDir(usersDir)
+		if _, err := os.Stat(usersDir); os.IsNotExist(err) {
+			return fmt.Errorf("missing directory: %s\n", usersDir)
+		}
+		users, err := os.ReadDir(usersDir)
 		if err != nil {
 			return fmt.Errorf("error reading directory %s\n", usersDir)
 		}
-		for _, file := range files {
-			if !strings.HasSuffix(file.Name(), ".pem") && !strings.Contains(file.Name(), "priv_sk") {
-				return fmt.Errorf("error reading %s files, suffix file is not pem\n", filepath.Join(orgDir, usersDir))
+		for _, user := range users {
+			userMSPPath := filepath.Join(orgDir, "users", user.Name(), "msp")
+			if _, err := os.Stat(userMSPPath); os.IsNotExist(err) {
+				return fmt.Errorf("missing directory: %s\n", userMSPPath)
+			}
+
+			requiredMSPSubDirs := []string{"cacerts", "intermediatecerts", "admincerts", "keystore", "signcerts", "tlscacerts", "tlsintermediatecerts"}
+			for _, mspSubDir := range requiredMSPSubDirs {
+				mspSubDirPath := filepath.Join(userMSPPath, mspSubDir)
+				if _, err := os.Stat(mspSubDirPath); os.IsNotExist(err) {
+					return fmt.Errorf("missing directory: %s\n", mspSubDirPath)
+				}
+				if mspSubDir == "keystore" || mspSubDir == "signcerts" {
+					files, err := os.ReadDir(mspSubDirPath)
+					if err != nil {
+						return fmt.Errorf("error reading directory %s\n", mspSubDirPath)
+					}
+					for _, file := range files {
+						if !strings.HasSuffix(file.Name(), ".pem") && !strings.Contains(file.Name(), "priv_sk") {
+							return fmt.Errorf("error reading %s files, expect pem files or file name priv_sk \n", mspSubDirPath)
+						}
+					}
+				}
+			}
+
+			userTLSPath := filepath.Join(orgDir, "users", user.Name(), "tls")
+			if _, err := os.Stat(userTLSPath); os.IsNotExist(err) {
+				return fmt.Errorf("missing directory: %s\n", userTLSPath)
+			}
+			files, err := os.ReadDir(userTLSPath)
+			if err != nil {
+				return fmt.Errorf("error reading directory %s\n", userTLSPath)
+			}
+			for _, file := range files {
+				if !strings.HasSuffix(file.Name(), ".pem") {
+					return fmt.Errorf("error reading %s files, suffix file is not pem\n", userTLSPath)
+				}
 			}
 		}
 
@@ -616,7 +653,7 @@ func checkCryptoDir(outputDir string) error {
 					return fmt.Errorf("missing directory: %s\n", mspSubDirPath)
 				}
 				if mspSubDir == "keystore" || mspSubDir == "signcerts" {
-					files, err = os.ReadDir(mspSubDirPath)
+					files, err := os.ReadDir(mspSubDirPath)
 					if err != nil {
 						return fmt.Errorf("error reading directory %s\n", mspSubDirPath)
 					}
@@ -632,7 +669,7 @@ func checkCryptoDir(outputDir string) error {
 			if _, err := os.Stat(tlsPath); os.IsNotExist(err) {
 				return fmt.Errorf("missing directory: %s\n", tlsPath)
 			}
-			files, err = os.ReadDir(tlsPath)
+			files, err := os.ReadDir(tlsPath)
 			if err != nil {
 				return fmt.Errorf("error reading directory %s\n", tlsPath)
 			}
