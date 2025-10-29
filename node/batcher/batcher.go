@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -158,15 +159,16 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 	}
 
 	b.Metrics.routerTxsTotal.Add(1)
-	traceId := req.TraceId
-	req.TraceId = nil
-	rawReq, err := proto.Marshal(req)
+
+	// Make sure batched requests contain only bytes of Envelope, not Request.
+	// This is done to maintain compatibility with the Fabric block structure.
+	rawReq, err := proto.Marshal(&common.Envelope{Payload: req.Payload, Signature: req.Signature})
 	if err != nil {
 		b.logger.Panicf("Failed marshaling request: %v", err)
 	}
 
 	var resp protos.SubmitResponse
-	resp.TraceId = traceId
+	resp.TraceId = req.TraceId
 
 	if err := b.batcher.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
@@ -208,25 +210,26 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 		}
 
 		b.Metrics.routerTxsTotal.Add(1)
-		traceId := req.TraceId
-		req.TraceId = nil
-		rawReq, err := proto.Marshal(req)
+
+		// Make sure batched requests contain only bytes of Envelope, not Request.
+		// This is done to maintain compatibility with the Fabric block structure.
+		rawReq, err := proto.Marshal(&common.Envelope{Payload: req.Payload, Signature: req.Signature})
 		if err != nil {
 			b.logger.Panicf("Failed marshaling request: %v", err)
 		}
 
 		var resp protos.SubmitResponse
-		resp.TraceId = traceId
+		resp.TraceId = req.TraceId
 
 		if err := b.batcher.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
 		}
 
-		if len(traceId) > 0 {
+		if len(req.TraceId) > 0 {
 			responses <- &resp
 		}
 
-		b.logger.Debugf("Submitted request %x", traceId)
+		b.logger.Debugf("Submitted request %x", req.TraceId)
 
 	}
 }
