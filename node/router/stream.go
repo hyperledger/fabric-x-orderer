@@ -12,6 +12,7 @@ import (
 	"maps"
 	"sync"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -74,31 +75,60 @@ func (s *stream) sendRequests() {
 				s.cancelOnServerError()
 				return
 			}
-			// verify the request
-			if err := s.verifier.Verify(tr.request); err != nil {
-				s.logger.Debugf("request is invalid: %s", err)
-				// send error to the client
-				s.responseToClientWithError(tr, fmt.Errorf("request verification error: %s", err))
-			} else {
-				s.logger.Debugf("send request with trace id %x to batcher %s", tr.trace, s.endpoint)
-				err := s.requestTransmitSubmitStreamClient.Send(tr.request)
-				if err != nil {
-					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-					if tr.trace == nil {
-						// send error to client, in case request is not traced.
-						tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
-					}
-					s.cancelOnServerError()
-					return
-				}
-				// fast response to client
-				if tr.trace == nil {
-					// request is untraced, send no-error to client.
-					tr.responses <- Response{err: nil}
-				}
+
+			reqType, err := s.verifyAndClassifyRequest(tr.request)
+			if err != nil {
+				s.responseToClientWithError(tr, err)
+				continue
 			}
+
+			// TODO: forward request to batcher or consenter
+			_ = reqType
+
+			s.logger.Debugf("send request with trace id %x to batcher %s", tr.trace, s.endpoint)
+			err = s.requestTransmitSubmitStreamClient.Send(tr.request)
+			if err != nil {
+				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+				if tr.trace == nil {
+					// send error to client, in case request is not traced.
+					tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
+				}
+				s.cancelOnServerError()
+				return
+			}
+			// fast response to client
+			if tr.trace == nil {
+				// request is untraced, send no-error to client.
+				tr.responses <- Response{err: nil}
+			}
+
 		}
 	}
+}
+
+// verifyAndClassifyRequest first verifies the request with the RulesVerifier verify method, and then it validates the request structure and type.
+func (s *stream) verifyAndClassifyRequest(request *protos.Request) (common.HeaderType, error) {
+	var reqType common.HeaderType
+
+	err := s.verifier.Verify(request)
+	if err != nil {
+		s.logger.Debugf("request is invalid: %s", err)
+		return reqType, fmt.Errorf("request verification error: %s", err)
+	}
+
+	// verify the request structure and clasify the request
+	reqType, err = s.verifier.VerifyStructureAndClassify(request)
+	if err != nil {
+		s.logger.Debugf("request structure is invalid: %s", err)
+		return reqType, fmt.Errorf("request structure verification error: %s", err)
+	}
+
+	if int(reqType) >= len(common.HeaderType_value) || reqType == common.HeaderType_CONFIG || reqType == common.HeaderType_ORDERER_TRANSACTION || reqType == common.HeaderType_DELIVER_SEEK_INFO {
+		s.logger.Debugf("request has unsupported type: %s", reqType)
+		return reqType, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
+	}
+
+	return reqType, nil
 }
 
 func (s *stream) forwardResponseToClient(response *protos.SubmitResponse) error {
