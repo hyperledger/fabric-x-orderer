@@ -262,17 +262,7 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 }
 
 func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) {
-	genesisBlocks := make([]state.AvailableBlock, 1)
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
-
-	genesisBlocks[0] = state.AvailableBlock{
-		Header: &state.BlockHeader{
-			Number:   0,
-			PrevHash: nil,
-			Digest:   genesisDigest,
-		},
-		Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest),
-	}
 
 	lastCommonBlockHeader := &common.BlockHeader{}
 	if err := proto.Unmarshal(initState.AppContext, lastCommonBlockHeader); err != nil {
@@ -298,7 +288,6 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 		Payload: protoutil.MarshalOrPanic(genesisBlock),
 		Header: (&state.Header{
 			AvailableCommonBlocks: availableCommonBlocks,
-			AvailableBlocks:       genesisBlocks,
 			State:                 initState,
 			Num:                   0,
 		}).Serialize(),

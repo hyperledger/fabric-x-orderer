@@ -225,8 +225,10 @@ func TestConsensus(t *testing.T) {
 						tstExpectedDecisionNum = tstExpectedDecisionNum[1:]
 
 						var actualSequences []arma_types.BatchSequence
-						for _, ab := range hdr.AvailableBlocks {
-							actualSequences = append(actualSequences, ab.Batch.Seq())
+						for _, acb := range hdr.AvailableCommonBlocks {
+							_, _, seq, _, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(acb.Metadata.Metadata[common.BlockMetadataIndex_ORDERER])
+							assert.NoError(t, err)
+							actualSequences = append(actualSequences, seq)
 						}
 						assert.Equal(t, expectedSequences, actualSequences)
 						assert.Equal(t, expectedDecisionNum, uint64(hdr.Num))
@@ -323,18 +325,9 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 	height := ledger.Height()
 
 	if height == 0 {
-		genesisBlock := state.AvailableBlock{
-			Header: &state.BlockHeader{
-				Number:   0,
-				PrevHash: nil,
-				Digest:   make([]byte, 32),
-			},
-			Batch: state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, make([]byte, 32)),
-		}
 		genesisCommonBlock := &common.Block{Header: &common.BlockHeader{Number: 0}}
 		genesisProposal := smartbft_types.Proposal{
 			Header: (&state.Header{
-				AvailableBlocks:       []state.AvailableBlock{genesisBlock},
 				AvailableCommonBlocks: []*common.Block{genesisCommonBlock},
 				State:                 initState,
 				Num:                   0,
@@ -598,12 +591,9 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 			require.Equal(t, tst.metadata.LatestSequence, uint64(header.Num))
 
-			require.Len(t, header.AvailableBlocks, len(tst.bafsOfAvailableBatches))
 			require.Len(t, header.AvailableCommonBlocks, len(tst.bafsOfAvailableBatches))
 
 			for i, baf := range tst.bafsOfAvailableBatches {
-				ab := state.NewAvailableBatch(baf.Primary(), baf.Shard(), baf.Seq(), baf.Digest())
-				require.Equal(t, ab, header.AvailableBlocks[i].Batch)
 				require.Equal(t, baf.Digest(), header.AvailableCommonBlocks[i].Header.DataHash)
 			}
 
@@ -618,7 +608,6 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 					DataHash:     baf.Digest(),
 				}
 
-				require.Equal(t, latestBlockHeader.Number, header.AvailableBlocks[i].Header.Number)
 				require.Equal(t, latestBlockHeader, header.AvailableCommonBlocks[i].Header)
 
 				latestBlockNumber++
@@ -719,7 +708,6 @@ func TestVerifyProposal(t *testing.T) {
 
 	ab := state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())
 
-	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, PrevHash: latestBlockHeader.PreviousHash, Digest: latestBlockHeader.DataHash}, Batch: ab}}
 	header.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 
 	protoutil.InitBlockMetadata(header.AvailableCommonBlocks[0])
@@ -824,7 +812,6 @@ func TestVerifyProposal(t *testing.T) {
 	// 9. mismatch available batch in header
 	t.Log("mismatch available batch in header")
 	headerAB := header
-	headerAB.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, PrevHash: latestBlockHeader.PreviousHash, Digest: latestBlockHeader.DataHash}, Batch: state.NewAvailableBatch(10, baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 	headerAB.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 	verifyProposalRequireError(t, c, headerAB.Serialize(), brs.Serialize(), mBytes)
 
@@ -833,7 +820,6 @@ func TestVerifyProposal(t *testing.T) {
 	headerBH := header
 	badBH := latestBlockHeader
 	badBH.PreviousHash[0]++
-	headerBH.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: badBH.Number, PrevHash: badBH.PreviousHash, Digest: badBH.DataHash}, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
 	headerBH.AvailableCommonBlocks = []*common.Block{{Header: badBH}}
 	verifyProposalRequireError(t, c, headerBH.Serialize(), brs.Serialize(), mBytes)
 }
@@ -944,8 +930,6 @@ func TestSignProposal(t *testing.T) {
 	latestBlockHeader.DataHash = baf123id1p1s1.Digest()
 	latestBlockHeader.PreviousHash = protoutil.BlockHeaderHash(initialAppContext)
 
-	header.AvailableBlocks = []state.AvailableBlock{{Header: &state.BlockHeader{Number: latestBlockHeader.Number, Digest: latestBlockHeader.DataHash, PrevHash: latestBlockHeader.PreviousHash}, Batch: state.NewAvailableBatch(baf123id1p1s1.Primary(), baf123id1p1s1.Shard(), baf123id1p1s1.Seq(), baf123id1p1s1.Digest())}}
-
 	newState := initialState
 	newState.AppContext = protoutil.MarshalOrPanic(latestBlockHeader)
 
@@ -1023,7 +1007,7 @@ func TestConsensusStartStop(t *testing.T) {
 	hdr := &state.Header{}
 	err = hdr.Deserialize(decision.Header)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(hdr.AvailableBlocks))
+	assert.Equal(t, 1, len(hdr.AvailableCommonBlocks))
 	c.Stop()
 
 	c, cleanup = makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
@@ -1048,7 +1032,7 @@ func TestConsensusStartStop(t *testing.T) {
 
 	err = hdr.Deserialize(decision.Header)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(hdr.AvailableBlocks))
+	assert.Equal(t, 0, len(hdr.AvailableCommonBlocks))
 
 	digests, _ := c.BADB.List()
 	assert.Equal(t, 1, len(digests))
@@ -1082,7 +1066,7 @@ func TestConsensusStartStop(t *testing.T) {
 
 	err = hdr.Deserialize(decision.Header)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(hdr.AvailableBlocks))
+	assert.Equal(t, 1, len(hdr.AvailableCommonBlocks))
 
 	// 4. Verify duplicate dig123 is handled correctly by BADB
 	commitEvent.Add(1)
@@ -1103,5 +1087,5 @@ func TestConsensusStartStop(t *testing.T) {
 
 	err = hdr.Deserialize(decision.Header)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(hdr.AvailableBlocks))
+	assert.Equal(t, 0, len(hdr.AvailableCommonBlocks))
 }

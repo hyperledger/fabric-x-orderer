@@ -201,19 +201,11 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	computedState, attestations, _ := c.Arma.SimulateStateTransition(c.State, batch)
 	c.stateLock.Unlock()
 
-	availableBlocks := make([]state.AvailableBlock, len(attestations))
 	availableCommonBlocks := make([]*common.Block, len(attestations))
 
 	for i, ba := range attestations {
-		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
 		if !bytes.Equal(hdr.AvailableCommonBlocks[i].Header.DataHash, ba[0].Digest()) {
 			return nil, fmt.Errorf("proposed available common block %s data hash in index %d isn't equal to computed digest %s", arma_types.CommonBlockToString(hdr.AvailableCommonBlocks[i]), i, arma_types.BatchIDToString(ba[0]))
-		}
-	}
-
-	for i, ab := range hdr.AvailableBlocks {
-		if !ab.Batch.Equal(availableBlocks[i].Batch) {
-			return nil, fmt.Errorf("proposed available batch %v in index %d isn't equal to computed available batch %v", availableBlocks[i].Batch, i, ab)
 		}
 	}
 
@@ -239,7 +231,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		bh.Number = lastBlockNumber
 		bh.PrevHash = prevHash
 		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
-		availableBlocks[i].Header = &bh
 
 		if hdr.AvailableCommonBlocks[i].Header.Number != lastBlockNumber {
 			return nil, fmt.Errorf("proposed common block header number %d in index %d isn't equal to computed number %d", hdr.AvailableCommonBlocks[i].Header.Number, i, lastBlockNumber)
@@ -258,13 +249,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 			return nil, fmt.Errorf("proposed common block metadata in index %d isn't equal to computed metadata", i)
 		}
 
-	}
-
-	for i, availableBlock := range hdr.AvailableBlocks {
-		if !availableBlock.Header.Equal(availableBlocks[i].Header) {
-			return nil, fmt.Errorf("proposed block header %+v in index %d isn't equal to computed block header %+v",
-				availableBlock.Header, i, availableBlocks[i].Header)
-		}
 	}
 
 	if len(attestations) > 0 {
@@ -470,12 +454,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
 
-	availableBlocks := make([]state.AvailableBlock, len(attestations))
 	availableCommonBlocks := make([]*common.Block, len(attestations))
-
-	for i, ba := range attestations {
-		availableBlocks[i].Batch = state.NewAvailableBatch(ba[0].Primary(), ba[0].Shard(), ba[0].Seq(), ba[0].Digest())
-	}
 
 	for i, ba := range attestations {
 		var hdr state.BlockHeader
@@ -492,7 +471,6 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		hdr.Number = lastBlockNumber
 		hdr.PrevHash = prevHash
 		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
-		availableBlocks[i].Header = &hdr
 	}
 
 	if len(attestations) > 0 {
@@ -503,7 +481,6 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	return smartbft_types.Proposal{
 		Header: (&state.Header{
-			AvailableBlocks:              availableBlocks,
 			AvailableCommonBlocks:        availableCommonBlocks,
 			State:                        newState,
 			Num:                          arma_types.DecisionNum(md.LatestSequence),
