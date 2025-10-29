@@ -130,11 +130,7 @@ func (sc *stubConsenter) Broadcast(stream orderer.AtomicBroadcast_BroadcastServe
 func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 	proposal := smartbft_types.Proposal{
 		Header: (&state.Header{
-			Num: ba.OrderingInformation.DecisionNum,
-			AvailableBlocks: []state.AvailableBlock{{
-				Batch:  ba.AvailableBatch,
-				Header: ba.OrderingInformation.BlockHeader,
-			}},
+			Num:                   ba.OrderingInformation.DecisionNum,
 			AvailableCommonBlocks: []*common.Block{ba.OrderingInformation.CommonBlock},
 		}).Serialize(),
 	}
