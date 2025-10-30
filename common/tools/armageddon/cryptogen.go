@@ -45,29 +45,39 @@ const (
 // dir
 // └── crypto
 //
-//	└── ordererOrganizations
-//	        └── org{partyID}
-//	            ├── ca
-//	            ├── tlsca
-//	            ├── orderers
-//	            │    └── party{partyID}
-//	            │          ├── router
-//	            │          │   ├── tls
-//	            │          │   └── msp
-//	            │          │       ├── cacerts
-//	            │          │       ├── intermediatecerts
-//	            │          │       ├── admincerts  (ignored)
-//	            │          │       ├── keystore
-//	            │          │       ├── signcerts
-//	            │          │       ├── tlscacerts
-//	            │          │       └── tlsintermediatecerts
-//	            │          ├── batcher1
-//	            │          ├── batcher2
-//	            │          ├── ...
-//	            │          ├── batcher{shards}
-//	            │          ├── consenter
-//	            │          └── assembler
-//	            └── users
+//		└── ordererOrganizations
+//		        └── org{partyID}
+//		            ├── ca
+//		            ├── tlsca
+//		            ├── orderers
+//		            │    └── party{partyID}
+//		            │          ├── router
+//		            │          │   ├── tls
+//		            │          │   └── msp
+//		            │          │       ├── cacerts
+//		            │          │       ├── intermediatecerts
+//		            │          │       ├── admincerts  (ignored)
+//		            │          │       ├── keystore
+//		            │          │       ├── signcerts
+//		            │          │       ├── tlscacerts
+//		            │          │       └── tlsintermediatecerts
+//		            │          ├── batcher1
+//		            │          ├── batcher2
+//		            │          ├── ...
+//		            │          ├── batcher{shards}
+//		            │          ├── consenter
+//		            │          └── assembler
+//		            └── users
+//	                  └── user (admin, orderer loadgen)
+//	                       ├── tls
+//		                      └── msp
+//		                           ├── cacerts
+//		                           ├── intermediatecerts
+//		                           ├── admincerts  (ignored)
+//		                           ├── keystore
+//		                           ├── signcerts
+//		                           ├── tlscacerts
+//		                           └── tlsintermediatecerts
 func GenerateCryptoConfig(networkConfig *genconfig.Network, outputDir string) error {
 	// create folder structure for the crypto files
 	err := generateNetworkCryptoConfigFolderStructure(outputDir, networkConfig)
@@ -182,6 +192,12 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		if err != nil {
 			return err
 		}
+
+		// signing crypto to user
+		err = createUserSignCertAndPrivateKey(signCA, dir, party.ID, nil)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -245,11 +261,11 @@ func createUserTLSCertKeyPair(ca *ca.CA, dir string, partyID types.PartyID, node
 		return fmt.Errorf("err: %s, failed marshaling private key for user for party %d", err, partyID)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users"), "user-tls", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageKeyEncipherment|x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "tls"), "user-tls", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageKeyEncipherment|x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{
 		x509.ExtKeyUsageClientAuth,
 		x509.ExtKeyUsageServerAuth,
 	})
-	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user-key.pem"), "PRIVATE KEY", privateKeyBytes)
+	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "tls", "user-key.pem"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -270,6 +286,25 @@ func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, 
 
 	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "signcerts"), "sign", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// createUserSignCertAndPrivateKey creates for user a signed certificate with a corresponding private key used for signing and write them into files.
+func createUserSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.PartyID, nodesIPs []string) error {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed creating private key for user of party %d", err, partyID)
+	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for user of party %d", err, partyID)
+	}
+
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "msp", "signcerts"), "sign", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -333,6 +368,12 @@ func generateOrdererOrg(rootDir string, folders []string, partyID int, shards in
 	}
 
 	folders = append(folders, filepath.Join(orgDir, "users"))
+	userMSPPath := filepath.Join(orgDir, "users", "user", "msp")
+	folders = append(folders, userMSPPath)
+	for _, subDir := range mspSubDirs {
+		folders = append(folders, filepath.Join(userMSPPath, subDir))
+	}
+	folders = append(folders, filepath.Join(orgDir, "users", "user", "tls"))
 
 	return folders
 }
