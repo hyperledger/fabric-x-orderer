@@ -8,6 +8,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,7 +22,7 @@ type ConfigurationSubmitter interface {
 	Start()
 	Stop()
 	// Update() // TODO implement a thread-safe update method for config submitter
-	Forward(tr *TrackedRequest) error
+	Forward(tr *TrackedRequest)
 }
 
 type configSubmitter struct {
@@ -102,6 +103,11 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		feedback.SubmitResponse = resp
 		if err != nil {
 			feedback.err = fmt.Errorf("error forwarding config request to consenter: %v", err)
+		} else {
+			feedback.SubmitResponse = resp
+			if resp.Error != "" {
+				feedback.err = errors.New(resp.Error)
+			}
 		}
 	}
 
