@@ -397,14 +397,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		// Decision 1 with one data block (header.Number = 1) and one config block (header.Number = 2)
 		// Decision 2 with one data block (header.Number = 3)
 		// ReadConfig again, expect for the fake config block to be the last block
-		dataBlock1 := state.AvailableBlock{
-			Header: &state.BlockHeader{
-				Number:   1,
-				PrevHash: nil,
-				Digest:   make([]byte, 32),
-			},
-			Batch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, make([]byte, 32)),
-		}
+
 		dataCommonBlock1 := createDataBlock(uint64(1))
 
 		initialState := &state.State{
@@ -416,19 +409,9 @@ func TestLaunchArmaNode(t *testing.T) {
 			AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0}),
 		}
 
-		newConfigBlock := state.AvailableBlock{
-			Header: &state.BlockHeader{
-				Number:   2,
-				PrevHash: nil,
-				Digest:   make([]byte, 32),
-			},
-			Batch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, make([]byte, 32)),
-		}
-
 		newConfigCommonBlock := &common.Block{Header: &common.BlockHeader{Number: 2}, Data: genesisBlock.Data}
 		newConfigProposal := smartbft_types.Proposal{
 			Header: (&state.Header{
-				AvailableBlocks:              []state.AvailableBlock{dataBlock1, newConfigBlock},
 				AvailableCommonBlocks:        []*common.Block{dataCommonBlock1, newConfigCommonBlock},
 				State:                        initialState,
 				Num:                          1,
@@ -437,19 +420,10 @@ func TestLaunchArmaNode(t *testing.T) {
 			Metadata: nil,
 		}
 
-		dataBlock2 := state.AvailableBlock{
-			Header: &state.BlockHeader{
-				Number:   3,
-				PrevHash: nil,
-				Digest:   make([]byte, 32),
-			},
-			Batch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, make([]byte, 32)),
-		}
 		dataCommonBlock2 := createDataBlock(uint64(3))
 
 		newProposal := smartbft_types.Proposal{
 			Header: (&state.Header{
-				AvailableBlocks:              []state.AvailableBlock{dataBlock2},
 				AvailableCommonBlocks:        []*common.Block{dataCommonBlock2},
 				State:                        initialState,
 				Num:                          2,
