@@ -376,7 +376,6 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		Consenter:                 consenterFromMyParty,
 		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
-		MonitoringListenAddress:   net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:        config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return assemblerConfig

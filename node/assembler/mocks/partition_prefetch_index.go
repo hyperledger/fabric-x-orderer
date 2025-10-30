@@ -52,6 +52,11 @@ type FakePartitionPrefetchIndexer struct {
 	invocationsMutex sync.RWMutex
 }
 
+// PrefetchBufferSize implements assembler.PartitionPrefetchIndexer.
+func (fake *FakePartitionPrefetchIndexer) PrefetchBufferSize() int {
+	panic("unimplemented")
+}
+
 func (fake *FakePartitionPrefetchIndexer) PopOrWait(arg1 types.BatchID) (types.Batch, error) {
 	fake.popOrWaitMutex.Lock()
 	ret, specificReturn := fake.popOrWaitReturnsOnCall[len(fake.popOrWaitArgsForCall)]

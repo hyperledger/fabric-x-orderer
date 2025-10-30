@@ -264,6 +264,14 @@ func (fake *FakeAssemblerLedgerReaderWriter) GetTxCount() uint64 {
 	return fakeReturns.result1
 }
 
+func (fake *FakeAssemblerLedgerReaderWriter) GetBlocksCount() uint64 {
+	return uint64(0)
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) GetBlocksSize() uint64 {
+	return uint64(0)
+}
+
 func (fake *FakeAssemblerLedgerReaderWriter) GetTxCountCallCount() int {
 	fake.getTxCountMutex.RLock()
 	defer fake.getTxCountMutex.RUnlock()
