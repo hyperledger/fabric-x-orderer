@@ -249,7 +249,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
-		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		Shards:                              config.ExtractShards(),
 		Consenter:                           config.ExtractConsenterInParty(),
@@ -260,7 +260,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
-		MonitoringListenAddress:             config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
+		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return routerConfig
@@ -279,7 +279,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		Shards:                              config.ExtractShards(),
 		Consenters:                          config.ExtractConsenters(),
 		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:                       config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		ShardId:                             config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID,
@@ -292,7 +292,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		SubmitTimeout:                       config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
 		BatchSequenceGap:                    types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
-		MonitoringListenAddress:             config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
+		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
@@ -334,14 +334,14 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 		Consenters:              config.ExtractConsenters(),
 		Router:                  config.ExtractRouterInParty(),
 		Directory:               config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:           config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		ListenAddress:           net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		PartyId:                 config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSPrivateKeyFile:       config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile:      config.LocalConfig.TLSConfig.Certificate,
 		SigningPrivateKey:       signingPrivateKey,
 		WALDir:                  DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
 		BFTConfig:               BFTConfig,
-		MonitoringListenAddress: config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
+		MonitoringListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:      config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return consenterConfig
@@ -365,7 +365,7 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		TLSCertificateFile:        config.LocalConfig.TLSConfig.Certificate,
 		PartyId:                   config.LocalConfig.NodeLocalConfig.PartyID,
 		Directory:                 config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:             config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		ListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		PrefetchBufferMemoryBytes: config.LocalConfig.NodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes,
 		RestartLedgerScanTimeout:  config.LocalConfig.NodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout,
 		PrefetchEvictionTtl:       config.LocalConfig.NodeLocalConfig.AssemblerParams.PrefetchEvictionTtl,
@@ -376,7 +376,7 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		Consenter:                 consenterFromMyParty,
 		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
-		MonitoringListenAddress:   config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
+		MonitoringListenAddress:   net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:        config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return assemblerConfig
@@ -398,7 +398,7 @@ func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {
 
 			batcher := nodeconfig.BatcherInfo{
 				PartyID:    types.PartyID(party.PartyID),
-				Endpoint:   batcher.Host + ":" + strconv.Itoa(int(batcher.Port)),
+				Endpoint:   net.JoinHostPort(batcher.Host, strconv.Itoa(int(batcher.Port))),
 				TLSCACerts: tlsCACertsCollection,
 				PublicKey:  pemPublicKey,
 				TLSCert:    batcher.TlsCert,
@@ -436,7 +436,7 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 
 		consenterInfo := nodeconfig.ConsenterInfo{
 			PartyID:    types.PartyID(party.PartyID),
-			Endpoint:   party.ConsenterConfig.Host + ":" + strconv.Itoa(int(party.ConsenterConfig.Port)),
+			Endpoint:   net.JoinHostPort(party.ConsenterConfig.Host, strconv.Itoa(int(party.ConsenterConfig.Port))),
 			PublicKey:  pemPublicKey,
 			TLSCACerts: tlsCACertsCollection,
 		}
