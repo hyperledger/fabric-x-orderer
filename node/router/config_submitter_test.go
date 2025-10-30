@@ -19,7 +19,7 @@ import (
 )
 
 type configSubmitTestSetup struct {
-	stubConsenter   *stubConsenter
+	stubConsenter   *StubConsenter
 	configSubmitter *configSubmitter
 }
 
@@ -38,7 +38,7 @@ func createconfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	stubConsenter := NewStubConsenter(t, ca, types.PartyID(1), logger)
+	stubConsenter := NewStubConsenter(t, ca, types.PartyID(1))
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)

@@ -35,7 +35,7 @@ type stream struct {
 	srReconnectChan                   chan reconnectReq
 	notifiedReconnect                 bool
 	verifier                          *requestfilter.RulesVerifier
-	configSubmitter                   *configSubmitter
+	configSubmitter                   ConfigurationSubmitter
 }
 
 // readResponses listens for responses from the batcher.
@@ -83,26 +83,29 @@ func (s *stream) sendRequests() {
 				continue
 			}
 
-			// TODO: forward request to batcher or consenter
-			_ = reqType
-
-			s.logger.Debugf("send request with trace id %x to batcher %s", tr.trace, s.endpoint)
-			err = s.requestTransmitSubmitStreamClient.Send(tr.request)
-			if err != nil {
-				s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
-				if tr.trace == nil {
-					// send error to client, in case request is not traced.
-					tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
+			if reqType == common.HeaderType_CONFIG_UPDATE {
+				s.logger.Infof("received request with type %s, forwarding to consenter", reqType)
+				// forward to consenter. configSubmitter will handle sending response to client.
+				s.configSubmitter.Forward(tr)
+			} else {
+				s.logger.Debugf("received request with type %s, forwarding to batcher %s", reqType, s.endpoint)
+				err = s.requestTransmitSubmitStreamClient.Send(tr.request)
+				if err != nil {
+					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
+					if tr.trace == nil {
+						// send error to client, in case request is not traced.
+						tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
+					}
+					s.cancelOnServerError()
+					return
 				}
-				s.cancelOnServerError()
-				return
-			}
-			// fast response to client
-			if tr.trace == nil {
-				// request is untraced, send no-error to client.
-				tr.responses <- Response{err: nil}
-			}
 
+				// send fast response to client for untraced requests.
+				// traced requests get their response from readResponses goroutine.
+				if tr.trace == nil {
+					tr.responses <- Response{err: nil}
+				}
+			}
 		}
 	}
 }
