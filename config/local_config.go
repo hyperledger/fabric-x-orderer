@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	Router    = "Router"
-	Batcher   = "Batcher"
-	Consensus = "Consensus"
-	Assembler = "Assembler"
+	RouterStr    = "Router"
+	BatcherStr   = "Batcher"
+	ConsensusStr = "Consensus"
+	AssemblerStr = "Assembler"
 )
 
 // NodeLocalConfig controls the local configuration of an Arma node.
@@ -237,19 +237,19 @@ func validateNodeLocalConfigParams(nodeLocalConfig *NodeLocalConfig) (string, er
 	var nonNilRoles []string
 
 	if nodeLocalConfig.RouterParams != nil && !isEmptyRouterParams(nodeLocalConfig.RouterParams) {
-		nonNilRoles = append(nonNilRoles, Router)
+		nonNilRoles = append(nonNilRoles, RouterStr)
 	}
 
 	if nodeLocalConfig.BatcherParams != nil && !isEmptyBatcherParams(nodeLocalConfig.BatcherParams) {
-		nonNilRoles = append(nonNilRoles, Batcher)
+		nonNilRoles = append(nonNilRoles, BatcherStr)
 	}
 
 	if nodeLocalConfig.ConsensusParams != nil && !isEmptyConsensusParams(nodeLocalConfig.ConsensusParams) {
-		nonNilRoles = append(nonNilRoles, Consensus)
+		nonNilRoles = append(nonNilRoles, ConsensusStr)
 	}
 
 	if nodeLocalConfig.AssemblerParams != nil && !isEmptyAssemblerParams(nodeLocalConfig.AssemblerParams) {
-		nonNilRoles = append(nonNilRoles, Assembler)
+		nonNilRoles = append(nonNilRoles, AssemblerStr)
 	}
 
 	if len(nonNilRoles) == 0 {

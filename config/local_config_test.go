@@ -59,7 +59,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.NotNil(t, routerLocalConfigLoaded.ClusterConfig)
 		require.Equal(t, routerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.Enabled, true)
 		require.Equal(t, routerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.ClientAuthRequired, true)
-		require.Equal(t, role, config.Router)
+		require.Equal(t, role, config.RouterStr)
 
 		for j := 1; j <= len(networkLocalConfig.PartiesLocalConfig[i-1].BatchersLocalConfig); j++ {
 			configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), fmt.Sprintf("local_config_batcher%d.yaml", j))
@@ -68,7 +68,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 			require.NotNil(t, batcherLocalConfigLoaded.NodeLocalConfig)
 			require.NotNil(t, batcherLocalConfigLoaded.TLSConfig)
 			require.NotNil(t, batcherLocalConfigLoaded.ClusterConfig)
-			require.Equal(t, role, config.Batcher)
+			require.Equal(t, role, config.BatcherStr)
 		}
 
 		configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
@@ -77,7 +77,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.NotNil(t, consenterLocalConfigLoaded.NodeLocalConfig)
 		require.NotNil(t, consenterLocalConfigLoaded.TLSConfig)
 		require.NotNil(t, consenterLocalConfigLoaded.ClusterConfig)
-		require.Equal(t, role, config.Consensus)
+		require.Equal(t, role, config.ConsensusStr)
 
 		configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_assembler.yaml")
 		assemblerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
@@ -87,7 +87,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.NotNil(t, assemblerLocalConfigLoaded.ClusterConfig)
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.Enabled, true)
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.ClientAuthRequired, true)
-		require.Equal(t, role, config.Assembler)
+		require.Equal(t, role, config.AssemblerStr)
 	}
 }
 
