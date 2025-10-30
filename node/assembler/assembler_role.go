@@ -11,8 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
 type AssemblerIndex interface {
@@ -23,6 +25,7 @@ type AssemblerIndex interface {
 
 type AssemblerLedgerWriter interface {
 	Append(batch types.Batch, orderingInfo types.OrderingInfo)
+	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	Close()
 }
 
@@ -62,7 +65,13 @@ func (a *AssemblerRole) processOrderedBatchAttestations() {
 		a.Logger.Infof("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInfo().String())
 
 		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
-			a.Logger.Infof("Config decision: shard: %d, primary: %d, Ignoring!", oba.BatchAttestation().Shard(), oba.BatchAttestation().Primary())
+			orderingInfo := oba.OrderingInfo()
+			a.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), oba.OrderingInfo().String())
+			// TODO break the abstraction of oba.OrderingInfo().String()
+			ordInfo := orderingInfo.(*state.OrderingInformation)
+			block := ordInfo.CommonBlock
+			a.Ledger.AppendConfig(block, ordInfo.DecisionNum)
+			// TODO apply new config
 			return
 		}
 
