@@ -34,8 +34,8 @@ func createPayloadHeader(ch *common.ChannelHeader, sh *common.SignatureHeader) *
 	}
 }
 
-func createStructuredPayload(data []byte) *common.Payload {
-	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
+func createStructuredPayload(data []byte, requestType common.HeaderType) *common.Payload {
+	payloadChannelHeader := createChannelHeader(requestType, 0, "channelID", 0)
 	payloadSignatureHeader := &common.SignatureHeader{
 		Creator: []byte("creator"),
 		Nonce:   []byte("nonce"),
@@ -56,7 +56,16 @@ func deterministicMarshall(msg proto.Message) []byte {
 }
 
 func CreateStructuredEnvelope(data []byte) *common.Envelope {
-	payload := createStructuredPayload(data)
+	payload := createStructuredPayload(data, common.HeaderType_MESSAGE)
+	payloadBytes := deterministicMarshall(payload)
+	return &common.Envelope{
+		Payload:   payloadBytes,
+		Signature: []byte("signature"),
+	}
+}
+
+func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
+	payload := createStructuredPayload(data, common.HeaderType_CONFIG_UPDATE)
 	payloadBytes := deterministicMarshall(payload)
 	return &common.Envelope{
 		Payload:   payloadBytes,
@@ -65,7 +74,7 @@ func CreateStructuredEnvelope(data []byte) *common.Envelope {
 }
 
 func CreateStructuredRequest(data []byte) *protos.Request {
-	payload := createStructuredPayload(data)
+	payload := createStructuredPayload(data, common.HeaderType_MESSAGE)
 	payloadBytes := deterministicMarshall(payload)
 	return &protos.Request{
 		Payload:   payloadBytes,
