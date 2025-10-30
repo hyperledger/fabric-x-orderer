@@ -230,6 +230,9 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
+	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
 	routerConfig := &nodeconfig.RouterNodeConfig{
 		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
@@ -244,6 +247,8 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
+		MonitoringListenAddress:             config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
+		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return routerConfig
 }
@@ -252,6 +257,9 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
+	}
+	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
 
 	batcherConfig := &nodeconfig.BatcherNodeConfig{
@@ -271,8 +279,9 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		SubmitTimeout:                       config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
 		BatchSequenceGap:                    types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
-		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
+		MonitoringListenAddress:             config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
 	}
 
@@ -304,18 +313,22 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
+	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
-		Shards:             config.ExtractShards(),
-		Consenters:         config.ExtractConsenters(),
-		Directory:          config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:      config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
-		PartyId:            config.LocalConfig.NodeLocalConfig.PartyID,
-		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
-		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
-		SigningPrivateKey:  signingPrivateKey,
-		WALDir:             DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
-		BFTConfig:          BFTConfig,
-		MetricsLogInterval: config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Shards:                  config.ExtractShards(),
+		Consenters:              config.ExtractConsenters(),
+		Directory:               config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		ListenAddress:           config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort)),
+		PartyId:                 config.LocalConfig.NodeLocalConfig.PartyID,
+		TLSPrivateKeyFile:       config.LocalConfig.TLSConfig.PrivateKey,
+		TLSCertificateFile:      config.LocalConfig.TLSConfig.Certificate,
+		SigningPrivateKey:       signingPrivateKey,
+		WALDir:                  DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
+		BFTConfig:               BFTConfig,
+		MonitoringListenAddress: config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
+		MetricsLogInterval:      config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return consenterConfig
 }
@@ -328,6 +341,9 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 			consenterFromMyParty = consenter
 			break
 		}
+	}
+	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
 
 	assemblerConfig := &nodeconfig.AssemblerNodeConfig{
@@ -346,6 +362,8 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		Consenter:                 consenterFromMyParty,
 		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
+		MonitoringListenAddress:   config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress + ":" + strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort)),
+		MetricsLogInterval:        config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
 	return assemblerConfig
 }
