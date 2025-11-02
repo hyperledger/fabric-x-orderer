@@ -110,7 +110,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 
 func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent, genesisBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigConsensus"))
+		configContent, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigConsensus"))
 		if err != nil {
 			panic(fmt.Sprintf("error launching consensus, err: %s", err))
 		}
@@ -131,7 +131,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 		}
 
 		srv := node.CreateGRPCConsensus(conf)
-		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, consenterLogger, signer)
+		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, signer)
 
 		defer consensus.Start()
 

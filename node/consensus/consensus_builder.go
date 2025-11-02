@@ -35,8 +35,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *common.Block, logger arma_types.Logger, signer Signer) *Consensus {
-	logger.Infof("Creating consensus, party: %d, address: %s, with genesis block: %t", conf.PartyId, conf.ListenAddress, genesisBlock != nil)
+func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer) *Consensus {
+	logger.Infof("Creating consensus, party: %d, address: %s, with last config block number: %d", conf.PartyId, conf.ListenAddress, lastConfigBlock.Header.Number)
 
 	var currentNodes []uint64
 	for _, node := range conf.Consenters {
@@ -48,7 +48,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, genesisBlock *co
 		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	initialState, metadata, lastProposal, lastSigs := getInitialStateAndMetadata(logger, conf, genesisBlock, consLedger)
+	initialState, metadata, lastProposal, lastSigs := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
 
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
@@ -197,15 +197,15 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, genesisBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature) {
+func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature) {
 	height := ledger.Height()
 	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
 		initState := initialStateFromConfig(config)
-		if genesisBlock == nil {
+		if lastConfigBlock == nil {
 			panic(fmt.Sprintf("Error creating Consensus%d, genesis block is nil", config.PartyId))
 		}
-		appendGenesisBlock(genesisBlock, initState, ledger)
+		appendGenesisBlock(lastConfigBlock, initState, ledger)
 		return initState, &smartbftprotos.ViewMetadata{}, nil, nil
 	}
 
