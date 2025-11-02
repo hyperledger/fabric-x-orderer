@@ -66,10 +66,10 @@ arma-config
 └── crypto
 	└── ordererOrganizations
 	    └── org{partyID}
-	        ├── ca
-	        ├── tlsca
 	        ├── msp
-	        │   └── admincerts (ignored)
+	        │	├── cacerts
+	        │   ├── tlscacerts
+	        │   └── admincerts
 	        ├── orderers
 	        │   └── party{partyID}
 	        │       ├── router
@@ -84,8 +84,8 @@ arma-config
 ##
 For each party i, all cryptographic materials for party{i} are located under `arma-config/crypto/ordererOrganizations/org{i}`
 For example, all cryptographic materials for party1 are located under `arma-config/crypto/ordererOrganizations/org1`:
-   - The Certificate Authority (CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/ca`.
-   - The TLS Certificate Authority (TLS CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/tlsca`.
+   - The Certificate Authority (CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/msp/cacerts`.
+   - The TLS Certificate Authority (TLS CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/msp/tlscacerts`.
    - Each node within party1 has its own TLS certificates and keys located in `arma-config/crypto/ordererOrganizations/org1/orderers/party1/{node}`. For batchers and cosenters nodes a signing certificate with a corresponding key are generated. 
    - TLS certificate and key for user of party1 is stored in `arma-config/crypto/ordererOrganizations/org1/users`.
 NOTE: A fake CA is created for each party.
@@ -253,20 +253,25 @@ Running
 
 ###
 ##### Flags
-| Flags                  | Description                                                                                                                                                           |
-|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `sharedConfigYaml`     | The absolute or relative path of the shared configuration YAML file                                                                                                   |
-| `output`               | The absolute or relative path to which the config block will be saved.                                                                                                |
-| `sampleConfigPath`     | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
+| Flags              | Description                                                                                                                                                           |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sharedConfigYaml` | The absolute or relative path of the shared configuration YAML file                                                                                                   |
+| `baseDir`          | The absolute or relative path in which all crypto and config material is saved                                                                                        |
+| `blockOutput`      | The absolute or relative path to which the config block will be saved.                                                                                                |
+| `sampleConfigPath` | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
 
 ###
 ##### Example:
 
 Running
-`./bin/armageddon createBlock --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --output=arma-shared-config --sampleConfigPath=ARMA/testutil/fabric/sampleconfig` involves:
+`./bin/armageddon createBlock --sharedConfigYaml=arma-config/bootstrap/shared_config.yaml --blockOutput=arma-shared-config --baseDir=arma-config --sampleConfigPath=ARMA/testutil/fabric/sampleconfig` involves:
 1) Reading the shared configuration.
-2) Creating `bootstrap.block` and write it under the output directory.
+2) Creating `bootstrap.block` and write it under the blockOutput directory.  
 
+NOTE: the block creation involves the following steps:  
+a) Create a `Profile` from an existing profile in `configtx.yaml`.  
+b) Update the profile information -  setting the shared config path, application organizations, orderer organizations and other related values. This step assumes that baseDir points to a directory structure that contains a crypto subdirectory.  
+c) Create a Block by `configtxgen` methods.
 
 For more details on the structure of the config block, see [config block](#config-block).
 ##
