@@ -36,6 +36,16 @@ import (
 )
 
 func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer) *Consensus {
+	if lastConfigBlock == nil {
+		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
+		return nil
+	}
+
+	if lastConfigBlock.Header == nil {
+		logger.Panicf("Error creating Consensus%d, last config block header is nil", conf.PartyId)
+		return nil
+	}
+
 	logger.Infof("Creating consensus, party: %d, address: %s, with last config block number: %d", conf.PartyId, conf.ListenAddress, lastConfigBlock.Header.Number)
 
 	var currentNodes []uint64

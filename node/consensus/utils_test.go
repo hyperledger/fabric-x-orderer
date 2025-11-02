@@ -223,7 +223,7 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 	}
 }
 
-func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsgen.CA) error {
+func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsgen.CA, lastConfigBlock *common.Block) error {
 	newConsenterNode := &node{
 		TLSCert: setup.consenterNodes[nodeIndex].TLSCert,
 		TLSKey:  setup.consenterNodes[nodeIndex].TLSKey,
@@ -240,7 +240,7 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 
 	signer := crypto.ECDSASigner(*newConsenterNode.sk)
 
-	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, nil, setup.loggers[nodeIndex], signer)
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, lastConfigBlock, setup.loggers[nodeIndex], signer)
 
 	grpcRegisterAndStart(setup.consensusNodes[nodeIndex], newConsenterNode)
 
