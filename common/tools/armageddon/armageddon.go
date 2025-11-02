@@ -131,6 +131,7 @@ type CLI struct {
 	// createBlock command flags
 	sharedConfigYamlPathToBlock *string
 	blockDir                    *string
+	baseDir                     *string
 	sampleConfigPathToBlock     *string
 }
 
@@ -184,7 +185,8 @@ func (cli *CLI) configureCommands() {
 
 	createBlock := cli.app.Command("createBlock", "Create a new block with the given shared configuration")
 	cli.sharedConfigYamlPathToBlock = createBlock.Flag("sharedConfigYaml", "The path to the shared configuration YAML file").String()
-	cli.blockDir = createBlock.Flag("output", "The output directory in which to place the block").String()
+	cli.blockDir = createBlock.Flag("blockOutput", "The output directory in which to place the block").String()
+	cli.baseDir = createBlock.Flag("baseDir", "The directory in which all crypto and config material is saved").String()
 	cli.sampleConfigPathToBlock = createBlock.Flag("sampleConfigPath", "The path to the sample config files").String()
 	commands["createBlock"] = createBlock
 
@@ -225,18 +227,18 @@ func (cli *CLI) Run(args []string) {
 
 	// "createBlock" command
 	case cli.commands["createBlock"].FullCommand():
-		createBlock(cli.sharedConfigYamlPathToBlock, cli.blockDir, cli.sampleConfigPathToBlock)
+		createBlock(cli.sharedConfigYamlPathToBlock, cli.blockDir, cli.baseDir, cli.sampleConfigPathToBlock)
 	}
 }
 
-func createBlock(sharedConfigYamlPath *string, outputDir *string, sampleConfigPath *string) {
+func createBlock(sharedConfigYamlPath *string, blockDir *string, baseDir *string, sampleConfigPath *string) {
 	sharedConfigProto, sharedConfigYaml, err := config.LoadSharedConfig(*sharedConfigYamlPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)
 		os.Exit(-1)
 	}
 
-	sharedConfigToBlock(sharedConfigProto, sharedConfigYaml, outputDir, sampleConfigPath)
+	sharedConfigToBlock(sharedConfigProto, sharedConfigYaml, blockDir, baseDir, sampleConfigPath)
 }
 
 func createSharedConfigProto(sharedConfigYamlPath *string, outputDir *string) {
@@ -269,21 +271,21 @@ func sharedConfigToProto(sharedConfig *protos.SharedConfig, outputDir *string) {
 	}
 }
 
-func sharedConfigToBlock(sharedConfig *protos.SharedConfig, sharedConfigYaml *config.SharedConfigYaml, outputDir *string, sampleConfigPath *string) {
+func sharedConfigToBlock(sharedConfig *protos.SharedConfig, sharedConfigYaml *config.SharedConfigYaml, blockDir *string, baseDir *string, sampleConfigPath *string) {
 	sharedConfigBytes, err := proto.Marshal(sharedConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error marshaling shared config: %s", err)
 		os.Exit(-1)
 	}
 
-	sharedConfigBinaryPath := filepath.Join(*outputDir, "shared_config.bin")
+	sharedConfigBinaryPath := filepath.Join(*blockDir, "shared_config.bin")
 	err = os.WriteFile(sharedConfigBinaryPath, sharedConfigBytes, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing the shared config binary: %s", err)
 		os.Exit(-1)
 	}
 
-	_, err = genconfig.CreateGenesisBlock(*outputDir, sharedConfigYaml, sharedConfigBinaryPath, *sampleConfigPath)
+	_, err = genconfig.CreateGenesisBlock(*blockDir, *baseDir, sharedConfigYaml, sharedConfigBinaryPath, *sampleConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creation bootstrap config block: %s", err)
 		os.Exit(-1)
@@ -336,7 +338,7 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 	}
 
 	blockDir := filepath.Join(*outputDir, "bootstrap")
-	sharedConfigToBlock(sharedConfig, sharedConfigYaml, &blockDir, sampleConfigPath)
+	sharedConfigToBlock(sharedConfig, sharedConfigYaml, &blockDir, outputDir, sampleConfigPath)
 
 	// generate user config yaml file for each party
 	// user will be able to connect to each of the routers and assemblers only if it receives for each router the CA that signed the certificate of that router.

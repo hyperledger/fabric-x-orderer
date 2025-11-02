@@ -197,7 +197,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 			Enabled:            generalConfigParams.tlsEnabled,
 			PrivateKey:         filepath.Join(partyPath, nodeRole, "tls", "key.pem"),
 			Certificate:        filepath.Join(partyPath, nodeRole, "tls", "tls-cert.pem"),
-			RootCAs:            []string{filepath.Join(orgPath, "tlsca", "tlsca-cert.pem")},
+			RootCAs:            []string{filepath.Join(orgPath, "msp", "tlscacerts", "tlsca-cert.pem")},
 			ClientAuthRequired: generalConfigParams.clientAuthRequired,
 		},
 		KeepaliveSettings: DefaultKeepaliveOptions,

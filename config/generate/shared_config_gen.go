@@ -85,8 +85,8 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		orgDir := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID))
 		partyConfig := config.PartyConfig{
 			PartyID:         party.ID,
-			CACerts:         []string{filepath.Join(orgDir, "ca", "ca-cert.pem")},
-			TLSCACerts:      []string{filepath.Join(orgDir, "tlsca", "tlsca-cert.pem")},
+			CACerts:         []string{filepath.Join(orgDir, "msp", "cacerts", "ca-cert.pem")},
+			TLSCACerts:      []string{filepath.Join(orgDir, "msp", "tlscacerts", "tlsca-cert.pem")},
 			RouterConfig:    routerConfig,
 			BatchersConfig:  batchersConfig,
 			ConsenterConfig: consenterConfig,

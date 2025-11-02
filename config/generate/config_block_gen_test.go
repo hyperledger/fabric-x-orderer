@@ -22,7 +22,7 @@ func TestCreateGenesisBlock(t *testing.T) {
 
 	sharedConfigYaml, sharedConfigPath := testutil.PrepareSharedConfigBinary(t, dir)
 
-	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigPath, fabric.GetDevConfigDir())
+	block, err := generate.CreateGenesisBlock(dir, dir, sharedConfigYaml, sharedConfigPath, fabric.GetDevConfigDir())
 	require.NoError(t, err)
 	require.NotNil(t, block)
 }

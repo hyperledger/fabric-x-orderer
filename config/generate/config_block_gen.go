@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -26,9 +27,9 @@ import (
 
 // CreateGenesisBlock creates a config block and writes it to a file under dir/bootstrap.block
 // This function is used for testing only.
-func CreateGenesisBlock(dir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string, sampleConfigPath string) (*common.Block, error) {
+func CreateGenesisBlock(blockDir string, baseDir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string, sampleConfigPath string) (*common.Block, error) {
 	// Generate Profile
-	profile, err := CreateProfile(dir, sharedConfigYaml, sharedConfigPath, sampleConfigPath)
+	profile, err := CreateProfile(baseDir, sharedConfigYaml, sharedConfigPath, sampleConfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func CreateGenesisBlock(dir string, sharedConfigYaml *config.SharedConfigYaml, s
 	}
 
 	// write block
-	blockPath := filepath.Join(dir, "bootstrap.block")
+	blockPath := filepath.Join(blockDir, "bootstrap.block")
 	err = configtxgen.WriteOutputBlock(genesisBlock, blockPath)
 	if err != nil {
 		return nil, err
@@ -77,7 +78,16 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	// update profile with some more relevant orderer information
 	profile.Orderer.Arma.Path = sharedConfigPath
 
-	for _, org := range profile.Orderer.Organizations {
+	for i, org := range profile.Application.Organizations {
+		org.ID = fmt.Sprintf("org%d", i+1)
+		org.Name = fmt.Sprintf("org%d", i+1)
+		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
+	}
+
+	for i, org := range profile.Orderer.Organizations {
+		org.ID = fmt.Sprintf("org%d", i+1)
+		org.Name = fmt.Sprintf("org%d", i+1)
+		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
 		org.OrdererEndpoints = routerAndAssemblerEndpoints
 	}
 
