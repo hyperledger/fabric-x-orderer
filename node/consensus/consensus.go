@@ -225,8 +225,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	prevHash := protoutil.BlockHeaderHash(lastCommonBlockHeader)
 
 	for i, ba := range attestations {
-		var bh state.BlockHeader
-		bh.Digest = ba[0].Digest()
 		lastBlockNumber++
 
 		if hex.EncodeToString(hdr.AvailableCommonBlocks[i].Header.PreviousHash) != hex.EncodeToString(prevHash) {
@@ -235,8 +233,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 
 		availableCommonBlocks[i] = protoutil.NewBlock(lastBlockNumber, prevHash)
 		availableCommonBlocks[i].Header.DataHash = ba[0].Digest()
-		bh.Number = lastBlockNumber
-		bh.PrevHash = prevHash
 		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
 
 		if hdr.AvailableCommonBlocks[i].Header.Number != lastBlockNumber {
@@ -464,19 +460,19 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	availableCommonBlocks := make([]*common.Block, len(attestations))
 
 	for i, ba := range attestations {
-		var hdr state.BlockHeader
-		hdr.Digest = ba[0].Digest()
 		lastBlockNumber++
+
 		availableCommonBlocks[i] = protoutil.NewBlock(lastBlockNumber, prevHash)
 		availableCommonBlocks[i].Header.DataHash = ba[0].Digest()
 		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ba[0], &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations), BatchIndex: i}, 0)
 		if err != nil {
 			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 		}
-		protoutil.InitBlockMetadata(availableCommonBlocks[i])
 		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
-		hdr.Number = lastBlockNumber
-		hdr.PrevHash = prevHash
+		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 0}), // TODO set last config
+		})
+
 		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
 	}
 
