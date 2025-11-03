@@ -26,7 +26,7 @@ func TestReadGenesisBlock(t *testing.T) {
 	dir := t.TempDir()
 
 	sharedConfigYaml, sharedConfigBinaryPath := testutil.PrepareSharedConfigBinary(t, dir)
-	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
+	block, err := generate.CreateGenesisBlock(dir, dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
 	require.NoError(t, err)
 	require.NotNil(t, block)
 
@@ -54,7 +54,7 @@ func TestReadGenesisBlock_Errors(t *testing.T) {
 	dir := t.TempDir()
 
 	sharedConfigYaml, sharedConfigBinaryPath := testutil.PrepareSharedConfigBinary(t, dir)
-	block, err := generate.CreateGenesisBlock(dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
+	block, err := generate.CreateGenesisBlock(dir, dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
 	require.NoError(t, err)
 	require.NotNil(t, block)
 

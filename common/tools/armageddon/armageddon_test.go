@@ -434,7 +434,7 @@ func TestArmageddonCreateBlockFromSharedConfigYAML(t *testing.T) {
 
 	// 3.
 	sharedConfigYAMLPath := filepath.Join(dir, "bootstrap", "shared_config.yaml")
-	armageddon.Run([]string{"createBlock", "--sharedConfigYaml", sharedConfigYAMLPath, "--output", blockDir, "--sampleConfigPath", sampleConfigPath})
+	armageddon.Run([]string{"createBlock", "--sharedConfigYaml", sharedConfigYAMLPath, "--blockOutput", blockDir, "--baseDir", dir, "--sampleConfigPath", sampleConfigPath})
 	require.True(t, fileExists(filepath.Join(blockDir, "bootstrap.block")))
 }
 
@@ -538,8 +538,7 @@ func checkCryptoDir(outputDir string) error {
 	}
 
 	requiredOrgSubDirs := []string{
-		"ca",
-		"tlsca",
+		"msp",
 		"orderers",
 		"users",
 	}
@@ -559,8 +558,8 @@ func checkCryptoDir(outputDir string) error {
 			}
 		}
 
-		// check ca and tlsca directories
-		for _, subDir := range []string{"ca", "tlsca"} {
+		// check msp directory includes cacerts, tlscacerts and admincerts directories
+		for _, subDir := range []string{filepath.Join("msp", "cacerts"), filepath.Join("msp", "tlscacerts")} {
 			dirPath := filepath.Join(orgDir, subDir)
 			files, err := os.ReadDir(dirPath)
 			if err != nil {
