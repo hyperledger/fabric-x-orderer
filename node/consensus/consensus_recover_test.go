@@ -31,7 +31,7 @@ func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	require.PanicsWithValue(t, "Error creating Consensus1, genesis block is nil", func() {
+	require.PanicsWithValue(t, "Error creating Consensus1, last config block is nil", func() {
 		setupConsensusTest(t, ca, 1, nil)
 	})
 }
@@ -59,7 +59,7 @@ func TestCreateOneConsensusNode(t *testing.T) {
 
 	setup.consensusNodes[0].Stop()
 
-	err = recoverNode(t, setup, 0, ca)
+	err = recoverNode(t, setup, 0, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
@@ -128,7 +128,7 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	b3 = <-setup.listeners[3].c
 	require.Equal(t, uint64(3), b3.Header.Number)
 
-	err = recoverNode(t, setup, 0, ca)
+	err = recoverNode(t, setup, 0, ca, genesisBlock)
 	require.NoError(t, err)
 
 	time.Sleep(time.Minute)
@@ -170,7 +170,7 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 
 	// Leader fails and recovers before the first request
 	setup.consensusNodes[0].Stop()
-	err = recoverNode(t, setup, 0, ca)
+	err = recoverNode(t, setup, 0, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
@@ -189,7 +189,7 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 
 	// Leader fails and recovers between blocks
 	setup.consensusNodes[0].Stop()
-	err = recoverNode(t, setup, 0, ca)
+	err = recoverNode(t, setup, 0, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
@@ -229,7 +229,7 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 
 	// Node fails and recovers before the first request
 	setup.consensusNodes[1].Stop()
-	err = recoverNode(t, setup, 1, ca)
+	err = recoverNode(t, setup, 1, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
@@ -259,7 +259,7 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(2), b2.Header.Number)
 
-	err = recoverNode(t, setup, 1, ca)
+	err = recoverNode(t, setup, 1, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
@@ -280,7 +280,7 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 
 	// Node fails and recovers between blocks
 	setup.consensusNodes[1].Stop()
-	err = recoverNode(t, setup, 1, ca)
+	err = recoverNode(t, setup, 1, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
@@ -341,7 +341,7 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	setup.consensusNodes[2].Stop()
 
 	// Node 2 recovers
-	err = recoverNode(t, setup, 1, ca)
+	err = recoverNode(t, setup, 1, ca, genesisBlock)
 	require.NoError(t, err)
 
 	// Submit and verify requests while node 3 remains down
@@ -395,9 +395,9 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	// Nodes fail and recover before the first request
 	setup.consensusNodes[1].Stop()
 	setup.consensusNodes[2].Stop()
-	err = recoverNode(t, setup, 1, ca)
+	err = recoverNode(t, setup, 1, ca, genesisBlock)
 	require.NoError(t, err)
-	err = recoverNode(t, setup, 2, ca)
+	err = recoverNode(t, setup, 2, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
@@ -439,7 +439,7 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	b6 = <-setup.listeners[6].c
 	require.Equal(t, uint64(2), b6.Header.Number)
 
-	err = recoverNode(t, setup, 1, ca)
+	err = recoverNode(t, setup, 1, ca, genesisBlock)
 	require.NoError(t, err)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
@@ -462,7 +462,7 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	b1 = <-setup.listeners[1].c
 	require.Equal(t, uint64(3), b1.Header.Number)
 
-	err = recoverNode(t, setup, 2, ca)
+	err = recoverNode(t, setup, 2, ca, genesisBlock)
 	require.NoError(t, err)
 
 	b2 = <-setup.listeners[2].c
@@ -528,7 +528,7 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(2), b6.Header.Number)
 
 	// Restart one stopped node
-	err = recoverNode(t, setup, 2, ca)
+	err = recoverNode(t, setup, 2, ca, genesisBlock)
 	require.NoError(t, err)
 
 	// Commit more requests
@@ -553,7 +553,7 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(3), b2.Header.Number)
 
 	// Restart the other node
-	err = recoverNode(t, setup, 0, ca)
+	err = recoverNode(t, setup, 0, ca, genesisBlock)
 	require.NoError(t, err)
 
 	// Commit another request
