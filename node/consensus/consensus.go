@@ -70,21 +70,22 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	Net          Net
-	Config       *config.ConsenterNodeConfig
-	SigVerifier  SigVerifier
-	Signer       Signer
-	CurrentNodes []uint64
-	BFTConfig    smartbft_types.Configuration
-	BFT          *consensus.Consensus
-	Storage      Storage
-	BADB         *badb.BatchAttestationDB
-	Arma         Arma
-	stateLock    sync.Mutex
-	State        *state.State
-	Logger       arma_types.Logger
-	Synchronizer *synchronizer
-	Metrics      *ConsensusMetrics
+	Net                Net
+	Config             *config.ConsenterNodeConfig
+	SigVerifier        SigVerifier
+	Signer             Signer
+	CurrentNodes       []uint64
+	BFTConfig          smartbft_types.Configuration
+	BFT                *consensus.Consensus
+	Storage            Storage
+	BADB               *badb.BatchAttestationDB
+	Arma               Arma
+	stateLock          sync.Mutex
+	State              *state.State
+	lastConfigBlockNum uint64
+	Logger             arma_types.Logger
+	Synchronizer       *synchronizer
+	Metrics            *ConsensusMetrics
 }
 
 func (c *Consensus) Start() error {
@@ -470,7 +471,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		}
 		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
-			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 0}), // TODO set last config
+			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: c.lastConfigBlockNum}), // TODO set last config
 		})
 
 		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
