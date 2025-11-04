@@ -89,6 +89,11 @@ func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]ty
 	}
 }
 
+// Replicate replicates from the batcher of the assembler's party of the specified shard.
+//
+// The assembler will open |P| channels to said batcher (|P|=number of parties),
+// and will replicate a stream of batches from all possible primaries. In steady state
+// there should always be one active primary and |P|-1 silent ones.
 func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan types.Batch {
 	br.logger.Infof("Assembler %d Replicate from shard %d", br.config.PartyId, shardID)
 
@@ -187,6 +192,7 @@ func (br *BatchFetcher) findShardID(shardID types.ShardID) config.BatcherInfo {
 }
 
 // GetBatch polls every batcher in the shard for a batch that has a specific batchID.
+//
 // The ShardID is taken from the batchID.
 // It polls all the batchers in parallel but cancels the requests as soon as the first match is found.
 // The Arma protocol ensures that if the batchID is from consensus, at least one batcher in the shard has it.
@@ -285,6 +291,7 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 	resultChan <- fb
 }
 
+// Stop stops the operation of the BatchFetcher.
 func (br *BatchFetcher) Stop() {
 	br.cancelCtxFunc()
 }

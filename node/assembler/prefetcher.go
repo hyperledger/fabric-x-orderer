@@ -66,11 +66,9 @@ func NewPrefetcher(
 // Starts the prefetcher.
 func (p *Prefetcher) Start() {
 	for _, shard := range p.shards {
-		for _, party := range p.parties {
-			// after the first pull, this value will be updated
-			p.wg.Add(1)
-			go p.handleReplication(ShardPrimary{Shard: shard, Primary: party})
-		}
+		// This starts the batch fetcher to start pulling from a shard.
+		p.wg.Add(1)
+		go p.handleReplication(shard)
 	}
 	p.wg.Add(1)
 	go p.handleBatchRequests()
@@ -83,20 +81,20 @@ func (p *Prefetcher) Stop() {
 	p.batchFetcher.Stop()
 }
 
-func (p *Prefetcher) handleReplication(partition ShardPrimary) {
+func (p *Prefetcher) handleReplication(shard types.ShardID) {
 	defer p.wg.Done()
-	batches := p.batchFetcher.Replicate(partition.Shard)
+	batches := p.batchFetcher.Replicate(shard)
 	for {
 		select {
 		case <-p.cancellationContext.Done():
-			p.logger.Infof("Exiting replication for partition %v", partition)
+			p.logger.Infof("Prefetcher stopped handling replication from shard %d", shard)
 			return
 		case batch, ok := <-batches:
 			if ok {
 				p.logger.Infof("Got batch %s", BatchToString(batch))
 				p.prefetchIndex.Put(batch)
 			} else {
-				p.logger.Infof("Batch Fetcher replication channel was closed, Exiting replication for partition %v", partition)
+				p.logger.Infof("Batch Fetcher replication channel was closed, Prefetcher stopped handling replication from shard %d", shard)
 				return
 			}
 		}
