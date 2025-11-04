@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,16 +24,6 @@ type naiveOrderedBatchAttestationReplicator chan types.OrderedBatchAttestation
 
 func (n naiveOrderedBatchAttestationReplicator) Replicate() <-chan types.OrderedBatchAttestation {
 	return n
-}
-
-type naiveReplication struct {
-	subscribers []chan types.Batch
-	i           uint32
-}
-
-func (r *naiveReplication) Replicate(_ types.ShardID) <-chan types.Batch {
-	j := atomic.AddUint32(&r.i, 1)
-	return r.subscribers[j-1]
 }
 
 type naiveIndex struct {
@@ -98,23 +87,16 @@ func TestAssembler(t *testing.T) {
 		batches = append(batches, batchesForShard)
 	}
 
-	r, ledger, nobar, assembler := createAssemblerRole(t, shardCount)
+	index, ledger, nobar, assembler := createAssemblerRole(t, shardCount)
 
 	assembler.Run()
-
-	// Wait for all subscribers of all shards to be connected
-	for atomic.LoadUint32(&r.i) < uint32(shardCount) {
-		time.Sleep(time.Millisecond)
-	}
 
 	totalOrder := make(chan *state.AvailableBatch)
 
 	for shardID := 0; shardID < shardCount; shardID++ {
 		go func(shard int) {
 			for _, batch := range batches[shard] {
-
-				r.subscribers[shard] <- batch
-
+				index.Put(batch)
 				nba := state.NewAvailableBatch(batch.Primary(), batch.Shard(), batch.Seq(), batch.Digest())
 				totalOrder <- nba
 			}
@@ -148,14 +130,16 @@ func TestAssembler(t *testing.T) {
 	assert.Len(t, digests, 0)
 }
 
-func createAssemblerRole(t *testing.T, shardCount int) (*naiveReplication, naiveAssemblerLedger, naiveOrderedBatchAttestationReplicator, *assembler.AssemblerRole) {
+func createAssemblerRole(t *testing.T, shardCount int) (
+	*naiveIndex,
+	naiveAssemblerLedger,
+	naiveOrderedBatchAttestationReplicator,
+	*assembler.AssemblerRole,
+) {
 	index := &naiveIndex{}
-
-	r := &naiveReplication{}
 
 	var shards []types.ShardID
 	for i := 0; i < shardCount; i++ {
-		r.subscribers = append(r.subscribers, make(chan types.Batch, 100))
 		shards = append(shards, types.ShardID(i))
 	}
 
@@ -166,11 +150,10 @@ func createAssemblerRole(t *testing.T, shardCount int) (*naiveReplication, naive
 	assembler := &assembler.AssemblerRole{
 		Shards:                            shards,
 		Logger:                            testutil.CreateLogger(t, 0),
-		Replicator:                        r,
 		Ledger:                            ledger,
 		ShardCount:                        shardCount,
 		OrderedBatchAttestationReplicator: nobar,
 		Index:                             index,
 	}
-	return r, ledger, nobar, assembler
+	return index, ledger, nobar, assembler
 }

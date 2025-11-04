@@ -185,6 +185,17 @@ func (at *assemblerTest) StartAssembler() {
 		return at.shardToBatcherChan[si]
 	})
 
+	at.prefetcherMock.StartCalls(func() {
+		for _, shard := range at.shards {
+			rep := at.batchBringerMock.Replicate(types.ShardID(shard))
+			go func(repCh <-chan types.Batch) {
+				for b := range rep {
+					at.prefetchIndexMock.Put(b)
+				}
+			}(rep)
+		}
+	})
+
 	consensusBringerFactoryMock := &delivery_mocks.FakeConsensusBringerFactory{}
 	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l types.Logger) delivery.ConsensusBringer {
 		return at.consensusBringerMock
@@ -292,9 +303,19 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	// Act
 	test.SendBAToAssembler(test.orderedBatchAttestationCreator.Append(batches[0], 1, 0, 2))
 	test.SendBatchToAssembler(batches[0])
+
 	require.Eventually(t, func() bool {
-		return test.ledgerMock.AppendCallCount() == 1
+		return test.prefetcherMock.StartCallCount() == 1
 	}, eventuallyTimeout, eventuallyTick)
+
+	require.Eventually(t, func() bool {
+		return test.batchBringerMock.ReplicateCallCount() == 2
+	}, eventuallyTimeout, eventuallyTick)
+
+	require.Eventually(t, func() bool {
+		return test.prefetchIndexMock.PutCallCount() == 1
+	}, eventuallyTimeout, eventuallyTick)
+
 	test.StopAssembler()
 	test.StartAssembler()
 

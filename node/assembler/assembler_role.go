@@ -15,10 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
-type BatchReplicator interface {
-	Replicate(shardID types.ShardID) <-chan types.Batch
-}
-
 type AssemblerIndex interface {
 	PopOrWait(batchId types.BatchID) (types.Batch, error)
 	Put(batch types.Batch) error
@@ -39,18 +35,14 @@ type AssemblerRole struct {
 	Ledger                            AssemblerLedgerWriter
 	Logger                            types.Logger
 	OrderedBatchAttestationReplicator OrderedBatchAttestationReplicator
-	Replicator                        BatchReplicator
 	Index                             AssemblerIndex
 	Shards                            []types.ShardID
 	runningWG                         sync.WaitGroup
 }
 
+// Run starts a go routine which processes incoming ordered batch attestations from consensus
+// and collates them with batches retrieved from the index.
 func (a *AssemblerRole) Run() {
-	// TODO we need to be able to stop these goroutines when we stop the assembler server
-	for _, shardID := range a.Shards {
-		a.runningWG.Add(1)
-		go a.fetchBatchesFromShard(shardID)
-	}
 	a.runningWG.Add(1)
 	go a.processOrderedBatchAttestations()
 }
@@ -59,19 +51,6 @@ func (a *AssemblerRole) Run() {
 // This methods only waits for the core go routines to finish.
 func (a *AssemblerRole) WaitTermination() {
 	a.runningWG.Wait()
-}
-
-func (a *AssemblerRole) fetchBatchesFromShard(shardID types.ShardID) {
-	defer a.runningWG.Done()
-	a.Logger.Infof("Starting to fetch batches from shard: %d", shardID)
-
-	batchCh := a.Replicator.Replicate(shardID)
-	for batch := range batchCh {
-		a.Logger.Infof("Got batch of %d requests for shard %d", len(batch.Requests()), shardID)
-		a.Index.Put(batch)
-	}
-
-	a.Logger.Infof("Finished fetching batches from shard: %d", shardID)
 }
 
 func (a *AssemblerRole) processOrderedBatchAttestations() {
