@@ -17,11 +17,14 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
@@ -60,7 +63,9 @@ func (r *routerTestSetup) Close() {
 		batcher.server.Stop()
 	}
 
-	r.consenter.Stop()
+	if r.consenter != nil {
+		r.consenter.Stop()
+	}
 }
 
 func (r *routerTestSetup) isReconnectComplete() bool {
@@ -87,6 +92,7 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int,
 	for _, batcher := range batchers {
 		batcher.Start()
 	}
+
 	// create and start stub-consenter
 	stubConsenter := router.NewStubConsenter(t, ca, partyID)
 	stubConsenter.Start()
@@ -538,6 +544,42 @@ func submitConfigRequest(t *testing.T, conn *grpc.ClientConn) error {
 	return nil
 }
 
+func TestConfigPullFromConsensus(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	sc := testSetup.consenter
+	defer testSetup.Close()
+
+	initialConfigStoreSize := testSetup.router.GetConfigStoreSize()
+	require.Equal(t, 1, initialConfigStoreSize, "expected genesis block in config store")
+
+	// create a decision with a config block
+	configBlock := tx.CreateConfigBlock(999, []byte("config block data"))
+	require.True(t, protoutil.IsConfigBlock(configBlock))
+	acb := make([]*common.Block, 2)
+
+	acb[len(acb)-1] = configBlock
+	err = sc.DeliverDecisionFromHeader(&state.Header{Num: 1, DecisionNumOfLastConfigBlock: 1, AvailableCommonBlocks: acb})
+	require.NoError(t, err)
+
+	// check if config block is stored in router's config store
+	require.Eventually(t, func() bool {
+		return testSetup.router.GetConfigStoreSize() == initialConfigStoreSize+1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// create a decision, with no config block
+	configBlock = tx.CreateConfigBlock(1000, []byte("config block data"))
+	acb = make([]*common.Block, 6)
+	acb[len(acb)-1] = configBlock
+	err = sc.DeliverDecisionFromHeader(&state.Header{Num: 2, DecisionNumOfLastConfigBlock: 1, AvailableCommonBlocks: acb})
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, initialConfigStoreSize+1, testSetup.router.GetConfigStoreSize(), "no new config block should be stored")
+}
+
 func createServerTLSClientConnection(testSetup *routerTestSetup, ca tlsgen.CA) error {
 	cc := comm.ClientConfig{
 		SecOpts: comm.SecureOptions{
@@ -714,13 +756,20 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 
 	stubConsenterInfo := config.ConsenterInfo{PartyID: partyID, Endpoint: consenter.GetConsenterEndpoint(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}
 
+	configStorePath := t.TempDir()
+	cs, err := configstore.NewStore(configStorePath)
+	require.NoError(t, err)
+	// add dummy genesis block
+	block := tx.CreateConfigBlock(0, []byte("genesis block data"))
+	require.NoError(t, cs.Add(block))
+
 	conf := &config.RouterNodeConfig{
 		PartyID:                             partyID,
 		TLSCertificateFile:                  ckp.Cert,
 		UseTLS:                              useTLS,
 		TLSPrivateKeyFile:                   ckp.Key,
 		ListenAddress:                       "127.0.0.1:0",
-		ConfigStorePath:                     t.TempDir(),
+		ConfigStorePath:                     configStorePath,
 		ClientAuthRequired:                  clientAuthRequired,
 		Shards:                              shards,
 		Consenter:                           stubConsenterInfo,

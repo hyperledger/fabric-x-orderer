@@ -16,6 +16,7 @@ import (
 	rand2 "math/rand"
 	"sort"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
@@ -24,12 +25,20 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
 type Net interface {
 	Stop()
 	Address() string
+}
+
+type ConfigPuller interface {
+	PullConfigBlocks() <-chan *common.Block
+	Stop()
+	Update() // TODO - implement thread-safe update method.
 }
 
 type Router struct {
@@ -41,8 +50,10 @@ type Router struct {
 	routerNodeConfig *nodeconfig.RouterNodeConfig
 	verifier         *requestfilter.RulesVerifier
 	configStore      *configstore.Store
-	configSubmitter  *configSubmitter
+	configSubmitter  ConfigurationSubmitter
+	configPuller     ConfigPuller
 	metrics          *RouterMetrics
+	stopChan         chan struct{}
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -78,12 +89,44 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
 		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
 
+	configStore, err := configstore.NewStore(config.ConfigStorePath)
+	if err != nil {
+		logger.Panicf("Failed creating router config store: %s", err)
+	}
+
+	seekInfo := NextSeekInfoFromConfigStore(configStore, logger)
+
+	// TODO - pull config blocks from all consenter nodes, not only the one in party
+	configPuller := delivery.NewConsensusConfigPuller(config, logger, seekInfo)
+
 	verifier := createVerifier(config)
 	metrics := NewRouterMetrics(config, logger, config.MetricsLogInterval)
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configSubmitter)
+
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, configPuller)
 	r.init()
 	r.metrics.Start()
 	return r
+}
+
+// NextSeekInfoFromConfigStore creates a SeekInfo to start pulling config blocks from consensus, based on the last connfig block stored in the config store.
+func NextSeekInfoFromConfigStore(configStore *configstore.Store, logger types.Logger) *orderer.SeekInfo {
+	lastBlock, err := configStore.Last()
+	if err != nil {
+		logger.Panicf("Failed getting last config block from config store: %s", err)
+	}
+
+	// check if last block is genesis block
+	if lastBlock.GetHeader().GetNumber() == 0 {
+		// skip genesis block that is placed in decision 0
+		return delivery.NextSeekInfo(1)
+	}
+
+	ordererBlockMetadata := lastBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+	_, _, _, lastDecisionNumber, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
+	if err != nil {
+		logger.Panicf("Failed extracting decision number from last config block: %s", err)
+	}
+	return delivery.NextSeekInfo(uint64(lastDecisionNumber) + 1)
 }
 
 func (r *Router) StartRouterService() <-chan struct{} {
@@ -106,6 +149,8 @@ func (r *Router) StartRouterService() <-chan struct{} {
 
 	r.configSubmitter.Start()
 
+	go r.pullAndProcessConfigBlocks()
+
 	return stop
 }
 
@@ -126,7 +171,9 @@ func (r *Router) Stop() {
 
 	r.net.Stop()
 	r.metrics.Stop()
+
 	r.configSubmitter.Stop()
+	close(r.stopChan) // stop config puller goroutine
 
 	for _, sr := range r.shardRouters {
 		sr.Stop()
@@ -184,20 +231,13 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte,
-	metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configSubmitter *configSubmitter,
-) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, configPuller ConfigPuller) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
 
 	if rconfig.NumOfgRPCStreamsPerConnection == 0 {
 		rconfig.NumOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
-	}
-
-	configStore, err := configstore.NewStore(rconfig.ConfigStorePath)
-	if err != nil {
-		logger.Panicf("Failed creating router config store: %s", err)
 	}
 
 	r := &Router{
@@ -212,6 +252,8 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		verifier:         verifier,
 		configStore:      configStore,
 		configSubmitter:  configSubmitter,
+		configPuller:     configPuller,
+		stopChan:         make(chan struct{}),
 		metrics:          metrics,
 	}
 
@@ -351,6 +393,36 @@ func createVerifier(config *nodeconfig.RouterNodeConfig) *requestfilter.RulesVer
 	return rv
 }
 
+// pullAndProcessConfigBlocks pulls config blocks from consensus and processes them. this function should be run as a goroutine.
+func (r *Router) pullAndProcessConfigBlocks() {
+	configBlocksChan := r.configPuller.PullConfigBlocks()
+	defer func() {
+		r.configPuller.Stop()
+		r.logger.Infof("Stopped config puller")
+	}()
+
+	for {
+		select {
+		case configBlock, ok := <-configBlocksChan:
+			if !ok {
+				r.logger.Infof("Config blocks channel closed, stopping config blocks processing")
+				return
+			}
+			r.logger.Infof("Received new config block from consensus with block number %d", configBlock.GetHeader().GetNumber())
+
+			// TODO process the config block. store in config store and apply.
+			if err := r.configStore.Add(configBlock); err != nil {
+				r.logger.Panicf("Failed adding config block to config store: %s", err)
+			}
+			r.logger.Infof("Added config block %d to config store", configBlock.GetHeader().GetNumber())
+
+		case <-r.stopChan:
+			r.logger.Infof("Stopping config blocks processing")
+			return
+		}
+	}
+}
+
 // IsAllStreamsOK checks that all the streams accross all shard-routers are non-faulty.
 // Use for testing only.
 func (r *Router) IsAllStreamsOK() bool {
@@ -371,4 +443,14 @@ func (r *Router) IsAllConnectionsDown() bool {
 		}
 	}
 	return true
+}
+
+// GetConfigStoreSize returns the number of config blocks stored in the config store.
+// Use for testing only.
+func (r *Router) GetConfigStoreSize() int {
+	list, err := r.configStore.ListBlockNumbers()
+	if err != nil {
+		r.logger.Panicf("Failed listing config store block numbers: %s", err)
+	}
+	return len(list)
 }
