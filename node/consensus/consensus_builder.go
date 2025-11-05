@@ -79,14 +79,15 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 			Logger:          logger,
 			BAFDeserializer: &state.BAFDeserialize{},
 		},
-		BADB:         badb,
-		Logger:       logger,
-		State:        initialState,
-		CurrentNodes: currentNodes,
-		Storage:      consLedger,
-		SigVerifier:  buildVerifier(conf.Consenters, conf.Shards, logger),
-		Signer:       signer,
-		Metrics:      NewConsensusMetrics(conf.PartyId, logger, conf.MetricsLogInterval),
+		BADB:               badb,
+		Logger:             logger,
+		State:              initialState,
+		lastConfigBlockNum: lastConfigBlock.Header.Number,
+		CurrentNodes:       currentNodes,
+		Storage:            consLedger,
+		SigVerifier:        buildVerifier(conf.Consenters, conf.Shards, logger),
+		Signer:             signer,
+		Metrics:            NewConsensusMetrics(conf.PartyId, logger, conf.MetricsLogInterval),
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
