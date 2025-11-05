@@ -110,7 +110,6 @@ func NewDefaultAssembler(
 		assembler: AssemblerRole{
 			Shards:                            shardIds,
 			OrderedBatchAttestationReplicator: baReplicator,
-			Replicator:                        br,
 			Index:                             index,
 			Logger:                            logger,
 			Ledger:                            al,
