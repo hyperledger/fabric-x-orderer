@@ -14,16 +14,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
-	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	commMocks "github.com/hyperledger/fabric-x-orderer/node/protos/comm/mocks"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,7 +58,7 @@ func TestSendRequests(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(nil)
 	fakeSubmitStreamClient.ContextReturns(ctx)
 	logger := testutil.CreateLogger(t, 0)
-	verifier := createTestVerifier()
+	_, verifier := createTestBundleAndVerifier()
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
 		logger:                            logger,
@@ -98,7 +98,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(fmt.Errorf("error"))
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := testutil.CreateLogger(t, 1)
-	verifier := createTestVerifier()
+	_, verifier := createTestBundleAndVerifier()
 
 	s := &stream{
 		endpoint:                          "127.0.0.1:5017",
@@ -144,7 +144,7 @@ func TestReadResponses(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, 2)
 	ctx, cancel := context.WithCancel(context.Background())
-	verifier := createTestVerifier()
+	_, verifier := createTestBundleAndVerifier()
 
 	responseChan := make(chan Response, 1)
 
@@ -189,7 +189,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		TraceId: traceID,
 	}, fmt.Errorf("rpc error: service unavailable"))
 	logger := testutil.CreateLogger(t, 3)
-	verifier := createTestVerifier()
+	_, verifier := createTestBundleAndVerifier()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -218,7 +218,7 @@ func TestErrorRequestChannel(t *testing.T) {
 	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
 	fakeSubmitStreamClient.RecvReturns(&protos.SubmitResponse{Error: "SERVICE_UNAVAILABLE"}, fmt.Errorf("rpc error: service unavailable"))
 	logger := testutil.CreateLogger(t, 3)
-	verifier := createTestVerifier()
+	_, verifier := createTestBundleAndVerifier()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -271,7 +271,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 	req2 := createTestTrackedRequestFromTrace([]byte{2})
 	requests <- req2
 	requestTraceIdToResponseChannel[string(req2.trace)] = make(chan Response, 100)
-	verifier := createTestVerifier()
+	_, verifier := createTestBundleAndVerifier()
 
 	faultyStream := &stream{
 		endpoint:                          "127.0.0.1:7015",
@@ -342,7 +342,7 @@ func TestReconnectRequest(t *testing.T) {
 	fakeSubmitStreamClient.SendReturns(fmt.Errorf("error"))
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := testutil.CreateLogger(t, 1)
-	verifier := createTestVerifier()
+	_, verifier := createTestBundleAndVerifier()
 
 	connectionNumber := 2
 	streamNumber := 3
@@ -400,10 +400,15 @@ func (srp *safeReqPool) getElement(i int) *protos.Request {
 	return srp.reqPool[i]
 }
 
-func createTestVerifier() *requestfilter.RulesVerifier {
+func createTestBundleAndVerifier() (*configMocks.FakeConfigResources, *requestfilter.RulesVerifier) {
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
+	configEnvelope := &common.ConfigEnvelope{
+		Config:     nil,
+		LastUpdate: nil,
+	}
+	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 	conf := &config.RouterNodeConfig{
 		RequestMaxBytes:                     1 << 10,
@@ -415,7 +420,7 @@ func createTestVerifier() *requestfilter.RulesVerifier {
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(conf))
 	rv.AddStructureRule(requestfilter.NewSigFilter(conf, policies.ChannelWriters))
-	return rv
+	return bundle, rv
 }
 
 func createTestTrackedRequestFromTrace(trace []byte) *TrackedRequest {

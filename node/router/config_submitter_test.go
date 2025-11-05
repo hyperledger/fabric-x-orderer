@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -33,7 +35,7 @@ func (s configSubmitTestSetup) Stop() {
 	s.configSubmitter.Stop()
 }
 
-func createconfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
+func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 	logger := testutil.CreateLogger(t, 0)
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -43,13 +45,19 @@ func createconfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
-	configSubmitter := NewConfigSubmitter(stubConsenter.GetConsenterEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, logger)
+	bundle, verifier := createTestBundleAndVerifier()
+	fakeSigner := &mocks.SignerSerializer{}
+
+	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+	configSubmitter := NewConfigSubmitter(stubConsenter.GetConsenterEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, logger, bundle, verifier, fakeSigner, mockConfigUpdateProposer)
 
 	return configSubmitTestSetup{configSubmitter: configSubmitter, stubConsenter: &stubConsenter}
 }
 
 func TestConfigSubmitterForward(t *testing.T) {
-	setup := createconfigSubmitTestSetup(t)
+	setup := createConfigSubmitTestSetup(t)
 	setup.Start()
 	defer setup.Stop()
 	configSubmitter := setup.configSubmitter
@@ -68,7 +76,7 @@ func TestConfigSubmitterForward(t *testing.T) {
 }
 
 func TestConfigSubmitterMultipleForward(t *testing.T) {
-	setup := createconfigSubmitTestSetup(t)
+	setup := createConfigSubmitTestSetup(t)
 	setup.Start()
 	defer setup.Stop()
 	configSubmitter := setup.configSubmitter
@@ -90,7 +98,7 @@ func TestConfigSubmitterMultipleForward(t *testing.T) {
 }
 
 func TestForwardWithConsensusRestart(t *testing.T) {
-	setup := createconfigSubmitTestSetup(t)
+	setup := createConfigSubmitTestSetup(t)
 	setup.Start()
 	defer setup.Stop()
 
@@ -125,7 +133,7 @@ func TestForwardWithConsensusRestart(t *testing.T) {
 }
 
 func TestConfigSubmitterReconnectionAbort(t *testing.T) {
-	setup := createconfigSubmitTestSetup(t)
+	setup := createConfigSubmitTestSetup(t)
 	setup.Start()
 
 	configSubmitter := setup.configSubmitter

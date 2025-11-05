@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -532,7 +533,12 @@ func submitConfigRequest(t *testing.T, conn *grpc.ClientConn) error {
 	stream, err := cl.Broadcast(ctx)
 	require.NoError(t, err)
 
-	env := tx.CreateStructuredConfigEnvelope([]byte("123"))
+	configEnvelope := protoutil.MarshalOrPanic(&common.ConfigUpdateEnvelope{
+		ConfigUpdate: nil,
+		Signatures:   nil,
+	})
+
+	env := tx.CreateStructuredConfigEnvelope(configEnvelope)
 	err = stream.Send(env)
 	require.NoError(t, err)
 
@@ -752,7 +758,13 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
+	configEnvelope := &common.ConfigEnvelope{
+		Config:     nil,
+		LastUpdate: nil,
+	}
+	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
+	fakeSigner := &mocks.SignerSerializer{}
 
 	stubConsenterInfo := config.ConsenterInfo{PartyID: partyID, Endpoint: consenter.GetConsenterEndpoint(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}
 
@@ -780,7 +792,10 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		MetricsLogInterval:                  1 * time.Second,
 	}
 
-	r := router.NewRouter(conf, logger)
+	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+	configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+	r := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
 	r.StartRouterService()
 
 	return r

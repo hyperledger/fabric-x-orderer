@@ -19,7 +19,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/internaltools/pkg/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -56,7 +58,7 @@ type Router struct {
 	stopChan         chan struct{}
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -86,8 +88,6 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 	for _, rawTLSCA := range config.Consenter.TLSCACerts {
 		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
 	}
-	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
-		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
 
 	configStore, err := configstore.NewStore(config.ConfigStorePath)
 	if err != nil {
@@ -100,6 +100,9 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 	configPuller := delivery.NewConsensusConfigPuller(config, logger, seekInfo)
 
 	verifier := createVerifier(config)
+	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
+		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer)
+
 	metrics := NewRouterMetrics(config, logger, config.MetricsLogInterval)
 
 	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, configPuller)
