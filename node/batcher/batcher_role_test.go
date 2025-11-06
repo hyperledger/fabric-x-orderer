@@ -15,6 +15,7 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
@@ -772,7 +773,12 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		MemPool:                 &mocks.FakeMemPool{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
-		Metrics:                 batcher.NewBatcherMetrics(batcherID, shardID, logger, 0),
+		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
+			PartyId:                 batcherID,
+			ShardId:                 shardID,
+			MonitoringListenAddress: "127.0.0.1:0",
+			MetricsLogInterval:      0 * time.Second,
+		}, logger),
 	}
 
 	return batcher

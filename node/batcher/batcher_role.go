@@ -203,7 +203,7 @@ func (b *BatcherRole) getTermAndNotifyChange() {
 				atomic.StoreUint64(&b.term, newTerm)
 				b.termChan <- newTerm
 				b.resubmitPendingBAFs(state, b.getPrimaryID(currentTerm))
-				b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
+				b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 			}
 		}
 	}
@@ -240,7 +240,7 @@ func (b *BatcherRole) Submit(request []byte) error {
 		return err
 	}
 
-	b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
+	b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 	return nil
 }
 
@@ -254,7 +254,7 @@ func (b *BatcherRole) HandleAck(seq types.BatchSequence, from types.PartyID) {
 
 func (b *BatcherRole) runPrimary() {
 	b.Logger.Infof("Batcher %d acting as primary (shard %d)", b.ID, b.Shard)
-	b.Metrics.currentRole.Store(1)
+	b.Metrics.currentRole.Set(1)
 
 	defer func() {
 		b.Logger.Infof("Batcher %d stopped acting as primary (shard %d)", b.ID, b.Shard)
@@ -302,7 +302,7 @@ func (b *BatcherRole) runPrimary() {
 
 		// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 		b.BAFSender.SendBAF(baf)
-		b.Metrics.batchedTxsTotal.Add(uint64(len(currentBatch)))
+		b.Metrics.batchedTxsTotal.Add(float64(len(currentBatch)))
 
 		b.ackerLock.RLock()
 		b.acker.HandleAck(b.seq, b.ID)
@@ -322,13 +322,13 @@ func (b *BatcherRole) removeRequests(batch types.BatchedRequests) {
 		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
 	}
 	b.MemPool.RemoveRequests(reqInfos...)
-	b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
+	b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 }
 
 func (b *BatcherRole) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
-	b.Metrics.currentRole.Store(2)
+	b.Metrics.currentRole.Set(2)
 
 	for {
 		out := b.BatchPuller.PullBatches(b.primary)
@@ -360,7 +360,7 @@ func (b *BatcherRole) runSecondary() {
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
 			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 			b.BAFSender.SendBAF(baf)
-			b.Metrics.batchedTxsTotal.Add(uint64(len(requests)))
+			b.Metrics.batchedTxsTotal.Add(float64(len(requests)))
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
 		}
