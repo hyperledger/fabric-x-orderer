@@ -266,3 +266,87 @@ func TestRouterRestartRecover(t *testing.T) {
 		ErrString:        "cancelled pull from assembler: %d",
 	})
 }
+
+// TestSubmitToRouterGetMetrics tests the end-to-end flow of submitting transactions to the router
+// and verifying that the metrics endpoint correctly reflects the number of incoming transactions.
+// The test performs the following steps:
+//  1. Compiles the arma binary.
+//  2. Creates a temporary directory for test artifacts.
+//  3. Generates a network configuration YAML file.
+//  4. Uses the armageddon CLI to generate config files for the network.
+//  5. Starts the arma nodes and waits for them to be ready.
+//  6. Sends a specified number of transactions to the router using a rate limiter.
+//  7. Queries the router's metrics endpoint and asserts that the number of incoming transactions
+//     matches the number sent, within a timeout period.
+func TestSubmitToRouterGetMetrics(t *testing.T) {
+	// 1. compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Number of parties in the test
+	numOfParties := 1
+
+	t.Logf("Running test with %d parties and %d shards", numOfParties, 1)
+
+	// 2. Create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 3. Create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
+	require.NoError(t, err)
+	numOfArmaNodes := len(netInfo)
+
+	// 4. Generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 5. Run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+
+	// 6. Send transactions to the routers.
+	totalTxNumber := 100
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	for i := 0; i < totalTxNumber; i++ {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		err = broadcastClient.SendTx(txContent)
+		require.NoError(t, err)
+	}
+	// 7. Query the router's metrics endpoint and assert the incoming transaction count.
+	routerToMonitor := armaNetwork.GetRouter(t, 1)
+	url := testutil.WaitForPrometheusServiceURL(t, routerToMonitor)
+
+	require.Eventually(t, func() bool {
+		return testutil.RouterIncomingTxMetric(t, types.PartyID(1), url) == totalTxNumber
+	}, 30*time.Second, 100*time.Millisecond)
+}

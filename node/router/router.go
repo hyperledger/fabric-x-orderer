@@ -15,8 +15,6 @@ import (
 	"math"
 	rand2 "math/rand"
 	"sort"
-	"sync/atomic"
-	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/policies"
@@ -40,12 +38,11 @@ type Router struct {
 	shardRouters     map[types.ShardID]*ShardRouter
 	logger           types.Logger
 	shardIDs         []types.ShardID
-	incoming         uint64
 	routerNodeConfig *nodeconfig.RouterNodeConfig
 	verifier         *requestfilter.RulesVerifier
-	stopChan         chan struct{}
 	configStore      *configstore.Store
-	configSubmitter  ConfigurationSubmitter
+	configSubmitter  *configSubmitter
+	metrics          *RouterMetrics
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router {
@@ -82,9 +79,10 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger) *Router
 		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger)
 
 	verifier := createVerifier(config)
-
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, config, logger, verifier, configSubmitter)
+	metrics := NewRouterMetrics(config, logger, config.MetricsLogInterval)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configSubmitter)
 	r.init()
+	r.metrics.Start()
 	return r
 }
 
@@ -111,6 +109,10 @@ func (r *Router) StartRouterService() <-chan struct{} {
 	return stop
 }
 
+func (r *Router) MonitoringServiceAddress() string {
+	return r.metrics.monitor.Address()
+}
+
 func (r *Router) Address() string {
 	if r.net == nil {
 		return ""
@@ -122,11 +124,9 @@ func (r *Router) Address() string {
 func (r *Router) Stop() {
 	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
 
-	close(r.stopChan)
-
-	r.configSubmitter.Stop()
-
 	r.net.Stop()
+	r.metrics.Stop()
+	r.configSubmitter.Stop()
 
 	for _, sr := range r.shardRouters {
 		sr.Stop()
@@ -163,7 +163,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 			return err
 		}
 
-		atomic.AddUint64(&r.incoming, 1)
+		r.metrics.incomingTxs.Add(1)
 
 		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
@@ -184,7 +184,9 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configSubmitter ConfigurationSubmitter) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte,
+	metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configSubmitter *configSubmitter,
+) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -208,31 +210,14 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		shardIDs:         shardIDs,
 		routerNodeConfig: rconfig,
 		verifier:         verifier,
-		stopChan:         make(chan struct{}),
 		configStore:      configStore,
 		configSubmitter:  configSubmitter,
+		metrics:          metrics,
 	}
 
 	for _, shardId := range shardIDs {
 		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier, configSubmitter)
 	}
-
-	go func() {
-		r.logger.Infof("Reporting routine is starting")
-		interval := 10 * time.Second
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				txCount := atomic.SwapUint64(&r.incoming, 0)
-				r.logger.Infof("Received %.f transactions per second", float64(txCount)/interval.Seconds())
-			case <-r.stopChan:
-				r.logger.Infof("Reporting routine is stopping")
-				return
-			}
-		}
-	}()
 
 	return r
 }
@@ -259,7 +244,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 			return err
 		}
 
-		atomic.AddUint64(&r.incoming, 1)
+		r.metrics.incomingTxs.Add(1)
 
 		reqID, shardRouter := r.getShardRouterAndReqID(req)
 
@@ -292,7 +277,7 @@ func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRout
 }
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
-	atomic.AddUint64(&r.incoming, 1)
+	r.metrics.incomingTxs.Add(1)
 	r.init()
 
 	reqID, shardRouter := r.getShardRouterAndReqID(request)
@@ -307,6 +292,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	r.logger.Debugf("Forwarded request %x", request.Payload)
 
 	response := <-feedbackChan // TODO: add select on shutdwon or timeout here
+	r.metrics.increaseErrorCount(response.err)
 	return responseToSubmitResponse(&response), nil
 }
 
@@ -316,6 +302,7 @@ func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_Submit
 		case <-exit:
 			return
 		case response := <-feedbackChan:
+			r.metrics.increaseErrorCount(response.err)
 			resp := responseToSubmitResponse(&response)
 			err := stream.Send(resp)
 			if err != nil {
@@ -335,6 +322,7 @@ func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_Br
 			if err != nil {
 				r.logger.Errorf("error sending response to client: %v", err)
 			}
+			r.metrics.increaseErrorCount(response.err)
 		}
 	}
 }
