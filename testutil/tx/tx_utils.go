@@ -70,12 +70,7 @@ func CreateStructuredEnvelope(data []byte) *common.Envelope {
 }
 
 // CreateSignedEnvelope creates a dummy data transaction signed by a private key of a client.
-func CreateSignedEnvelope(payloadData []byte, privateKeyBytes []byte) (*common.Envelope, error) {
-	signer, err := createECDSASigner(privateKeyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ecdsa signer from private key bytes")
-	}
-
+func CreateSignedEnvelope(payloadData []byte, signer *crypto.ECDSASigner) (*common.Envelope, error) {
 	payload := createStructuredPayload(payloadData, common.HeaderType_MESSAGE)
 	payloadBytes := deterministicMarshall(payload)
 	signedEnvelope, err := signEnvelope(payloadBytes, signer)
@@ -85,7 +80,8 @@ func CreateSignedEnvelope(payloadData []byte, privateKeyBytes []byte) (*common.E
 	return signedEnvelope, nil
 }
 
-func createECDSASigner(privateKeyBytes []byte) (*crypto.ECDSASigner, error) {
+// CreateECDSASigner reads a private key from the given path and creates a signer.
+func CreateECDSASigner(privateKeyBytes []byte) (*crypto.ECDSASigner, error) {
 	block, _ := pem.Decode(privateKeyBytes)
 	if block == nil || block.Bytes == nil {
 		return nil, fmt.Errorf("failed decoding private key PEM")
