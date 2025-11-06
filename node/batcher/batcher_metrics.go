@@ -7,70 +7,178 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
+	"fmt"
+	"net"
+	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/metrics"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+var (
+	currentRoleOpts = metrics.GaugeOpts{
+		Namespace:  "batcher",
+		Name:       "current_role",
+		Help:       "The current role of the batcher: 1=primary, 2=secondary.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	memPoolSizeOOpts = metrics.GaugeOpts{
+		Namespace:  "batcher",
+		Name:       "mempool_size",
+		Help:       "The current size of the mempool.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	roleChangesTotalOpts = metrics.CounterOpts{
+		Namespace:  "batcher",
+		Name:       "role_changes_total",
+		Help:       "The total number of role changes.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	batchesCreatedTotalOpts = metrics.CounterOpts{
+		Namespace:  "batcher",
+		Name:       "batches_created_total",
+		Help:       "The total number of batches created.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	batchesPulledTotalOpts = metrics.CounterOpts{
+		Namespace:  "batcher",
+		Name:       "batches_pulled_total",
+		Help:       "The total number of batches pulled.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	batchedTxsTotalOpts = metrics.CounterOpts{
+		Namespace:  "batcher",
+		Name:       "batched_txs_total",
+		Help:       "The total number of transactions batched.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	routerTxsTotalOpts = metrics.CounterOpts{
+		Namespace:  "batcher",
+		Name:       "router_txs_total",
+		Help:       "The total number of transactions received from the router.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	complaintsTotalOpts = metrics.CounterOpts{
+		Namespace:  "batcher",
+		Name:       "complaints_total",
+		Help:       "The total number of complaints sent.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	firstResendsTotalOpts = metrics.CounterOpts{
+		Namespace:  "batcher",
+		Name:       "first_resends_total",
+		Help:       "The total number of first resends performed.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type BatcherMetrics struct {
-	partyID  arma_types.PartyID
-	shardID  arma_types.ShardID
-	logger   arma_types.Logger
-	interval time.Duration
-	stopChan chan struct{}
-	stopOnce sync.Once
+	partyID   arma_types.PartyID
+	shardID   arma_types.ShardID
+	logger    arma_types.Logger
+	interval  time.Duration
+	stopChan  chan struct{}
+	stopOnce  sync.Once
+	startOnce sync.Once
 
 	// metrics
-	currentRole         atomic.Uint32 // 1=primary, 2=secondary
-	roleChangesTotal    atomic.Uint64
-	batchesCreatedTotal atomic.Uint64
-	batchesPulledTotal  atomic.Uint64
-	batchedTxsTotal     atomic.Uint64
-	routerTxsTotal      atomic.Uint64
-	complaintsTotal     atomic.Uint64
-	memPoolSize         atomic.Int64
-	firstResendsTotal   atomic.Uint64
+	currentRole         metrics.Gauge // 1=primary, 2=secondary
+	roleChangesTotal    metrics.Counter
+	batchesCreatedTotal metrics.Counter
+	batchesPulledTotal  metrics.Counter
+	batchedTxsTotal     metrics.Counter
+	routerTxsTotal      metrics.Counter
+	complaintsTotal     metrics.Counter
+	memPoolSize         metrics.Gauge
+	firstResendsTotal   metrics.Counter
+
+	// monitor
+	monitor *monitoring.Monitor
 }
 
-func NewBatcherMetrics(partyId arma_types.PartyID, shardId arma_types.ShardID, logger arma_types.Logger, interval time.Duration) *BatcherMetrics {
+func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, logger arma_types.Logger) *BatcherMetrics {
+	host, port, err := net.SplitHostPort(batcherNodeConfig.MonitoringListenAddress)
+	if err != nil {
+		logger.Panicf("failed to get hostname: %v", err)
+	}
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		logger.Panicf("failed to convert port to int: %v", err)
+	}
+	partyID := fmt.Sprintf("%d", batcherNodeConfig.PartyId)
+	shardID := fmt.Sprintf("%d", batcherNodeConfig.ShardId)
+
+	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("batcher_%s_%s", partyID, shardID))
+	p := monitor.Provider
+
 	return &BatcherMetrics{
-		interval: interval,
-		partyID:  partyId,
-		shardID:  shardId,
+		interval: batcherNodeConfig.MetricsLogInterval,
+		partyID:  batcherNodeConfig.PartyId,
+		shardID:  batcherNodeConfig.ShardId,
 		logger:   logger,
 		stopChan: make(chan struct{}),
+		monitor:  monitor,
+
+		currentRole:         p.NewGauge(currentRoleOpts).With([]string{partyID, shardID}...),
+		roleChangesTotal:    p.NewCounter(roleChangesTotalOpts).With([]string{partyID, shardID}...),
+		batchesCreatedTotal: p.NewCounter(batchesCreatedTotalOpts).With([]string{partyID, shardID}...),
+		batchesPulledTotal:  p.NewCounter(batchesPulledTotalOpts).With([]string{partyID, shardID}...),
+		batchedTxsTotal:     p.NewCounter(batchedTxsTotalOpts).With([]string{partyID, shardID}...),
+		routerTxsTotal:      p.NewCounter(routerTxsTotalOpts).With([]string{partyID, shardID}...),
+		complaintsTotal:     p.NewCounter(complaintsTotalOpts).With([]string{partyID, shardID}...),
+		memPoolSize:         p.NewGauge(memPoolSizeOOpts).With([]string{partyID, shardID}...),
+		firstResendsTotal:   p.NewCounter(firstResendsTotalOpts).With([]string{partyID, shardID}...),
 	}
 }
 
 func (m *BatcherMetrics) Start() {
-	if m.interval > 0 {
-		go m.trackMetrics()
-	}
+	m.startOnce.Do(func() {
+		m.monitor.Start()
+		if m.interval > 0 {
+			go m.trackMetrics()
+		}
+	})
 }
 
 func (m *BatcherMetrics) Stop() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
+		m.logger.Infof("Reporting routine is stopping")
+		if m.monitor != nil {
+			m.monitor.Stop()
+			m.monitor = nil
+		}
 		m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
 			m.partyID,
 			m.shardID,
 			m.role(),
-			m.batchesCreatedTotal.Load(),
-			m.batchesPulledTotal.Load(),
-			m.firstResendsTotal.Load(),
-			m.batchedTxsTotal.Load(),
-			m.memPoolSize.Load(),
-			m.routerTxsTotal.Load(),
-			m.roleChangesTotal.Load(),
-			m.complaintsTotal.Load(),
+			uint64(monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric))),
+			uint64(monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric))),
+			uint64(monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric))),
+			uint64(monitoring.GetMetricValue(m.batchedTxsTotal.(prometheus.Metric))),
+			uint64(monitoring.GetMetricValue(m.memPoolSize.(prometheus.Metric))),
+			uint64(monitoring.GetMetricValue(m.routerTxsTotal.(prometheus.Metric))),
+			uint64(monitoring.GetMetricValue(m.roleChangesTotal.(prometheus.Metric))),
+			uint64(monitoring.GetMetricValue(m.complaintsTotal.(prometheus.Metric))),
 		)
 	})
 }
 
 func (m *BatcherMetrics) trackMetrics() {
-	prevC, prevP, prevR := uint64(0), uint64(0), uint64(0)
+	prevC, prevP, prevR := float64(0), float64(0), float64(0)
 	sec := m.interval.Seconds()
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
@@ -78,23 +186,23 @@ func (m *BatcherMetrics) trackMetrics() {
 	for {
 		select {
 		case <-t.C:
-			created := m.batchesCreatedTotal.Load()
-			pulled := m.batchesPulledTotal.Load()
-			resends := m.firstResendsTotal.Load()
+			created := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric))
+			pulled := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric))
+			resends := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric))
 
 			m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resend_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
 				m.partyID,
 				m.shardID,
 				m.role(),
 				sec,
-				created-prevC, float64(created-prevC)/sec, created,
-				pulled-prevP, float64(pulled-prevP)/sec, pulled,
-				resends-prevR, float64(resends-prevR)/sec, resends,
-				m.batchedTxsTotal.Load(),
-				m.memPoolSize.Load(),
-				m.routerTxsTotal.Load(),
-				m.roleChangesTotal.Load(),
-				m.complaintsTotal.Load(),
+				uint64(created-prevC), created-prevC/sec, uint64(created),
+				uint64(pulled-prevP), pulled-prevP/sec, uint64(pulled),
+				uint64(resends-prevR), resends-prevR/sec, uint64(resends),
+				uint64(monitoring.GetMetricValue(m.batchedTxsTotal.(prometheus.Metric))),
+				uint64(monitoring.GetMetricValue(m.memPoolSize.(prometheus.Metric))),
+				uint64(monitoring.GetMetricValue(m.routerTxsTotal.(prometheus.Metric))),
+				uint64(monitoring.GetMetricValue(m.roleChangesTotal.(prometheus.Metric))),
+				uint64(monitoring.GetMetricValue(m.complaintsTotal.(prometheus.Metric))),
 			)
 			prevC, prevP, prevR = created, pulled, resends
 
@@ -105,7 +213,8 @@ func (m *BatcherMetrics) trackMetrics() {
 }
 
 func (m *BatcherMetrics) role() string {
-	if m.currentRole.Load() == 1 {
+	currentRole := int(monitoring.GetMetricValue(m.currentRole.(prometheus.Metric)))
+	if currentRole == 1 {
 		return "primary"
 	}
 	return "secondary"

@@ -109,10 +109,6 @@ func (r *Router) StartRouterService() <-chan struct{} {
 	return stop
 }
 
-func (r *Router) MonitoringServiceAddress() string {
-	return r.metrics.monitor.Address()
-}
-
 func (r *Router) Address() string {
 	if r.net == nil {
 		return ""
