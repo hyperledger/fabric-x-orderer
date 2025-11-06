@@ -8,12 +8,17 @@ package tx
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"google.golang.org/protobuf/proto"
 )
@@ -62,6 +67,53 @@ func CreateStructuredEnvelope(data []byte) *common.Envelope {
 		Payload:   payloadBytes,
 		Signature: []byte("signature"),
 	}
+}
+
+// CreateSignedEnvelope creates a dummy data transaction signed by a private key of a client.
+func CreateSignedEnvelope(payloadData []byte, privateKeyBytes []byte) (*common.Envelope, error) {
+	signer, err := createECDSASigner(privateKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ecdsa signer from private key bytes")
+	}
+
+	payload := createStructuredPayload(payloadData, common.HeaderType_MESSAGE)
+	payloadBytes := deterministicMarshall(payload)
+	signedEnvelope, err := signEnvelope(payloadBytes, signer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign envelope")
+	}
+	return signedEnvelope, nil
+}
+
+func createECDSASigner(privateKeyBytes []byte) (*crypto.ECDSASigner, error) {
+	block, _ := pem.Decode(privateKeyBytes)
+	if block == nil || block.Bytes == nil {
+		return nil, fmt.Errorf("failed decoding private key PEM")
+	}
+
+	if block.Type != "PRIVATE KEY" {
+		return nil, fmt.Errorf("unexpected pem type, got a %s", strings.ToLower(block.Type))
+	}
+
+	priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing private key DER: %v", err)
+	}
+
+	return (*crypto.ECDSASigner)(priv.(*ecdsa.PrivateKey)), nil
+}
+
+func signEnvelope(payload []byte, signer *crypto.ECDSASigner) (*common.Envelope, error) {
+	signature, err := signer.Sign(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	envelope := &common.Envelope{
+		Payload:   payload,
+		Signature: signature,
+	}
+	return envelope, nil
 }
 
 func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
