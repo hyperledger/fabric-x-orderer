@@ -9,6 +9,8 @@ package batcher_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"regexp"
 	"testing"
 	"time"
 
@@ -184,6 +186,38 @@ func TestBatcherRun(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return batchers[1].Ledger.Height(3) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
+}
+
+func TestRunBatchersGetMetrics(t *testing.T) {
+	shardID := types.ShardID(1)
+	numParties := 1
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	totalTxNumber := 10
+	url := batchers[0].MonitoringServiceAddress()
+
+	for range totalTxNumber {
+		batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{byte(64)}))
+	}
+
+	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
+	re := regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetCounterMetricValueByRegexp(t, re, url) == totalTxNumber
+	}, 30*time.Second, 100*time.Millisecond)
 }
 
 func TestBatcherComplainAndReqFwd(t *testing.T) {

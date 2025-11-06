@@ -75,6 +75,10 @@ type Batcher struct {
 	Metrics *BatcherMetrics
 }
 
+func (b *Batcher) MonitoringServiceAddress() string {
+	return b.Metrics.monitor.Address()
+}
+
 func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 

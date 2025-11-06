@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -107,7 +108,7 @@ func (m *RouterMetrics) trackMetrics() {
 		case <-m.stopChan:
 			return
 		case <-ticker.C:
-			txCount := monitoring.GetMetricValue(m.incomingTxs.(*monitoring.Counter))
+			txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
 			m.logger.Infof("Received %.f transactions per second", float64(txCount-incomingTxsLastValue)/m.interval.Seconds())
 			incomingTxsLastValue = txCount
 		}

@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -31,8 +32,8 @@ import (
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-
 	"github.com/pkg/errors"
+
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
@@ -49,6 +50,7 @@ type routerTestSetup struct {
 	consenter  *router.StubConsenter
 	clientConn *grpc.ClientConn
 	router     *router.Router
+	config     *config.RouterNodeConfig
 }
 
 func (r *routerTestSetup) Close() {
@@ -99,13 +101,14 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int,
 	stubConsenter.Start()
 
 	// create and start router
-	router := createAndStartRouter(t, partyID, ca, batchers, &stubConsenter, useTLS, clientAuthRequired)
+	router, conf := createAndStartRouter(t, partyID, ca, batchers, &stubConsenter, useTLS, clientAuthRequired)
 
 	return &routerTestSetup{
 		ca:        ca,
 		batchers:  batchers,
 		consenter: &stubConsenter,
 		router:    router,
+		config:    conf,
 	}
 }
 
@@ -155,8 +158,11 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 	res = submitBroadcastRequests(testSetup.clientConn, 1000)
 	require.NoError(t, res.err)
 
+	pattern := fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1))
+	re := regexp.MustCompile(pattern)
+
 	require.Eventually(t, func() bool {
-		return testutil.RouterIncomingTxMetric(t, types.PartyID(1), URL) == 2000
+		return testutil.GetCounterMetricValueByRegexp(t, re, URL) == 2000
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
@@ -821,7 +827,7 @@ func submitRequest(conn *grpc.ClientConn) error {
 	return nil
 }
 
-func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher, consenter *router.StubConsenter, useTLS bool, clientAuthRequired bool) *router.Router {
+func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stubBatcher, consenter *router.StubConsenter, useTLS bool, clientAuthRequired bool) (*router.Router, *config.RouterNodeConfig) {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
@@ -876,5 +882,5 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	r := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
 	r.StartRouterService()
 
-	return r
+	return r, conf
 }

@@ -8,7 +8,6 @@ package testutil
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -18,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,19 +34,19 @@ func GetAvailablePort(t *testing.T) (port string, ll net.Listener) {
 	return portS, ll
 }
 
-// RouterIncomingTxMetric retrieves the value of the "router_requests_completed" metric for a given party ID
-// from the specified URL. It sends an HTTP GET request to the URL, parses the response body to find the metric
-// line matching the provided party ID, and returns the metric value as an integer. If the metric is not found
-// or an error occurs during parsing, it returns -1.
+// GetCounterMetricValueByRegexp retrieves the value of a counter metric from a given URL by matching a regular expression pattern.
+// The function makes an HTTP GET request to the specified URL and searches the response body for the first match of the provided regex pattern.
+// The matched value is expected to be in a format where the metric value is the second element when split by whitespace.
 //
 // Parameters:
-//   - t: The testing context used for assertions and logging.
-//   - partID: The PartyID for which the metric should be retrieved.
-//   - url: The URL to query for the metric.
+//   - t: Testing object for assertions and logging
+//   - re: Regular expression pattern to match the metric
+//   - url: The URL endpoint to fetch metrics from
 //
 // Returns:
-//   - int: The value of the "router_requests_completed" metric for the given party ID, or -1 if not found or on error.
-func RouterIncomingTxMetric(t *testing.T, partID types.PartyID, url string) int {
+//   - int: The numeric value of the matched counter metric
+//   - Returns -1 if no matches are found or if the value cannot be converted to an integer
+func GetCounterMetricValueByRegexp(t *testing.T, re *regexp.Regexp, url string) int {
 	resp, err := http.Get(url)
 	require.NoError(t, err)
 
@@ -58,10 +56,6 @@ func RouterIncomingTxMetric(t *testing.T, partID types.PartyID, url string) int 
 	require.NoError(t, err)
 
 	t.Log(string(body))
-
-	pattern := fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, partID)
-
-	re := regexp.MustCompile(pattern)
 
 	// Find all matches
 	matches := re.FindAllString(string(body), -1)
@@ -77,13 +71,13 @@ func RouterIncomingTxMetric(t *testing.T, partID types.PartyID, url string) int 
 	return -1
 }
 
-// WaitForPrometheusServiceURL retrieves the Prometheus metrics endpoint URL from the given ArmaNodeInfo's session output.
+// CaptureArmaNodePrometheusServiceURL retrieves the Prometheus metrics endpoint URL from the given ArmaNodeInfo's session output.
 // It waits until the URL is found or times out, and returns the metrics endpoint as a string.
-func WaitForPrometheusServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
+func CaptureArmaNodePrometheusServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
 	var url string
+	re := regexp.MustCompile(`Prometheus serving on URL:\s+(https?://[^/\s]+/metrics)`)
 	require.Eventually(t, func() bool {
 		output := string(armaNodeInfo.RunInfo.Session.Err.Contents())
-		re := regexp.MustCompile(`Prometheus serving on URL:\s+(https?://[^/\s]+/metrics)`)
 		matches := re.FindStringSubmatch(output)
 		if len(matches) > 1 {
 			url = matches[1]
