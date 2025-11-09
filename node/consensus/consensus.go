@@ -70,22 +70,23 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	Net                Net
-	Config             *config.ConsenterNodeConfig
-	SigVerifier        SigVerifier
-	Signer             Signer
-	CurrentNodes       []uint64
-	BFTConfig          smartbft_types.Configuration
-	BFT                *consensus.Consensus
-	Storage            Storage
-	BADB               *badb.BatchAttestationDB
-	Arma               Arma
-	stateLock          sync.Mutex
-	State              *state.State
-	lastConfigBlockNum uint64
-	Logger             arma_types.Logger
-	Synchronizer       *synchronizer
-	Metrics            *ConsensusMetrics
+	Net                          Net
+	Config                       *config.ConsenterNodeConfig
+	SigVerifier                  SigVerifier
+	Signer                       Signer
+	CurrentNodes                 []uint64
+	BFTConfig                    smartbft_types.Configuration
+	BFT                          *consensus.Consensus
+	Storage                      Storage
+	BADB                         *badb.BatchAttestationDB
+	Arma                         Arma
+	stateLock                    sync.Mutex
+	State                        *state.State
+	lastConfigBlockNum           uint64
+	decisionNumOfLastConfigBlock arma_types.DecisionNum
+	Logger                       arma_types.Logger
+	Synchronizer                 *synchronizer
+	Metrics                      *ConsensusMetrics
 }
 
 func (c *Consensus) Start() error {
@@ -201,13 +202,20 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed number %d isn't equal to computed number %x", hdr.Num, md.LatestSequence)
 	}
 
-	if hdr.DecisionNumOfLastConfigBlock != arma_types.DecisionNum(0) {
-		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to 0", hdr.DecisionNumOfLastConfigBlock) // TODO change when reconfig
+	c.stateLock.Lock()
+	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, batch)
+	lastConfigBlockNum := c.lastConfigBlockNum
+	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
+	// TODO verify config reqs
+	c.stateLock.Unlock()
+
+	if len(configRequests) > 0 {
+		decisionNumOfLastConfigBlock = arma_types.DecisionNum(md.LatestSequence)
 	}
 
-	c.stateLock.Lock()
-	computedState, attestations, _ := c.Arma.SimulateStateTransition(c.State, batch)
-	c.stateLock.Unlock()
+	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock { // TODO verify when not zero
+		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to computed %d", hdr.DecisionNumOfLastConfigBlock, decisionNumOfLastConfigBlock)
+	}
 
 	availableCommonBlocks := make([]*common.Block, len(attestations))
 
@@ -253,10 +261,58 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 			return nil, fmt.Errorf("proposed common block metadata in index %d isn't equal to computed metadata", i)
 		}
 
+		// TODO refine errors
+		rawLastConfig, err := protoutil.GetMetadataFromBlock(hdr.AvailableCommonBlocks[i], common.BlockMetadataIndex_LAST_CONFIG)
+		if err != nil {
+			return nil, err
+		}
+		lastConf := &common.LastConfig{}
+		if err := proto.Unmarshal(rawLastConfig.Value, lastConf); err != nil {
+			return nil, err
+		}
+		if lastConf.Index != lastConfigBlockNum {
+			return nil, errors.Errorf("last config in block metadata points to %d but our persisted last config is %d", lastConf.Index, lastConfigBlockNum)
+		}
+
 	}
 
-	if len(attestations) > 0 {
-		computedState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(attestations)-1].Header)
+	if len(configRequests) > 0 {
+		// TODO verify config block
+		availableCommonBlocks = append(availableCommonBlocks, protoutil.NewBlock(lastBlockNumber+1, prevHash))
+
+		lastConfigBlockNum = lastBlockNumber + 1
+
+		configReq, err := protoutil.Marshal(configRequests[0].Envelope) // TODO handle when there are multiple requests
+		if err != nil {
+			c.Logger.Panicf("Failed marshaling config request")
+		}
+		lastBlock := availableCommonBlocks[len(attestations)]
+		lastBlock.Data = &common.BlockData{Data: [][]byte{configReq}}
+		lastBlock.Header.DataHash = protoutil.ComputeBlockDataHash(lastBlock.Data)
+		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations) + 1, BatchIndex: len(attestations)}, 0) // TODO fix batch count in all?
+		if err != nil {
+			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+		}
+		lastBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
+		lastBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: lastBlock.Header.Number}),
+		})
+
+		rawLastConfig, err := protoutil.GetMetadataFromBlock(hdr.AvailableCommonBlocks[len(attestations)], common.BlockMetadataIndex_LAST_CONFIG)
+		if err != nil {
+			return nil, err
+		}
+		lastConf := &common.LastConfig{}
+		if err := proto.Unmarshal(rawLastConfig.Value, lastConf); err != nil {
+			return nil, err
+		}
+		if lastConf.Index != lastConfigBlockNum {
+			return nil, errors.Errorf("last config in block metadata points to %d but our persisted last config is %d", lastConf.Index, lastConfigBlockNum)
+		}
+	}
+
+	if len(attestations) > 0 || len(configRequests) > 0 {
+		computedState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(availableCommonBlocks)-1].Header)
 	}
 
 	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
@@ -439,8 +495,9 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
 	c.stateLock.Lock()
-	// TODO: config request not handled yet
-	newState, attestations, _ := c.Arma.SimulateStateTransition(c.State, requests)
+	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
+	lastConfigBlockNum := c.lastConfigBlockNum
+	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	c.stateLock.Unlock()
 
 	lastCommonBlockHeader := &common.BlockHeader{}
@@ -471,14 +528,36 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		}
 		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
-			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: c.lastConfigBlockNum}), // TODO set last config
+			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: lastConfigBlockNum}),
 		})
 
 		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
 	}
 
-	if len(attestations) > 0 {
-		newState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(attestations)-1].Header)
+	if len(configRequests) > 0 {
+		c.Logger.Infof("There are %d config requests, creating a config block from the first request", len(configRequests))
+		// TODO something when there are a few config requests
+		availableCommonBlocks = append(availableCommonBlocks, protoutil.NewBlock(lastBlockNumber+1, prevHash))
+		configReq, err := protoutil.Marshal(configRequests[0].Envelope)
+		if err != nil {
+			c.Logger.Panicf("Failed marshaling config request")
+		}
+		lastBlock := availableCommonBlocks[len(attestations)]
+		lastBlock.Data = &common.BlockData{Data: [][]byte{configReq}}
+		lastBlock.Header.DataHash = protoutil.ComputeBlockDataHash(lastBlock.Data)
+		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations) + 1, BatchIndex: len(attestations)}, 0) // TODO fix batch count in all?
+		if err != nil {
+			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+		}
+		lastBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
+		lastBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: lastBlock.Header.Number}),
+		})
+		decisionNumOfLastConfigBlock = arma_types.DecisionNum(md.LatestSequence)
+	}
+
+	if len(attestations) > 0 || len(configRequests) > 0 {
+		newState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(availableCommonBlocks)-1].Header)
 	}
 
 	reqs := arma_types.BatchedRequests(requests)
@@ -488,7 +567,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 			AvailableCommonBlocks:        availableCommonBlocks,
 			State:                        newState,
 			Num:                          arma_types.DecisionNum(md.LatestSequence),
-			DecisionNumOfLastConfigBlock: arma_types.DecisionNum(0), // TODO update when reconfig
+			DecisionNumOfLastConfigBlock: decisionNumOfLastConfigBlock,
 		}).Serialize(),
 		Metadata: metadata,
 		Payload:  reqs.Serialize(),
@@ -529,6 +608,11 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 
 	c.stateLock.Lock()
 	c.State = hdr.State
+	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
+		c.lastConfigBlockNum = hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
+		c.decisionNumOfLastConfigBlock = hdr.Num
+		// TODO apply reconfig after deliver
+	}
 	c.stateLock.Unlock()
 
 	return smartbft_types.Reconfig{
@@ -562,6 +646,8 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
+	} else if ce.ConfigRequest != nil {
+		return reqID, ce, nil // TODO verify sig over config
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}

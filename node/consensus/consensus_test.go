@@ -461,6 +461,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		numPending             int
 		numComplaints          int
 		newTermForShard1       uint64
+		withConfig             bool
 	}{
 		{
 			name: "single block",
@@ -547,6 +548,19 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			numPending:    2,
 			numComplaints: 1,
 		},
+		{
+			name: "one config block",
+			initialAppContext: &common.BlockHeader{
+				Number:       10,
+				PreviousHash: append(make([]byte, 31), byte(1)),
+				DataHash:     append(make([]byte, 31), byte(2)),
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 5,
+			},
+			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{Payload: []byte(""), Signature: []byte("")}}}},
+			withConfig: true,
+		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
 			initialState := &state.State{
@@ -591,7 +605,11 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 			require.Equal(t, tst.metadata.LatestSequence, uint64(header.Num))
 
-			require.Len(t, header.AvailableCommonBlocks, len(tst.bafsOfAvailableBatches))
+			if !tst.withConfig {
+				require.Len(t, header.AvailableCommonBlocks, len(tst.bafsOfAvailableBatches))
+			} else {
+				require.Len(t, header.AvailableCommonBlocks, len(tst.bafsOfAvailableBatches)+1)
+			}
 
 			for i, baf := range tst.bafsOfAvailableBatches {
 				require.Equal(t, baf.Digest(), header.AvailableCommonBlocks[i].Header.DataHash)
@@ -612,6 +630,17 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 				latestBlockNumber++
 				latestBlockHash = protoutil.BlockHeaderHash(latestBlockHeader)
+			}
+
+			if tst.withConfig {
+				latestBlockHeader = &common.BlockHeader{
+					Number:       latestBlockNumber,
+					PreviousHash: latestBlockHash,
+				}
+				configReq, err := protoutil.Marshal(tst.ces[len(tst.ces)-1].ConfigRequest.Envelope)
+				require.NoError(t, err)
+				blockData := &common.BlockData{Data: [][]byte{configReq}}
+				latestBlockHeader.DataHash = protoutil.ComputeBlockDataHash(blockData)
 			}
 
 			require.NotNil(t, header.State)
