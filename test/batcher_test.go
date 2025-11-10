@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -40,6 +41,77 @@ const (
 // 6. Restart the stopped primary batcher and ensure the stalled transactions are processed.
 // 7. Submit additional transactions and verify that all parties receive the expected number
 //    of transactions.
+
+func TestRunBatchersGetMetrics(t *testing.T) {
+	// 1. compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	t.Logf("Running test with %d parties and %d shards", 2, 1)
+
+	// Create a temporary directory for the test
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 2, 1, "none", "none")
+	require.NoError(t, err)
+	numOfArmaNodes := len(netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	readyChan := make(chan struct{}, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
+
+	// 2. Send To Routers
+	totalTxNumber := 1000
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	for i := 0; i < totalTxNumber; i++ {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		err = broadcastClient.SendTx(txContent)
+		require.NoError(t, err)
+	}
+
+	t.Log("Finished submit")
+	broadcastClient.Stop()
+
+	batcherToMonitor := armaNetwork.GeBatcher(t, types.PartyID(1), types.ShardID(1))
+	url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
+
+	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
+	re := regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetCounterMetricValueByRegexp(t, re, url) == totalTxNumber
+	}, 30*time.Second, 100*time.Millisecond)
+}
 
 func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	// 1. compile arma

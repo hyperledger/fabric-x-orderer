@@ -8,9 +8,11 @@ package monitoring
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
@@ -70,6 +72,7 @@ func (p *Provider) StartPrometheusServer(
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		p.logger.Infof("Prometheus serving on URL: %s", p.url)
+		fmt.Fprintf(os.Stderr, "Prometheus serving on URL: %s\n", p.url)
 		defer p.logger.Infof("Prometheus stopped serving")
 		return server.Serve(listener)
 	})
@@ -195,7 +198,10 @@ func (p *Provider) Registry() *prometheus.Registry {
 
 func GetMetricValue(m prometheus.Metric) float64 {
 	gm := promgo.Metric{}
-	m.Write(&gm)
+	err := m.Write(&gm)
+	if err != nil {
+		panic(err.Error())
+	}
 
 	switch {
 	case gm.Gauge != nil:
