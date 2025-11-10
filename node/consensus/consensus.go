@@ -520,39 +520,31 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	for i, ba := range attestations {
 		lastBlockNumber++
 
-		availableCommonBlocks[i] = protoutil.NewBlock(lastBlockNumber, prevHash)
-		availableCommonBlocks[i].Header.DataHash = ba[0].Digest()
-		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ba[0], &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations), BatchIndex: i}, 0)
+		block, err := CreateDataCommonBlock(lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), len(attestations), i, lastConfigBlockNum)
 		if err != nil {
-			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+			c.Logger.Panicf("Failed to create data block: %s", err.Error())
 		}
-		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
-		availableCommonBlocks[i].Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
-			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: lastConfigBlockNum}),
-		})
 
-		prevHash = protoutil.BlockHeaderHash(availableCommonBlocks[i].Header)
+		availableCommonBlocks[i] = block
+
+		prevHash = protoutil.BlockHeaderHash(block.Header)
 	}
 
 	if len(configRequests) > 0 {
 		c.Logger.Infof("There are %d config requests, creating a config block from the first request", len(configRequests))
-		// TODO something when there are a few config requests
-		availableCommonBlocks = append(availableCommonBlocks, protoutil.NewBlock(lastBlockNumber+1, prevHash))
+		// TODO something when there are a few config request
 		configReq, err := protoutil.Marshal(configRequests[0].Envelope)
 		if err != nil {
 			c.Logger.Panicf("Failed marshaling config request")
 		}
-		lastBlock := availableCommonBlocks[len(attestations)]
-		lastBlock.Data = &common.BlockData{Data: [][]byte{configReq}}
-		lastBlock.Header.DataHash = protoutil.ComputeBlockDataHash(lastBlock.Data)
-		blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: arma_types.DecisionNum(md.LatestSequence), BatchCount: len(attestations) + 1, BatchIndex: len(attestations)}, 0) // TODO fix batch count in all?
+
+		configBlock, err := CreateConfigCommonBlock(lastBlockNumber+1, prevHash, arma_types.DecisionNum(md.LatestSequence), len(attestations)+1, len(attestations), configReq)
 		if err != nil {
-			c.Logger.Panicf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
+			c.Logger.Panicf("Failed to create config block: %s", err.Error())
 		}
-		lastBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
-		lastBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
-			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: lastBlock.Header.Number}),
-		})
+
+		availableCommonBlocks = append(availableCommonBlocks, configBlock)
+
 		decisionNumOfLastConfigBlock = arma_types.DecisionNum(md.LatestSequence)
 	}
 
