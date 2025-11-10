@@ -22,10 +22,9 @@ func (fake *FakeComplainer) Complain(arg1 string) {
 	fake.complainArgsForCall = append(fake.complainArgsForCall, struct {
 		arg1 string
 	}{arg1})
-	stub := fake.ComplainStub
 	fake.recordInvocation("Complain", []interface{}{arg1})
 	fake.complainMutex.Unlock()
-	if stub != nil {
+	if fake.ComplainStub != nil {
 		fake.ComplainStub(arg1)
 	}
 }
@@ -52,6 +51,8 @@ func (fake *FakeComplainer) ComplainArgsForCall(i int) string {
 func (fake *FakeComplainer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.complainMutex.RLock()
+	defer fake.complainMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

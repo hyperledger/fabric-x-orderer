@@ -30,16 +30,15 @@ func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequests(arg1 types.Batche
 	fake.verifyBatchedRequestsArgsForCall = append(fake.verifyBatchedRequestsArgsForCall, struct {
 		arg1 types.BatchedRequests
 	}{arg1})
-	stub := fake.VerifyBatchedRequestsStub
-	fakeReturns := fake.verifyBatchedRequestsReturns
 	fake.recordInvocation("VerifyBatchedRequests", []interface{}{arg1})
 	fake.verifyBatchedRequestsMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.VerifyBatchedRequestsStub != nil {
+		return fake.VerifyBatchedRequestsStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.verifyBatchedRequestsReturns
 	return fakeReturns.result1
 }
 
@@ -88,6 +87,8 @@ func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsReturnsOnCall(i in
 func (fake *FakeBatchedRequestsVerifier) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.verifyBatchedRequestsMutex.RLock()
+	defer fake.verifyBatchedRequestsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

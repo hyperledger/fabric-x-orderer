@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -24,7 +25,7 @@ import (
 
 type stubConsenter struct {
 	net                *comm.GRPCServer
-	stateChan          chan *state.State
+	headerChan         chan *state.Header
 	key                []byte
 	certificate        []byte
 	logger             types.Logger
@@ -42,7 +43,7 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, n *node) *stubConsent
 		net:         n.GRPCServer,
 		key:         n.TLSKey,
 		certificate: n.TLSCert,
-		stateChan:   make(chan *state.State),
+		headerChan:  make(chan *state.Header),
 	}
 
 	gRPCServer := n.GRPCServer.Server()
@@ -137,12 +138,25 @@ func (sc *stubConsenter) ComplaintCount() int {
 	return sc.complaints
 }
 
-func (sc *stubConsenter) UpdateState(state *state.State) {
-	sc.stateChan <- state
+func (sc *stubConsenter) UpdateState(newState *state.State) {
+	header := &state.Header{
+		State: newState,
+	}
+	sc.headerChan <- header
 }
 
-func (sc *stubConsenter) ReplicateState() <-chan *state.State {
-	return sc.stateChan
+func (sc *stubConsenter) UpdateStateHeaderWithConfigBlock(decisionNum types.DecisionNum, availableCommonBlocks []*common.Block, newState *state.State) {
+	header := &state.Header{
+		Num:                          decisionNum,
+		AvailableCommonBlocks:        availableCommonBlocks,
+		State:                        newState,
+		DecisionNumOfLastConfigBlock: decisionNum,
+	}
+	sc.headerChan <- header
+}
+
+func (sc *stubConsenter) ReplicateState() <-chan *state.Header {
+	return sc.headerChan
 }
 
 func (sc *stubConsenter) CreateStateConsensusReplicator(conf *config.BatcherNodeConfig, logger types.Logger) batcher.StateReplicator {

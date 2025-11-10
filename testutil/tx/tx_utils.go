@@ -112,7 +112,7 @@ func signEnvelope(payload []byte, signer *crypto.ECDSASigner) (*common.Envelope,
 	return envelope, nil
 }
 
-func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
+func CreateStructuredConfigUpdateEnvelope(data []byte) *common.Envelope {
 	payload := createStructuredPayload(data, common.HeaderType_CONFIG_UPDATE)
 	payloadBytes := deterministicMarshall(payload)
 	return &common.Envelope{

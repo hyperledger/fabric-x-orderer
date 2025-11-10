@@ -28,16 +28,15 @@ func (fake *FakeStateProvider) GetLatestStateChan() <-chan *state.State {
 	ret, specificReturn := fake.getLatestStateChanReturnsOnCall[len(fake.getLatestStateChanArgsForCall)]
 	fake.getLatestStateChanArgsForCall = append(fake.getLatestStateChanArgsForCall, struct {
 	}{})
-	stub := fake.GetLatestStateChanStub
-	fakeReturns := fake.getLatestStateChanReturns
 	fake.recordInvocation("GetLatestStateChan", []interface{}{})
 	fake.getLatestStateChanMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.GetLatestStateChanStub != nil {
+		return fake.GetLatestStateChanStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.getLatestStateChanReturns
 	return fakeReturns.result1
 }
 
@@ -79,6 +78,8 @@ func (fake *FakeStateProvider) GetLatestStateChanReturnsOnCall(i int, result1 <-
 func (fake *FakeStateProvider) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.getLatestStateChanMutex.RLock()
+	defer fake.getLatestStateChanMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

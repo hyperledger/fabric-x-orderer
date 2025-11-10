@@ -538,7 +538,7 @@ func submitConfigRequest(t *testing.T, conn *grpc.ClientConn) error {
 		Signatures:   nil,
 	})
 
-	env := tx.CreateStructuredConfigEnvelope(configEnvelope)
+	env := tx.CreateStructuredConfigUpdateEnvelope(configEnvelope)
 	err = stream.Send(env)
 	require.NoError(t, err)
 
