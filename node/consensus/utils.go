@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -15,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
 func toBeSignedBAF(baf arma_types.BatchAttestationFragment) []byte {
@@ -61,4 +64,45 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, decisionNum arma_
 		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: configBlock.Header.Number}),
 	})
 	return configBlock, nil
+}
+
+func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte, batchID arma_types.BatchID, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) error {
+	// verify hash chain
+	if hex.EncodeToString(block.Header.PreviousHash) != hex.EncodeToString(prevHash) {
+		return errors.Errorf("proposed block header prev hash %s isn't equal to computed prev hash %s", hex.EncodeToString(block.Header.PreviousHash), hex.EncodeToString(prevHash))
+	}
+
+	// verify block number
+	if block.Header.Number != blockNum {
+		return errors.Errorf("proposed block header number %d isn't equal to computed number %d", block.Header.Number, blockNum)
+	}
+
+	// verify orderer metadata
+	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchID, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
+	if err != nil {
+		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
+	}
+
+	if block.Metadata == nil || block.Metadata.Metadata == nil {
+		return errors.Errorf("proposed block metadata is nil")
+	}
+
+	if !bytes.Equal(computedBlockMetadata, block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {
+		return errors.Errorf("proposed block metadata isn't equal to computed metadata")
+	}
+
+	// verify last config
+	rawLastConfig, err := protoutil.GetMetadataFromBlock(block, common.BlockMetadataIndex_LAST_CONFIG)
+	if err != nil {
+		return errors.Wrap(err, "failed getting proposed block metadata last config")
+	}
+	lastConf := &common.LastConfig{}
+	if err := proto.Unmarshal(rawLastConfig.Value, lastConf); err != nil {
+		return errors.Wrap(err, "failed unmarshaling proposed block metadata last config")
+	}
+	if lastConf.Index != lastConfigBlockNum {
+		return errors.Errorf("last config in block metadata points to %d but our persisted last config is %d", lastConf.Index, lastConfigBlockNum)
+	}
+
+	return nil
 }
