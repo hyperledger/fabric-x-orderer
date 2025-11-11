@@ -213,6 +213,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		decisionNumOfLastConfigBlock = arma_types.DecisionNum(md.LatestSequence)
 	}
 
+	// TODO verify proposal verification seq
+
 	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock { // TODO verify when not zero
 		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to computed %d", hdr.DecisionNumOfLastConfigBlock, decisionNumOfLastConfigBlock)
 	}
@@ -563,6 +565,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		}).Serialize(),
 		Metadata: metadata,
 		Payload:  reqs.Serialize(),
+		// TODO add VerificationSequence (config sequence)
 	}
 }
 
