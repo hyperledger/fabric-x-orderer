@@ -42,7 +42,7 @@ type TestSetup struct {
 
 func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 	testSetup := createTestSetup(t, 1)
-	testSetup.shardRouter.MaybeInit()
+	testSetup.shardRouter.InitShardRouter()
 
 	trace := make([]byte, 16)
 	binary.BigEndian.PutUint16(trace, math.MaxInt16)
@@ -60,7 +60,7 @@ func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
 
 func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	testSetup := createTestSetup(t, 1)
-	testSetup.shardRouter.MaybeInit()
+	testSetup.shardRouter.InitShardRouter()
 
 	trace := make([]byte, 16)
 	binary.BigEndian.PutUint16(trace, math.MaxInt16)

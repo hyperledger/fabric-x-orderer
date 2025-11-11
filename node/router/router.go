@@ -192,8 +192,6 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		r.logger.Infof("Client's certificate: \n%s", node.CertificateToString(clientCert))
 	}
 
-	r.init()
-
 	exit := make(chan struct{})
 	defer func() {
 		close(exit)
@@ -226,7 +224,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 func (r *Router) init() {
 	for _, shardId := range r.shardIDs {
-		r.shardRouters[shardId].MaybeInit()
+		r.shardRouters[shardId].InitShardRouter()
 	}
 }
 
@@ -268,8 +266,6 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 }
 
 func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
-	r.init()
-
 	rand := r.initRand()
 
 	exit := make(chan struct{})
@@ -323,7 +319,6 @@ func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRout
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	r.metrics.incomingTxs.Add(1)
-	r.init()
 
 	reqID, shardRouter := r.getShardRouterAndReqID(request)
 
