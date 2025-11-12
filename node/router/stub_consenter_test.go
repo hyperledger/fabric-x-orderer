@@ -8,14 +8,21 @@ package router
 
 import (
 	"context"
+	"encoding/asn1"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,6 +33,7 @@ type StubConsenter struct {
 	server      *comm.GRPCServer // GRPCServer instance represents the consenter
 	txs         uint32           // Number of txs received from router
 	partyID     types.PartyID
+	decisions   chan *common.Block
 }
 
 func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubConsenter {
@@ -50,12 +58,14 @@ func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubCon
 		key:         certKeyPair.Key,
 		server:      server,
 		partyID:     partyID,
+		decisions:   make(chan *common.Block, 100),
 	}
 	return stubConsenter
 }
 
 func (sc *StubConsenter) Start() {
 	protos.RegisterConsensusServer(sc.server.Server(), sc)
+	orderer.RegisterAtomicBroadcastServer(sc.server.Server(), sc)
 	go func() {
 		if err := sc.server.Start(); err != nil {
 			panic(err)
@@ -87,6 +97,7 @@ func (sc *StubConsenter) Restart() {
 
 	// register the service again and start the new server
 	protos.RegisterConsensusServer(sc.server.Server(), sc)
+	orderer.RegisterAtomicBroadcastServer(sc.server.Server(), sc)
 	go func() {
 		if err := sc.server.Start(); err != nil {
 			panic(err)
@@ -115,4 +126,52 @@ func (sc *StubConsenter) SubmitConfig(ctx context.Context, request *protos.Reque
 	}
 	atomic.AddUint32(&sc.txs, 1)
 	return resp, nil
+}
+
+func (sc *StubConsenter) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
+	for {
+		select {
+		case b := <-sc.decisions:
+			if b == nil {
+				return nil
+			}
+			err := server.Send(&orderer.DeliverResponse{
+				Type: &orderer.DeliverResponse_Block{Block: b},
+			})
+			if err != nil {
+				return err
+			}
+		case <-server.Context().Done():
+			return server.Context().Err()
+		}
+	}
+}
+
+func (sc *StubConsenter) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (sc *StubConsenter) DeliverDecisionFromHeader(header *state.Header) error {
+	proposal := smartbft_types.Proposal{
+		Header: header.Serialize(),
+	}
+
+	// Dummy compound signatures
+	sigs := [][]byte{}
+	for i := 0; i <= len(header.AvailableCommonBlocks); i++ {
+		sigs = append(sigs, []byte(strconv.Itoa(i)))
+	}
+	sigBytes, err := asn1.Marshal(sigs)
+	if err != nil {
+		return fmt.Errorf("failed to marshal fake signature: %s", err.Error())
+	}
+
+	signatures := []smartbft_types.Signature{{Value: sigBytes}}
+	bytes := state.DecisionToBytes(proposal, signatures)
+
+	sc.decisions <- &common.Block{
+		Header: &common.BlockHeader{}, // dummy header - maybe fill if needed
+		Data:   &common.BlockData{Data: [][]byte{bytes}},
+	}
+	return nil
 }

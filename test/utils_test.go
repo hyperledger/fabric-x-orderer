@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -98,11 +99,18 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
+		configStorePath := t.TempDir()
+		cs, err := configstore.NewStore(configStorePath)
+		require.NoError(t, err)
+		// add dummy genesis block
+		block := tx.CreateConfigBlock(0, []byte("genesis block data"))
+		require.NoError(t, cs.Add(block))
+
 		config := &nodeconfig.RouterNodeConfig{
 			ListenAddress:           "0.0.0.0:0",
 			MonitoringListenAddress: "127.0.0.1:0",
 			MetricsLogInterval:      5 * time.Second,
-			ConfigStorePath:         t.TempDir(),
+			ConfigStorePath:         configStorePath,
 			TLSPrivateKeyFile:       kp.Key,
 			TLSCertificateFile:      kp.Cert,
 			PartyID:                 types.PartyID(i + 1),

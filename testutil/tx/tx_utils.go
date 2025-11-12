@@ -121,6 +121,17 @@ func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
 	}
 }
 
+func CreateConfigBlock(number uint64, data []byte) *common.Block {
+	payload := createStructuredPayload(data, common.HeaderType_CONFIG)
+	payloadBytes := deterministicMarshall(payload)
+	env := &common.Envelope{
+		Payload:   payloadBytes,
+		Signature: []byte("signature"),
+	}
+	envBytes := deterministicMarshall(env)
+	return &common.Block{Header: &common.BlockHeader{Number: number}, Data: &common.BlockData{Data: [][]byte{envBytes}}}
+}
+
 func CreateStructuredRequest(data []byte) *protos.Request {
 	payload := createStructuredPayload(data, common.HeaderType_MESSAGE)
 	payloadBytes := deterministicMarshall(payload)
