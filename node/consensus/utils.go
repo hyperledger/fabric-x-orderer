@@ -55,7 +55,7 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, decisionNum arma_
 	configBlock := protoutil.NewBlock(blockNum, prevHash)
 	configBlock.Data = &common.BlockData{Data: [][]byte{configReq}}
 	configBlock.Header.DataHash = protoutil.ComputeBlockDataHash(configBlock.Data)
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0) // TODO fix batch count in all?
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
 	if err != nil {
 		return nil, errors.Errorf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
@@ -70,6 +70,11 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 	// verify hash chain
 	if hex.EncodeToString(block.Header.PreviousHash) != hex.EncodeToString(prevHash) {
 		return errors.Errorf("proposed block header prev hash %s isn't equal to computed prev hash %s", hex.EncodeToString(block.Header.PreviousHash), hex.EncodeToString(prevHash))
+	}
+
+	// verify data hash
+	if !bytes.Equal(block.Header.DataHash, batchID.Digest()) {
+		return errors.Errorf("proposed block data hash isn't equal to computed digest %s", arma_types.BatchIDToString(batchID))
 	}
 
 	// verify block number

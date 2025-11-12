@@ -207,8 +207,11 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	// TODO verify config reqs
 	c.stateLock.Unlock()
 
+	numOfAvailableBlocks := len(attestations)
+
 	if len(configRequests) > 0 {
 		decisionNumOfLastConfigBlock = arma_types.DecisionNum(md.LatestSequence)
+		numOfAvailableBlocks++
 	}
 
 	// TODO verify proposal verification seq
@@ -217,13 +220,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to computed %d", hdr.DecisionNumOfLastConfigBlock, decisionNumOfLastConfigBlock)
 	}
 
-	computedCommonBlocksHeaders := make([]*common.BlockHeader, len(attestations))
-
-	for i, ba := range attestations {
-		if !bytes.Equal(hdr.AvailableCommonBlocks[i].Header.DataHash, ba[0].Digest()) {
-			return nil, fmt.Errorf("proposed available common block %s data hash in index %d isn't equal to computed digest %s", arma_types.CommonBlockToString(hdr.AvailableCommonBlocks[i]), i, arma_types.BatchIDToString(ba[0]))
-		}
-	}
+	computedCommonBlocksHeaders := make([]*common.BlockHeader, numOfAvailableBlocks)
 
 	lastCommonBlockHeader := &common.BlockHeader{}
 	if err := proto.Unmarshal(computedState.AppContext, lastCommonBlockHeader); err != nil {
@@ -236,7 +233,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	for i, ba := range attestations {
 		lastBlockNumber++
 
-		if err := VerifyDataCommonBlock(hdr.AvailableCommonBlocks[i], lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), len(attestations), i, lastConfigBlockNum); err != nil {
+		if err := VerifyDataCommonBlock(hdr.AvailableCommonBlocks[i], lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum); err != nil {
 			return nil, errors.Wrapf(err, "failed verifying proposed block num %d in index %d", lastBlockNumber, i)
 		}
 
@@ -252,12 +249,12 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 			c.Logger.Panicf("Failed marshaling config request")
 		}
 		computedConfigBlockHeader.DataHash = protoutil.ComputeBlockDataHash(&common.BlockData{Data: [][]byte{configReq}})
-		computedCommonBlocksHeaders = append(computedCommonBlocksHeaders, computedConfigBlockHeader)
+		computedCommonBlocksHeaders[numOfAvailableBlocks-1] = computedConfigBlockHeader
 
 		lastConfigBlockNum = lastBlockNumber + 1
 
 		// verify last config block number
-		rawLastConfig, err := protoutil.GetMetadataFromBlock(hdr.AvailableCommonBlocks[len(attestations)], common.BlockMetadataIndex_LAST_CONFIG)
+		rawLastConfig, err := protoutil.GetMetadataFromBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], common.BlockMetadataIndex_LAST_CONFIG)
 		if err != nil {
 			return nil, err
 		}
@@ -271,7 +268,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	if len(attestations) > 0 || len(configRequests) > 0 {
-		computedState.AppContext = protoutil.MarshalOrPanic(computedCommonBlocksHeaders[len(computedCommonBlocksHeaders)-1])
+		computedState.AppContext = protoutil.MarshalOrPanic(computedCommonBlocksHeaders[numOfAvailableBlocks-1])
 	}
 
 	if !bytes.Equal(hdr.State.Serialize(), computedState.Serialize()) {
@@ -472,14 +469,17 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		panic(err)
 	}
 
-	c.Logger.Infof("Creating proposal with %d attestations", len(attestations))
-
-	availableCommonBlocks := make([]*common.Block, len(attestations))
+	numOfAvailableBlocks := len(attestations)
+	c.Logger.Infof("Creating proposal with %d attestations", numOfAvailableBlocks)
+	if len(configRequests) > 0 {
+		numOfAvailableBlocks++
+	}
+	availableCommonBlocks := make([]*common.Block, numOfAvailableBlocks)
 
 	for i, ba := range attestations {
 		lastBlockNumber++
 
-		block, err := CreateDataCommonBlock(lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), len(attestations), i, lastConfigBlockNum)
+		block, err := CreateDataCommonBlock(lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum)
 		if err != nil {
 			c.Logger.Panicf("Failed to create data block: %s", err.Error())
 		}
@@ -497,18 +497,18 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 			c.Logger.Panicf("Failed marshaling config request")
 		}
 
-		configBlock, err := CreateConfigCommonBlock(lastBlockNumber+1, prevHash, arma_types.DecisionNum(md.LatestSequence), len(attestations)+1, len(attestations), configReq)
+		configBlock, err := CreateConfigCommonBlock(lastBlockNumber+1, prevHash, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1, configReq)
 		if err != nil {
 			c.Logger.Panicf("Failed to create config block: %s", err.Error())
 		}
 
-		availableCommonBlocks = append(availableCommonBlocks, configBlock)
+		availableCommonBlocks[numOfAvailableBlocks-1] = configBlock
 
 		decisionNumOfLastConfigBlock = arma_types.DecisionNum(md.LatestSequence)
 	}
 
 	if len(attestations) > 0 || len(configRequests) > 0 {
-		newState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[len(availableCommonBlocks)-1].Header)
+		newState.AppContext = protoutil.MarshalOrPanic(availableCommonBlocks[numOfAvailableBlocks-1].Header)
 	}
 
 	reqs := arma_types.BatchedRequests(requests)
