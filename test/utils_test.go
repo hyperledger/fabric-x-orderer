@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -98,6 +99,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		fakeSigner := &mocks.SignerSerializer{}
 
 		configStorePath := t.TempDir()
 		cs, err := configstore.NewStore(configStorePath)
@@ -124,7 +126,10 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 			Bundle:                              bundle,
 		}
 
-		router := router.NewRouter(config, l)
+		configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+		configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer)
 		routers = append(routers, router)
 	}
 

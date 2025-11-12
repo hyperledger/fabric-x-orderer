@@ -12,6 +12,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/internaltools/pkg/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -34,9 +38,13 @@ type configSubmitter struct {
 	configRequestsChannel chan *TrackedRequest
 	ctx                   context.Context
 	cancelFunc            func()
+	bundle                channelconfig.Resources
+	verifier              *requestfilter.RulesVerifier
+	signer                identity.SignerSerializer
+	configUpdateProposer  policy.ConfigUpdateProposer
 }
 
-func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tlsCert []byte, tlsKey []byte, logger types.Logger) *configSubmitter {
+func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tlsCert []byte, tlsKey []byte, logger types.Logger, bundle channelconfig.Resources, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *configSubmitter {
 	cs := &configSubmitter{
 		consensusEndpoint:     consensusEndpoint,
 		consensusRootCAs:      consensusRootCAs,
@@ -44,6 +52,10 @@ func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tls
 		tlsKey:                tlsKey,
 		logger:                logger,
 		configRequestsChannel: make(chan *TrackedRequest, 100),
+		bundle:                bundle,
+		verifier:              verifier,
+		signer:                signer,
+		configUpdateProposer:  configUpdateProposer,
 	}
 	return cs
 }
@@ -79,10 +91,12 @@ func (cs *configSubmitter) readConfigRequests() {
 	}
 }
 
+// Forward forwards the config request from the shard router to the config submitter requests channel
 func (cs *configSubmitter) Forward(tr *TrackedRequest) {
 	cs.configRequestsChannel <- tr
 }
 
+// forwardRequest forwards the config request from the config submitter to the consensus
 func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	if tr == nil {
 		return fmt.Errorf("received nil tracked request")
@@ -91,15 +105,13 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	feedback := Response{}
 	var err error
 
-	// TODO - propose a config update (with signing), validate with config-tx-validator, second stage verification (size and signature)
-	// TODO - add verifier and bundle to the config-submitter.
-	configRequest, err := proposeConfigUpdate(tr.request)
+	_, err = cs.configUpdateProposer.ProposeConfigUpdate(tr.request, cs.bundle, cs.signer, cs.verifier)
 
 	if err != nil {
 		feedback.err = fmt.Errorf("error in verification and proposing update: %s", err)
 	} else {
 		var resp *protos.SubmitResponse
-		resp, err = cs.submitConfigRequestToConsensus(configRequest)
+		resp, err = cs.submitConfigRequestToConsensus(tr.request)
 		feedback.SubmitResponse = resp
 		if err != nil {
 			feedback.err = fmt.Errorf("error forwarding config request to consenter: %v", err)
@@ -182,9 +194,4 @@ func (cs *configSubmitter) tryToConnect() (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	return conn, nil
-}
-
-// TODO - implement.
-func proposeConfigUpdate(request *protos.Request) (*protos.Request, error) {
-	return request, nil
 }

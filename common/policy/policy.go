@@ -7,13 +7,34 @@ SPDX-License-Identifier: Apache-2.0
 package policy
 
 import (
+	"fmt"
+
 	"github.com/hyperledger/fabric-lib-go/bccsp"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
+	"github.com/hyperledger/fabric-x-common/internaltools/pkg/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/pkg/errors"
 )
+
+//go:generate counterfeiter -o mocks/config_update_proposer.go . ConfigUpdateProposer
+type ConfigUpdateProposer interface {
+	ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error)
+}
+
+type DefaultConfigUpdateProposer struct{}
+
+func (cp *DefaultConfigUpdateProposer) ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
+	configRequest, err := AuthorizeAndVerifyConfigUpdateRequest(request, bundle, signer, verifier)
+	if err != nil {
+		return configRequest, fmt.Errorf("failed authorizing and verifying config update reqest, err: %s", err)
+	}
+	return configRequest, nil
+}
 
 // BuildBundleFromBlock builds a bundle from block.
 // This bundle supplies all resources needed for verification, e.g. policy manager, config tx validator etc.
@@ -57,6 +78,61 @@ func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelcon
 	return bundle, nil
 }
 
+func AuthorizeAndVerifyConfigUpdateRequest(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
+	// validates that all modified config has the corresponding modification policies satisfied by the signature set
+	configEnvelope, err := bundle.ConfigtxValidator().ProposeConfigUpdate(&cb.Envelope{
+		Payload:   request.Payload,
+		Signature: request.Signature,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error applying config update to %s", bundle.ConfigtxValidator().ChannelID())
+	}
+
+	// Apply validation checks of new bundle against old bundle
+	err = validateNewBundleAgainstOldBundle(configEnvelope, bundle)
+	if err != nil {
+		return nil, fmt.Errorf("error validating new bundle against old bundle to %s", bundle.ConfigtxValidator().ChannelID())
+	}
+
+	// TODO: validate old orderer config against new orderer config
+	// TODO: validate ConsensusMetadata (shared config)
+	// TODO: validate old channel/application against old channel/application
+
+	// Wrap the config envelope and sign, prepare a matching request
+	config, err := protoutil.CreateSignedEnvelope(cb.HeaderType_CONFIG, bundle.ConfigtxValidator().ChannelID(), signer, configEnvelope, int32(0), 0)
+	if err != nil {
+		return nil, fmt.Errorf("error creating a signed envelope, err: %s", err)
+	}
+
+	configRequest := &protos.Request{
+		Payload:    config.Payload,
+		Signature:  config.Signature,
+		Identity:   request.Identity,
+		IdentityId: request.IdentityId,
+		TraceId:    request.TraceId,
+	}
+
+	// Recall verifiers
+	// We re-call The verifiers, especially for the size filter, to ensure that the transaction we
+	// just constructed is not too large for our consenter. It additionally reapplies the signature
+	// check, which although not strictly necessary, is a good sanity check, in case the router
+	// has not been configured with the right cert material. The additional overhead of the signature
+	// check is negligible, as this is the re-config path and not the normal path.
+	reqType, err := verifier.VerifyStructureAndClassify(configRequest)
+	if reqType != cb.HeaderType_CONFIG {
+		return nil, fmt.Errorf("config request header should be %s but got %s", cb.HeaderType_CONFIG, reqType)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("config update did not pass signature filter final checks, err: %s", err)
+	}
+	err = verifier.Verify(configRequest)
+	if err != nil {
+		return nil, fmt.Errorf("config update did not pass filter final checks, err: %s", err)
+	}
+
+	return configRequest, nil
+}
+
 // TODO: revisit capabilities
 // checkResources makes sure that the channel config is compatible with this binary and logs sanity checks
 func checkResources(res channelconfig.Resources) error {
@@ -71,5 +147,24 @@ func checkResources(res channelconfig.Resources) error {
 	if err := res.ChannelConfig().Capabilities().Supported(); err != nil {
 		return errors.WithMessagef(err, "config requires unsupported channel capabilities: %s", err)
 	}
+	return nil
+}
+
+func validateNewBundleAgainstOldBundle(configEnvelope *cb.ConfigEnvelope, bundle channelconfig.Resources) error {
+	cryptoProvider := factory.GetDefault()
+	channelID := bundle.ConfigtxValidator().ChannelID()
+	newBundle, err := channelconfig.NewBundle(channelID, configEnvelope.Config, cryptoProvider)
+	if err != nil {
+		return fmt.Errorf("error creating bundle %s", channelID)
+	}
+
+	if err = checkResources(newBundle); err != nil {
+		return errors.WithMessage(err, "config update is not compatible")
+	}
+
+	if err = bundle.ValidateNew(newBundle); err != nil {
+		return err
+	}
+
 	return nil
 }
