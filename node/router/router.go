@@ -190,6 +190,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 	}
 
 	r.init()
+	rand := r.initRand()
 
 	exit := make(chan struct{})
 	defer func() {
@@ -215,8 +216,10 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
-		// creating a routing request with nil trace - request is not trce in router.
-		tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
+		// testing performance with tracing
+		trace := createTraceID(rand)
+
+		tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
 		shardRouter.Forward(tr)
 	}
 }
