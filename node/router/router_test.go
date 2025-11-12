@@ -575,15 +575,40 @@ func TestConfigPullFromConsensus(t *testing.T) {
 		return testSetup.router.GetConfigStoreSize() == initialConfigStoreSize+1
 	}, 10*time.Second, 10*time.Millisecond)
 
+	// verify that the router performed a (soft) stop.
+	require.Eventually(t, func() bool {
+		return testSetup.isDisconnectedFromBatcher()
+	}, 10*time.Second, 200*time.Millisecond)
+}
+
+func TestConfigPullNoConfigBlocks(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	sc := testSetup.consenter
+	defer testSetup.Close()
+
+	initialConfigStoreSize := testSetup.router.GetConfigStoreSize()
+	require.Equal(t, 1, initialConfigStoreSize, "expected genesis block in config store")
+
 	// create a decision, with no config block
-	configBlock = tx.CreateConfigBlock(1000, []byte("config block data"))
-	acb = make([]*common.Block, 6)
+	configBlock := tx.CreateConfigBlock(1000, []byte("config block data"))
+	acb := make([]*common.Block, 6)
 	acb[len(acb)-1] = configBlock
 	err = sc.DeliverDecisionFromHeader(&state.Header{Num: 2, DecisionNumOfLastConfigBlock: 1, AvailableCommonBlocks: acb})
 	require.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)
-	require.Equal(t, initialConfigStoreSize+1, testSetup.router.GetConfigStoreSize(), "no new config block should be stored")
+	require.Equal(t, initialConfigStoreSize, testSetup.router.GetConfigStoreSize(), "no new config block should be stored")
+}
+
+func TestRouterSoftStop(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
 }
 
 func createServerTLSClientConnection(testSetup *routerTestSetup, ca tlsgen.CA) error {
