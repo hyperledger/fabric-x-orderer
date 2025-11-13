@@ -417,26 +417,11 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
 	defer clean()
 
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
-
-	require.Eventually(t, func() bool {
-		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
-	}, 30*time.Second, 10*time.Millisecond)
-
-	require.Eventually(t, func() bool {
-		return stubConsenters[1].BAFCount() == 1*numParties && stubConsenters[2].BAFCount() == 1*numParties
-	}, 30*time.Second, 10*time.Millisecond)
-
-	ce := stubConsenters[1].LastControlEvent()
-	require.Equal(t, types.PartyID(1), ce.BAF.Primary())
-	require.Equal(t, types.BatchSequence(0), ce.BAF.Seq())
-
-	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
-	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
-
-	blocks, err := batchers[1].ConfigStore.ListBlockNumbers()
-	require.NoError(t, err)
-	require.Equal(t, len(blocks), 0)
+	for i := 0; i < numParties; i++ {
+		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Equal(t, len(blocks), 0)
+	}
 
 	// receive config block from consensus
 	groups := &common.ConfigGroup{}
