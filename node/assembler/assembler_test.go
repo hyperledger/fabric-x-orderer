@@ -12,13 +12,11 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	delivery_mocks "github.com/hyperledger/fabric-x-orderer/node/delivery/mocks"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -57,34 +55,6 @@ func generateRandomBytes(t *testing.T, size int) []byte {
 	_, err := rand.Read(b)
 	require.NoError(t, err)
 	return b
-}
-
-func createLedgerMockWrappingRealLedger(logger types.Logger, ledgerPath string) (*ledger_mocks.FakeAssemblerLedgerReaderWriter, node_ledger.AssemblerLedgerReaderWriter, error) {
-	mock := &ledger_mocks.FakeAssemblerLedgerReaderWriter{}
-	ledger, err := node_ledger.NewAssemblerLedger(logger, ledgerPath)
-
-	mock.AppendCalls(func(b types.Batch, i types.OrderingInfo) {
-		ledger.Append(b, i)
-	})
-	mock.AppendConfigCalls(func(b *common.Block, dn types.DecisionNum) {
-		ledger.AppendConfig(b, dn)
-	})
-	mock.BatchFrontierCalls(func(si []types.ShardID, pi []types.PartyID, d time.Duration) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error) {
-		return ledger.BatchFrontier(si, pi, d)
-	})
-	mock.CloseCalls(func() {
-		ledger.Close()
-	})
-	mock.GetTxCountCalls(func() uint64 {
-		return ledger.GetTxCount()
-	})
-	mock.LastOrderingInfoCalls(func() (*state.OrderingInformation, error) {
-		return ledger.LastOrderingInfo()
-	})
-	mock.LedgerReaderCalls(func() blockledger.Reader {
-		return ledger.LedgerReader()
-	})
-	return mock, ledger, err
 }
 
 func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.PartyID, myParty types.PartyID, genesisBlock *common.Block) *assemblerTest {
@@ -204,19 +174,12 @@ func (at *assemblerTest) StartAssembler() {
 		return at.consensusBAChan
 	})
 
-	ledgerFactory := &ledger_mocks.FakeAssemblerLedgerFactory{}
-	ledgerFactory.CreateCalls(func(l types.Logger, s string) (node_ledger.AssemblerLedgerReaderWriter, error) {
-		mock, _, err := createLedgerMockWrappingRealLedger(l, s)
-		at.ledgerMock = mock
-		return mock, err
-	})
-
 	at.assembler = assembler.NewDefaultAssembler(
 		at.logger,
 		&dummyAssemblerStopper{},
 		at.nodeConfig,
 		at.genesisBlock,
-		ledgerFactory,
+		&node_ledger.DefaultAssemblerLedgerFactory{},
 		prefetchIndexerFactory,
 		prefetcherFactoryMock,
 		batchBringerFactoryMock,
@@ -286,7 +249,6 @@ func TestAssembler_StopCallsAllSubcomponents(t *testing.T) {
 	// Assert
 	require.Equal(t, 1, test.consensusBringerMock.StopCallCount())
 	require.Equal(t, 1, test.prefetcherMock.StopCallCount())
-	require.Equal(t, 1, test.ledgerMock.CloseCallCount())
 }
 
 func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
