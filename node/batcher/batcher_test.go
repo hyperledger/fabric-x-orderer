@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/block"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
@@ -359,7 +360,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}
 }
 
-func TestBatcheddRequestsHasEnvelopeBytes(t *testing.T) {
+func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4
 	ca, err := tlsgen.NewCA()
@@ -397,4 +398,62 @@ func TestBatcheddRequestsHasEnvelopeBytes(t *testing.T) {
 
 	require.True(t, bytes.Equal(req.Payload, env.Payload))
 	require.True(t, bytes.Equal(req.Signature, env.Signature))
+}
+
+func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[1].BAFCount() == 1*numParties && stubConsenters[2].BAFCount() == 1*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	ce := stubConsenters[1].LastControlEvent()
+	require.Equal(t, types.PartyID(1), ce.BAF.Primary())
+	require.Equal(t, types.BatchSequence(0), ce.BAF.Seq())
+
+	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
+	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
+
+	blocks, err := batchers[1].ConfigStore.ListBlockNumbers()
+	require.NoError(t, err)
+	require.Equal(t, len(blocks), 0)
+
+	// receive config block from consensus
+	groups := &common.ConfigGroup{}
+	configBlock := block.BlockWithGroups(groups, "arma", 1)
+	availableCommonBlocks := []*common.Block{configBlock}
+
+	st := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
+
+	for i := 0; i < numParties; i++ {
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), availableCommonBlocks, st)
+	}
+
+	for j := 0; j < numParties; j++ {
+		require.Eventually(t, func() bool {
+			block, err1 := batchers[j].ConfigStore.Last()
+			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 1
+		}, 60*time.Second, 10*time.Millisecond)
+	}
 }

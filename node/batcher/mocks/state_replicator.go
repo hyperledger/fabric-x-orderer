@@ -9,15 +9,15 @@ import (
 )
 
 type FakeStateReplicator struct {
-	ReplicateStateStub        func() <-chan *state.State
+	ReplicateStateStub        func() <-chan *state.Header
 	replicateStateMutex       sync.RWMutex
 	replicateStateArgsForCall []struct {
 	}
 	replicateStateReturns struct {
-		result1 <-chan *state.State
+		result1 <-chan *state.Header
 	}
 	replicateStateReturnsOnCall map[int]struct {
-		result1 <-chan *state.State
+		result1 <-chan *state.Header
 	}
 	StopStub        func()
 	stopMutex       sync.RWMutex
@@ -27,21 +27,20 @@ type FakeStateReplicator struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeStateReplicator) ReplicateState() <-chan *state.State {
+func (fake *FakeStateReplicator) ReplicateState() <-chan *state.Header {
 	fake.replicateStateMutex.Lock()
 	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
 	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
 	}{})
-	stub := fake.ReplicateStateStub
-	fakeReturns := fake.replicateStateReturns
 	fake.recordInvocation("ReplicateState", []interface{}{})
 	fake.replicateStateMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.ReplicateStateStub != nil {
+		return fake.ReplicateStateStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.replicateStateReturns
 	return fakeReturns.result1
 }
 
@@ -51,32 +50,32 @@ func (fake *FakeStateReplicator) ReplicateStateCallCount() int {
 	return len(fake.replicateStateArgsForCall)
 }
 
-func (fake *FakeStateReplicator) ReplicateStateCalls(stub func() <-chan *state.State) {
+func (fake *FakeStateReplicator) ReplicateStateCalls(stub func() <-chan *state.Header) {
 	fake.replicateStateMutex.Lock()
 	defer fake.replicateStateMutex.Unlock()
 	fake.ReplicateStateStub = stub
 }
 
-func (fake *FakeStateReplicator) ReplicateStateReturns(result1 <-chan *state.State) {
+func (fake *FakeStateReplicator) ReplicateStateReturns(result1 <-chan *state.Header) {
 	fake.replicateStateMutex.Lock()
 	defer fake.replicateStateMutex.Unlock()
 	fake.ReplicateStateStub = nil
 	fake.replicateStateReturns = struct {
-		result1 <-chan *state.State
+		result1 <-chan *state.Header
 	}{result1}
 }
 
-func (fake *FakeStateReplicator) ReplicateStateReturnsOnCall(i int, result1 <-chan *state.State) {
+func (fake *FakeStateReplicator) ReplicateStateReturnsOnCall(i int, result1 <-chan *state.Header) {
 	fake.replicateStateMutex.Lock()
 	defer fake.replicateStateMutex.Unlock()
 	fake.ReplicateStateStub = nil
 	if fake.replicateStateReturnsOnCall == nil {
 		fake.replicateStateReturnsOnCall = make(map[int]struct {
-			result1 <-chan *state.State
+			result1 <-chan *state.Header
 		})
 	}
 	fake.replicateStateReturnsOnCall[i] = struct {
-		result1 <-chan *state.State
+		result1 <-chan *state.Header
 	}{result1}
 }
 
@@ -84,10 +83,9 @@ func (fake *FakeStateReplicator) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
-	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if stub != nil {
+	if fake.StopStub != nil {
 		fake.StopStub()
 	}
 }
@@ -107,6 +105,10 @@ func (fake *FakeStateReplicator) StopCalls(stub func()) {
 func (fake *FakeStateReplicator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.replicateStateMutex.RLock()
+	defer fake.replicateStateMutex.RUnlock()
+	fake.stopMutex.RLock()
+	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

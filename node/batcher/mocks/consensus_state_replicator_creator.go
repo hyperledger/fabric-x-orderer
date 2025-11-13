@@ -33,16 +33,15 @@ func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicator(
 		arg1 *config.BatcherNodeConfig
 		arg2 types.Logger
 	}{arg1, arg2})
-	stub := fake.CreateStateConsensusReplicatorStub
-	fakeReturns := fake.createStateConsensusReplicatorReturns
 	fake.recordInvocation("CreateStateConsensusReplicator", []interface{}{arg1, arg2})
 	fake.createStateConsensusReplicatorMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2)
+	if fake.CreateStateConsensusReplicatorStub != nil {
+		return fake.CreateStateConsensusReplicatorStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createStateConsensusReplicatorReturns
 	return fakeReturns.result1
 }
 
@@ -91,6 +90,8 @@ func (fake *FakeConsensusStateReplicatorCreator) CreateStateConsensusReplicatorR
 func (fake *FakeConsensusStateReplicatorCreator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createStateConsensusReplicatorMutex.RLock()
+	defer fake.createStateConsensusReplicatorMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

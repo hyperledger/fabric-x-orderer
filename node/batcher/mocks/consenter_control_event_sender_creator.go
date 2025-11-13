@@ -34,16 +34,15 @@ func (fake *FakeConsenterControlEventSenderCreator) CreateConsenterControlEventS
 		arg2 config.RawBytes
 		arg3 config.ConsenterInfo
 	}{arg1, arg2, arg3})
-	stub := fake.CreateConsenterControlEventSenderStub
-	fakeReturns := fake.createConsenterControlEventSenderReturns
 	fake.recordInvocation("CreateConsenterControlEventSender", []interface{}{arg1, arg2, arg3})
 	fake.createConsenterControlEventSenderMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2, arg3)
+	if fake.CreateConsenterControlEventSenderStub != nil {
+		return fake.CreateConsenterControlEventSenderStub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createConsenterControlEventSenderReturns
 	return fakeReturns.result1
 }
 
@@ -92,6 +91,8 @@ func (fake *FakeConsenterControlEventSenderCreator) CreateConsenterControlEventS
 func (fake *FakeConsenterControlEventSenderCreator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createConsenterControlEventSenderMutex.RLock()
+	defer fake.createConsenterControlEventSenderMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

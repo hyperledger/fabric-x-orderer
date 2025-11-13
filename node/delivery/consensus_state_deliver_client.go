@@ -47,7 +47,7 @@ func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.Raw
 	return baReplicator
 }
 
-func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.State {
+func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.Header {
 	endpoint := func() string {
 		return cr.endpoint
 	}
@@ -69,11 +69,11 @@ func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.State {
 		return requestEnvelope
 	}
 
-	res := make(chan *state.State, replicateStateChanSize)
+	res := make(chan *state.Header, replicateStateChanSize)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header := extractHeaderFromBlock(block, cr.logger)
-		res <- header.State
+		res <- header
 	}
 
 	onClose := func() {

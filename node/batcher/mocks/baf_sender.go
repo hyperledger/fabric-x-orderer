@@ -23,10 +23,9 @@ func (fake *FakeBAFSender) SendBAF(arg1 types.BatchAttestationFragment) {
 	fake.sendBAFArgsForCall = append(fake.sendBAFArgsForCall, struct {
 		arg1 types.BatchAttestationFragment
 	}{arg1})
-	stub := fake.SendBAFStub
 	fake.recordInvocation("SendBAF", []interface{}{arg1})
 	fake.sendBAFMutex.Unlock()
-	if stub != nil {
+	if fake.SendBAFStub != nil {
 		fake.SendBAFStub(arg1)
 	}
 }
@@ -53,6 +52,8 @@ func (fake *FakeBAFSender) SendBAFArgsForCall(i int) types.BatchAttestationFragm
 func (fake *FakeBAFSender) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.sendBAFMutex.RLock()
+	defer fake.sendBAFMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

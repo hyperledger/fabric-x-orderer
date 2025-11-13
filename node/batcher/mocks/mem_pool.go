@@ -63,10 +63,9 @@ func (fake *FakeMemPool) Close() {
 	fake.closeMutex.Lock()
 	fake.closeArgsForCall = append(fake.closeArgsForCall, struct {
 	}{})
-	stub := fake.CloseStub
 	fake.recordInvocation("Close", []interface{}{})
 	fake.closeMutex.Unlock()
-	if stub != nil {
+	if fake.CloseStub != nil {
 		fake.CloseStub()
 	}
 }
@@ -89,16 +88,15 @@ func (fake *FakeMemPool) NextRequests(arg1 context.Context) [][]byte {
 	fake.nextRequestsArgsForCall = append(fake.nextRequestsArgsForCall, struct {
 		arg1 context.Context
 	}{arg1})
-	stub := fake.NextRequestsStub
-	fakeReturns := fake.nextRequestsReturns
 	fake.recordInvocation("NextRequests", []interface{}{arg1})
 	fake.nextRequestsMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.NextRequestsStub != nil {
+		return fake.NextRequestsStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.nextRequestsReturns
 	return fakeReturns.result1
 }
 
@@ -149,10 +147,9 @@ func (fake *FakeMemPool) RemoveRequests(arg1 ...string) {
 	fake.removeRequestsArgsForCall = append(fake.removeRequestsArgsForCall, struct {
 		arg1 []string
 	}{arg1})
-	stub := fake.RemoveRequestsStub
 	fake.recordInvocation("RemoveRequests", []interface{}{arg1})
 	fake.removeRequestsMutex.Unlock()
-	if stub != nil {
+	if fake.RemoveRequestsStub != nil {
 		fake.RemoveRequestsStub(arg1...)
 	}
 }
@@ -181,16 +178,15 @@ func (fake *FakeMemPool) RequestCount() int64 {
 	ret, specificReturn := fake.requestCountReturnsOnCall[len(fake.requestCountArgsForCall)]
 	fake.requestCountArgsForCall = append(fake.requestCountArgsForCall, struct {
 	}{})
-	stub := fake.RequestCountStub
-	fakeReturns := fake.requestCountReturns
 	fake.recordInvocation("RequestCount", []interface{}{})
 	fake.requestCountMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.RequestCountStub != nil {
+		return fake.RequestCountStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.requestCountReturns
 	return fakeReturns.result1
 }
 
@@ -234,10 +230,9 @@ func (fake *FakeMemPool) Restart(arg1 bool) {
 	fake.restartArgsForCall = append(fake.restartArgsForCall, struct {
 		arg1 bool
 	}{arg1})
-	stub := fake.RestartStub
 	fake.recordInvocation("Restart", []interface{}{arg1})
 	fake.restartMutex.Unlock()
-	if stub != nil {
+	if fake.RestartStub != nil {
 		fake.RestartStub(arg1)
 	}
 }
@@ -272,16 +267,15 @@ func (fake *FakeMemPool) Submit(arg1 []byte) error {
 	fake.submitArgsForCall = append(fake.submitArgsForCall, struct {
 		arg1 []byte
 	}{arg1Copy})
-	stub := fake.SubmitStub
-	fakeReturns := fake.submitReturns
 	fake.recordInvocation("Submit", []interface{}{arg1Copy})
 	fake.submitMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.SubmitStub != nil {
+		return fake.SubmitStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.submitReturns
 	return fakeReturns.result1
 }
 
@@ -330,6 +324,18 @@ func (fake *FakeMemPool) SubmitReturnsOnCall(i int, result1 error) {
 func (fake *FakeMemPool) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.closeMutex.RLock()
+	defer fake.closeMutex.RUnlock()
+	fake.nextRequestsMutex.RLock()
+	defer fake.nextRequestsMutex.RUnlock()
+	fake.removeRequestsMutex.RLock()
+	defer fake.removeRequestsMutex.RUnlock()
+	fake.requestCountMutex.RLock()
+	defer fake.requestCountMutex.RUnlock()
+	fake.restartMutex.RLock()
+	defer fake.restartMutex.RUnlock()
+	fake.submitMutex.RLock()
+	defer fake.submitMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

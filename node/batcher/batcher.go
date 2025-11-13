@@ -17,6 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node"
@@ -30,7 +31,7 @@ import (
 
 //go:generate counterfeiter -o mocks/state_replicator.go . StateReplicator
 type StateReplicator interface {
-	ReplicateState() <-chan *state.State
+	ReplicateState() <-chan *state.Header
 	Stop()
 }
 
@@ -111,10 +112,21 @@ func (b *Batcher) replicateState() {
 		b.running.Done()
 		b.logger.Infof("Stopped replicating state")
 	}()
-	stateChan := b.stateReplicator.ReplicateState()
+	headerChan := b.stateReplicator.ReplicateState()
 	for {
 		select {
-		case state := <-stateChan:
+		case header := <-headerChan:
+			// check if decision contains a config block, and if so, append it to the batcher config store, skip the genesis block.
+			if header.Num == header.DecisionNumOfLastConfigBlock && header.Num != 0 {
+				lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+				if protoutil.IsConfigBlock(lastBlock) {
+					b.logger.Infof("Pulled config block %d from consensus", lastBlock.Header.Number)
+					b.ConfigStore.Add(lastBlock)
+				} else {
+					b.logger.Errorf("Pulled config decision but last block is not a config block")
+				}
+			}
+			state := header.State
 			b.stateChan <- state
 			primaryID, term := b.getPrimaryIDAndTerm(state)
 			changed := false
