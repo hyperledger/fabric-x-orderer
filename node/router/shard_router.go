@@ -59,17 +59,16 @@ type ShardRouter struct {
 	logger                       types.Logger
 	batcherEndpoint              string
 	batcherRootCAs               [][]byte
-	once                         sync.Once
 	lock                         sync.RWMutex
 	connPool                     []*grpc.ClientConn
 	streams                      [][]*stream
 	tlsCert                      []byte
 	tlsKey                       []byte
 	clientConfig                 comm.ClientConfig
-	reconnectOnce                sync.Once
 	closeReconnectOnce           sync.Once
+	initOnce                     sync.Once
 	reconnectRequests            chan reconnectReq
-	closeReconnect               chan bool
+	closeReconnect               chan struct{}
 	verifier                     *requestfilter.RulesVerifier
 	configSubmitter              ConfigurationSubmitter
 }
@@ -110,7 +109,7 @@ func NewShardRouter(l types.Logger,
 		router2batcherConnPoolSize:   numOfConnectionsForBatcher,
 		clientConfig:                 cc,
 		reconnectRequests:            make(chan reconnectReq, 2*numOfgRPCStreamsPerConnection*numOfConnectionsForBatcher),
-		closeReconnect:               make(chan bool),
+		closeReconnect:               make(chan struct{}),
 		verifier:                     verifier,
 		configSubmitter:              configSubmitter,
 	}
@@ -219,39 +218,14 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 	}
 }
 
-func (sr *ShardRouter) MaybeInit() {
-	sr.initConnPoolAndStreamsOnce()
-	sr.maybeConnect()
-	sr.startReconnectionRoutineOnce()
+func (sr *ShardRouter) InitShardRouter() {
+	sr.initOnce.Do(func() {
+		sr.initConnPoolAndStreams()
+		sr.startReconnectionRoutine()
+	})
 }
 
-func (sr *ShardRouter) maybeConnect() {
-	if !sr.replenishNeeded() {
-		return
-	}
-
-	sr.replenishConnPool()
-	sr.initStreams()
-}
-
-func (sr *ShardRouter) replenishNeeded() bool {
-	sr.lock.RLock()
-	defer sr.lock.RUnlock()
-
-	if len(sr.connPool) == 0 {
-		return true
-	}
-
-	for _, conn := range sr.connPool {
-		if conn == nil {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (sr *ShardRouter) replenishConnPool() error {
+func (sr *ShardRouter) fillConnPool() error {
 	sr.lock.Lock()
 	defer sr.lock.Unlock()
 
@@ -335,20 +309,21 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 	return nil
 }
 
-func (sr *ShardRouter) initConnPoolAndStreamsOnce() {
-	sr.once.Do(func() {
-		sr.connPool = make([]*grpc.ClientConn, sr.router2batcherConnPoolSize)
-		sr.streams = make([][]*stream, sr.router2batcherConnPoolSize)
-		for i := 0; i < sr.router2batcherConnPoolSize; i++ {
-			sr.streams[i] = make([]*stream, sr.router2batcherStreamsPerConn)
-		}
-	})
+func (sr *ShardRouter) initConnPoolAndStreams() {
+	sr.connPool = make([]*grpc.ClientConn, sr.router2batcherConnPoolSize)
+	sr.streams = make([][]*stream, sr.router2batcherConnPoolSize)
+	for i := 0; i < sr.router2batcherConnPoolSize; i++ {
+		sr.streams[i] = make([]*stream, sr.router2batcherStreamsPerConn)
+	}
+
+	// try to initialize the connections and streams. if one fail, the reconnection routine will take care of it when requests arrive
+	err := sr.fillConnPool()
+	sr.logger.Errorf("Initial connection pool fill resulted in error: %v", err)
+	sr.initStreams()
 }
 
-func (sr *ShardRouter) startReconnectionRoutineOnce() {
-	sr.reconnectOnce.Do(func() {
-		go sr.reconnectRoutine()
-	})
+func (sr *ShardRouter) startReconnectionRoutine() {
+	go sr.reconnectRoutine()
 }
 
 func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream, connIndex int, streamInConnIndex int) {
