@@ -317,8 +317,9 @@ func (sr *ShardRouter) initConnPoolAndStreams() {
 	}
 
 	// try to initialize the connections and streams. if one fail, the reconnection routine will take care of it when requests arrive
-	err := sr.fillConnPool()
-	sr.logger.Errorf("Initial connection pool fill resulted in error: %v", err)
+	if err := sr.fillConnPool(); err != nil {
+		sr.logger.Errorf("Initial connection pool fill resulted in error: %v", err)
+	}
 	sr.initStreams()
 }
 
