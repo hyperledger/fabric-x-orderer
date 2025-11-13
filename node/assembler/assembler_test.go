@@ -84,6 +84,9 @@ func createLedgerMockWrappingRealLedger(logger types.Logger, ledgerPath string) 
 	mock.LedgerReaderCalls(func() blockledger.Reader {
 		return ledger.LedgerReader()
 	})
+	mock.MetricsCalls(func() *node_ledger.AssemblerLedgerMetrics {
+		return ledger.Metrics()
+	})
 	return mock, ledger, err
 }
 

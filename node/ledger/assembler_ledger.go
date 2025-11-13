@@ -31,6 +31,7 @@ type (
 //go:generate counterfeiter -o ./mocks/assembler_ledger.go . AssemblerLedgerReaderWriter
 type AssemblerLedgerReaderWriter interface {
 	GetTxCount() uint64
+	Metrics() *AssemblerLedgerMetrics
 	Append(batch types.Batch, orderingInfo types.OrderingInfo)
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	LastOrderingInfo() (*state.OrderingInformation, error)
@@ -50,14 +51,20 @@ func (f *DefaultAssemblerLedgerFactory) Create(logger types.Logger, ledgerPath s
 	return NewAssemblerLedger(logger, ledgerPath)
 }
 
+type AssemblerLedgerMetrics struct {
+	TransactionCount uint64
+	BlocksSize       uint64
+	BlocksCount      uint64
+}
+
 type AssemblerLedger struct {
 	Logger               types.Logger
 	Ledger               blockledger.ReadWriter
-	transactionCount     uint64
 	blockStorageProvider *blkstorage.BlockStoreProvider
 	blockStore           *blkstorage.BlockStore
 	cancellationContext  context.Context
 	cancelContextFunc    context.CancelFunc
+	metrics              AssemblerLedgerMetrics
 }
 
 func NewAssemblerLedger(logger types.Logger, ledgerPath string) (*AssemblerLedger, error) {
@@ -77,14 +84,14 @@ func NewAssemblerLedger(logger types.Logger, ledgerPath string) (*AssemblerLedge
 	}
 	logger.Infof("Assembler ledger opened block store: path: %s, ledger-ID: %s", ledgerPath, channelName)
 	ledger := fileledger.NewFileLedger(armaLedger)
-	transactionCount := uint64(0)
+	alm := AssemblerLedgerMetrics{}
 	height := ledger.Height()
 	if height > 0 {
 		block, err := ledger.RetrieveBlockByNumber(height - 1)
 		if err != nil {
 			return nil, fmt.Errorf("error while fetching last block from ledger %w", err)
 		}
-		_, _, transactionCount, err = AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
+		_, _, alm.TransactionCount, err = AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
 		if err != nil {
 			return nil, fmt.Errorf("error while fetching last block ordering info %w", err)
 		}
@@ -93,13 +100,13 @@ func NewAssemblerLedger(logger types.Logger, ledgerPath string) (*AssemblerLedge
 	al := &AssemblerLedger{
 		Logger:               logger,
 		Ledger:               ledger,
-		transactionCount:     transactionCount,
+		metrics:              alm,
 		blockStorageProvider: provider,
 		blockStore:           armaLedger,
 		cancellationContext:  ctx,
 		cancelContextFunc:    cancel,
 	}
-	go al.trackThroughput()
+
 	return al, nil
 }
 
@@ -109,27 +116,16 @@ func (l *AssemblerLedger) Close() {
 	l.blockStorageProvider.Close()
 }
 
-func (l *AssemblerLedger) trackThroughput() {
-	firstProbe := true
-	lastTxCount := uint64(0)
-	for {
-		txCount := atomic.LoadUint64(&l.transactionCount)
-		if !firstProbe {
-			l.Logger.Infof("Tx Count: %d, Commit throughput: %.2f", txCount, float64(txCount-lastTxCount)/10.0)
-		}
-		lastTxCount = txCount
-		firstProbe = false
-		select {
-		case <-time.After(time.Second * 10):
-		case <-l.cancellationContext.Done():
-			return
-		}
-	}
+func (l *AssemblerLedger) GetTxCount() uint64 {
+	return atomic.LoadUint64(&l.metrics.TransactionCount)
 }
 
-func (l *AssemblerLedger) GetTxCount() uint64 {
-	c := atomic.LoadUint64(&l.transactionCount)
-	return c
+func (l *AssemblerLedger) Metrics() *AssemblerLedgerMetrics {
+	return &l.metrics
+}
+
+func blockSize(block *common.Block) uint64 {
+	return uint64(len(protoutil.MarshalOrPanic(block)))
 }
 
 func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingInfo) {
@@ -175,7 +171,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 
 	//===
 	// TODO Ordering metadata  marshal orderingInfo and batchID
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, atomic.LoadUint64(&l.transactionCount)+uint64(len(batch.Requests())))
+	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, atomic.LoadUint64(&l.metrics.TransactionCount)+uint64(len(batch.Requests())))
 	if err != nil {
 		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
@@ -193,7 +189,9 @@ func (l *AssemblerLedger) Append(batch types.Batch, orderingInfo types.OrderingI
 		panic(err)
 	}
 
-	atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
+	atomic.AddUint64(&l.metrics.TransactionCount, uint64(len(batch.Requests())))
+	atomic.AddUint64(&l.metrics.BlocksSize, blockSize(block))
+	atomic.AddUint64(&l.metrics.BlocksCount, uint64(1))
 }
 
 func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum) {
@@ -207,7 +205,8 @@ func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum ty
 		l.Logger.Panicf("attempting to AppendConfig a block which is not a config block: %d", configBlock.GetHeader().GetNumber())
 	}
 
-	transactionCount := atomic.AddUint64(&l.transactionCount, 1) // len(configBlock.GetData().GetData()) = should always be a single TX
+	atomic.AddUint64(&l.metrics.BlocksSize, blockSize(configBlock))
+	transactionCount := atomic.AddUint64(&l.metrics.TransactionCount, 1) // len(configBlock.GetData().GetData()) = should always be a single TX
 	batchID := types.NewSimpleBatch(types.ShardIDConsensus, 0, 0, nil, 0)
 	ordInfo := &state.OrderingInformation{
 		DecisionNum: decisionNum,
@@ -230,6 +229,7 @@ func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum ty
 	if err := l.Ledger.Append(configBlock); err != nil {
 		panic(err)
 	}
+	atomic.AddUint64(&l.metrics.BlocksCount, uint64(1))
 }
 
 func (l *AssemblerLedger) LedgerReader() blockledger.Reader {
