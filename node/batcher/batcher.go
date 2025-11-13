@@ -122,6 +122,7 @@ func (b *Batcher) replicateState() {
 				if protoutil.IsConfigBlock(lastBlock) {
 					b.logger.Infof("Pulled config block %d from consensus", lastBlock.Header.Number)
 					b.ConfigStore.Add(lastBlock)
+					// TODO: apply the config or do a soft stop
 				} else {
 					b.logger.Errorf("Pulled config decision but last block is not a config block")
 				}
