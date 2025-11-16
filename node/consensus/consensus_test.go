@@ -639,8 +639,8 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				}
 				configReq, err := protoutil.Marshal(tst.ces[len(tst.ces)-1].ConfigRequest.Envelope)
 				require.NoError(t, err)
-				blockData := &common.BlockData{Data: [][]byte{configReq}}
-				latestBlockHeader.DataHash = protoutil.ComputeBlockDataHash(blockData)
+				batchedConfigReq := arma_types.BatchedRequests([][]byte{configReq})
+				latestBlockHeader.DataHash = batchedConfigReq.Digest()
 			}
 
 			require.NotNil(t, header.State)

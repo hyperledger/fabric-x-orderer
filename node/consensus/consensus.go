@@ -178,8 +178,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	if proposal.Header == nil || proposal.Metadata == nil || proposal.Payload == nil {
 		return nil, errors.New("proposal has a nil header or metadata or payload")
 	}
-	var batch arma_types.BatchedRequests
-	if err := batch.Deserialize(proposal.Payload); err != nil {
+	var requests arma_types.BatchedRequests
+	if err := requests.Deserialize(proposal.Payload); err != nil {
 		return nil, errors.Wrap(err, "failed to deserialize proposal payload")
 	}
 	var hdr state.Header
@@ -201,7 +201,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	c.stateLock.Lock()
-	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, batch)
+	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	// TODO verify config reqs
@@ -248,7 +248,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		if err != nil {
 			c.Logger.Panicf("Failed marshaling config request")
 		}
-		computedConfigBlockHeader.DataHash = protoutil.ComputeBlockDataHash(&common.BlockData{Data: [][]byte{configReq}})
+		batchedConfigReq := arma_types.BatchedRequests([][]byte{configReq})
+		computedConfigBlockHeader.DataHash = batchedConfigReq.Digest()
 		computedCommonBlocksHeaders[numOfAvailableBlocks-1] = computedConfigBlockHeader
 
 		lastConfigBlockNum = lastBlockNumber + 1
@@ -275,8 +276,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
 
-	reqInfos := make([]smartbft_types.RequestInfo, 0, len(batch))
-	for _, rawReq := range batch {
+	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
+	for _, rawReq := range requests {
 		reqID, err := c.VerifyRequest(rawReq)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)

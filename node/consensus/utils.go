@@ -54,7 +54,8 @@ func CreateDataCommonBlock(blockNum uint64, prevHash []byte, batchID arma_types.
 func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, configReq []byte) (*common.Block, error) {
 	configBlock := protoutil.NewBlock(blockNum, prevHash)
 	configBlock.Data = &common.BlockData{Data: [][]byte{configReq}}
-	configBlock.Header.DataHash = protoutil.ComputeBlockDataHash(configBlock.Data)
+	batchedConfigReq := arma_types.BatchedRequests([][]byte{configReq})
+	configBlock.Header.DataHash = batchedConfigReq.Digest()
 	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
 	if err != nil {
 		return nil, errors.Errorf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
