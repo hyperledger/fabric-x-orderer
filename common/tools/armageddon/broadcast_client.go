@@ -239,7 +239,7 @@ func createConnAndStream(userConfig *UserConfig, endpoint string) (*grpc.ClientC
 
 	gRPCRouterClientConn, err := gRPCRouterClient.Dial(endpoint)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to close gRPC connection to router %s, err: %v", endpoint, err)
+		return nil, nil, fmt.Errorf("failed to create a gRPC connection between client and router %s, err: %v", endpoint, err)
 	}
 
 	stream, err := ab.NewAtomicBroadcastClient(gRPCRouterClientConn).Broadcast(context.TODO())
