@@ -1152,3 +1152,86 @@ func TestConsensusStartStop(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(hdr.AvailableCommonBlocks))
 }
+
+func TestCreateAndVerifyDataCommonBlock(t *testing.T) {
+	for _, tst := range []struct {
+		name            string
+		err             string
+		blockNum        uint64
+		prevHash        []byte
+		primary         arma_types.PartyID
+		shard           arma_types.ShardID
+		seq             arma_types.BatchSequence
+		digest          []byte
+		decisionNum     arma_types.DecisionNum
+		batchCount      int
+		batchIndex      int
+		lastConfigBlock uint64
+	}{
+		{
+			name: "no error",
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed block header number",
+			blockNum: 1,
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed block header prev hash",
+			prevHash: []byte{1},
+		},
+		{
+			name:    "wrong primary",
+			err:     "proposed block metadata",
+			primary: 1,
+		},
+		{
+			name:  "wrong shard",
+			err:   "proposed block metadata",
+			shard: 1,
+		},
+		{
+			name: "wrong seq",
+			err:  "proposed block metadata",
+			seq:  1,
+		},
+		{
+			name:   "wrong digest",
+			err:    "proposed block data hash",
+			digest: []byte{1},
+		},
+		{
+			name:        "wrong decision number",
+			err:         "proposed block metadata",
+			decisionNum: 1,
+		},
+		{
+			name:       "wrong batch count",
+			err:        "proposed block metadata",
+			batchCount: 1,
+		},
+		{
+			name:       "wrong batch index",
+			err:        "proposed block metadata",
+			batchIndex: 1,
+		},
+		{
+			name:            "wrong last config block",
+			err:             "last config in block",
+			lastConfigBlock: 1,
+		},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			block, err := CreateDataCommonBlock(0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			require.NoError(t, err)
+			require.NotNil(t, block)
+			err = VerifyDataCommonBlock(block, tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
+		})
+	}
+}
