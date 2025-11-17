@@ -137,7 +137,8 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	verifier.AddRule(requestfilter.NewMaxSizeFilter(conf))
 	verifier.AddStructureRule(requestfilter.NewSigFilter(conf, policies.ChannelWriters))
 	// create stub batcher
-	batcher := NewStubBatcher(t, ca, partyID, types.ShardID(1))
+
+	batcher := NewStubBatcher(t, ckp, partyID, types.ShardID(1))
 
 	// create shard router
 	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil)

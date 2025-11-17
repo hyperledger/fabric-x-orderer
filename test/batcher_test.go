@@ -86,7 +86,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		os.Exit(3)
 	}
 
-	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient := client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -95,7 +95,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		require.NoError(t, err)
 	}
 
@@ -134,7 +134,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	// 4.
 	// make sure 2f+1 routers are receiving TXs w/o problems
-	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -143,7 +143,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
 			stalled = true
@@ -198,7 +198,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	})
 
 	// 7.
-	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -207,7 +207,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d: %v", totalTxSent+i, err)
 			// we expect the batcher to be restarted and the router to be back online
@@ -296,7 +296,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		os.Exit(3)
 	}
 
-	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient := client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -305,7 +305,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		require.NoError(t, err)
 	}
 
@@ -355,7 +355,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	// 4. Send To Routers
 	// make sure 2f+1 routers are receiving TXs w/o problems
-	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -364,7 +364,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
 			stalled = true
@@ -413,7 +413,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	// 7.
 	// make sure 2f+1 routers are receiving TXs w/o problems
-	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient = client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -422,7 +422,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, []byte("signature"))
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String())) // only such errors are permitted
 		}

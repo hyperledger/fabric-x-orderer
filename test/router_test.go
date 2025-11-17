@@ -16,6 +16,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -89,6 +91,7 @@ func TestRouterRestartRecover(t *testing.T) {
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
 	rate := 500
 	totalTxSent := 0
+	signature := []byte("signature")
 
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
@@ -97,7 +100,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		os.Exit(3)
 	}
 
-	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient := client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
 	for i := 0; i < totalTxNumber; i++ {
 		status := rl.GetToken()
@@ -106,7 +109,7 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, signature)
 		require.NoError(t, err)
 	}
 
@@ -145,7 +148,7 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, signature)
 		if err != nil {
 			require.ErrorContains(t, err, "EOF")
 			gotError = true
@@ -179,7 +182,7 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, signature)
 		require.NoError(t, err)
 	}
 
@@ -211,7 +214,7 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, signature)
 		if err != nil {
 			require.ErrorContains(t, err, "EOF")
 			gotError = true
@@ -245,7 +248,7 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, signature)
 		require.NoError(t, err)
 	}
 
@@ -267,18 +270,19 @@ func TestRouterRestartRecover(t *testing.T) {
 	})
 }
 
-// TestSubmitToRouterGetMetrics tests the end-to-end flow of submitting transactions to the router
-// and verifying that the metrics endpoint correctly reflects the number of incoming transactions.
-// The test performs the following steps:
-//  1. Compiles the arma binary.
-//  2. Creates a temporary directory for test artifacts.
-//  3. Generates a network configuration YAML file.
-//  4. Uses the armageddon CLI to generate config files for the network.
-//  5. Starts the arma nodes and waits for them to be ready.
-//  6. Sends a specified number of transactions to the router using a rate limiter.
-//  7. Queries the router's metrics endpoint and asserts that the number of incoming transactions
-//     matches the number sent, within a timeout period.
-func TestSubmitToRouterGetMetrics(t *testing.T) {
+// TestSignTxVerifyByRouter is an integration test that validates end-to-end transaction
+// signing and router-side client signature verification in a small arma network.
+//
+// The test performs the following high-level steps:
+//  1. Compiles the arma CLI binary for the test run.
+//  2. Creates a temporary working directory and generates network configuration files
+//     for a multi-party arma network (configurable number of parties and shards).
+//  3. Modifies the local router configuration to require client signature verification.
+//  4. Starts the arma nodes and waits until all nodes become ready (fail the test if
+//     any node is not ready within a 10 second timeout).
+//  5. Obtains a test user configuration and constructs a broadcast client.
+//  6. Asserts that all sends complete without error and performs test cleanup.
+func TestSignTxVerifyByRouter(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	defer gexec.CleanupBuildArtifacts()
@@ -286,7 +290,7 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 	require.NotNil(t, armaBinaryPath)
 
 	// Number of parties in the test
-	numOfParties := 1
+	numOfParties := 4
 
 	t.Logf("Running test with %d parties and %d shards", numOfParties, 1)
 
@@ -304,8 +308,22 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
+	for partyID := 1; partyID <= numOfParties; partyID++ {
+		configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", partyID))
+		conf, _, err := config.LoadLocalConfig(configFilePath)
+		require.NoError(t, err)
+
+		// Modify the router configuration to require client signature verification.
+		conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+		utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+
+		conf, _, err = config.LoadLocalConfig(configFilePath)
+		require.NoError(t, err)
+		require.True(t, conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired)
+	}
 	// 5. Run the arma nodes.
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	// Obtains a test user configuration and constructs a broadcast client.
 	readyChan := make(chan struct{}, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
@@ -313,15 +331,15 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	uc, err := testutil.GetUserConfig(dir, 1)
-	require.NoError(t, err)
-	require.NotNil(t, uc)
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
 
-	// 6. Send transactions to the routers.
-	totalTxNumber := 100
+	totalTxNumber := 1000
 	// rate limiter parameters
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
 	rate := 500
+	signature := []byte("signature")
 
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
@@ -330,23 +348,16 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 		os.Exit(3)
 	}
 
-	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	broadcastClient := client.NewBroadcastTxClient(dir, uc, 10*time.Second)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		err = broadcastClient.SendTx(txContent, signature)
 		require.NoError(t, err)
 	}
-	// 7. Query the router's metrics endpoint and assert the incoming transaction count.
-	routerToMonitor := armaNetwork.GetRouter(t, 1)
-	url := testutil.WaitForPrometheusServiceURL(t, routerToMonitor)
-
-	require.Eventually(t, func() bool {
-		return testutil.RouterIncomingTxMetric(t, types.PartyID(1), url) == totalTxNumber
-	}, 30*time.Second, 100*time.Millisecond)
 }

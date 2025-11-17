@@ -81,11 +81,13 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int,
 	// create a CA that issues a certificate for the router and the batchers
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
+	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
+	require.NoError(t, err)
 
 	// create stub batchers
 	var batchers []*stubBatcher
 	for i := 0; i < numOfShards; i++ {
-		batcher := NewStubBatcher(t, ca, partyID, types.ShardID(i+1))
+		batcher := NewStubBatcher(t, certKeyPair, partyID, types.ShardID(i+1))
 		batchers = append(batchers, &batcher)
 	}
 
