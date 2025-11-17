@@ -24,6 +24,22 @@ func (c *BatcherNodeConfig) GetShardsIDs() []types.ShardID {
 	return ids
 }
 
+func (c *ConsenterNodeConfig) GetRequestMaxBytes() uint64 {
+	return c.RequestMaxBytes
+}
+
+func (c *ConsenterNodeConfig) GetClientSignatureVerificationRequired() bool {
+	return c.ClientSignatureVerificationRequired
+}
+
+func (c *ConsenterNodeConfig) GetChannelID() string {
+	return c.Bundle.ConfigtxValidator().ChannelID()
+}
+
+func (c *ConsenterNodeConfig) GetPolicyManager() policies.Manager {
+	return c.Bundle.PolicyManager()
+}
+
 func (c *BatcherNodeConfig) GetRequestMaxBytes() uint64 {
 	return c.RequestMaxBytes
 }
