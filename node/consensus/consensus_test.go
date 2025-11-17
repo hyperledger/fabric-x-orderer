@@ -1235,3 +1235,69 @@ func TestCreateAndVerifyDataCommonBlock(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
+	for _, tst := range []struct {
+		name        string
+		err         string
+		blockNum    uint64
+		prevHash    []byte
+		dataHash    []byte
+		decisionNum arma_types.DecisionNum
+		batchCount  int
+		batchIndex  int
+	}{
+		{
+			name: "no error",
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed config block header number",
+			blockNum: 1,
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed config block header prev hash",
+			prevHash: []byte{1},
+		},
+		{
+			name:     "wrong data hash",
+			err:      "proposed config block data hash",
+			dataHash: []byte{1},
+		},
+		{
+			name:        "wrong decision number",
+			err:         "proposed config block metadata",
+			decisionNum: 1,
+		},
+		{
+			name:       "wrong batch count",
+			err:        "proposed config block metadata",
+			batchCount: 1,
+		},
+		{
+			name:       "wrong batch index",
+			err:        "proposed config block metadata",
+			batchIndex: 1,
+		},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			configBlock, err := CreateConfigCommonBlock(0, nil, 0, 0, 0, nil)
+			require.NoError(t, err)
+			require.NotNil(t, configBlock)
+
+			nilConfigReq := arma_types.BatchedRequests([][]byte{nil})
+			dataHash := nilConfigReq.Digest()
+			if tst.dataHash != nil {
+				dataHash = tst.dataHash
+			}
+
+			err = VerifyConfigCommonBlock(configBlock, tst.blockNum, tst.prevHash, dataHash, tst.decisionNum, tst.batchCount, tst.batchIndex)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
+		})
+	}
+}
