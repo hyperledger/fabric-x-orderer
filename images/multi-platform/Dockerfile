@@ -45,7 +45,7 @@ COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 # OCI labels (strongly recommended for prod images)
 LABEL name="arma-service" \
       vendor="IBM" \
-      maintainer="ZRL Decentralized Trust Group <pasquale.convertini@ibm.com>" \
+      maintainer="ZRL Decentralized Trust Group" \
       summary="ARMA Service Production Image" \
       description="Lightweight and secure Go application running on UBI-micro" \
       license="Apache-2.0"
