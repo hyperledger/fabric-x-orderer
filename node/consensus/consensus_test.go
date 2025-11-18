@@ -32,6 +32,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -415,7 +416,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	config := &nodeconfig.ConsenterNodeConfig{
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
-		RequestMaxBytes:                     0,
+		RequestMaxBytes:                     1000,
 	}
 	requestVerifier := createConsensusRulesVerifier(config)
 
@@ -577,7 +578,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
 			},
-			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{Payload: []byte(""), Signature: []byte("")}}}},
+			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: tx.CreateStructuredConfigUpdateEnvelope([]byte{1})}}},
 			withConfig: true,
 		},
 	} {

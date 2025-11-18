@@ -618,7 +618,8 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
-		return smartbft_types.RequestInfo{}, nil, nil
+		// TODO: revisit this return
+		return reqID, ce, nil
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
@@ -649,24 +650,20 @@ func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
 func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.Request, error) {
 	var reqType common.HeaderType
 
-	// Do we need to check the first step anyway or it depends on the flag?
-	if c.Config.ClientSignatureVerificationRequired {
-		err := c.RequestVerifier.Verify(request)
-		if err != nil {
-			c.Logger.Debugf("request is invalid: %s", err)
-			return nil, fmt.Errorf("request verification error: %s", err)
-		}
+	if err := c.RequestVerifier.Verify(request); err != nil {
+		c.Logger.Debugf("request is invalid: %s", err)
+		return nil, fmt.Errorf("request verification error: %s", err)
+	}
 
-		reqType, err = c.RequestVerifier.VerifyStructureAndClassify(request)
-		if err != nil {
-			c.Logger.Debugf("request structure is invalid: %s", err)
-			return nil, fmt.Errorf("request structure verification error: %s", err)
-		}
+	reqType, err := c.RequestVerifier.VerifyStructureAndClassify(request)
+	if err != nil {
+		c.Logger.Debugf("request structure is invalid: %s", err)
+		return nil, fmt.Errorf("request structure verification error: %s", err)
+	}
 
-		if int(reqType) >= len(common.HeaderType_value) || reqType == common.HeaderType_CONFIG || reqType == common.HeaderType_ORDERER_TRANSACTION || reqType == common.HeaderType_DELIVER_SEEK_INFO {
-			c.Logger.Debugf("request has unsupported type: %s", reqType)
-			return nil, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
-		}
+	if reqType != common.HeaderType_CONFIG_UPDATE {
+		c.Logger.Debugf("request has unsupported type: %s", reqType)
+		return nil, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
 	}
 
 	configRequest, err := c.ConfigUpdateProposer.ProposeConfigUpdate(request, c.Config.Bundle, c.Signer, c.RequestVerifier)
