@@ -193,7 +193,7 @@ func (r *Router) Stop() {
 	}
 }
 
-func (r *Router) SoftStop() {
+func (r *Router) SoftStop() error {
 	routerAddress := r.net.Address()
 	partyID := r.routerNodeConfig.PartyID
 
@@ -207,7 +207,7 @@ func (r *Router) SoftStop() {
 
 	// next, we stop the shard routers, which will be responsible for sending responses to pending requests
 	for _, sr := range r.shardRouters {
-		sr.SoftStop(fmt.Errorf("router is stopping, cannot process requests"))
+		sr.SoftStop(fmt.Errorf("router is stopping, cannot process request"))
 	}
 
 	// wait until all feedback channels are drained and all responses are sent
@@ -222,6 +222,8 @@ func (r *Router) SoftStop() {
 	r.metrics.Stop()
 
 	r.logger.Warnf("Router on %s, PartyID: %d, has been stopped. Pending restart", routerAddress, partyID)
+
+	return nil
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
@@ -260,7 +262,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		select {
 		case <-r.stopChan:
 			r.sendBroadcastResponse(stream, Response{
-				err:   fmt.Errorf("server is stopping, cannot process request %x", reqID),
+				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
 			})
 		default:
@@ -342,7 +344,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		select {
 		case <-r.stopChan:
 			r.sendSubmitResponse(stream, Response{
-				err:   fmt.Errorf("server is stopping, cannot process request %x", reqID),
+				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
 			})
 		default:
@@ -395,7 +397,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 		response = res
 	case <-r.stopChan:
 		response = Response{
-			err:   fmt.Errorf("server is stopping, cannot process request %x", reqID),
+			err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 			reqID: reqID,
 		}
 	case <-ctx.Done():
