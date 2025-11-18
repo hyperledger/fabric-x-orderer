@@ -317,7 +317,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	return batcherConfig
 }
 
-func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeConfig {
+func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *nodeconfig.ConsenterNodeConfig {
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
@@ -330,19 +330,22 @@ func (config *Configuration) ExtractConsenterConfig() *nodeconfig.ConsenterNodeC
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
-		Shards:                  config.ExtractShards(),
-		Consenters:              config.ExtractConsenters(),
-		Router:                  config.ExtractRouterInParty(),
-		Directory:               config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:           net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
-		PartyId:                 config.LocalConfig.NodeLocalConfig.PartyID,
-		TLSPrivateKeyFile:       config.LocalConfig.TLSConfig.PrivateKey,
-		TLSCertificateFile:      config.LocalConfig.TLSConfig.Certificate,
-		SigningPrivateKey:       signingPrivateKey,
-		WALDir:                  DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
-		BFTConfig:               BFTConfig,
-		MonitoringListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
-		MetricsLogInterval:      config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Shards:                              config.ExtractShards(),
+		Consenters:                          config.ExtractConsenters(),
+		Router:                              config.ExtractRouterInParty(),
+		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
+		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
+		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
+		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
+		SigningPrivateKey:                   signingPrivateKey,
+		WALDir:                              DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
+		BFTConfig:                           BFTConfig,
+		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
+		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
+		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
+		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 	}
 	return consenterConfig
 }

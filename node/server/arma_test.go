@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/msp"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -378,13 +379,17 @@ func TestLaunchArmaNode(t *testing.T) {
 		consensusLedger.Close()
 
 		// Create the consenter and check genesis block was appended
-		conf := configContent.ExtractConsenterConfig()
+		conf := configContent.ExtractConsenterConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
 		srv := node.CreateGRPCConsensus(conf)
 		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		require.NoError(t, err)
-		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, signer)
+
+		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, signer, mockConfigUpdateProposer)
 		require.NotNil(t, consensus)
 		consensus.Storage.Close()
 

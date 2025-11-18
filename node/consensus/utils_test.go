@@ -18,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -29,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -162,7 +164,10 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 
 		signer := buildSigner(conf, logger)
 
-		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, genesisBlock, logger, signer)
+		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, genesisBlock, logger, signer, mockConfigUpdateProposer)
 		grpcRegisterAndStart(c, consenterNodes[i])
 
 		listener := &storageListener{c: make(chan *common.Block, 100)}
@@ -211,6 +216,11 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 	BFTConfig := config.DefaultArmaBFTConfig()
 	BFTConfig.SelfID = uint64(partyID)
 
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	return &nodeconfig.ConsenterNodeConfig{
 		Shards:             []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
 		Consenters:         consentersInfo,
@@ -220,6 +230,7 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
 		Directory:          dir,
 		BFTConfig:          BFTConfig,
+		Bundle:             bundle,
 	}
 }
 
@@ -240,7 +251,10 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 
 	signer := crypto.ECDSASigner(*newConsenterNode.sk)
 
-	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, lastConfigBlock, setup.loggers[nodeIndex], signer)
+	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, lastConfigBlock, setup.loggers[nodeIndex], signer, mockConfigUpdateProposer)
 
 	grpcRegisterAndStart(setup.consensusNodes[nodeIndex], newConsenterNode)
 
