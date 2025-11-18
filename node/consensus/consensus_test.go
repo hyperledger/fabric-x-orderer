@@ -1232,6 +1232,16 @@ func TestCreateAndVerifyDataCommonBlock(t *testing.T) {
 			} else {
 				require.ErrorContains(t, err, tst.err)
 			}
+
+			block, err = CreateDataCommonBlock(tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			require.NoError(t, err)
+			require.NotNil(t, block)
+			err = VerifyDataCommonBlock(block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
 		})
 	}
 }
@@ -1293,6 +1303,22 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 			}
 
 			err = VerifyConfigCommonBlock(configBlock, tst.blockNum, tst.prevHash, dataHash, tst.decisionNum, tst.batchCount, tst.batchIndex)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
+
+			var configReq []byte
+			if tst.dataHash != nil {
+				configReq = tst.dataHash
+			}
+
+			configBlock, err = CreateConfigCommonBlock(tst.blockNum, tst.prevHash, tst.decisionNum, tst.batchCount, tst.batchIndex, configReq)
+			require.NoError(t, err)
+			require.NotNil(t, configBlock)
+
+			err = VerifyConfigCommonBlock(configBlock, 0, nil, nilConfigReq.Digest(), 0, 0, 0)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
