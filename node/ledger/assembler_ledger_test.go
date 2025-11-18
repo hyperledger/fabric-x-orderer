@@ -135,7 +135,7 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 		assert.Equal(t, batches[n].Seq(), batchID.Seq())
 		assert.Equal(t, batches[n].Primary(), batchID.Primary())
 
-		assert.Equal(t, ordInfos[n].Hash(), ordInfo.Hash())
+		assert.Equal(t, protoutil.BlockHeaderHash(ordInfos[n].CommonBlock.Header), protoutil.BlockHeaderHash(ordInfo.CommonBlock.Header))
 		assert.Equal(t, ordInfos[n].DecisionNum, ordInfo.DecisionNum)
 		assert.Equal(t, ordInfos[n].BatchIndex, ordInfo.BatchIndex)
 		assert.Equal(t, ordInfos[n].BatchCount, ordInfo.BatchCount)
@@ -167,7 +167,7 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	ordInfo, err = al.LastOrderingInfo()
 	require.NoError(t, err)
 
-	assert.Equal(t, ordInfos[1].Hash(), ordInfo.Hash())
+	assert.Equal(t, protoutil.BlockHeaderHash(ordInfos[1].CommonBlock.Header), protoutil.BlockHeaderHash(ordInfo.CommonBlock.Header))
 	assert.Equal(t, ordInfos[1].DecisionNum, ordInfo.DecisionNum)
 	assert.Equal(t, ordInfos[1].BatchIndex, ordInfo.BatchIndex)
 	assert.Equal(t, ordInfos[1].BatchCount, ordInfo.BatchCount)
@@ -321,11 +321,6 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		transactionCount += len(batchedRequests)
 
 		oi := &state.OrderingInformation{
-			BlockHeader: &state.BlockHeader{
-				Number:   n + 1,
-				PrevHash: nil,
-				Digest:   fb.Digest(),
-			},
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: n + 1, DataHash: fb.Digest()}},
 			Signatures: []smartbft_types.Signature{{
 				ID:    1,
@@ -339,11 +334,9 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 			BatchCount:  1,
 		}
 		if n > 0 {
-			oi.BlockHeader.PrevHash = ordInfos[n-1].Hash()
 			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(ordInfos[n-1].CommonBlock.Header)
 		} else {
 			genesis := utils.EmptyGenesisBlock("arma")
-			oi.BlockHeader.PrevHash = protoutil.BlockHeaderHash(genesis.Header)
 			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesis.Header)
 		}
 

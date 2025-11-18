@@ -116,11 +116,7 @@ func AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block *common.Block) (types
 
 	ab := state.NewAvailableBatch(pr, sh, seq, block.GetHeader().GetDataHash())
 	oi := &state.OrderingInformation{
-		BlockHeader: &state.BlockHeader{
-			Number:   block.GetHeader().GetNumber(),
-			PrevHash: block.GetHeader().GetPreviousHash(),
-			Digest:   block.GetHeader().GetDataHash(),
-		},
+		CommonBlock: block,
 		Signatures:  bftSigs,
 		DecisionNum: num,
 		BatchIndex:  int(bI),

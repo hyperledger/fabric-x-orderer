@@ -28,21 +28,23 @@ func TestAvailableBatchOrdered(t *testing.T) {
 	oi.BatchIndex = 2
 	oi.BatchCount = 3
 	oi.Signatures = make([]smartbft_types.Signature, 3)
-	oi.BlockHeader = &BlockHeader{
-		Number:   3,
-		PrevHash: []byte{1, 2, 3, 4},
-		Digest:   []byte{0xa, 0xb, 0xc, 0xd},
+	oi.CommonBlock = &common.Block{
+		Header: &common.BlockHeader{
+			Number:       3,
+			PreviousHash: []byte{1, 2, 3, 4},
+			DataHash:     []byte{0xa, 0xb, 0xc, 0xd},
+		},
 	}
-	assert.Equal(t, "DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, BlockHeader: Number: 3, PrevHash: 01020304, Digest: 0a0b0c0d, Common Block: <nil>", oi.String())
+	assert.Equal(t, "DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, Common Block: Number: 3, PreviousHash: 01020304, DataHash: 0a0b0c0d", oi.String())
 
 	var abo AvailableBatchOrdered
 	abo.AvailableBatch = &ab
 	abo.OrderingInformation = &oi
 
 	assert.Equal(t,
-		"{AvailableBatch:Sh,Pr,Sq,Dg: <666,42,100,0000000000000000000000000000000000000000000000000000000000000000> OrderingInformation:DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, BlockHeader: Number: 3, PrevHash: 01020304, Digest: 0a0b0c0d, Common Block: <nil>}",
+		"{AvailableBatch:Sh,Pr,Sq,Dg: <666,42,100,0000000000000000000000000000000000000000000000000000000000000000> OrderingInformation:DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, Common Block: Number: 3, PreviousHash: 01020304, DataHash: 0a0b0c0d}",
 		fmt.Sprintf("%+v", abo))
 
 	oi.CommonBlock = &common.Block{Header: &common.BlockHeader{Number: 1, PreviousHash: []byte{1}, DataHash: []byte{2}}}
-	assert.Equal(t, "DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, BlockHeader: Number: 3, PrevHash: 01020304, Digest: 0a0b0c0d, Common Block: Number: 1, PreviousHash: 01, DataHash: 02", oi.String())
+	assert.Equal(t, "DecisionNum: 10, BatchIndex: 2, BatchCount: 3; No. Sigs: 3, Common Block: Number: 1, PreviousHash: 01, DataHash: 02", oi.String())
 }

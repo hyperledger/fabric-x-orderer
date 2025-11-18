@@ -16,7 +16,6 @@ import (
 
 type OrderingInformation struct {
 	CommonBlock *common.Block
-	*BlockHeader
 	Signatures  []smartbft_types.Signature
 	DecisionNum types.DecisionNum
 	BatchIndex  int
@@ -28,7 +27,7 @@ func (oi *OrderingInformation) String() string {
 		return "<nil>"
 	}
 
-	return fmt.Sprintf("DecisionNum: %d, BatchIndex: %d, BatchCount: %d; No. Sigs: %d, BlockHeader: %s, Common Block: %s", oi.DecisionNum, oi.BatchIndex, oi.BatchCount, len(oi.Signatures), oi.BlockHeader.String(), types.CommonBlockToString(oi.CommonBlock))
+	return fmt.Sprintf("DecisionNum: %d, BatchIndex: %d, BatchCount: %d; No. Sigs: %d, Common Block: %s", oi.DecisionNum, oi.BatchIndex, oi.BatchCount, len(oi.Signatures), types.CommonBlockToString(oi.CommonBlock))
 }
 
 type AvailableBatchOrdered struct {
