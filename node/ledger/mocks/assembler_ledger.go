@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
 )
 
 type FakeAssemblerLedgerReaderWriter struct {
@@ -25,7 +25,7 @@ type FakeAssemblerLedgerReaderWriter struct {
 		arg1 *common.Block
 		arg2 types.DecisionNum
 	}
-	BatchFrontierStub        func([]types.ShardID, []types.PartyID, time.Duration) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error)
+	BatchFrontierStub        func([]types.ShardID, []types.PartyID, time.Duration) (ledger.BatchFrontier, error)
 	batchFrontierMutex       sync.RWMutex
 	batchFrontierArgsForCall []struct {
 		arg1 []types.ShardID
@@ -33,11 +33,11 @@ type FakeAssemblerLedgerReaderWriter struct {
 		arg3 time.Duration
 	}
 	batchFrontierReturns struct {
-		result1 map[types.ShardID]map[types.PartyID]types.BatchSequence
+		result1 ledger.BatchFrontier
 		result2 error
 	}
 	batchFrontierReturnsOnCall map[int]struct {
-		result1 map[types.ShardID]map[types.PartyID]types.BatchSequence
+		result1 ledger.BatchFrontier
 		result2 error
 	}
 	CloseStub        func()
@@ -75,6 +75,16 @@ type FakeAssemblerLedgerReaderWriter struct {
 	}
 	ledgerReaderReturnsOnCall map[int]struct {
 		result1 blockledger.Reader
+	}
+	MetricsStub        func() *ledger.AssemblerLedgerMetrics
+	metricsMutex       sync.RWMutex
+	metricsArgsForCall []struct {
+	}
+	metricsReturns struct {
+		result1 *ledger.AssemblerLedgerMetrics
+	}
+	metricsReturnsOnCall map[int]struct {
+		result1 *ledger.AssemblerLedgerMetrics
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -146,7 +156,7 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendConfigArgsForCall(i int) (*co
 	return argsForCall.arg1, argsForCall.arg2
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontier(arg1 []types.ShardID, arg2 []types.PartyID, arg3 time.Duration) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error) {
+func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontier(arg1 []types.ShardID, arg2 []types.PartyID, arg3 time.Duration) (ledger.BatchFrontier, error) {
 	var arg1Copy []types.ShardID
 	if arg1 != nil {
 		arg1Copy = make([]types.ShardID, len(arg1))
@@ -183,7 +193,7 @@ func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierCallCount() int {
 	return len(fake.batchFrontierArgsForCall)
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierCalls(stub func([]types.ShardID, []types.PartyID, time.Duration) (map[types.ShardID]map[types.PartyID]types.BatchSequence, error)) {
+func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierCalls(stub func([]types.ShardID, []types.PartyID, time.Duration) (ledger.BatchFrontier, error)) {
 	fake.batchFrontierMutex.Lock()
 	defer fake.batchFrontierMutex.Unlock()
 	fake.BatchFrontierStub = stub
@@ -196,28 +206,28 @@ func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierArgsForCall(i int) ([]
 	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierReturns(result1 map[types.ShardID]map[types.PartyID]types.BatchSequence, result2 error) {
+func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierReturns(result1 ledger.BatchFrontier, result2 error) {
 	fake.batchFrontierMutex.Lock()
 	defer fake.batchFrontierMutex.Unlock()
 	fake.BatchFrontierStub = nil
 	fake.batchFrontierReturns = struct {
-		result1 map[types.ShardID]map[types.PartyID]types.BatchSequence
+		result1 ledger.BatchFrontier
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierReturnsOnCall(i int, result1 map[types.ShardID]map[types.PartyID]types.BatchSequence, result2 error) {
+func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontierReturnsOnCall(i int, result1 ledger.BatchFrontier, result2 error) {
 	fake.batchFrontierMutex.Lock()
 	defer fake.batchFrontierMutex.Unlock()
 	fake.BatchFrontierStub = nil
 	if fake.batchFrontierReturnsOnCall == nil {
 		fake.batchFrontierReturnsOnCall = make(map[int]struct {
-			result1 map[types.ShardID]map[types.PartyID]types.BatchSequence
+			result1 ledger.BatchFrontier
 			result2 error
 		})
 	}
 	fake.batchFrontierReturnsOnCall[i] = struct {
-		result1 map[types.ShardID]map[types.PartyID]types.BatchSequence
+		result1 ledger.BatchFrontier
 		result2 error
 	}{result1, result2}
 }
@@ -408,23 +418,62 @@ func (fake *FakeAssemblerLedgerReaderWriter) LedgerReaderReturnsOnCall(i int, re
 	}{result1}
 }
 
+func (fake *FakeAssemblerLedgerReaderWriter) Metrics() *ledger.AssemblerLedgerMetrics {
+	fake.metricsMutex.Lock()
+	ret, specificReturn := fake.metricsReturnsOnCall[len(fake.metricsArgsForCall)]
+	fake.metricsArgsForCall = append(fake.metricsArgsForCall, struct {
+	}{})
+	stub := fake.MetricsStub
+	fakeReturns := fake.metricsReturns
+	fake.recordInvocation("Metrics", []interface{}{})
+	fake.metricsMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsCallCount() int {
+	fake.metricsMutex.RLock()
+	defer fake.metricsMutex.RUnlock()
+	return len(fake.metricsArgsForCall)
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsCalls(stub func() *ledger.AssemblerLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = stub
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsReturns(result1 *ledger.AssemblerLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	fake.metricsReturns = struct {
+		result1 *ledger.AssemblerLedgerMetrics
+	}{result1}
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsReturnsOnCall(i int, result1 *ledger.AssemblerLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	if fake.metricsReturnsOnCall == nil {
+		fake.metricsReturnsOnCall = make(map[int]struct {
+			result1 *ledger.AssemblerLedgerMetrics
+		})
+	}
+	fake.metricsReturnsOnCall[i] = struct {
+		result1 *ledger.AssemblerLedgerMetrics
+	}{result1}
+}
+
 func (fake *FakeAssemblerLedgerReaderWriter) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.appendMutex.RLock()
-	defer fake.appendMutex.RUnlock()
-	fake.appendConfigMutex.RLock()
-	defer fake.appendConfigMutex.RUnlock()
-	fake.batchFrontierMutex.RLock()
-	defer fake.batchFrontierMutex.RUnlock()
-	fake.closeMutex.RLock()
-	defer fake.closeMutex.RUnlock()
-	fake.getTxCountMutex.RLock()
-	defer fake.getTxCountMutex.RUnlock()
-	fake.lastOrderingInfoMutex.RLock()
-	defer fake.lastOrderingInfoMutex.RUnlock()
-	fake.ledgerReaderMutex.RLock()
-	defer fake.ledgerReaderMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
