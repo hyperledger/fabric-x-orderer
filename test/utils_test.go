@@ -246,6 +246,8 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
+			MonitoringListenAddress:             "127.0.0.1:0",
+			MetricsLogInterval:                  0 * time.Second,
 		}
 
 		configs = append(configs, batcherConf)

@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -344,9 +345,12 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 	}
 	// 7. Query the router's metrics endpoint and assert the incoming transaction count.
 	routerToMonitor := armaNetwork.GetRouter(t, 1)
-	url := testutil.WaitForPrometheusServiceURL(t, routerToMonitor)
+	url := testutil.CaptureArmaNodePrometheusServiceURL(t, routerToMonitor)
+
+	pattern := fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1))
+	re := regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.RouterIncomingTxMetric(t, types.PartyID(1), url) == totalTxNumber
+		return testutil.GetCounterMetricValueByRegexp(t, re, url) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
 }
