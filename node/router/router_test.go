@@ -550,6 +550,11 @@ func submitConfigRequest(t *testing.T, conn *grpc.ClientConn) error {
 	return nil
 }
 
+// Scenario:
+// 1) Start a client, router and stub consenter
+// 2) Send and pull a decision with a config block
+// 3) Verify that the config block is stored in the router config store
+// 4) Verify that the router performed a (soft) stop.
 func TestConfigPullFromConsensus(t *testing.T) {
 	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
 	err := createServerTLSClientConnection(testSetup, testSetup.ca)
@@ -575,15 +580,88 @@ func TestConfigPullFromConsensus(t *testing.T) {
 		return testSetup.router.GetConfigStoreSize() == initialConfigStoreSize+1
 	}, 10*time.Second, 10*time.Millisecond)
 
+	// verify that the router performed a (soft) stop, by checking that it is disconnected from the batcher
+	require.Eventually(t, func() bool {
+		return testSetup.isDisconnectedFromBatcher()
+	}, 10*time.Second, 200*time.Millisecond)
+}
+
+// Scenario:
+// 1) Start a client, router and stub consenter
+// 2) Pull a decision with no config block
+// 3) Verify that no new config block is stored in the router config store
+func TestConfigPullNoConfigBlocks(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	sc := testSetup.consenter
+	defer testSetup.Close()
+
+	initialConfigStoreSize := testSetup.router.GetConfigStoreSize()
+	require.Equal(t, 1, initialConfigStoreSize, "expected genesis block in config store")
+
 	// create a decision, with no config block
-	configBlock = tx.CreateConfigBlock(1000, []byte("config block data"))
-	acb = make([]*common.Block, 6)
+	configBlock := tx.CreateConfigBlock(1000, []byte("config block data"))
+	acb := make([]*common.Block, 6)
 	acb[len(acb)-1] = configBlock
 	err = sc.DeliverDecisionFromHeader(&state.Header{Num: 2, DecisionNumOfLastConfigBlock: 1, AvailableCommonBlocks: acb})
 	require.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)
-	require.Equal(t, initialConfigStoreSize+1, testSetup.router.GetConfigStoreSize(), "no new config block should be stored")
+	require.Equal(t, initialConfigStoreSize, testSetup.router.GetConfigStoreSize(), "no new config block should be stored")
+}
+
+// Scenario:
+// 1) Start a client, router and stub batcher
+// 2) Send requests using submitStream, expect success
+// 3) set the stub batcher to not answer the router requests
+// 4) in parallel, send requests using submitStream and perform a soft stop on the router
+// 5) expect the requests to fail with relevant error
+// 6) expect the soft stop to complete
+// 7) try to connect to the router, expect to fail with relevant error
+func TestRouterSoftStop(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	// send requests to the router, and expect to succeed
+	numOfRequests := 5
+	res := submitStreamRequests(testSetup.clientConn, numOfRequests)
+	require.NoError(t, res.err)
+	require.Equal(t, numOfRequests, res.successRequests)
+
+	// tell the batcher to drop requests
+	testSetup.batchers[0].SetDropRequests(true)
+
+	// next, we send additional requests, and simultaniously perform a soft stop.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		res = submitStreamRequests(testSetup.clientConn, numOfRequests)
+		require.ErrorContains(t, res.err, "router is stopping, cannot process request")
+		require.Equal(t, 0, res.successRequests)
+	}()
+
+	// wait until all requests are sent, and perform a soft stop
+	require.Eventually(t, func() bool {
+		return testSetup.batchers[0].ReceivedMessageCount() == uint32(2*numOfRequests)
+	}, 10*time.Second, 10*time.Millisecond)
+
+	err = testSetup.router.SoftStop()
+
+	wg.Wait()
+
+	// verify that the router has stopped
+	require.NoError(t, err, "soft stop should complete successfully")
+
+	// try to connect to the router, expect error
+	err = createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.ErrorContains(t, err, "failed to create new connection")
+	require.Nil(t, testSetup.clientConn)
 }
 
 func createServerTLSClientConnection(testSetup *routerTestSetup, ca tlsgen.CA) error {

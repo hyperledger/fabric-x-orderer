@@ -15,6 +15,7 @@ import (
 	"math"
 	rand2 "math/rand"
 	"sort"
+	"sync"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -56,6 +57,10 @@ type Router struct {
 	configPuller     ConfigPuller
 	metrics          *RouterMetrics
 	stopChan         chan struct{}
+	stopOnce         sync.Once
+	drainChan        chan struct{}
+	drainOnce        sync.Once
+	feedbackWG       sync.WaitGroup
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *Router {
@@ -175,12 +180,50 @@ func (r *Router) Stop() {
 	r.net.Stop()
 	r.metrics.Stop()
 
+	// stop config submitter goroutine
 	r.configSubmitter.Stop()
-	close(r.stopChan) // stop config puller goroutine
+
+	// stop config puller goroutine
+	r.stopOnce.Do(func() {
+		close(r.stopChan)
+	})
 
 	for _, sr := range r.shardRouters {
 		sr.Stop()
 	}
+}
+
+func (r *Router) SoftStop() error {
+	routerAddress := r.net.Address()
+	partyID := r.routerNodeConfig.PartyID
+
+	r.logger.Infof("Initiating soft stop of router listening on %s, PartyID: %d", routerAddress, partyID)
+
+	// stop accepting new requests in broadcast and submit handlers
+	// closing the stop chan will also stop the config puller, if needed.
+	r.stopOnce.Do(func() {
+		close(r.stopChan)
+	})
+
+	// next, we stop the shard routers, which will be responsible for sending responses to pending requests
+	for _, sr := range r.shardRouters {
+		sr.SoftStop(fmt.Errorf("router is stopping, cannot process request"))
+	}
+
+	// wait until all feedback channels are drained and all responses are sent
+	r.drainOnce.Do(func() {
+		close(r.drainChan)
+	})
+	r.feedbackWG.Wait()
+
+	// then, we stop other components
+	r.configSubmitter.Stop()
+	r.net.Stop() // this will close all client connections, so some (immediate) responses may not be sent.
+	r.metrics.Stop()
+
+	r.logger.Warnf("Router on %s, PartyID: %d, has been stopped. Pending restart", routerAddress, partyID)
+
+	return nil
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
@@ -216,9 +259,17 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
-		// creating a routing request with nil trace - request is not trce in router.
-		tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
-		shardRouter.Forward(tr)
+		select {
+		case <-r.stopChan:
+			r.sendBroadcastResponse(stream, Response{
+				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
+				reqID: reqID,
+			})
+		default:
+			// create a routing request with nil trace. the request is not traced in router.
+			tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
+			shardRouter.Forward(tr)
+		}
 	}
 }
 
@@ -255,6 +306,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		configSubmitter:  configSubmitter,
 		configPuller:     configPuller,
 		stopChan:         make(chan struct{}),
+		drainChan:        make(chan struct{}),
 		metrics:          metrics,
 	}
 
@@ -289,9 +341,17 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		reqID, shardRouter := r.getShardRouterAndReqID(req)
 
-		trace := createTraceID(rand)
-		tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
-		shardRouter.Forward(tr)
+		select {
+		case <-r.stopChan:
+			r.sendSubmitResponse(stream, Response{
+				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
+				reqID: reqID,
+			})
+		default:
+			trace := createTraceID(rand)
+			tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
+			shardRouter.Forward(tr)
+		}
 	}
 }
 
@@ -331,12 +391,29 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)
 
-	response := <-feedbackChan // TODO: add select on shutdwon or timeout here
+	var response Response
+	select {
+	case res := <-feedbackChan:
+		response = res
+	case <-r.stopChan:
+		response = Response{
+			err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
+			reqID: reqID,
+		}
+	case <-ctx.Done():
+		response = Response{
+			err:   fmt.Errorf("context done before receiving response for request %x: %v", reqID, ctx.Err()),
+			reqID: reqID,
+		}
+	}
+
 	r.metrics.increaseErrorCount(response.err)
 	return responseToSubmitResponse(&response), nil
 }
 
 func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, feedbackChan chan Response) {
+	r.feedbackWG.Add(1)
+	defer r.feedbackWG.Done()
 	for {
 		select {
 		case <-exit:
@@ -348,11 +425,25 @@ func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_Submit
 			if err != nil {
 				r.logger.Errorf("error sending response to client: %v", err)
 			}
+		case <-r.drainChan:
+			if len(feedbackChan) == 0 {
+				return
+			}
 		}
 	}
 }
 
+func (r *Router) sendSubmitResponse(stream protos.RequestTransmit_SubmitStreamServer, response Response) {
+	err := stream.Send(responseToSubmitResponse(&response))
+	if err != nil {
+		r.logger.Errorf("error sending response to client: %v", err)
+	}
+	r.metrics.increaseErrorCount(response.err)
+}
+
 func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
+	r.feedbackWG.Add(1)
+	defer r.feedbackWG.Done()
 	for {
 		select {
 		case <-exit:
@@ -363,8 +454,20 @@ func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_Br
 				r.logger.Errorf("error sending response to client: %v", err)
 			}
 			r.metrics.increaseErrorCount(response.err)
+		case <-r.drainChan:
+			if len(feedbackChan) == 0 {
+				return
+			}
 		}
 	}
+}
+
+func (r *Router) sendBroadcastResponse(stream orderer.AtomicBroadcast_BroadcastServer, response Response) {
+	err := stream.Send(responseToBroadcastResponse(&response))
+	if err != nil {
+		r.logger.Errorf("error sending response to client: %v", err)
+	}
+	r.metrics.increaseErrorCount(response.err)
 }
 
 func createTraceID(rand *rand2.Rand) []byte {
@@ -413,6 +516,13 @@ func (r *Router) pullAndProcessConfigBlocks() {
 				r.logger.Panicf("Failed adding config block to config store: %s", err)
 			}
 			r.logger.Infof("Added config block %d to config store", configBlock.GetHeader().GetNumber())
+
+			// initiate router restart to apply new config
+			go r.SoftStop()
+
+			// do not pull additional config blocks, until the router is restarted.
+			r.logger.Infof("Stopping config blocks processing")
+			return
 
 		case <-r.stopChan:
 			r.logger.Infof("Stopping config blocks processing")
