@@ -7,9 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package consensus_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -32,8 +34,12 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 type node struct {
@@ -231,6 +237,7 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 		Directory:          dir,
 		BFTConfig:          BFTConfig,
 		Bundle:             bundle,
+		RequestMaxBytes:    1000,
 	}
 }
 
@@ -277,6 +284,31 @@ func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id 
 
 	controlEvent := &state.ControlEvent{BAF: baf}
 	return node.SubmitRequest(controlEvent.Bytes())
+}
+
+// createAndSubmitConfigRequest creates and submits a config request control event for testing
+func createAndSubmitConfigRequest(node *consensus.Consensus, routerCert *x509.Certificate, payloadDataBytes []byte) (*protos.SubmitResponse, error) {
+	envelope := tx.CreateStructuredConfigUpdateEnvelope(payloadDataBytes)
+	request := &protos.Request{
+		Payload:   envelope.Payload,
+		Signature: envelope.Signature,
+	}
+	ctx, err := createContextForSubmitConfig(routerCert)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create a context for submit config")
+	}
+	return node.SubmitConfig(ctx, request)
+}
+
+func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, error) {
+	tlsInfo := credentials.TLSInfo{
+		State: tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		},
+	}
+	p := &peer.Peer{AuthInfo: tlsInfo}
+	ctx := peer.NewContext(context.Background(), p)
+	return ctx, nil
 }
 
 func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger types.Logger) consensus.Signer {

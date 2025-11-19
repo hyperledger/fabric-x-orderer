@@ -160,9 +160,16 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to verify and classify request")
 	}
-	_ = configRequest
-	// TODO: submit configRequest.Bytes()
-	return &protos.SubmitResponse{Error: "SubmitConfig is not implemented in consenter", TraceId: request.TraceId}, nil
+
+	ce := &state.ControlEvent{
+		ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{
+			Payload:   configRequest.Payload,
+			Signature: configRequest.Signature,
+		}},
+	}
+	c.BFT.SubmitRequest(ce.Bytes())
+
+	return &protos.SubmitResponse{TraceId: request.TraceId}, nil
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
@@ -661,7 +668,9 @@ func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.R
 		return nil, fmt.Errorf("request structure verification error: %s", err)
 	}
 
-	if reqType != common.HeaderType_CONFIG_UPDATE {
+	// if the request comes from the Router then we expect reType = HeaderType_CONFIG_UPDATE
+	// if the request comes from the Consensus leader then we expect reType = HeaderType_CONFIG
+	if reqType != common.HeaderType_CONFIG_UPDATE && reqType != common.HeaderType_CONFIG {
 		c.Logger.Debugf("request has unsupported type: %s", reqType)
 		return nil, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
 	}
