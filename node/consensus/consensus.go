@@ -22,6 +22,8 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -46,6 +48,7 @@ type Net interface {
 
 type Signer interface {
 	Sign(message []byte) ([]byte, error)
+	Serialize() ([]byte, error)
 }
 
 type SigVerifier interface {
@@ -85,6 +88,8 @@ type Consensus struct {
 	Logger                       arma_types.Logger
 	Synchronizer                 *synchronizer
 	Metrics                      *ConsensusMetrics
+	RequestVerifier              *requestfilter.RulesVerifier
+	ConfigUpdateProposer         policy.ConfigUpdateProposer
 }
 
 func (c *Consensus) Start() error {
@@ -151,6 +156,12 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 
 	c.Logger.Infof("Received config request from router %s", c.Config.Router.Endpoint)
 
+	configRequest, err := c.verifyAndClassifyRequest(request)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to verify and classify request")
+	}
+	_ = configRequest
+	// TODO: submit configRequest.Bytes()
 	return &protos.SubmitResponse{Error: "SubmitConfig is not implemented in consenter", TraceId: request.TraceId}, nil
 }
 
@@ -600,7 +611,15 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 	} else if ce.BAF != nil {
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
-		return reqID, ce, nil // TODO verify sig over config
+		_, err := c.verifyAndClassifyRequest(&protos.Request{
+			Payload:   ce.ConfigRequest.Envelope.Payload,
+			Signature: ce.ConfigRequest.Envelope.Signature,
+		})
+		if err != nil {
+			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
+		}
+		// TODO: revisit this return
+		return reqID, ce, nil
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
@@ -626,4 +645,31 @@ func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
 		return errors.New("error: access denied. The client certificate does not match the router's certificate")
 	}
 	return nil
+}
+
+func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.Request, error) {
+	var reqType common.HeaderType
+
+	if err := c.RequestVerifier.Verify(request); err != nil {
+		c.Logger.Debugf("request is invalid: %s", err)
+		return nil, fmt.Errorf("request verification error: %s", err)
+	}
+
+	reqType, err := c.RequestVerifier.VerifyStructureAndClassify(request)
+	if err != nil {
+		c.Logger.Debugf("request structure is invalid: %s", err)
+		return nil, fmt.Errorf("request structure verification error: %s", err)
+	}
+
+	if reqType != common.HeaderType_CONFIG_UPDATE {
+		c.Logger.Debugf("request has unsupported type: %s", reqType)
+		return nil, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
+	}
+
+	configRequest, err := c.ConfigUpdateProposer.ProposeConfigUpdate(request, c.Config.Bundle, c.Signer, c.RequestVerifier)
+	if err != nil {
+		return nil, fmt.Errorf("propose config update error: %s", err)
+	}
+
+	return configRequest, nil
 }

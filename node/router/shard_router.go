@@ -373,6 +373,31 @@ func (sr *ShardRouter) Stop() {
 	sr.lock.RUnlock()
 }
 
+func (sr *ShardRouter) SoftStop(errToClients error) {
+	// close the reconnection goroutine
+	sr.closeReconnectOnce.Do(func() {
+		close(sr.closeReconnect)
+	})
+
+	// send error responses to all pending requests in all streams
+	sr.lock.RLock()
+	for _, streamsInConn := range sr.streams {
+		for _, stream := range streamsInConn {
+			if stream != nil {
+				stream.sendResponseToAllClientsOnError(errToClients)
+			}
+		}
+	}
+
+	// close all connetions in connection pool
+	for _, con := range sr.connPool {
+		if con != nil {
+			con.Close()
+		}
+	}
+	sr.lock.RUnlock()
+}
+
 // IsAllStreamsOKinSR checks that all the streams in the shard-router are not faulty.
 // Use for testing only.
 func (sr *ShardRouter) IsAllStreamsOKinSR() bool {

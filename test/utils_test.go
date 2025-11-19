@@ -161,6 +161,11 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		BFTConfig := config.DefaultArmaBFTConfig()
 		BFTConfig.SelfID = uint64(partyID)
 
+		bundle := &configMocks.FakeConfigResources{}
+		configtxValidator := &policyMocks.FakeConfigtxValidator{}
+		configtxValidator.ChannelIDReturns("arma")
+		bundle.ConfigtxValidatorReturns(configtxValidator)
+
 		conf := &nodeconfig.ConsenterNodeConfig{
 			ListenAddress:      "0.0.0.0:0",
 			Shards:             shardInfo,
@@ -171,11 +176,16 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
 			Directory:          dir,
 			BFTConfig:          BFTConfig,
+			Bundle:             bundle,
 		}
 
 		net := consenterNodes[i].GRPCServer
 		signer := crypto.ECDSASigner(*consenterNodes[i].sk)
-		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer)
+
+		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer, mockConfigUpdateProposer)
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)

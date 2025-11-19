@@ -24,14 +24,15 @@ import (
 )
 
 type stubBatcher struct {
-	ca          tlsgen.CA // Certificate authority that issues a certificate for the batcher
-	certificate []byte
-	key         []byte
-	server      *comm.GRPCServer // GRPCServer instance represents the batcher
-	txs         uint32           // Number of txs received from router
-	partyID     types.PartyID
-	shardID     types.ShardID
-	logger      types.Logger
+	ca           tlsgen.CA // Certificate authority that issues a certificate for the batcher
+	certificate  []byte
+	key          []byte
+	server       *comm.GRPCServer // GRPCServer instance represents the batcher
+	txs          uint32           // Number of txs received from router
+	partyID      types.PartyID
+	shardID      types.ShardID
+	logger       types.Logger
+	dropRequests bool
 }
 
 func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID types.ShardID) stubBatcher {
@@ -130,9 +131,11 @@ func (sb *stubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamSe
 
 		atomic.AddUint32(&sb.txs, 1)
 
-		err = stream.Send(resp)
-		if err != nil {
-			return err
+		if !sb.dropRequests {
+			err = stream.Send(resp)
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -145,4 +148,8 @@ func (sb *stubBatcher) ReceivedMessageCount() uint32 {
 
 func (sb *stubBatcher) GetBatcherEndpoint() string {
 	return sb.server.Address()
+}
+
+func (sb *stubBatcher) SetDropRequests(dropRequests bool) {
+	sb.dropRequests = dropRequests
 }

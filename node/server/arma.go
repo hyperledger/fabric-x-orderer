@@ -116,7 +116,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("error launching consensus, err: %s", err))
 		}
 
-		conf := configContent.ExtractConsenterConfig()
+		conf := configContent.ExtractConsenterConfig(lastConfigBlock)
 
 		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
@@ -132,7 +132,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 		}
 
 		srv := node.CreateGRPCConsensus(conf)
-		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, signer)
+		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
 
 		defer consensus.Start()
 

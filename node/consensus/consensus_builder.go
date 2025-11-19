@@ -22,7 +22,10 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -35,7 +38,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer) *Consensus {
+func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	if lastConfigBlock == nil {
 		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
 		return nil
@@ -89,6 +92,8 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 		SigVerifier:                  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:                       signer,
 		Metrics:                      NewConsensusMetrics(conf.PartyId, logger, conf.MetricsLogInterval),
+		RequestVerifier:              createConsensusRulesVerifier(conf),
+		ConfigUpdateProposer:         configUpdateProposer,
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
@@ -411,4 +416,12 @@ func getSelfID(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID
 		}
 	}
 	return myIdentity
+}
+
+func createConsensusRulesVerifier(config *config.ConsenterNodeConfig) *requestfilter.RulesVerifier {
+	rv := requestfilter.NewRulesVerifier(nil)
+	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
+	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
+	rv.AddStructureRule(requestfilter.NewSigFilter(config, policies.ChannelWriters))
+	return rv
 }

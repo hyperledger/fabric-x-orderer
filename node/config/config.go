@@ -153,15 +153,18 @@ type ConsenterNodeConfig struct {
 	Directory     string
 	ListenAddress string
 	// Private config
-	PartyId                 types.PartyID
-	TLSPrivateKeyFile       RawBytes
-	TLSCertificateFile      RawBytes
-	SigningPrivateKey       RawBytes
-	WALDir                  string
-	BFTConfig               smartbft_types.Configuration
-	MonitoringListenAddress string
-	MonitoringInterval      int32
-	MetricsLogInterval      time.Duration
+	PartyId                             types.PartyID
+	TLSPrivateKeyFile                   RawBytes
+	TLSCertificateFile                  RawBytes
+	SigningPrivateKey                   RawBytes
+	WALDir                              string
+	BFTConfig                           smartbft_types.Configuration
+	MonitoringListenAddress             string
+	MonitoringInterval                  int32
+	MetricsLogInterval                  time.Duration
+	ClientSignatureVerificationRequired bool
+	Bundle                              channelconfig.Resources
+	RequestMaxBytes                     uint64
 }
 
 func NodeConfigToYAML(config interface{}, path string) error {

@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/asn1"
+	"fmt"
 	"math/big"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/utils"
@@ -22,6 +23,10 @@ func (s ECDSASigner) Sign(message []byte) ([]byte, error) {
 	digest := util.ComputeSHA256(message)
 	sk := (ecdsa.PrivateKey)(s)
 	return signECDSA(&sk, digest)
+}
+
+func (s ECDSASigner) Serialize() ([]byte, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func signECDSA(k *ecdsa.PrivateKey, digest []byte) (signature []byte, err error) {

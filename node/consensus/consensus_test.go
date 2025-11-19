@@ -22,13 +22,17 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -400,6 +404,22 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 	verifier := make(crypto.ECDSAVerifier)
 
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configEnvelope := &common.ConfigEnvelope{
+		Config:     nil,
+		LastUpdate: nil,
+	}
+	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	config := &nodeconfig.ConsenterNodeConfig{
+		ClientSignatureVerificationRequired: false,
+		Bundle:                              bundle,
+		RequestMaxBytes:                     1000,
+	}
+	requestVerifier := createConsensusRulesVerifier(config)
+
 	numOfParties := 4
 
 	sks := make([]*ecdsa.PrivateKey, numOfParties)
@@ -558,7 +578,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
 			},
-			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{Payload: []byte(""), Signature: []byte("")}}}},
+			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: tx.CreateStructuredConfigUpdateEnvelope([]byte{1})}}},
 			withConfig: true,
 		},
 	} {
@@ -579,11 +599,17 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				BAFDeserializer: &state.BAFDeserialize{},
 			}
 
+			configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+			configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
 			c := &Consensus{
-				Arma:        consenter,
-				State:       initialState,
-				Logger:      logger,
-				SigVerifier: verifier,
+				Arma:                 consenter,
+				State:                initialState,
+				Logger:               logger,
+				SigVerifier:          verifier,
+				RequestVerifier:      requestVerifier,
+				Config:               config,
+				ConfigUpdateProposer: configUpdateProposer,
 			}
 
 			reqs := make([][]byte, len(tst.ces))

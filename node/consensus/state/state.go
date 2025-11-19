@@ -513,15 +513,12 @@ func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 
 			complaintNum := complaintsToNum[complaint.ShardTerm]
 			oldTerm := s.Shards[shardIndex].Term
-			oldPrimary := uint16((oldTerm + uint64(complaint.Shard)) % uint64(s.N))
 
 			s.Shards[shardIndex].Term++
-
 			newTerm := s.Shards[shardIndex].Term
-			newPrimary := uint16((newTerm + uint64(complaint.Shard)) % uint64(s.N))
 
-			l.Infof("Shard %d advanced from term %d to term %d due to %d complaints (threshold is %d), and the primary switched from %d to %d",
-				complaint.Shard, oldTerm, newTerm, complaintNum, s.Threshold, oldPrimary, newPrimary)
+			l.Infof("Shard %d advanced from term %d to term %d due to %d complaints (threshold is %d)",
+				complaint.Shard, oldTerm, newTerm, complaintNum, s.Threshold)
 		} else {
 			newComplaints = append(newComplaints, complaint)
 		}

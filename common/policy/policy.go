@@ -22,12 +22,19 @@ import (
 )
 
 //go:generate counterfeiter -o mocks/config_update_proposer.go . ConfigUpdateProposer
+
+// ConfigUpdateProposer defines how to handle config update authorization and verification.
 type ConfigUpdateProposer interface {
 	ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error)
 }
 
 type DefaultConfigUpdateProposer struct{}
 
+// ProposeConfigUpdate validates a new config request against the current config state and validates that all modified config has the corresponding modification policies satisfied by the signature set.
+// It translates the config update request (Envelope of type CONFIG_UPDATE) and produces a ConfigEnvelope to be used as the Envelope Payload Data of a CONFIG message.
+// It creates a signed envelope that wraps the config envelope and re-validate it. This Re-validation is mainly intended to apply the size filtering and it is a good sanity check.
+// When a config update is sent to the Router, ProposeConfigUpdate is called and the Router drops the signed envelope and forward the original request to the consensus.
+// The consensus nodes apply the same validation checks and the leader proposes the config transaction signed by himself.
 func (cp *DefaultConfigUpdateProposer) ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
 	configRequest, err := AuthorizeAndVerifyConfigUpdateRequest(request, bundle, signer, verifier)
 	if err != nil {
