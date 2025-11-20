@@ -9,6 +9,7 @@ package ledger_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -26,10 +27,12 @@ func TestAssemblerBlockMetadataToFromBytes(t *testing.T) {
 	assert.NotNil(t, fb)
 
 	oi := &state.OrderingInformation{
-		BlockHeader: &state.BlockHeader{
-			Number:   0,
-			PrevHash: []byte{},
-			Digest:   fb.Digest(),
+		CommonBlock: &common.Block{
+			Header: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: []byte{},
+				DataHash:     fb.Digest(),
+			},
 		},
 		Signatures: []smartbft_types.Signature{{
 			ID:    1,

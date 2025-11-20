@@ -100,7 +100,7 @@ func TestAssemblerRole_Batches(t *testing.T) {
 
 		expectedBatch := batches[batchID.Shard()][batchID.Seq()]
 		require.Equal(t, types.BatchIDToString(expectedBatch), types.BatchIDToString(batchID))
-		require.Contains(t, ordInfo.String(), fmt.Sprintf("DecisionNum: %d, BatchIndex: 0, BatchCount: 1; No. Sigs: 0, BlockHeader: Number: %d", blockNUm, blockNUm), ordInfo.String())
+		require.Contains(t, ordInfo.String(), fmt.Sprintf("DecisionNum: %d, BatchIndex: 0, BatchCount: 1; No. Sigs: 0, Common Block: Number: %d", blockNUm, blockNUm), ordInfo.String())
 
 		delete(digestsSet, string(batchID.Digest()))
 	}
