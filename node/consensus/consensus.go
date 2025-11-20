@@ -222,7 +222,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
-	// TODO verify config reqs
 	c.stateLock.Unlock()
 
 	numOfAvailableBlocks := len(attestations)
@@ -234,7 +233,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 
 	// TODO verify proposal verification seq
 
-	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock { // TODO verify when not zero
+	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock {
 		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to computed %d", hdr.DecisionNumOfLastConfigBlock, decisionNumOfLastConfigBlock)
 	}
 
@@ -260,7 +259,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	if len(configRequests) > 0 {
-		// TODO verify config block
 		computedConfigBlockHeader := &common.BlockHeader{Number: lastBlockNumber + 1, PreviousHash: prevHash}
 		configReq, err := protoutil.Marshal(configRequests[0].Envelope) // TODO handle when there are multiple requests
 		if err != nil {
@@ -270,19 +268,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		computedConfigBlockHeader.DataHash = batchedConfigReq.Digest()
 		computedCommonBlocksHeaders[numOfAvailableBlocks-1] = computedConfigBlockHeader
 
-		lastConfigBlockNum = lastBlockNumber + 1
-
-		// verify last config block number
-		rawLastConfig, err := protoutil.GetMetadataFromBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], common.BlockMetadataIndex_LAST_CONFIG)
-		if err != nil {
-			return nil, err
-		}
-		lastConf := &common.LastConfig{}
-		if err := proto.Unmarshal(rawLastConfig.Value, lastConf); err != nil {
-			return nil, err
-		}
-		if lastConf.Index != lastConfigBlockNum {
-			return nil, errors.Errorf("last config in block metadata points to %d but our persisted last config is %d", lastConf.Index, lastConfigBlockNum)
+		if err := VerifyConfigCommonBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], lastBlockNumber+1, prevHash, computedConfigBlockHeader.DataHash, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1); err != nil {
+			return nil, errors.Wrapf(err, "failed verifying proposed config block num %d", lastBlockNumber+1)
 		}
 	}
 
