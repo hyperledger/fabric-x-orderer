@@ -121,6 +121,15 @@ func CreateStructuredConfigUpdateEnvelope(data []byte) *common.Envelope {
 	}
 }
 
+func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
+	payload := createStructuredPayload(data, common.HeaderType_CONFIG)
+	payloadBytes := deterministicMarshall(payload)
+	return &common.Envelope{
+		Payload:   payloadBytes,
+		Signature: []byte("signature"),
+	}
+}
+
 func CreateConfigBlock(number uint64, data []byte) *common.Block {
 	payload := createStructuredPayload(data, common.HeaderType_CONFIG)
 	payloadBytes := deterministicMarshall(payload)

@@ -13,10 +13,13 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"
 )
+
+func init() {
+	grpclog.SetLoggerV2(&testutil.SilentLogger{})
+}
 
 var (
 	digest    = make([]byte, 32-3)
@@ -26,8 +29,6 @@ var (
 )
 
 func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
-	grpclog.SetLoggerV2(&testutil.SilentLogger{})
-
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
@@ -37,8 +38,6 @@ func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
 }
 
 func TestCreateOneConsensusNode(t *testing.T) {
-	grpclog.SetLoggerV2(&testutil.SilentLogger{})
-
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
