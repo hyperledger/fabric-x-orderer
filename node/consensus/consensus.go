@@ -161,10 +161,6 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 		return nil, errors.Wrapf(err, "failed to verify and classify request")
 	}
 
-	if configRequest == nil {
-		return nil, errors.Errorf("unexpected config request was verified and proposed")
-	}
-
 	ce := &state.ControlEvent{
 		ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{
 			Payload:   configRequest.Payload,
@@ -682,6 +678,10 @@ func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.R
 	configRequest, err := c.ConfigUpdateProposer.ProposeConfigUpdate(request, c.Config.Bundle, c.Signer, c.RequestVerifier)
 	if err != nil {
 		return nil, fmt.Errorf("propose config update error: %s", err)
+	}
+
+	if configRequest == nil {
+		return nil, errors.Errorf("unexpected config request was verified and proposed")
 	}
 
 	return configRequest, nil

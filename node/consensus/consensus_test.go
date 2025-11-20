@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -413,6 +414,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	}
 	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	config := &nodeconfig.ConsenterNodeConfig{
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
@@ -599,8 +601,14 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				BAFDeserializer: &state.BAFDeserialize{},
 			}
 
-			configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-			configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+			payloadBytes := []byte{1}
+			configRequestEnvelope := tx.CreateStructuredConfigEnvelope(payloadBytes)
+			configRequest := &protos.Request{
+				Payload:   configRequestEnvelope.Payload,
+				Signature: configRequestEnvelope.Signature,
+			}
+			mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+			mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 
 			c := &Consensus{
 				Arma:                 consenter,
@@ -609,7 +617,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				SigVerifier:          verifier,
 				RequestVerifier:      requestVerifier,
 				Config:               config,
-				ConfigUpdateProposer: configUpdateProposer,
+				ConfigUpdateProposer: mockConfigUpdateProposer,
 			}
 
 			reqs := make([][]byte, len(tst.ces))
