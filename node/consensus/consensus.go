@@ -106,6 +106,14 @@ func (c *Consensus) Stop() {
 	c.Metrics.Stop()
 }
 
+func (c *Consensus) SoftStop() {
+	c.BFT.Stop()
+	c.Synchronizer.stop()
+	c.Net.Stop()
+	c.Metrics.Stop()
+	c.Logger.Warnf("Soft stop: pending restart")
+}
+
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
 	msg := &smartbftprotos.Message{}
 	if err := proto.Unmarshal(request.Payload, msg); err != nil {
@@ -575,6 +583,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		c.lastConfigBlockNum = hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
 		c.decisionNumOfLastConfigBlock = hdr.Num
+		go c.SoftStop()
 		// TODO apply reconfig after deliver
 	}
 	c.stateLock.Unlock()

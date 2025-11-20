@@ -11,11 +11,14 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConsenter(t *testing.T) {
@@ -107,4 +110,28 @@ func createConsenter(s *state.State, logger arma_types.Logger) *consensus.Consen
 	}
 
 	return consenter
+}
+
+func TestConsensusSoftStop(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	genesis := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, 1, genesis)
+
+	// submit request and verify block is committed
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	require.NoError(t, err)
+
+	b := <-setup.listeners[0].c
+	require.Equal(t, uint64(1), b.Header.Number)
+
+	// perform soft stop
+	setup.consensusNodes[0].SoftStop()
+
+	// submitting new requests should now fail
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	require.Error(t, err)
+
+	setup.consensusNodes[0].Stop()
 }
