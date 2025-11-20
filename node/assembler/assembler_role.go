@@ -24,13 +24,13 @@ type AssemblerIndex interface {
 }
 
 type AssemblerLedgerWriter interface {
-	Append(batch types.Batch, orderingInfo types.OrderingInfo)
+	Append(batch types.Batch, orderingInfo *state.OrderingInformation)
 	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
 	Close()
 }
 
 type OrderedBatchAttestationReplicator interface {
-	Replicate() <-chan types.OrderedBatchAttestation
+	Replicate() <-chan *state.AvailableBatchOrdered
 }
 
 type AssemblerRole struct {
@@ -60,17 +60,16 @@ func (a *AssemblerRole) processOrderedBatchAttestations() {
 	defer a.runningWG.Done()
 	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
-	orderedBatchAttestations := a.OrderedBatchAttestationReplicator.Replicate()
-	for oba := range orderedBatchAttestations {
-		a.Logger.Infof("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInfo().String())
+	orderedBatchAttestationsChan := a.OrderedBatchAttestationReplicator.Replicate()
+	for oba := range orderedBatchAttestationsChan {
+		a.Logger.Infof("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInformation.String())
 
 		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
-			orderingInfo := oba.OrderingInfo()
-			a.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), oba.OrderingInfo().String())
+			orderingInfo := oba.OrderingInformation
+			a.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), oba.OrderingInformation.String())
 			// TODO break the abstraction of oba.OrderingInfo().String()
-			ordInfo := orderingInfo.(*state.OrderingInformation)
-			block := ordInfo.CommonBlock
-			a.Ledger.AppendConfig(block, ordInfo.DecisionNum)
+			block := orderingInfo.CommonBlock
+			a.Ledger.AppendConfig(block, orderingInfo.DecisionNum)
 			// TODO apply new config
 			return
 		}
@@ -83,7 +82,7 @@ func (a *AssemblerRole) processOrderedBatchAttestations() {
 			}
 			a.Logger.Panicf("Something went wrong while fetching the batch %v", oba.BatchAttestation())
 		}
-		a.Ledger.Append(batch, oba.OrderingInfo())
+		a.Ledger.Append(batch, oba.OrderingInformation)
 	}
 	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
 }

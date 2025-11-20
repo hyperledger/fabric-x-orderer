@@ -25,7 +25,7 @@ const (
 
 //go:generate counterfeiter -o ./mocks/consensus_bringer.go . ConsensusBringer
 type ConsensusBringer interface {
-	Replicate() <-chan types.OrderedBatchAttestation
+	Replicate() <-chan *state.AvailableBatchOrdered
 	Stop()
 }
 
@@ -66,7 +66,7 @@ func NewConsensusBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawByt
 	return baReplicator
 }
 
-func (cr *ConsensusBAReplicator) Replicate() <-chan types.OrderedBatchAttestation {
+func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered {
 	endpoint := func() string {
 		return cr.endpoint
 	}
@@ -95,7 +95,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan types.OrderedBatchAttestatio
 		return requestEnvelope
 	}
 
-	res := make(chan types.OrderedBatchAttestation, replicateBAChanSize)
+	incomingBAsChan := make(chan *state.AvailableBatchOrdered, replicateBAChanSize)
 
 	initOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
 	if err != nil {
@@ -143,19 +143,19 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan types.OrderedBatchAttestatio
 				continue
 			}
 
-			res <- abo
+			incomingBAsChan <- abo
 		}
 	}
 
 	onClose := func() {
-		close(res)
+		close(incomingBAsChan)
 	}
 
 	go Pull(cr.cancelCtx, "consensus-ba-replicate", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
 
 	cr.logger.Infof("Starting to replicate from consenter")
 
-	return res
+	return incomingBAsChan
 }
 
 func (cr *ConsensusBAReplicator) Stop() {

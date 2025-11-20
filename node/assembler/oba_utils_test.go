@@ -43,7 +43,7 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 	return orderedBatchAttestationCreator, ba
 }
 
-func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisionNum types.DecisionNum, batchIndex, batchCount int) types.OrderedBatchAttestation {
+func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisionNum types.DecisionNum, batchIndex, batchCount int) *state.AvailableBatchOrdered {
 	if decisionNum-types.DecisionNum(obac.prevBa.OrderingInformation.CommonBlock.Header.Number) > 1 {
 		panic("Cannot create non-consecutive BA")
 	}
