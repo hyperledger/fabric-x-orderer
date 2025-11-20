@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -55,7 +54,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	batchersStub[0].SetNextBatch(batch1)
 
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
-	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba1)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -77,7 +76,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 
 	// send matching decision
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
-	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba2)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -116,7 +115,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	batchersStub[0].SetNextBatch(batch1)
 
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
-	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba1)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -138,7 +137,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	batchersStub[0].SetNextBatch(batch2)
 
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
-	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba2)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -185,7 +184,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 
 	// send matching decision
 	oba1 := obaCreator.Append(batch1, 1, 0, 1)
-	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba1)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -197,7 +196,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	batchersStubShard0[0].SetNextBatch(batch2)
 
 	oba2 := obaCreator.Append(batch2, 2, 0, 1)
-	consenterStub.SetNextDecision(oba2.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba2)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -209,7 +208,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	batchersStubShard1[0].SetNextBatch(batch3)
 
 	oba3 := obaCreator.Append(batch3, 3, 0, 1)
-	consenterStub.SetNextDecision(oba3.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba3)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -250,7 +249,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	batches0to10 = append(batches0to10, batch0)
 
 	oba1 := obaCreator.Append(batch0, 1, 0, 1)
-	consenterStub.SetNextDecision(oba1.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba1)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {
@@ -263,7 +262,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 		batchersStub[0].SetNextBatch(batch)
 
 		oba := obaCreator.Append(batch, types.DecisionNum(1+i), 0, 1)
-		consenterStub.SetNextDecision(oba.(*state.AvailableBatchOrdered))
+		consenterStub.SetNextDecision(oba)
 		<-consenterStub.decisionSentCh
 
 		require.Eventually(t, func() bool {
@@ -290,7 +289,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	batchersStub[2].SetNextBatch(batch10dup)
 	oba10dup := obaCreator.Append(batch10dup, 12, 0, 1)
 	// send decision respective
-	consenterStub.SetNextDecision(oba10dup.(*state.AvailableBatchOrdered))
+	consenterStub.SetNextDecision(oba10dup)
 	<-consenterStub.decisionSentCh
 
 	require.Eventually(t, func() bool {

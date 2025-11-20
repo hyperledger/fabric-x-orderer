@@ -23,9 +23,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type naiveOrderedBatchAttestationReplicator chan types.OrderedBatchAttestation
+type naiveOrderedBatchAttestationReplicator chan *state.AvailableBatchOrdered
 
-func (n naiveOrderedBatchAttestationReplicator) Replicate() <-chan types.OrderedBatchAttestation {
+func (n naiveOrderedBatchAttestationReplicator) Replicate() <-chan *state.AvailableBatchOrdered {
 	return n
 }
 
@@ -67,7 +67,7 @@ func TestAssemblerRole_Batches(t *testing.T) {
 
 	assemblerRole.Run()
 
-	totalOrder := make(chan types.OrderedBatchAttestation)
+	totalOrder := make(chan *state.AvailableBatchOrdered)
 
 	genBlock, err := ledger.LedgerReader().RetrieveBlockByNumber(0)
 	prevBlock := genBlock
@@ -120,7 +120,7 @@ func TestAssemblerRole_Config(t *testing.T) {
 
 	assemblerRole.Run()
 
-	totalOrder := make(chan types.OrderedBatchAttestation)
+	totalOrder := make(chan *state.AvailableBatchOrdered)
 
 	genBlock, err := ledger.LedgerReader().RetrieveBlockByNumber(0)
 	prevBlock := genBlock
@@ -173,7 +173,7 @@ func simulateDecisions(
 	index *naiveIndex,
 	prevBlock *common.Block,
 	decNum types.DecisionNum,
-	totalOrder chan types.OrderedBatchAttestation,
+	totalOrder chan *state.AvailableBatchOrdered,
 ) {
 	go func() {
 		for shardID := 0; shardID < len(batches); shardID++ {
