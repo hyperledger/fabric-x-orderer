@@ -91,6 +91,6 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	require.NotNil(t, chdr)
 	require.Equal(t, chdr.Type, int32(common.HeaderType_CONFIG))
 	require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
-	
+
 	setup.consensusNodes[0].Stop()
 }
