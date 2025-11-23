@@ -94,6 +94,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 		Metrics:                      NewConsensusMetrics(conf.PartyId, logger, conf.MetricsLogInterval),
 		RequestVerifier:              createConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
+		ConfigSequence:               conf.Bundle.ConfigtxValidator().Sequence(),
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
