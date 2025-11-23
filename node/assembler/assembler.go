@@ -28,7 +28,7 @@ type NetStopper interface {
 type Assembler struct {
 	assembler    AssemblerRole
 	logger       types.Logger
-	ds           delivery.DeliverService
+	ds           delivery.DeliverService // TODO the assembler need only one reader, not a map.
 	prefetcher   PrefetcherController
 	baReplicator delivery.ConsensusBringer
 	netStopper   NetStopper

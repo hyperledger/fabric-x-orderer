@@ -152,24 +152,29 @@ func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, 
 type PartitionPrefetchIndex struct {
 	logger    types.Logger
 	partition ShardPrimary
-	// last seq with call to put
-	lastPutSeqRequest types.BatchSequence
-	// last seq that was put into cache by Put or PutForce
-	lastPutSeq types.BatchSequence
-	// the max pop call batch seq
-	maxPoppedCallSeq    types.BatchSequence
-	cache               *BatchCache
-	forcedPutCache      *BatchCache
-	sequenceHeap        *BatchHeap[StoppableTimer]
-	stateCond           *sync.Cond
-	maxSizeBytes        int
-	batchRequestChan    chan types.BatchID
-	defaultTtl          time.Duration
-	timerFactory        TimerFactory
+
+	stateCond *sync.Cond // Protects tha counters, caches, and heap
+
+	// Flow control counters
+
+	lastPutSeqRequest types.BatchSequence // last pending call to Put, with seq, incremented before the actual insertion.
+	lastPutSeq        types.BatchSequence // last seq that was actually inserted into cache by Put, incremented after insertion.
+	maxPoppedCallSeq  types.BatchSequence // the max batch seq that was popped with PopOrWait.
+
+	// Caches and heap
+
+	cache          *BatchCache                // Contains batches prefetched by a stream and inserted with Put
+	forcedPutCache *BatchCache                // Contains batches fetched by unary request and inserted with PutForce
+	sequenceHeap   *BatchHeap[StoppableTimer] // Controls the eviction of orfan batches
+
+	maxSizeBytes          int
+	batchRequestChan      chan types.BatchID
+	defaultTtl            time.Duration
+	timerFactory          TimerFactory
+	popWaitMonitorTimeout time.Duration // Delay before PopOrWait requests the batch
+
 	cancellationContext context.Context
 	cancelContextFunc   context.CancelFunc
-	// delay before PopOrWait requests the batch
-	popWaitMonitorTimeout time.Duration
 }
 
 func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) *PartitionPrefetchIndex {
@@ -234,11 +239,14 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 			pi.getName(), pi.maxPoppedCallSeq, pi.lastPutSeqRequest, pi.lastPutSeq, BatchToString(batchId), err)
 
 		// Here we wait for the batch with `batchID` to arrive from our own party batcher.
-		// Normally it will get to us through one of delivery the stream we opened to it.
+		// Normally it will get to us through one of the delivery streams we opened to it (just one).
+		// There is a stream that brings batchs from the batcher of our party, for each of the primaries,
+		// that is there are |P| streams, one for each potential primary. Only one of the will hit this partition.
 		// We may need to issue a search request if:
-		// 1. There was already a batch with same <sh,Pr,Sq> but with different digest; or
+		// 1. There was already a batch with same <Sh,Pr,Sq> but with different digest; or
 		// 2. We have a primary that had failed and never got to give said batch to our batcher; or
 		// 3. We have primary that is censoring our batcher.
+		// Note that cases 2,3 are identical from the assembler's perspective.
 
 		// batchId.Seq() == bs.lastPutSeq is true in case we get same <Sh, Pr, Seq> with different digest
 		doubleDigest := (batchId.Seq() < pi.lastPutSeqRequest || batchId.Seq() == pi.lastPutSeq)
@@ -248,6 +256,8 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 			pi.batchRequestChan <- batchId
 		}
 
+		// If we did not request a batch via the `batchRequestChan`, and we are going to wait for it, we schedule
+		// a monitor goroutine to pop up after `popWaitMonitorTimeout` and request it anyway.
 		if atomic.LoadInt32(&wasBatchRequestedFlag) == 0 {
 			censorMonitor = time.AfterFunc(pi.popWaitMonitorTimeout, func() {
 				atomic.StoreInt32(&wasBatchRequestedFlag, 0x1)
@@ -255,7 +265,8 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 				pi.batchRequestChan <- batchId
 				pi.stateCond.Broadcast()
 			})
-			defer censorMonitor.Stop()
+
+			defer censorMonitor.Stop() // we cancel the monitor if the batch was popped successfully.
 		}
 
 		pi.logger.Debugf("PopOrWait %s, going to wait for batch %s", pi.getName(), BatchToString(batchId))
@@ -297,21 +308,25 @@ func (pi *PartitionPrefetchIndex) Put(batch types.Batch) error {
 		return ErrBatchAlreadyExists
 	}
 	pi.lastPutSeqRequest = batch.Seq()
+
 	for pi.cache.SizeBytes()+batchSize > pi.maxSizeBytes {
 		if pi.cancellationContext.Err() != nil {
 			return utils.ErrOperationCancelled
 		}
+
 		if pi.maxPoppedCallSeq < batch.Seq() {
 			// we are prefetching too fast, wait for the batches in the index to be used
 			pi.stateCond.Wait()
 			continue
 		}
+
 		// the batch we are trying to put is needed, we will evict a batch
 		err := pi.evictOldestBatch()
 		if err != nil {
 			return fmt.Errorf("failed to evict batch: %w", err)
 		}
 	}
+
 	return pi.saveOrdinaryBatch(batch)
 }
 
@@ -319,16 +334,19 @@ func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
 	bs.logger.Debugf("PutForce called for %s on batch %s", bs.getName(), BatchToString(batch))
 	bs.assertBatchPartition(batch)
 	batchSize := batchSizeBytes(batch)
-	if batchSize > bs.maxSizeBytes {
+	if batchSize > bs.maxSizeBytes { // PutForce may come from a foreign party, do sanity checks but dont panic
 		return ErrBatchTooLarge
 	}
+
 	bs.stateCond.L.Lock()
 	defer bs.stateCond.L.Unlock()
 	err := bs.forcedPutCache.Put(batch)
 	if err != nil {
 		return err
 	}
+	// Wake up the PopOrWait goroutine
 	bs.stateCond.Broadcast()
+
 	return nil
 }
 

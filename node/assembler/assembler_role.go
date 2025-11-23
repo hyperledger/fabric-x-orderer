@@ -71,6 +71,7 @@ func (a *AssemblerRole) processOrderedBatchAttestations() {
 			block := orderingInfo.CommonBlock
 			a.Ledger.AppendConfig(block, orderingInfo.DecisionNum)
 			// TODO apply new config
+			// TODO first step - soft stop here
 			return
 		}
 
