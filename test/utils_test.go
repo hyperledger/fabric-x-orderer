@@ -88,8 +88,9 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo, ca tlsgen.CA, shardId types.ShardID) []*router.Router {
+func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint string, genesisBlock *common.Block) ([]*router.Router, []nodeconfig.RawBytes) {
 	var routers []*router.Router
+	var certs []nodeconfig.RawBytes
 	for i := 0; i < num; i++ {
 		l := testutil.CreateLogger(t, i)
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -104,9 +105,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		configStorePath := t.TempDir()
 		cs, err := configstore.NewStore(configStorePath)
 		require.NoError(t, err)
-		// add dummy genesis block
-		block := tx.CreateConfigBlock(0, []byte("genesis block data"))
-		require.NoError(t, cs.Add(block))
+		require.NoError(t, cs.Add(genesisBlock))
 
 		config := &nodeconfig.RouterNodeConfig{
 			ListenAddress:           "0.0.0.0:0",
@@ -124,7 +123,10 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 			RequestMaxBytes:                     1 << 10,
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
+			Consenter:                           nodeconfig.ConsenterInfo{PartyID: types.PartyID(i + 1), Endpoint: consenterEndpoint, TLSCACerts: []nodeconfig.RawBytes{ca.CertBytes()}},
 		}
+
+		certs = append(certs, kp.Cert)
 
 		configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
@@ -133,7 +135,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		routers = append(routers, router)
 	}
 
-	return routers
+	return routers, certs
 }
 
 func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []nodeconfig.ConsenterInfo, shardInfo []nodeconfig.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, func()) {
@@ -167,16 +169,18 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
 		conf := &nodeconfig.ConsenterNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			Shards:             shardInfo,
-			Consenters:         consenterInfos,
-			PartyId:            partyID,
-			TLSPrivateKeyFile:  consenterNodes[i].TLSKey,
-			TLSCertificateFile: consenterNodes[i].TLSCert,
-			SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-			Directory:          dir,
-			BFTConfig:          BFTConfig,
-			Bundle:             bundle,
+			ListenAddress:                       "0.0.0.0:0",
+			Shards:                              shardInfo,
+			Consenters:                          consenterInfos,
+			PartyId:                             partyID,
+			TLSPrivateKeyFile:                   consenterNodes[i].TLSKey,
+			TLSCertificateFile:                  consenterNodes[i].TLSCert,
+			SigningPrivateKey:                   pem.EncodeToMemory(&pem.Block{Bytes: sk}),
+			Directory:                           dir,
+			BFTConfig:                           BFTConfig,
+			Bundle:                              bundle,
+			ClientSignatureVerificationRequired: false,
+			RequestMaxBytes:                     1000,
 		}
 
 		net := consenterNodes[i].GRPCServer
@@ -206,7 +210,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 	}
 }
 
-func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []nodeconfig.ShardInfo, consenterInfos []nodeconfig.ConsenterInfo, shardID types.ShardID) ([]*batcher.Batcher, []*nodeconfig.BatcherNodeConfig, []*zap.SugaredLogger, func()) {
+func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []nodeconfig.ShardInfo, consenterInfos []nodeconfig.ConsenterInfo, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*nodeconfig.BatcherNodeConfig, []*zap.SugaredLogger, func()) {
 	var batchers []*batcher.Batcher
 	var loggers []*zap.SugaredLogger
 	var configs []*nodeconfig.BatcherNodeConfig
@@ -223,11 +227,16 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
+		configStorePath := t.TempDir()
+		cs, err := configstore.NewStore(configStorePath)
+		require.NoError(t, err)
+		require.NoError(t, cs.Add(genesisBlock))
+
 		batcherConf := &nodeconfig.BatcherNodeConfig{
 			ListenAddress:                       "0.0.0.0:0",
 			Shards:                              shards,
 			ShardId:                             shardID,
-			ConfigStorePath:                     t.TempDir(),
+			ConfigStorePath:                     configStorePath,
 			PartyId:                             types.PartyID(i + 1),
 			Consenters:                          consenterInfos,
 			TLSPrivateKeyFile:                   batcherNodes[i].TLSKey,
