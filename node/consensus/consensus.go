@@ -98,11 +98,15 @@ func (c *Consensus) Start() error {
 }
 
 func (c *Consensus) Stop() {
+	c.SoftStop()
+	c.Storage.Close()
+	c.Net.Stop()
+}
+
+func (c *Consensus) SoftStop() {
 	c.BFT.Stop()
 	c.Synchronizer.stop()
 	c.BADB.Close()
-	c.Storage.Close()
-	c.Net.Stop()
 	c.Metrics.Stop()
 }
 
@@ -572,6 +576,8 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		c.lastConfigBlockNum = hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
 		c.decisionNumOfLastConfigBlock = hdr.Num
+		go c.SoftStop()
+		c.Logger.Warnf("Soft stop: pending restart")
 		// TODO apply reconfig after deliver
 	}
 	c.stateLock.Unlock()

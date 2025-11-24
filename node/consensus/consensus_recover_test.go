@@ -584,3 +584,57 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 		c.Stop()
 	}
 }
+
+func TestSyncFromSoftStoppedNodes(t *testing.T) {
+	t.Parallel()
+	parties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
+
+	// Commit the first request
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	require.NoError(t, err)
+
+	b := <-setup.listeners[0].c
+	require.Equal(t, uint64(1), b.Header.Number)
+	b1 := <-setup.listeners[1].c
+	require.Equal(t, uint64(1), b1.Header.Number)
+	b2 := <-setup.listeners[2].c
+	require.Equal(t, uint64(1), b2.Header.Number)
+
+	// Node 3 fails and submit the second request
+	setup.consensusNodes[2].Stop()
+
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	require.NoError(t, err)
+
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(2), b.Header.Number)
+	b1 = <-setup.listeners[1].c
+	require.Equal(t, uint64(2), b1.Header.Number)
+
+	// SoftStop all nodes except node 3
+	for i, c := range setup.consensusNodes {
+		if i != 2 {
+			c.SoftStop()
+		}
+	}
+
+	// Recover node 3
+	err = recoverNode(t, setup, 2, ca, genesisBlock)
+	require.NoError(t, err)
+
+	// Verify node 3 synced correctly from other nodes during SoftStop
+	b2 = <-setup.listeners[2].c
+	require.Equal(t, uint64(2), b2.Header.Number)
+
+	for _, c := range setup.consensusNodes {
+		c.Stop()
+	}
+}
