@@ -69,7 +69,7 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, decisionNum arma_
 
 func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte, batchID arma_types.BatchID, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) error {
 	// verify hash chain
-	if hex.EncodeToString(block.Header.PreviousHash) != hex.EncodeToString(prevHash) {
+	if !bytes.Equal(block.Header.PreviousHash, prevHash) {
 		return errors.Errorf("proposed block header prev hash %s isn't equal to computed prev hash %s", hex.EncodeToString(block.Header.PreviousHash), hex.EncodeToString(prevHash))
 	}
 
@@ -114,14 +114,23 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 }
 
 func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHash []byte, dataHash []byte, decisionNum arma_types.DecisionNum, batchCount, batchIndex int) error {
+	// verify block number
+	if configBlock.Header.Number != blockNum {
+		return errors.Errorf("proposed config block header number %d isn't equal to computed number %d", configBlock.Header.Number, blockNum)
+	}
+
 	// verify hash chain
-	if hex.EncodeToString(configBlock.Header.PreviousHash) != hex.EncodeToString(prevHash) {
+	if !bytes.Equal(configBlock.Header.PreviousHash, prevHash) {
 		return errors.Errorf("proposed config block header prev hash %s isn't equal to computed prev hash %s", hex.EncodeToString(configBlock.Header.PreviousHash), hex.EncodeToString(prevHash))
 	}
 
 	// verify data
 	if configBlock.Data == nil || len(configBlock.Data.Data) == 0 {
 		return errors.New("empty config block data")
+	}
+
+	if len(configBlock.Data.Data) != 1 {
+		return errors.New("config block does not contain only one tx")
 	}
 
 	// verify data hash
@@ -134,19 +143,14 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 		return errors.Errorf("proposed config block data hash isn't equal to computed data hash %s", dataHash)
 	}
 
-	// verify block number
-	if configBlock.Header.Number != blockNum {
-		return errors.Errorf("proposed config block header number %d isn't equal to computed number %d", configBlock.Header.Number, blockNum)
-	}
-
 	// verify orderer metadata
-	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
+	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0) // TODO set correct tx count
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
 	}
 
-	if configBlock.Metadata == nil || configBlock.Metadata.Metadata == nil {
-		return errors.Errorf("proposed config block metadata is nil")
+	if configBlock.Metadata == nil || configBlock.Metadata.Metadata == nil || len(configBlock.Metadata.Metadata) != len(common.BlockMetadataIndex_name) {
+		return errors.Errorf("proposed config block metadata is not set")
 	}
 
 	if !bytes.Equal(computedBlockMetadata, configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {
