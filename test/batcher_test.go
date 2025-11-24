@@ -95,7 +95,8 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 
@@ -167,7 +168,8 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 
@@ -215,7 +217,8 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
 			stalled = true
@@ -279,7 +282,8 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d: %v", totalTxSent+i, err)
 			// we expect the batcher to be restarted and the router to be back online
@@ -377,7 +381,8 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 
@@ -436,7 +441,8 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String()))
 			stalled = true
@@ -494,7 +500,8 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		if err != nil {
 			require.ErrorContains(t, err, fmt.Sprintf("received error response from %s: INTERNAL_SERVER_ERROR", routerToStall.Listener.Addr().String())) // only such errors are permitted
 		}

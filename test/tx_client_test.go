@@ -60,7 +60,8 @@ func TestTxClientSend(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < totalTxNumber; i++ {
 		txContent := tx.PrepareTxWithTimestamp(i, 100, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 	// 5. Check If Transaction is sent

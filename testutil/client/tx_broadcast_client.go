@@ -19,7 +19,6 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 )
 
 type StreamInfo struct {
@@ -46,7 +45,7 @@ func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Du
 	}
 }
 
-func (c *BroadcastTxClient) SendTx(txContent []byte) error {
+func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {
 	c.streamsMapLock.Lock()
 	defer c.streamsMapLock.Unlock()
 
@@ -78,8 +77,7 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 			streamInfo.streamLock.Lock()
 			defer streamInfo.streamLock.Unlock()
 
-			env := tx.CreateStructuredEnvelope(txContent)
-			err := streamInfo.stream.Send(env)
+			err := streamInfo.stream.Send(envelope)
 			if err != nil {
 				updateStateLock.Lock()
 				streamInfo.stream = nil

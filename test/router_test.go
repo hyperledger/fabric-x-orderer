@@ -107,7 +107,8 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 
@@ -146,7 +147,8 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		if err != nil {
 			require.ErrorContains(t, err, "EOF")
 			gotError = true
@@ -180,7 +182,8 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 
@@ -212,7 +215,8 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		if err != nil {
 			require.ErrorContains(t, err, "EOF")
 			gotError = true
@@ -246,7 +250,8 @@ func TestRouterRestartRecover(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 
@@ -340,7 +345,8 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 			os.Exit(3)
 		}
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 	// 7. Query the router's metrics endpoint and assert the incoming transaction count.
