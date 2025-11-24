@@ -279,7 +279,14 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	c := &Consensus{
+		Config:       &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
 		BFTConfig:    smartbft_types.DefaultConfig,
 		Logger:       l,
 		Signer:       signer,
