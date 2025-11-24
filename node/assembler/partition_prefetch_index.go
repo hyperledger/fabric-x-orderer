@@ -153,7 +153,7 @@ type PartitionPrefetchIndex struct {
 	logger    types.Logger
 	partition ShardPrimary
 
-	stateCond *sync.Cond // Protects tha counters, caches, and heap
+	stateCond *sync.Cond // Protects the counters, caches, and heap
 
 	// Flow control counters
 
@@ -240,12 +240,12 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 
 		// Here we wait for the batch with `batchID` to arrive from our own party batcher.
 		// Normally it will get to us through one of the delivery streams we opened to it (just one).
-		// There is a stream that brings batchs from the batcher of our party, for each of the primaries,
-		// that is there are |P| streams, one for each potential primary. Only one of the will hit this partition.
+		// There is a stream that brings batches from the batcher of our party, for each of the primaries,
+		// that is there are |P| streams, one for each potential primary. Only one of them will hit this partition.
 		// We may need to issue a search request if:
-		// 1. There was already a batch with same <Sh,Pr,Sq> but with different digest; or
+		// 1. There was already a batch with the same <Sh,Pr,Sq> but with a different digest; or
 		// 2. We have a primary that had failed and never got to give said batch to our batcher; or
-		// 3. We have primary that is censoring our batcher.
+		// 3. We have a primary that is censoring our batcher.
 		// Note that cases 2,3 are identical from the assembler's perspective.
 
 		// batchId.Seq() == bs.lastPutSeq is true in case we get same <Sh, Pr, Seq> with different digest
