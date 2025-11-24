@@ -132,7 +132,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 
-	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(networkConfig, dir, dir)
+	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(networkConfig, dir, dir, false)
 	require.NoError(t, err)
 	require.NotNil(t, networkLocalConfig)
 
