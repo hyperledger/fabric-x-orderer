@@ -110,7 +110,8 @@ func TestSubmitAndReceive(t *testing.T) {
 				status := rl.GetToken()
 				require.True(t, status)
 				txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-				err = broadcastClient.SendTx(txContent)
+				env := tx.CreateStructuredEnvelope(txContent)
+				err = broadcastClient.SendTx(env)
 				require.NoError(t, err)
 			}
 
@@ -218,7 +219,8 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 		status := rl.GetToken()
 		require.True(t, status)
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-		err = broadcastClient.SendTx(txContent)
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
 
