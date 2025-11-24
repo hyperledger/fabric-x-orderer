@@ -193,9 +193,13 @@ func (p *Provider) Registry() *prometheus.Registry {
 	return p.registry
 }
 
-func GetMetricValue(m prometheus.Metric) float64 {
+func GetMetricValue(m prometheus.Metric, logger types.Logger) float64 {
 	gm := promgo.Metric{}
-	m.Write(&gm)
+	err := m.Write(&gm)
+	if err != nil {
+		logger.Infof("%v", err.Error())
+		return 0
+	}
 
 	switch {
 	case gm.Gauge != nil:
@@ -209,6 +213,7 @@ func GetMetricValue(m prometheus.Metric) float64 {
 	case gm.Histogram != nil:
 		return gm.Histogram.GetSampleSum()
 	default:
-		panic("unsupported metric")
+		logger.Infof("unsupported metric")
+		return 0
 	}
 }
