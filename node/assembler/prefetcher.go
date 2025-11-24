@@ -92,7 +92,10 @@ func (p *Prefetcher) handleReplication(shard types.ShardID) {
 		case batch, ok := <-batches:
 			if ok {
 				p.logger.Infof("Got batch %s", BatchToString(batch))
-				_ = p.prefetchIndex.Put(batch) // TODO handle error, log it, don't panic
+				err := p.prefetchIndex.Put(batch)
+				if err != nil {
+					p.logger.Errorf("Failed to put batch from shard %d, error: %v", shard, err)
+				}
 			} else {
 				p.logger.Infof("Batch Fetcher replication channel was closed, Prefetcher stopped handling replication from shard %d", shard)
 				return
@@ -119,7 +122,10 @@ func (p *Prefetcher) handleBatchRequests() {
 
 					p.logger.Panicf("error while fetching batch: %v", err)
 				}
-				_ = p.prefetchIndex.PutForce(batch) // TODO handle error, log it, don't panic
+				err = p.prefetchIndex.PutForce(batch)
+				if err != nil {
+					p.logger.Errorf("Failed to put-force batch, error: %v", err)
+				}
 			}(batchId)
 		}
 	}

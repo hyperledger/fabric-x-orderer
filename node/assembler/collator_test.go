@@ -55,7 +55,7 @@ func (n *naiveIndex) PopOrWait(batchId types.BatchID) (types.Batch, error) {
 
 func (n *naiveIndex) Stop() {}
 
-func TestAssemblerRole_Batches(t *testing.T) {
+func TestCollator_Batches(t *testing.T) {
 	shardCount := 4
 	batchNum := 20
 	primaryID := types.PartyID(1)
@@ -63,9 +63,9 @@ func TestAssemblerRole_Batches(t *testing.T) {
 	// create test batches from all shards
 	digestsSet, batches := createTestBatches(t, shardCount, batchNum, primaryID)
 	// create test setup
-	index, ledger, ordBARep, assemblerRole := createAssemblerRole(t, shardCount)
+	index, ledger, ordBARep, collator := createCollator(t, shardCount)
 
-	assemblerRole.Run()
+	collator.Run()
 
 	totalOrder := make(chan *state.AvailableBatchOrdered)
 
@@ -108,7 +108,7 @@ func TestAssemblerRole_Batches(t *testing.T) {
 	require.Len(t, digestsSet, 0)
 }
 
-func TestAssemblerRole_Config(t *testing.T) {
+func TestCollator_Config(t *testing.T) {
 	shardCount := 4
 	batchNum := 3
 	primaryID := types.PartyID(1)
@@ -116,9 +116,9 @@ func TestAssemblerRole_Config(t *testing.T) {
 	// create test batches from all shards
 	_, batches := createTestBatches(t, shardCount, batchNum, primaryID)
 	// create test setup
-	index, ledger, ordBARep, assemblerRole := createAssemblerRole(t, shardCount)
+	index, ledger, ordBARep, collator := createCollator(t, shardCount)
 
-	assemblerRole.Run()
+	collator.Run()
 
 	totalOrder := make(chan *state.AvailableBatchOrdered)
 
@@ -222,7 +222,7 @@ func createTestBatches(t *testing.T, shardCount int, batchNum int, primaryID typ
 	return digestsSet, batches
 }
 
-func createAssemblerRole(t *testing.T, shardCount int) (*naiveIndex, node_ledger.AssemblerLedgerReaderWriter, naiveOrderedBatchAttestationReplicator, *assembler.AssemblerRole) {
+func createCollator(t *testing.T, shardCount int) (*naiveIndex, node_ledger.AssemblerLedgerReaderWriter, naiveOrderedBatchAttestationReplicator, *assembler.Collator) {
 	tempDir := t.TempDir()
 
 	logger := testutil.CreateLogger(t, 0)
@@ -241,7 +241,7 @@ func createAssemblerRole(t *testing.T, shardCount int) (*naiveIndex, node_ledger
 
 	ordBARep := make(naiveOrderedBatchAttestationReplicator)
 
-	assemblerRole := &assembler.AssemblerRole{
+	collator := &assembler.Collator{
 		Shards:                            shards,
 		Logger:                            testutil.CreateLogger(t, 0),
 		Ledger:                            ledger,
@@ -249,5 +249,5 @@ func createAssemblerRole(t *testing.T, shardCount int) (*naiveIndex, node_ledger
 		OrderedBatchAttestationReplicator: ordBARep,
 		Index:                             index,
 	}
-	return index, ledger, ordBARep, assemblerRole
+	return index, ledger, ordBARep, collator
 }

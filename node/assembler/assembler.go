@@ -26,7 +26,7 @@ type NetStopper interface {
 }
 
 type Assembler struct {
-	assembler    AssemblerRole
+	collator     Collator
 	logger       types.Logger
 	ds           delivery.DeliverService // TODO the assembler need only one reader, not a map.
 	prefetcher   PrefetcherController
@@ -44,16 +44,16 @@ func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error 
 
 func (a *Assembler) GetTxCount() uint64 {
 	// TODO do this in a cleaner fashion
-	return a.assembler.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
+	return a.collator.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
 }
 
 func (a *Assembler) Stop() {
 	a.netStopper.Stop()
 	a.prefetcher.Stop()
-	a.assembler.Index.Stop()
+	a.collator.Index.Stop()
 	a.baReplicator.Stop()
-	a.assembler.WaitTermination()
-	a.assembler.Ledger.Close()
+	a.collator.Stop()
+	a.collator.Ledger.Close()
 }
 
 func NewDefaultAssembler(
@@ -107,7 +107,7 @@ func NewDefaultAssembler(
 
 	assembler := &Assembler{
 		ds: make(delivery.DeliverService),
-		assembler: AssemblerRole{
+		collator: Collator{
 			Shards:                            shardIds,
 			OrderedBatchAttestationReplicator: baReplicator,
 			Index:                             index,
@@ -124,7 +124,7 @@ func NewDefaultAssembler(
 	// TODO: we do not need multiple ledgers in the assembler
 	assembler.ds["arma"] = al.LedgerReader()
 
-	assembler.assembler.Run()
+	assembler.collator.Run()
 
 	return assembler
 }

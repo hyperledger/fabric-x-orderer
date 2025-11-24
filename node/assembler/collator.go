@@ -33,7 +33,7 @@ type OrderedBatchAttestationReplicator interface {
 	Replicate() <-chan *state.AvailableBatchOrdered
 }
 
-type AssemblerRole struct {
+type Collator struct {
 	ShardCount                        int
 	Ledger                            AssemblerLedgerWriter
 	Logger                            types.Logger
@@ -45,55 +45,54 @@ type AssemblerRole struct {
 
 // Run starts a go routine which processes incoming ordered batch attestations from consensus
 // and collates them with batches retrieved from the index.
-func (a *AssemblerRole) Run() {
-	a.runningWG.Add(1)
-	go a.processOrderedBatchAttestations()
+func (c *Collator) Run() {
+	c.runningWG.Add(1)
+	go c.processOrderedBatchAttestations()
 }
 
-// WaitTermination the core Assembler is stopped by the node Assembler when the channels for batches and BAs are closed.
-// This methods only waits for the core go routines to finish.
-func (a *AssemblerRole) WaitTermination() {
-	a.runningWG.Wait()
+// Stop waits for the collator's goroutines to finish.
+func (c *Collator) Stop() {
+	c.runningWG.Wait()
 }
 
-func (a *AssemblerRole) processOrderedBatchAttestations() {
-	defer a.runningWG.Done()
-	a.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
+func (c *Collator) processOrderedBatchAttestations() {
+	defer c.runningWG.Done()
+	c.Logger.Infof("Starting to process incoming OrderedBatchAttestations from consensus")
 
-	orderedBatchAttestationsChan := a.OrderedBatchAttestationReplicator.Replicate()
+	orderedBatchAttestationsChan := c.OrderedBatchAttestationReplicator.Replicate()
 	for oba := range orderedBatchAttestationsChan {
-		a.Logger.Infof("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInformation.String())
+		c.Logger.Infof("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInformation.String())
 
 		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
 			orderingInfo := oba.OrderingInformation
-			a.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), oba.OrderingInformation.String())
+			c.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), oba.OrderingInformation.String())
 			// TODO break the abstraction of oba.OrderingInfo().String()
 			block := orderingInfo.CommonBlock
-			a.Ledger.AppendConfig(block, orderingInfo.DecisionNum)
+			c.Ledger.AppendConfig(block, orderingInfo.DecisionNum)
 			// TODO apply new config
 			// TODO first step - soft stop here
 			return
 		}
 
-		batch, err := a.collateAttestationWithBatch(oba.BatchAttestation())
+		batch, err := c.collateAttestationWithBatch(oba.BatchAttestation())
 		if err != nil {
 			if errors.Is(err, utils.ErrOperationCancelled) {
-				a.Logger.Warnf("Collating Attestation with batch %v was cancelled.", oba.BatchAttestation())
+				c.Logger.Warnf("Collating Attestation with batch %v was cancelled.", oba.BatchAttestation())
 				break
 			}
-			a.Logger.Panicf("Something went wrong while fetching the batch %v", oba.BatchAttestation())
+			c.Logger.Panicf("Something went wrong while fetching the batch %v", oba.BatchAttestation())
 		}
-		a.Ledger.Append(batch, oba.OrderingInformation)
+		c.Ledger.Append(batch, oba.OrderingInformation)
 	}
-	a.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
+	c.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
 }
 
-func (a *AssemblerRole) collateAttestationWithBatch(ba types.BatchAttestation) (types.Batch, error) {
+func (c *Collator) collateAttestationWithBatch(ba types.BatchAttestation) (types.Batch, error) {
 	t1 := time.Now()
-	batch, err := a.Index.PopOrWait(ba)
+	batch, err := c.Index.PopOrWait(ba)
 	if err != nil {
 		return nil, err
 	}
-	a.Logger.Infof("Retrieved full batch with %d requests from index within %s, BatchID: %s", len(batch.Requests()), time.Since(t1), types.BatchIDToString(ba))
+	c.Logger.Infof("Retrieved full batch with %d requests from index within %s, BatchID: %s", len(batch.Requests()), time.Since(t1), types.BatchIDToString(ba))
 	return batch, nil
 }
