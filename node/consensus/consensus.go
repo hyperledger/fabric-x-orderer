@@ -231,7 +231,10 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		numOfAvailableBlocks++
 	}
 
-	// TODO verify proposal verification seq
+	verificationSeq := c.VerificationSequence()
+	if verificationSeq != uint64(proposal.VerificationSequence) {
+		return nil, errors.Errorf("expected verification sequence %d, but proposal has %d", verificationSeq, proposal.VerificationSequence)
+	}
 
 	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock {
 		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to computed %d", hdr.DecisionNumOfLastConfigBlock, decisionNumOfLastConfigBlock)
@@ -345,7 +348,7 @@ func (c *Consensus) VerifySignature(signature smartbft_types.Signature) error {
 // VerificationSequence returns the current verification sequence
 // (from SmartBFT API)
 func (c *Consensus) VerificationSequence() uint64 {
-	return 0 // TODO save current verification sequence and return it here
+	return c.Config.Bundle.ConfigtxValidator().Sequence()
 }
 
 // RequestsFromProposal returns from the given proposal the included requests' info
@@ -526,9 +529,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 			Num:                          arma_types.DecisionNum(md.LatestSequence),
 			DecisionNumOfLastConfigBlock: decisionNumOfLastConfigBlock,
 		}).Serialize(),
-		Metadata: metadata,
-		Payload:  reqs.Serialize(),
-		// TODO add VerificationSequence (config sequence)
+		Metadata:             metadata,
+		Payload:              reqs.Serialize(),
+		VerificationSequence: int64(c.Config.Bundle.ConfigtxValidator().Sequence()),
 	}
 }
 

@@ -279,7 +279,14 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	c := &Consensus{
+		Config:       &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
 		BFTConfig:    smartbft_types.DefaultConfig,
 		Logger:       l,
 		Signer:       signer,
@@ -739,11 +746,18 @@ func TestVerifyProposal(t *testing.T) {
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	c := &Consensus{
 		Arma:        consenter,
 		State:       &initialState,
 		Logger:      logger,
 		SigVerifier: verifier,
+		Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
 	}
 
 	dig := make([]byte, 32-3)
@@ -885,6 +899,14 @@ func TestVerifyProposal(t *testing.T) {
 	badBH.PreviousHash[0]++
 	headerBH.AvailableCommonBlocks = []*common.Block{{Header: badBH}}
 	verifyProposalRequireError(t, c, headerBH.Serialize(), brs.Serialize(), mBytes)
+
+	// 11. mismatch verification sequence
+	t.Log("mismatch verification sequence")
+	proposalV := proposal
+	proposalV.VerificationSequence = 1
+	_, err = c.VerifyProposal(proposalV)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "expected verification sequence")
 }
 
 func verifyProposalRequireError(t *testing.T, c *Consensus, header, payload, metadata []byte) {
