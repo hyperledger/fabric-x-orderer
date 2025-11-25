@@ -601,7 +601,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		c.lastConfigBlockNum = hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
 		c.decisionNumOfLastConfigBlock = hdr.Num
 		go c.SoftStop()
-		c.Logger.Warnf("Soft stop: pending restart")
+		c.Logger.Infof("Soft stop: pending restart")
 		// TODO apply reconfig after deliver
 	}
 	c.stateLock.Unlock()
