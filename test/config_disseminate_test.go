@@ -8,29 +8,20 @@ package test
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	node2 "github.com/hyperledger/fabric-x-orderer/node"
-	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 func TestConfigDisseminate(t *testing.T) {
@@ -55,6 +46,18 @@ func TestConfigDisseminate(t *testing.T) {
 		routers[i].StartRouterService()
 	}
 
+	assemblers, assemblersDir, assemblersLoggers, cleanAssemblers := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
+
+	// cleanup
+	defer func() {
+		for i := range routers {
+			routers[i].Stop()
+		}
+		cleanBatchers()
+		cleanConsenters()
+		cleanAssemblers()
+	}()
+
 	// update consensus router config
 	for i := range consenters {
 		consenters[i].Config.Router = config.RouterInfo{
@@ -78,71 +81,16 @@ func TestConfigDisseminate(t *testing.T) {
 		consenters[i].ConfigUpdateProposer = mockConfigUpdateProposer
 	}
 
-	// create the assembler
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	assemblerDir, err := os.MkdirTemp("", fmt.Sprintf("%s-assembler", t.Name()))
-	require.NoError(t, err)
-
-	assemblerConf := &config.AssemblerNodeConfig{
-		TLSPrivateKeyFile:         ckp.Key,
-		TLSCertificateFile:        ckp.Cert,
-		PartyId:                   1,
-		Directory:                 assemblerDir,
-		ListenAddress:             "0.0.0.0:0",
-		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024, // 1GB
-		RestartLedgerScanTimeout:  5 * time.Second,
-		PrefetchEvictionTtl:       time.Hour,
-		PopWaitMonitorTimeout:     time.Second,
-		ReplicationChannelSize:    100,
-		BatchRequestsChannelSize:  1000,
-		Shards:                    shards,
-		Consenter:                 consenterInfos[0],
-		UseTLS:                    true,
-		ClientAuthRequired:        false,
-	}
-
-	aLogger := testutil.CreateLogger(t, 1)
-
-	var appendedConfigWG sync.WaitGroup
-	appendedConfigWG.Add(2) // once for genesis and once for config
-	baseLogger := aLogger.Desugar()
-	aLogger = baseLogger.WithOptions(zap.Hooks(func(entry zapcore.Entry) error {
-		if strings.Contains(entry.Message, "Appended config block") {
-			appendedConfigWG.Done()
-		}
-		return nil
-	})).Sugar()
-
-	assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
-
-	assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, aLogger)
-
-	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
-
-	go func() {
-		assemblerGRPC.Start()
-	}()
-
-	// cleanup
-	defer func() {
-		for i := range routers {
-			routers[i].Stop()
-		}
-		cleanBatchers()
-		cleanConsenters()
-		assembler.Stop()
-	}()
-
 	// submit data txs and make sure the assembler got them
-	sendTransactions(t, routers, assembler)
+	sendTransactions(t, routers, assemblers[0])
 
 	// check the init size of the config store
-	require.Equal(t, 1, routers[0].GetConfigStoreSize())
-	numbers, err := batchers[0].ConfigStore.ListBlockNumbers()
-	require.NoError(t, err)
-	require.Len(t, numbers, 1)
+	for i := range routers {
+		require.Equal(t, 1, routers[i].GetConfigStoreSize())
+		numbers, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Len(t, numbers, 1)
+	}
 
 	// create a config request and submit
 	configReq := tx.CreateStructuredConfigUpdateRequest(payloadBytes)
@@ -150,8 +98,14 @@ func TestConfigDisseminate(t *testing.T) {
 		routers[i].Submit(context.Background(), configReq)
 	}
 
-	// make sure assembler said it appended the config block
-	appendedConfigWG.Wait()
+	// check config store size
+	for i := range routers {
+		require.Eventually(t, func() bool {
+			numbers, err := batchers[i].ConfigStore.ListBlockNumbers()
+			require.NoError(t, err)
+			return routers[i].GetConfigStoreSize() == 2 && len(numbers) == 2
+		}, 10*time.Second, 100*time.Millisecond)
+	}
 
 	// make sure router said it is stopping
 	require.Eventually(t, func() bool {
@@ -161,15 +115,10 @@ func TestConfigDisseminate(t *testing.T) {
 		return strings.Contains(resp.Error, "router is stopping, cannot process request")
 	}, 10*time.Second, 100*time.Millisecond)
 
-	// check config store size
-	require.Equal(t, 2, routers[0].GetConfigStoreSize())
-	numbers, err = batchers[0].ConfigStore.ListBlockNumbers()
-	require.NoError(t, err)
-	require.Len(t, numbers, 2)
-
 	// check assembler appended to the ledger a config block
-	assembler.Stop()
-	al, err := ledger.NewAssemblerLedger(aLogger, assemblerDir)
+	time.Sleep(1 * time.Second)
+	assemblers[3].Stop()
+	al, err := ledger.NewAssemblerLedger(assemblersLoggers[3], assemblersDir[3])
 	require.NoError(t, err)
 	h := al.LedgerReader().Height()
 	require.GreaterOrEqual(t, h, uint64(3)) // genesis block + at least one data block + config block
