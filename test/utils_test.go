@@ -235,6 +235,8 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			Bundle:                              bundle,
 			ClientSignatureVerificationRequired: false,
 			RequestMaxBytes:                     1000,
+			MonitoringListenAddress:             "127.0.0.1:0",
+			MetricsLogInterval:                  5 * time.Second,
 		}
 
 		net := consenterNodes[i].GRPCServer
