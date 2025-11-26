@@ -13,10 +13,6 @@ ENV CGO_ENABLED=0 \
     GO111MODULE=on
 WORKDIR /src
 
-# Copy only dependency files first (better layer caching)
-COPY go.mod go.sum ./
-RUN go mod download
-
 # Now copy rest of the source
 COPY . .
 
@@ -40,7 +36,7 @@ COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 # OCI labels (strongly recommended for prod images)
 LABEL name="arma-service" \
       vendor="IBM" \
-      maintainer="ZRL Decentralized Trust Group" \
+      maintainer="IBM Research Decentralized Trust Group" \
       summary="ARMA Service Production Image" \
       description="Lightweight and secure Go application running on UBI-micro" \
       license="Apache-2.0"
