@@ -177,7 +177,7 @@ func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
 	select {
 	case <-b.stopChan:
-		return nil, errors.New("batcher is soft-stopped")
+		return nil, errors.New("batcher is stopped")
 	default:
 	}
 
@@ -209,12 +209,6 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 }
 
 func (b *Batcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
-	select {
-	case <-b.stopChan:
-		return errors.New("batcher is soft-stopped")
-	default:
-	}
-
 	// TODO: certificate pinning (bathcer trust router form his own party.)
 	stop := make(chan struct{})
 	defer close(stop)
@@ -232,6 +226,12 @@ func (b *Batcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer)
 
 func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamServer, responses chan *protos.SubmitResponse) error {
 	for {
+		select {
+		case <-b.stopChan:
+			return errors.New("batcher is stopped")
+		default:
+		}
+
 		req, err := stream.Recv()
 		if err == io.EOF {
 			return nil
@@ -307,6 +307,12 @@ func (b *Batcher) FwdRequestStream(stream protos.BatcherControlService_FwdReques
 	b.logger.Infof("Starting to handle fwd requests from batcher %d", from)
 
 	for {
+		select {
+		case <-b.stopChan:
+			return errors.New("batcher is stopped")
+		default:
+		}
+
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			return nil
@@ -337,6 +343,12 @@ func (b *Batcher) NotifyAck(stream protos.BatcherControlService_NotifyAckServer)
 
 	b.logger.Infof("Starting to handle acks from batcher %d", from)
 	for {
+		select {
+		case <-b.stopChan:
+			return errors.New("batcher is stopped")
+		default:
+		}
+
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			return nil
