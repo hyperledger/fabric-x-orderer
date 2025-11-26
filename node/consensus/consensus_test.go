@@ -1349,3 +1349,80 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 		})
 	}
 }
+
+func TestConsensusSoftStop(t *testing.T) {
+	dir := t.TempDir()
+
+	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	initialAppContext := &common.BlockHeader{
+		Number:       1,
+		PreviousHash: nil,
+		DataHash:     nil,
+	}
+
+	initialState := &state.State{
+		ShardCount: 1,
+		N:          1,
+		Shards:     []state.ShardTerm{{Shard: 1}},
+		Threshold:  1,
+		Quorum:     1,
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
+	}
+
+	nodeIDs := []uint64{1}
+
+	commitEvent := new(sync.WaitGroup)
+	onCommit := func() {
+		commitEvent.Done()
+	}
+
+	network := make(map[uint64]*Consensus)
+
+	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
+	defer cleanup()
+
+	listener := &storageListener{c: make(chan *common.Block, 100), f: onCommit}
+	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
+
+	err = c.Start()
+	assert.NoError(t, err)
+
+	// submit request and verify block is committed
+	commitEvent.Add(1)
+	dig := make([]byte, 32-3)
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1)
+	assert.NoError(t, err)
+
+	ce1 := &state.ControlEvent{BAF: baf123id1p1s1}
+	err = c.SubmitRequest(ce1.Bytes())
+	assert.NoError(t, err)
+	commitEvent.Wait()
+
+	b := <-listener.c
+	assert.Equal(t, uint64(1), b.Header.Number)
+
+	decision, _, err := state.BytesToDecision(b.Data.Data[0])
+	assert.NoError(t, err)
+
+	hdr := &state.Header{}
+	err = hdr.Deserialize(decision.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(hdr.AvailableCommonBlocks))
+
+	// perform soft stop
+	c.SoftStop()
+
+	// submitting new requests should now fail
+	dig124 := append([]byte{1, 2, 4}, dig...)
+	baf124id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2)
+	assert.NoError(t, err)
+
+	ce2 := &state.ControlEvent{BAF: baf124id1p1s1}
+	err = c.SubmitRequest(ce2.Bytes())
+	assert.Error(t, err)
+}

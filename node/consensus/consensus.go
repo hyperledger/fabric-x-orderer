@@ -90,20 +90,30 @@ type Consensus struct {
 	Metrics                      *ConsensusMetrics
 	RequestVerifier              *requestfilter.RulesVerifier
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
+	softStopCh                   chan struct{}
+	softStopOnce                 sync.Once
 }
 
 func (c *Consensus) Start() error {
+	c.softStopCh = make(chan struct{})
 	c.Metrics.Start()
 	return c.BFT.Start()
 }
 
 func (c *Consensus) Stop() {
-	c.BFT.Stop()
-	c.Synchronizer.stop()
-	c.BADB.Close()
+	c.SoftStop()
 	c.Storage.Close()
 	c.Net.Stop()
-	c.Metrics.Stop()
+}
+
+func (c *Consensus) SoftStop() {
+	c.softStopOnce.Do(func() {
+		close(c.softStopCh)
+		c.BFT.Stop()
+		c.Synchronizer.stop()
+		c.BADB.Close()
+		c.Metrics.Stop()
+	})
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
@@ -130,6 +140,12 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 
 func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
 	for {
+		select {
+		case <-c.softStopCh:
+			return errors.New("consensus is soft-stopped")
+		default:
+		}
+
 		event, err := stream.Recv()
 
 		if err == io.EOF {
@@ -150,6 +166,12 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 
 // SubmitConfig is used to submit a config request from the router in the consenter's party.
 func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	select {
+	case <-c.softStopCh:
+		return nil, errors.New("consensus is soft-stopped")
+	default:
+	}
+
 	if err := c.validateRouterFromContext(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to validate router from context")
 	}
@@ -173,6 +195,12 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
+	select {
+	case <-c.softStopCh:
+		return errors.New("consensus is soft-stopped")
+	default:
+	}
+
 	_, ce, err := c.verifyCE(req)
 	if err != nil {
 		c.Logger.Warnf("Received bad request: %v", err)
@@ -572,6 +600,8 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		c.lastConfigBlockNum = hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
 		c.decisionNumOfLastConfigBlock = hdr.Num
+		go c.SoftStop()
+		c.Logger.Infof("Soft stop: pending restart")
 		// TODO apply reconfig after deliver
 	}
 	c.stateLock.Unlock()
