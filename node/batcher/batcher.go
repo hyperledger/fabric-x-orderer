@@ -93,18 +93,24 @@ func (b *Batcher) Run() {
 
 func (b *Batcher) Stop() {
 	b.logger.Infof("Stopping batcher node")
-	b.stopOnce.Do(func() { close(b.stopChan) })
-	b.controlEventBroadcaster.Stop()
-	b.batcher.Stop()
-	for len(b.stateChan) > 0 {
-		<-b.stateChan // drain state channel
-	}
+	b.SoftStop()
 	b.Net.Stop()
-	b.primaryAckConnector.Stop()
-	b.primaryReqConnector.Stop()
 	b.Ledger.Close()
-	b.running.Wait()
-	b.Metrics.Stop()
+}
+
+func (b *Batcher) SoftStop() {
+	b.stopOnce.Do(func() {
+		close(b.stopChan)
+		b.controlEventBroadcaster.Stop()
+		b.batcher.Stop()
+		for len(b.stateChan) > 0 {
+			<-b.stateChan // drain state channel
+		}
+		b.primaryAckConnector.Stop()
+		b.primaryReqConnector.Stop()
+		b.running.Wait()
+		b.Metrics.Stop()
+	})
 }
 
 // replicateState runs by a separate go routine
@@ -126,7 +132,9 @@ func (b *Batcher) replicateState() {
 				if protoutil.IsConfigBlock(lastBlock) {
 					b.logger.Infof("Pulled config block %d from consensus", lastBlock.Header.Number)
 					b.ConfigStore.Add(lastBlock)
-					// TODO: apply the config or do a soft stop
+					go b.SoftStop()
+					b.logger.Infof("Soft stop")
+					// TODO: apply the config
 				} else {
 					b.logger.Errorf("Pulled config decision but last block is not a config block")
 				}
@@ -167,6 +175,12 @@ func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
+	select {
+	case <-b.stopChan:
+		return nil, errors.New("batcher is soft-stopped")
+	default:
+	}
+
 	// TODO: certificate pinning (bathcer trust router from his own party.)
 	b.logger.Debugf("Received request %x", req.Payload)
 
@@ -195,6 +209,12 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 }
 
 func (b *Batcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
+	select {
+	case <-b.stopChan:
+		return errors.New("batcher is soft-stopped")
+	default:
+	}
+
 	// TODO: certificate pinning (bathcer trust router form his own party.)
 	stop := make(chan struct{})
 	defer close(stop)

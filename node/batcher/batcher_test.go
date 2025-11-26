@@ -476,3 +476,57 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 }
+
+func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	// submit the first request and verify it was received
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// stopped batcher 2
+	batchers[1].Stop()
+
+	// submit another request
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// soft-stop all batchers except batcher 2
+	for i, b := range batchers {
+		if i != 1 {
+			b.SoftStop()
+		}
+	}
+
+	// recover batcher 2
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], batcherNodes[1], stubConsenters[1])
+
+	// batcher 2 should pull the missing batch
+	require.Eventually(t, func() bool {
+		return batchers[1].Ledger.Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// submit another request during soft-stop, should fail
+	_, err = batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	require.Error(t, err)
+}
