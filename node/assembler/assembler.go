@@ -42,6 +42,7 @@ func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error 
 	return a.ds.Deliver(server)
 }
 
+// GetTxCount returns the number of transactions the assembler stored in the ledger. This method is used only in testing.
 func (a *Assembler) GetTxCount() uint64 {
 	// TODO do this in a cleaner fashion
 	return a.collator.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
@@ -54,6 +55,15 @@ func (a *Assembler) Stop() {
 	a.baReplicator.Stop()
 	a.collator.Stop()
 	a.collator.Ledger.Close()
+}
+
+func (a *Assembler) SoftStop() {
+	a.logger.Infof("Initiating soft stop of assembler")
+	a.prefetcher.Stop()
+	a.collator.Index.Stop()
+	a.baReplicator.Stop()
+	a.collator.Stop()
+	a.logger.Warnf("Assembler has been partially stopped, delivery service is available. Pending restart")
 }
 
 func NewDefaultAssembler(
@@ -123,6 +133,8 @@ func NewDefaultAssembler(
 
 	// TODO: we do not need multiple ledgers in the assembler
 	assembler.ds["arma"] = al.LedgerReader()
+
+	assembler.collator.AssemblerRestarter = assembler
 
 	assembler.collator.Run()
 

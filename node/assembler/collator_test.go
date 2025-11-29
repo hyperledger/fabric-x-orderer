@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
+	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -63,7 +64,7 @@ func TestCollator_Batches(t *testing.T) {
 	// create test batches from all shards
 	digestsSet, batches := createTestBatches(t, shardCount, batchNum, primaryID)
 	// create test setup
-	index, ledger, ordBARep, collator := createCollator(t, shardCount)
+	index, ledger, ordBARep, collator := createCollator(t, shardCount, &assembler_mocks.FakeAssemblerRestarter{})
 
 	collator.Run()
 
@@ -116,7 +117,8 @@ func TestCollator_Config(t *testing.T) {
 	// create test batches from all shards
 	_, batches := createTestBatches(t, shardCount, batchNum, primaryID)
 	// create test setup
-	index, ledger, ordBARep, collator := createCollator(t, shardCount)
+	restarter := &assembler_mocks.FakeAssemblerRestarter{}
+	index, ledger, ordBARep, collator := createCollator(t, shardCount, restarter)
 
 	collator.Run()
 
@@ -165,6 +167,10 @@ func TestCollator_Config(t *testing.T) {
 	lastBlock, err = ledger.LedgerReader().RetrieveBlockByNumber(ledger.LedgerReader().Height() - 1)
 	require.NoError(t, err)
 	require.True(t, protoutil.IsConfigBlock(lastBlock))
+
+	require.Eventually(t, func() bool {
+		return restarter.SoftStopCallCount() == 1
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func simulateDecisions(
@@ -222,7 +228,7 @@ func createTestBatches(t *testing.T, shardCount int, batchNum int, primaryID typ
 	return digestsSet, batches
 }
 
-func createCollator(t *testing.T, shardCount int) (*naiveIndex, node_ledger.AssemblerLedgerReaderWriter, naiveOrderedBatchAttestationReplicator, *assembler.Collator) {
+func createCollator(t *testing.T, shardCount int, AssemblerRestarter assembler.AssemblerRestarter) (*naiveIndex, node_ledger.AssemblerLedgerReaderWriter, naiveOrderedBatchAttestationReplicator, *assembler.Collator) {
 	tempDir := t.TempDir()
 
 	logger := testutil.CreateLogger(t, 0)
@@ -248,6 +254,7 @@ func createCollator(t *testing.T, shardCount int) (*naiveIndex, node_ledger.Asse
 		ShardCount:                        shardCount,
 		OrderedBatchAttestationReplicator: ordBARep,
 		Index:                             index,
+		AssemblerRestarter:                AssemblerRestarter,
 	}
 	return index, ledger, ordBARep, collator
 }

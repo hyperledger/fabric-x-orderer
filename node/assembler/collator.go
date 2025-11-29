@@ -17,6 +17,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
+//go:generate counterfeiter -o ./mocks/assembler_restarter.go . AssemblerRestarter
+type AssemblerRestarter interface {
+	SoftStop()
+}
+
 type AssemblerIndex interface {
 	PopOrWait(batchId types.BatchID) (types.Batch, error)
 	Put(batch types.Batch) error
@@ -41,6 +46,7 @@ type Collator struct {
 	Index                             AssemblerIndex
 	Shards                            []types.ShardID
 	runningWG                         sync.WaitGroup
+	AssemblerRestarter                AssemblerRestarter
 }
 
 // Run starts a go routine which processes incoming ordered batch attestations from consensus
@@ -66,11 +72,11 @@ func (c *Collator) processOrderedBatchAttestations() {
 		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
 			orderingInfo := oba.OrderingInformation
 			c.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), oba.OrderingInformation.String())
-			// TODO break the abstraction of oba.OrderingInfo().String()
 			block := orderingInfo.CommonBlock
 			c.Ledger.AppendConfig(block, orderingInfo.DecisionNum)
+
+			go c.AssemblerRestarter.SoftStop()
 			// TODO apply new config
-			// TODO first step - soft stop here
 			return
 		}
 

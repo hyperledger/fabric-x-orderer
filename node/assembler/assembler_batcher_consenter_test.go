@@ -39,7 +39,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -100,7 +100,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -166,7 +166,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -232,7 +232,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -297,7 +297,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, fmt.Sprintf("TXs: %d", assembler.GetTxCount()))
 }
 
-func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) *assembler.Assembler {
+func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) (*assembler.Assembler, string) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	genesisBlock.Metadata = &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, []byte("dummy"), []byte("dummy")},
@@ -334,7 +334,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		require.NoError(t, err)
 	}()
 
-	return assembler
+	return assembler, assemblerGRPC.Address()
 }
 
 func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.ShardID, ca tlsgen.CA) ([]*stubBatcher, []config.BatcherInfo, func()) {
