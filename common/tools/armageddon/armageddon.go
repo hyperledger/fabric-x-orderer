@@ -351,8 +351,9 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 	for i := range sharedConfig.PartiesConfig {
 		userTLSPrivateKeyPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "tls", "user-key.pem")
 		userTLSCertPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "tls", "user-tls-cert.pem")
+		mspDir := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "msp")
 
-		userConfig, err := NewUserConfig(userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
+		userConfig, err := NewUserConfig(mspDir, userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating user config: %s", err)
 			os.Exit(-1)
