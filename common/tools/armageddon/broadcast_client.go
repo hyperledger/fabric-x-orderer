@@ -31,11 +31,12 @@ type StreamInfo struct {
 	endpoint              string
 	lock                  sync.Mutex
 	logger                *flogging.FabricLogger
-	sentTxs               uint64
+	sentTxs               atomic.Uint64
 }
 
 func (streamInfo *StreamInfo) Report(tickInterval time.Duration) {
-	sentTxs := atomic.SwapUint64(&streamInfo.sentTxs, 0)
+	// sentTxs := atomic.SwapUint64(&streamInfo.sentTxs, 0)
+	sentTxs := (&streamInfo.sentTxs).Swap(0)
 	streamInfo.logger.Infof("BroadcastClient to Router %v sent %d transactions in the last %v", streamInfo.endpoint, sentTxs, tickInterval)
 }
 
@@ -199,7 +200,7 @@ func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
 				streamInfo.SetIsBroken(true)
 				streamInfo.TryReconnect(c.userConfig)
 			} else {
-				atomic.AddUint64(&streamInfo.sentTxs, 1)
+				(&streamInfo.sentTxs).Add(1)
 			}
 		}
 	}

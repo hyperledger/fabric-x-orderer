@@ -526,6 +526,8 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
 	capacity := rate / fillFrequency
+	fmt.Printf("Creating new rate limiter with rate = %d, fillInterval = %d, capacity=%d .\n", rate, fillInterval, capacity)
+
 	rl, err := NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
@@ -536,6 +538,7 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 	for _, streamInfo := range broadcastClient.streamsToRouters {
 		go ReceiveResponseFromRouter(userConfig, streamInfo)
 	}
+	fmt.Printf("satrting to send %d transactions\n", numOfTxs)
 
 	for i := 0; i < numOfTxs; i++ {
 		env := tx.PrepareEnvWithTimestamp(i, txSize, sessionNumber)
@@ -547,7 +550,12 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 		}
 
 		broadcastClient.SendTxToAllRouters(env)
+		if i%10000 == 0 {
+			fmt.Printf("sent %d transactions so far.\n", i)
+		}
 	}
+	fmt.Printf("sent %d transactions successfully.\n", numOfTxs)
+
 	rl.Stop()
 
 	err = broadcastClient.Stop()
