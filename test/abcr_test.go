@@ -79,6 +79,8 @@ func TestABCR(t *testing.T) {
 		Consenter:                 consenterInfos[0],
 		UseTLS:                    true,
 		ClientAuthRequired:        false,
+		MonitoringListenAddress:   "127.0.0.1:0",
+		MetricsLogInterval:        3 * time.Second,
 	}
 
 	aLogger := testutil.CreateLogger(t, 1)
