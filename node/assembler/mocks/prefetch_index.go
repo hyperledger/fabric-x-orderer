@@ -9,6 +9,16 @@ import (
 )
 
 type FakePrefetchIndexer struct {
+	MetricsStub        func() *assembler.PrefetchIndexMetrics
+	metricsMutex       sync.RWMutex
+	metricsArgsForCall []struct {
+	}
+	metricsReturns struct {
+		result1 *assembler.PrefetchIndexMetrics
+	}
+	metricsReturnsOnCall map[int]struct {
+		result1 *assembler.PrefetchIndexMetrics
+	}
 	PopOrWaitStub        func(types.BatchID) (types.Batch, error)
 	popOrWaitMutex       sync.RWMutex
 	popOrWaitArgsForCall []struct {
@@ -60,6 +70,59 @@ type FakePrefetchIndexer struct {
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
+}
+
+func (fake *FakePrefetchIndexer) Metrics() *assembler.PrefetchIndexMetrics {
+	fake.metricsMutex.Lock()
+	ret, specificReturn := fake.metricsReturnsOnCall[len(fake.metricsArgsForCall)]
+	fake.metricsArgsForCall = append(fake.metricsArgsForCall, struct {
+	}{})
+	stub := fake.MetricsStub
+	fakeReturns := fake.metricsReturns
+	fake.recordInvocation("Metrics", []interface{}{})
+	fake.metricsMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakePrefetchIndexer) MetricsCallCount() int {
+	fake.metricsMutex.RLock()
+	defer fake.metricsMutex.RUnlock()
+	return len(fake.metricsArgsForCall)
+}
+
+func (fake *FakePrefetchIndexer) MetricsCalls(stub func() *assembler.PrefetchIndexMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = stub
+}
+
+func (fake *FakePrefetchIndexer) MetricsReturns(result1 *assembler.PrefetchIndexMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	fake.metricsReturns = struct {
+		result1 *assembler.PrefetchIndexMetrics
+	}{result1}
+}
+
+func (fake *FakePrefetchIndexer) MetricsReturnsOnCall(i int, result1 *assembler.PrefetchIndexMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	if fake.metricsReturnsOnCall == nil {
+		fake.metricsReturnsOnCall = make(map[int]struct {
+			result1 *assembler.PrefetchIndexMetrics
+		})
+	}
+	fake.metricsReturnsOnCall[i] = struct {
+		result1 *assembler.PrefetchIndexMetrics
+	}{result1}
 }
 
 func (fake *FakePrefetchIndexer) PopOrWait(arg1 types.BatchID) (types.Batch, error) {
