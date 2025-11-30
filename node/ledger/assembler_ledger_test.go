@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -280,6 +281,84 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 	})
 }
 
+func TestAssemblerLedger_LastConfig(t *testing.T) {
+	t.Run("last config after AppendConfig", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+		defer al.Close()
+
+		genBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendConfig(genBlock, 0)
+
+		idx, err := node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), idx)
+
+		confBlock1 := prepareConfigBlock(1, genBlock)
+		al.AppendConfig(confBlock1, 1)
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), idx)
+
+		confBlock2 := prepareConfigBlock(2, confBlock1)
+		al.AppendConfig(confBlock2, 2)
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+	})
+
+	t.Run("last config after Append", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al, err := createAssemblerLedger(tmpDir, logger)
+		require.NoError(t, err)
+		defer al.Close()
+
+		genBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendConfig(genBlock, 0)
+
+		idx, err := node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), idx)
+		block1 := prepareBlockWithLastConfig(1, 0, genBlock)
+
+		ordInfo1 := &state.OrderingInformation{
+			CommonBlock: block1,
+		}
+		batch1 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
+			[]byte("tx1"), []byte("tx2"),
+		}, 0, []byte(""))
+
+		al.Append(batch1, ordInfo1)
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), idx)
+
+		confBlock1 := prepareConfigBlock(2, block1)
+		al.AppendConfig(confBlock1, 2)
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+
+		block2 := prepareBlockWithLastConfig(3, 2, confBlock1)
+		ordInfo2 := &state.OrderingInformation{
+			CommonBlock: block2,
+		}
+		batch2 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
+			[]byte("tx1"), []byte("tx2"),
+		}, 0, []byte(""))
+
+		al.Append(batch2, ordInfo2)
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+	})
+}
+
 func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_ledger.AssemblerLedger, error) {
 	al, err := node_ledger.NewAssemblerLedger(logger, tmpDir)
 	return al, err
@@ -319,8 +398,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		require.NotNil(t, fb)
 
 		transactionCount += len(batchedRequests)
-
-		oi := &state.OrderingInformation{
+		ordInfo := &state.OrderingInformation{
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: n + 1, DataHash: fb.Digest()}},
 			Signatures: []smartbft_types.Signature{{
 				ID:    1,
@@ -333,16 +411,47 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 			BatchIndex:  0,
 			BatchCount:  1,
 		}
+		protoutil.InitBlockMetadata(ordInfo.CommonBlock)
+
+		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, ordInfo, uint64(transactionCount+len(fb.Requests())))
+		require.NoError(t, err)
+		ordInfo.CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
+
 		if n > 0 {
-			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(ordInfos[n-1].CommonBlock.Header)
+			ordInfo.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(ordInfos[n-1].CommonBlock.Header)
 		} else {
 			genesis := utils.EmptyGenesisBlock("arma")
-			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesis.Header)
+			ordInfo.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesis.Header)
 		}
 
 		batches = append(batches, fb)
-		ordInfos = append(ordInfos, oi)
+		ordInfos = append(ordInfos, ordInfo)
 	}
 
 	return batches, ordInfos
+}
+
+func prepareConfigBlock(blockNumber uint64, prevBlock *common.Block) *common.Block {
+	configBlock := tx.CreateConfigBlock(blockNumber, []byte{1})
+	protoutil.InitBlockMetadata(configBlock)
+	configBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: configBlock.Header.Number}),
+	})
+
+	if prevBlock != nil {
+		configBlock.Header.PreviousHash = protoutil.BlockHeaderHash(prevBlock.Header)
+	}
+	return configBlock
+}
+
+func prepareBlockWithLastConfig(blockNumber uint64, lastConfigIndex uint64, prevBlock *common.Block) *common.Block {
+	block := &common.Block{Header: &common.BlockHeader{Number: blockNumber}}
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: lastConfigIndex}),
+	})
+	if prevBlock != nil {
+		block.Header.PreviousHash = protoutil.BlockHeaderHash(prevBlock.Header)
+	}
+	return block
 }
