@@ -167,16 +167,18 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
 		conf := &nodeconfig.ConsenterNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			Shards:             shardInfo,
-			Consenters:         consenterInfos,
-			PartyId:            partyID,
-			TLSPrivateKeyFile:  consenterNodes[i].TLSKey,
-			TLSCertificateFile: consenterNodes[i].TLSCert,
-			SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-			Directory:          dir,
-			BFTConfig:          BFTConfig,
-			Bundle:             bundle,
+			ListenAddress:           "0.0.0.0:0",
+			Shards:                  shardInfo,
+			Consenters:              consenterInfos,
+			PartyId:                 partyID,
+			TLSPrivateKeyFile:       consenterNodes[i].TLSKey,
+			TLSCertificateFile:      consenterNodes[i].TLSCert,
+			SigningPrivateKey:       pem.EncodeToMemory(&pem.Block{Bytes: sk}),
+			Directory:               dir,
+			BFTConfig:               BFTConfig,
+			Bundle:                  bundle,
+			MonitoringListenAddress: "127.0.0.1:0",
+			MetricsLogInterval:      5 * time.Second,
 		}
 
 		net := consenterNodes[i].GRPCServer

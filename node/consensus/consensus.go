@@ -593,7 +593,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)
-	c.Metrics.blocksCount.Add(uint64(len(hdr.AvailableCommonBlocks)))
+	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
 
 	c.stateLock.Lock()
 	c.State = hdr.State
