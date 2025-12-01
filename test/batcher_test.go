@@ -17,6 +17,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -88,7 +90,7 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
@@ -103,7 +105,7 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	t.Log("Finished submit")
 	broadcastClient.Stop()
 
-	batcherToMonitor := armaNetwork.GeBatcher(t, types.PartyID(1), types.ShardID(1))
+	batcherToMonitor := armaNetwork.GetBatcher(t, types.PartyID(1), types.ShardID(1))
 	url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
 
 	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
@@ -197,7 +199,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	// Get the primary batcher
 	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
-	primaryBatcher := armaNetwork.GeBatcher(t, primaryBatcherId, types.ShardID(1))
+	primaryBatcher := armaNetwork.GetBatcher(t, primaryBatcherId, types.ShardID(1))
 
 	// 3. Stop the primary batcher
 	t.Logf("Stopping primary batcher: party %d", primaryBatcher.PartyId)
@@ -374,7 +376,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
@@ -416,7 +418,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	// 3. Identify and stop the secondary batcher
 	for partyId := 1; partyId <= numOfParties; partyId++ {
 		if primaryBatcherId != types.PartyID(partyId) && secondaryBatcher == nil {
-			secondaryBatcher = armaNetwork.GeBatcher(t, types.PartyID(partyId), types.ShardID(1))
+			secondaryBatcher = armaNetwork.GetBatcher(t, types.PartyID(partyId), types.ShardID(1))
 		} else {
 			correctParties = append(correctParties, types.PartyID(partyId))
 		}
@@ -524,4 +526,291 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
 	})
+}
+
+// TestVerifySignedTxsByBatcherSingleParty verifies that a single-party batcher network correctly processes
+// signed transactions with client signature verification enabled.
+func TestVerifySignedTxsByBatcherSingleParty(t *testing.T) {
+	// 1. compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	t.Logf("Running test with %d parties and %d shards", 1, 1)
+
+	// 2. Create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	shardsNumber := 2
+
+	// 3. Create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 1, shardsNumber, "none", "none")
+	require.NoError(t, err)
+	numOfArmaNodes := len(netInfo)
+
+	// 4. Generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	for shardID := range shardsNumber {
+		configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_batcher%d.yaml", types.PartyID(1), types.ShardID(shardID+1)))
+		conf, _, err := config.LoadLocalConfig(configFilePath)
+		require.NoError(t, err)
+
+		// Modify the batcher configuration to require client signature verification.
+		conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+		utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+	}
+
+	// 5. Run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	// Obtains a test user configuration and constructs a broadcast client.
+	readyChan := make(chan struct{}, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, types.PartyID(1))
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
+
+	totalTxNumber := 100
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+
+	org := fmt.Sprintf("org%d", types.PartyID(1))
+
+	for i := range totalTxNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	// 6. make sure assemblers of all the parties get transactions (expect 1000 TXs).
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          []types.PartyID{1},
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxNumber,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
+
+	// 7. Verify that the batchers have received the transactions.
+	txsReceived := 0
+
+	for shardId := range shardsNumber {
+		batcherToMonitor := armaNetwork.GetBatcher(t, types.PartyID(1), types.ShardID(shardId+1))
+		url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
+
+		pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(shardId+1))
+		regex := regexp.MustCompile(pattern)
+		txsReceived += testutil.GetCounterMetricValueByRegexp(t, regex, url)
+	}
+
+	require.GreaterOrEqual(t, txsReceived, totalTxNumber, "Expected %d transactions to be received by the batchers, but got %d", totalTxNumber, txsReceived)
+}
+
+// TestVerifySignedTxsByBatcherForwardRequest tests the batcher's ability to forward
+// signed transactions from a non-primary batcher to a primary batcher while verifying
+// client signatures.
+func TestVerifySignedTxsByBatcherForwardRequest(t *testing.T) {
+	// 1. compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	t.Logf("Running test with %d parties and %d shards", 1, 1)
+
+	// 2. Create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	numOfParties := 2
+
+	// 3. Create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
+	require.NoError(t, err)
+	numOfArmaNodes := len(netInfo)
+
+	// 4. Generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	for partyID := range numOfParties {
+		configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_batcher%d.yaml", partyID+1, types.ShardID(1)))
+		conf, _, err := config.LoadLocalConfig(configFilePath)
+		require.NoError(t, err)
+
+		// Modify the batcher configuration to require client signature verification.
+		conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+		utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+	}
+
+	// 5. Run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	// Obtains a test user configuration and constructs a broadcast client.
+	readyChan := make(chan struct{}, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, types.PartyID(1))
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
+
+	totalTxNumber := 0
+	txNumber := 10
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 100
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+
+	for i := range txNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber+i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, "org1")
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	totalTxNumber += txNumber
+
+	// 6. Make sure assemblers of all the parties get transactions (expect 10 TXs).
+
+	parties := []types.PartyID{}
+	for partyID := range numOfParties {
+		parties = append(parties, types.PartyID(partyID+1))
+	}
+
+	blockPullerInfo := PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          parties,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxNumber,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
+
+	// 7. Determine a primary/non-primary party ID
+	var nonPrimaryPartyID, primaryPartyID types.PartyID
+
+	for partyID, bpi := range blockPullerInfo {
+		if bpi.Primary[types.ShardID(1)] != partyID {
+			nonPrimaryPartyID = partyID
+			break
+		}
+	}
+
+	require.NotZero(t, nonPrimaryPartyID, "Non-primary party ID should not be zero")
+
+	primaryPartyID = blockPullerInfo[nonPrimaryPartyID].Primary[types.ShardID(1)]
+
+	t.Logf("Non-primary party ID is %d", nonPrimaryPartyID)
+	t.Logf("Primary party ID is %d", primaryPartyID)
+
+	// 8. Send TXs to a non-primary batcher
+	stream := broadcastClient.SendStream(nonPrimaryPartyID)
+	require.NotNil(t, stream)
+
+	for i := range txNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber+i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, "org1")
+		err = stream.Send(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	totalTxNumber += txNumber
+
+	// 9. Make sure assemblers of all the parties get transactions (expect 20 TXs).
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          parties,
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxNumber,
+		Timeout:          60,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+	})
+
+	// 10. Verify that the non-primary batcher have received all the transactions and the primary batcher have received at least half of the transactions.
+	batcherToMonitor := armaNetwork.GetBatcher(t, nonPrimaryPartyID, types.ShardID(1))
+	url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
+
+	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, nonPrimaryPartyID, types.ShardID(1))
+	re := regexp.MustCompile(pattern)
+
+	txsReceived := testutil.GetCounterMetricValueByRegexp(t, re, url)
+	require.GreaterOrEqual(t, txsReceived, totalTxNumber, "Expected %d transactions to be received by the non-primary batcher, but got %d", totalTxNumber, txsReceived)
+
+	batcherToMonitor = armaNetwork.GetBatcher(t, primaryPartyID, types.ShardID(1))
+	url = testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
+
+	pattern = fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, primaryPartyID, types.ShardID(1))
+	re = regexp.MustCompile(pattern)
+
+	txsReceived = testutil.GetCounterMetricValueByRegexp(t, re, url)
+	require.GreaterOrEqual(t, txsReceived, totalTxNumber/2, "Expected %d transactions to be received by the non-primary batcher, but got %d", totalTxNumber/2, txsReceived)
+
+	// 11. Verify that the non-primary batcher have forwarded all the transactions to the primary batcher and the primary one have batched all the transactions.
+	pattern = fmt.Sprintf(`batcher_batched_txs_total\{party_id="%d",shard_id="%d"\} \d+`, primaryPartyID, types.ShardID(1))
+	re = regexp.MustCompile(pattern)
+
+	txsBatched := testutil.GetCounterMetricValueByRegexp(t, re, url)
+	require.GreaterOrEqual(t, txsBatched, totalTxNumber, "Expected %d transactions to be batched by the primary batcher, but got %d", totalTxNumber, txsBatched)
 }
