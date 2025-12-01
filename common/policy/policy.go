@@ -92,7 +92,7 @@ func AuthorizeAndVerifyConfigUpdateRequest(request *protos.Request, bundle chann
 		Signature: request.Signature,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error applying config update to %s", bundle.ConfigtxValidator().ChannelID())
+		return nil, fmt.Errorf("error applying config update to %s, err: %s", bundle.ConfigtxValidator().ChannelID(), err)
 	}
 
 	// Apply validation checks of new bundle against old bundle
