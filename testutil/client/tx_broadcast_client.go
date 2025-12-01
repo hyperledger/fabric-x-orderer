@@ -92,7 +92,7 @@ func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {
 					// some other error occurred
 					updateStateLock.Lock()
 					streamInfo.stream = nil
-					errorsAccumulator.WriteString(fmt.Sprintf("received error response from %s: %s", streamInfo.endpoint, err.Error()))
+					errorsAccumulator.WriteString(fmt.Sprintf("received error response from %s: %s\n", streamInfo.endpoint, err.Error()))
 					failures++
 					updateStateLock.Unlock()
 				}
@@ -100,7 +100,7 @@ func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {
 			}
 			if resp.Status != common.Status_SUCCESS {
 				updateStateLock.Lock()
-				errorsAccumulator.WriteString(fmt.Sprintf("received error response from %s: %s", streamInfo.endpoint, resp.Status.String()))
+				errorsAccumulator.WriteString(fmt.Sprintf("received error response from %s: %s, Info: %s\n", streamInfo.endpoint, resp.Status.String(), resp.Info))
 				failures++
 				updateStateLock.Unlock()
 				return
