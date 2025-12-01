@@ -162,7 +162,7 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 	re := regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.GetCounterMetricValueByRegexp(t, re, URL) == 2000
+		return testutil.FetchPrometheusMetricValue(t, re, URL) == 2000
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
