@@ -9,16 +9,16 @@ package configtx
 import (
 	"regexp"
 
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
-var logger = flogging.MustGetLogger("common.configtx")
+var logger = util.MustGetLogger("common.configtx")
 
 // Constraints for valid channel and config IDs
 var (

@@ -8,18 +8,18 @@ package channelconfig
 
 import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
 
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
-var logger = flogging.MustGetLogger("common.channelconfig")
+var logger = util.MustGetLogger("common.channelconfig")
 
 // RootGroupKey is the key for namespacing the channel config, especially for
 // policy evaluation.

@@ -7,10 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package cauthdsl
 
 import (
-	"fmt"
-
+	"github.com/cockroachdb/errors"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/common/policies"
@@ -22,22 +20,23 @@ type provider struct {
 	deserializer msp.IdentityDeserializer
 }
 
-// NewPolicyProvider provides a policy generator for cauthdsl type policies
+// NewPolicyProvider provides a policy generator for cauthdsl type policies.
 func NewPolicyProvider(deserializer msp.IdentityDeserializer) policies.Provider {
 	return &provider{
 		deserializer: deserializer,
 	}
 }
 
-// NewPolicy creates a new policy based on the policy bytes
-func (pr *provider) NewPolicy(data []byte) (policies.Policy, proto.Message, error) {
+// NewPolicy creates a new policy based on the policy bytes.
+func (pr *provider) NewPolicy(data []byte) (policies.Policy, proto.Message, error) { //nolint:ireturn
 	sigPolicy := &cb.SignaturePolicyEnvelope{}
 	if err := proto.Unmarshal(data, sigPolicy); err != nil {
-		return nil, nil, fmt.Errorf("Error unmarshalling to SignaturePolicy: %s", err)
+		return nil, nil, errors.Wrap(err, "error unmarshalling to SignaturePolicy")
 	}
 
 	if sigPolicy.Version != 0 {
-		return nil, nil, fmt.Errorf("This evaluator only understands messages of version 0, but version was %d", sigPolicy.Version)
+		return nil, nil, errors.Newf("this evaluator only understands messages of version 0, but version was %d",
+			sigPolicy.Version)
 	}
 
 	compiled, err := compile(sigPolicy.Rule, sigPolicy.Identities)
@@ -52,13 +51,15 @@ func (pr *provider) NewPolicy(data []byte) (policies.Policy, proto.Message, erro
 	}, sigPolicy, nil
 }
 
-// EnvelopeBasedPolicyProvider allows to create a new policy from SignaturePolicyEnvelope struct instead of []byte
+// EnvelopeBasedPolicyProvider allows to create a new policy from SignaturePolicyEnvelope struct instead of []byte.
 type EnvelopeBasedPolicyProvider struct {
 	Deserializer msp.IdentityDeserializer
 }
 
-// NewPolicy creates a new policy from the policy envelope
-func (pp *EnvelopeBasedPolicyProvider) NewPolicy(sigPolicy *cb.SignaturePolicyEnvelope) (policies.Policy, error) {
+// NewPolicy creates a new policy from the policy envelope.
+func (pp *EnvelopeBasedPolicyProvider) NewPolicy( //nolint:ireturn
+	sigPolicy *cb.SignaturePolicyEnvelope,
+) (policies.Policy, error) {
 	if sigPolicy == nil {
 		return nil, errors.New("invalid arguments")
 	}
@@ -95,10 +96,10 @@ func (p *policy) EvaluateSignedData(signatureSet []*protoutil.SignedData) error 
 }
 
 // EvaluateIdentities takes an array of identities and evaluates whether
-// they satisfy the policy
+// they satisfy the policy.
 func (p *policy) EvaluateIdentities(identities []msp.Identity) error {
 	if p == nil {
-		return fmt.Errorf("No such policy")
+		return errors.New("no such policy")
 	}
 
 	ok := p.evaluator(identities, make([]bool, len(identities)))

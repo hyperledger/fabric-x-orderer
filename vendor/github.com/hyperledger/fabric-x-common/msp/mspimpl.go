@@ -24,10 +24,12 @@ import (
 	m "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-common/api/protomsp"
 )
 
 // mspSetupFuncType is the prototype of the setup function
-type mspSetupFuncType func(config *m.FabricMSPConfig) error
+type mspSetupFuncType func(config *protomsp.FabricMSPConfig) error
 
 // validateIdentityOUsFuncType is the prototype of the function to validate identity's OUs
 type validateIdentityOUsFuncType func(id *identity) error
@@ -36,7 +38,7 @@ type validateIdentityOUsFuncType func(id *identity) error
 type satisfiesPrincipalInternalFuncType func(id Identity, principal *m.MSPPrincipal) error
 
 // setupAdminInternalFuncType is a prototype of the function to setup the admins
-type setupAdminInternalFuncType func(conf *m.FabricMSPConfig) error
+type setupAdminInternalFuncType func(conf *protomsp.FabricMSPConfig) error
 
 // This is an instantiation of an MSP that
 // uses BCCSP for its cryptographic primitives.
@@ -80,6 +82,9 @@ type bccspmsp struct {
 
 	// list of admin identities
 	admins []Identity
+
+	// list of known identites.
+	knownIdentites map[IdentityIdentifier]Identity
 
 	// the crypto provider
 	bccsp bccsp.BCCSP
@@ -262,7 +267,7 @@ func (msp *bccspmsp) Setup(conf1 *m.MSPConfig) error {
 	}
 
 	// given that it's an msp of type fabric, extract the MSPConfig instance
-	conf := &m.FabricMSPConfig{}
+	conf := &protomsp.FabricMSPConfig{}
 	err := proto.Unmarshal(conf1.Config, conf)
 	if err != nil {
 		return errors.Wrap(err, "failed unmarshalling fabric msp config")
@@ -274,6 +279,11 @@ func (msp *bccspmsp) Setup(conf1 *m.MSPConfig) error {
 
 	// setup
 	return msp.internalSetupFunc(conf)
+}
+
+//nolint:ireturn //Identity is an interface.
+func (msp *bccspmsp) GetKnownDeserializedIdentity(i IdentityIdentifier) Identity {
+	return msp.knownIdentites[i]
 }
 
 // GetVersion returns the version of this MSP

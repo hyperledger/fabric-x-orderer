@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-common/common/util"
 	mspi "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
@@ -62,7 +62,7 @@ const (
 	ChannelOrdererReaders = PathSeparator + ChannelPrefix + PathSeparator + OrdererPrefix + PathSeparator + "Readers"
 )
 
-var logger = flogging.MustGetLogger("policies")
+var logger = util.MustGetLogger("policies")
 
 // PrincipalSet is a collection of MSPPrincipals
 type PrincipalSet []*msp.MSPPrincipal
