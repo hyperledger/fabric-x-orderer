@@ -130,10 +130,10 @@ func (b *Batcher) replicateState() {
 			if header.Num == header.DecisionNumOfLastConfigBlock && header.Num != 0 {
 				lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 				if protoutil.IsConfigBlock(lastBlock) {
-					b.logger.Infof("Pulled config block %d from consensus", lastBlock.Header.Number)
+					b.logger.Infof("Received config block number %d", lastBlock.Header.Number)
 					b.ConfigStore.Add(lastBlock)
+					b.logger.Warnf("Soft stop")
 					go b.SoftStop()
-					b.logger.Infof("Soft stop")
 					// TODO: apply the config
 				} else {
 					b.logger.Errorf("Pulled config decision but last block is not a config block")

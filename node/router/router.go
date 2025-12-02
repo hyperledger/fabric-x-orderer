@@ -509,7 +509,7 @@ func (r *Router) pullAndProcessConfigBlocks() {
 				r.logger.Infof("Config blocks channel closed, stopping config blocks processing")
 				return
 			}
-			r.logger.Infof("Received new config block from consensus with block number %d", configBlock.GetHeader().GetNumber())
+			r.logger.Infof("Received config block number %d", configBlock.GetHeader().GetNumber())
 
 			// TODO process the config block. store in config store and apply.
 			if err := r.configStore.Add(configBlock); err != nil {
@@ -518,6 +518,7 @@ func (r *Router) pullAndProcessConfigBlocks() {
 			r.logger.Infof("Added config block %d to config store", configBlock.GetHeader().GetNumber())
 
 			// initiate router restart to apply new config
+			r.logger.Warnf("Soft stop")
 			go r.SoftStop()
 
 			// do not pull additional config blocks, until the router is restarted.

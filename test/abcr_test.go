@@ -8,22 +8,18 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
-	"fmt"
-	"os"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	node2 "github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	_ "github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"
@@ -49,49 +45,15 @@ func TestABCR(t *testing.T) {
 
 	_, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 
-	_, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId)
+	_, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
 
-	routers := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId)
+	routers, _ := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, "", genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()
 	}
 
-	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
-	require.NoError(t, err)
-
-	assemblerDir, err := os.MkdirTemp("", fmt.Sprintf("%s-assembler", t.Name()))
-	require.NoError(t, err)
-
-	assemblerConf := &config.AssemblerNodeConfig{
-		TLSPrivateKeyFile:         ckp.Key,
-		TLSCertificateFile:        ckp.Cert,
-		PartyId:                   1,
-		Directory:                 assemblerDir,
-		ListenAddress:             "0.0.0.0:0",
-		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024, // 1GB
-		RestartLedgerScanTimeout:  5 * time.Second,
-		PrefetchEvictionTtl:       time.Hour,
-		PopWaitMonitorTimeout:     time.Second,
-		ReplicationChannelSize:    100,
-		BatchRequestsChannelSize:  1000,
-		Shards:                    shards,
-		Consenter:                 consenterInfos[0],
-		UseTLS:                    true,
-		ClientAuthRequired:        false,
-	}
-
-	aLogger := testutil.CreateLogger(t, 1)
-
-	assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
-
-	assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, aLogger)
-
-	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
-
-	go func() {
-		assemblerGRPC.Start()
-	}()
+	assemblers, _, _, cleanAssemblers := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
 
 	defer func() {
 		for i := range routers {
@@ -99,14 +61,10 @@ func TestABCR(t *testing.T) {
 		}
 		cleanBatchers()
 		cleanConsenters()
-		assembler.Stop()
+		cleanAssemblers()
 	}()
 
-	//_, assemblerPort, err := net.SplitHostPort(assemblerGRPC.Address())
-	//require.NoError(t, err)
-
-	// runPerf(t, [][]byte{ca.CertBytes()}, [][]byte{ca.CertBytes()}, routerEndpoints, fmt.Sprintf("127.0.0.1:%s", assemblerPort), clientPath)
-	sendTransactions(t, routers, assembler)
+	sendTransactions(t, routers, assemblers[3])
 }
 
 func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembler.Assembler) {

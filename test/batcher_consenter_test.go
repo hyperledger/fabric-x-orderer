@@ -40,10 +40,10 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	_, clean := createConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
 	defer clean()
 
-	batchers0, configs, loggers, clean := createBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, shards[0].ShardId)
+	batchers0, configs, loggers, clean := createBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, shards[0].ShardId, genesisBlock)
 	defer clean()
 
-	batchers1, _, _, clean := createBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, shards[1].ShardId)
+	batchers1, _, _, clean := createBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, shards[1].ShardId, genesisBlock)
 	defer clean()
 
 	for i := 0; i < 4; i++ {
