@@ -91,7 +91,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 		Storage:                      consLedger,
 		SigVerifier:                  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:                       signer,
-		Metrics:                      NewConsensusMetrics(conf.PartyId, logger, conf.MetricsLogInterval),
+		Metrics:                      NewConsensusMetrics(conf, logger),
 		RequestVerifier:              createConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
 	}

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -228,16 +229,18 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
 	return &nodeconfig.ConsenterNodeConfig{
-		Shards:             []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
-		Consenters:         consentersInfo,
-		PartyId:            partyID,
-		TLSPrivateKeyFile:  n.TLSKey,
-		TLSCertificateFile: n.TLSCert,
-		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-		Directory:          dir,
-		BFTConfig:          BFTConfig,
-		Bundle:             bundle,
-		RequestMaxBytes:    1000,
+		Shards:                  []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
+		Consenters:              consentersInfo,
+		PartyId:                 partyID,
+		TLSPrivateKeyFile:       n.TLSKey,
+		TLSCertificateFile:      n.TLSCert,
+		SigningPrivateKey:       pem.EncodeToMemory(&pem.Block{Bytes: sk}),
+		Directory:               dir,
+		BFTConfig:               BFTConfig,
+		Bundle:                  bundle,
+		RequestMaxBytes:         1000,
+		MetricsLogInterval:      2 * time.Second,
+		MonitoringListenAddress: "127.0.0.1:0",
 	}
 }
 
