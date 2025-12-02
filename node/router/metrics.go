@@ -47,10 +47,11 @@ type RouterMetrics struct {
 	stopOnce               sync.Once
 	startOnce              sync.Once
 	monitor                *monitoring.Monitor
+	partyID                arma_types.PartyID
 }
 
 // NewRouterMetrics creates the Metrics
-func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger arma_types.Logger, interval time.Duration) *RouterMetrics {
+func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger arma_types.Logger) *RouterMetrics {
 	host, port, err := net.SplitHostPort(routerNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
@@ -67,13 +68,14 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger arma_typ
 	rejectedTxs := p.NewCounter(rejectedTxs)
 
 	return &RouterMetrics{
-		interval:               interval,
+		interval:               routerNodeConfig.MetricsLogInterval,
 		logger:                 logger,
 		stopChan:               make(chan struct{}),
 		monitor:                monitor,
 		incomingTxs:            p.NewCounter(incomingTxs).With([]string{partyID}...),
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
+		partyID:                routerNodeConfig.PartyID,
 	}
 }
 
@@ -81,10 +83,11 @@ func (m *RouterMetrics) Stop() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
-		if m.monitor != nil {
-			m.monitor.Stop()
-			m.monitor = nil
-		}
+		m.monitor.Stop()
+		txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
+		txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
+		txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
+		m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d", m.partyID, int(txCount), int(txRejected400), int(txRejected500))
 	})
 }
 
@@ -109,7 +112,10 @@ func (m *RouterMetrics) trackMetrics() {
 			return
 		case <-ticker.C:
 			txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
-			m.logger.Infof("Received %.f transactions per second", float64(txCount-incomingTxsLastValue)/m.interval.Seconds())
+			txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
+			txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
+			m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d",
+				m.partyID, int(txCount), float64(txCount-incomingTxsLastValue)/m.interval.Seconds(), int(txRejected400), int(txRejected500))
 			incomingTxsLastValue = txCount
 		}
 	}
