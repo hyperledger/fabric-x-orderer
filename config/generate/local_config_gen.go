@@ -211,7 +211,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 			File:   filepath.Join(generalConfigParams.configBaseDir, "bootstrap", "bootstrap.block"),
 		},
 		LocalMSPDir:                         filepath.Join(partyPath, nodeRole, "msp"),
-		LocalMSPID:                          fmt.Sprintf("OrdererOrg%d", generalConfigParams.partyID),
+		LocalMSPID:                          fmt.Sprintf("org%d", generalConfigParams.partyID),
 		BCCSP:                               &factory.FactoryOpts{},
 		LogSpec:                             generalConfigParams.logLevel,
 		ClientSignatureVerificationRequired: generalConfigParams.clientSignatureVerificationRequired,
