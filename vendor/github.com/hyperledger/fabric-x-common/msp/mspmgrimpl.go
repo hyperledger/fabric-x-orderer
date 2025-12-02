@@ -7,13 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package msp
 
 import (
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
-var mspLogger = flogging.MustGetLogger("msp")
+var mspLogger = util.MustGetLogger("msp")
 
 type mspManagerImpl struct {
 	// map that contains all MSPs that we have setup or otherwise added
@@ -110,4 +111,14 @@ func (mgr *mspManagerImpl) IsWellFormed(identity *msp.SerializedIdentity) error 
 		}
 	}
 	return errors.New("no MSP provider recognizes the identity")
+}
+
+//nolint:ireturn //Identity is an interface.
+func (mgr *mspManagerImpl) GetKnownDeserializedIdentity(i IdentityIdentifier) Identity {
+	m := mgr.mspsMap[i.Mspid]
+	if m == nil {
+		return nil
+	}
+
+	return m.GetKnownDeserializedIdentity(i)
 }

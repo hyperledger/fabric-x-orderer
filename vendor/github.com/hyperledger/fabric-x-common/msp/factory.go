@@ -9,6 +9,8 @@ package msp
 import (
 	"github.com/IBM/idemix"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	msppb "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
 )
 
@@ -77,6 +79,63 @@ func New(opts NewOpts, cryptoProvider bccsp.BCCSP) (MSP, error) {
 			return nil, errors.Errorf("Invalid *IdemixNewOpts. Version not recognized [%v]", opts.GetVersion())
 		}
 	default:
-		return nil, errors.Errorf("Invalid msp.NewOpts instance. It must be either *BCCSPNewOpts or *IdemixNewOpts. It was [%v]", opts)
+		return nil, errors.Errorf(
+			"Invalid msp.NewOpts instance. It must be either *BCCSPNewOpts or *IdemixNewOpts. It was [%v]", opts,
+		)
 	}
+}
+
+// DirLoadParameters describes the parameters for loading an MSP directory.
+type DirLoadParameters struct {
+	MspDir  string
+	MspName string
+	CspConf *factory.FactoryOpts
+}
+
+// LoadLocalMspDir loads an MSP directory.
+//
+//nolint:ireturn,nolintlint // method may return any MSP implementation.
+func LoadLocalMspDir(p DirLoadParameters) (MSP, error) {
+	p = defaultParameters(p)
+	conf, err := GetLocalMspConfig(p.MspDir, p.CspConf, p.MspName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error loading local MSP configuration [%s]", p.MspDir)
+	}
+	return loadMSP(p.CspConf, conf)
+}
+
+// LoadVerifyingMspDir loads an MSP directory.
+//
+//nolint:ireturn,nolintlint // method may return any MSP implementation.
+func LoadVerifyingMspDir(p DirLoadParameters) (MSP, error) {
+	p = defaultParameters(p)
+	conf, err := GetVerifyingMspConfig(p.MspDir, p.MspName, ProviderTypeToString(FABRIC))
+	if err != nil {
+		return nil, errors.Wrapf(err, "error loading verifing MSP configuration [%s]", p.MspDir)
+	}
+	return loadMSP(p.CspConf, conf)
+}
+
+//nolint:ireturn,nolintlint // method may return any MSP implementation.
+func loadMSP(cspConfig *factory.FactoryOpts, conf *msppb.MSPConfig) (MSP, error) {
+	csp, err := factory.GetBCCSPFromOpts(cspConfig)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error getting BCCSP from config")
+	}
+	mspInst, err := New(Options[ProviderTypeToString(FABRIC)], csp)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error creating MSP instance")
+	}
+	err = mspInst.Setup(conf)
+	return mspInst, errors.Wrapf(err, "error setting up MSP instance")
+}
+
+func defaultParameters(p DirLoadParameters) DirLoadParameters {
+	if p.CspConf == nil {
+		p.CspConf = factory.GetDefaultOpts()
+	}
+	if p.MspName == "" {
+		p.MspName = "msp"
+	}
+	return p
 }
