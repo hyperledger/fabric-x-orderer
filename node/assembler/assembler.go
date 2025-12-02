@@ -32,6 +32,7 @@ type Assembler struct {
 	prefetcher   PrefetcherController
 	baReplicator delivery.ConsensusBringer
 	netStopper   NetStopper
+	metrics      *Metrics
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -45,10 +46,12 @@ func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error 
 // GetTxCount returns the number of transactions the assembler stored in the ledger. This method is used only in testing.
 func (a *Assembler) GetTxCount() uint64 {
 	// TODO do this in a cleaner fashion
-	return a.collator.Ledger.(*node_ledger.AssemblerLedger).GetTxCount()
+	return a.collator.Ledger.GetTxCount()
 }
 
+// Stop stops the assembler and all its components.
 func (a *Assembler) Stop() {
+	a.metrics.Stop()
 	a.netStopper.Stop()
 	a.prefetcher.Stop()
 	a.collator.Index.Stop()
@@ -104,9 +107,6 @@ func NewDefaultAssembler(
 	logger.Infof("Starting with BatchFrontier: %s", node_ledger.BatchFrontierToString(batchFrontier))
 
 	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, config.PrefetchEvictionTtl, config.PrefetchBufferMemoryBytes, config.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{}, config.PopWaitMonitorTimeout)
-	if err != nil {
-		logger.Panicf("Failed creating index: %v", err)
-	}
 
 	baReplicator := consensusBringerFactory.Create(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, al, logger)
 
@@ -137,6 +137,9 @@ func NewDefaultAssembler(
 	assembler.collator.AssemblerRestarter = assembler
 
 	assembler.collator.Run()
+
+	assembler.metrics = NewMetrics(al.Metrics(), index.Metrics(), logger, config.MetricsLogInterval)
+	assembler.metrics.Start()
 
 	return assembler
 }
