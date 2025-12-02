@@ -36,7 +36,7 @@ func TestSharedConfigLoading(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2.
-	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
+	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)
 	require.NoError(t, err)
 	require.NotNil(t, networkLocalConfig)
 	// check that all nodes know the same boostrap file
