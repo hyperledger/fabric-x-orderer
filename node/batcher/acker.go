@@ -48,7 +48,7 @@ func NewAcker(confirmedSeq types.BatchSequence, gap types.BatchSequence, numOfPa
 
 // Stop stops the acker (the waiting)
 func (a *Acker) Stop() {
-	a.logger.Debugf("Stopping")
+	a.logger.Infof("Stopping")
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	a.stopped = true
@@ -113,12 +113,12 @@ func (a *Acker) wait(seq types.BatchSequence) {
 	}()
 	a.lock.Lock()
 	for !a.secondariesKeepUpWithMe(seq) {
-		a.signal.Wait()
 		if a.stopped {
-			a.logger.Debugf("Stopped waiting with sequence %d", seq)
+			a.logger.Infof("Stopped waiting with sequence %d", seq)
 			a.lock.Unlock()
 			return
 		}
+		a.signal.Wait()
 	}
 	a.lock.Unlock()
 }
