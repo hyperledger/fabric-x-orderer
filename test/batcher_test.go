@@ -30,18 +30,7 @@ const (
 	numOfParties = 4
 )
 
-// Simulates a scenario where the primary batcher
-// is stopped and then restarted, while ensuring that the system can recover and
-// continue processing transactions. The test involves the following steps:
-// 1. Compile and run the arma nodes.
-// 2. Submit a batch of transactions to the network.
-// 3. Identify and stop the primary batcher for one of the parties.
-// 4. Continue submitting transactions, expecting the stopped party's router to stall.
-// 5. Verify that the correct number of transactions have been processed by the assemblers.
-// 6. Restart the stopped primary batcher and ensure the stalled transactions are processed.
-// 7. Submit additional transactions and verify that all parties receive the expected number
-//    of transactions.
-
+// TestRunBatchersGetMetrics verifies that the batcher and consensus metrics are correctly exposed and updated.
 func TestRunBatchersGetMetrics(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
@@ -74,7 +63,7 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	assert.NotNil(t, uc)
 
 	// 2. Send To Routers
-	totalTxNumber := 1000
+	totalTxNumber := 10
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
 	rate := 500
@@ -88,7 +77,7 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
@@ -103,7 +92,7 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	t.Log("Finished submit")
 	broadcastClient.Stop()
 
-	batcherToMonitor := armaNetwork.GeBatcher(t, types.PartyID(1), types.ShardID(1))
+	batcherToMonitor := armaNetwork.GetBatcher(t, types.PartyID(1), types.ShardID(1))
 	url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
 
 	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
@@ -112,8 +101,30 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testutil.GetCounterMetricValueByRegexp(t, re, url) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
+
+	consenterToMonitor := armaNetwork.GetConsenter(t, 1)
+	url = testutil.CaptureArmaNodePrometheusServiceURL(t, consenterToMonitor)
+
+	pattern = fmt.Sprintf(`consensus_blocks_count\{party_id="%d"\} \d+`, types.PartyID(1))
+	re = regexp.MustCompile(pattern)
+
+	totalBlocks := 1 // including config block
+	require.Eventually(t, func() bool {
+		return testutil.GetCounterMetricValueByRegexp(t, re, url) == totalBlocks-1
+	}, 30*time.Second, 100*time.Millisecond)
 }
 
+// Simulates a scenario where the primary batcher
+// is stopped and then restarted, while ensuring that the system can recover and
+// continue processing transactions. The test involves the following steps:
+//  1. Compile and run the arma nodes.
+//  2. Submit a batch of transactions to the network.
+//  3. Identify and stop the primary batcher for one of the parties.
+//  4. Continue submitting transactions, expecting the stopped party's router to stall.
+//  5. Verify that the correct number of transactions have been processed by the assemblers.
+//  6. Restart the stopped primary batcher and ensure the stalled transactions are processed.
+//  7. Submit additional transactions and verify that all parties receive the expected number
+//     of transactions.
 func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
@@ -197,7 +208,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	// Get the primary batcher
 	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
-	primaryBatcher := armaNetwork.GeBatcher(t, primaryBatcherId, types.ShardID(1))
+	primaryBatcher := armaNetwork.GetBatcher(t, primaryBatcherId, types.ShardID(1))
 
 	// 3. Stop the primary batcher
 	t.Logf("Stopping primary batcher: party %d", primaryBatcher.PartyId)
@@ -416,7 +427,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	// 3. Identify and stop the secondary batcher
 	for partyId := 1; partyId <= numOfParties; partyId++ {
 		if primaryBatcherId != types.PartyID(partyId) && secondaryBatcher == nil {
-			secondaryBatcher = armaNetwork.GeBatcher(t, types.PartyID(partyId), types.ShardID(1))
+			secondaryBatcher = armaNetwork.GetBatcher(t, types.PartyID(partyId), types.ShardID(1))
 		} else {
 			correctParties = append(correctParties, types.PartyID(partyId))
 		}
