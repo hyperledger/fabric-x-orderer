@@ -168,6 +168,8 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 			Consenter:                 consenterInfos[i],
 			UseTLS:                    true,
 			ClientAuthRequired:        false,
+			MonitoringListenAddress:   "127.0.0.1:0",
+			MetricsLogInterval:        5 * time.Second,
 		}
 
 		logger := testutil.CreateLogger(t, i+1)
@@ -312,7 +314,7 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
 			MonitoringListenAddress:             "127.0.0.1:0",
-			MetricsLogInterval:                  0 * time.Second,
+			MetricsLogInterval:                  3 * time.Second,
 		}
 
 		configs = append(configs, batcherConf)
