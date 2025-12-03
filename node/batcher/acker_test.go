@@ -45,7 +45,7 @@ func TestAcker(t *testing.T) {
 	acker.HandleAck(100, 2)
 	require.Eventually(t, func() bool {
 		return atomic.LoadUint32(&done) == uint32(1)
-	}, 10*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	acker.Stop()
 
@@ -66,17 +66,17 @@ func TestAcker(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return atomic.LoadUint32(&done2) == uint32(1)
-	}, 10*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
+
 	acker.HandleAck(100, 2)
-	require.Eventually(t, func() bool {
-		return atomic.LoadUint32(&done2) == uint32(1)
-	}, 10*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, uint32(1), atomic.LoadUint32(&done2))
 
 	acker.Stop()
 
 	require.Eventually(t, func() bool {
 		return atomic.LoadUint32(&done2) == uint32(2)
-	}, 10*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	acker.Stop()
 
@@ -96,7 +96,7 @@ func TestAcker(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return atomic.LoadUint32(&done3) == uint32(1)
-	}, 10*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	acker.Stop()
 }
