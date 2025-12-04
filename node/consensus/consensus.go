@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -90,6 +91,7 @@ type Consensus struct {
 	Metrics                      *ConsensusMetrics
 	RequestVerifier              *requestfilter.RulesVerifier
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
+	ConfigRequestValidator       configrequest.ConfigRequestValidator
 	softStopCh                   chan struct{}
 	softStopOnce                 sync.Once
 }
@@ -639,10 +641,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 	} else if ce.BAF != nil {
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
-		_, err := c.verifyAndClassifyRequest(&protos.Request{
-			Payload:   ce.ConfigRequest.Envelope.Payload,
-			Signature: ce.ConfigRequest.Envelope.Signature,
-		})
+		err := c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
