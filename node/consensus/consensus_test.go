@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -619,14 +620,18 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 			mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 
+			mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
+			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
+
 			c := &Consensus{
-				Arma:                 consenter,
-				State:                initialState,
-				Logger:               logger,
-				SigVerifier:          verifier,
-				RequestVerifier:      requestVerifier,
-				Config:               config,
-				ConfigUpdateProposer: mockConfigUpdateProposer,
+				Arma:                   consenter,
+				State:                  initialState,
+				Logger:                 logger,
+				SigVerifier:            verifier,
+				RequestVerifier:        requestVerifier,
+				Config:                 config,
+				ConfigUpdateProposer:   mockConfigUpdateProposer,
+				ConfigRequestValidator: mockConfigRequestValidator,
 			}
 
 			reqs := make([][]byte, len(tst.ces))
