@@ -73,25 +73,60 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	// update profile with some more relevant orderer information
 	profile.Orderer.Arma.Path = sharedConfigPath
 
-	for i, org := range profile.Application.Organizations {
-		org.ID = fmt.Sprintf("org%d", i+1)
-		org.Name = fmt.Sprintf("org%d", i+1)
-		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
-		// Update policy rules to use correct org names
-		for _, policy := range org.Policies {
-			policy.Rule = strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1))
+	templateAppOrg := profile.Application.Organizations[0]
+	profile.Application.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
+
+	for i := 0; i < len(sharedConfigYaml.PartiesConfig); i++ {
+		org := &configtxgen.Organization{
+			Name:             fmt.Sprintf("org%d", i+1),
+			ID:               fmt.Sprintf("org%d", i+1),
+			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
+			MSPType:          templateAppOrg.MSPType,
+			Policies:         make(map[string]*configtxgen.Policy),
+			AnchorPeers:      templateAppOrg.AnchorPeers,
+			OrdererEndpoints: templateAppOrg.OrdererEndpoints, // TODO: org.OrdererEndpoints in the new format
+			AdminPrincipal:   templateAppOrg.AdminPrincipal,
+			SkipAsForeign:    templateAppOrg.SkipAsForeign,
 		}
+
+		// Update policy rules to use correct org names
+		for key, policy := range templateAppOrg.Policies {
+			orgPolicy := &configtxgen.Policy{
+				Type: policy.Type,
+				Rule: strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1)),
+			}
+			org.Policies[key] = orgPolicy
+		}
+
+		profile.Application.Organizations[i] = org
 	}
 
-	for i, org := range profile.Orderer.Organizations {
-		org.ID = fmt.Sprintf("org%d", i+1)
-		org.Name = fmt.Sprintf("org%d", i+1)
-		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
-		// TODO: org.OrdererEndpoints in the new format
-		// Update policy rules to use correct org names
-		for _, policy := range org.Policies {
-			policy.Rule = strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1))
+	templateOrdererOrg := profile.Orderer.Organizations[0]
+	profile.Orderer.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
+
+	for i := 0; i < len(sharedConfigYaml.PartiesConfig); i++ {
+		org := &configtxgen.Organization{
+			Name:             fmt.Sprintf("org%d", i+1),
+			ID:               fmt.Sprintf("org%d", i+1),
+			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
+			MSPType:          templateOrdererOrg.MSPType,
+			Policies:         make(map[string]*configtxgen.Policy),
+			AnchorPeers:      templateOrdererOrg.AnchorPeers,
+			OrdererEndpoints: templateOrdererOrg.OrdererEndpoints, // TODO: org.OrdererEndpoints in the new format
+			AdminPrincipal:   templateOrdererOrg.AdminPrincipal,
+			SkipAsForeign:    templateOrdererOrg.SkipAsForeign,
 		}
+
+		// Update policy rules to use correct org names
+		for key, policy := range templateOrdererOrg.Policies {
+			orgPolicy := &configtxgen.Policy{
+				Type: policy.Type,
+				Rule: strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1)),
+			}
+			org.Policies[key] = orgPolicy
+		}
+
+		profile.Orderer.Organizations[i] = org
 	}
 
 	profile.Orderer.ConsenterMapping = consenterMapping
