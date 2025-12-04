@@ -139,15 +139,15 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 			ordInfo.CommonBlock.Header.Number, len(batch.Requests()), time.Since(t1))
 	}()
 
-	block := &common.Block{
+	blockToAppend := &common.Block{
 		Header: ordInfo.CommonBlock.Header,
 		Data: &common.BlockData{
 			Data: batch.Requests(),
 		},
+		Metadata: ordInfo.CommonBlock.Metadata,
 	}
 
-	protoutil.InitBlockMetadata(block)
-
+	// TODO update the signature on the block in consensus
 	var sigs []*common.MetadataSignature
 	var signers []uint64
 
@@ -163,36 +163,31 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 		signers = append(signers, s.ID)
 	}
 
-	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
+	blockToAppend.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
 		Signatures: sigs,
 	})
 
-	// TODO carry the last config somewhere, we do it the old fabric way
-	block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
-		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 0}),
-	})
-
-	//===
-	// TODO Ordering metadata  marshal orderingInfo and batchID
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, atomic.LoadUint64(&l.transactionCount)+uint64(len(batch.Requests())))
+	// TODO update the tx count in the consensus.
+	numOfRequests := uint64(len(batch.Requests()))
+	newTXcount := numOfRequests + atomic.LoadUint64(&l.transactionCount)
+	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, newTXcount)
 	if err != nil {
 		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
-	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
+	blockToAppend.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 
 	l.Logger.Debugf("Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
-		block.Header,                                // Header
-		len(block.GetData().GetData()),              // Data
+		blockToAppend.Header,                        // Header
+		len(blockToAppend.GetData().GetData()),      // Data
 		batch.Primary(), batch.Shard(), batch.Seq(), // Metadata batchID
 		ordInfo.DecisionNum, ordInfo.BatchIndex, ordInfo.BatchCount, // Metadata ordering
 		signers, // Metadata signers
 	)
 
-	if err := l.Ledger.Append(block); err != nil {
+	if err := l.Ledger.Append(blockToAppend); err != nil {
 		panic(err)
 	}
-
-	atomic.AddUint64(&l.transactionCount, uint64(len(batch.Requests())))
+	atomic.StoreUint64(&l.transactionCount, newTXcount)
 }
 
 func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum) {
