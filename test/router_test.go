@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	config "github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -429,7 +428,7 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	}
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
-	signer, certBytes, err := loadCryptoMaterialsFromDir(uc.MSPDir)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
 	require.NoError(t, err)
 
 	org := fmt.Sprintf("org%d", types.PartyID(1))
@@ -466,22 +465,4 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
 	})
-}
-
-func loadCryptoMaterialsFromDir(mspDir string) (*crypto.ECDSASigner, []byte, error) {
-	keyBytes, err := os.ReadFile(filepath.Join(mspDir, "keystore", "priv_sk"))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read private key file: %v", err)
-	}
-	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create private key: %v", err)
-	}
-
-	certBytes, err := os.ReadFile(filepath.Join(mspDir, "signcerts", "sign-cert.pem"))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read sign certificate file: %v", err)
-	}
-
-	return (*crypto.ECDSASigner)(privateKey), certBytes, nil
 }

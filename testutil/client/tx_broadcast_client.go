@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
@@ -43,6 +44,15 @@ func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Du
 		timeOut:          timeOut,
 		streamRoutersMap: make(map[string]*StreamInfo, len(userConfigFile.RouterEndpoints)),
 	}
+}
+
+func (c *BroadcastTxClient) SendStream(partyID types.PartyID) ab.AtomicBroadcast_BroadcastClient {
+	// RouterEndpoints are ordered by PartyID, where RouterEndpoints[0] corresponds to PartyID 1
+	sInfo, ok := c.streamRoutersMap[c.userConfig.RouterEndpoints[partyID-1]]
+	if !ok {
+		return nil
+	}
+	return sInfo.stream
 }
 
 func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {

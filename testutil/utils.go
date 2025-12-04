@@ -25,6 +25,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
@@ -254,4 +256,17 @@ func sortArmaNodeInfo(infos []ArmaNodeInfo) func(i, j int) bool {
 		}
 		return false
 	}
+}
+
+func LoadCryptoMaterialsFromDir(t *testing.T, mspDir string) (*crypto.ECDSASigner, []byte, error) {
+	keyBytes, err := os.ReadFile(filepath.Join(mspDir, "keystore", "priv_sk"))
+	require.NoError(t, err, "failed to read private key file")
+
+	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
+	require.NoError(t, err, "failed to create private key")
+
+	certBytes, err := os.ReadFile(filepath.Join(mspDir, "signcerts", "sign-cert.pem"))
+	require.NoError(t, err, "failed to read sign certificate file")
+
+	return (*crypto.ECDSASigner)(privateKey), certBytes, nil
 }
