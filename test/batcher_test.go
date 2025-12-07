@@ -103,7 +103,7 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	t.Log("Finished submit")
 	broadcastClient.Stop()
 
-	batcherToMonitor := armaNetwork.GeBatcher(t, types.PartyID(1), types.ShardID(1))
+	batcherToMonitor := armaNetwork.GetBatcher(t, types.PartyID(1), types.ShardID(1))
 	url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
 
 	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
@@ -197,7 +197,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	// Get the primary batcher
 	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
-	primaryBatcher := armaNetwork.GeBatcher(t, primaryBatcherId, types.ShardID(1))
+	primaryBatcher := armaNetwork.GetBatcher(t, primaryBatcherId, types.ShardID(1))
 
 	// 3. Stop the primary batcher
 	t.Logf("Stopping primary batcher: party %d", primaryBatcher.PartyId)
@@ -416,7 +416,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	// 3. Identify and stop the secondary batcher
 	for partyId := 1; partyId <= numOfParties; partyId++ {
 		if primaryBatcherId != types.PartyID(partyId) && secondaryBatcher == nil {
-			secondaryBatcher = armaNetwork.GeBatcher(t, types.PartyID(partyId), types.ShardID(1))
+			secondaryBatcher = armaNetwork.GetBatcher(t, types.PartyID(partyId), types.ShardID(1))
 		} else {
 			correctParties = append(correctParties, types.PartyID(partyId))
 		}

@@ -88,7 +88,7 @@ func (armaNetwork *ArmaNetwork) GetConsenter(t *testing.T, partyID types.PartyID
 	return armaNetwork.armaNodes[Consensus][partyID-1][0]
 }
 
-func (armaNetwork *ArmaNetwork) GeBatcher(t *testing.T, partyID types.PartyID, shardID types.ShardID) *ArmaNodeInfo {
+func (armaNetwork *ArmaNetwork) GetBatcher(t *testing.T, partyID types.PartyID, shardID types.ShardID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
 	require.True(t, int(shardID) > 0)
 	require.True(t, len(armaNetwork.armaNodes[Batcher]) >= int(partyID))
