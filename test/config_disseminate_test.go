@@ -8,9 +8,25 @@ package test
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/onsi/gomega/gexec"
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
@@ -152,4 +168,197 @@ func TestConfigDisseminate(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, protoutil.IsConfigBlock(lastBlock))
 	}
+}
+
+func TestConfigTXDisseminationWithVerification(t *testing.T) {
+	// Compile Arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Generate the configuration with clientSignatureVerificationRequired = True
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 2
+	orgNum := 1
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	require.NoError(t, err)
+	numOfArmaNodes := len(netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	// Run Arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// Create a broadcast client
+	uc, err := testutil.GetUserConfig(dir, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	// Prepare a Config TX, i.e. an envelope signed by an admin of org1
+	// the envelope.Payload contains marshaled bytes of configUpdateEnvelope, which is an envelope with Header.Type = HeaderType_CONFIG_UPDATE, signed by majority of admins
+
+	// Create an admin signer serves as the client which signs the config transaction
+	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", orgNum), "users", "admin", "msp", "keystore", "priv_sk")
+	signer, err := CreateSigner(keyPath)
+	require.NoError(t, err)
+	require.NotNil(t, signer)
+
+	certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", orgNum), "users", "admin", "msp", "signcerts", fmt.Sprintf("Admin@Org%d-cert.pem", orgNum))
+	certBytes, err := os.ReadFile(certPath)
+	require.NoError(t, err)
+	require.NotNil(t, certBytes)
+
+	// Create the config transaction
+	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
+	env := createConfigTX(t, dir, numOfParties, genesisBlockPath, signer, certBytes, fmt.Sprintf("org%d", orgNum))
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTx(env)
+	require.NoError(t, err)
+
+	// Pull from assembler
+	parties := []types.PartyID{}
+	for partyID := 1; partyID <= numOfParties; partyID++ {
+		parties = append(parties, types.PartyID(partyID))
+	}
+
+	startBlock := uint64(0)
+	endBlock := uint64(1)
+
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    parties,
+		StartBlock: startBlock,
+		EndBlock:   endBlock,
+		Blocks:     2,
+		ErrString:  "cancelled pull from assembler: %d",
+	})
+
+	// Check config store size of routers
+	for i := 0; i < numOfParties; i++ {
+		localConfigPath := armaNetwork.GetRouter(t, types.PartyID(i+1)).RunInfo.NodeConfigPath
+		localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
+		require.Eventually(t, func() bool {
+			configStore, err := configstore.NewStore(localConfig.FileStore.Path)
+			require.NoError(t, err)
+			listBlockNumbers, err := configStore.ListBlockNumbers()
+			require.NoError(t, err)
+			routerConfigCount := len(listBlockNumbers)
+			return routerConfigCount == 2
+		}, 60*time.Second, 100*time.Millisecond)
+	}
+
+	// Check config store size of batchers
+	for i := 0; i < numOfParties; i++ {
+		for j := 0; j < numOfShards; j++ {
+			batcher := armaNetwork.GetBatcher(t, types.PartyID(i+1), types.ShardID(j+1))
+			localConfigPath := batcher.RunInfo.NodeConfigPath
+			localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
+			require.Eventually(t, func() bool {
+				configStore, err := configstore.NewStore(localConfig.FileStore.Path)
+				require.NoError(t, err)
+				listBlockNumbers, err := configStore.ListBlockNumbers()
+				require.NoError(t, err)
+				batcherConfigCount := len(listBlockNumbers)
+				return batcherConfigCount == 2
+			}, 60*time.Second, 100*time.Millisecond)
+		}
+	}
+
+	armaNetwork.Stop()
+
+	// Check ledger height of consenters
+	for i := 0; i < numOfParties; i++ {
+		localConfigPath := armaNetwork.GetConsenter(t, types.PartyID(i+1)).RunInfo.NodeConfigPath
+		localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
+		require.Eventually(t, func() bool {
+			consensusLedger, err := ledger.NewConsensusLedger(localConfig.FileStore.Path)
+			require.NoError(t, err)
+			defer consensusLedger.Close()
+			consensusLedgerCount := consensusLedger.Height()
+			return consensusLedgerCount == 2
+		}, 60*time.Second, 100*time.Millisecond)
+	}
+}
+
+func CreateSigner(privateKeyPath string) (*crypto.ECDSASigner, error) {
+	// Read the private key
+	keyBytes, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key, err: %v", err)
+	}
+
+	// Create a ECDSA Singer
+	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ECDSA Signer, err: %v", err)
+	}
+
+	return (*crypto.ECDSASigner)(privateKey), nil
+}
+
+func createConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath string, signer identity.SignerSerializer, signerCert []byte, org string) *common.Envelope {
+	// Create ConfigUpdateBytes
+	configUpdatePbBytes := CreateConfigUpdate(t, dir, genesisBlockPath)
+	require.NotNil(t, configUpdatePbBytes)
+
+	// create ConfigUpdateEnvelope
+	configUpdateEnvelope := &common.ConfigUpdateEnvelope{
+		ConfigUpdate: configUpdatePbBytes,
+		Signatures:   []*common.ConfigSignature{},
+	}
+
+	// sign with majority admins (for 4 parties the majority is 3)
+	for i := 0; i < (numOfParties/2)+1; i++ {
+		// Read admin of organization i
+		keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "admin", "msp", "keystore", "priv_sk")
+		adminSigner, err := CreateSigner(keyPath)
+		require.NoError(t, err)
+		require.NotNil(t, adminSigner)
+
+		certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "admin", "msp", "signcerts", fmt.Sprintf("Admin@Org%d-cert.pem", i+1))
+		adminCertBytes, err := os.ReadFile(certPath)
+		require.NoError(t, err)
+		require.NotNil(t, adminCertBytes)
+
+		sId := &msp.SerializedIdentity{
+			Mspid:   fmt.Sprintf("org%d", i+1),
+			IdBytes: adminCertBytes,
+		}
+
+		sigHeader, err := protoutil.NewSignatureHeader(adminSigner)
+		require.NoError(t, err)
+
+		sigHeader.Creator = protoutil.MarshalOrPanic(sId)
+
+		configSig := &common.ConfigSignature{
+			SignatureHeader: protoutil.MarshalOrPanic(sigHeader),
+		}
+		configSig.Signature, err = adminSigner.Sign(util.ConcatenateBytes(configSig.SignatureHeader, configUpdateEnvelope.ConfigUpdate))
+		require.NoError(t, err)
+
+		configUpdateEnvelope.Signatures = append(configUpdateEnvelope.Signatures, configSig)
+	}
+
+	configUpdateEnvelopeBytes, err := proto.Marshal(configUpdateEnvelope)
+	require.NoError(t, err)
+
+	// Wrap the ConfigUpdateEnvelope with an Envelope signed by the admin
+	payload := tx.CreatePayloadWithConfigUpdate(configUpdateEnvelopeBytes, signerCert, org)
+	require.NotNil(t, payload)
+	env, err := tx.CreateSignedEnvelope(payload, signer)
+	require.NoError(t, err)
+	require.NotNil(t, env)
+
+	return env
 }

@@ -10,7 +10,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/asn1"
-	"fmt"
 	"math/big"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/utils"
@@ -25,8 +24,9 @@ func (s ECDSASigner) Sign(message []byte) ([]byte, error) {
 	return signECDSA(&sk, digest)
 }
 
+// Serialize is called when a SignatureHeader.Creator is created. Since this creator is placeholder, the SignatureHeader.Creator must be updated with correct creator.
 func (s ECDSASigner) Serialize() ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
+	return []byte("creator"), nil
 }
 
 func signECDSA(k *ecdsa.PrivateKey, digest []byte) (signature []byte, err error) {

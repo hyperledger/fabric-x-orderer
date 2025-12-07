@@ -98,7 +98,7 @@ func (armaNetwork *ArmaNetwork) GetBatcher(t *testing.T, partyID types.PartyID, 
 
 func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}, numOfParties int) {
 	require.FileExists(t, armaNodeInfo.RunInfo.NodeConfigPath)
-	nodeConfig := readNodeConfigFromYaml(t, armaNodeInfo.RunInfo.NodeConfigPath)
+	nodeConfig := ReadNodeConfigFromYaml(t, armaNodeInfo.RunInfo.NodeConfigPath)
 	storagePath := nodeConfig.FileStore.Path
 	require.DirExists(t, storagePath)
 
