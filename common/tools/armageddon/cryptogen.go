@@ -348,8 +348,17 @@ func createAdminSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.Party
 	if err != nil {
 		return fmt.Errorf("err: %s, failed creating private key for admin of org %d", err, partyID)
 	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for admin of party %d", err, partyID)
+	}
 
 	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "msp", "admincerts"), fmt.Sprintf("Admin@Org%d", partyID), []string{msp.ADMINOU}, nil, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	err = copyPEMFiles(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "msp", "admincerts"), filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "admin", "msp", "signcerts"))
+	if err != nil {
+		return err
+	}
+	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "admin", "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -420,6 +429,13 @@ func generateOrdererOrg(rootDir string, folders []string, partyID int, shards in
 		folders = append(folders, filepath.Join(userMSPPath, subDir))
 	}
 	folders = append(folders, filepath.Join(orgDir, "users", "user", "tls"))
+
+	adminUserMSPPath := filepath.Join(orgDir, "users", "admin", "msp")
+	folders = append(folders, adminUserMSPPath)
+	for _, subDir := range mspSubDirs {
+		folders = append(folders, filepath.Join(adminUserMSPPath, subDir))
+	}
+	folders = append(folders, filepath.Join(orgDir, "users", "admin", "tls"))
 
 	return folders
 }
