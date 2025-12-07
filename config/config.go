@@ -77,7 +77,6 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed creating %s config store: %s", nodeRole, err)
 			}
-
 			listBlockNumbers, err := configStore.ListBlockNumbers()
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to list blocks from %s config store: %s", nodeRole, err)
@@ -101,22 +100,13 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create assembler ledger instance: %s", err)
 			}
+			defer assemblerLedger.Close()
 			if assemblerLedger.LedgerReader().Height() > 0 {
-				lastBlockIdx := assemblerLedger.LedgerReader().Height() - 1
-				lastBlock, err := assemblerLedger.LedgerReader().RetrieveBlockByNumber(lastBlockIdx)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to retrieve last block from assembler ledger: %s", err)
-				}
-				index, err := protoutil.GetLastConfigIndexFromBlock(lastBlock)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to get last config index from assebmler's last block: %s", err)
-				}
-				lastConfigBlock, err = assemblerLedger.LedgerReader().RetrieveBlockByNumber(index)
+				lastConfigBlock, err = node_ledger.GetLastConfigBlockFromAssemblerLedger(assemblerLedger)
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to retrieve last config block from assembler ledger: %s", err)
 				}
 			}
-			assemblerLedger.Close()
 		}
 
 		// If node is consensus, get the last decision from the ledger, extract the decision number of the last config block and get the last available block from it.
@@ -125,11 +115,12 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create consensus ledger instance: %s", err)
 			}
+			defer consensusLedger.Close()
+
 			lastConfigBlock, err = GetLastConfigBlockFromConsensusLedger(consensusLedger, logger)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to get the last config block from consensus ledger instance: %s", err)
 			}
-			consensusLedger.Close()
 		}
 
 		if lastConfigBlock == nil {
