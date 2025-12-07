@@ -20,13 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCreateConfigBlockNUpdate(t *testing.T) {
-	// Compile configtxlator tool
-	configtxlatorPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-common/cmd/configtxlator", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	require.NoError(t, err)
-	require.NotNil(t, configtxlatorPath)
-	defer gexec.CleanupBuildArtifacts()
-
+func TestCreateConfigBlockUpdate(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -39,9 +33,27 @@ func TestCreateConfigBlockNUpdate(t *testing.T) {
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
+	// Create config update
+	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
+	configUpdatePbData := CreateConfigUpdate(t, dir, genesisBlockPath)
+	require.NotEmpty(t, configUpdatePbData)
+
+	// Create a dummy config update envelope
+	configUpdateEnvelope := tx.CreateStructuredConfigUpdateEnvelope(configUpdatePbData)
+	require.NotNil(t, configUpdateEnvelope)
+}
+
+// TODO: enable update options
+func CreateConfigUpdate(t *testing.T, dir string, genesisBlockPath string) []byte {
+	// Compile configtxlator tool
+	configtxlatorPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-common/cmd/configtxlator", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, configtxlatorPath)
+	defer gexec.CleanupBuildArtifacts()
+
 	// Decode the genesis block from proto to json representation
 	jsonPath := filepath.Join(dir, "config_block.json")
-	cmd := exec.Command(configtxlatorPath, "proto_decode", "--input", filepath.Join(dir, "bootstrap/bootstrap.block"), "--type", "common.Block", "--output", jsonPath)
+	cmd := exec.Command(configtxlatorPath, "proto_decode", "--input", genesisBlockPath, "--type", "common.Block", "--output", jsonPath)
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, "Command failed with output: %s", string(output))
 	require.FileExists(t, jsonPath)
@@ -101,9 +113,7 @@ func TestCreateConfigBlockNUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, configUpdatePbData)
 
-	// Create a dummy config update envelope
-	configUpdateEnvelope := tx.CreateStructuredConfigUpdateEnvelope(configUpdatePbData)
-	require.NotNil(t, configUpdateEnvelope)
+	return configUpdatePbData
 }
 
 func getNestedJSONValue(data map[string]any, path ...string) any {

@@ -41,7 +41,7 @@ const (
 
 // EditDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string) {
-	nodeConfig := readNodeConfigFromYaml(t, path)
+	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
 	nodeConfig.GeneralConfig.MonitoringListenPort = 0
 	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
@@ -53,13 +53,13 @@ func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string
 // This variable holds the key store path which is the local msp path and is initialized once with the local msp of the first node.
 // To avoid conflicts and access to wrong directories, we can override the local msp field to be the same.
 func EditLocalMSPDirForNode(t *testing.T, path string, localMSPPath string) {
-	nodeConfig := readNodeConfigFromYaml(t, path)
+	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.GeneralConfig.LocalMSPDir = localMSPPath
 	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
 	require.NoError(t, err)
 }
 
-func readNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
+func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
 	config := config.NodeLocalConfig{}

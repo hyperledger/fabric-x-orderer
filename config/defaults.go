@@ -42,6 +42,7 @@ var DefaultArmaBFTConfig = func() smartbft_types.Configuration {
 
 	config.RequestBatchMaxInterval = time.Millisecond * 500
 	config.RequestForwardTimeout = time.Second * 10
+	config.RequestMaxBytes = config.RequestMaxBytes * 10
 	config.DecisionsPerLeader = 0
 	config.LeaderRotation = false
 	config.IncomingMessageBufferSize = 10000

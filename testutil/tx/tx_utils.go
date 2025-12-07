@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"google.golang.org/protobuf/proto"
@@ -70,17 +71,6 @@ func CreateStructuredEnvelope(data []byte) *common.Envelope {
 	}
 }
 
-// CreateSignedEnvelope creates a dummy data transaction signed by a private key of a client.
-func CreateSignedEnvelope(payloadData []byte, signer *crypto.ECDSASigner) (*common.Envelope, error) {
-	payload := createStructuredPayload(payloadData, common.HeaderType_MESSAGE)
-	payloadBytes := deterministicMarshall(payload)
-	signedEnvelope, err := signEnvelope(payloadBytes, signer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign envelope")
-	}
-	return signedEnvelope, nil
-}
-
 func CreateECDSAPrivateKey(privateKeyBytes []byte) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode(privateKeyBytes)
 	if block == nil || block.Bytes == nil {
@@ -97,19 +87,6 @@ func CreateECDSAPrivateKey(privateKeyBytes []byte) (*ecdsa.PrivateKey, error) {
 	}
 
 	return priv.(*ecdsa.PrivateKey), nil
-}
-
-func signEnvelope(payload []byte, signer *crypto.ECDSASigner) (*common.Envelope, error) {
-	signature, err := signer.Sign(payload)
-	if err != nil {
-		return nil, err
-	}
-
-	envelope := &common.Envelope{
-		Payload:   payload,
-		Signature: signature,
-	}
-	return envelope, nil
 }
 
 func CreateStructuredConfigUpdateEnvelope(data []byte) *common.Envelope {
@@ -260,4 +237,38 @@ func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *c
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
 	}
+}
+
+func CreatePayloadWithConfigUpdate(data []byte, certBytes []byte, org string) *common.Payload {
+	payloadChannelHeader := createChannelHeader(common.HeaderType_CONFIG_UPDATE, 0, "arma", 0)
+
+	sId := msp.SerializedIdentity{
+		Mspid:   org,
+		IdBytes: certBytes,
+	}
+
+	payloadSignatureHeader := &common.SignatureHeader{
+		Creator: deterministicMarshall(&sId),
+		Nonce:   []byte("nonce"),
+	}
+
+	return &common.Payload{
+		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
+		Data:   data,
+	}
+}
+
+func CreateSignedEnvelope(payload *common.Payload, signer identity.SignerSerializer) (*common.Envelope, error) {
+	payloadBytes := deterministicMarshall(payload)
+	sig, err := signer.Sign(payloadBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	env := &common.Envelope{
+		Payload:   payloadBytes,
+		Signature: sig,
+	}
+
+	return env, nil
 }
