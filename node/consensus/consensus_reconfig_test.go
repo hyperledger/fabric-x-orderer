@@ -9,7 +9,6 @@ package consensus_test
 import (
 	"testing"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -80,16 +79,7 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	require.NoError(t, err)
 
 	block := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
-	env, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[0])
-	require.NotNil(t, env)
-	require.NoError(t, err)
-	payload, err := protoutil.UnmarshalPayload(env.Payload)
-	require.NoError(t, err)
-	require.NotNil(t, payload)
-	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
-	require.NoError(t, err)
-	require.NotNil(t, chdr)
-	require.Equal(t, chdr.Type, int32(common.HeaderType_CONFIG))
+	require.True(t, protoutil.IsConfigBlock(block))
 	require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
 
 	setup.consensusNodes[0].Stop()
