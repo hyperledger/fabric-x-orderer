@@ -158,7 +158,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 	return networkSharedConfig, sharedConfigPath
 }
 
-func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener, numOfParties int) *gexec.Session {
+func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener) *gexec.Session {
 	listener.Close()
 	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
 	require.NotNil(t, cmd)
@@ -220,7 +220,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		require.NoError(t, err)
 
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
-		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener, numOfParties)
+		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
 		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, &netNode)
 	}

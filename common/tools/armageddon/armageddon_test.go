@@ -327,7 +327,7 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	// restart router
 	time.Sleep(10 * time.Second)
 	t.Log("Restart Router")
-	armaNetwork.GetRouter(t, 1).RestartArmaNode(t, readyChan, 4)
+	armaNetwork.GetRouter(t, 1).RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
 	waitForTxToBeSentAndReceived.Wait()

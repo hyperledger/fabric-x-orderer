@@ -175,7 +175,7 @@ func TestRouterRestartRecover(t *testing.T) {
 	})
 
 	// 9. Restart the secondary router.
-	routerToStop.RestartArmaNode(t, readyChan, numOfParties)
+	routerToStop.RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
 	for i := 0; i < totalTxNumber; i++ {
@@ -243,7 +243,7 @@ func TestRouterRestartRecover(t *testing.T) {
 	})
 
 	// 13. Restart the primary router.
-	primaryRouterToStop.RestartArmaNode(t, readyChan, numOfParties)
+	primaryRouterToStop.RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
 	for i := 0; i < totalTxNumber; i++ {

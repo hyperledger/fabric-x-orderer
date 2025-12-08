@@ -97,7 +97,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	waitForTxSent.Wait()
 
 	// 7 + 8.
-	nodeToRestart.RestartArmaNode(t, readyChan, 4)
+	nodeToRestart.RestartArmaNode(t, readyChan)
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
