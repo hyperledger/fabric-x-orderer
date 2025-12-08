@@ -91,7 +91,7 @@ func (p *Prefetcher) handleReplication(shard types.ShardID) {
 			return
 		case batch, ok := <-batches:
 			if ok {
-				p.logger.Infof("Got batch %s", BatchToString(batch))
+				p.logger.Debugf("Got batch %s", BatchToString(batch))
 				err := p.prefetchIndex.Put(batch)
 				if err != nil {
 					p.logger.Errorf("Failed to put batch from shard %d, error: %v", shard, err)
