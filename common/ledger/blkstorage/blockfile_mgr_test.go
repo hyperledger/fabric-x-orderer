@@ -11,8 +11,8 @@ import (
 	"os"
 	"testing"
 
+	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
@@ -255,7 +255,7 @@ func TestBlockfileMgrGetTxByIdDuplicateTxid(t *testing.T) {
 		},
 		[]string{"txid-1", "txid-2", "txid-1"},
 	)
-	txValidationFlags := txflags.New(3)
+	txValidationFlags := xcommon_txflags.New(3)
 	txValidationFlags.SetFlag(0, peer.TxValidationCode_VALID)
 	txValidationFlags.SetFlag(1, peer.TxValidationCode_INVALID_OTHER_REASON)
 	txValidationFlags.SetFlag(2, peer.TxValidationCode_DUPLICATE_TXID)
@@ -269,7 +269,7 @@ func TestBlockfileMgrGetTxByIdDuplicateTxid(t *testing.T) {
 		},
 		[]string{"txid-3", "txid-1"},
 	)
-	txValidationFlags = txflags.New(2)
+	txValidationFlags = xcommon_txflags.New(2)
 	txValidationFlags.SetFlag(0, peer.TxValidationCode_VALID)
 	txValidationFlags.SetFlag(1, peer.TxValidationCode_DUPLICATE_TXID)
 	block2.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txValidationFlags
