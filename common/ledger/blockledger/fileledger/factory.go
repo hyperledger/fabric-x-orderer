@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
-	"github.com/hyperledger/fabric/orderer/common/filerepo"
+	"github.com/hyperledger/fabric-x-orderer/common/filerepo"
 )
 
 //go:generate counterfeiter -o mock/block_store_provider.go --fake-name BlockStoreProvider . blockStoreProvider
