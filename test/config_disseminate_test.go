@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/util"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
@@ -223,7 +222,6 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	configPath := filepath.Join(dir, "config.yaml")
 	numOfParties := 4
 	numOfShards := 2
-	orgNum := 1
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
 	require.NoError(t, err)
 	numOfArmaNodes := len(netInfo)
@@ -247,20 +245,10 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	// Prepare a Config TX, i.e. an envelope signed by an admin of org1
 	// the envelope.Payload contains marshaled bytes of configUpdateEnvelope, which is an envelope with Header.Type = HeaderType_CONFIG_UPDATE, signed by majority of admins
 
-	// Create an admin signer serves as the client which signs the config transaction
-	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", orgNum), "users", "admin", "msp", "keystore", "priv_sk")
-	signer, err := CreateSigner(keyPath)
-	require.NoError(t, err)
-	require.NotNil(t, signer)
-
-	certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", orgNum), "users", "admin", "msp", "signcerts", fmt.Sprintf("Admin@Org%d-cert.pem", orgNum))
-	certBytes, err := os.ReadFile(certPath)
-	require.NoError(t, err)
-	require.NotNil(t, certBytes)
-
 	// Create the config transaction
+	submittingOrg := 1
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	env := createConfigTX(t, dir, numOfParties, genesisBlockPath, signer, certBytes, fmt.Sprintf("org%d", orgNum))
+	env := createConfigTX(t, dir, numOfParties, genesisBlockPath, submittingOrg)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -348,7 +336,7 @@ func CreateSigner(privateKeyPath string) (*crypto.ECDSASigner, error) {
 	return (*crypto.ECDSASigner)(privateKey), nil
 }
 
-func createConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath string, signer identity.SignerSerializer, signerCert []byte, org string) *common.Envelope {
+func createConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath string, org int) *common.Envelope {
 	// Create ConfigUpdateBytes
 	configUpdatePbBytes := CreateConfigUpdate(t, dir, genesisBlockPath)
 	require.NotNil(t, configUpdatePbBytes)
@@ -358,6 +346,9 @@ func createConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath
 		ConfigUpdate: configUpdatePbBytes,
 		Signatures:   []*common.ConfigSignature{},
 	}
+
+	var submittingAdminSigner *crypto.ECDSASigner
+	var submittingAdminCert []byte
 
 	// sign with majority admins (for 4 parties the majority is 3)
 	for i := 0; i < (numOfParties/2)+1; i++ {
@@ -371,6 +362,11 @@ func createConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath
 		adminCertBytes, err := os.ReadFile(certPath)
 		require.NoError(t, err)
 		require.NotNil(t, adminCertBytes)
+
+		if org == i+1 {
+			submittingAdminSigner = adminSigner
+			submittingAdminCert = adminCertBytes
+		}
 
 		sId := &msp.SerializedIdentity{
 			Mspid:   fmt.Sprintf("org%d", i+1),
@@ -395,9 +391,9 @@ func createConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath
 	require.NoError(t, err)
 
 	// Wrap the ConfigUpdateEnvelope with an Envelope signed by the admin
-	payload := tx.CreatePayloadWithConfigUpdate(configUpdateEnvelopeBytes, signerCert, org)
+	payload := tx.CreatePayloadWithConfigUpdate(configUpdateEnvelopeBytes, submittingAdminCert, fmt.Sprintf("org%d", org))
 	require.NotNil(t, payload)
-	env, err := tx.CreateSignedEnvelope(payload, signer)
+	env, err := tx.CreateSignedEnvelope(payload, submittingAdminSigner)
 	require.NoError(t, err)
 	require.NotNil(t, env)
 
