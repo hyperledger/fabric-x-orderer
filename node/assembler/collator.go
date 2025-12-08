@@ -67,7 +67,7 @@ func (c *Collator) processOrderedBatchAttestations() {
 
 	orderedBatchAttestationsChan := c.OrderedBatchAttestationReplicator.Replicate()
 	for oba := range orderedBatchAttestationsChan {
-		c.Logger.Infof("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInformation.String())
+		c.Logger.Debugf("Received ordered batch attestation with BatchID: %s; OrderingInfo: %s", types.BatchIDToString(oba.BatchAttestation()), oba.OrderingInformation.String())
 
 		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
 			orderingInfo := oba.OrderingInformation
@@ -99,6 +99,6 @@ func (c *Collator) collateAttestationWithBatch(ba types.BatchAttestation) (types
 	if err != nil {
 		return nil, err
 	}
-	c.Logger.Infof("Retrieved full batch with %d requests from index within %s, BatchID: %s", len(batch.Requests()), time.Since(t1), types.BatchIDToString(ba))
+	c.Logger.Debugf("Retrieved full batch with %d requests from index within %s, BatchID: %s", len(batch.Requests()), time.Since(t1), types.BatchIDToString(ba))
 	return batch, nil
 }
