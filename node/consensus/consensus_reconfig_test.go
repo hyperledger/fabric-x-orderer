@@ -166,16 +166,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 		require.Equal(t, digest124, dataBlock.Header.DataHash)
 
 		configBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
-		env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
-		require.NotNil(t, env)
-		require.NoError(t, err)
-		payload, err := protoutil.UnmarshalPayload(env.Payload)
-		require.NoError(t, err)
-		require.NotNil(t, payload)
-		chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
-		require.NoError(t, err)
-		require.NotNil(t, chdr)
-		require.Equal(t, chdr.Type, int32(common.HeaderType_CONFIG))
+		require.True(t, protoutil.IsConfigBlock(configBlock))
 		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
 	}
 
