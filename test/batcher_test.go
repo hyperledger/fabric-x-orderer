@@ -257,7 +257,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 	// 6.
 	t.Logf("Restarting Batcher: party %d", primaryBatcher.PartyId)
 	// restart the batcher
-	primaryBatcher.RestartArmaNode(t, readyChan, numOfParties)
+	primaryBatcher.RestartArmaNode(t, readyChan)
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
@@ -474,7 +474,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 	// 6.
 	t.Logf("Restarting Batcher %d of party %d", secondaryBatcher.PartyId, secondaryBatcher.PartyId)
 	// restart the batcher
-	secondaryBatcher.RestartArmaNode(t, readyChan, numOfParties)
+	secondaryBatcher.RestartArmaNode(t, readyChan)
 
 	testutil.WaitReady(t, readyChan, 1, 10)
 
