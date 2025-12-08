@@ -13,9 +13,9 @@ import (
 	"sort"
 	"testing"
 
+	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/snapshot"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
@@ -438,7 +438,7 @@ func generateNextTestBlock(bg *testutil.BlockGenerator, d *testBlockDetails) *co
 	}
 	block := bg.NextBlockWithTxid(txContents, d.txIDs)
 	for i, validationCode := range d.validationCodes {
-		txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]).SetFlag(i, validationCode)
+		xcommon_txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]).SetFlag(i, validationCode)
 	}
 	return block
 }

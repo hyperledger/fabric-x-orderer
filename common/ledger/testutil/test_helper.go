@@ -14,14 +14,12 @@ import (
 
 	"github.com/hyperledger/fabric/common/genesis"
 
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil/fakes"
-	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/encoder"
-	"github.com/hyperledger/fabric-x-orderer/internal/configtxgen/genesisconfig"
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/txflags"
-
 	"github.com/hyperledger/fabric-lib-go/bccsp/sw"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	pb "github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	xcommon_configtxgen "github.com/hyperledger/fabric-x-common/tools/configtxgen"
+	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil/fakes"
 	"github.com/hyperledger/fabric/common/crypto"
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
@@ -81,8 +79,8 @@ type signingIdentity interface {
 
 // MakeGenesisBlock creates a genesis block using the test templates for the given channelID
 func MakeGenesisBlock(channelID string) (*common.Block, error) {
-	profile := genesisconfig.Load(genesisconfig.SampleDevModeSoloProfile, arma_testutil.GetDevConfigDir())
-	channelGroup, err := encoder.NewChannelGroup(profile)
+	profile := xcommon_configtxgen.Load(xcommon_configtxgen.SampleDevModeSoloProfile, arma_testutil.GetDevConfigDir())
+	channelGroup, err := xcommon_configtxgen.NewChannelGroup(profile)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating channel config: %s", err))
 	}
@@ -92,7 +90,7 @@ func MakeGenesisBlock(channelID string) (*common.Block, error) {
 		return gb, nil
 	}
 
-	txsFilter := txflags.NewWithValues(len(gb.Data.Data), pb.TxValidationCode_VALID)
+	txsFilter := xcommon_txflags.NewWithValues(len(gb.Data.Data), pb.TxValidationCode_VALID)
 	gb.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txsFilter
 
 	return gb, nil
@@ -102,7 +100,7 @@ func MakeGenesisBlock(channelID string) (*common.Block, error) {
 func NewBlockGenerator(t *testing.T, ledgerID string, signTxs bool) (*BlockGenerator, *common.Block) {
 	gb, err := MakeGenesisBlock(ledgerID)
 	require.NoError(t, err)
-	gb.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txflags.NewWithValues(len(gb.Data.Data), pb.TxValidationCode_VALID)
+	gb.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = xcommon_txflags.NewWithValues(len(gb.Data.Data), pb.TxValidationCode_VALID)
 	return &BlockGenerator{1, protoutil.BlockHeaderHash(gb.GetHeader()), signTxs, t}, gb
 }
 
@@ -141,7 +139,7 @@ func (bg *BlockGenerator) NextTestBlocks(numBlocks int) []*common.Block {
 	numTx := 10
 	for i := 0; i < numBlocks; i++ {
 		block := bg.NextTestBlock(numTx, 100)
-		block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txflags.NewWithValues(numTx, pb.TxValidationCode_VALID)
+		block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = xcommon_txflags.NewWithValues(numTx, pb.TxValidationCode_VALID)
 		blocks = append(blocks, block)
 	}
 	return blocks
@@ -336,7 +334,7 @@ func NewBlock(env []*common.Envelope, blockNum uint64, previousHash []byte) *com
 	block.Header.DataHash = protoutil.ComputeBlockDataHash(block.Data)
 	protoutil.InitBlockMetadata(block)
 
-	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txflags.NewWithValues(len(env), pb.TxValidationCode_VALID)
+	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = xcommon_txflags.NewWithValues(len(env), pb.TxValidationCode_VALID)
 
 	return block
 }
