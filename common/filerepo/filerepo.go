@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/internal/fileutil"
+	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/pkg/errors"
 )
 
