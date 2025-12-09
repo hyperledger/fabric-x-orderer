@@ -26,6 +26,7 @@ import (
 // ConfigUpdateProposer defines how to handle config update authorization and verification.
 type ConfigUpdateProposer interface {
 	ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error)
+	AuthorizeAndVerifyConfigUpdate(envelope *cb.Envelope, bundle channelconfig.Resources) (*cb.ConfigEnvelope, error)
 }
 
 type DefaultConfigUpdateProposer struct{}
@@ -36,10 +37,19 @@ type DefaultConfigUpdateProposer struct{}
 // When a config update is sent to the Router, ProposeConfigUpdate is called and the Router drops the signed envelope and forward the original request to the consensus.
 // The consensus nodes apply the same validation checks and the leader proposes the config transaction signed by himself.
 func (cp *DefaultConfigUpdateProposer) ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
-	configRequest, err := AuthorizeAndVerifyConfigUpdateRequest(request, bundle, signer, verifier)
+	configEnvelope, err := cp.AuthorizeAndVerifyConfigUpdate(&cb.Envelope{
+		Payload:   request.Payload,
+		Signature: request.Signature,
+	}, bundle)
 	if err != nil {
-		return configRequest, fmt.Errorf("failed authorizing and verifying config update reqest, err: %s", err)
+		return nil, fmt.Errorf("failed authorizing and verifying config update reqest, err: %s", err)
 	}
+
+	configRequest, err := BuildVerifiedConfigRequest(request, configEnvelope, bundle, signer, verifier)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating a verified config request, err: %s", err)
+	}
+
 	return configRequest, nil
 }
 
@@ -85,12 +95,9 @@ func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelcon
 	return bundle, nil
 }
 
-func AuthorizeAndVerifyConfigUpdateRequest(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
+func (cp *DefaultConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(envelope *cb.Envelope, bundle channelconfig.Resources) (*cb.ConfigEnvelope, error) {
 	// validates that all modified config has the corresponding modification policies satisfied by the signature set
-	configEnvelope, err := bundle.ConfigtxValidator().ProposeConfigUpdate(&cb.Envelope{
-		Payload:   request.Payload,
-		Signature: request.Signature,
-	})
+	configEnvelope, err := bundle.ConfigtxValidator().ProposeConfigUpdate(envelope)
 	if err != nil {
 		return nil, fmt.Errorf("error applying config update to %s, err: %s", bundle.ConfigtxValidator().ChannelID(), err)
 	}
@@ -105,6 +112,10 @@ func AuthorizeAndVerifyConfigUpdateRequest(request *protos.Request, bundle chann
 	// TODO: validate ConsensusMetadata (shared config)
 	// TODO: validate old channel/application against old channel/application
 
+	return configEnvelope, nil
+}
+
+func BuildVerifiedConfigRequest(request *protos.Request, configEnvelope *cb.ConfigEnvelope, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
 	// Wrap the config envelope and sign, prepare a matching request
 	config, err := protoutil.CreateSignedEnvelope(cb.HeaderType_CONFIG, bundle.ConfigtxValidator().ChannelID(), signer, configEnvelope, int32(0), 0)
 	if err != nil {
