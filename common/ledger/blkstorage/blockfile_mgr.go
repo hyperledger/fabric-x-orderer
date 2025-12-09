@@ -13,8 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
-	"github.com/hyperledger/fabric-x-orderer/internal/fileutil"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
