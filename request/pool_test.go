@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type reqInspector struct{}
@@ -260,8 +261,13 @@ func TestBasicBatching(t *testing.T) {
 	assert.NoError(t, pool.Submit(byteReq4))
 	assert.NoError(t, pool.Submit(byteReq5))
 
-	res = pool.NextRequests(ctx)
-	assert.Len(t, res, 2)
+	ctx3, cancel3 := context.WithTimeout(context.Background(), time.Second)
+	defer cancel3()
+
+	require.Eventually(t, func() bool {
+		res = pool.NextRequests(ctx3)
+		return len(res) == 2
+	}, 10*time.Second, 100*time.Millisecond)
 
 	pool.Close()
 
@@ -284,13 +290,18 @@ func TestBasicBatching(t *testing.T) {
 	assert.NoError(t, pool.Submit(byteReq4))
 	assert.NoError(t, pool.Submit(byteReq5))
 
-	res = pool.NextRequests(ctx)
-	assert.Len(t, res, 2)
+	ctx4, cancel4 := context.WithTimeout(context.Background(), time.Second)
+	defer cancel4()
+
+	require.Eventually(t, func() bool {
+		res = pool.NextRequests(ctx4)
+		return len(res) == 2
+	}, 10*time.Second, 100*time.Millisecond)
 
 	pool.Close()
 }
 
-func TestBasicBatchingWhileSubmitting(t *testing.T) {
+func TestBatchingWhileSubmitting(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 
 	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
@@ -336,7 +347,7 @@ func TestBasicBatchingWhileSubmitting(t *testing.T) {
 	pool.Close()
 }
 
-func TestBasicBatchingTimeout(t *testing.T) {
+func TestBatchingTimeout(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 
 	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
@@ -423,8 +434,20 @@ func TestBasicPrune(t *testing.T) {
 
 	pool.Restart(true)
 
-	res = pool.NextRequests(ctx)
-	assert.Len(t, res, 2)
+	for i := 10; i < 12; i++ {
+		iStr := fmt.Sprintf("%d", i)
+		byteReq := makeTestRequest(iStr, "foo")
+		err := pool.Submit(byteReq)
+		assert.NoError(t, err)
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second)
+	defer cancel2()
+
+	require.Eventually(t, func() bool {
+		res = pool.NextRequests(ctx2)
+		return len(res) == 4 // ID = 5, 6, 10 ,11
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func makeTestRequest(txID, data string) []byte {
