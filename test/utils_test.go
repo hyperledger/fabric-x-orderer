@@ -90,11 +90,14 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes) {
+func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*zap.SugaredLogger) {
 	var routers []*router.Router
 	var certs []node_config.RawBytes
+	var configs []*node_config.RouterNodeConfig
+	var loggers []*zap.SugaredLogger
 	for i := 0; i < num; i++ {
 		l := testutil.CreateLogger(t, i)
+		loggers = append(loggers, l)
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
 
@@ -127,6 +130,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 			Bundle:                              bundle,
 			Consenter:                           node_config.ConsenterInfo{PartyID: types.PartyID(i + 1), Endpoint: consenterEndpoint, TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
 		}
+		configs = append(configs, config)
 
 		certs = append(certs, kp.Cert)
 
@@ -137,13 +141,14 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		routers = append(routers, router)
 	}
 
-	return routers, certs
+	return routers, certs, configs, loggers
 }
 
-func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*zap.SugaredLogger, func()) {
+func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*zap.SugaredLogger, func()) {
 	var assemblerDirs []string
 	var assemblers []*assembler.Assembler
 	var loggers []*zap.SugaredLogger
+	var configs []*node_config.AssemblerNodeConfig
 
 	for i := 0; i < num; i++ {
 		ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -169,6 +174,7 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 			UseTLS:                    true,
 			ClientAuthRequired:        false,
 		}
+		configs = append(configs, assemblerConf)
 
 		logger := testutil.CreateLogger(t, i+1)
 		loggers = append(loggers, logger)
@@ -185,16 +191,17 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 		}()
 	}
 
-	return assemblers, assemblerDirs, loggers, func() {
+	return assemblers, assemblerDirs, configs, loggers, func() {
 		for i := range assemblers {
 			assemblers[i].Stop()
 		}
 	}
 }
 
-func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, func()) {
+func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*zap.SugaredLogger, func()) {
 	var consensuses []*consensus.Consensus
-	var cleans []func()
+	var loggers []*zap.SugaredLogger
+	var configs []*node_config.ConsenterNodeConfig
 
 	for i := 0; i < num; i++ {
 
@@ -203,16 +210,12 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		partyID := types.PartyID(i + 1)
 
 		logger := testutil.CreateLogger(t, int(partyID))
+		loggers = append(loggers, logger)
 
 		sk, err := x509.MarshalPKCS8PrivateKey(consenterNodes[i].sk)
 		require.NoError(t, err)
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-consenter%d", t.Name(), i+1))
-		require.NoError(t, err)
-
-		cleans = append(cleans, func() {
-			defer os.RemoveAll(dir)
-		})
+		dir := t.TempDir()
 
 		BFTConfig := config.DefaultArmaBFTConfig()
 		BFTConfig.SelfID = uint64(partyID)
@@ -238,6 +241,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			MonitoringListenAddress:             "127.0.0.1:0",
 			MetricsLogInterval:                  5 * time.Second,
 		}
+		configs = append(configs, conf)
 
 		net := consenterNodes[i].GRPCServer
 		signer := crypto.ECDSASigner(*consenterNodes[i].sk)
@@ -258,9 +262,8 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		t.Log("Consenter gRPC service listening on", consenterNodes[i].Address())
 	}
 
-	return consensuses, func() {
-		for i, clean := range cleans {
-			clean()
+	return consensuses, configs, loggers, func() {
+		for i := range consensuses {
 			consensuses[i].Stop()
 		}
 	}
@@ -402,7 +405,7 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 	return result
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf *node_config.BatcherNodeConfig, batcherNode *node) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *zap.SugaredLogger) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -430,12 +433,79 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 
 	go func() {
 		err := newBatcherNode.Start()
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 	}()
 
 	return batcher
+}
+
+func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *zap.SugaredLogger, lastConfigBlock *common.Block) *consensus.Consensus {
+	newConsenterNode := &node{
+		TLSCert: consenterNode.TLSCert,
+		TLSKey:  consenterNode.TLSKey,
+		sk:      consenterNode.sk,
+		pk:      consenterNode.pk,
+	}
+	var err error
+
+	kp := &tlsgen.CertKeyPair{
+		Key:  newConsenterNode.TLSKey,
+		Cert: newConsenterNode.TLSCert,
+	}
+
+	newConsenterNode.GRPCServer, err = newGRPCServer(consenterNode.Address(), ca, kp)
+	require.NoError(t, err)
+	signer := crypto.ECDSASigner(*newConsenterNode.sk)
+
+	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+	consenter := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, signer, mockConfigUpdateProposer)
+
+	gRPCServer := newConsenterNode.Server()
+	protos.RegisterConsensusServer(gRPCServer, consenter)
+	orderer.RegisterAtomicBroadcastServer(gRPCServer, consenter.DeliverService)
+	orderer.RegisterClusterNodeServiceServer(gRPCServer, consenter)
+
+	go func() {
+		err := newConsenterNode.Start()
+		require.NoError(t, err)
+	}()
+
+	err = consenter.Start()
+	require.NoError(t, err)
+
+	return consenter
+}
+
+func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *zap.SugaredLogger) *assembler.Assembler {
+	assemblerGRPC := node2.CreateGRPCAssembler(conf)
+	assembler := assembler.NewAssembler(conf, assemblerGRPC, nil, logger)
+
+	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
+
+	go func() {
+		err := assemblerGRPC.Start()
+		require.NoError(t, err)
+	}()
+
+	return assembler
+}
+
+func recoverRouter(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger) *router.Router {
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	fakeSigner := &mocks.SignerSerializer{}
+
+	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+	configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
+	router.StartRouterService()
+
+	return router
 }
 
 func sendTxn(workerID int, txnNum int, routers []*router.Router) {

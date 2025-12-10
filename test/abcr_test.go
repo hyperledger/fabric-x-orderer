@@ -43,17 +43,17 @@ func TestABCR(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
+	_, _, _, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 
 	_, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
 
-	routers, _ := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, "", genesisBlock)
+	routers, _, _, _ := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, "", genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()
 	}
 
-	assemblers, _, _, cleanAssemblers := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
+	assemblers, _, _, _, cleanAssemblers := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
 
 	defer func() {
 		for i := range routers {

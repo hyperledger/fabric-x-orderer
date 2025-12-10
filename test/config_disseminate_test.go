@@ -54,27 +54,17 @@ func TestConfigDisseminate(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	consenters, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
+	consenters, consentersConfigs, consentersLoggers, _ := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 
-	batchers, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
+	batchers, batchersConfigs, batchersLoggers, _ := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
 
-	routers, certs := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, consenterNodes[0].Address(), genesisBlock)
+	routers, certs, routersConfigs, routersLoggers := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, consenterNodes[0].Address(), genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()
 	}
 
-	assemblers, assemblersDir, assemblersLoggers, cleanAssemblers := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
-
-	// cleanup
-	defer func() {
-		for i := range routers {
-			routers[i].Stop()
-		}
-		cleanBatchers()
-		cleanConsenters()
-		cleanAssemblers()
-	}()
+	assemblers, assemblersDir, assemblersConfigs, assemblersLoggers, _ := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
 
 	// update consensus router config
 	for i := range consenters {
@@ -155,6 +145,7 @@ func TestConfigDisseminate(t *testing.T) {
 
 	// check all assemblers appended to the ledger a config block
 	time.Sleep(1 * time.Second)
+	var lastBlock *common.Block
 	for i := range assemblers {
 		assemblers[i].Stop()
 
@@ -164,9 +155,59 @@ func TestConfigDisseminate(t *testing.T) {
 		h := al.LedgerReader().Height()
 		require.GreaterOrEqual(t, h, uint64(3)) // genesis block + at least one data block + config block
 
-		lastBlock, err := al.LedgerReader().RetrieveBlockByNumber(h - 1)
+		lastBlock, err = al.LedgerReader().RetrieveBlockByNumber(h - 1)
 		require.NoError(t, err)
 		require.True(t, protoutil.IsConfigBlock(lastBlock))
+
+		al.Close()
+	}
+
+	// stop all nodes and recover them
+	for i := 0; i < numParties; i++ {
+		routers[i].Stop()
+		batchers[i].Stop()
+		consenters[i].Stop()
+	}
+
+	for i := 0; i < numParties; i++ {
+		batchers[i] = recoverBatcher(t, ca, batchersConfigs[i], batcherNodes[i], batchersLoggers[i])
+		consenters[i] = recoverConsenter(t, ca, consentersConfigs[i], consenterNodes[i], consentersLoggers[i], lastBlock)
+		assemblers[i] = recoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i])
+		routers[i] = recoverRouter(routersConfigs[i], routersLoggers[i])
+	}
+
+	// check router and batcher config store after recovery
+	for i := range routers {
+		routerConfigCount := routers[i].GetConfigStoreSize()
+		require.Equal(t, routerConfigCount, 2)
+
+		batcherConfigCount, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Len(t, batcherConfigCount, 2)
+	}
+
+	// submit data txs and make sure the assembler receives them after recovery
+	sendTransactions(t, routers, assemblers[0])
+
+	// verify last block points to the last config block
+	for i := range assemblers {
+		assemblers[i].Stop()
+
+		al, err := ledger.NewAssemblerLedger(assemblersLoggers[i], assemblersDir[i])
+		require.NoError(t, err)
+
+		lastConfigIndex, err := ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+
+		require.Equal(t, lastBlock.Header.Number, lastConfigIndex)
+
+		al.Close()
+	}
+
+	for i := 0; i < numParties; i++ {
+		routers[i].Stop()
+		batchers[i].Stop()
+		consenters[i].Stop()
 	}
 }
 
