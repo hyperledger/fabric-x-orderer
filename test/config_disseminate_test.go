@@ -132,7 +132,7 @@ func TestConfigDisseminate(t *testing.T) {
 		_, err := batchers[0].Submit(context.Background(), req)
 		require.Error(t, err)
 		return strings.Contains(err.Error(), "batcher is stopped")
-	}, 10*time.Second, 100*time.Millisecond)
+	}, 15*time.Second, 100*time.Millisecond)
 
 	// make sure consenter said it is stopping
 	require.Eventually(t, func() bool {

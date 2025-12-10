@@ -77,6 +77,8 @@ func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembl
 
 	workPerWorker := 100
 
+	initialCount := int(assembler.GetTxCount())
+
 	start := time.Now()
 
 	for workerID := 0; workerID < runtime.NumCPU(); workerID++ {
@@ -84,7 +86,7 @@ func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembl
 			defer wg.Done()
 
 			for txNum := 0; txNum < workPerWorker; txNum++ {
-				sendTxn(workerID, txNum, routers)
+				sendTxn(workerID, initialCount+txNum, routers)
 			}
 		}(workerID)
 	}
@@ -92,11 +94,13 @@ func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembl
 	wg.Wait()
 
 	totalTxn := workPerWorker * runtime.NumCPU()
-	t.Logf("Expecting %d TXs", totalTxn)
+	expected := initialCount + totalTxn
+	t.Logf("Expecting %d TXs (%d to %d)", totalTxn, initialCount, expected)
+
 	require.Eventually(t, func() bool {
 		n := assembler.GetTxCount()
 		t.Logf("Received TXs: %d", n)
-		return int(n) >= totalTxn
+		return int(n) >= expected
 	}, time.Minute, time.Second)
 
 	elapsed := int(time.Since(start).Seconds())
