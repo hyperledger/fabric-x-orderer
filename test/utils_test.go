@@ -492,7 +492,7 @@ func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logge
 	return assembler
 }
 
-func recoverRouters(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger) *router.Router {
+func recoverRouter(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger) *router.Router {
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")

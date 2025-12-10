@@ -173,7 +173,7 @@ func TestConfigDisseminate(t *testing.T) {
 		batchers[i] = recoverBatcher(t, ca, batchersConfigs[i], batcherNodes[i], batchersLoggers[i])
 		consenters[i] = recoverConsenter(t, ca, consentersConfigs[i], consenterNodes[i], consentersLoggers[i], lastBlock)
 		assemblers[i] = recoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i])
-		routers[i] = recoverRouters(routersConfigs[i], routersLoggers[i])
+		routers[i] = recoverRouter(routersConfigs[i], routersLoggers[i])
 	}
 
 	// check router and batcher config store after recovery
