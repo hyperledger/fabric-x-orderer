@@ -202,7 +202,6 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 	var consensuses []*consensus.Consensus
 	var loggers []*zap.SugaredLogger
 	var configs []*node_config.ConsenterNodeConfig
-	var cleans []func()
 
 	for i := 0; i < num; i++ {
 
@@ -216,12 +215,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		sk, err := x509.MarshalPKCS8PrivateKey(consenterNodes[i].sk)
 		require.NoError(t, err)
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-consenter%d", t.Name(), i+1))
-		require.NoError(t, err)
-
-		cleans = append(cleans, func() {
-			defer os.RemoveAll(dir)
-		})
+		dir := t.TempDir()
 
 		BFTConfig := config.DefaultArmaBFTConfig()
 		BFTConfig.SelfID = uint64(partyID)
@@ -269,8 +263,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 	}
 
 	return consensuses, configs, loggers, func() {
-		for i, clean := range cleans {
-			clean()
+		for i := range consensuses {
 			consensuses[i].Stop()
 		}
 	}
@@ -412,7 +405,7 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 	return result
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf *node_config.BatcherNodeConfig, batcherNode *node) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *zap.SugaredLogger) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -440,48 +433,52 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 
 	go func() {
 		err := newBatcherNode.Start()
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 	}()
 
 	return batcher
 }
 
-func recoverConsenter(t *testing.T, consenterNode *node, ca tlsgen.CA, lastConfigBlock *common.Block, conf *node_config.ConsenterNodeConfig, logger *zap.SugaredLogger) *consensus.Consensus {
+func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *zap.SugaredLogger, lastConfigBlock *common.Block) *consensus.Consensus {
 	newConsenterNode := &node{
 		TLSCert: consenterNode.TLSCert,
 		TLSKey:  consenterNode.TLSKey,
 		sk:      consenterNode.sk,
 		pk:      consenterNode.pk,
 	}
-
 	var err error
-	newConsenterNode.GRPCServer, err = newGRPCServer(consenterNode.Address(), ca, &tlsgen.CertKeyPair{
+
+	kp := &tlsgen.CertKeyPair{
 		Key:  newConsenterNode.TLSKey,
 		Cert: newConsenterNode.TLSCert,
-	})
-	require.NoError(t, err)
+	}
 
+	newConsenterNode.GRPCServer, err = newGRPCServer(consenterNode.Address(), ca, kp)
+	require.NoError(t, err)
 	signer := crypto.ECDSASigner(*newConsenterNode.sk)
 
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	c := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, signer, mockConfigUpdateProposer)
-	gRPCServer := newConsenterNode.Server()
-	protos.RegisterConsensusServer(gRPCServer, c)
-	orderer.RegisterAtomicBroadcastServer(gRPCServer, c.DeliverService)
-	orderer.RegisterClusterNodeServiceServer(gRPCServer, c)
+	consenter := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, signer, mockConfigUpdateProposer)
 
-	go newConsenterNode.Start()
-	err = c.Start()
+	gRPCServer := newConsenterNode.Server()
+	protos.RegisterConsensusServer(gRPCServer, consenter)
+	orderer.RegisterAtomicBroadcastServer(gRPCServer, consenter.DeliverService)
+	orderer.RegisterClusterNodeServiceServer(gRPCServer, consenter)
+
+	go func() {
+		err := newConsenterNode.Start()
+		require.NoError(t, err)
+	}()
+
+	err = consenter.Start()
 	require.NoError(t, err)
 
-	return c
+	return consenter
 }
 
-func recoverAssembler(conf *node_config.AssemblerNodeConfig, logger *zap.SugaredLogger) *assembler.Assembler {
+func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *zap.SugaredLogger) *assembler.Assembler {
 	assemblerGRPC := node2.CreateGRPCAssembler(conf)
 	assembler := assembler.NewAssembler(conf, assemblerGRPC, nil, logger)
 
@@ -489,9 +486,7 @@ func recoverAssembler(conf *node_config.AssemblerNodeConfig, logger *zap.Sugared
 
 	go func() {
 		err := assemblerGRPC.Start()
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 	}()
 
 	return assembler
@@ -508,6 +503,7 @@ func recoverRouters(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogge
 	configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
+	router.StartRouterService()
 
 	return router
 }

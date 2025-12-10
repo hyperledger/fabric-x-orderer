@@ -170,34 +170,44 @@ func TestConfigDisseminate(t *testing.T) {
 	}
 
 	for i := range routers {
-		batchers[i] = recoverBatcher(t, ca, batchersLoggers[i], batchersConfigs[i], batcherNodes[i])
-		consenters[i] = recoverConsenter(t, consenterNodes[i], ca, lastBlock, consentersConfigs[i], consentersLoggers[i])
-		assemblers[i] = recoverAssembler(assemblersConfigs[i], assemblersLoggers[i])
-
+		batchers[i] = recoverBatcher(t, ca, batchersConfigs[i], batcherNodes[i], batchersLoggers[i])
+		consenters[i] = recoverConsenter(t, ca, consentersConfigs[i], consenterNodes[i], consentersLoggers[i], lastBlock)
+		assemblers[i] = recoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i])
 		routers[i] = recoverRouters(routersConfigs[i], routersLoggers[i])
-		routers[i].StartRouterService()
 	}
 
 	// check router and batcher config store after recovery
 	for i := range routers {
-		require.Eventually(t, func() bool {
-			routerConfigCount := routers[i].GetConfigStoreSize()
+		routerConfigCount := routers[i].GetConfigStoreSize()
+		require.Equal(t, routerConfigCount, 2)
 
-			batcherConfigCount, err := batchers[i].ConfigStore.ListBlockNumbers()
-			require.NoError(t, err)
-
-			return routerConfigCount == 2 && len(batcherConfigCount) == 2
-		}, 10*time.Second, 100*time.Millisecond)
+		batcherConfigCount, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Len(t, batcherConfigCount, 2)
 	}
 
 	// submit data txs and make sure the assembler receives them after recovery
 	sendTransactions(t, routers, assemblers[0])
 
+	// verify last block points to the last config block
+	for i := range assemblers {
+		assemblers[i].Stop()
+
+		al, err := ledger.NewAssemblerLedger(assemblersLoggers[i], assemblersDir[i])
+		require.NoError(t, err)
+
+		lastConfigIndex, err := ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+
+		require.Equal(t, lastBlock.Header.Number, lastConfigIndex)
+
+		al.Close()
+	}
+
 	for i := range routers {
 		routers[i].Stop()
 		batchers[i].Stop()
 		consenters[i].Stop()
-		assemblers[i].Stop()
 	}
 }
 

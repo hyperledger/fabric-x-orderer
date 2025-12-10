@@ -98,7 +98,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Recover old primary in shard 0
-	batchers0[0] = recoverBatcher(t, ca, loggers[0], configs[0], batcherNodesShard0[0])
+	batchers0[0] = recoverBatcher(t, ca, configs[0], batcherNodesShard0[0], loggers[0])
 
 	require.Eventually(t, func() bool {
 		return batchers0[0].Ledger.Height(2) == 1
