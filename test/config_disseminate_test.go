@@ -163,13 +163,13 @@ func TestConfigDisseminate(t *testing.T) {
 	}
 
 	// stop all nodes and recover them
-	for i := range routers {
+	for i := 0; i < numParties; i++ {
 		routers[i].Stop()
 		batchers[i].Stop()
 		consenters[i].Stop()
 	}
 
-	for i := range routers {
+	for i := 0; i < numParties; i++ {
 		batchers[i] = recoverBatcher(t, ca, batchersConfigs[i], batcherNodes[i], batchersLoggers[i])
 		consenters[i] = recoverConsenter(t, ca, consentersConfigs[i], consenterNodes[i], consentersLoggers[i], lastBlock)
 		assemblers[i] = recoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i])
@@ -204,7 +204,7 @@ func TestConfigDisseminate(t *testing.T) {
 		al.Close()
 	}
 
-	for i := range routers {
+	for i := 0; i < numParties; i++ {
 		routers[i].Stop()
 		batchers[i].Stop()
 		consenters[i].Stop()
