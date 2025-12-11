@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
@@ -43,6 +44,43 @@ func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Du
 		timeOut:          timeOut,
 		streamRoutersMap: make(map[string]*StreamInfo, len(userConfigFile.RouterEndpoints)),
 	}
+}
+
+func (c *BroadcastTxClient) SendTxTo(envelope *common.Envelope, partyID types.PartyID) error {
+	c.streamsMapLock.Lock()
+	defer c.streamsMapLock.Unlock()
+
+	err := c.createSendStreams()
+	if err != nil {
+		return err
+	}
+
+	// RouterEndpoints are ordered by PartyID, where RouterEndpoints[0] corresponds to PartyID 1
+	sInfo, ok := c.streamRoutersMap[c.userConfig.RouterEndpoints[partyID-1]]
+	if !ok {
+		return fmt.Errorf("no stream found for party ID %d", partyID)
+	}
+
+	err = sInfo.stream.Send(envelope)
+	if err != nil {
+		sInfo.stream = nil
+		return fmt.Errorf("failed to send tx to %s: %s", sInfo.endpoint, err.Error())
+	}
+	resp, err := sInfo.stream.Recv()
+	if err != nil {
+		if err != io.EOF {
+			sInfo.stream = nil
+			return fmt.Errorf("received error response from %s: %s", sInfo.endpoint, err.Error())
+		}
+		return nil
+	}
+	if resp.Status != common.Status_SUCCESS {
+		return fmt.Errorf("received error response from %s: %s, Info: %s", sInfo.endpoint, resp.Status.String(), resp.Info)
+	}
+
+	// increment the total transactions sent for this stream
+	sInfo.totalTxSent++
+	return nil
 }
 
 func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {

@@ -343,7 +343,7 @@ func TestRunNodesAndGetMetrics(t *testing.T) {
 	re := regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.GetCounterMetricValueByRegexp(t, re, url) == totalTxNumber
+		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
 
 	consenterToMonitor := armaNetwork.GetConsenter(t, 1)
@@ -353,6 +353,6 @@ func TestRunNodesAndGetMetrics(t *testing.T) {
 	re = regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.GetCounterMetricValueByRegexp(t, re, url) >= parties*shards
+		return testutil.FetchPrometheusMetricValue(t, re, url) >= parties*shards
 	}, 30*time.Second, 100*time.Millisecond)
 }

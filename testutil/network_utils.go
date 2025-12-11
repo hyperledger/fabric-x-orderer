@@ -34,19 +34,9 @@ func GetAvailablePort(t *testing.T) (port string, ll net.Listener) {
 	return portS, ll
 }
 
-// GetCounterMetricValueByRegexp retrieves the value of a counter metric from a given URL by matching a regular expression pattern.
-// The function makes an HTTP GET request to the specified URL and searches the response body for the first match of the provided regex pattern.
-// The matched value is expected to be in a format where the metric value is the second element when split by whitespace.
-//
-// Parameters:
-//   - t: Testing object for assertions and logging
-//   - re: Regular expression pattern to match the metric
-//   - url: The URL endpoint to fetch metrics from
-//
-// Returns:
-//   - int: The numeric value of the matched counter metric
-//   - Returns -1 if no matches are found or if the value cannot be converted to an integer
-func GetCounterMetricValueByRegexp(t *testing.T, re *regexp.Regexp, url string) int {
+// FetchPrometheusMetricValue fetches the value of a Prometheus metric from the specified URL using the provided regular expression.
+// It returns the metric value as an integer. If the metric is not found or cannot be converted to an integer, it returns -1.
+func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int {
 	resp, err := http.Get(url)
 	require.NoError(t, err)
 

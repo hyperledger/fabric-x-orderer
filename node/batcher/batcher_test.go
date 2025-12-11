@@ -216,7 +216,7 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	re := regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.GetCounterMetricValueByRegexp(t, re, url) == totalTxNumber
+		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
