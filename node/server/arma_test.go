@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/msp"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -313,6 +314,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger, err := assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
+		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))
 		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(0))
 		require.Equal(t, assemblerLedger.GetTxCount(), uint64(0))
 		assemblerLedger.Close()
@@ -328,6 +330,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger, err = assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
+		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))
 		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(1))
 
 		// Add a fake config block with block number 1 to the ledger

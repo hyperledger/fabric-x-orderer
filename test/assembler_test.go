@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,14 +60,16 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
+	nodesNumber := len(netInfo)
+
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, 20)
+	readyChan := make(chan struct{}, nodesNumber)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
 	defer armaNetwork.Stop()
 
-	testutil.WaitReady(t, readyChan, 20, 10)
+	testutil.WaitReady(t, readyChan, nodesNumber, 10)
 
 	// 4.
 	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
@@ -136,4 +140,85 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	require.GreaterOrEqual(t, totalTxs, uint64(transactions*2))
 
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
+}
+
+// TestStartAssemblerGetMetrics verifies that an assembler exposes Prometheus metrics
+// reflecting the ledger transaction count after transactions are submitted.
+//
+//  1. Create a temporary directory and generate a network configuration for a single
+//     party/node, then generate network artifacts into that directory.
+//  2. Build the arma CLI binary and start the arma network nodes.
+//  3. Use the armageddon CLI to load a fixed number of transactions
+//  4. Capture the Prometheus metrics URL for the assembler process corresponding to party 1
+func TestStartAssemblerGetMetrics(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "TLS", "TLS")
+
+	// 2.
+	armageddonCLI := armageddon.NewCLI()
+	armageddonCLI.Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 3.
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	nodesNumber := len(netInfo)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, nodesNumber)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, nodesNumber, 10)
+
+	// 4.
+	totalTxNumber := 10
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	for i := 0; i < totalTxNumber; i++ {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	// 5.
+	assemblerToMonitor := armaNetwork.GetAssembler(t, types.PartyID(1))
+	url := testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
+
+	pattern := fmt.Sprintf(`assembler_ledger_transaction_count_total\{party_id="%d"\} \d+`, types.PartyID(1))
+	re := regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber+1
+	}, 30*time.Second, 100*time.Millisecond)
 }

@@ -76,6 +76,16 @@ type FakeAssemblerLedgerReaderWriter struct {
 	ledgerReaderReturnsOnCall map[int]struct {
 		result1 blockledger.Reader
 	}
+	MetricsStub        func() *ledger.AssemblerLedgerMetrics
+	metricsMutex       sync.RWMutex
+	metricsArgsForCall []struct {
+	}
+	metricsReturns struct {
+		result1 *ledger.AssemblerLedgerMetrics
+	}
+	metricsReturnsOnCall map[int]struct {
+		result1 *ledger.AssemblerLedgerMetrics
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -405,6 +415,59 @@ func (fake *FakeAssemblerLedgerReaderWriter) LedgerReaderReturnsOnCall(i int, re
 	}
 	fake.ledgerReaderReturnsOnCall[i] = struct {
 		result1 blockledger.Reader
+	}{result1}
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) Metrics() *ledger.AssemblerLedgerMetrics {
+	fake.metricsMutex.Lock()
+	ret, specificReturn := fake.metricsReturnsOnCall[len(fake.metricsArgsForCall)]
+	fake.metricsArgsForCall = append(fake.metricsArgsForCall, struct {
+	}{})
+	stub := fake.MetricsStub
+	fakeReturns := fake.metricsReturns
+	fake.recordInvocation("Metrics", []interface{}{})
+	fake.metricsMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsCallCount() int {
+	fake.metricsMutex.RLock()
+	defer fake.metricsMutex.RUnlock()
+	return len(fake.metricsArgsForCall)
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsCalls(stub func() *ledger.AssemblerLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = stub
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsReturns(result1 *ledger.AssemblerLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	fake.metricsReturns = struct {
+		result1 *ledger.AssemblerLedgerMetrics
+	}{result1}
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) MetricsReturnsOnCall(i int, result1 *ledger.AssemblerLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	if fake.metricsReturnsOnCall == nil {
+		fake.metricsReturnsOnCall = make(map[int]struct {
+			result1 *ledger.AssemblerLedgerMetrics
+		})
+	}
+	fake.metricsReturnsOnCall[i] = struct {
+		result1 *ledger.AssemblerLedgerMetrics
 	}{result1}
 }
 
