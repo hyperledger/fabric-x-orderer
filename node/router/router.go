@@ -256,7 +256,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		r.metrics.incomingTxs.Add(1)
 
-		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature}
+		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature, ConfigSeq: uint32(r.routerNodeConfig.ConfigSeq)}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
 		select {
@@ -350,6 +350,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		default:
 			trace := createTraceID(rand)
 			tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
+			tr.request.ConfigSeq = uint32(r.routerNodeConfig.ConfigSeq)
 			shardRouter.Forward(tr)
 		}
 	}
@@ -387,6 +388,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	feedbackChan := make(chan Response, 1)
 
 	tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
+	tr.request.ConfigSeq = uint32(r.routerNodeConfig.ConfigSeq)
 	shardRouter.Forward(tr)
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)
