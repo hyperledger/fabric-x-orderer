@@ -137,7 +137,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer)
+		router := router.NewRouter(config, 0, l, fakeSigner, configUpdateProposer)
 		routers = append(routers, router)
 	}
 
@@ -502,7 +502,7 @@ func recoverRouter(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
+	router := router.NewRouter(conf, 0, logger, fakeSigner, configUpdateProposer)
 	router.StartRouterService()
 
 	return router
