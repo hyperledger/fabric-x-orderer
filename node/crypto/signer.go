@@ -24,6 +24,7 @@ func (s ECDSASigner) Sign(message []byte) ([]byte, error) {
 	return signECDSA(&sk, digest)
 }
 
+// TODO: implement correct Serialize
 // Serialize is called when a SignatureHeader.Creator is created. Since this creator is placeholder, the SignatureHeader.Creator must be updated with correct creator.
 func (s ECDSASigner) Serialize() ([]byte, error) {
 	return []byte("creator"), nil
