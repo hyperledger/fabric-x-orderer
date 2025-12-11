@@ -61,9 +61,10 @@ type Router struct {
 	drainChan        chan struct{}
 	drainOnce        sync.Once
 	feedbackWG       sync.WaitGroup
+	configSeq        types.ConfigSequence
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, configSeq types.ConfigSequence, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -110,7 +111,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 
 	metrics := NewRouterMetrics(config, logger)
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, configPuller)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, configSeq, logger, verifier, configStore, configSubmitter, configPuller)
 	r.init()
 	r.metrics.Start()
 	return r
@@ -256,7 +257,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		r.metrics.incomingTxs.Add(1)
 
-		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature}
+		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature, ConfigSeq: uint64(r.configSeq)}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
 		select {
@@ -283,7 +284,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, configPuller ConfigPuller) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, configSeq types.ConfigSequence, logger types.Logger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, configPuller ConfigPuller) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -308,6 +309,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		stopChan:         make(chan struct{}),
 		drainChan:        make(chan struct{}),
 		metrics:          metrics,
+		configSeq:        configSeq,
 	}
 
 	for _, shardId := range shardIDs {
@@ -350,6 +352,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		default:
 			trace := createTraceID(rand)
 			tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
+			tr.request.ConfigSeq = uint64(r.configSeq)
 			shardRouter.Forward(tr)
 		}
 	}
@@ -387,6 +390,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	feedbackChan := make(chan Response, 1)
 
 	tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
+	tr.request.ConfigSeq = uint64(r.configSeq)
 	shardRouter.Forward(tr)
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)

@@ -879,7 +879,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	r := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
+	r := router.NewRouter(conf, 0, logger, fakeSigner, configUpdateProposer)
 	r.StartRouterService()
 
 	return r, conf
