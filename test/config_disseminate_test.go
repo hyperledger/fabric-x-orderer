@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -87,6 +88,9 @@ func TestConfigDisseminate(t *testing.T) {
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 		consenters[i].ConfigUpdateProposer = mockConfigUpdateProposer
+		mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
+		mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
+		consenters[i].ConfigRequestValidator = mockConfigRequestValidator
 	}
 
 	// submit data txs and make sure the assembler got them
