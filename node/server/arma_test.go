@@ -345,7 +345,12 @@ func TestLaunchArmaNode(t *testing.T) {
 		newConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
 			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 1}),
 		})
-		assemblerLedger.AppendConfig(newConfigBlock, 1)
+		assemblerLedger.AppendConfig(&state.OrderingInformation{
+			CommonBlock: newConfigBlock,
+			DecisionNum: 1,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		assemblerLedger.Close()
 
 		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -30,7 +29,7 @@ type AssemblerIndex interface {
 
 type AssemblerLedgerWriter interface {
 	Append(batch types.Batch, orderingInfo *state.OrderingInformation)
-	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
+	AppendConfig(orderingInfo *state.OrderingInformation)
 	Close()
 }
 
@@ -71,9 +70,8 @@ func (c *Collator) processOrderedBatchAttestations() {
 
 		if oba.BatchAttestation().Shard() == types.ShardIDConsensus {
 			orderingInfo := oba.OrderingInformation
-			c.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), oba.OrderingInformation.String())
-			block := orderingInfo.CommonBlock
-			c.Ledger.AppendConfig(block, orderingInfo.DecisionNum)
+			c.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), orderingInfo.String())
+			c.Ledger.AppendConfig(orderingInfo)
 
 			go c.AssemblerRestarter.SoftStop()
 			// TODO apply new config

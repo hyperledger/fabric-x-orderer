@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -19,11 +18,10 @@ type FakeAssemblerLedgerReaderWriter struct {
 		arg1 types.Batch
 		arg2 *state.OrderingInformation
 	}
-	AppendConfigStub        func(*common.Block, types.DecisionNum)
+	AppendConfigStub        func(*state.OrderingInformation)
 	appendConfigMutex       sync.RWMutex
 	appendConfigArgsForCall []struct {
-		arg1 *common.Block
-		arg2 types.DecisionNum
+		arg1 *state.OrderingInformation
 	}
 	BatchFrontierStub        func([]types.ShardID, []types.PartyID, time.Duration) (ledger.BatchFrontier, error)
 	batchFrontierMutex       sync.RWMutex
@@ -123,17 +121,16 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (types.Bat
 	return argsForCall.arg1, argsForCall.arg2
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendConfig(arg1 *common.Block, arg2 types.DecisionNum) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendConfig(arg1 *state.OrderingInformation) {
 	fake.appendConfigMutex.Lock()
 	fake.appendConfigArgsForCall = append(fake.appendConfigArgsForCall, struct {
-		arg1 *common.Block
-		arg2 types.DecisionNum
-	}{arg1, arg2})
+		arg1 *state.OrderingInformation
+	}{arg1})
 	stub := fake.AppendConfigStub
-	fake.recordInvocation("AppendConfig", []interface{}{arg1, arg2})
+	fake.recordInvocation("AppendConfig", []interface{}{arg1})
 	fake.appendConfigMutex.Unlock()
 	if stub != nil {
-		fake.AppendConfigStub(arg1, arg2)
+		fake.AppendConfigStub(arg1)
 	}
 }
 
@@ -143,17 +140,17 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendConfigCallCount() int {
 	return len(fake.appendConfigArgsForCall)
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendConfigCalls(stub func(*common.Block, types.DecisionNum)) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendConfigCalls(stub func(*state.OrderingInformation)) {
 	fake.appendConfigMutex.Lock()
 	defer fake.appendConfigMutex.Unlock()
 	fake.AppendConfigStub = stub
 }
 
-func (fake *FakeAssemblerLedgerReaderWriter) AppendConfigArgsForCall(i int) (*common.Block, types.DecisionNum) {
+func (fake *FakeAssemblerLedgerReaderWriter) AppendConfigArgsForCall(i int) *state.OrderingInformation {
 	fake.appendConfigMutex.RLock()
 	defer fake.appendConfigMutex.RUnlock()
 	argsForCall := fake.appendConfigArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
+	return argsForCall.arg1
 }
 
 func (fake *FakeAssemblerLedgerReaderWriter) BatchFrontier(arg1 []types.ShardID, arg2 []types.PartyID, arg3 time.Duration) (ledger.BatchFrontier, error) {

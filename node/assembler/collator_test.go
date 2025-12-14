@@ -247,7 +247,12 @@ func createCollator(t *testing.T, shardCount int, AssemblerRestarter assembler.A
 
 	ledger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, t.Name()).Provider, "test_party", testutil.CreateLogger(t, 0))
 
-	ledger.AppendConfig(utils.EmptyGenesisBlock("test"), 0)
+	ledger.AppendConfig(&state.OrderingInformation{
+		CommonBlock: utils.EmptyGenesisBlock("test"),
+		DecisionNum: 0,
+		BatchIndex:  0,
+		BatchCount:  1,
+	})
 
 	ordBARep := make(naiveOrderedBatchAttestationReplicator)
 
