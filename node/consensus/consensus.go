@@ -451,11 +451,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
 	}
 
-	c.stateLock.Lock()
-	_, bafs, _ := c.Arma.SimulateStateTransition(c.State, requests)
-	c.stateLock.Unlock()
-
-	sigs := make([][]byte, 0, len(bafs)+1)
+	sigs := make([][]byte, 0)
 
 	proposalSig, err := c.Signer.Sign([]byte(proposal.Digest()))
 	if err != nil {
