@@ -135,7 +135,9 @@ func (b *Batcher) replicateState() {
 						b.logger.Infof("Config block %d already exists in config store", lastBlock.Header.Number)
 					} else {
 						b.logger.Infof("Received config block number %d", lastBlock.Header.Number)
-						b.ConfigStore.Add(lastBlock)
+						if err := b.ConfigStore.Add(lastBlock); err != nil {
+							b.logger.Panicf("Failed adding config block to config store: %s", err)
+						}
 						b.logger.Warnf("Soft stop")
 						go b.SoftStop()
 						// TODO: apply the config
