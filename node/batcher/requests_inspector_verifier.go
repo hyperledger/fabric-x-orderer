@@ -41,6 +41,7 @@ type RequestsInspectorVerifier struct {
 	logger          types.Logger
 	mapper          router.ShardMapper
 	requestVerifier RequestVerifier
+	configSeq       uint32
 }
 
 func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
@@ -51,6 +52,7 @@ func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNod
 		batchMaxSize:    config.BatchMaxSize,
 		batchMaxBytes:   config.BatchMaxBytes,
 		requestMaxBytes: config.RequestMaxBytes,
+		configSeq:       uint32(config.Bundle.ConfigtxValidator().Sequence()),
 	}
 	if requestVerifier != nil {
 		riv.requestVerifier = requestVerifier
@@ -130,7 +132,10 @@ func (r *RequestsInspectorVerifier) VerifyRequestShard(req *comm.Request) error 
 
 // VerifyRequestFromRouter verifies a request that comes from the router in the batcher's party.
 func (r *RequestsInspectorVerifier) VerifyRequestFromRouter(req *comm.Request) error {
-	// TODO - check config sequence, and verify again if needed.
+	if r.configSeq != req.ConfigSeq {
+		// TODO reverify or do reconfig if needed; support dynamic reconfig
+		r.logger.Panicf("Request config seq is %d while batcher's config seq is %d", req.ConfigSeq, r.configSeq)
+	}
 	return nil
 }
 
@@ -138,6 +143,11 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 	var request comm.Request
 	if err := proto.Unmarshal(req, &request); err != nil {
 		return errors.Errorf("failed to unmarshall req")
+	}
+
+	if r.configSeq != request.ConfigSeq {
+		// TODO reverify or do reconfig if needed; support dynamic reconfig
+		return errors.Errorf("failed verifying request with id: %s; mismatch config seq: batcher has %d while req has %d", r.RequestID(req), r.configSeq, request.ConfigSeq)
 	}
 
 	if err := r.VerifyRequestShard(&request); err != nil {

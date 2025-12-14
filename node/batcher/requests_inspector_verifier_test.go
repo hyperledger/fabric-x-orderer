@@ -29,6 +29,7 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
 	config := &config.BatcherNodeConfig{
@@ -46,6 +47,10 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	req2, err := proto.Marshal(tx.CreateStructuredRequest([]byte{11})) // should map to shard 2
 	require.NoError(t, err)
 	largeReq, err := proto.Marshal(tx.CreateStructuredRequest(make([]byte, 101))) // large request, mapped to shard 1
+	require.NoError(t, err)
+	reqWithConfigSeq := tx.CreateStructuredRequest([]byte{1})
+	reqWithConfigSeq.ConfigSeq = 1
+	reqWithConfigSeqMarshaled, err := proto.Marshal(reqWithConfigSeq)
 	require.NoError(t, err)
 
 	t.Run("empty request ID", func(t *testing.T) {
@@ -71,6 +76,10 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 
 	t.Run("verify request max bytes", func(t *testing.T) {
 		require.ErrorContains(t, verifier.VerifyRequest(largeReq), "request's size exceeds the maximum size")
+	})
+
+	t.Run("verify request config seq", func(t *testing.T) {
+		require.ErrorContains(t, verifier.VerifyRequest(reqWithConfigSeqMarshaled), "mismatch config seq")
 	})
 
 	t.Run("verify batched requests with max batch bytes", func(t *testing.T) {
@@ -134,12 +143,20 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 	require.NoError(t, err)
 
 	logger := testutil.CreateLogger(t, 1)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	config := &config.BatcherNodeConfig{
 		ShardId:         1,
 		Shards:          []config.ShardInfo{{ShardId: 1}, {ShardId: 2}},
 		BatchMaxSize:    500,
 		BatchMaxBytes:   10000,
 		RequestMaxBytes: 1000,
+		Bundle:          bundle,
 	}
 	reqVerifier := &mocks.FakeRequestVerifier{}
 
