@@ -33,7 +33,7 @@ type AssemblerLedgerReaderWriter interface {
 	GetTxCount() uint64
 	Metrics() *AssemblerLedgerMetrics
 	Append(batch types.Batch, orderingInfo *state.OrderingInformation)
-	AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum)
+	AppendConfig(orderingInfo *state.OrderingInformation)
 	LastOrderingInfo() (*state.OrderingInformation, error)
 	LedgerReader() blockledger.Reader
 	BatchFrontier(shards []types.ShardID, parties []types.PartyID, scanTimeout time.Duration) (BatchFrontier, error)
@@ -144,20 +144,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 	}
 
 	// TODO update the signature on the block in consensus
-	var sigs []*common.MetadataSignature
-	var signers []uint64
-
-	for _, s := range ordInfo.Signatures {
-		sigs = append(sigs, &common.MetadataSignature{
-			Signature: s.Value,
-			IdentifierHeader: protoutil.MarshalOrPanic(&common.IdentifierHeader{
-				Identifier: uint32(s.ID),
-				Nonce:      []byte{},
-			}),
-		})
-
-		signers = append(signers, s.ID)
-	}
+	sigs, signers := arrangeSignatures(ordInfo)
 
 	blockToAppend.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
 		Signatures: sigs,
@@ -189,36 +176,50 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 	l.metrics.BlocksCount.Add(1)
 }
 
-func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum types.DecisionNum) {
+func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) {
 	t1 := time.Now()
 	defer func() {
 		l.Logger.Infof("Appended config block %d, decision %d, in %s",
-			configBlock.GetHeader().GetNumber(), decisionNum, time.Since(t1))
+			orderingInfo.CommonBlock.GetHeader().GetNumber(), orderingInfo.DecisionNum, time.Since(t1))
 	}()
 
+	if orderingInfo == nil {
+		l.Logger.Panicf("attempting to AppendConfig with nil OrderingInformation")
+	}
+	if orderingInfo.CommonBlock == nil {
+		l.Logger.Panicf("attempting to AppendConfig with nil block")
+	}
+
+	configBlock := orderingInfo.CommonBlock
 	if !protoutil.IsConfigBlock(configBlock) {
 		l.Logger.Panicf("attempting to AppendConfig a block which is not a config block: %d", configBlock.GetHeader().GetNumber())
 	}
 
+	// TODO update the signature on the block in consensus
+	sigs, signers := arrangeSignatures(orderingInfo)
+
+	if len(sigs) > 0 {
+		configBlock.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
+			Signatures: sigs,
+		})
+	}
+
+	// TODO update the tx count in the consensus.
 	l.metrics.TransactionCount.Add(1) // for the config TX
 	transactionCount := uint64(monitoring.GetMetricValue(l.metrics.TransactionCount.(prometheus.Counter), l.Logger))
 	batchID := types.NewSimpleBatch(types.ShardIDConsensus, 0, 0, nil, 0)
-	ordInfo := &state.OrderingInformation{
-		DecisionNum: decisionNum,
-		BatchIndex:  0,
-		BatchCount:  1,
-	}
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batchID, ordInfo, transactionCount)
+	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batchID, orderingInfo, transactionCount)
 	if err != nil {
 		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
-	configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 
-	l.Logger.Debugf("Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d>",
+	configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
+	l.Logger.Debugf("Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
 		configBlock.Header,                                // Header
 		len(configBlock.GetData().GetData()),              // Data
 		batchID.Primary(), batchID.Shard(), batchID.Seq(), // Metadata batchID
-		ordInfo.DecisionNum, ordInfo.BatchIndex, ordInfo.BatchCount, // Metadata ordering
+		orderingInfo.DecisionNum, orderingInfo.BatchIndex, orderingInfo.BatchCount, // Metadata ordering
+		signers, // Metadata signers
 	)
 
 	if err := l.Ledger.Append(configBlock); err != nil {
@@ -227,6 +228,24 @@ func (l *AssemblerLedger) AppendConfig(configBlock *common.Block, decisionNum ty
 
 	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(configBlock)))
 	l.metrics.BlocksCount.Add(1)
+}
+
+func arrangeSignatures(orderingInfo *state.OrderingInformation) ([]*common.MetadataSignature, []uint64) {
+	var sigs []*common.MetadataSignature
+	var signers []uint64
+
+	for _, s := range orderingInfo.Signatures {
+		sigs = append(sigs, &common.MetadataSignature{
+			Signature: s.Value,
+			IdentifierHeader: protoutil.MarshalOrPanic(&common.IdentifierHeader{
+				Identifier: uint32(s.ID),
+				Nonce:      []byte{},
+			}),
+		})
+
+		signers = append(signers, s.ID)
+	}
+	return sigs, signers
 }
 
 func (l *AssemblerLedger) LedgerReader() blockledger.Reader {

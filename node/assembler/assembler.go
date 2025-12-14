@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 
@@ -111,7 +112,13 @@ func NewDefaultAssembler(
 		if genesisBlock == nil {
 			logger.Panicf("Error creating Assembler%d, genesis block is nil", config.PartyId)
 		}
-		al.AppendConfig(genesisBlock, 0)
+		ordInfo := &state.OrderingInformation{
+			CommonBlock: genesisBlock,
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		}
+		al.AppendConfig(ordInfo)
 		logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(genesisBlock.GetHeader())))
 	}
 

@@ -44,7 +44,12 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		assert.Equal(t, uint64(1), al.GetTxCount())
 		assert.Equal(t, uint64(1), al.Ledger.Height())
 
@@ -70,7 +75,12 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		assert.Equal(t, uint64(1), al.GetTxCount())
 		assert.Equal(t, uint64(1), al.Ledger.Height())
 
@@ -95,7 +105,12 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
-	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+	al.AppendConfig(&state.OrderingInformation{
+		CommonBlock: utils.EmptyGenesisBlock("arma"),
+		DecisionNum: 0,
+		BatchIndex:  0,
+		BatchCount:  1,
+	})
 	assert.Equal(t, uint64(1), al.GetTxCount())
 	assert.Equal(t, uint64(1), al.Ledger.Height())
 
@@ -149,7 +164,12 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
-	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+	al.AppendConfig(&state.OrderingInformation{
+		CommonBlock: utils.EmptyGenesisBlock("arma"),
+		DecisionNum: 0,
+		BatchIndex:  0,
+		BatchCount:  1,
+	})
 	ordInfo, err := al.LastOrderingInfo()
 	require.NoError(t, err)
 	require.NotNil(t, ordInfo)
@@ -179,7 +199,12 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		num := 128
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -209,7 +234,12 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		assert.Equal(t, uint64(1), al.GetTxCount())
 		assert.Equal(t, uint64(1), al.Ledger.Height())
@@ -226,7 +256,12 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		num := 8
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -254,7 +289,12 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		num := 10
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -282,20 +322,35 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		defer al.Close()
 
 		genBlock := utils.EmptyGenesisBlock("arma")
-		al.AppendConfig(genBlock, 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: genBlock,
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		idx, err := node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), idx)
 
 		confBlock1 := prepareConfigBlock(1, genBlock)
-		al.AppendConfig(confBlock1, 1)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: confBlock1,
+			DecisionNum: 1,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), idx)
 
 		confBlock2 := prepareConfigBlock(2, confBlock1)
-		al.AppendConfig(confBlock2, 2)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: confBlock2,
+			DecisionNum: 2,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), idx)
@@ -309,7 +364,12 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		defer al.Close()
 
 		genBlock := utils.EmptyGenesisBlock("arma")
-		al.AppendConfig(genBlock, 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: genBlock,
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		idx, err := node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
 		require.NoError(t, err)
@@ -329,7 +389,12 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		require.Equal(t, uint64(0), idx)
 
 		confBlock1 := prepareConfigBlock(2, block1)
-		al.AppendConfig(confBlock1, 2)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: confBlock1,
+			DecisionNum: 2,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), idx)
