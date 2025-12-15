@@ -92,8 +92,6 @@ type RouterNodeConfig struct {
 	Bundle                  channelconfig.Resources
 	MonitoringListenAddress string
 	MetricsLogInterval      time.Duration
-	// ConfigSeq is the config sequence of the config-tx in the config block.
-	ConfigSeq types.ConfigSequence
 }
 
 type AssemblerNodeConfig struct {
