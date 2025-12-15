@@ -105,6 +105,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 	setupComm(c)
 	c.Synchronizer = createSynchronizer(consLedger, c)
 	c.BFT.Synchronizer = c.Synchronizer
+	c.Metrics.initMetricsFromLedger(consLedger)
 
 	return c
 }

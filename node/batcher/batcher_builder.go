@@ -96,6 +96,8 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, config.ShardId, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
+	b.Metrics.initFromLedger(b)
+
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),
 		BatchPuller:             bp,

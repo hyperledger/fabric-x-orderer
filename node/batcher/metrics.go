@@ -219,3 +219,24 @@ func (m *BatcherMetrics) role() string {
 	}
 	return "secondary"
 }
+
+func (m *BatcherMetrics) initFromLedger(b *Batcher) {
+	var batches, pulled, txs uint64
+
+	for _, bi := range b.batchers {
+		h := b.Ledger.Height(bi.PartyID)
+		for seq := uint64(0); seq < h; seq++ {
+			batch := b.Ledger.RetrieveBatchByNumber(bi.PartyID, seq)
+			txs += uint64(len(batch.Requests()))
+			batches++
+
+			if b.config.PartyId != bi.PartyID {
+				pulled++
+			}
+		}
+	}
+
+	m.batchesCreatedTotal.Add(float64(batches))
+	m.batchesPulledTotal.Add(float64(pulled))
+	m.batchedTxsTotal.Add(float64(txs))
+}
