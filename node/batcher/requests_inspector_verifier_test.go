@@ -50,8 +50,6 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	reqWithConfigSeq := tx.CreateStructuredRequest([]byte{1})
 	reqWithConfigSeq.ConfigSeq = 1
-	reqWithConfigSeqMarshaled, err := proto.Marshal(reqWithConfigSeq)
-	require.NoError(t, err)
 
 	t.Run("empty request ID", func(t *testing.T) {
 		emptyReq := []byte{}
@@ -79,7 +77,7 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	})
 
 	t.Run("verify request config seq", func(t *testing.T) {
-		require.ErrorContains(t, verifier.VerifyRequest(reqWithConfigSeqMarshaled), "mismatch config seq")
+		require.ErrorContains(t, verifier.VerifyRequestFromRouter(reqWithConfigSeq), "mismatch config seq")
 	})
 
 	t.Run("verify batched requests with max batch bytes", func(t *testing.T) {

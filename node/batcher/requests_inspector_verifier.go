@@ -134,7 +134,7 @@ func (r *RequestsInspectorVerifier) VerifyRequestShard(req *comm.Request) error 
 func (r *RequestsInspectorVerifier) VerifyRequestFromRouter(req *comm.Request) error {
 	if r.configSeq != req.ConfigSeq {
 		// TODO reverify or do reconfig if needed; support dynamic reconfig
-		return errors.Errorf("Request config seq is %d while batcher's config seq is %d", req.ConfigSeq, r.configSeq)
+		return errors.Errorf("mismatch config seq: request's config seq is %d while batcher's config seq is %d", req.ConfigSeq, r.configSeq)
 	}
 	return nil
 }
@@ -143,11 +143,6 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 	var request comm.Request
 	if err := proto.Unmarshal(req, &request); err != nil {
 		return errors.Errorf("failed to unmarshall req")
-	}
-
-	if r.configSeq != request.ConfigSeq {
-		// TODO reverify or do reconfig if needed; support dynamic reconfig
-		return errors.Errorf("failed verifying request with id: %s; mismatch config seq: batcher has %d while req has %d", r.RequestID(req), r.configSeq, request.ConfigSeq)
 	}
 
 	if err := r.VerifyRequestShard(&request); err != nil {
