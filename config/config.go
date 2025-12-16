@@ -254,7 +254,6 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
-	routerConfig.ConfigSeq = types.ConfigSequence(routerConfig.Bundle.ConfigtxValidator().Sequence())
 	return routerConfig
 }
 
