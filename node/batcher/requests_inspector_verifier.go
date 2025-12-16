@@ -134,7 +134,7 @@ func (r *RequestsInspectorVerifier) VerifyRequestShard(req *comm.Request) error 
 func (r *RequestsInspectorVerifier) VerifyRequestFromRouter(req *comm.Request) error {
 	if r.configSeq != req.ConfigSeq {
 		// TODO reverify or do reconfig if needed; support dynamic reconfig
-		r.logger.Panicf("Request config seq is %d while batcher's config seq is %d", req.ConfigSeq, r.configSeq)
+		return errors.Errorf("Request config seq is %d while batcher's config seq is %d", req.ConfigSeq, r.configSeq)
 	}
 	return nil
 }
