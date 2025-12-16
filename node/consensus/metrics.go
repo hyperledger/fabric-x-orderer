@@ -17,8 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -68,7 +66,7 @@ type ConsensusMetrics struct {
 	complaintsCount metrics.Counter
 }
 
-func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, logger arma_types.Logger) *ConsensusMetrics {
+func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, logger arma_types.Logger) *ConsensusMetrics {
 	host, port, err := net.SplitHostPort(consenterNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
@@ -82,6 +80,9 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, logger
 	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("consensus_%s", partyID))
 	p := monitor.Provider
 
+	decisionsCount := p.NewCounter(metrics.CounterOpts(decisionsCountOpts)).With([]string{partyID}...)
+	decisionsCount.Add(float64(decisions))
+
 	return &ConsensusMetrics{
 		interval: consenterNodeConfig.MetricsLogInterval,
 		partyID:  consenterNodeConfig.PartyId,
@@ -89,7 +90,7 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, logger
 		stopChan: make(chan struct{}),
 		monitor:  monitor,
 
-		decisionsCount:  p.NewCounter(metrics.CounterOpts(decisionsCountOpts)).With([]string{partyID}...),
+		decisionsCount:  decisionsCount,
 		blocksCount:     p.NewCounter(metrics.CounterOpts(blocksCountOpts)).With([]string{partyID}...),
 		bafsCount:       p.NewCounter(metrics.CounterOpts(bafsCountOpts)).With([]string{partyID}...),
 		complaintsCount: p.NewCounter(metrics.CounterOpts(complaintsCountOpts)).With([]string{partyID}...),
@@ -147,33 +148,4 @@ func (m *ConsensusMetrics) trackMetrics() {
 			return
 		}
 	}
-}
-
-func (m *ConsensusMetrics) initMetricsFromLedger(l *ledger.ConsensusLedger) {
-	h := l.Height()
-	var blocks uint64
-	for i := uint64(0); i < h; i++ {
-		b, err := l.RetrieveBlockByNumber(i)
-		if err != nil {
-			m.logger.Warnf("failed retrieving block %d: %v", i, err)
-			return
-		}
-
-		p, _, err := state.BytesToDecision(b.Data.Data[0])
-		if err != nil {
-			m.logger.Warnf("failed parsing decision %d: %v", i, err)
-			return
-		}
-
-		var hdr state.Header
-		if err := hdr.Deserialize(p.Header); err != nil {
-			m.logger.Warnf("failed deserializing header %d: %v", i, err)
-			return
-		}
-
-		blocks += uint64(len(hdr.AvailableCommonBlocks))
-	}
-
-	m.decisionsCount.Add(float64(h))
-	m.blocksCount.Add(float64(blocks))
 }

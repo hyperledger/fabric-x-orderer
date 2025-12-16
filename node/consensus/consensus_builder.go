@@ -92,7 +92,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 		Storage:                      consLedger,
 		SigVerifier:                  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:                       signer,
-		Metrics:                      NewConsensusMetrics(conf, logger),
+		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), logger),
 		RequestVerifier:              createConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
 		ConfigRequestValidator: &configrequest.DefaultValidateConfigRequest{
@@ -105,7 +105,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 	setupComm(c)
 	c.Synchronizer = createSynchronizer(consLedger, c)
 	c.BFT.Synchronizer = c.Synchronizer
-	c.Metrics.initMetricsFromLedger(consLedger)
 
 	return c
 }

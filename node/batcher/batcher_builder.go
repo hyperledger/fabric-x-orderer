@@ -58,6 +58,11 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		logger.Panicf("Failed creating batcher config store: %s", err)
 	}
 
+	batchers := batchersFromConfig(config)
+	if len(batchers) == 0 {
+		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", config.ShardId, config.Shards)
+	}
+
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
 		batcherDeliverService:     ds,
@@ -65,21 +70,17 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		signer:                    signer,
 		logger:                    logger,
 		Net:                       net,
+		batchers:                  batchers,
 		Ledger:                    ledger,
 		ConfigStore:               configStore,
 		batcherCerts2IDs:          make(map[string]types.PartyID),
 		config:                    config,
-		Metrics:                   NewBatcherMetrics(config, logger),
+		Metrics:                   NewBatcherMetrics(config, batchers, ledger, logger),
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
 	for i, consenterInfo := range config.Consenters {
 		b.controlEventSenders[i] = senderCreator.CreateConsenterControlEventSender(config.TLSPrivateKeyFile, config.TLSCertificateFile, consenterInfo)
-	}
-
-	b.batchers = batchersFromConfig(config)
-	if len(b.batchers) == 0 {
-		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", config.ShardId, config.Shards)
 	}
 
 	initState := computeZeroState(config)
@@ -95,8 +96,6 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 
 	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, config.ShardId, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
-
-	b.Metrics.initFromLedger(b)
 
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),

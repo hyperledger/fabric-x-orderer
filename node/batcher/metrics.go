@@ -109,7 +109,7 @@ type BatcherMetrics struct {
 	monitor *monitoring.Monitor
 }
 
-func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, logger arma_types.Logger) *BatcherMetrics {
+func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo []config.BatcherInfo, ledger BatchLedger, logger arma_types.Logger) *BatcherMetrics {
 	host, port, err := net.SplitHostPort(batcherNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
@@ -124,6 +124,22 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, logger arma_
 	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("batcher_%s_%s", partyID, shardID))
 	p := monitor.Provider
 
+	// initialize metrics from ledger
+	var batches, pulled uint64
+	for _, b := range batchersInfo {
+		h := ledger.Height(b.PartyID)
+		if batcherNodeConfig.PartyId != b.PartyID {
+			pulled += h
+		}
+		batches += h
+	}
+
+	batchesPulledTotal := p.NewCounter(batchesPulledTotalOpts).With([]string{partyID, shardID}...)
+	batchesPulledTotal.Add(float64(pulled))
+
+	batchesCreatedTotal := p.NewCounter(batchesCreatedTotalOpts).With([]string{partyID, shardID}...)
+	batchesCreatedTotal.Add(float64(batches))
+
 	return &BatcherMetrics{
 		interval: batcherNodeConfig.MetricsLogInterval,
 		partyID:  batcherNodeConfig.PartyId,
@@ -134,8 +150,8 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, logger arma_
 
 		currentRole:         p.NewGauge(currentRoleOpts).With([]string{partyID, shardID}...),
 		roleChangesTotal:    p.NewCounter(roleChangesTotalOpts).With([]string{partyID, shardID}...),
-		batchesCreatedTotal: p.NewCounter(batchesCreatedTotalOpts).With([]string{partyID, shardID}...),
-		batchesPulledTotal:  p.NewCounter(batchesPulledTotalOpts).With([]string{partyID, shardID}...),
+		batchesCreatedTotal: batchesCreatedTotal,
+		batchesPulledTotal:  batchesPulledTotal,
 		batchedTxsTotal:     p.NewCounter(batchedTxsTotalOpts).With([]string{partyID, shardID}...),
 		routerTxsTotal:      p.NewCounter(routerTxsTotalOpts).With([]string{partyID, shardID}...),
 		complaintsTotal:     p.NewCounter(complaintsTotalOpts).With([]string{partyID, shardID}...),
@@ -218,25 +234,4 @@ func (m *BatcherMetrics) role() string {
 		return "primary"
 	}
 	return "secondary"
-}
-
-func (m *BatcherMetrics) initFromLedger(b *Batcher) {
-	var batches, pulled, txs uint64
-
-	for _, bi := range b.batchers {
-		h := b.Ledger.Height(bi.PartyID)
-		for seq := uint64(0); seq < h; seq++ {
-			batch := b.Ledger.RetrieveBatchByNumber(bi.PartyID, seq)
-			txs += uint64(len(batch.Requests()))
-			batches++
-
-			if b.config.PartyId != bi.PartyID {
-				pulled++
-			}
-		}
-	}
-
-	m.batchesCreatedTotal.Add(float64(batches))
-	m.batchesPulledTotal.Add(float64(pulled))
-	m.batchedTxsTotal.Add(float64(txs))
 }

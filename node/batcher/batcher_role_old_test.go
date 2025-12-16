@@ -211,6 +211,15 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0)
 	})
 
+	batchersInfo := make([]config.BatcherInfo, len(batchers))
+	for i, id := range batchers {
+		batchersInfo[i] = config.BatcherInfo{
+			PartyID: id,
+		}
+	}
+
+	ledger := &noopLedger{}
+
 	batcher := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
@@ -222,7 +231,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		MemPool:                 pool,
 		ID:                      arma_types.PartyID(nodeID),
 		Threshold:               2,
-		Ledger:                  &noopLedger{},
+		Ledger:                  ledger,
 		StateProvider:           &mocks.FakeStateProvider{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
@@ -231,7 +240,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 			ShardId:                 shardID,
 			MonitoringListenAddress: "127.0.0.1:0",
 			MetricsLogInterval:      0 * time.Second,
-		}, sugaredLogger),
+		}, batchersInfo, ledger, sugaredLogger),
 	}
 
 	return batcher
@@ -360,6 +369,15 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0)
 	})
 
+	batchersInfo := make([]config.BatcherInfo, len(batchers))
+	for i, id := range batchers {
+		batchersInfo[i] = config.BatcherInfo{
+			PartyID: id,
+		}
+	}
+
+	ledger := &noopLedger{}
+
 	b := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
@@ -371,7 +389,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		MemPool:                 pool,
 		ID:                      nodeID,
 		Threshold:               2,
-		Ledger:                  &noopLedger{},
+		Ledger:                  ledger,
 		StateProvider:           &mocks.FakeStateProvider{},
 		Complainer:              &mocks.FakeComplainer{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
@@ -381,7 +399,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 			ShardId:                 shardID,
 			MonitoringListenAddress: "127.0.0.1:0",
 			MetricsLogInterval:      0 * time.Second,
-		}, sugaredLogger),
+		}, batchersInfo, ledger, sugaredLogger),
 	}
 
 	return b
