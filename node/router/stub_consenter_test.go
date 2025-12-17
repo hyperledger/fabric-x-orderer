@@ -27,7 +27,6 @@ import (
 )
 
 type StubConsenter struct {
-	ca          tlsgen.CA // Certificate authority that issues a certificate for the consenter
 	certificate []byte
 	key         []byte
 	server      *comm.GRPCServer // GRPCServer instance represents the consenter
@@ -53,7 +52,6 @@ func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubCon
 
 	// return a stub consenter that includes all server setup
 	stubConsenter := StubConsenter{
-		ca:          ca,
 		certificate: certKeyPair.Cert,
 		key:         certKeyPair.Key,
 		server:      server,

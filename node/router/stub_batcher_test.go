@@ -24,7 +24,6 @@ import (
 )
 
 type stubBatcher struct {
-	ca           tlsgen.CA // Certificate authority that issues a certificate for the batcher
 	certificate  []byte
 	key          []byte
 	server       *comm.GRPCServer // GRPCServer instance represents the batcher
@@ -52,7 +51,6 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 
 	// return a stub batcher that includes all server setup
 	stubBatcher := stubBatcher{
-		ca:          ca,
 		certificate: certKeyPair.Cert,
 		key:         certKeyPair.Key,
 		server:      server,
