@@ -131,6 +131,10 @@ func (cc ClientConfig) DialOptions() ([]grpc.DialOption, error) {
 			grpc.FailOnNonTempDialError(true),
 		)
 	}
+	// set dial timeout
+	if cc.DialTimeout > 0 {
+		dialOpts = append(dialOpts, grpc.WithTimeout(cc.DialTimeout))
+	}
 	// set send/recv message size to package defaults
 	maxRecvMsgSize := DefaultMaxRecvMsgSize
 	if cc.MaxRecvMsgSize != 0 {
