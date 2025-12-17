@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package router
+package stub
 
 import (
 	"context"
@@ -59,6 +59,10 @@ func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubCon
 		decisions:   make(chan *common.Block, 100),
 	}
 	return stubConsenter
+}
+
+func (sc *StubConsenter) Server() *comm.GRPCServer {
+	return sc.server
 }
 
 func (sc *StubConsenter) Start() {
