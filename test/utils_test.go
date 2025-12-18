@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,8 +16,10 @@ import (
 	"encoding/binary"
 	"encoding/pem"
 	"fmt"
+	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -553,6 +556,7 @@ type BlockPullerOptions struct {
 	Blocks           int
 	Timeout          int
 	ErrString        string
+	LogString        string
 	Status           *common.Status
 	Verifier         *crypto.ECDSAVerifier
 }
@@ -565,6 +569,13 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	require.GreaterOrEqual(t, options.EndBlock, uint64(0))
 	require.GreaterOrEqual(t, options.Transactions, 0)
 	require.GreaterOrEqual(t, options.Blocks, 0)
+
+	var buf bytes.Buffer
+	// Set log output to the buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(nil) // Reset log output at the end of the test
+
+	log.SetFlags(0) // Disable log flags like date/time
 
 	if options.Timeout <= 0 {
 		options.Timeout = 30
@@ -592,7 +603,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 
 			require.True(t, err != nil && options.ErrString != "" || options.ErrString == "" && err == nil)
 
-			if options.ErrString != "" {
+			if len(options.ErrString) > 0 {
 				errString := fmt.Sprintf(options.ErrString, partyID)
 				require.ErrorContains(t, err, errString)
 			}
@@ -603,6 +614,12 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 			require.GreaterOrEqual(t, int64(pullInfo.TotalTxs), int64(options.Transactions))
 			require.GreaterOrEqual(t, int64(pullInfo.TotalBlocks), int64(options.Blocks))
 			require.Empty(t, pullInfo.Missing)
+
+			if len(options.LogString) > 0 {
+				logOutput := buf.String()
+				logString := fmt.Sprintf(options.LogString, partyID)
+				require.Contains(t, logOutput, logString, "Expected log output to contain specified log string")
+			}
 		}()
 	}
 
@@ -627,7 +644,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	expectedNumOfBlocks := blocks
 
 	m := make(map[uint64]int, transactions)
-	for i := 0; i < transactions; i++ {
+	for i := range transactions {
 		m[uint64(i)] = 0
 	}
 
@@ -646,6 +663,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 
 		// Check if the block is genesis block or not
 		isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
+		isConfigBlock := protoutil.IsConfigBlock(block)
 
 		if !isGenesisBlock {
 			shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
@@ -692,9 +710,21 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			if verifiedSigns < 2*fval+1 {
 				return fmt.Errorf("not enough signatures: got %d, need at least %d (2*f + 1)", verifiedSigns, 2*fval+1)
 			}
+
+			if isConfigBlock {
+				log.Printf("configuration block %d partyID %d verified with %d signatures\n", block.Header.Number, partyID, verifiedSigns)
+			}
 		}
 
-		for i := 0; i < transactionsNumber; i++ {
+		if isConfigBlock && needVerification {
+			require.Equal(t, 1, transactionsNumber)
+			// skip config block txs
+			m[uint64(len(m)-1)]++
+			totalTxs++
+			return nil
+		}
+
+		for i := range transactionsNumber {
 			envelope, err := protoutil.UnmarshalEnvelope(data[i])
 			if err != nil {
 				return errors.Wrapf(err, "failed to unmarshal envelope %v", err)
@@ -742,9 +772,24 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	return blockPullerInfo, err
 }
 
-func BuildVerifier(consenters []node_config.ConsenterInfo, logger types.Logger) crypto.ECDSAVerifier {
+func BuildVerifier(configDir string, partyID types.PartyID, logger types.Logger) *crypto.ECDSAVerifier {
+	localConfig, _, err := config.LoadLocalConfig(filepath.Join(configDir, fmt.Sprintf("config/party%d/local_config_consenter.yaml", int(partyID))))
+	if err != nil {
+		logger.Panicf("Failed loading local config: %v", err)
+	}
+	sharedConfig, _, err := config.LoadSharedConfig(filepath.Join(configDir, "bootstrap/shared_config.yaml"))
+	if err != nil {
+		logger.Panicf("Failed loading shared config: %v", err)
+	}
+
+	conf := &config.Configuration{
+		LocalConfig:  localConfig,
+		SharedConfig: sharedConfig,
+	}
+	consenterInfos := conf.ExtractConsenters()
+
 	verifier := make(crypto.ECDSAVerifier)
-	for _, ci := range consenters {
+	for _, ci := range consenterInfos {
 		pk, _ := pem.Decode(ci.PublicKey)
 		if pk == nil || pk.Bytes == nil {
 			logger.Panicf("Failed decoding consenter public key")
@@ -758,5 +803,5 @@ func BuildVerifier(consenters []node_config.ConsenterInfo, logger types.Logger) 
 		verifier[crypto.ShardPartyKey{Shard: types.ShardIDConsensus, Party: types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
 	}
 
-	return verifier
+	return &verifier
 }
