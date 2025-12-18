@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package router_test
+package stub
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubBatcher struct {
+type StubBatcher struct {
 	certificate  []byte
 	key          []byte
 	server       *comm.GRPCServer // GRPCServer instance represents the batcher
@@ -34,7 +34,7 @@ type stubBatcher struct {
 	dropRequests bool
 }
 
-func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID types.ShardID) stubBatcher {
+func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID types.ShardID) StubBatcher {
 	// create a (cert,key) pair for the batcher
 	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 	require.NoError(t, err)
 
 	// return a stub batcher that includes all server setup
-	stubBatcher := stubBatcher{
+	stubBatcher := StubBatcher{
 		certificate: certKeyPair.Cert,
 		key:         certKeyPair.Key,
 		server:      server,
@@ -61,7 +61,11 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 	return stubBatcher
 }
 
-func (sb *stubBatcher) Start() {
+func (sb *StubBatcher) Server() *comm.GRPCServer {
+	return sb.server
+}
+
+func (sb *StubBatcher) Start() {
 	protos.RegisterRequestTransmitServer(sb.server.Server(), sb)
 	go func() {
 		if err := sb.server.Start(); err != nil {
@@ -70,11 +74,11 @@ func (sb *stubBatcher) Start() {
 	}()
 }
 
-func (sb *stubBatcher) Stop() {
+func (sb *StubBatcher) Stop() {
 	sb.server.Stop()
 }
 
-func (sb *stubBatcher) Restart() {
+func (sb *StubBatcher) Restart() {
 	// save the current server address
 	addr := sb.server.Address()
 
@@ -101,7 +105,7 @@ func (sb *stubBatcher) Restart() {
 	}()
 }
 
-func (sb *stubBatcher) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+func (sb *StubBatcher) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	resp := &protos.SubmitResponse{
 		Error:   "",
 		ReqID:   request.Identity,
@@ -111,7 +115,7 @@ func (sb *stubBatcher) Submit(ctx context.Context, request *protos.Request) (*pr
 	return resp, nil
 }
 
-func (sb *stubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
+func (sb *StubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
@@ -138,16 +142,16 @@ func (sb *stubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamSe
 	}
 }
 
-func (sb *stubBatcher) ReceivedMessageCount() uint32 {
+func (sb *StubBatcher) ReceivedMessageCount() uint32 {
 	receivedTxs := atomic.LoadUint32(&sb.txs)
 	sb.logger.Infof("stub batcher from party %d and shard %d received %d txs\n", sb.partyID, sb.shardID, receivedTxs)
 	return receivedTxs
 }
 
-func (sb *stubBatcher) GetBatcherEndpoint() string {
+func (sb *StubBatcher) GetBatcherEndpoint() string {
 	return sb.server.Address()
 }
 
-func (sb *stubBatcher) SetDropRequests(dropRequests bool) {
+func (sb *StubBatcher) SetDropRequests(dropRequests bool) {
 	sb.dropRequests = dropRequests
 }

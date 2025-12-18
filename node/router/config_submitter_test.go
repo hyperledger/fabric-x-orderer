@@ -16,12 +16,13 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 )
 
 type configSubmitTestSetup struct {
-	stubConsenter   *StubConsenter
+	stubConsenter   *stub.StubConsenter
 	configSubmitter *configSubmitter
 }
 
@@ -40,7 +41,7 @@ func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	stubConsenter := NewStubConsenter(t, ca, types.PartyID(1))
+	stubConsenter := stub.NewStubConsenter(t, ca, types.PartyID(1))
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
