@@ -46,7 +46,7 @@ func (s *synchronizer) OnAppend(block *common.Block) {
 	delete(s.memStore, block.Header.Number)
 }
 
-func (s *synchronizer) stop() {
+func (s *synchronizer) Stop() {
 	if s.stopSync != nil {
 		s.stopSync()
 	}
