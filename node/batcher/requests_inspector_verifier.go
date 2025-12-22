@@ -41,6 +41,7 @@ type RequestsInspectorVerifier struct {
 	logger          types.Logger
 	mapper          router.ShardMapper
 	requestVerifier RequestVerifier
+	configSeq       uint32
 }
 
 func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
@@ -51,6 +52,7 @@ func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNod
 		batchMaxSize:    config.BatchMaxSize,
 		batchMaxBytes:   config.BatchMaxBytes,
 		requestMaxBytes: config.RequestMaxBytes,
+		configSeq:       uint32(config.Bundle.ConfigtxValidator().Sequence()),
 	}
 	if requestVerifier != nil {
 		riv.requestVerifier = requestVerifier
@@ -130,7 +132,10 @@ func (r *RequestsInspectorVerifier) VerifyRequestShard(req *comm.Request) error 
 
 // VerifyRequestFromRouter verifies a request that comes from the router in the batcher's party.
 func (r *RequestsInspectorVerifier) VerifyRequestFromRouter(req *comm.Request) error {
-	// TODO - check config sequence, and verify again if needed.
+	if r.configSeq != req.ConfigSeq {
+		// TODO reverify or do reconfig if needed; support dynamic reconfig
+		return errors.Errorf("mismatch config seq: request's config seq is %d while batcher's config seq is %d", req.ConfigSeq, r.configSeq)
+	}
 	return nil
 }
 
