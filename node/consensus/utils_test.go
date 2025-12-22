@@ -227,6 +227,11 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
 	bundle.ConfigtxValidatorReturns(configtxValidator)
+	policy := &policyMocks.FakePolicyEvaluator{}
+	policy.EvaluateSignedDataReturns(nil)
+	policyManager := &policyMocks.FakePolicyManager{}
+	policyManager.GetPolicyReturns(policy, true)
+	bundle.PolicyManagerReturns(policyManager)
 
 	return &nodeconfig.ConsenterNodeConfig{
 		Shards:                  []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
