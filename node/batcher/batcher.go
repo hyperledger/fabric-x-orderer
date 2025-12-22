@@ -191,11 +191,6 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 	// TODO: certificate pinning (bathcer trust router from his own party.)
 	b.logger.Debugf("Received request %x", req.Payload)
 
-	if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
-		b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
-		// TODO should return response with error?
-	}
-
 	b.Metrics.routerTxsTotal.Add(1)
 
 	// Make sure batched requests contain only bytes of Envelope, not Request.
@@ -207,6 +202,12 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 
 	var resp protos.SubmitResponse
 	resp.TraceId = req.TraceId
+
+	if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
+		b.logger.Errorf("Failed verifying request before submitting from router; err: %v", err)
+		resp.Error = err.Error()
+		return &resp, nil
+	}
 
 	if err := b.batcher.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
@@ -248,11 +249,6 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 			return err
 		}
 
-		if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
-			b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
-			// TODO should return response with error?
-		}
-
 		b.Metrics.routerTxsTotal.Add(1)
 
 		// Make sure batched requests contain only bytes of Envelope, not Request.
@@ -264,6 +260,15 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 
 		var resp protos.SubmitResponse
 		resp.TraceId = req.TraceId
+
+		if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
+			b.logger.Errorf("Failed verifying request before submitting from router; err: %v", err)
+			resp.Error = err.Error()
+			if len(req.TraceId) > 0 {
+				responses <- &resp
+			}
+			continue
+		}
 
 		if err := b.batcher.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
