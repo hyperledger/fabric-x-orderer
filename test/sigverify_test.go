@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
@@ -170,7 +171,7 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 	// Create config tx
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
 	submittingPartyID := 1
-	env := CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingPartyID)
+	env := configutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingPartyID)
 	require.NotNil(t, env)
 
 	// Send the config tx
