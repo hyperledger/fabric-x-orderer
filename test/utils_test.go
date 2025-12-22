@@ -105,6 +105,12 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		policy := &policyMocks.FakePolicyEvaluator{}
+		policy.EvaluateSignedDataReturns(nil)
+		policyManager := &policyMocks.FakePolicyManager{}
+		policyManager.GetPolicyReturns(policy, true)
+		bundle.PolicyManagerReturns(policyManager)
+
 		fakeSigner := &mocks.SignerSerializer{}
 
 		configStorePath := t.TempDir()
@@ -226,6 +232,12 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+
+		policy := &policyMocks.FakePolicyEvaluator{}
+		policy.EvaluateSignedDataReturns(nil)
+		policyManager := &policyMocks.FakePolicyManager{}
+		policyManager.GetPolicyReturns(policy, true)
+		bundle.PolicyManagerReturns(policyManager)
 
 		conf := &node_config.ConsenterNodeConfig{
 			ListenAddress:                       "0.0.0.0:0",
