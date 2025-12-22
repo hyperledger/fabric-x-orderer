@@ -755,6 +755,15 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, 0)
 	})
 
+	batchersInfo := make([]config.BatcherInfo, len(batchers))
+	for i, id := range batchers {
+		batchersInfo[i] = config.BatcherInfo{
+			PartyID: id,
+		}
+	}
+
+	ledger := &mocks.FakeBatchLedger{}
+
 	batcher := &batcher.BatcherRole{
 		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
@@ -764,7 +773,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		Threshold:               2,
 		N:                       N,
 		Logger:                  logger,
-		Ledger:                  &mocks.FakeBatchLedger{},
+		Ledger:                  ledger,
 		BatchPuller:             &mocks.FakeBatchesPuller{},
 		StateProvider:           &mocks.FakeStateProvider{},
 		BAFCreator:              bafCreator,
@@ -778,7 +787,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 			ShardId:                 shardID,
 			MonitoringListenAddress: "127.0.0.1:0",
 			MetricsLogInterval:      0 * time.Second,
-		}, logger),
+		}, batchersInfo, ledger, logger),
 	}
 
 	return batcher

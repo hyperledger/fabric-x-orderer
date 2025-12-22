@@ -66,7 +66,7 @@ type ConsensusMetrics struct {
 	complaintsCount metrics.Counter
 }
 
-func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, logger arma_types.Logger) *ConsensusMetrics {
+func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, logger arma_types.Logger) *ConsensusMetrics {
 	host, port, err := net.SplitHostPort(consenterNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
@@ -80,6 +80,9 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, logger
 	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("consensus_%s", partyID))
 	p := monitor.Provider
 
+	decisionsCount := p.NewCounter(metrics.CounterOpts(decisionsCountOpts)).With([]string{partyID}...)
+	decisionsCount.Add(float64(decisions))
+
 	return &ConsensusMetrics{
 		interval: consenterNodeConfig.MetricsLogInterval,
 		partyID:  consenterNodeConfig.PartyId,
@@ -87,7 +90,7 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, logger
 		stopChan: make(chan struct{}),
 		monitor:  monitor,
 
-		decisionsCount:  p.NewCounter(metrics.CounterOpts(decisionsCountOpts)).With([]string{partyID}...),
+		decisionsCount:  decisionsCount,
 		blocksCount:     p.NewCounter(metrics.CounterOpts(blocksCountOpts)).With([]string{partyID}...),
 		bafsCount:       p.NewCounter(metrics.CounterOpts(bafsCountOpts)).With([]string{partyID}...),
 		complaintsCount: p.NewCounter(metrics.CounterOpts(complaintsCountOpts)).With([]string{partyID}...),
