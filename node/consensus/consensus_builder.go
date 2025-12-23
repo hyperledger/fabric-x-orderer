@@ -39,7 +39,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
+func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	if lastConfigBlock == nil {
 		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
 		return nil
@@ -93,7 +93,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 		SigVerifier:                  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:                       signer,
 		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), logger),
-		RequestVerifier:              createConsensusRulesVerifier(conf),
+		RequestVerifier:              CreateConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
 		ConfigRequestValidator: &configrequest.DefaultValidateConfigRequest{
 			ConfigUpdateProposer: configUpdateProposer,
@@ -103,8 +103,9 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
 	setupComm(c)
-	c.Synchronizer = createSynchronizer(consLedger, c)
-	c.BFT.Synchronizer = c.Synchronizer
+	sync := createSynchronizer(consLedger, c)
+	c.BFT.Synchronizer = sync
+	c.Synchronizer = sync
 
 	return c
 }
@@ -423,7 +424,7 @@ func getSelfID(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID
 	return myIdentity
 }
 
-func createConsensusRulesVerifier(config *config.ConsenterNodeConfig) *requestfilter.RulesVerifier {
+func CreateConsensusRulesVerifier(config *config.ConsenterNodeConfig) *requestfilter.RulesVerifier {
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(config))
