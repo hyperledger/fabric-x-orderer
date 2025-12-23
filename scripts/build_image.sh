@@ -32,8 +32,8 @@ Options:
   -h, --help        Display this help message and exit.
 
 Examples:
-  $0 --tag icr.io/cbdc/onboarding-repository:latest
-  $0 --tag icr.io/cbdc/onboarding-repository:latest --multiplatform
+  $0 --tag docker.io/hyperledger/fabric-x-orderer:latest
+  $0 --tag docker.io/hyperledger/fabric-x-orderer:latest --multiplatform
 EOF
 }
 
