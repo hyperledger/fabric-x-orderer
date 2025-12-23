@@ -21,7 +21,7 @@ ENV CGO_ENABLED=0
 
 WORKDIR /src
 
-# Now copy rest of the source
+# Copy build files (managed through .dockerignore)
 COPY . .
 
 # Build using your Makefile target
@@ -41,7 +41,7 @@ RUN /usr/sbin/useradd -u 10001 -r -g root -s /sbin/nologin -c "Hyperledger Fabri
     chmod 0755 /home/orderer
 
 # Copy in the statically built binaries from builder
-COPY --from=builder /src/bin/arma /usr/local/bin/orderer
+COPY --from=builder /src/bin/arma /usr/local/bin/arma
 COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 
 # OCI metadata labels
@@ -57,4 +57,4 @@ USER 10001
 WORKDIR /home/orderer
 
 # Default entrypoint
-ENTRYPOINT ["/usr/local/bin/orderer"]
+ENTRYPOINT ["/usr/local/bin/arma"]
