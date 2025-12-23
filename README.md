@@ -1,10 +1,9 @@
 # Hyperledger Fabric-X Orderer
 
-This repository contains the ordering service of fabric-x. 
+This repository contains the ordering service of fabric-x.
 The ordering service is based on the Arma protocol:
 
 "Arma: a scalable Byzantine Fault Tolerant ordering service".
-
 
 ## Abstract
 
@@ -36,15 +35,15 @@ Clients submit transactions to the routers, whereas blocks are consumed from the
 
 More details on the internal architecture and inner workings of Arma can be found in the white paper: [https://ia.cr/2024/808]
 
-
 ## Client API
 
 Arma provides a gRPC service for submitting transactions and consuming blocks. This service is identical to Fabric's "Atomic Broadcast API".
 The gRPC service is defined here: [https://github.com/hyperledger/fabric-protos/blob/main/orderer/ab.proto]
 
 It defines two services:
--	The `Broadcast` service allows a client to submit transactions for ordering by the ordering servers.
--	The `Deliver` service allows clients to consume ordered blocks.
+
+- The `Broadcast` service allows a client to submit transactions for ordering by the ordering servers.
+- The `Deliver` service allows clients to consume ordered blocks.
 
 ```protobuf
 service AtomicBroadcast {
@@ -88,41 +87,53 @@ signatures.
 Arma is composed of 4 types of servers: `router`, `batcher`, `consensus` and `assembler`; also known as "server roles".
 To start a server use the arma CLI tool:
 
-* To run a router node:
-   ```bash
-   ./arma router --config=arma-config/Party1/router_node_config.yaml
-   ```
-* To run a batcher node:
-   ```bash
-   ./arma batcher --config=arma-config/Party1/batcher_node_1_config.yaml
-   ```
-* To run a consenter node:
-   ```bash
-   ./arma consensus --config=arma-config/Party1/consenter_node_config.yaml
-   ```
-* To run an assembler node:
-   ```bash
-   ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
-   ```
+- To run a router node:
+
+  ```bash
+  ./arma router --config=arma-config/Party1/router_node_config.yaml
+  ```
+
+- To run a batcher node:
+
+  ```bash
+  ./arma batcher --config=arma-config/Party1/batcher_node_1_config.yaml
+  ```
+
+- To run a consenter node:
+
+  ```bash
+  ./arma consensus --config=arma-config/Party1/consenter_node_config.yaml
+  ```
+
+- To run an assembler node:
+
+  ```bash
+  ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
+  ```
 
 Each server role expects a config file, specified in the command line (mandatory).
 For more details please refer to [arma-deployment](deployment/README.md).
 
+## Build Docker image locally
+
+To build the Docker image locally with either `Docker` or `Podman`, run:
+
+```bash
+make build-image
+```
+
 ### Starting with a genesis block
 
 The local configuration of each node points to the location of the genesis block.  
-That way, when a node starts up, it bootstraps from the genesis block and extract its shared configuration. 
+That way, when a node starts up, it bootstraps from the genesis block and extract its shared configuration.
 
 NOTE: All parties and all servers must be given the same genesis block.
 If a genesis block is not found, Arma will fail to start.
-
 
 ## Configuration and deployment
 
 For more information about deployment of Arma, please refer to [arma-deployment](deployment/README.md).
 
-
-
 ## Tools
-Armageddon is a command-line tool that provides a simple way to config an ARMA network, for more information please refer to [armageddon](cmd/armageddon/README.md).
 
+Armageddon is a command-line tool that provides a simple way to config an ARMA network, for more information please refer to [armageddon](cmd/armageddon/README.md).
