@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package consensus
+package consensus_test
 
 import (
 	"crypto/ecdsa"
@@ -26,8 +26,10 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	node_consensus "github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
+	consensus_mocks "github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -206,7 +208,7 @@ func TestConsensus(t *testing.T) {
 			wg.Add(4)
 
 			for _, node := range network {
-				go func(node *Consensus) {
+				go func(node *node_consensus.Consensus) {
 					defer wg.Done()
 
 					tstExpectedSequences := make([][]arma_types.BatchSequence, len(tst.expectedSequences))
@@ -256,7 +258,7 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *state.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *state.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*node_consensus.Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
@@ -273,7 +275,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	initialState, md := initializeStateAndMetadata(t, initialState, ledger)
 
-	consenter := &Consenter{ // TODO should this be initialized as part of consensus node start?
+	consenter := &node_consensus.Consenter{ // TODO should this be initialized as part of consensus node start?
 		State:           initialState,
 		DB:              db,
 		Logger:          l,
@@ -288,7 +290,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{Bundle: bundle, PartyId: partyID, MonitoringListenAddress: "127.0.0.1:0", MetricsLogInterval: 3 * time.Second}
 
-	c := &Consensus{
+	c := &node_consensus.Consensus{
 		Config:       &consenterNodeConfig,
 		BFTConfig:    smartbft_types.DefaultConfig,
 		Logger:       l,
@@ -299,9 +301,9 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Storage:      ledger,
 		Arma:         consenter,
 		BADB:         db,
-		Net:          &mockNet{},
-		Synchronizer: &synchronizer{stopSync: func() {}},
-		Metrics:      NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), l),
+		Net:          &consensus_mocks.FakeNetStopper{},
+		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
+		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), l),
 	}
 
 	c.BFTConfig.SelfID = uint64(partyID)
@@ -370,10 +372,6 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 	return header.State, md
 }
 
-type mockNet struct{}
-
-func (n *mockNet) Stop() {}
-
 type mockComm struct {
 	from  uint64
 	net   network
@@ -392,17 +390,7 @@ func (comm *mockComm) Nodes() []uint64 {
 	return comm.nodes
 }
 
-type network map[uint64]*Consensus
-
-type storageListener struct {
-	f func()
-	c chan *common.Block
-}
-
-func (l *storageListener) OnAppend(block *common.Block) {
-	defer l.f()
-	l.c <- block
-}
+type network map[uint64]*node_consensus.Consensus
 
 func TestAssembleProposalAndVerify(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
@@ -430,7 +418,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		Bundle:                              bundle,
 		RequestMaxBytes:                     1000,
 	}
-	requestVerifier := createConsensusRulesVerifier(config)
+	requestVerifier := node_consensus.CreateConsensusRulesVerifier(config)
 
 	numOfParties := 4
 
@@ -604,7 +592,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				AppContext: protoutil.MarshalOrPanic(tst.initialAppContext),
 			}
 
-			consenter := &Consenter{
+			consenter := &node_consensus.Consenter{
 				DB:              db,
 				State:           initialState,
 				Logger:          logger,
@@ -623,7 +611,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
 			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 
-			c := &Consensus{
+			c := &node_consensus.Consensus{
 				Arma:                   consenter,
 				State:                  initialState,
 				Logger:                 logger,
@@ -746,7 +734,7 @@ func TestVerifyProposal(t *testing.T) {
 		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
-	consenter := &Consenter{
+	consenter := &node_consensus.Consenter{
 		DB:              db,
 		State:           &initialState,
 		Logger:          logger,
@@ -759,7 +747,7 @@ func TestVerifyProposal(t *testing.T) {
 	configtxValidator.SequenceReturns(0)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
-	c := &Consensus{
+	c := &node_consensus.Consensus{
 		Arma:        consenter,
 		State:       &initialState,
 		Logger:      logger,
@@ -916,7 +904,7 @@ func TestVerifyProposal(t *testing.T) {
 	require.ErrorContains(t, err, "expected verification sequence")
 }
 
-func verifyProposalRequireError(t *testing.T, c *Consensus, header, payload, metadata []byte) {
+func verifyProposalRequireError(t *testing.T, c *node_consensus.Consensus, header, payload, metadata []byte) {
 	proposal := smartbft_types.Proposal{
 		Header:   header,
 		Payload:  payload,
@@ -971,14 +959,14 @@ func TestSignProposal(t *testing.T) {
 		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
-	consenter := &Consenter{
+	consenter := &node_consensus.Consenter{
 		DB:              db,
 		State:           &initialState,
 		Logger:          logger,
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
-	c := &Consensus{
+	c := &node_consensus.Consensus{
 		BFTConfig:   smartbft_types.Configuration{SelfID: 1},
 		Arma:        consenter,
 		State:       &initialState,
@@ -1067,7 +1055,7 @@ func TestConsensusStartStop(t *testing.T) {
 		commitEvent.Done()
 	}
 
-	network := make(map[uint64]*Consensus)
+	network := make(map[uint64]*node_consensus.Consensus)
 
 	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
 	defer cleanup()
@@ -1252,20 +1240,20 @@ func TestCreateAndVerifyDataCommonBlock(t *testing.T) {
 		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
-			block, err := CreateDataCommonBlock(0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			block, err := node_consensus.CreateDataCommonBlock(0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
 			require.NoError(t, err)
 			require.NotNil(t, block)
-			err = VerifyDataCommonBlock(block, tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			err = node_consensus.VerifyDataCommonBlock(block, tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
 				require.ErrorContains(t, err, tst.err)
 			}
 
-			block, err = CreateDataCommonBlock(tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			block, err = node_consensus.CreateDataCommonBlock(tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
 			require.NoError(t, err)
 			require.NotNil(t, block)
-			err = VerifyDataCommonBlock(block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			err = node_consensus.VerifyDataCommonBlock(block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
@@ -1321,7 +1309,7 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
-			configBlock, err := CreateConfigCommonBlock(0, nil, 0, 0, 0, nil)
+			configBlock, err := node_consensus.CreateConfigCommonBlock(0, nil, 0, 0, 0, nil)
 			require.NoError(t, err)
 			require.NotNil(t, configBlock)
 
@@ -1331,7 +1319,7 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 				dataHash = tst.dataHash
 			}
 
-			err = VerifyConfigCommonBlock(configBlock, tst.blockNum, tst.prevHash, dataHash, tst.decisionNum, tst.batchCount, tst.batchIndex)
+			err = node_consensus.VerifyConfigCommonBlock(configBlock, tst.blockNum, tst.prevHash, dataHash, tst.decisionNum, tst.batchCount, tst.batchIndex)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
@@ -1343,11 +1331,11 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 				configReq = tst.dataHash
 			}
 
-			configBlock, err = CreateConfigCommonBlock(tst.blockNum, tst.prevHash, tst.decisionNum, tst.batchCount, tst.batchIndex, configReq)
+			configBlock, err = node_consensus.CreateConfigCommonBlock(tst.blockNum, tst.prevHash, tst.decisionNum, tst.batchCount, tst.batchIndex, configReq)
 			require.NoError(t, err)
 			require.NotNil(t, configBlock)
 
-			err = VerifyConfigCommonBlock(configBlock, 0, nil, nilConfigReq.Digest(), 0, 0, 0)
+			err = node_consensus.VerifyConfigCommonBlock(configBlock, 0, nil, nilConfigReq.Digest(), 0, 0, 0)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
@@ -1387,7 +1375,7 @@ func TestConsensusSoftStop(t *testing.T) {
 		commitEvent.Done()
 	}
 
-	network := make(map[uint64]*Consensus)
+	network := make(map[uint64]*node_consensus.Consensus)
 
 	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
 	defer cleanup()

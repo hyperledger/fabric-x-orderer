@@ -53,9 +53,13 @@ type node struct {
 
 type storageListener struct {
 	c chan *common.Block
+	f func()
 }
 
 func (l *storageListener) OnAppend(block *common.Block) {
+	if l.f != nil {
+		defer l.f()
+	}
 	l.c <- block
 }
 

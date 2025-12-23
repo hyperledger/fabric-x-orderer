@@ -43,7 +43,13 @@ type Storage interface {
 	Close()
 }
 
-type Net interface {
+//go:generate counterfeiter -o mocks/net_stopper.go . NetStopper
+type NetStopper interface {
+	Stop()
+}
+
+//go:generate counterfeiter -o mocks/synchronizer_stopper.go . SynchronizerStopper
+type SynchronizerStopper interface {
 	Stop()
 }
 
@@ -72,7 +78,7 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	Net                          Net
+	Net                          NetStopper
 	Config                       *config.ConsenterNodeConfig
 	SigVerifier                  SigVerifier
 	Signer                       Signer
@@ -87,7 +93,7 @@ type Consensus struct {
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
 	Logger                       arma_types.Logger
-	Synchronizer                 *synchronizer
+	Synchronizer                 SynchronizerStopper
 	Metrics                      *ConsensusMetrics
 	RequestVerifier              *requestfilter.RulesVerifier
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
@@ -112,7 +118,7 @@ func (c *Consensus) SoftStop() {
 	c.softStopOnce.Do(func() {
 		close(c.softStopCh)
 		c.BFT.Stop()
-		c.Synchronizer.stop()
+		c.Synchronizer.Stop()
 		c.BADB.Close()
 		c.Metrics.Stop()
 	})
