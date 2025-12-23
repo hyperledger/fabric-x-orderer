@@ -24,6 +24,8 @@ WORKDIR /src
 # Copy build files (managed through .dockerignore)
 COPY . .
 
+RUN ls -la .
+
 # Build using your Makefile target
 RUN make binary
 
