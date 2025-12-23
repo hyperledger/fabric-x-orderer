@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/asn1"
 	"fmt"
+	"net"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -18,10 +19,15 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"go.uber.org/zap"
 
 	"github.com/stretchr/testify/require"
 )
@@ -58,6 +64,34 @@ func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubCon
 		partyID:     partyID,
 		decisions:   make(chan *common.Block, 100),
 	}
+	return stubConsenter
+}
+
+func NewStubConsenterFromConfig(t *testing.T, configStoreDir string, nodeConfigPath string, listener net.Listener) *StubConsenter {
+	listener.Close()
+
+	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+	require.NoError(t, err)
+
+	localConfig.NodeLocalConfig.FileStore.Path = configStoreDir
+	utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
+
+	configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+	require.NoError(t, err)
+
+	consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
+	require.NotNil(t, consenterConfig)
+
+	server := node.CreateGRPCConsensus(consenterConfig)
+
+	stubConsenter := &StubConsenter{
+		partyID:     consenterConfig.PartyId,
+		server:      server,
+		certificate: consenterConfig.TLSCertificateFile,
+		key:         consenterConfig.TLSPrivateKeyFile,
+		decisions:   make(chan *common.Block, 100),
+	}
+
 	return stubConsenter
 }
 
