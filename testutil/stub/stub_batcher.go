@@ -10,12 +10,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"sync/atomic"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"go.uber.org/zap"
 
+	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -57,6 +62,35 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 		partyID:     partyID,
 		shardID:     shardID,
 		logger:      testutil.CreateLogger(t, int(shardID)),
+	}
+	return stubBatcher
+}
+
+func NewStubBatcherFromConfig(t *testing.T, configStoreDir string, nodeConfigPath string, listener net.Listener) StubBatcher {
+	listener.Close()
+
+	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+	require.NoError(t, err)
+
+	localConfig.NodeLocalConfig.FileStore.Path = configStoreDir
+	utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
+
+	config, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigBatcher", zap.DebugLevel))
+	require.NoError(t, err)
+
+	batcherConfig := config.ExtractBatcherConfig(lastConfigBlock)
+	require.NotNil(t, batcherConfig)
+
+	server := node.CreateGRPCBatcher(batcherConfig)
+
+	// return a stub batcher that includes all server setup
+	stubBatcher := StubBatcher{
+		certificate: batcherConfig.TLSCertificateFile,
+		key:         batcherConfig.TLSPrivateKeyFile,
+		server:      server,
+		partyID:     batcherConfig.PartyId,
+		shardID:     batcherConfig.ShardId,
+		logger:      testutil.CreateLogger(t, int(batcherConfig.ShardId)),
 	}
 	return stubBatcher
 }
