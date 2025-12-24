@@ -109,7 +109,7 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	// the envelope.Payload contains marshaled bytes of configUpdateEnvelope, which is an envelope with Header.Type = HeaderType_CONFIG_UPDATE, signed by majority of admins
 	// Create the config transaction
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	env := createConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty)
+	env := CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty)
 	require.NotNil(t, env)
 
 	// 10. Send the config tx
@@ -331,7 +331,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	// Create the config transaction
 	submittingParty := 1
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	env := createConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty)
+	env := CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -419,7 +419,7 @@ func CreateSigner(privateKeyPath string) (*crypto.ECDSASigner, error) {
 	return (*crypto.ECDSASigner)(privateKey), nil
 }
 
-func createConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath string, submittingParty int) *common.Envelope {
+func CreateConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath string, submittingParty int) *common.Envelope {
 	// Create ConfigUpdateBytes
 	configUpdatePbBytes := CreateConfigUpdate(t, dir, genesisBlockPath)
 	require.NotNil(t, configUpdatePbBytes)
