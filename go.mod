@@ -3,7 +3,9 @@ module github.com/hyperledger/fabric-x-orderer
 go 1.25.5
 
 require (
+	github.com/cockroachdb/errors v1.12.0
 	github.com/davecgh/go-spew v1.1.1
+	github.com/gorilla/handlers v1.5.2
 	github.com/hyperledger/fabric-x-common v0.0.0-20251126094841-085a6ec89996
 	github.com/onsi/ginkgo/v2 v2.25.1
 	github.com/pkg/errors v0.9.1
@@ -44,7 +46,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cockroachdb/errors v1.12.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/consensys/gnark-crypto v0.18.1 // indirect
@@ -59,7 +60,6 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
-	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/hyperledger/aries-bbs-go v0.0.0-20240528084656-761671ea73bc // indirect
 	github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2 // indirect

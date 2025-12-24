@@ -22,7 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
-	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
+	cfgutil "github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 
@@ -107,7 +107,13 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	// the envelope.Payload contains marshaled bytes of configUpdateEnvelope, which is an envelope with Header.Type = HeaderType_CONFIG_UPDATE, signed by majority of admins
 	// Create the config transaction
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	env := configutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty)
+	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
+	defer cleanUp()
+
+	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
+	require.NotEmpty(t, configUpdatePbData)
+
+	env := cfgutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty, configUpdatePbData)
 	require.NotNil(t, env)
 
 	// 10. Send the config tx
@@ -333,7 +339,13 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 
 	// Create the config transaction
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	env := configutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty)
+	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
+	defer cleanUp()
+
+	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
+	require.NotEmpty(t, configUpdatePbData)
+
+	env := cfgutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty, configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
