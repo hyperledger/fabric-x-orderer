@@ -133,6 +133,7 @@ TLS:
    ClientAuthRequired: false
 ````
 Even if the `TLS.Enabled = false` is set to false, the `PrivateKey` and `Certificate` fields are expected to point to valid credentials because the nodes operates via mTLS.
+This flag affects only the external Broadcast and Deliver APIs, on the Router and Assembler, respectively.
 
 ###
 <a id="shared-configuration"></a>
