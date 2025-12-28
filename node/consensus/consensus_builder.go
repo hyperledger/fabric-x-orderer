@@ -95,6 +95,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), logger),
 		RequestVerifier:              CreateConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
+		ConfigApplier:                &DefaultConfigApplier{},
 		ConfigRequestValidator: &configrequest.DefaultValidateConfigRequest{
 			ConfigUpdateProposer: configUpdateProposer,
 			Bundle:               conf.Bundle,

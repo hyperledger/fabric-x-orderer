@@ -44,7 +44,7 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, batchAttestations)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Commit(events)
+	consenter.Commit(newState, batchAttestations)
 	assert.Equal(t, consenter.State, newState)
 	assert.Zero(t, db.PutCallCount())
 
@@ -54,7 +54,7 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, batchAttestations)
 	assert.Len(t, newState.Pending, 1)
 
-	consenter.Commit(events)
+	consenter.Commit(newState, batchAttestations)
 	assert.Equal(t, consenter.State, newState)
 	assert.Zero(t, db.PutCallCount())
 
@@ -67,7 +67,7 @@ func TestConsenter(t *testing.T) {
 	assert.Len(t, batchAttestations[0], 2)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Commit(events)
+	consenter.Commit(newState, batchAttestations)
 	assert.Equal(t, consenter.State, newState)
 	assert.Equal(t, db.PutCallCount(), 1)
 
@@ -80,7 +80,8 @@ func TestConsenter(t *testing.T) {
 
 	events = [][]byte{(&state.ControlEvent{Complaint: &c}).Bytes()}
 
-	consenter.Commit(events)
+	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
+	consenter.Commit(newState, batchAttestations)
 	assert.Equal(t, db.PutCallCount(), 1)
 	assert.Len(t, consenter.State.Complaints, 1)
 

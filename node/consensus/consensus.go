@@ -64,7 +64,7 @@ type SigVerifier interface {
 
 type Arma interface {
 	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
-	Commit(events [][]byte)
+	Commit(state *state.State, batchAttestations [][]arma_types.BatchAttestationFragment)
 }
 
 type BFT interface {
@@ -97,6 +97,7 @@ type Consensus struct {
 	Metrics                      *ConsensusMetrics
 	RequestVerifier              *requestfilter.RulesVerifier
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
+	ConfigApplier                ConfigApplier
 	ConfigRequestValidator       configrequest.ConfigRequestValidator
 	softStopCh                   chan struct{}
 	softStopOnce                 sync.Once
@@ -256,6 +257,12 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 
 	c.stateLock.Lock()
 	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
+	if configRequests != nil {
+		var err error
+		if computedState, err = c.ConfigApplier.ApplyConfigToState(computedState, configRequests[0]); err != nil {
+			return nil, fmt.Errorf("failed applying config to state, err: %s", err)
+		}
+	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	c.stateLock.Unlock()
@@ -493,6 +500,12 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
 	c.stateLock.Lock()
 	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
+	if configRequests != nil {
+		var err error
+		if newState, err = c.ConfigApplier.ApplyConfigToState(newState, configRequests[0]); err != nil {
+			c.Logger.Panicf("failed applying config to state, err: %s", err)
+		}
+	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	c.stateLock.Unlock()
@@ -592,7 +605,15 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
 	// This is true because a Commit(controlEvents) with the same controlEvents is idempotent.
-	c.Arma.Commit(controlEvents)
+	state, batchAttestations, configRequests := c.Arma.SimulateStateTransition(c.State, controlEvents)
+	if configRequests != nil {
+		var err error
+		if state, err = c.ConfigApplier.ApplyConfigToState(state, configRequests[0]); err != nil {
+			c.Logger.Panicf("failed applying config to state, err: %s", err)
+		}
+	}
+
+	c.Arma.Commit(state, batchAttestations)
 	c.Storage.Append(rawDecision)
 
 	// update metrics
