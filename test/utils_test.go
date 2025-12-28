@@ -267,6 +267,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer, mockConfigUpdateProposer)
+		c.ConfigApplier = &consensus.NoOpDefaultConfigApplier{}
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)
@@ -478,6 +479,7 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 	consenter := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, signer, mockConfigUpdateProposer)
+	consenter.ConfigApplier = &consensus.NoOpDefaultConfigApplier{}
 
 	gRPCServer := newConsenterNode.Server()
 	protos.RegisterConsensusServer(gRPCServer, consenter)
