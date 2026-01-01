@@ -278,7 +278,6 @@ github.com/hyperledger/fabric-x-common/tools/configtxgen
 github.com/hyperledger/fabric-x-common/tools/configtxlator/rest
 github.com/hyperledger/fabric-x-common/tools/configtxlator/update
 github.com/hyperledger/fabric-x-common/tools/fileutil
-github.com/hyperledger/fabric-x-common/tools/pkg/comm
 github.com/hyperledger/fabric-x-common/tools/pkg/identity
 github.com/hyperledger/fabric-x-common/tools/pkg/txflags
 github.com/hyperledger/fabric-x-common/tools/test
