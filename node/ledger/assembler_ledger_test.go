@@ -227,6 +227,43 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		}
 	})
 
+	t.Run("party removal", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+
+		num := 128
+		batches, ordInfos := createBatchesAndOrdInfo(t, num)
+
+		for n := 0; n < num; n++ {
+			al.Append(batches[n], ordInfos[n])
+		}
+
+		assert.Equal(t, uint64(1+num*2), al.GetTxCount())
+		assert.Equal(t, uint64(1+num), al.Ledger.Height())
+
+		// remove party 4, and call BatchFrontier. We should not see party 4 in the result.
+		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3}, time.Hour)
+		assert.NoError(t, err)
+		assert.Len(t, bf, 8) // BatchFrontiers contains all shards
+		for _, bfs := range bf {
+			assert.Len(t, bfs, 3) // every shard has only 3 parties now
+			for party, seq := range bfs {
+				assert.NotEqual(t, types.PartyID(4), party)
+				assert.Equal(t, types.BatchSequence(3), seq) // last sequence for every <shard,party> should be 3.
+			}
+		}
+	})
+
 	t.Run("empty ledger", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
