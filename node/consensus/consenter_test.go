@@ -29,7 +29,7 @@ func TestConsenter(t *testing.T) {
 	}
 
 	logger := testutil.CreateLogger(t, 0)
-	consenter := createConsenter(s, logger)
+	consenter := createConsenter(logger)
 
 	db := &mocks.FakeBatchAttestationDB{}
 	consenter.DB = db
@@ -45,7 +45,6 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, newState.Pending)
 
 	consenter.Commit(newState, batchAttestations)
-	assert.Equal(t, consenter.State, newState)
 	assert.Zero(t, db.PutCallCount())
 
 	// Test a valid event below threshold
@@ -55,7 +54,6 @@ func TestConsenter(t *testing.T) {
 	assert.Len(t, newState.Pending, 1)
 
 	consenter.Commit(newState, batchAttestations)
-	assert.Equal(t, consenter.State, newState)
 	assert.Zero(t, db.PutCallCount())
 
 	// Test valid events meeting the threshold
@@ -68,7 +66,6 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, newState.Pending)
 
 	consenter.Commit(newState, batchAttestations)
-	assert.Equal(t, consenter.State, newState)
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test the complaint is not stored in the DB
@@ -83,7 +80,6 @@ func TestConsenter(t *testing.T) {
 	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
 	consenter.Commit(newState, batchAttestations)
 	assert.Equal(t, db.PutCallCount(), 1)
-	assert.Len(t, consenter.State.Complaints, 1)
 
 	// Test ConfigRequest is returned by SimulateStateTransition
 	cr := &state.ConfigRequest{
@@ -99,12 +95,11 @@ func TestConsenter(t *testing.T) {
 	assert.Equal(t, cr.Envelope.Signature, configRequests[0].Envelope.Signature)
 }
 
-func createConsenter(s *state.State, logger arma_types.Logger) *consensus.Consenter {
+func createConsenter(logger arma_types.Logger) *consensus.Consenter {
 	consenter := &consensus.Consenter{
 		Logger:          logger,
 		DB:              &mocks.FakeBatchAttestationDB{},
 		BAFDeserializer: &state.BAFDeserialize{},
-		State:           s,
 	}
 
 	return consenter

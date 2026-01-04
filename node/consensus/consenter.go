@@ -26,7 +26,6 @@ type Consenter struct {
 	Logger          types.Logger
 	DB              BatchAttestationDB
 	BAFDeserializer state.BAFDeserializer
-	State           *state.State
 }
 
 func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, []*state.ConfigRequest) {
@@ -61,7 +60,6 @@ func (c *Consenter) Commit(state *state.State, batchAttestations [][]types.Batch
 	if len(batchAttestations) > 0 {
 		c.indexAttestationsInDB(batchAttestations)
 	}
-	c.State = state
 }
 
 func (c *Consenter) indexAttestationsInDB(batchAttestations [][]types.BatchAttestationFragment) {
