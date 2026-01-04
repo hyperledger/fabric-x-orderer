@@ -20,7 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -298,14 +298,14 @@ func (b *Batcher) sendResponses(stream protos.RequestTransmit_SubmitStreamServer
 }
 
 func (b *Batcher) extractBatcherFromContext(c context.Context) (types.PartyID, error) {
-	cert := node.ExtractCertificateFromContext(c)
+	cert := utils.ExtractCertificateFromContext(c)
 	if cert == nil {
 		return 0, errors.New("access denied; could not extract certificate from context")
 	}
 
 	from, exists := b.batcherCerts2IDs[string(cert.Raw)]
 	if !exists {
-		return 0, errors.Errorf("access denied; unknown certificate; %s", node.CertificateToString(cert))
+		return 0, errors.Errorf("access denied; unknown certificate; %s", utils.CertificateToString(cert))
 	}
 
 	return from, nil
