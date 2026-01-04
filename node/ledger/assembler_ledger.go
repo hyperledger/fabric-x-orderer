@@ -308,6 +308,12 @@ func (l *AssemblerLedger) BatchFrontier(
 			continue
 		}
 
+		// We only count <shard,party> combinations that are currently configured, as stated in the input parameters.
+		if !slices.Contains(parties, batchID.Primary()) || !slices.Contains(shards, batchID.Shard()) {
+			continue
+		}
+
+		// Initialize the map for the shard, if needed
 		if _, exists := shardParty2Seq[batchID.Shard()]; !exists {
 			shardParty2Seq[batchID.Shard()] = make(PartySequenceMap)
 		}
@@ -316,15 +322,12 @@ func (l *AssemblerLedger) BatchFrontier(
 		if _, exists := shardParty2Seq[batchID.Shard()][batchID.Primary()]; exists {
 			continue
 		}
+
 		// This is a <shard,party> we see for the first time, so we save it
 		shardParty2Seq[batchID.Shard()][batchID.Primary()] = batchID.Seq()
-		// We only count <shard,party> combinations that are currently configured, as stated in the input parameters.
-		// We will return shards and parties that were removed, but try to cover the currently defined space.
-		if slices.Contains(parties, batchID.Primary()) && slices.Contains(shards, batchID.Shard()) {
-			count--
-			if count == 0 {
-				break
-			}
+		count--
+		if count == 0 {
+			break
 		}
 
 		if time.Now().After(deadline) {
