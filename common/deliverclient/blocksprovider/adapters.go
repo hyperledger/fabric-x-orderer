@@ -12,7 +12,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-common/tools/pkg/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
 type DialerAdapter struct {
