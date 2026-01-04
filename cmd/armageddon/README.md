@@ -122,6 +122,19 @@ General:
       File: /var/folders/dec-trust/arma-config/bootstrap/bootstrap.block
 ````
 
+The local configuration specifies the TLS configuration for Arma nodes:
+````
+TLS:
+   Enabled: false
+   PrivateKey: /path/to/key.pem
+   Certificate: /path/to/tls-cert.pem
+   RootCAs:
+    - /path/to/tlsca-cert.pem
+   ClientAuthRequired: false
+````
+Even if the `TLS.Enabled = false` is set to false, the `PrivateKey` and `Certificate` fields are expected to point to valid credentials because the nodes operates via mTLS.
+This flag affects only the external Broadcast and Deliver APIs, on the Router and Assembler, respectively.
+
 ###
 <a id="shared-configuration"></a>
 Shared configuration:  
