@@ -617,7 +617,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				RequestVerifier:        requestVerifier,
 				Config:                 config,
 				ConfigUpdateProposer:   mockConfigUpdateProposer,
-				ConfigApplier:          &node_consensus.NoOpDefaultConfigApplier{},
+				ConfigApplier:          &NoOpDefaultConfigApplier{},
 				ConfigRequestValidator: mockConfigRequestValidator,
 			}
 

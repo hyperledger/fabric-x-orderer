@@ -50,9 +50,3 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 
 	return newState, nil
 }
-
-type NoOpDefaultConfigApplier struct{}
-
-func (ca *NoOpDefaultConfigApplier) ApplyConfigToState(state *state.State, configRequest *state.ConfigRequest) (*state.State, error) {
-	return state, nil
-}

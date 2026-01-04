@@ -14,7 +14,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	configrequestMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -44,7 +43,7 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 	setup.consensusNodes[0].ConfigRequestValidator = mockConfigRequestValidator
-	setup.consensusNodes[0].ConfigApplier = &consensus.NoOpDefaultConfigApplier{}
+	setup.consensusNodes[0].ConfigApplier = &NoOpDefaultConfigApplier{}
 
 	// update consensus router config
 	routerCert, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -132,7 +131,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	for i := 0; i < parties; i++ {
 		setup.consensusNodes[i].ConfigUpdateProposer = mockConfigUpdateProposer
 		setup.consensusNodes[i].ConfigRequestValidator = mockConfigRequestValidator
-		setup.consensusNodes[i].ConfigApplier = &consensus.NoOpDefaultConfigApplier{}
+		setup.consensusNodes[i].ConfigApplier = &NoOpDefaultConfigApplier{}
 	}
 
 	// update consensus router config
@@ -191,4 +190,10 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	for _, c := range setup.consensusNodes {
 		c.Stop()
 	}
+}
+
+type NoOpDefaultConfigApplier struct{}
+
+func (ca *NoOpDefaultConfigApplier) ApplyConfigToState(state *state.State, configRequest *state.ConfigRequest) (*state.State, error) {
+	return state, nil
 }
