@@ -14,8 +14,7 @@ PartyID: 1
 
 ################################################################################
 #
-#   SECTION: General: same as in template, except:
-#   - Assembler does not need signing key pair (under LocalMSPDir)
+#   SECTION: General: same as in template
 #
 ################################################################################
 General:
