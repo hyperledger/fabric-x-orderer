@@ -41,6 +41,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
@@ -267,7 +268,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer, mockConfigUpdateProposer)
-		c.ConfigApplier = &consensus.NoOpDefaultConfigApplier{}
+		c.ConfigApplier = &NoOpDefaultConfigApplier{}
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)
@@ -479,7 +480,7 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 	consenter := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, signer, mockConfigUpdateProposer)
-	consenter.ConfigApplier = &consensus.NoOpDefaultConfigApplier{}
+	consenter.ConfigApplier = &NoOpDefaultConfigApplier{}
 
 	gRPCServer := newConsenterNode.Server()
 	protos.RegisterConsensusServer(gRPCServer, consenter)
@@ -806,4 +807,10 @@ func BuildVerifier(configDir string, partyID types.PartyID, logger types.Logger)
 	}
 
 	return &verifier
+}
+
+type NoOpDefaultConfigApplier struct{}
+
+func (ca *NoOpDefaultConfigApplier) ApplyConfigToState(state *state.State, configRequest *state.ConfigRequest) (*state.State, error) {
+	return state, nil
 }
