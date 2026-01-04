@@ -78,7 +78,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		Config:         conf,
 		BFTConfig:      conf.BFTConfig,
 		Arma: &Consenter{
-			State:           initialState,
 			DB:              badb,
 			Logger:          logger,
 			BAFDeserializer: &state.BAFDeserialize{},
