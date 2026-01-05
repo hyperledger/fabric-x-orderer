@@ -16,9 +16,11 @@
 #	- docker-local: builds a single-platform image for the host’s OS/architecture
 #   - docker-multiarch: wrapper that triggers docker builds for multiple platforms
 
-TAG ?= latest
+# Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
-DOCKER_IMAGE ?= arma
+IMAGE_NAMESPACE = docker.io/hyperledger
+IMAGE_NAME = fabric-x-orderer
+VERSION = latest
 
 .PHONY: basic-checks
 basic-checks: check-license check-dco check-protos linter
@@ -79,46 +81,14 @@ sample-tests:
 	(cd node/examples; bash ./scripts/build_docker.sh)
 	(bash ./node/examples/scripts/run_sample.sh)
 
-.PHONY: docker
-docker:
-	docker build -t $(DOCKER_IMAGE) --no-cache -f $(DOCKERFILE) .
+# Build the HLFX Orderer image
+.PHONY: build-image
+build-image:
+	@echo "Building the image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg VERSION=${VERSION}
 
-# Build for current OS/architecture
-.PHONY: docker-local
-docker-local:
-	@echo "Building local Docker image: $(DOCKER_IMAGE):$(TAG)"
-	docker build \
-		-f images/multi-platform/Dockerfile \
-		-t $(DOCKER_IMAGE):$(TAG) \
-		.
-
-.PHONY: docker-multiarch
-docker-multiarch:
-	@echo "Building images for all platforms locally..."
-	make docker-linux-amd64
-	make docker-linux-arm64
-	make docker-linux-s390x
-
-.PHONY: docker-linux-amd64
-docker-linux-amd64:
-	@echo "Building linux/amd64"
-	docker buildx build --platform linux/amd64 -f $(DOCKERFILE) -t $(DOCKER_IMAGE):linux-amd64 --load .
-
-.PHONY: docker-linux-arm64
-docker-linux-arm64:
-	@echo "Building linux/arm64"
-	docker buildx build --platform linux/arm64 -f $(DOCKERFILE) -t $(DOCKER_IMAGE):linux-arm64 --load .
-
-.PHONY: docker-linux-s390x
-docker-linux-s390x:
-	@echo "Building linux/s390x"
-	docker buildx build --platform linux/s390x -f $(DOCKERFILE) -t $(DOCKER_IMAGE):linux-s390x --load .
-
-
-
-
-
-
-
-
-
+# Build the HLFX Orderer multiplatform image
+.PHONY: build-multiplatform-image
+build-multiplatform-image:
+	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg VERSION=${VERSION}

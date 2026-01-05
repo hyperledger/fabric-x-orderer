@@ -3,4 +3,26 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# git
+.git
+.gitignore
 .github
+
+# docs
+README.md
+CODE_OF_CONDUCT.md
+MAINTAINERS.md
+LICENSE
+
+# docker/podman
+Dockerfile
+
+# go
+staticcheck.conf
+.golangci.yml
+.whitesource
+
+# misc
+.DS_Store
+.env
+deployment
