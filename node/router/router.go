@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
@@ -228,12 +229,12 @@ func (r *Router) SoftStop() error {
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
-	clientAddr, err := node.ExtractClientAddressFromContext(stream.Context())
+	clientAddr, err := utils.ExtractClientAddressFromContext(stream.Context())
 	if err == nil {
 		r.logger.Infof("Client connected: %s", clientAddr)
 	}
-	if clientCert := node.ExtractCertificateFromContext(stream.Context()); clientCert != nil {
-		r.logger.Infof("Client's certificate: \n%s", node.CertificateToString(clientCert))
+	if clientCert := utils.ExtractCertificateFromContext(stream.Context()); clientCert != nil {
+		r.logger.Infof("Client's certificate: \n%s", utils.CertificateToString(clientCert))
 	}
 
 	exit := make(chan struct{})
