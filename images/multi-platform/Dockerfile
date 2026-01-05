@@ -1,3 +1,4 @@
+#
 # Copyright IBM Corp. All Rights Reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -7,37 +8,51 @@ FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.25.5 AS builder
 # Build arguments used for cross-compiling
 ARG TARGETOS
 ARG TARGETARCH
+
+# Environment vars
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
-ENV CGO_ENABLED=0 \
-    GO111MODULE=on
+ENV GO111MODULE=on
+ENV CGO_ENABLED=0
+
 WORKDIR /src
 
-# Now copy rest of the source
+# Copy build files (managed through .dockerignore)
 COPY . .
+
+RUN ls -la .
 
 # Build using your Makefile target
 RUN make binary
 
-# -----------------------------------------------------------------------------
-# Stage 2: Production Image (UBI-micro)
-# -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi-micro:9.5 AS prod
+###########################################
+# Stage 2: Production runtime image
+###########################################
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6 AS prod
 
-# Add a non-root user for security (UBI-micro has no useradd)
+ARG VERSION=1.0
 
-USER 10001
-WORKDIR /app
+# Add non-root user (10001) without installing extra packages
+RUN /usr/sbin/useradd -u 10001 -r -g root -s /sbin/nologin -c "Hyperledger Fabric-X Orderer user" orderer && \
+    mkdir -p /home/orderer && \
+    chown -R 10001:0 /home/orderer && \
+    chmod 0755 /home/orderer
 
 # Copy in the statically built binaries from builder
 COPY --from=builder /src/bin/arma /usr/local/bin/arma
 COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 
-# OCI labels (strongly recommended for prod images)
-LABEL name="arma-service" \
-      vendor="IBM" \
-      maintainer="IBM Research Decentralized Trust Group" \
-      summary="ARMA Service Production Image" \
-      description="Lightweight and secure Go application running on UBI-micro" \
-      license="Apache-2.0"
+# OCI metadata labels
+LABEL name="fabric-x-orderer" \
+    maintainer="IBM Research Decentralized Trust Group" \
+    version="${VERSION}" \
+    description="Hyperledger Fabric-X Orderer service packaged in a UBI image" \
+    license="Apache-2.0" \
+    vendor="IBM"
+
+# Use non-root user and set workdir using BIN argument
+USER 10001
+WORKDIR /home/orderer
+
+# Default entrypoint
 ENTRYPOINT ["/usr/local/bin/arma"]
