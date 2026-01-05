@@ -79,6 +79,10 @@ func (b *Batcher) MonitoringServiceAddress() string {
 	return b.Metrics.monitor.Address()
 }
 
+func (b *Batcher) ConfigSequence() uint64 {
+	return b.config.Bundle.ConfigtxValidator().Sequence()
+}
+
 func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 
@@ -385,7 +389,7 @@ func (b *Batcher) OnSecondStrikeTimeout() {
 }
 
 func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) types.BatchAttestationFragment {
-	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq)
+	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq, types.ConfigSequence(b.ConfigSequence()))
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -427,7 +431,7 @@ func (b *Batcher) getPrimaryIDAndTerm(state *state.State) (types.PartyID, uint64
 
 func (b *Batcher) createComplaint(reason string) *state.Complaint {
 	term := b.GetTerm()
-	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, reason)
+	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, types.ConfigSequence(b.ConfigSequence()), reason)
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
 	}
@@ -475,12 +479,13 @@ func (b *Batcher) SendBAF(baf types.BatchAttestationFragment) {
 	}
 }
 
-func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, reason string) (*state.Complaint, error) {
+func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, configSeq types.ConfigSequence, reason string) (*state.Complaint, error) {
 	c := &state.Complaint{
 		ShardTerm: state.ShardTerm{Shard: shard, Term: term},
 		Signer:    id,
 		Signature: nil,
 		Reason:    reason,
+		ConfigSeq: configSeq,
 	}
 	sig, err := signer.Sign(c.ToBeSigned())
 	if err != nil {
@@ -491,8 +496,8 @@ func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term 
 	return c, nil
 }
 
-func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (types.BatchAttestationFragment, error) {
-	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, 0)
+func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence, configSeq types.ConfigSequence) (types.BatchAttestationFragment, error) {
+	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, configSeq)
 	sig, err := signer.Sign(baf.ToBeSigned())
 	if err != nil {
 		return nil, err
