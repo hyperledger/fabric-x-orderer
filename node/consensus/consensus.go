@@ -25,7 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
@@ -659,7 +659,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 
 func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
 	// extract the client certificate from the context
-	cert := node.ExtractCertificateFromContext(ctx)
+	cert := utils.ExtractCertificateFromContext(ctx)
 	if cert == nil {
 		return errors.New("error: access denied; could not extract certificate from context")
 	}
@@ -673,7 +673,7 @@ func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
 
 	// compare the two certificates
 	if !bytes.Equal(pemBlock.Bytes, cert.Raw) {
-		c.Logger.Errorf("error: access denied. The client certificate does not match the router's certificate. \n client's certificate: \n %s \n %x \n ", node.CertificateToString(cert), cert.Raw)
+		c.Logger.Errorf("error: access denied. The client certificate does not match the router's certificate. \n client's certificate: \n %s \n %x \n ", utils.CertificateToString(cert), cert.Raw)
 		return errors.New("error: access denied. The client certificate does not match the router's certificate")
 	}
 	return nil
