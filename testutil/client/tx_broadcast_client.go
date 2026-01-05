@@ -119,7 +119,7 @@ func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {
 			if err != nil {
 				updateStateLock.Lock()
 				streamInfo.stream = nil
-				errorsAccumulator.WriteString(fmt.Sprintf("failed to send tx to %s: %s", streamInfo.endpoint, err.Error()))
+				errorsAccumulator.WriteString(fmt.Sprintf("failed to send tx to %s: %s\n", streamInfo.endpoint, err.Error()))
 				failures++
 				updateStateLock.Unlock()
 				return
@@ -251,5 +251,5 @@ func (c *BroadcastTxClient) Stop() {
 
 	c.streamRoutersMap = nil
 
-	logger.Infof("Total sent by all routers: txs %d\n", totalTxSent)
+	logger.Infof("Total sent to all routers: txs %d\n", totalTxSent)
 }

@@ -46,7 +46,6 @@ func CreateConfigUpdate(t *testing.T, dir string, genesisBlockPath string) []byt
 	configtxlatorPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-common/cmd/configtxlator", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	require.NoError(t, err)
 	require.NotNil(t, configtxlatorPath)
-	defer gexec.CleanupBuildArtifacts()
 
 	// Decode the genesis block from proto to json representation
 	jsonPath := filepath.Join(dir, "config_block.json")

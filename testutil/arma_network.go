@@ -70,6 +70,16 @@ func (armaNetwork *ArmaNetwork) Kill() {
 	}
 }
 
+func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan struct{}) {
+	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+		for i := range armaNetwork.armaNodes[k] {
+			for j := range armaNetwork.armaNodes[k][i] {
+				armaNetwork.armaNodes[k][i][j].RestartArmaNode(t, readyChan)
+			}
+		}
+	}
+}
+
 func (armaNetwork *ArmaNetwork) GetAssembler(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
 	require.True(t, len(armaNetwork.armaNodes[Assembler]) >= int(partyID))

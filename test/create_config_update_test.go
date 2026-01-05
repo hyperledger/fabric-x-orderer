@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/onsi/gomega/gexec"
+
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
@@ -23,6 +25,7 @@ func TestCreateConfigBlockUpdate(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
+	defer gexec.CleanupBuildArtifacts()
 
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "none", "none")
