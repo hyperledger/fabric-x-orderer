@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-ARG GO_VERSION=1.24.3
+ARG GO_VERSION=1.25.5
 ARG BASE_IMAGE=alpine
 
 FROM golang:${GO_VERSION} AS builder

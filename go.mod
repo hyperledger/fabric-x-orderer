@@ -1,6 +1,6 @@
 module github.com/hyperledger/fabric-x-orderer
 
-go 1.24.3
+go 1.25.5
 
 require (
 	github.com/davecgh/go-spew v1.1.1
@@ -10,22 +10,22 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/zap v1.27.0
-	golang.org/x/sync v0.18.0
+	go.uber.org/zap v1.27.1
+	golang.org/x/sync v0.19.0
 	google.golang.org/grpc v1.75.0
 )
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
-	github.com/hyperledger-labs/SmartBFT v0.0.0-20250503203013-eb005eef8866
+	github.com/hyperledger-labs/SmartBFT v0.0.0-20251222105915-424e45b7a9fb
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20250510200036-435a7f1a780a // commit 435a7f1a780a128756fb2f72bf4cad164bf13fbb (tag: v3.1.1)
 	github.com/hyperledger/fabric-config v0.3.0
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
 	github.com/onsi/gomega v1.38.2
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v3 v3.0.1
 )

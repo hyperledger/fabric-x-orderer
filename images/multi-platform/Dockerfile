@@ -4,11 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-###########################################
-# Stage 1: Build image
-###########################################
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.24.3 AS builder
-
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.25.5 AS builder
 # Build arguments used for cross-compiling
 ARG TARGETOS
 ARG TARGETARCH

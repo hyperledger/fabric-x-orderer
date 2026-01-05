@@ -175,8 +175,8 @@ github.com/gorilla/mux
 # github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware
-# github.com/hyperledger-labs/SmartBFT v0.0.0-20250503203013-eb005eef8866
-## explicit; go 1.24.2
+# github.com/hyperledger-labs/SmartBFT v0.0.0-20251222105915-424e45b7a9fb
+## explicit; go 1.25.5
 github.com/hyperledger-labs/SmartBFT/internal/bft
 github.com/hyperledger-labs/SmartBFT/pkg/api
 github.com/hyperledger-labs/SmartBFT/pkg/consensus
@@ -278,7 +278,6 @@ github.com/hyperledger/fabric-x-common/tools/configtxgen
 github.com/hyperledger/fabric-x-common/tools/configtxlator/rest
 github.com/hyperledger/fabric-x-common/tools/configtxlator/update
 github.com/hyperledger/fabric-x-common/tools/fileutil
-github.com/hyperledger/fabric-x-common/tools/pkg/comm
 github.com/hyperledger/fabric-x-common/tools/pkg/identity
 github.com/hyperledger/fabric-x-common/tools/pkg/txflags
 github.com/hyperledger/fabric-x-common/tools/test
@@ -442,7 +441,7 @@ go.uber.org/automaxprocs/maxprocs
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
-# go.uber.org/zap v1.27.0
+# go.uber.org/zap v1.27.1
 ## explicit; go 1.19
 go.uber.org/zap
 go.uber.org/zap/buffer
@@ -477,7 +476,7 @@ golang.org/x/net/idna
 golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
-# golang.org/x/sync v0.18.0
+# golang.org/x/sync v0.19.0
 ## explicit; go 1.24.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
@@ -583,7 +582,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.10
+# google.golang.org/protobuf v1.36.11
 ## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
