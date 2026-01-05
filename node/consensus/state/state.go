@@ -251,6 +251,7 @@ type Complaint struct {
 	Signer    types.PartyID
 	Signature []byte
 	Reason    string
+	// TODO add config seq
 }
 
 func (c *Complaint) Bytes() []byte {
