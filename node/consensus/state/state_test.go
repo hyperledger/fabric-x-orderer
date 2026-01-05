@@ -33,6 +33,7 @@ var (
 		},
 		Signer:    3,
 		Signature: []byte{4},
+		ConfigSeq: 10,
 	}
 )
 
@@ -64,6 +65,7 @@ func TestComplaintSerialization(t *testing.T) {
 		Signer:    3,
 		Signature: []byte{4},
 		Reason:    "abc",
+		ConfigSeq: 20,
 	}
 
 	var c2 consensus_state.Complaint

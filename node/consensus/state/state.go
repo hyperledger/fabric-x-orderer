@@ -251,7 +251,7 @@ type Complaint struct {
 	Signer    types.PartyID
 	Signature []byte
 	Reason    string
-	// TODO add config seq
+	ConfigSeq types.ConfigSequence
 }
 
 func (c *Complaint) Bytes() []byte {
@@ -259,9 +259,11 @@ func (c *Complaint) Bytes() []byte {
 	if reasonLen > math.MaxUint16 {
 		reasonLen = math.MaxUint16
 	}
-	buff := make([]byte, 16+len(c.Signature)+reasonLen)
+	buff := make([]byte, 24+len(c.Signature)+reasonLen)
 	var pos int
-	binary.BigEndian.PutUint16(buff, uint16(c.Shard))
+	binary.BigEndian.PutUint64(buff, uint64(c.ConfigSeq))
+	pos += 8
+	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Shard))
 	pos += 2
 	binary.BigEndian.PutUint64(buff[pos:], c.Term)
 	pos += 8
@@ -278,16 +280,17 @@ func (c *Complaint) Bytes() []byte {
 }
 
 func (c *Complaint) FromBytes(bytes []byte) error {
-	if len(bytes) <= 16 {
-		return fmt.Errorf("input too small (%d <= 16)", len(bytes))
+	if len(bytes) <= 24 {
+		return fmt.Errorf("input too small (%d <= 24)", len(bytes))
 	}
-	c.Shard = types.ShardID(binary.BigEndian.Uint16(bytes))
-	c.Term = binary.BigEndian.Uint64(bytes[2:10])
-	c.Signer = types.PartyID(binary.BigEndian.Uint16(bytes[10:12]))
-	sigSize := binary.BigEndian.Uint16(bytes[12:14])
-	c.Signature = bytes[14 : 14+sigSize]
-	rSize := binary.BigEndian.Uint16(bytes[14+sigSize : 14+sigSize+2])
-	c.Reason = string(bytes[14+int(sigSize)+2 : 14+int(sigSize)+2+int(rSize)])
+	c.ConfigSeq = types.ConfigSequence(binary.BigEndian.Uint64(bytes))
+	c.Shard = types.ShardID(binary.BigEndian.Uint16(bytes[8:10]))
+	c.Term = binary.BigEndian.Uint64(bytes[10:18])
+	c.Signer = types.PartyID(binary.BigEndian.Uint16(bytes[18:20]))
+	sigSize := binary.BigEndian.Uint16(bytes[20:22])
+	c.Signature = bytes[22 : 22+sigSize]
+	rSize := binary.BigEndian.Uint16(bytes[22+sigSize : 22+sigSize+2])
+	c.Reason = string(bytes[22+int(sigSize)+2 : 22+int(sigSize)+2+int(rSize)])
 	return nil
 }
 
@@ -297,12 +300,13 @@ func (c *Complaint) ToBeSigned() []byte {
 		Signer:    c.Signer,
 		Signature: nil,
 		Reason:    c.Reason,
+		ConfigSeq: c.ConfigSeq,
 	}
 	return toBeSignedComplaint.Bytes()
 }
 
 func (c *Complaint) String() string {
-	return fmt.Sprintf("Complaint: Signer: %d; Shard: %d; Term %d; Reason: %s", c.Signer, c.Shard, c.Term, c.Reason)
+	return fmt.Sprintf("Complaint: Signer: %d; Shard: %d; Term %d; Config Seq: %d; Reason: %s", c.Signer, c.Shard, c.Term, c.ConfigSeq, c.Reason)
 }
 
 type ConfigRequest struct {
@@ -367,6 +371,7 @@ func (ce *ControlEvent) ID() string {
 			ShardTerm: ce.Complaint.ShardTerm,
 			Signer:    ce.Complaint.Signer,
 			Reason:    ce.Complaint.Reason,
+			ConfigSeq: ce.Complaint.ConfigSeq,
 		}
 		payloadToHash = complaintWithNoSig.Bytes()
 	case ce.ConfigRequest != nil:
