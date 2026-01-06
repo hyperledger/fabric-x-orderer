@@ -638,9 +638,17 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 
 	reqID := c.RequestID(req)
 
+	configSeq := arma_types.ConfigSequence(c.VerificationSequence())
+
 	if ce.Complaint != nil {
+		if ce.Complaint.ConfigSeq != configSeq {
+			return reqID, ce, errors.Errorf("mismatch config sequence; the complaint's config seq is %d while the config seq should be %d", ce.Complaint.ConfigSeq, configSeq)
+		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
+		if ce.BAF.ConfigSequence() != configSeq {
+			return reqID, ce, errors.Errorf("mismatch config sequence; the BAF's config seq is %d while the config seq should be %d", ce.Complaint.ConfigSeq, configSeq)
+		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
 		err := c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
