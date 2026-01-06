@@ -127,7 +127,7 @@ func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
 
 	if stream == nil || stream.faulty() {
 		// Notify reconnection goroutine
-		sr.maybeNotifyReconnectRoutine(stream, connIndex, streamInConnIndex)
+		sr.maybeNotifyReconnectRoutine(stream)
 
 		// Send a response and return
 		trackedReq.responses <- Response{
@@ -263,7 +263,11 @@ func (sr *ShardRouter) initStreams() {
 	sr.lock.Lock()
 	for i := 0; i < sr.router2batcherConnPoolSize; i++ {
 		for j := 0; j < sr.router2batcherStreamsPerConn; j++ {
-			sr.initStream(i, j)
+			err := sr.initStream(i, j)
+			if err != nil {
+				sr.logger.Warnf("Failed initializing stream %d in connection %d: %v, notifying reconnect routine.", j, i, err)
+				sr.reconnectRequests <- reconnectReq{connNumber: i, streamInConn: j}
+			}
 		}
 	}
 	sr.lock.Unlock()
@@ -314,7 +318,7 @@ func (sr *ShardRouter) initConnPoolAndStreams() {
 		sr.streams[i] = make([]*stream, sr.router2batcherStreamsPerConn)
 	}
 
-	// try to initialize the connections and streams. if one fail, the reconnection routine will take care of it when requests arrive
+	// try to initialize the connections and streams. will notify the reconnection routine for every stream that fails to initialize.
 	if err := sr.fillConnPool(); err != nil {
 		sr.logger.Errorf("Initial connection pool fill resulted in error: %v", err)
 	}
@@ -325,10 +329,10 @@ func (sr *ShardRouter) startReconnectionRoutine() {
 	go sr.reconnectRoutine()
 }
 
-func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream, connIndex int, streamInConnIndex int) {
-	if stream == nil {
-		sr.reconnectRequests <- reconnectReq{connIndex, streamInConnIndex}
-	} else {
+func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream) {
+	// if stream is not nil, notify the reconnect routine
+	// otherwise, the stream is nil and it must have been reported before.
+	if stream != nil {
 		stream.notifyReconnectRoutine()
 	}
 }
