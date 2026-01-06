@@ -439,14 +439,12 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	for i := 0; i < numOfParties; i++ {
 		localConfigPath := armaNetwork.GetRouter(t, types.PartyID(i+1)).RunInfo.NodeConfigPath
 		localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
-		require.Eventually(t, func() bool {
-			configStore, err := configstore.NewStore(localConfig.FileStore.Path)
-			require.NoError(t, err)
-			listBlockNumbers, err := configStore.ListBlockNumbers()
-			require.NoError(t, err)
-			routerConfigCount := len(listBlockNumbers)
-			return routerConfigCount == 2
-		}, 60*time.Second, 100*time.Millisecond)
+		configStore, err := configstore.NewStore(localConfig.FileStore.Path)
+		require.NoError(t, err)
+		listBlockNumbers, err := configStore.ListBlockNumbers()
+		require.NoError(t, err)
+		routerConfigCount := len(listBlockNumbers)
+		require.Equal(t, routerConfigCount, 2)
 	}
 
 	// Check config store size of batchers
@@ -455,14 +453,12 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 			batcher := armaNetwork.GetBatcher(t, types.PartyID(i+1), types.ShardID(j+1))
 			localConfigPath := batcher.RunInfo.NodeConfigPath
 			localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
-			require.Eventually(t, func() bool {
-				configStore, err := configstore.NewStore(localConfig.FileStore.Path)
-				require.NoError(t, err)
-				listBlockNumbers, err := configStore.ListBlockNumbers()
-				require.NoError(t, err)
-				batcherConfigCount := len(listBlockNumbers)
-				return batcherConfigCount == 2
-			}, 60*time.Second, 100*time.Millisecond)
+			configStore, err := configstore.NewStore(localConfig.FileStore.Path)
+			require.NoError(t, err)
+			listBlockNumbers, err := configStore.ListBlockNumbers()
+			require.NoError(t, err)
+			batcherConfigCount := len(listBlockNumbers)
+			require.Equal(t, batcherConfigCount, 2)
 		}
 	}
 
@@ -476,6 +472,12 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 		logger := flogging.MustGetLogger("assembler")
 		al, err := ledger.NewAssemblerLedger(logger, localConfig.FileStore.Path)
 		require.NoError(t, err)
+
+		ledgerHeight := al.LedgerReader().Height()
+		require.Equal(t, ledgerHeight, uint64(3))
+		lastBlock, err := al.LedgerReader().RetrieveBlockByNumber(ledgerHeight - 1)
+		require.NoError(t, err)
+		require.False(t, protoutil.IsConfigBlock(lastBlock))
 
 		lastConfigIndex, err := ledger.GetLastConfigIndexFromAssemblerLedger(al)
 		require.NoError(t, err)
