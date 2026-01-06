@@ -27,7 +27,9 @@ import (
 
 const testTimeout = 1 * time.Second // conservative
 
-type echoServer struct{}
+type echoServer struct {
+	testgrpc.UnimplementedEchoServiceServer
+}
 
 func (es *echoServer) EchoCall(ctx context.Context,
 	echo *testgrpc.Echo,
