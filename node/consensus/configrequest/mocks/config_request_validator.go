@@ -20,6 +20,17 @@ type FakeConfigRequestValidator struct {
 	validateConfigRequestReturnsOnCall map[int]struct {
 		result1 error
 	}
+	ValidateNewConfigStub        func(*common.Envelope) error
+	validateNewConfigMutex       sync.RWMutex
+	validateNewConfigArgsForCall []struct {
+		arg1 *common.Envelope
+	}
+	validateNewConfigReturns struct {
+		result1 error
+	}
+	validateNewConfigReturnsOnCall map[int]struct {
+		result1 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -30,15 +41,16 @@ func (fake *FakeConfigRequestValidator) ValidateConfigRequest(arg1 *common.Envel
 	fake.validateConfigRequestArgsForCall = append(fake.validateConfigRequestArgsForCall, struct {
 		arg1 *common.Envelope
 	}{arg1})
+	stub := fake.ValidateConfigRequestStub
+	fakeReturns := fake.validateConfigRequestReturns
 	fake.recordInvocation("ValidateConfigRequest", []interface{}{arg1})
 	fake.validateConfigRequestMutex.Unlock()
-	if fake.ValidateConfigRequestStub != nil {
-		return fake.ValidateConfigRequestStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.validateConfigRequestReturns
 	return fakeReturns.result1
 }
 
@@ -84,11 +96,70 @@ func (fake *FakeConfigRequestValidator) ValidateConfigRequestReturnsOnCall(i int
 	}{result1}
 }
 
+func (fake *FakeConfigRequestValidator) ValidateNewConfig(arg1 *common.Envelope) error {
+	fake.validateNewConfigMutex.Lock()
+	ret, specificReturn := fake.validateNewConfigReturnsOnCall[len(fake.validateNewConfigArgsForCall)]
+	fake.validateNewConfigArgsForCall = append(fake.validateNewConfigArgsForCall, struct {
+		arg1 *common.Envelope
+	}{arg1})
+	stub := fake.ValidateNewConfigStub
+	fakeReturns := fake.validateNewConfigReturns
+	fake.recordInvocation("ValidateNewConfig", []interface{}{arg1})
+	fake.validateNewConfigMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeConfigRequestValidator) ValidateNewConfigCallCount() int {
+	fake.validateNewConfigMutex.RLock()
+	defer fake.validateNewConfigMutex.RUnlock()
+	return len(fake.validateNewConfigArgsForCall)
+}
+
+func (fake *FakeConfigRequestValidator) ValidateNewConfigCalls(stub func(*common.Envelope) error) {
+	fake.validateNewConfigMutex.Lock()
+	defer fake.validateNewConfigMutex.Unlock()
+	fake.ValidateNewConfigStub = stub
+}
+
+func (fake *FakeConfigRequestValidator) ValidateNewConfigArgsForCall(i int) *common.Envelope {
+	fake.validateNewConfigMutex.RLock()
+	defer fake.validateNewConfigMutex.RUnlock()
+	argsForCall := fake.validateNewConfigArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FakeConfigRequestValidator) ValidateNewConfigReturns(result1 error) {
+	fake.validateNewConfigMutex.Lock()
+	defer fake.validateNewConfigMutex.Unlock()
+	fake.ValidateNewConfigStub = nil
+	fake.validateNewConfigReturns = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeConfigRequestValidator) ValidateNewConfigReturnsOnCall(i int, result1 error) {
+	fake.validateNewConfigMutex.Lock()
+	defer fake.validateNewConfigMutex.Unlock()
+	fake.ValidateNewConfigStub = nil
+	if fake.validateNewConfigReturnsOnCall == nil {
+		fake.validateNewConfigReturnsOnCall = make(map[int]struct {
+			result1 error
+		})
+	}
+	fake.validateNewConfigReturnsOnCall[i] = struct {
+		result1 error
+	}{result1}
+}
+
 func (fake *FakeConfigRequestValidator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.validateConfigRequestMutex.RLock()
-	defer fake.validateConfigRequestMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

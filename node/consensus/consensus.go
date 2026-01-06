@@ -641,6 +641,9 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
+		if err := c.ConfigRequestValidator.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
+			return reqID, ce, errors.Wrap(err, "failed to validate new config")
+		}
 		// TODO: revisit this return
 		return reqID, ce, nil
 	} else {
