@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 )
@@ -85,6 +86,23 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	block := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 	require.True(t, protoutil.IsConfigBlock(block))
 	require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
+
+	setup.consensusNodes[0].Stop()
+
+	err = recoverNode(t, setup, 0, ca, block)
+	require.NoError(t, err)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.SequenceReturns(1)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	setup.consensusNodes[0].Config.Bundle = bundle
+
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 1)
+	require.ErrorContains(t, err, "mismatch config sequence")
+
+	err = createAndSubmitRequestWithConfigSeq(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 1, 1)
+	require.NoError(t, err)
 
 	setup.consensusNodes[0].Stop()
 }

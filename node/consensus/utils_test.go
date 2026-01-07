@@ -287,15 +287,20 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 	return nil
 }
 
-// helper function to create and submit a request for testing
-func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence) error {
-	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence, 0)
+// helper function to create and submit a request with a certain config seq for testing
+func createAndSubmitRequestWithConfigSeq(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence, configSeq types.ConfigSequence) error {
+	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence, configSeq)
 	if err != nil {
 		return err
 	}
 
 	controlEvent := &state.ControlEvent{BAF: baf}
 	return node.SubmitRequest(controlEvent.Bytes())
+}
+
+// helper function to create and submit a request for testing
+func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence) error {
+	return createAndSubmitRequestWithConfigSeq(node, sk, id, shard, digest, primary, sequence, 0)
 }
 
 // createAndSubmitConfigRequest creates and submits a config request control event for testing
