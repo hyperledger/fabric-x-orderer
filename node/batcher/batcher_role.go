@@ -300,8 +300,20 @@ func (b *BatcherRole) runPrimary() {
 
 		b.Ledger.Append(b.ID, b.seq, currentBatch)
 
-		// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
-		b.BAFSender.SendBAF(baf)
+		sendBAFDone := make(chan struct{})
+		go func() {
+			b.BAFSender.SendBAF(baf)
+			close(sendBAFDone)
+		}()
+		select {
+		case <-sendBAFDone:
+		case newTerm := <-b.termChan:
+			b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+			return
+		case <-b.stopChan:
+			return
+		}
+
 		b.Metrics.batchedTxsTotal.Add(float64(len(currentBatch)))
 
 		b.ackerLock.RLock()
@@ -358,8 +370,24 @@ func (b *BatcherRole) runSecondary() {
 			b.Ledger.Append(b.primary, b.seq, requests)
 			b.removeRequests(requests)
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
-			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
-			b.BAFSender.SendBAF(baf)
+
+			sendBAFDone := make(chan struct{})
+			go func() {
+				b.BAFSender.SendBAF(baf)
+				close(sendBAFDone)
+			}()
+			select {
+			case <-sendBAFDone:
+			case newTerm := <-b.termChan:
+				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+				b.BatchPuller.Stop()
+				return
+			case <-b.stopChan:
+				b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
+				b.BatchPuller.Stop()
+				return
+			}
+
 			b.Metrics.batchedTxsTotal.Add(float64(len(requests)))
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
