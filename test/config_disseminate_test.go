@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	configRulesMocks "github.com/hyperledger/fabric-x-orderer/common/configrulesverifier/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -165,6 +166,9 @@ func TestConfigDisseminate(t *testing.T) {
 		mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
 		mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 		consenters[i].ConfigRequestValidator = mockConfigRequestValidator
+		mockConfigRulesVerifier := &configRulesMocks.FakeConfigRolesVerifier{}
+		mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+		consenters[i].ConfigRulesVerifier = mockConfigRulesVerifier
 	}
 
 	// submit data txs and make sure the assembler got them

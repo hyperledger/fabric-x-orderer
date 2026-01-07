@@ -22,7 +22,9 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	configRulesMocks "github.com/hyperledger/fabric-x-orderer/common/configrulesverifier/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
+
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
@@ -611,6 +613,9 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
 			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 
+			mockConfigRulesVerifier := &configRulesMocks.FakeConfigRolesVerifier{}
+			mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+
 			c := &node_consensus.Consensus{
 				Arma:                   consenter,
 				State:                  initialState,
@@ -620,6 +625,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				Config:                 config,
 				ConfigUpdateProposer:   mockConfigUpdateProposer,
 				ConfigRequestValidator: mockConfigRequestValidator,
+				ConfigRulesVerifier:    mockConfigRulesVerifier,
 			}
 
 			reqs := make([][]byte, len(tst.ces))

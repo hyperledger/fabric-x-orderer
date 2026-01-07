@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/configrulesverifier"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -98,6 +99,7 @@ type Consensus struct {
 	RequestVerifier              *requestfilter.RulesVerifier
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
 	ConfigRequestValidator       configrequest.ConfigRequestValidator
+	ConfigRulesVerifier          configrulesverifier.ConfigRolesVerifier
 	softStopCh                   chan struct{}
 	softStopOnce                 sync.Once
 }
@@ -647,8 +649,8 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
-		if err := c.ConfigRequestValidator.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
-			return reqID, ce, errors.Wrap(err, "failed to validate new config")
+		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
+			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
 		// TODO: revisit this return
 		return reqID, ce, nil
