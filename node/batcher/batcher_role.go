@@ -356,11 +356,11 @@ func (b *BatcherRole) runSecondary() {
 			requests := batch.Requests()
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			b.Ledger.Append(b.primary, b.seq, requests)
-			b.removeRequests(requests)
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
 			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 			b.BAFSender.SendBAF(baf)
 			b.Metrics.batchedTxsTotal.Add(float64(len(requests)))
+			b.removeRequests(requests)
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
 		}
