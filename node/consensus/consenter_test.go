@@ -40,7 +40,7 @@ func TestConsenter(t *testing.T) {
 
 	// Test with an event that should be filtered out
 	db.ExistsReturns(true)
-	newState, batchAttestations, _ := consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ := consenter.SimulateStateTransition(s, 0, events)
 	assert.Empty(t, batchAttestations)
 	assert.Empty(t, newState.Pending)
 
@@ -49,7 +49,7 @@ func TestConsenter(t *testing.T) {
 
 	// Test a valid event below threshold
 	db.ExistsReturns(false)
-	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
 	assert.Empty(t, batchAttestations)
 	assert.Len(t, newState.Pending, 1)
 
@@ -61,7 +61,7 @@ func TestConsenter(t *testing.T) {
 	ba2.SetSignature([]byte{1})
 	events = append(events, (&state.ControlEvent{BAF: ba2}).Bytes())
 
-	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
 	assert.Len(t, batchAttestations[0], 2)
 	assert.Empty(t, newState.Pending)
 
@@ -77,7 +77,7 @@ func TestConsenter(t *testing.T) {
 
 	events = [][]byte{(&state.ControlEvent{Complaint: &c}).Bytes()}
 
-	_, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
+	_, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
 	consenter.Commit(batchAttestations)
 	assert.Equal(t, db.PutCallCount(), 1)
 
@@ -90,7 +90,7 @@ func TestConsenter(t *testing.T) {
 	}
 	events = [][]byte{(&state.ControlEvent{ConfigRequest: cr}).Bytes()}
 
-	_, _, configRequests := consenter.SimulateStateTransition(s, events)
+	_, _, configRequests := consenter.SimulateStateTransition(s, 0, events)
 	assert.Equal(t, cr.Envelope.Payload, configRequests[0].Envelope.Payload)
 	assert.Equal(t, cr.Envelope.Signature, configRequests[0].Envelope.Signature)
 }
