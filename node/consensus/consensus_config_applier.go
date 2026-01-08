@@ -7,10 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
-	"math"
-
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
@@ -44,9 +43,9 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 
 	newState := state.Clone()
 	newState.N = uint16(len(sharedConfig.PartiesConfig))
-	F := (uint16(newState.N) - 1) / 3
-	newState.Threshold = F + 1
-	newState.Quorum = uint16(math.Ceil((float64(newState.N) + float64(F) + 1) / 2.0))
+	_, T, Q := utils.ComputeFTQ(newState.N)
+	newState.Threshold = T
+	newState.Quorum = Q
 
 	return newState, nil
 }
