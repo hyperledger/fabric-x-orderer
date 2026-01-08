@@ -11,11 +11,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -259,9 +260,9 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 	var initState state.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
-	F := (uint16(initState.N) - 1) / 3
-	initState.Threshold = F + 1
-	initState.Quorum = uint16(math.Ceil((float64(initState.N) + float64(F) + 1) / 2.0))
+	_, T, Q := utils.ComputeFTQ(initState.N)
+	initState.Threshold = T
+	initState.Quorum = Q
 
 	for _, shard := range config.Shards {
 		initState.Shards = append(initState.Shards, state.ShardTerm{

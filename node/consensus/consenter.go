@@ -53,10 +53,10 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][
 	return newState, batchAttestations, configRequests
 }
 
-// Commit indexes BAs and updates the state.
+// Commit indexes BAs.
 // Note that this must hold: Commit(controlEvents) with the same controlEvents is idempotent.
 // TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
-func (c *Consenter) Commit(state *state.State, batchAttestations [][]types.BatchAttestationFragment) {
+func (c *Consenter) Commit(batchAttestations [][]types.BatchAttestationFragment) {
 	if len(batchAttestations) > 0 {
 		c.indexAttestationsInDB(batchAttestations)
 	}

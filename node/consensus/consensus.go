@@ -64,7 +64,7 @@ type SigVerifier interface {
 
 type Arma interface {
 	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
-	Commit(state *state.State, batchAttestations [][]arma_types.BatchAttestationFragment)
+	Commit(batchAttestations [][]arma_types.BatchAttestationFragment)
 }
 
 type BFT interface {
@@ -605,15 +605,11 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
 	// This is true because a Commit(controlEvents) with the same controlEvents is idempotent.
-	state, batchAttestations, configRequests := c.Arma.SimulateStateTransition(c.State, controlEvents)
-	if configRequests != nil {
-		var err error
-		if state, err = c.ConfigApplier.ApplyConfigToState(state, configRequests[0]); err != nil {
-			c.Logger.Panicf("failed applying config to state, err: %s", err)
-		}
-	}
+	c.stateLock.Lock()
+	_, batchAttestations, _ := c.Arma.SimulateStateTransition(c.State, controlEvents)
+	c.stateLock.Unlock()
 
-	c.Arma.Commit(state, batchAttestations)
+	c.Arma.Commit(batchAttestations)
 	c.Storage.Append(rawDecision)
 
 	// update metrics
