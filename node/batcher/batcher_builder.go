@@ -109,6 +109,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		Shard:                   config.ShardId,
 		Logger:                  logger,
 		StateProvider:           b,
+		ConfigSequenceGetter:    b,
 		RequestInspector:        b.requestsInspectorVerifier,
 		BAFCreator:              b,
 		BAFSender:               b,

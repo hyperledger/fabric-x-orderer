@@ -9,12 +9,13 @@ import (
 )
 
 type FakeBatchLedger struct {
-	AppendStub        func(types.PartyID, types.BatchSequence, types.BatchedRequests)
+	AppendStub        func(types.PartyID, types.BatchSequence, types.ConfigSequence, types.BatchedRequests)
 	appendMutex       sync.RWMutex
 	appendArgsForCall []struct {
 		arg1 types.PartyID
 		arg2 types.BatchSequence
-		arg3 types.BatchedRequests
+		arg3 types.ConfigSequence
+		arg4 types.BatchedRequests
 	}
 	HeightStub        func(types.PartyID) uint64
 	heightMutex       sync.RWMutex
@@ -43,17 +44,19 @@ type FakeBatchLedger struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchLedger) Append(arg1 types.PartyID, arg2 types.BatchSequence, arg3 types.BatchedRequests) {
+func (fake *FakeBatchLedger) Append(arg1 types.PartyID, arg2 types.BatchSequence, arg3 types.ConfigSequence, arg4 types.BatchedRequests) {
 	fake.appendMutex.Lock()
 	fake.appendArgsForCall = append(fake.appendArgsForCall, struct {
 		arg1 types.PartyID
 		arg2 types.BatchSequence
-		arg3 types.BatchedRequests
-	}{arg1, arg2, arg3})
-	fake.recordInvocation("Append", []interface{}{arg1, arg2, arg3})
+		arg3 types.ConfigSequence
+		arg4 types.BatchedRequests
+	}{arg1, arg2, arg3, arg4})
+	stub := fake.AppendStub
+	fake.recordInvocation("Append", []interface{}{arg1, arg2, arg3, arg4})
 	fake.appendMutex.Unlock()
-	if fake.AppendStub != nil {
-		fake.AppendStub(arg1, arg2, arg3)
+	if stub != nil {
+		fake.AppendStub(arg1, arg2, arg3, arg4)
 	}
 }
 
@@ -63,17 +66,17 @@ func (fake *FakeBatchLedger) AppendCallCount() int {
 	return len(fake.appendArgsForCall)
 }
 
-func (fake *FakeBatchLedger) AppendCalls(stub func(types.PartyID, types.BatchSequence, types.BatchedRequests)) {
+func (fake *FakeBatchLedger) AppendCalls(stub func(types.PartyID, types.BatchSequence, types.ConfigSequence, types.BatchedRequests)) {
 	fake.appendMutex.Lock()
 	defer fake.appendMutex.Unlock()
 	fake.AppendStub = stub
 }
 
-func (fake *FakeBatchLedger) AppendArgsForCall(i int) (types.PartyID, types.BatchSequence, types.BatchedRequests) {
+func (fake *FakeBatchLedger) AppendArgsForCall(i int) (types.PartyID, types.BatchSequence, types.ConfigSequence, types.BatchedRequests) {
 	fake.appendMutex.RLock()
 	defer fake.appendMutex.RUnlock()
 	argsForCall := fake.appendArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
 }
 
 func (fake *FakeBatchLedger) Height(arg1 types.PartyID) uint64 {
@@ -82,15 +85,16 @@ func (fake *FakeBatchLedger) Height(arg1 types.PartyID) uint64 {
 	fake.heightArgsForCall = append(fake.heightArgsForCall, struct {
 		arg1 types.PartyID
 	}{arg1})
+	stub := fake.HeightStub
+	fakeReturns := fake.heightReturns
 	fake.recordInvocation("Height", []interface{}{arg1})
 	fake.heightMutex.Unlock()
-	if fake.HeightStub != nil {
-		return fake.HeightStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.heightReturns
 	return fakeReturns.result1
 }
 
@@ -143,15 +147,16 @@ func (fake *FakeBatchLedger) RetrieveBatchByNumber(arg1 types.PartyID, arg2 uint
 		arg1 types.PartyID
 		arg2 uint64
 	}{arg1, arg2})
+	stub := fake.RetrieveBatchByNumberStub
+	fakeReturns := fake.retrieveBatchByNumberReturns
 	fake.recordInvocation("RetrieveBatchByNumber", []interface{}{arg1, arg2})
 	fake.retrieveBatchByNumberMutex.Unlock()
-	if fake.RetrieveBatchByNumberStub != nil {
-		return fake.RetrieveBatchByNumberStub(arg1, arg2)
+	if stub != nil {
+		return stub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.retrieveBatchByNumberReturns
 	return fakeReturns.result1
 }
 
