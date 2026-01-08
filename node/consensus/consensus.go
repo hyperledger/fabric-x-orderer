@@ -64,7 +64,7 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
+	SimulateStateTransition(prevState *state.State, configSeq arma_types.ConfigSequence, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
 	Commit(batchAttestations [][]arma_types.BatchAttestationFragment)
 }
 
@@ -258,7 +258,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	c.stateLock.Lock()
-	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
+	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
 	if configRequests != nil {
 		var err error
 		if computedState, err = c.ConfigApplier.ApplyConfigToState(computedState, configRequests[0]); err != nil {
@@ -501,7 +501,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
 	c.stateLock.Lock()
-	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
+	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
 	if configRequests != nil {
 		var err error
 		if newState, err = c.ConfigApplier.ApplyConfigToState(newState, configRequests[0]); err != nil {
@@ -608,7 +608,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// a batch attestation twice.
 	// This is true because a Commit(batchAttestations) with the same batchAttestations is idempotent.
 	c.stateLock.Lock()
-	_, batchAttestations, _ := c.Arma.SimulateStateTransition(c.State, controlEvents)
+	_, batchAttestations, _ := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(proposal.VerificationSequence), controlEvents)
 	c.stateLock.Unlock()
 
 	c.Arma.Commit(batchAttestations)

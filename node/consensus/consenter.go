@@ -28,7 +28,7 @@ type Consenter struct {
 	BAFDeserializer state.BAFDeserializer
 }
 
-func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, []*state.ConfigRequest) {
+func (c *Consenter) SimulateStateTransition(prevState *state.State, configSeq types.ConfigSequence, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, []*state.ConfigRequest) {
 	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)
@@ -47,7 +47,7 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][
 		filteredControlEvents = append(filteredControlEvents, ce)
 	}
 
-	newState, fragments, configRequests := prevState.Process(c.Logger, filteredControlEvents...)
+	newState, fragments, configRequests := prevState.Process(c.Logger, configSeq, filteredControlEvents...)
 	batchAttestations := aggregateFragments(fragments)
 
 	return newState, batchAttestations, configRequests

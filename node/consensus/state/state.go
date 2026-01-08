@@ -21,7 +21,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-type Rule func(*State, types.Logger, ...ControlEvent)
+type Rule func(*State, types.ConfigSequence, types.Logger, ...ControlEvent)
 
 var Rules = []Rule{
 	CollectAndDeduplicateEvents,
@@ -441,11 +441,11 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
+func (s *State) Process(l types.Logger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
 	nextState := s.Clone()
 
 	for _, rule := range Rules {
-		rule(nextState, l, ces...)
+		rule(nextState, configSeq, l, ces...)
 	}
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
@@ -470,7 +470,7 @@ func (s *State) Clone() *State {
 	return &s2
 }
 
-func CleanupOldComplaints(s *State, l types.Logger, _ ...ControlEvent) {
+func CleanupOldComplaints(s *State, configSeq types.ConfigSequence, l types.Logger, _ ...ControlEvent) {
 	newComplaints := make([]Complaint, 0, len(s.Complaints))
 	for _, c := range s.Complaints {
 		shardIndex, _ := shardExists(c.Shard, s.Shards)
@@ -485,7 +485,7 @@ func CleanupOldComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	s.Complaints = newComplaints
 }
 
-func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
+func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l types.Logger, _ ...ControlEvent) {
 	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
@@ -533,7 +533,7 @@ func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	s.Complaints = newComplaints
 }
 
-func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) {
+func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l types.Logger, ces ...ControlEvent) {
 	shardsAndSequences := make(map[batchAttestationVote]struct{}, len(s.Pending))
 	complaints := make(map[ShardTerm]map[types.PartyID]struct{})
 
