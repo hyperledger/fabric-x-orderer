@@ -42,8 +42,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var ErrRetryCountExhausted = errors.New("retry attempts exhausted")
-
 // ConnByCertMap maps certificates represented as strings
 // to gRPC connections
 type ConnByCertMap map[string]*grpc.ClientConn
