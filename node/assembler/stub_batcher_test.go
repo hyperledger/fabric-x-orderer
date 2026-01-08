@@ -117,5 +117,5 @@ func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer)
 }
 
 func (sb *stubBatcher) SetNextBatch(batch types.Batch) {
-	sb.deliveryService.LedgerArray.Append(batch.Primary(), batch.Seq(), batch.Requests())
+	sb.deliveryService.LedgerArray.Append(batch.Primary(), batch.Seq(), 0, batch.Requests())
 }

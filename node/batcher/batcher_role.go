@@ -41,6 +41,11 @@ type StateProvider interface {
 	GetLatestStateChan() <-chan *state.State
 }
 
+//go:generate counterfeiter -o mocks/config_sequence_getter.go . ConfigSequenceGetter
+type ConfigSequenceGetter interface {
+	ConfigSequence() types.ConfigSequence
+}
+
 //go:generate counterfeiter -o mocks/complainer.go . Complainer
 type Complainer interface {
 	Complain(string)
@@ -75,7 +80,7 @@ type BAFCreator interface {
 }
 
 type BatchLedgerWriter interface {
-	Append(partyID types.PartyID, batchSeq types.BatchSequence, batchedRequests types.BatchedRequests)
+	Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests)
 }
 
 type BatchLedgeReader interface {
@@ -101,6 +106,7 @@ type BatcherRole struct {
 	Ledger                  BatchLedger
 	BatchPuller             BatchesPuller
 	StateProvider           StateProvider
+	ConfigSequenceGetter    ConfigSequenceGetter
 	BAFCreator              BAFCreator
 	BAFSender               BAFSender
 	BatchAcker              BatchAcker
@@ -298,7 +304,7 @@ func (b *BatcherRole) runPrimary() {
 
 		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest)
 
-		b.Ledger.Append(b.ID, b.seq, currentBatch)
+		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch)
 
 		// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 		b.BAFSender.SendBAF(baf)
@@ -355,7 +361,7 @@ func (b *BatcherRole) runSecondary() {
 			b.Metrics.batchesPulledTotal.Add(1)
 			requests := batch.Requests()
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
-			b.Ledger.Append(b.primary, b.seq, requests)
+			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests)
 			b.removeRequests(requests)
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
 			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
