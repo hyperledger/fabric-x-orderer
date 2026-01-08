@@ -10,7 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 package blockledger
 
 import (
-	fabric_blockledger "github.com/hyperledger/fabric/common/ledger/blockledger"
+	fabric_blockledger "github.com/hyperledger/fabric-x-common/common/ledger/blockledger"
 )
 
 // Factory retrieves or creates new ledgers by channelID.
