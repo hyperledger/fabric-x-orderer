@@ -29,7 +29,7 @@ type Consenter struct {
 	State           *state.State
 }
 
-func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, []*state.ConfigRequest) {
+func (c *Consenter) SimulateStateTransition(prevState *state.State, configSeq types.ConfigSequence, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, []*state.ConfigRequest) {
 	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
 	if err != nil {
 		panic(err)
@@ -48,7 +48,7 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][
 		filteredControlEvents = append(filteredControlEvents, ce)
 	}
 
-	newState, fragments, configRequests := prevState.Process(c.Logger, filteredControlEvents...)
+	newState, fragments, configRequests := prevState.Process(c.Logger, configSeq, filteredControlEvents...)
 	// TODO apply the config and return a new state, or do this separately with a single config request chosen by consensus
 	batchAttestations := aggregateFragments(fragments)
 
@@ -59,7 +59,7 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][
 // Note that this must hold: Commit(controlEvents) with the same controlEvents is idempotent.
 // TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
 func (c *Consenter) Commit(events [][]byte) {
-	state, batchAttestations, _ := c.SimulateStateTransition(c.State, events)
+	state, batchAttestations, _ := c.SimulateStateTransition(c.State, 0, events)
 	// TODO apply config to get a new state
 	if len(batchAttestations) > 0 {
 		c.indexAttestationsInDB(batchAttestations)
