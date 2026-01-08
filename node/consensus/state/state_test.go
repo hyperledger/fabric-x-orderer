@@ -143,7 +143,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 
 	// Add a valid Complaint and ensure no duplicates are accepted in the same round
-	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce, ce2)
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce, ce2)
 
 	expectedState := consensus_state.State{
 		N:          4,
@@ -156,7 +156,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 
 	// Handle duplicate Complaint
-	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle Complaint with invalid shard
@@ -170,7 +170,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	}
 
 	ce = consensus_state.ControlEvent{Complaint: &c}
-	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle Complaint with invalid term
@@ -184,7 +184,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	}
 
 	ce = consensus_state.ControlEvent{Complaint: &c}
-	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Update state with a valid BAF
@@ -193,11 +193,11 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	ce = consensus_state.ControlEvent{BAF: baf}
 	expectedState.Pending = append(expectedState.Pending, baf)
 
-	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle duplicate BAF
-	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle BAF with invalid Shard
@@ -205,7 +205,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	baf2.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf2}
 
-	consensus_state.CollectAndDeduplicateEvents(&state, logger, ce)
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
 	assert.Equal(t, state, expectedState)
 }
 
@@ -223,7 +223,7 @@ func TestPrimaryRotateDueToComplaints(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, 0)
 
-	consensus_state.PrimaryRotateDueToComplaints(&state, logger)
+	consensus_state.PrimaryRotateDueToComplaints(&state, 0, logger)
 
 	// Check that the term for shard 1 has been incremented
 	expectedShards := []consensus_state.ShardTerm{{Shard: 1, Term: 2}, {Shard: 2, Term: 1}}
@@ -243,7 +243,7 @@ func TestCleanupOldComplaints(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, 0)
 
-	consensus_state.CleanupOldComplaints(&state, logger)
+	consensus_state.CleanupOldComplaints(&state, 0, logger)
 
 	expectedComplaints := []consensus_state.Complaint{
 		{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 2}, Signer: 3},
