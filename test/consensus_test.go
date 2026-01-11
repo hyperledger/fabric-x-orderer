@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 )
@@ -79,6 +80,8 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		parties[i] = types.PartyID(i + 1)
 	}
 
+	Signer := signutil.CreateTestSigner(t, "org1", dir)
+
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
@@ -87,6 +90,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		Transactions: 1000,
 		ErrString:    "cancelled pull from assembler: %d",
 		Timeout:      120,
+		Signer:       Signer,
 	})
 
 	partyToRestart := types.PartyID(3)
@@ -113,6 +117,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		Transactions: 1500,
 		ErrString:    "cancelled pull from assembler: %d",
 		Timeout:      120,
+		Signer:       Signer,
 	})
 
 	consenterToRestart.RestartArmaNode(t, readyChan)
@@ -132,5 +137,6 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		Transactions: 2000,
 		ErrString:    "cancelled pull from assembler: %d",
 		Timeout:      120,
+		Signer:       Signer,
 	})
 }

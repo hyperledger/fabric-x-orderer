@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
@@ -101,6 +102,8 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 		parties = append(parties, types.PartyID(i))
 	}
 
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
+
 	statusUknown := common.Status_UNKNOWN
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   userConfig,
@@ -109,6 +112,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 		Timeout:      60,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUknown,
+		Signer:       pullRequestSigner,
 	})
 
 	// Create config update
@@ -148,6 +152,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 		BlockHandler: userBlockHandler,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUknown,
+		Signer:       pullRequestSigner,
 	})
 
 	require.True(t, userBlockHandler.RouterEndpointUpdated.Load(), "Router endpoint was not updated in the config update")
@@ -205,6 +210,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 		BlockHandler: userBlockHandler,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUknown,
+		Signer:       pullRequestSigner,
 	})
 
 	require.True(t, userBlockHandler.RouterEndpointUpdated.Load(), "Router endpoint was not updated in the config update")

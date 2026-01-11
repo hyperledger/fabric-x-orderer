@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
@@ -127,6 +128,8 @@ func TestSubmitAndReceive(t *testing.T) {
 			startBlock := uint64(0)
 			endBlock := uint64(tt.numOfShards)
 
+			Signer := signutil.CreateTestSigner(t, "org1", dir)
+
 			PullFromAssemblers(t, &BlockPullerOptions{
 				UserConfig: uc,
 				Parties:    parties,
@@ -134,6 +137,7 @@ func TestSubmitAndReceive(t *testing.T) {
 				EndBlock:   endBlock,
 				Blocks:     tt.numOfShards + 1,
 				ErrString:  "cancelled pull from assembler: %d",
+				Signer:     Signer,
 			})
 
 			// Pull first two blocks and count them.
@@ -147,6 +151,7 @@ func TestSubmitAndReceive(t *testing.T) {
 				EndBlock:   endBlock,
 				Blocks:     int((endBlock - startBlock) + 1),
 				ErrString:  "cancelled pull from assembler: %d",
+				Signer:     Signer,
 			})
 
 			// Pull more block, then cancel.
@@ -159,6 +164,7 @@ func TestSubmitAndReceive(t *testing.T) {
 				StartBlock: startBlock,
 				EndBlock:   endBlock,
 				ErrString:  "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+				Signer:     Signer,
 			})
 		})
 	}
@@ -235,6 +241,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 
 	startBlock := uint64(0)
 	endBlock := uint64(numOfShards)
+	Signer := signutil.CreateTestSigner(t, "org1", dir)
 
 	statusSuccess := common.Status_SUCCESS
 	PullFromAssemblers(t, &BlockPullerOptions{
@@ -243,6 +250,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 		StartBlock: startBlock,
 		EndBlock:   endBlock,
 		Status:     &statusSuccess,
+		Signer:     Signer,
 	})
 
 	statusUknown := common.Status_UNKNOWN
@@ -253,6 +261,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 		Blocks:     numOfShards + 1,
 		ErrString:  "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:     &statusUknown,
+		Signer:     Signer,
 	})
 
 	// Pull with endBlock < startBlock, then cancel.
@@ -267,6 +276,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 		EndBlock:   endBlock,
 		ErrString:  "pull from assembler: %d ended: received a non block message: status:BAD_REQUEST",
 		Status:     &statusBadRequest,
+		Signer:     Signer,
 	})
 }
 

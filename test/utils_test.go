@@ -589,6 +589,7 @@ type BlockPullerOptions struct {
 	Status           *common.Status
 	Verifier         *crypto.ECDSAVerifier
 	BlockHandler     TestBlockHandler
+	Signer           protoutil.Signer
 }
 
 func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.PartyID]*BlockPullerInfo {
@@ -626,7 +627,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 			defer waitForPullDone.Done()
 
 			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, (len(options.Parties)-1)/3, options.Transactions,
-				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.BlockHandler)
+				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.BlockHandler, options.Signer)
 			lock.Lock()
 			defer lock.Unlock()
 			pullInfos[partyID] = pullInfo
@@ -659,7 +660,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 
 func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID,
 	startBlock uint64, endBlock uint64, fval, transactions, blocks, timeout int,
-	needVerification bool, sigVerifier *crypto.ECDSAVerifier, blockHandler TestBlockHandler,
+	needVerification bool, sigVerifier *crypto.ECDSAVerifier, blockHandler TestBlockHandler, signer protoutil.Signer,
 ) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
@@ -792,7 +793,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	}
 
 	t.Logf("Pulling from party: %d\n", partyID)
-	status, err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
+	status, err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler, signer)
 	t.Logf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
 	blockPullerInfo := &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged, Missing: make([]uint64, 0), Duplicate: make([]uint64, 0), Status: status}
 

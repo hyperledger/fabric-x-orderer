@@ -32,6 +32,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/grpc"
@@ -662,9 +663,6 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 }
 
 func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int) {
-	// choose randomly the first assembler
-	i := pullFromPartyId - 1
-
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -687,7 +685,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"arma",
-		nil,
+		signutil.CreateSignerForUser(userConfig.MSPDir),
 		nextSeekInfo(0),
 		int32(0),
 		uint64(0),
@@ -700,11 +698,11 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 
 	var stream ab.AtomicBroadcast_DeliverClient
 	var gRPCAssemblerClientConn *grpc.ClientConn
-	endpointToPullFrom := userConfig.AssemblerEndpoints[i]
+	endpointToPullFrom := userConfig.AssemblerEndpoints[pullFromPartyId-1]
 
 	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", pullFromPartyId, err)
 		os.Exit(3)
 	}
 
@@ -713,14 +711,14 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	// create a deliver stream
 	stream, err = abc.Deliver(context.TODO())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a deliver stream to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to create a deliver stream to assembler %d: %v", pullFromPartyId, err)
 		os.Exit(3)
 	}
 
 	// send request envelope
 	err = stream.Send(requestEnvelope)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to send a request envelope to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to send a request envelope to assembler %d: %v", pullFromPartyId, err)
 		os.Exit(3)
 	}
 
@@ -769,7 +767,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 		for {
 			block, err := pullBlock(stream, endpointToPullFrom, gRPCAssemblerClientConn)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
+				fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", pullFromPartyId, err)
 				os.Exit(3)
 			}
 
@@ -982,8 +980,9 @@ func writeStatisticsToCSV(file *os.File, statistic Statistics, timeIntervalToSam
 }
 
 func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
-	// choose randomly the first assembler
-	i := 0
+	// arbitrarily choose the first assembler to pull blocks from
+	pullFromPartyId := 1
+
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -1006,7 +1005,7 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"arma",
-		nil,
+		signutil.CreateSignerForUser(userConfig.MSPDir),
 		nextSeekInfo(0),
 		int32(0),
 		uint64(0),
@@ -1019,11 +1018,11 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 
 	var stream ab.AtomicBroadcast_DeliverClient
 	var gRPCAssemblerClientConn *grpc.ClientConn
-	endpointToPullFrom := userConfig.AssemblerEndpoints[i]
+	endpointToPullFrom := userConfig.AssemblerEndpoints[pullFromPartyId-1]
 
 	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", pullFromPartyId, err)
 		os.Exit(3)
 	}
 
@@ -1032,14 +1031,14 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 	// create a deliver stream
 	stream, err = abc.Deliver(context.TODO())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a deliver stream to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to create a deliver stream to assembler %d: %v", pullFromPartyId, err)
 		os.Exit(3)
 	}
 
 	// send request envelope
 	err = stream.Send(requestEnvelope)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to send a request envelope to assembler %d: %v", i+1, err)
+		fmt.Fprintf(os.Stderr, "failed to send a request envelope to assembler %d: %v", pullFromPartyId, err)
 		os.Exit(3)
 	}
 
@@ -1050,7 +1049,7 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 	for {
 		block, err := pullBlock(stream, endpointToPullFrom, gRPCAssemblerClientConn)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", i+1, err)
+			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", pullFromPartyId, err)
 			os.Exit(3)
 		}
 
