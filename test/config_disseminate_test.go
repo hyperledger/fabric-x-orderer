@@ -259,7 +259,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)
 
-	env := cfgutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty, configUpdatePbData)
+	env := cfgutil.CreateConfigTX(t, dir, numOfParties, submittingParty, configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -475,7 +475,7 @@ func TestConfigTXDisseminationVerificationFailure(t *testing.T) {
 	defer cleanUp()
 	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)
-	env := configutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty, configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, numOfParties, submittingParty, configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Override signature to damage transaction
@@ -491,7 +491,7 @@ func TestConfigTXDisseminationVerificationFailure(t *testing.T) {
 	defer cleanUp()
 	configUpdatePbData = configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)
-	env = configutil.CreateConfigTX(t, dir, 1, genesisBlockPath, submittingParty, configUpdatePbData)
+	env = configutil.CreateConfigTX(t, dir, 1, submittingParty, configUpdatePbData)
 	err = broadcastClient.SendTx(env)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "1 sub-policies were satisfied, but this policy requires 3 of the 'Admins' sub-policies to be satisfied")
