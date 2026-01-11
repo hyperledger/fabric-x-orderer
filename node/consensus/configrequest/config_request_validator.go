@@ -41,7 +41,7 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 		return fmt.Errorf("payload data unmarshalling error: %s", err)
 	}
 
-	if configEnvelope == nil || configEnvelope.LastUpdate == nil || configEnvelope.Config == nil {
+	if configEnvelope.LastUpdate == nil || configEnvelope.Config == nil {
 		return errors.New("invalid config envelope")
 	}
 
