@@ -40,8 +40,8 @@ type response struct {
 }
 
 // PullBlocks is blocking untill all blocks are delivered: startBlock to endBlock, inclusive; or an error is returned.
-func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyID, startBlock uint64, endBlock uint64, handler BlockHandler) (common.Status, error) {
-	client, gRPCAssemblerClientConn, err := c.createClientAndSendRequest(startBlock, endBlock, assemblerId)
+func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyID, startBlock uint64, endBlock uint64, handler BlockHandler, signer protoutil.Signer) (common.Status, error) {
+	client, gRPCAssemblerClientConn, err := c.createClientAndSendRequest(startBlock, endBlock, assemblerId, signer)
 	if err != nil {
 		return common.Status(0), errors.Wrapf(err, "failed to create client to assembler: %d", assemblerId)
 	}
@@ -103,7 +103,7 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 	}
 }
 
-func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock uint64, assemblerId types.PartyID) (ab.AtomicBroadcast_DeliverClient, *grpc.ClientConn, error) {
+func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock uint64, assemblerId types.PartyID, signer protoutil.Signer) (ab.AtomicBroadcast_DeliverClient, *grpc.ClientConn, error) {
 	serverRootCAs := append([][]byte{}, c.userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -126,7 +126,7 @@ func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock u
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"arma",
-		nil,
+		signer,
 		nextSeekInfo(startBlock, endBlock),
 		int32(0),
 		uint64(0),

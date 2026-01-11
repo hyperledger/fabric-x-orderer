@@ -29,7 +29,7 @@ type NetStopper interface {
 type Assembler struct {
 	collator     Collator
 	logger       types.Logger
-	ds           delivery.DeliverService // TODO the assembler need only one reader, not a map.
+	ds           *AssemblerDeliverService
 	prefetcher   PrefetcherController
 	baReplicator delivery.ConsensusBringer
 	netStopper   NetStopper
@@ -141,7 +141,7 @@ func NewDefaultAssembler(
 	prefetcher.Start()
 
 	assembler := &Assembler{
-		ds: make(delivery.DeliverService),
+		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, config),
 		collator: Collator{
 			Shards:                            shardIds,
 			OrderedBatchAttestationReplicator: baReplicator,
@@ -156,9 +156,6 @@ func NewDefaultAssembler(
 		baReplicator: baReplicator,
 		metrics:      metrics,
 	}
-
-	// TODO: we do not need multiple ledgers in the assembler
-	assembler.ds["arma"] = al.LedgerReader()
 
 	assembler.collator.AssemblerRestarter = assembler
 
