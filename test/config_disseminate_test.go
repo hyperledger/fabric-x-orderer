@@ -55,7 +55,7 @@ func TestConfigDisseminate(t *testing.T) {
 
 	batchers, batchersConfigs, batchersLoggers, _ := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
 
-	routers, certs, routersConfigs, routersLoggers := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, consenterNodes[0].Address(), genesisBlock)
+	routers, certs, routersConfigs, routersLoggers := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, []string{consenterNodes[0].Address(), consenterNodes[1].Address(), consenterNodes[2].Address(), consenterNodes[3].Address()}, genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()

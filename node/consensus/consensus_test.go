@@ -609,6 +609,11 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			mockConfigRequestValidator := &configrequest_mocks.FakeConfigRequestValidator{}
 			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 
+			mockConfigApplier := &consensus_mocks.FakeConfigApplier{}
+			mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+				return s, nil
+			})
+
 			c := &node_consensus.Consensus{
 				Arma:                   consenter,
 				State:                  initialState,
@@ -617,7 +622,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				RequestVerifier:        requestVerifier,
 				Config:                 config,
 				ConfigUpdateProposer:   mockConfigUpdateProposer,
-				ConfigApplier:          &NoOpDefaultConfigApplier{},
+				ConfigApplier:          mockConfigApplier,
 				ConfigRequestValidator: mockConfigRequestValidator,
 			}
 

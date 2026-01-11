@@ -41,6 +41,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	consensusMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -94,7 +95,7 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*zap.SugaredLogger) {
+func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*zap.SugaredLogger) {
 	var routers []*router.Router
 	var certs []node_config.RawBytes
 	var configs []*node_config.RouterNodeConfig
@@ -138,7 +139,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 			RequestMaxBytes:                     1 << 10,
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
-			Consenter:                           node_config.ConsenterInfo{PartyID: types.PartyID(i + 1), Endpoint: consenterEndpoint, TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
+			Consenter:                           node_config.ConsenterInfo{PartyID: types.PartyID(i + 1), Endpoint: consenterEndpoint[i], TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
 		}
 		configs = append(configs, config)
 
@@ -268,7 +269,11 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer, mockConfigUpdateProposer)
-		c.ConfigApplier = &NoOpDefaultConfigApplier{}
+		mockConfigApplier := &consensusMocks.FakeConfigApplier{}
+		mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+			return s, nil
+		})
+		c.ConfigApplier = mockConfigApplier
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)
@@ -480,7 +485,11 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 	consenter := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, signer, mockConfigUpdateProposer)
-	consenter.ConfigApplier = &NoOpDefaultConfigApplier{}
+	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
+	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+		return s, nil
+	})
+	consenter.ConfigApplier = mockConfigApplier
 
 	gRPCServer := newConsenterNode.Server()
 	protos.RegisterConsensusServer(gRPCServer, consenter)
@@ -807,10 +816,4 @@ func BuildVerifier(configDir string, partyID types.PartyID, logger types.Logger)
 	}
 
 	return &verifier
-}
-
-type NoOpDefaultConfigApplier struct{}
-
-func (ca *NoOpDefaultConfigApplier) ApplyConfigToState(state *state.State, configRequest *state.ConfigRequest) (*state.State, error) {
-	return state, nil
 }
