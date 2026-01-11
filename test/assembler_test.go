@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
@@ -135,7 +136,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 		return nil
 	}
 
-	_, err = dc.PullBlocks(toCtx, partyToRestart, 0, math.MaxUint64, handler)
+	_, err = dc.PullBlocks(toCtx, partyToRestart, 0, math.MaxUint64, handler, signutil.CreateTestSigner(t, "org1", dir))
 	require.ErrorContains(t, err, "cancelled pull from assembler: 3")
 	require.GreaterOrEqual(t, totalTxs, uint64(transactions*2))
 

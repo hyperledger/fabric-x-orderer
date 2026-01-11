@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
@@ -84,7 +85,7 @@ func TestTxClientSend(t *testing.T) {
 		}
 		return nil
 	}
-	dc.PullBlocks(cnx, 1, startBlock, endBlock, handler)
+	dc.PullBlocks(cnx, 1, startBlock, endBlock, handler, signutil.CreateTestSigner(t, "org1", dir))
 	assert.Equal(t, totalTxNumber+1, totalTxs)
 	assert.True(t, totalBlocks > 2)
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)

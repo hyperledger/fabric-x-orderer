@@ -323,6 +323,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		UseTLS:                    true,
 		ClientAuthRequired:        false,
 		MonitoringListenAddress:   "127.0.0.1:0",
+		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 	}
 
 	assemblerGRPC := node.CreateGRPCAssembler(nodeConfig)
