@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	fabricx_config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -932,6 +933,8 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		shards = append(shards, config.ShardInfo{ShardId: types.ShardID(j + 1), Batchers: []config.BatcherInfo{{PartyID: partyID, Endpoint: batchers[j].Server().Address(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}}})
 	}
 
+	clientRootCAs := node.TLSCAcertsFromShards(shards)
+
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
@@ -963,6 +966,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		PartyID:                             partyID,
 		TLSCertificateFile:                  ckp.Cert,
 		UseTLS:                              useTLS,
+		ClientRootCAs:                       clientRootCAs,
 		TLSPrivateKeyFile:                   ckp.Key,
 		ListenAddress:                       "127.0.0.1:0",
 		ConfigStorePath:                     configStorePath,

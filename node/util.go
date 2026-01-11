@@ -57,14 +57,12 @@ func ListenAddressForNode(endpointType ServerEndpointType, listenAddress string)
 }
 
 func CreateGRPCRouter(conf *config.RouterNodeConfig) *comm.GRPCServer {
-	tlsCAs := TLSCAcertsFromShards(conf.Shards)
-
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(RouterListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
 		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     tlsCAs,
+			ClientRootCAs:     conf.ClientRootCAs,
 			UseTLS:            conf.UseTLS,
 			RequireClientCert: conf.ClientAuthRequired,
 			Certificate:       conf.TLSCertificateFile,
@@ -95,6 +93,8 @@ func CreateGRPCConsensus(conf *config.ConsenterNodeConfig) *comm.GRPCServer {
 		}
 	}
 
+	clientRootCAs = append(clientRootCAs, conf.ClientRootCAs...)
+
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(ConsensusListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
@@ -116,14 +116,12 @@ func CreateGRPCConsensus(conf *config.ConsenterNodeConfig) *comm.GRPCServer {
 }
 
 func CreateGRPCAssembler(conf *config.AssemblerNodeConfig) *comm.GRPCServer {
-	tlsCAs := TLSCAcertsFromShards(conf.Shards)
-
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(AssemblerListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
 		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     tlsCAs,
+			ClientRootCAs:     conf.ClientRootCAs,
 			UseTLS:            conf.UseTLS,
 			RequireClientCert: conf.ClientAuthRequired,
 			Certificate:       conf.TLSCertificateFile,
@@ -162,6 +160,8 @@ func CreateGRPCBatcher(conf *config.BatcherNodeConfig) *comm.GRPCServer {
 			}
 		}
 	}
+
+	clientRootCAs = append(clientRootCAs, conf.ClientRootCAs...)
 
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(BatcherListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{

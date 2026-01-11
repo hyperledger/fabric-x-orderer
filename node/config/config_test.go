@@ -36,6 +36,7 @@ func TestRouterNodeConfigToYaml(t *testing.T) {
 		Consenter:                     consenter,
 		NumOfConnectionsForBatcher:    1,
 		NumOfgRPCStreamsPerConnection: 2,
+		ClientRootCAs:                 [][]byte{},
 	}
 
 	path := path.Join(dir, "router_node_config.yaml")
@@ -67,6 +68,7 @@ func TestBatcherNodeConfigToYaml(t *testing.T) {
 		TLSPrivateKeyFile:  RawBytes("TlsPrivateKey"),
 		TLSCertificateFile: RawBytes("TlsCertKey"),
 		SigningPrivateKey:  RawBytes("SigningPrivateKey"),
+		ClientRootCAs:      [][]byte{},
 	}
 
 	path := path.Join(dir, "batcher_node_config.yaml")
@@ -100,6 +102,7 @@ func TestConsenterNodeConfigToYaml(t *testing.T) {
 		TLSPrivateKeyFile:  RawBytes("TlsPrivateKey"),
 		TLSCertificateFile: RawBytes("TlsCertKey"),
 		SigningPrivateKey:  RawBytes("SigningPrivateKey"),
+		ClientRootCAs:      [][]byte{},
 	}
 
 	path := path.Join(dir, "consenter_node_config.yaml")
@@ -129,6 +132,7 @@ func TestAssemblerNodeConfigToYaml(t *testing.T) {
 		PartyId:            1,
 		Shards:             shards,
 		Consenter:          ConsenterInfo{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}},
+		ClientRootCAs:      [][]byte{},
 	}
 
 	path := path.Join(dir, "assembler_node_config.yaml")
