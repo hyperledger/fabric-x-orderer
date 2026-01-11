@@ -34,15 +34,16 @@ func (fake *FakeRequestInspector) RequestID(arg1 []byte) string {
 	fake.requestIDArgsForCall = append(fake.requestIDArgsForCall, struct {
 		arg1 []byte
 	}{arg1Copy})
+	stub := fake.RequestIDStub
+	fakeReturns := fake.requestIDReturns
 	fake.recordInvocation("RequestID", []interface{}{arg1Copy})
 	fake.requestIDMutex.Unlock()
-	if fake.RequestIDStub != nil {
-		return fake.RequestIDStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.requestIDReturns
 	return fakeReturns.result1
 }
 

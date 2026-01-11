@@ -32,15 +32,16 @@ func (fake *FakeStateReplicator) ReplicateState() <-chan *state.Header {
 	ret, specificReturn := fake.replicateStateReturnsOnCall[len(fake.replicateStateArgsForCall)]
 	fake.replicateStateArgsForCall = append(fake.replicateStateArgsForCall, struct {
 	}{})
+	stub := fake.ReplicateStateStub
+	fakeReturns := fake.replicateStateReturns
 	fake.recordInvocation("ReplicateState", []interface{}{})
 	fake.replicateStateMutex.Unlock()
-	if fake.ReplicateStateStub != nil {
-		return fake.ReplicateStateStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.replicateStateReturns
 	return fakeReturns.result1
 }
 
@@ -83,9 +84,10 @@ func (fake *FakeStateReplicator) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
+	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if fake.StopStub != nil {
+	if stub != nil {
 		fake.StopStub()
 	}
 }
