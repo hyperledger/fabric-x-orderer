@@ -782,7 +782,7 @@ func TestVerifyBatch(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 	verifier.VerifyBatchedRequestsReturns(nil)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 0)
+	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 1) // config seq mismatch, log as warning but append anyway
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
