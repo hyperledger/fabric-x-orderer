@@ -374,6 +374,9 @@ func (b *BatcherRole) runSecondary() {
 }
 
 func (b *BatcherRole) verifyBatch(batch types.Batch) error {
+	if batch.ConfigSequence() != b.ConfigSequenceGetter.ConfigSequence() {
+		b.Logger.Warnf("Batch config seq (%d) does not match batcher's current config seq (%d)", batch.ConfigSequence(), b.ConfigSequenceGetter.ConfigSequence())
+	}
 	if batch.Primary() != b.primary {
 		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
 	}
