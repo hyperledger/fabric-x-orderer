@@ -597,14 +597,14 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
 	}
 
-	// Why do we first give Arma the events and then append the decision to storage?
+	// Why do we first give Arma the batchAttestations and then append the decision to storage?
 	// Upon commit, Arma indexes the batch attestations which passed the threshold in its index,
 	// to avoid signing them again in the (near) future.
 	// If we crash after this, we will replicate the block and will overwrite the index again.
 	// However, if we first commit the decision and then index afterwards and crash during or right before
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
-	// This is true because a Commit(controlEvents) with the same controlEvents is idempotent.
+	// This is true because a Commit(batchAttestations) with the same batchAttestations is idempotent.
 	c.stateLock.Lock()
 	_, batchAttestations, _ := c.Arma.SimulateStateTransition(c.State, controlEvents)
 	c.stateLock.Unlock()

@@ -54,7 +54,7 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][
 }
 
 // Commit indexes BAs.
-// Note that this must hold: Commit(controlEvents) with the same controlEvents is idempotent.
+// Note that this must hold: Commit(batchAttestations) with the same batchAttestations is idempotent.
 // TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
 func (c *Consenter) Commit(batchAttestations [][]types.BatchAttestationFragment) {
 	if len(batchAttestations) > 0 {
