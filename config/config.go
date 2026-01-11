@@ -341,7 +341,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	return consenterConfig
 }
 
-func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeConfig {
+func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -372,6 +372,7 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
 		MonitoringListenAddress:   net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:        config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Bundle:                    config.extractBundleFromConfigBlock(configBlock),
 	}
 	return assemblerConfig
 }

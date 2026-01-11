@@ -320,7 +320,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger.Close()
 
 		// Create the assembler and check genesis block was appended
-		conf := configContent.ExtractAssemblerConfig()
+		conf := configContent.ExtractAssemblerConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
 		srv := node.CreateGRPCAssembler(conf)
 		assembler := assembler.NewAssembler(conf, srv, genesisBlock, testLogger)
