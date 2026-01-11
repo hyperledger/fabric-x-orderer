@@ -11,7 +11,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -27,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
@@ -78,7 +78,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		Config:         conf,
 		BFTConfig:      conf.BFTConfig,
 		Arma: &Consenter{
-			State:           initialState,
 			DB:              badb,
 			Logger:          logger,
 			BAFDeserializer: &state.BAFDeserialize{},
@@ -95,6 +94,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), logger),
 		RequestVerifier:              CreateConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
+		ConfigApplier:                &DefaultConfigApplier{},
 		ConfigRequestValidator: &configrequest.DefaultValidateConfigRequest{
 			ConfigUpdateProposer: configUpdateProposer,
 			Bundle:               conf.Bundle,
@@ -259,9 +259,9 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 	var initState state.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
-	F := (uint16(initState.N) - 1) / 3
-	initState.Threshold = F + 1
-	initState.Quorum = uint16(math.Ceil((float64(initState.N) + float64(F) + 1) / 2.0))
+	_, T, Q := utils.ComputeFTQ(initState.N)
+	initState.Threshold = T
+	initState.Quorum = Q
 
 	for _, shard := range config.Shards {
 		initState.Shards = append(initState.Shards, state.ShardTerm{

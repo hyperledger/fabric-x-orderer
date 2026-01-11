@@ -28,7 +28,7 @@ import (
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	node_consensus "github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
+	configrequest_mocks "github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
 	consensus_mocks "github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
@@ -276,7 +276,6 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	initialState, md := initializeStateAndMetadata(t, initialState, ledger)
 
 	consenter := &node_consensus.Consenter{ // TODO should this be initialized as part of consensus node start?
-		State:           initialState,
 		DB:              db,
 		Logger:          l,
 		BAFDeserializer: &state.BAFDeserialize{},
@@ -594,7 +593,6 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 			consenter := &node_consensus.Consenter{
 				DB:              db,
-				State:           initialState,
 				Logger:          logger,
 				BAFDeserializer: &state.BAFDeserialize{},
 			}
@@ -608,7 +606,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 			mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 
-			mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
+			mockConfigRequestValidator := &configrequest_mocks.FakeConfigRequestValidator{}
 			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 
 			c := &node_consensus.Consensus{
@@ -619,6 +617,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				RequestVerifier:        requestVerifier,
 				Config:                 config,
 				ConfigUpdateProposer:   mockConfigUpdateProposer,
+				ConfigApplier:          &NoOpDefaultConfigApplier{},
 				ConfigRequestValidator: mockConfigRequestValidator,
 			}
 
@@ -736,7 +735,6 @@ func TestVerifyProposal(t *testing.T) {
 
 	consenter := &node_consensus.Consenter{
 		DB:              db,
-		State:           &initialState,
 		Logger:          logger,
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
@@ -961,7 +959,6 @@ func TestSignProposal(t *testing.T) {
 
 	consenter := &node_consensus.Consenter{
 		DB:              db,
-		State:           &initialState,
 		Logger:          logger,
 		BAFDeserializer: &state.BAFDeserialize{},
 	}

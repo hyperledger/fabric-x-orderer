@@ -14,8 +14,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -23,7 +21,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -167,8 +165,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 		logger := testutil.CreateLogger(t, int(partyID))
 		loggers = append(loggers, logger)
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-consenter%d", t.Name(), i+1))
-		require.NoError(t, err)
+		dir := t.TempDir()
 
 		conf := makeConf(dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
@@ -185,7 +182,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 		c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
 		listeners = append(listeners, listener)
 
-		err = c.Start()
+		err := c.Start()
 		require.NoError(t, err)
 
 		consensusNodes = append(consensusNodes, c)

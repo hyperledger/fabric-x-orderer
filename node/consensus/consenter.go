@@ -26,7 +26,6 @@ type Consenter struct {
 	Logger          types.Logger
 	DB              BatchAttestationDB
 	BAFDeserializer state.BAFDeserializer
-	State           *state.State
 }
 
 func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, []*state.ConfigRequest) {
@@ -49,22 +48,18 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, requests [][
 	}
 
 	newState, fragments, configRequests := prevState.Process(c.Logger, filteredControlEvents...)
-	// TODO apply the config and return a new state, or do this separately with a single config request chosen by consensus
 	batchAttestations := aggregateFragments(fragments)
 
 	return newState, batchAttestations, configRequests
 }
 
-// Commit indexes BAs and updates the state.
-// Note that this must hold: Commit(controlEvents) with the same controlEvents is idempotent.
+// Commit indexes BAs.
+// Note that this must hold: Commit(batchAttestations) with the same batchAttestations is idempotent.
 // TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
-func (c *Consenter) Commit(events [][]byte) {
-	state, batchAttestations, _ := c.SimulateStateTransition(c.State, events)
-	// TODO apply config to get a new state
+func (c *Consenter) Commit(batchAttestations [][]types.BatchAttestationFragment) {
 	if len(batchAttestations) > 0 {
 		c.indexAttestationsInDB(batchAttestations)
 	}
-	c.State = state
 }
 
 func (c *Consenter) indexAttestationsInDB(batchAttestations [][]types.BatchAttestationFragment) {
