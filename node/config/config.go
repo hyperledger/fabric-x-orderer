@@ -112,6 +112,7 @@ type AssemblerNodeConfig struct {
 	Consenter               ConsenterInfo
 	UseTLS                  bool
 	ClientAuthRequired      bool
+	Bundle                  channelconfig.Resources
 	MonitoringListenAddress string
 	MetricsLogInterval      time.Duration
 }

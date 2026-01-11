@@ -8,12 +8,14 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -314,9 +316,14 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	// Create a broadcast client
-	uc, err := testutil.GetUserConfig(dir, 1)
-	assert.NoError(t, err)
-	assert.NotNil(t, uc)
+	submittingParty := 1
+	uc, err := testutil.GetUserConfig(dir, types.PartyID(submittingParty))
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	require.NotNil(t, signer)
+	require.NotNil(t, certBytes)
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 	defer broadcastClient.Stop()
@@ -325,7 +332,6 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	// the envelope.Payload contains marshaled bytes of configUpdateEnvelope, which is an envelope with Header.Type = HeaderType_CONFIG_UPDATE, signed by majority of admins
 
 	// Create the config transaction
-	submittingParty := 1
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
 	env := configutil.CreateConfigTX(t, dir, numOfParties, genesisBlockPath, submittingParty)
 	require.NotNil(t, env)
@@ -396,5 +402,105 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 			consensusLedgerCount := consensusLedger.Height()
 			return consensusLedgerCount == 2
 		}, 60*time.Second, 100*time.Millisecond)
+	}
+
+	// Restart all nodes
+	readyChan = make(chan struct{}, numOfArmaNodes)
+	armaNetwork.Restart(t, readyChan)
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// Initialize a new broadcast client
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	// Send a data tx that is not well signed, i.e. signature did not satisfy the policy /Channel/Writers
+	txContent := tx.PrepareTxWithTimestamp(2, 64, []byte("dataTX"))
+	env = tx.CreateStructuredEnvelope(txContent)
+	err = broadcastClient.SendTx(env)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "INTERNAL_SERVER_ERROR, Info: request structure verification error: signature did not satisfy policy /Channel/Writers")
+
+	// Send one more well signed data tx
+	env = tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, fmt.Sprintf("org%d", submittingParty))
+	err = broadcastClient.SendTx(env)
+	require.NoError(t, err)
+
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    parties,
+		StartBlock: startBlock,
+		EndBlock:   uint64(2),
+		Blocks:     3,
+		ErrString:  "cancelled pull from assembler: %d",
+	})
+
+	// Check that router and batcher config store keep the same size
+	// Check config store size of routers
+	for i := 0; i < numOfParties; i++ {
+		localConfigPath := armaNetwork.GetRouter(t, types.PartyID(i+1)).RunInfo.NodeConfigPath
+		localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
+		configStore, err := configstore.NewStore(localConfig.FileStore.Path)
+		require.NoError(t, err)
+		listBlockNumbers, err := configStore.ListBlockNumbers()
+		require.NoError(t, err)
+		routerConfigCount := len(listBlockNumbers)
+		require.Equal(t, routerConfigCount, 2)
+	}
+
+	// Check config store size of batchers
+	for i := 0; i < numOfParties; i++ {
+		for j := 0; j < numOfShards; j++ {
+			batcher := armaNetwork.GetBatcher(t, types.PartyID(i+1), types.ShardID(j+1))
+			localConfigPath := batcher.RunInfo.NodeConfigPath
+			localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
+			configStore, err := configstore.NewStore(localConfig.FileStore.Path)
+			require.NoError(t, err)
+			listBlockNumbers, err := configStore.ListBlockNumbers()
+			require.NoError(t, err)
+			batcherConfigCount := len(listBlockNumbers)
+			require.Equal(t, batcherConfigCount, 2)
+		}
+	}
+
+	armaNetwork.Stop()
+
+	// Verify last block in assembler ledger points to the last config block
+	for i := 0; i < numOfParties; i++ {
+		assemblerNode := armaNetwork.GetAssembler(t, types.PartyID(i+1))
+		localConfigPath := assemblerNode.RunInfo.NodeConfigPath
+		localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
+		logger := flogging.MustGetLogger("assembler")
+		al, err := ledger.NewAssemblerLedger(logger, localConfig.FileStore.Path)
+		require.NoError(t, err)
+
+		ledgerHeight := al.LedgerReader().Height()
+		require.Equal(t, ledgerHeight, uint64(3))
+		lastBlock, err := al.LedgerReader().RetrieveBlockByNumber(ledgerHeight - 1)
+		require.NoError(t, err)
+		require.False(t, protoutil.IsConfigBlock(lastBlock))
+
+		lastConfigIndex, err := ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(1), lastConfigIndex)
+
+		al.Close()
+	}
+
+	// Verify last block in consensus ledger points to the last config block
+	for i := 0; i < numOfParties; i++ {
+		consenterNode := armaNetwork.GetConsenter(t, types.PartyID(i+1))
+		localConfigPath := consenterNode.RunInfo.NodeConfigPath
+		localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
+		logger := flogging.MustGetLogger("consensus")
+		consensusLedger, err := ledger.NewConsensusLedger(localConfig.FileStore.Path)
+		require.NoError(t, err)
+
+		lastConfigBlock, err := fabricx_config.GetLastConfigBlockFromConsensusLedger(consensusLedger, logger)
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(1), lastConfigBlock.Header.Number)
+
+		consensusLedger.Close()
 	}
 }

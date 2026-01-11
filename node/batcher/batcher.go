@@ -88,6 +88,7 @@ func (b *Batcher) Run() {
 
 	b.stateChan = make(chan *state.State, 1)
 
+	b.running.Add(1)
 	go b.replicateState()
 
 	b.logger.Infof("Starting batcher")
@@ -120,7 +121,6 @@ func (b *Batcher) SoftStop() {
 // replicateState runs by a separate go routine
 func (b *Batcher) replicateState() {
 	b.logger.Infof("Started replicating state")
-	b.running.Add(1)
 	defer func() {
 		b.stateReplicator.Stop()
 		b.running.Done()

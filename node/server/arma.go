@@ -84,7 +84,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 		if err != nil {
 			panic(fmt.Sprintf("error launching assembler, err: %s", err))
 		}
-		conf := configContent.ExtractAssemblerConfig()
+		conf := configContent.ExtractAssemblerConfig(lastConfigBlock)
 
 		var assemblerLogger *flogging.FabricLogger
 		if testLogger != nil {
