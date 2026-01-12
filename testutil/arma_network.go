@@ -80,6 +80,16 @@ func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan struct{}) {
 	}
 }
 
+func (armaNetwork *ArmaNetwork) RestartParties(t *testing.T, parties []types.PartyID, readyChan chan struct{}) {
+	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+		for _, partyID := range parties {
+			for j := range armaNetwork.armaNodes[k][partyID-1] {
+				armaNetwork.armaNodes[k][partyID-1][j].RestartArmaNode(t, readyChan)
+			}
+		}
+	}
+}
+
 func (armaNetwork *ArmaNetwork) GetAssembler(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
 	require.True(t, len(armaNetwork.armaNodes[Assembler]) >= int(partyID))
