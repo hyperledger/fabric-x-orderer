@@ -84,7 +84,7 @@ func TestSubmitAndReceive(t *testing.T) {
 			// 3.
 			// run arma nodes
 			// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-			readyChan := make(chan struct{}, numOfArmaNodes)
+			readyChan := make(chan string, numOfArmaNodes)
 			armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 			defer armaNetwork.Stop()
 
@@ -193,7 +193,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 	// 3.
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -296,7 +296,7 @@ func TestRunNodesAndGetMetrics(t *testing.T) {
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 

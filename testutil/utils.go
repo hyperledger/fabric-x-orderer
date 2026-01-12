@@ -80,14 +80,14 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 	netInfo := make(map[string]*ArmaNodeInfo)
 	runOrderMap := map[string]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
 
-	for i := 0; i < numOfParties; i++ {
+	for i := range numOfParties {
 		assemblerPort, lla := GetAvailablePort(t)
 		consenterPort, llc := GetAvailablePort(t)
 		routerPort, llr := GetAvailablePort(t)
 		var llbs []net.Listener
 		var batchersEndpoints []string
 
-		for n := 0; n < numOfBatcherShards; n++ {
+		for range numOfBatcherShards {
 			batcherPort, llb := GetAvailablePort(t)
 			llbs = append(llbs, llb)
 			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
@@ -164,7 +164,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 	return networkSharedConfig, sharedConfigPath
 }
 
-func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener) *gexec.Session {
+func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan string, listener net.Listener) *gexec.Session {
 	listener.Close()
 	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
 	require.NotNil(t, cmd)
@@ -176,15 +176,15 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	case <-time.After(60 * time.Second):
 		require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to start", name))
 	case <-sess.Err.Detect("panic"):
-		panic("arma node failed to start")
+		readyChan <- fmt.Sprintf("%s_panic", name)
 	case <-sess.Err.Detect("listening on"):
-		readyChan <- struct{}{}
+		readyChan <- fmt.Sprintf("%s_listening", name)
 	}
 
 	return sess
 }
 
-func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan struct{}, netInfo map[string]*ArmaNodeInfo) *ArmaNetwork {
+func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan string, netInfo map[string]*ArmaNodeInfo) *ArmaNetwork {
 	nodes := map[string]string{
 		Router:    "local_config_router",
 		Batcher:   "local_config_batcher",
@@ -236,13 +236,40 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 	return &armaNetwork
 }
 
-func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time.Duration) {
-	startTimeout := time.After(duration * time.Second)
+func WaitReady(t *testing.T, readyChan chan string, waitFor int, duration time.Duration) {
+	timeout := time.After(duration * time.Second)
+	listening := []string{}
+
 	for range waitFor {
 		select {
-		case <-readyChan:
-		case <-startTimeout:
-			require.Fail(t, "arma nodes failed to start in time")
+		case msg := <-readyChan:
+			if strings.Contains(msg, "listening") {
+				listening = append(listening, msg)
+			}
+			if len(listening) == waitFor {
+				return
+			}
+		case <-timeout:
+			require.Fail(t, fmt.Sprintf("expected %d arma nodes to start successfully, but got %d panics: %v", waitFor, len(listening), listening))
+		}
+	}
+}
+
+func WaitPanic(t *testing.T, readyChan chan string, waitFor int, duration time.Duration) {
+	timeout := time.After(duration * time.Second)
+	panic := []string{}
+
+	for {
+		select {
+		case msg := <-readyChan:
+			if strings.Contains(msg, "panic") {
+				panic = append(panic, msg)
+			}
+			if waitFor == len(panic) {
+				return
+			}
+		case <-timeout:
+			require.Fail(t, fmt.Sprintf("expected %d arma nodes to panic during startup, but got %d: %v", waitFor, len(panic), panic))
 		}
 	}
 }

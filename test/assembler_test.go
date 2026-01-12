@@ -64,7 +64,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, nodesNumber)
+	readyChan := make(chan string, nodesNumber)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
 	defer armaNetwork.Stop()
@@ -175,7 +175,7 @@ func TestStartAssemblerGetMetrics(t *testing.T) {
 
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, nodesNumber)
+	readyChan := make(chan string, nodesNumber)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
 	defer armaNetwork.Stop()

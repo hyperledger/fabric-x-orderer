@@ -576,7 +576,7 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	defer batcher.Stop()
 
 	// 6. Launch the router node
-	readyChan := make(chan struct{}, 1)
+	readyChan := make(chan string, 1)
 
 	routerNodeInfo := netInfo["Party14router"]
 	routerNodeConfigPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")

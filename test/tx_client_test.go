@@ -45,7 +45,7 @@ func TestTxClientSend(t *testing.T) {
 
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, 20)
+	readyChan := make(chan string, 20)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
 	defer armaNetwork.Stop()
 

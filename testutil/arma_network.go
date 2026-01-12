@@ -70,11 +70,21 @@ func (armaNetwork *ArmaNetwork) Kill() {
 	}
 }
 
-func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan struct{}) {
+func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan string) {
 	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
 		for i := range armaNetwork.armaNodes[k] {
 			for j := range armaNetwork.armaNodes[k][i] {
 				armaNetwork.armaNodes[k][i][j].RestartArmaNode(t, readyChan)
+			}
+		}
+	}
+}
+
+func (armaNetwork *ArmaNetwork) RestartParties(t *testing.T, parties []types.PartyID, readyChan chan string) {
+	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+		for _, partyID := range parties {
+			for j := range armaNetwork.armaNodes[k][partyID-1] {
+				armaNetwork.armaNodes[k][partyID-1][j].RestartArmaNode(t, readyChan)
 			}
 		}
 	}
@@ -106,7 +116,7 @@ func (armaNetwork *ArmaNetwork) GetBatcher(t *testing.T, partyID types.PartyID, 
 	return armaNetwork.armaNodes[Batcher][partyID-1][shardID-1]
 }
 
-func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}) {
+func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan string) {
 	require.FileExists(t, armaNodeInfo.RunInfo.NodeConfigPath)
 	nodeConfig := ReadNodeConfigFromYaml(t, armaNodeInfo.RunInfo.NodeConfigPath)
 	storagePath := nodeConfig.FileStore.Path

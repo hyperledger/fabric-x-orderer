@@ -54,7 +54,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	// Start Arma nodes
 	numOfArmaNodes := len(netInfo)
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -231,4 +231,244 @@ func (v *verifyRouterEndpointUpdate) HandleBlock(t *testing.T, block *common.Blo
 	}
 
 	return nil
+}
+
+// TestRemovePartyRunAll verifies that removing a party via a config update
+// propagates to the running Arma network. It boots a temporary network,
+// submits a config update to remove a specific party, waits for nodes to stop,
+// validates the updated router config no longer includes the removed party,
+// then restarts the removed party's nodes expecting failures, while confirming
+// the remaining parties restart successfully.
+func TestRemovePartyRunAll(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 2
+	numOfShards := 2
+	submittingParty := types.PartyID(1)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	require.NotNil(t, netInfo)
+	require.NoError(t, err)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// Build Arma binary
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	// Create config update to remove a party
+	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	defer cleanUp()
+
+	partyToRemove := types.PartyID(2)
+	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
+
+	// Submit config update
+	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, int(submittingParty), configUpdatePbData)
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", submittingParty), "local_config_router.yaml")
+	routerNodeConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
+	require.NoError(t, err)
+	require.Equal(t, numOfParties-1, len(routerNodeConfig.SharedConfig.GetPartiesConfig()), "Party was not removed from the config")
+
+	for _, partyConfig := range routerNodeConfig.SharedConfig.GetPartiesConfig() {
+		require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
+	}
+
+	// Stop Arma nodes
+	armaNetwork.Stop()
+
+	numOfNodesPerParty := 3 + numOfShards
+	readyChan = make(chan string, (numOfParties-1)*numOfNodesPerParty)
+
+	// Try to restart the removed party nodes, expect them to fail to start
+	armaNetwork.RestartParties(t, []types.PartyID{partyToRemove}, readyChan)
+	defer armaNetwork.Stop()
+	// Expect the removed party nodes to fail to start
+	// TODO: improve the detection of failed nodes by checking specific exit codes,
+	// rather than relying on string matching in the output
+	// every node should report a panic during startup
+	testutil.WaitPanic(t, readyChan, numOfNodesPerParty-1, 10)
+
+	numOfArmaNodes = (numOfParties - 1) * numOfNodesPerParty
+	readyChan = make(chan string, numOfArmaNodes)
+	// Restart the remaining parties' nodes
+	armaNetwork.RestartParties(t, []types.PartyID{1}, readyChan)
+	// Expect the rest of the nodes to start successfully
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+}
+
+// TestRemoveParty verifies that removing a party via a config update succeeds,
+// that the updated shared config no longer includes the removed party, and that
+// the remaining Arma nodes can be restarted and continue processing transactions.
+func TestRemoveParty(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 2
+	numOfShards := 2
+	submittingParty := types.PartyID(1)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	require.NotNil(t, netInfo)
+	require.NoError(t, err)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	uc, err := testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+
+	totalTxNumber := 10
+	// Send transactions to all parties to ensure network is operational before config update
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	org := fmt.Sprintf("org%d", submittingParty)
+
+	for i := range totalTxNumber {
+		txContent := tx.PrepareTxWithTimestamp(i+totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	statusUnknown := common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Timeout:      60,
+		Status:       &statusUnknown,
+	})
+
+	// Create config update to remove a party
+	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	defer cleanUp()
+
+	partyToRemove := types.PartyID(2)
+	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
+
+	// Submit config update
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Stop Arma nodes
+	armaNetwork.Stop()
+
+	// Verify that the party is removed by checking the router's shared config
+	var remainingParties []types.PartyID
+	for i := 1; i <= numOfParties; i++ {
+		if types.PartyID(i) == partyToRemove {
+			continue
+		}
+		remainingParties = append(remainingParties, types.PartyID(i))
+	}
+
+	numOfParties--
+	numOfArmaNodes = numOfParties * (3 + numOfShards)
+
+	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", submittingParty), "local_config_router.yaml")
+	routerNodeConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
+	require.NoError(t, err)
+	require.Equal(t, numOfParties, len(routerNodeConfig.SharedConfig.GetPartiesConfig()), "Party was not removed from the config")
+
+	for _, partyConfig := range routerNodeConfig.SharedConfig.GetPartiesConfig() {
+		require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
+	}
+
+	// Restart remaining Arma nodes
+	readyChan = make(chan string, numOfArmaNodes)
+
+	// Try to restart the remaining Arma nodes, removed party nodes will fail to start but the rest should start successfully
+	armaNetwork.RestartParties(t, remainingParties, readyChan)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// Send transactions to remaining parties to verify they are processed
+
+	uc.RouterEndpoints = append(uc.RouterEndpoints[:partyToRemove-1], uc.RouterEndpoints[partyToRemove:]...)
+	uc.AssemblerEndpoints = append(uc.AssemblerEndpoints[:partyToRemove-1], uc.AssemblerEndpoints[partyToRemove:]...)
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	for i := range totalTxNumber {
+		txContent := tx.PrepareTxWithTimestamp(i+totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	statusUnknown = common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      remainingParties,
+		Transactions: totalTxNumber*2 + 1, // including config update tx
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+	})
 }
