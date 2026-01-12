@@ -47,7 +47,7 @@ func TestABCR(t *testing.T) {
 
 	_, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
 
-	routers, _, _, _ := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, "", genesisBlock)
+	routers, _, _, _ := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, make([]string, numParties), genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()

@@ -14,7 +14,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
+	configrequestMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
+	consensusMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
@@ -40,9 +41,14 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 	setup.consensusNodes[0].ConfigUpdateProposer = mockConfigUpdateProposer
-	mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
+	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 	setup.consensusNodes[0].ConfigRequestValidator = mockConfigRequestValidator
+	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
+	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+		return s, nil
+	})
+	setup.consensusNodes[0].ConfigApplier = mockConfigApplier
 
 	// update consensus router config
 	routerCert, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -125,11 +131,16 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	}
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
-	mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
+	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
+	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
+	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+		return s, nil
+	})
 	for i := 0; i < parties; i++ {
 		setup.consensusNodes[i].ConfigUpdateProposer = mockConfigUpdateProposer
 		setup.consensusNodes[i].ConfigRequestValidator = mockConfigRequestValidator
+		setup.consensusNodes[i].ConfigApplier = mockConfigApplier
 	}
 
 	// update consensus router config
