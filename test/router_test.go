@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"math"
 	"os"
@@ -19,6 +20,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -466,4 +469,13 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
 	})
+
+	// Attempt to send a transaction with an invalid signature and expect rejection.
+	txContent := tx.PrepareTxWithTimestamp(totalTxNumber+1, 64, []byte("sessionNumber"))
+	fakeCA, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	fakeSigner := fakeCA.Signer().(*ecdsa.PrivateKey)
+	env := tx.CreateSignedStructuredEnvelope(txContent, (*crypto.ECDSASigner)(fakeSigner), fakeCA.CertBytes(), org)
+	err = broadcastClient.SendTx(env)
+	require.ErrorContains(t, err, "signature did not satisfy policy /Channel/Writers\n")
 }

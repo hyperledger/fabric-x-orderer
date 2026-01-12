@@ -37,14 +37,6 @@ func TestCreateConfigBlockUpdate(t *testing.T) {
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
-	// _, lastConfigBlock, err := config.ReadConfig(filepath.Join(dir, "config", "party1", "local_config_router.yaml"), testutil.CreateLoggerForModule(t, "TestCreateConfigBlockUpdate", zap.DebugLevel))
-	// require.NoError(t, err)
-	// require.NotNil(t, lastConfigBlock)
-
-	// sharedconfig, err := configutil.ReadConfigEnvelopeFromConfigBlock(lastConfigBlock)
-	// require.NoError(t, err)
-	// require.NotNil(t, sharedconfig)
-
 	// Create config update
 	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	defer cleanUp()
