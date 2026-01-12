@@ -23,7 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestCreateConfigBlockUpdate(t *testing.T) {
+func TestCreateConfigUpdateBlock(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
