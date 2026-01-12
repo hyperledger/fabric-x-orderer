@@ -44,6 +44,10 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
+
 	stateProvider := &mocks.FakeStateProvider{}
 	batcher.StateProvider = stateProvider
 
@@ -88,6 +92,10 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -141,6 +149,10 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -223,6 +235,10 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -317,6 +333,10 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
+
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
@@ -405,6 +425,10 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
+
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
 	stateProvider.GetLatestStateChanReturns(stateChan)
@@ -475,6 +499,10 @@ func TestPrimaryWaiting(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
+
 	batcher.Start()
 
 	require.Eventually(t, func() bool {
@@ -513,6 +541,10 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -593,6 +625,10 @@ func TestResubmitPending(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -703,6 +739,10 @@ func TestVerifyBatch(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	secondaryBatcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	secondaryBatcher.ConfigSequenceGetter = configSeqGet
+
 	secondaryBatcher.Start()
 	defer secondaryBatcher.Stop()
 
@@ -742,7 +782,7 @@ func TestVerifyBatch(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 	verifier.VerifyBatchedRequestsReturns(nil)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 0)
+	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 1) // config seq mismatch, log as warning but append anyway
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2

@@ -34,7 +34,7 @@ func (ri *reqInspector) RequestID(req []byte) string {
 
 type noopLedger struct{}
 
-func (*noopLedger) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
+func (*noopLedger) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests) {
 }
 
 func (*noopLedger) Height(partyID arma_types.PartyID) uint64 {
@@ -65,7 +65,7 @@ func (r *naiveReplication) Stop() {
 	atomic.StoreInt32(&r.stopped, 0x1)
 }
 
-func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, batchedRequests arma_types.BatchedRequests) {
+func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests) {
 	for _, s := range r.subscribers {
 		s <- arma_types.NewSimpleBatch(0, partyID, batchSeq, batchedRequests, 0)
 	}
@@ -220,6 +220,9 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 
 	ledger := &noopLedger{}
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+
 	batcher := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
@@ -232,6 +235,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		ID:                      arma_types.PartyID(nodeID),
 		Threshold:               2,
 		Ledger:                  ledger,
+		ConfigSequenceGetter:    configSeqGet,
 		StateProvider:           &mocks.FakeStateProvider{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
@@ -378,6 +382,9 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 
 	ledger := &noopLedger{}
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+
 	b := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
 		Batchers:                batchers,
@@ -390,6 +397,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		ID:                      nodeID,
 		Threshold:               2,
 		Ledger:                  ledger,
+		ConfigSequenceGetter:    configSeqGet,
 		StateProvider:           &mocks.FakeStateProvider{},
 		Complainer:              &mocks.FakeComplainer{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},

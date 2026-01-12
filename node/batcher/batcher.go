@@ -79,8 +79,8 @@ func (b *Batcher) MonitoringServiceAddress() string {
 	return b.Metrics.monitor.Address()
 }
 
-func (b *Batcher) ConfigSequence() uint64 {
-	return b.config.Bundle.ConfigtxValidator().Sequence()
+func (b *Batcher) ConfigSequence() types.ConfigSequence {
+	return types.ConfigSequence(b.config.Bundle.ConfigtxValidator().Sequence())
 }
 
 func (b *Batcher) Run() {
@@ -389,7 +389,7 @@ func (b *Batcher) OnSecondStrikeTimeout() {
 }
 
 func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) types.BatchAttestationFragment {
-	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq, types.ConfigSequence(b.ConfigSequence()))
+	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq, b.ConfigSequence())
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -431,7 +431,7 @@ func (b *Batcher) getPrimaryIDAndTerm(state *state.State) (types.PartyID, uint64
 
 func (b *Batcher) createComplaint(reason string) *state.Complaint {
 	term := b.GetTerm()
-	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, types.ConfigSequence(b.ConfigSequence()), reason)
+	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, b.ConfigSequence(), reason)
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
 	}

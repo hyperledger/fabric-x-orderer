@@ -23,9 +23,10 @@ func (fake *FakeBAFSender) SendBAF(arg1 types.BatchAttestationFragment) {
 	fake.sendBAFArgsForCall = append(fake.sendBAFArgsForCall, struct {
 		arg1 types.BatchAttestationFragment
 	}{arg1})
+	stub := fake.SendBAFStub
 	fake.recordInvocation("SendBAF", []interface{}{arg1})
 	fake.sendBAFMutex.Unlock()
-	if fake.SendBAFStub != nil {
+	if stub != nil {
 		fake.SendBAFStub(arg1)
 	}
 }

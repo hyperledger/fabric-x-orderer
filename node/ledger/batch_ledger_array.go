@@ -77,12 +77,12 @@ func (bla *BatchLedgerArray) Height(partyID types.PartyID) uint64 {
 	return part.Height()
 }
 
-func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchSequence, batchedRequests types.BatchedRequests) {
+func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests) {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
 	}
-	part.Append(batchSeq, batchedRequests)
+	part.Append(batchSeq, configSeq, batchedRequests)
 }
 
 func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch {
