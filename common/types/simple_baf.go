@@ -69,7 +69,7 @@ func (s *SimpleBatchAttestationFragment) SetSignature(sig []byte) {
 }
 
 func (s *SimpleBatchAttestationFragment) String() string {
-	return fmt.Sprintf("BAF: Signer: %d; %s", s.signer, BatchIDToString(s))
+	return fmt.Sprintf("BAF: Signer: %d; %s; Config Seq: %d", s.signer, BatchIDToString(s), s.configSequence)
 }
 
 type asn1BAF struct {
