@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -671,6 +672,31 @@ func ReadConfigEnvelopeFromConfigBlock(configBlock *common.Block) (*common.Confi
 	configEnvelope, _ := configtx.UnmarshalConfigEnvelope(payload.Data)
 
 	return configEnvelope, nil
+}
+
+func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID types.PartyID) *protos.PartyConfig {
+	require.NotNil(t, configEnvelope)
+
+	require.NotNil(t, configEnvelope.Config.GetChannelGroup().Groups["Orderer"].Values["ConsensusType"].GetValue())
+
+	consensusType := orderer.ConsensusType{}
+	err := proto.Unmarshal(configEnvelope.Config.GetChannelGroup().Groups["Orderer"].Values["ConsensusType"].GetValue(), &consensusType)
+	require.NoError(t, err)
+
+	sharedConfig := protos.SharedConfig{}
+	err = proto.Unmarshal(consensusType.GetMetadata(), &sharedConfig)
+	require.NoError(t, err)
+
+	partiesConfig := sharedConfig.GetPartiesConfig()
+	require.NotNil(t, partiesConfig)
+
+	for _, partyConfig := range partiesConfig {
+		if partyConfig.PartyID == uint32(partyID) {
+			return partyConfig
+		}
+	}
+
+	return nil
 }
 
 func getNestedJSONValue(t *testing.T, data map[string]any, path ...string) any {

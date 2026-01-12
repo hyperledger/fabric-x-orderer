@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,7 +28,6 @@ import (
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -168,13 +168,15 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	sess, err := gexec.Start(cmd, os.Stdout, os.Stderr)
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool {
-		match, err := gbytes.Say("listening on").Match(sess.Err)
-		require.NoError(t, err)
-		return match
-	}, 60*time.Second, 10*time.Millisecond)
+	select {
+	case <-time.After(60 * time.Second):
+		require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to start", name))
+	case <-sess.Err.Detect("panic"):
+		panic("arma node failed to start")
+	case <-sess.Err.Detect("listening on"):
+		readyChan <- struct{}{}
+	}
 
-	readyChan <- struct{}{}
 	return sess
 }
 
@@ -186,10 +188,10 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		Assembler: "local_config_assembler",
 	}
 
-	nodeInfos := make([]ArmaNodeInfo, 0, len(netInfo))
+	nodeInfos := make([]*ArmaNodeInfo, 0, len(netInfo))
 	numOfParties := 0
 	for n := range netInfo {
-		nodeInfos = append(nodeInfos, *netInfo[n])
+		nodeInfos = append(nodeInfos, netInfo[n])
 		if strings.Contains(n, "consensus") {
 			numOfParties++
 		}
@@ -224,7 +226,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
 		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
-		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, &netNode)
+		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
 
 	return &armaNetwork
@@ -232,7 +234,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 
 func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time.Duration) {
 	startTimeout := time.After(duration * time.Second)
-	for i := 0; i < waitFor; i++ {
+	for range waitFor {
 		select {
 		case <-readyChan:
 		case <-startTimeout:
@@ -241,7 +243,34 @@ func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time
 	}
 }
 
-func sortArmaNodeInfo(infos []ArmaNodeInfo) func(i, j int) bool {
+func WaitSoftStopped(t *testing.T, netInfo map[string]*ArmaNodeInfo) {
+	stopChan := make(chan struct{})
+
+	go func() {
+		defer close(stopChan)
+		wg := sync.WaitGroup{}
+
+		for _, n := range netInfo {
+			wg.Go(func() {
+				select {
+				case <-n.RunInfo.Session.Err.Detect("Soft stop"):
+				case <-n.RunInfo.Session.Err.Detect("soft stop"):
+				case <-time.After(45 * time.Second):
+					require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to stop", n.NodeType))
+				}
+			})
+		}
+		wg.Wait()
+	}()
+
+	select {
+	case <-stopChan:
+	case <-time.After(60 * time.Second):
+		require.Fail(t, "Timed out waiting for Arma nodes to stop")
+	}
+}
+
+func sortArmaNodeInfo(infos []*ArmaNodeInfo) func(i, j int) bool {
 	return func(i, j int) bool {
 		runOrderMap := map[string]int{Consensus: 1, Batcher: 2, Assembler: 3, Router: 4}
 
