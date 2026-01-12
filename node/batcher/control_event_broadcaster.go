@@ -28,7 +28,7 @@ type ControlEventBroadcaster struct {
 	cancelFunc       context.CancelFunc
 }
 
-func (b *ControlEventBroadcaster) BroadcastControlEvent(ce state.ControlEvent) error {
+func (b *ControlEventBroadcaster) BroadcastControlEvent(ce state.ControlEvent, ctx context.Context) error {
 	retrySenders := b.senders
 	delay := b.minRetryInterval
 
@@ -65,10 +65,14 @@ func (b *ControlEventBroadcaster) BroadcastControlEvent(ce state.ControlEvent) e
 
 		timer := time.NewTimer(delay)
 		select {
-		case <-b.ctx.Done():
+		case <-ctx.Done():
 			timer.Stop()
 			b.logger.Errorf("broadcast cancelled")
 			return errors.Errorf("broadcast was cancelled: %v", b.ctx.Err())
+		case <-b.ctx.Done():
+			timer.Stop()
+			b.logger.Errorf("broadcaster cancelled")
+			return errors.Errorf("broadcaster was cancelled: %v", b.ctx.Err())
 		case <-timer.C:
 		}
 

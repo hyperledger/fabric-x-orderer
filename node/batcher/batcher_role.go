@@ -69,7 +69,7 @@ type BatchAcker interface {
 
 // BAFSender sends the baf to the consenters
 type BAFSender interface {
-	SendBAF(baf types.BatchAttestationFragment)
+	SendBAF(baf types.BatchAttestationFragment, ctx context.Context)
 }
 
 //go:generate counterfeiter -o mocks/baf_creator.go . BAFCreator
@@ -311,8 +311,10 @@ func (b *BatcherRole) runPrimary() {
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch)
 
 		sendBAFDone := make(chan struct{})
+		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
+		defer sendBafCancel()
 		go func() {
-			b.BAFSender.SendBAF(baf)
+			b.BAFSender.SendBAF(baf, ctx)
 			close(sendBAFDone)
 		}()
 		select {
@@ -386,8 +388,10 @@ func (b *BatcherRole) runSecondary() {
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
 
 			sendBAFDone := make(chan struct{})
+			ctx, sendBafCancel := context.WithCancel(b.stopCtx)
+			defer sendBafCancel()
 			go func() {
-				b.BAFSender.SendBAF(baf)
+				b.BAFSender.SendBAF(baf, ctx)
 				close(sendBAFDone)
 			}()
 			select {

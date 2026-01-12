@@ -466,15 +466,15 @@ func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 }
 
 func (b *Batcher) Complain(reason string) {
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}, context.Background()); err != nil { // TODO also cancel context on term change and add a timeout
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
 	b.Metrics.complaintsTotal.Add(1)
 }
 
-func (b *Batcher) SendBAF(baf types.BatchAttestationFragment) {
+func (b *Batcher) SendBAF(baf types.BatchAttestationFragment, ctx context.Context) {
 	b.logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{BAF: baf}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{BAF: baf}, ctx); err != nil {
 		b.logger.Errorf("Failed to broadcast batch attestation fragment; err: %v", err)
 	}
 }
