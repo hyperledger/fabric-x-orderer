@@ -331,6 +331,13 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
+		configSeq, err := c.getReqConfigSeq(rawReq)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
+		}
+		if configSeq != c.VerificationSequence() {
+			continue // ignore (no need to verify) request with mismatch config sequence
+		}
 		reqID, err := c.VerifyRequest(rawReq)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
@@ -646,6 +653,26 @@ func (c *Consensus) pickEndpoint() string {
 	}
 	c.Logger.Debugf("Returning random node (ID=%d) endpoint : %s", c.Config.Consenters[r].PartyID, c.Config.Consenters[r].Endpoint)
 	return c.Config.Consenters[r].Endpoint
+}
+
+func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
+	ce := &state.ControlEvent{}
+	bafd := &state.BAFDeserialize{}
+	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
+		return 0, err
+	}
+
+	switch {
+	case ce.Complaint != nil:
+		return uint64(ce.Complaint.ConfigSeq), nil
+	case ce.BAF != nil:
+		return uint64(ce.BAF.ConfigSequence()), nil
+	case ce.ConfigRequest != nil:
+		return c.VerificationSequence(), nil
+	default:
+		return 0, errors.New("empty control event")
+
+	}
 }
 
 func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {

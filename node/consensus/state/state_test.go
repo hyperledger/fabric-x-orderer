@@ -209,6 +209,53 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 }
 
+func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
+	state := consensus_state.State{
+		N:          4,
+		Threshold:  2,
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
+		ShardCount: 2,
+		Complaints: []consensus_state.Complaint{
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 3},
+		},
+	}
+
+	logger := testutil.CreateLogger(t, 0)
+
+	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 0, logger)
+
+	assert.Len(t, state.Complaints, 2)
+
+	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 1, logger)
+
+	assert.Len(t, state.Complaints, 0)
+
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0))
+
+	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 0, logger)
+
+	assert.Len(t, state.Pending, 1)
+
+	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 1, logger)
+
+	assert.Len(t, state.Pending, 0)
+
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 1))
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 2))
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 3))
+
+	state.Complaints = append(state.Complaints, consensus_state.Complaint{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2, ConfigSeq: 1})
+	state.Complaints = append(state.Complaints, consensus_state.Complaint{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2, ConfigSeq: 2})
+	state.Complaints = append(state.Complaints, consensus_state.Complaint{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2, ConfigSeq: 3})
+
+	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 2, logger)
+	assert.Len(t, state.Pending, 1)
+	assert.Equal(t, types.ConfigSequence(2), state.Pending[0].ConfigSequence())
+	assert.Len(t, state.Complaints, 1)
+	assert.Equal(t, types.ConfigSequence(2), state.Complaints[0].ConfigSeq)
+}
+
 func TestPrimaryRotateDueToComplaints(t *testing.T) {
 	state := consensus_state.State{
 		N:          4,
