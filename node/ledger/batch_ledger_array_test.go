@@ -88,6 +88,46 @@ func TestBatchLedgerArray(t *testing.T) {
 			require.NotNil(t, batch.Digest())
 		}
 	}
+
+	list, err := a.List()
+	require.NoError(t, err)
+	require.Equal(t, []string{"shard1party1", "shard1party2", "shard1party3", "shard1party4"}, list)
+
+	t.Log("Close, reopen and read with new and old parties")
+	a.Close()
+	oldParties := parties
+	newParty := types.PartyID(5)
+	newParties := []types.PartyID{1, 2, 3, newParty}
+	a, err = NewBatchLedgerArray(1, 3, newParties, dir, logger)
+	require.NoError(t, err)
+	require.NotNil(t, a)
+
+	for _, pID := range oldParties {
+		require.Equal(t, 2*numBatches, a.Height(pID))
+		batch := a.RetrieveBatchByNumber(pID, 2*numBatches-1)
+		require.NotNil(t, batch)
+		require.Equal(t, batchedRequests, batch.Requests())
+		require.Equal(t, pID, batch.Primary())
+		require.NotNil(t, batch.Digest())
+	}
+
+	require.Zero(t, a.Height(newParty))
+	for seq := uint64(0); seq < numBatches; seq++ {
+		batchedRequests = types.BatchedRequests{
+			[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
+		}
+		a.Append(5, types.BatchSequence(seq), 0, batchedRequests)
+		require.Equal(t, seq+1, a.Height(newParty))
+		batch := a.RetrieveBatchByNumber(newParty, seq)
+		require.NotNil(t, batch)
+		require.Equal(t, batchedRequests, batch.Requests())
+		require.Equal(t, newParty, batch.Primary())
+		require.NotNil(t, batch.Digest())
+	}
+
+	list, err = a.List()
+	require.NoError(t, err)
+	require.Equal(t, []string{"shard1party1", "shard1party2", "shard1party3", "shard1party4", "shard1party5"}, list)
 }
 
 func TestBatchLedgerArrayPart(t *testing.T) {

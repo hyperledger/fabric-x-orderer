@@ -8,6 +8,8 @@ package ledger
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
@@ -100,4 +102,19 @@ func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) types.Batch {
 // Ledger returns the underlying ledger, which supports an iterator as well.
 func (b *BatchLedgerPart) Ledger() blockledger.ReadWriter {
 	return b.ledger
+}
+
+func getPartyIDFromName(name string) (types.PartyID, error) {
+	parts := strings.Split(name, "party")
+	if len(parts) != 2 {
+		return 0, errors.Errorf("Name of part no constructed as expected (shard<id>party<id>); name: %s", name)
+	}
+	if parts[1] == "" {
+		return 0, errors.Errorf("No party id found in name of part; name: %s", name)
+	}
+	partyID, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return 0, errors.Errorf("Error parsing ID in name: %s; err: %s", name, err.Error())
+	}
+	return types.PartyID(partyID), nil
 }
