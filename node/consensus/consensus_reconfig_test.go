@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	configRulesMocks "github.com/hyperledger/fabric-x-orderer/common/configrulesverifier/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -44,6 +45,9 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 	setup.consensusNodes[0].ConfigRequestValidator = mockConfigRequestValidator
+	mockConfigRulesVerifier := &configRulesMocks.FakeConfigRulesVerifier{}
+	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+	setup.consensusNodes[0].ConfigRulesVerifier = mockConfigRulesVerifier
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 		return s, nil
@@ -133,6 +137,8 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
+	mockConfigRulesVerifier := &configRulesMocks.FakeConfigRulesVerifier{}
+	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 		return s, nil
@@ -140,6 +146,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	for i := 0; i < parties; i++ {
 		setup.consensusNodes[i].ConfigUpdateProposer = mockConfigUpdateProposer
 		setup.consensusNodes[i].ConfigRequestValidator = mockConfigRequestValidator
+		setup.consensusNodes[i].ConfigRulesVerifier = mockConfigRulesVerifier
 		setup.consensusNodes[i].ConfigApplier = mockConfigApplier
 	}
 

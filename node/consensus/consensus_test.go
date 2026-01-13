@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	configRulesMocks "github.com/hyperledger/fabric-x-orderer/common/configrulesverifier/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -609,6 +610,9 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			mockConfigRequestValidator := &configrequest_mocks.FakeConfigRequestValidator{}
 			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 
+			mockConfigRulesVerifier := &configRulesMocks.FakeConfigRulesVerifier{}
+			mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+
 			mockConfigApplier := &consensus_mocks.FakeConfigApplier{}
 			mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 				return s, nil
@@ -624,6 +628,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				ConfigUpdateProposer:   mockConfigUpdateProposer,
 				ConfigApplier:          mockConfigApplier,
 				ConfigRequestValidator: mockConfigRequestValidator,
+				ConfigRulesVerifier:    mockConfigRulesVerifier,
 			}
 
 			reqs := make([][]byte, len(tst.ces))
