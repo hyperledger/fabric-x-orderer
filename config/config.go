@@ -59,7 +59,7 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 	}
 
 	if conf.LocalConfig.NodeLocalConfig.FileStore == nil || conf.LocalConfig.NodeLocalConfig.FileStore.Path == "" {
-		return nil, nil, errors.New("path to the config store is missing")
+		return nil, nil, errors.New("path to the FileStore is missing in local config")
 	}
 
 	var lastConfigBlock *common.Block
@@ -243,12 +243,16 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
 
+	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	batchersRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
-	trustedRoots := append(config.LocalConfig.TLSConfig.ClientRootCAs, batchersRootCAs...)
+	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(appTrustedRoots)+len(localConfigClientsTrustedRoots))
+	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
 	trustedRoots = append(trustedRoots, appTrustedRoots...)
+	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
 
 	routerConfig := &nodeconfig.RouterNodeConfig{
 		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
@@ -371,12 +375,16 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
 
+	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	batchersRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
-	trustedRoots := append(config.LocalConfig.TLSConfig.ClientRootCAs, batchersRootCAs...)
+	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(appTrustedRoots)+len(localConfigClientsTrustedRoots))
+	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
 	trustedRoots = append(trustedRoots, appTrustedRoots...)
+	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
 
 	assemblerConfig := &nodeconfig.AssemblerNodeConfig{
 		TLSPrivateKeyFile:         config.LocalConfig.TLSConfig.PrivateKey,

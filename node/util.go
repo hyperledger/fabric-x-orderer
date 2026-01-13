@@ -70,13 +70,14 @@ func CreateGRPCRouter(conf *config.RouterNodeConfig) *comm.GRPCServer {
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
+		fmt.Fprintf(os.Stderr, "failed running gRPC service for Router%d: %v", conf.PartyID, err)
 		os.Exit(1)
 	}
 	return srv
 }
 
 func CreateGRPCConsensus(conf *config.ConsenterNodeConfig) *comm.GRPCServer {
+	// TODO: avoid duplications in clientRootCAs
 	var clientRootCAs [][]byte
 
 	for _, shard := range conf.Shards {
@@ -109,7 +110,7 @@ func CreateGRPCConsensus(conf *config.ConsenterNodeConfig) *comm.GRPCServer {
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
+		fmt.Fprintf(os.Stderr, "failed running gRPC service for Consensus%d: %v", conf.PartyId, err)
 		os.Exit(1)
 	}
 	return srv
@@ -129,7 +130,7 @@ func CreateGRPCAssembler(conf *config.AssemblerNodeConfig) *comm.GRPCServer {
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
+		fmt.Fprintf(os.Stderr, "failed running gRPC service for Assembler%d: %v", conf.PartyId, err)
 		os.Exit(1)
 	}
 	return srv
@@ -148,6 +149,7 @@ func TLSCAcertsFromShards(shards []config.ShardInfo) [][]byte {
 }
 
 func CreateGRPCBatcher(conf *config.BatcherNodeConfig) *comm.GRPCServer {
+	// TODO: avoid duplications in clientRootCAs
 	var clientRootCAs [][]byte
 
 	for _, shard := range conf.Shards {
@@ -177,7 +179,7 @@ func CreateGRPCBatcher(conf *config.BatcherNodeConfig) *comm.GRPCServer {
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service: %v", err)
+		fmt.Fprintf(os.Stderr, "failed running gRPC service for Batcher%d: %v", conf.PartyId, err)
 		os.Exit(1)
 	}
 	return srv
