@@ -466,7 +466,7 @@ func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 }
 
 func (b *Batcher) Complain(reason string) {
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}, context.Background()); err != nil { // TODO also cancel context on term change and add a timeout
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}, context.TODO()); err != nil { // TODO also cancel context on term change and add a timeout
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
 	b.Metrics.complaintsTotal.Add(1)
