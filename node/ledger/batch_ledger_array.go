@@ -56,6 +56,24 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		ledgerPartsMap[primaryPartyID] = part
 	}
 
+	names, err := provider.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		primaryPartyID, err := getPartyIDFromName(name)
+		if err != nil {
+			return nil, err
+		}
+		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, logger)
+		if err != nil {
+			return nil, err
+		}
+
+		ledgerPartsMap[primaryPartyID] = part
+	}
+	// TODO consider saving parties and checking when appending to avoid mistakes (appending to a stale part)
+
 	return &BatchLedgerArray{
 		shardID:     shardID,
 		partyID:     partyID,
