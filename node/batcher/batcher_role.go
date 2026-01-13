@@ -69,7 +69,7 @@ type BatchAcker interface {
 
 // BAFSender sends the baf to the consenters
 type BAFSender interface {
-	SendBAF(baf types.BatchAttestationFragment)
+	SendBAF(baf types.BatchAttestationFragment, ctx context.Context)
 }
 
 //go:generate counterfeiter -o mocks/baf_creator.go . BAFCreator
@@ -310,8 +310,22 @@ func (b *BatcherRole) runPrimary() {
 
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch)
 
-		// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
-		b.BAFSender.SendBAF(baf)
+		sendBAFDone := make(chan struct{})
+		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
+		defer sendBafCancel()
+		go func() {
+			b.BAFSender.SendBAF(baf, ctx)
+			close(sendBAFDone)
+		}()
+		select {
+		case <-sendBAFDone:
+		case newTerm := <-b.termChan:
+			b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+			return
+		case <-b.stopChan:
+			return
+		}
+
 		b.Metrics.batchedTxsTotal.Add(float64(len(currentBatch)))
 
 		b.ackerLock.RLock()
@@ -372,8 +386,26 @@ func (b *BatcherRole) runSecondary() {
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests)
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
-			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
-			b.BAFSender.SendBAF(baf)
+
+			sendBAFDone := make(chan struct{})
+			ctx, sendBafCancel := context.WithCancel(b.stopCtx)
+			defer sendBafCancel()
+			go func() {
+				b.BAFSender.SendBAF(baf, ctx)
+				close(sendBAFDone)
+			}()
+			select {
+			case <-sendBAFDone:
+			case newTerm := <-b.termChan:
+				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+				b.BatchPuller.Stop()
+				return
+			case <-b.stopChan:
+				b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
+				b.BatchPuller.Stop()
+				return
+			}
+
 			b.Metrics.batchedTxsTotal.Add(float64(len(requests)))
 			b.removeRequests(requests)
 			b.BatchAcker.Ack(baf.Seq(), b.primary)

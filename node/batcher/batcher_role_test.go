@@ -120,10 +120,13 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 		return ledger.AppendCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		return pool.RemoveRequestsCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
 	batcher.Stop()
 
 	require.False(t, pool.RestartArgsForCall(0))
-	require.Equal(t, 2, pool.RemoveRequestsCallCount())
 	require.Zero(t, pool.NextRequestsCallCount())
 }
 
