@@ -47,5 +47,12 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 	newState.Threshold = T
 	newState.Quorum = Q
 
+	if newState.N != state.N {
+		// there was a party change, explicitly change term on all shards
+		for i := range newState.Shards {
+			newState.Shards[i].Term++
+		}
+	}
+
 	return newState, nil
 }
