@@ -367,6 +367,9 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return pool.RemoveRequestsCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
 
 	stateChan <- &state.State{
 		Shards: []state.ShardTerm{
