@@ -208,7 +208,7 @@ func (b *BatcherRole) getTermAndNotifyChange() {
 			if currentTerm != newTerm {
 				atomic.StoreUint64(&b.term, newTerm)
 				b.termChan <- newTerm
-				b.resubmitPendingBAFs(state, b.getPrimaryID(currentTerm))
+				b.ResubmitPendingBAFs(state, b.getPrimaryID(currentTerm), false)
 				b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 			}
 		}
@@ -220,13 +220,17 @@ func (b *BatcherRole) getTermAndNotifyChange() {
 // and that tx is in the pool of other batchers but again not enough (less than f+1 batchers)
 // to prevent a case where such a tx falls through the cracks, after a term change
 // all batchers resubmit to their pools txs in batches with their BAFs still in pending state
-func (b *BatcherRole) resubmitPendingBAFs(state *state.State, prevPrimary types.PartyID) {
+// this will also be used after config update for resubmitting expired BAFs while ignoring the prev primary parameter
+func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.PartyID, ignorePrevPrimary bool) {
 	for _, baf := range state.Pending {
-		if baf.Shard() == b.Shard && baf.Signer() == b.ID && baf.Primary() == prevPrimary {
-			b.Logger.Debugf("found pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())
+		if baf.Shard() == b.Shard && baf.Signer() == b.ID {
+			if !ignorePrevPrimary && baf.Primary() != prevPrimary {
+				continue
+			}
+			b.Logger.Debugf("found pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
 			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
 			if batch == nil {
-				b.Logger.Panicf("Error: No such batch; pending BAF signed by me (id: %d) from prev primary: %d ; %s", b.ID, prevPrimary, baf.String())
+				b.Logger.Panicf("Error: No such batch; pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
 			}
 			for _, req := range batch.Requests() {
 				if err := b.MemPool.Submit(req); err != nil {
