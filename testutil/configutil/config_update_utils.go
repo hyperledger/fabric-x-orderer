@@ -586,7 +586,7 @@ func (c *ConfigUpdateBuilder) ConfigUpdatePBData(t *testing.T) []byte {
 	return c.createConfigUpdate(t, c.configData)
 }
 
-func CreateConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath string, submittingParty int, configUpdateBytes []byte) *common.Envelope {
+func CreateConfigTX(t *testing.T, dir string, numOfParties int, submittingParty int, configUpdateBytes []byte) *common.Envelope {
 	// Create ConfigUpdateBytes
 	require.NotNil(t, configUpdateBytes)
 

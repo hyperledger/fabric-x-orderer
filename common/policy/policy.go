@@ -42,7 +42,7 @@ func (cp *DefaultConfigUpdateProposer) ProposeConfigUpdate(request *protos.Reque
 		Signature: request.Signature,
 	}, bundle)
 	if err != nil {
-		return nil, fmt.Errorf("failed authorizing and verifying config update reqest, err: %s", err)
+		return nil, fmt.Errorf("failed authorizing and verifying config update request, err: %s", err)
 	}
 
 	configRequest, err := BuildVerifiedConfigRequest(request, configEnvelope, bundle, signer, verifier)
