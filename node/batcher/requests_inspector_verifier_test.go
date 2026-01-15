@@ -46,7 +46,7 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	req2, err := proto.Marshal(tx.CreateStructuredRequest([]byte{11})) // should map to shard 2
 	require.NoError(t, err)
-	largeReq, err := proto.Marshal(tx.CreateStructuredRequest(make([]byte, 101))) // large request, mapped to shard 1
+	largeReq, err := proto.Marshal(tx.CreateStructuredRequest(make([]byte, 80))) // large request, mapped to shard 1
 	require.NoError(t, err)
 	reqWithConfigSeq := tx.CreateStructuredRequest([]byte{1})
 	reqWithConfigSeq.ConfigSeq = 1

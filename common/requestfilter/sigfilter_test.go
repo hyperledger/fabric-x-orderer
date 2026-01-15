@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/msp"
 	policyMock "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
@@ -46,9 +47,10 @@ func TestSigVerifyFilter(t *testing.T) {
 	req.Payload = p
 	_, err = v.VerifyStructureAndClassify(req)
 	require.ErrorContains(t, err, "failed unmarshalling signature header")
-
+	id, err := msp.NewSerializedIdentity("org", []byte("cert"))
+	require.NoError(t, err)
 	sigheader, err := proto.Marshal(&common.SignatureHeader{
-		Creator: []byte("user"),
+		Creator: id,
 		Nonce:   []byte("nonce"),
 	})
 	require.NoError(t, err)
@@ -91,8 +93,10 @@ func TestSigVerifyConfigUpdate(t *testing.T) {
 	chdr := &common.ChannelHeader{ChannelId: "arma", Type: int32(common.HeaderType_CONFIG_UPDATE)}
 	chdrBytes, err := proto.Marshal(chdr)
 	require.NoError(t, err)
+	id, err := msp.NewSerializedIdentity("org", []byte("cert"))
+	require.NoError(t, err)
 	sigheader, err := proto.Marshal(&common.SignatureHeader{
-		Creator: []byte("user"),
+		Creator: id,
 		Nonce:   []byte("nonce"),
 	})
 	require.NoError(t, err)

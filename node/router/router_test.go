@@ -21,7 +21,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"

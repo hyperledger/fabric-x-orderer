@@ -6,7 +6,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -54,15 +54,16 @@ func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(arg1 *commo
 		arg1 *common.Envelope
 		arg2 channelconfig.Resources
 	}{arg1, arg2})
+	stub := fake.AuthorizeAndVerifyConfigUpdateStub
+	fakeReturns := fake.authorizeAndVerifyConfigUpdateReturns
 	fake.recordInvocation("AuthorizeAndVerifyConfigUpdate", []interface{}{arg1, arg2})
 	fake.authorizeAndVerifyConfigUpdateMutex.Unlock()
-	if fake.AuthorizeAndVerifyConfigUpdateStub != nil {
-		return fake.AuthorizeAndVerifyConfigUpdateStub(arg1, arg2)
+	if stub != nil {
+		return stub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.authorizeAndVerifyConfigUpdateReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -120,15 +121,16 @@ func (fake *FakeConfigUpdateProposer) ProposeConfigUpdate(arg1 *comm.Request, ar
 		arg3 identity.SignerSerializer
 		arg4 *requestfilter.RulesVerifier
 	}{arg1, arg2, arg3, arg4})
+	stub := fake.ProposeConfigUpdateStub
+	fakeReturns := fake.proposeConfigUpdateReturns
 	fake.recordInvocation("ProposeConfigUpdate", []interface{}{arg1, arg2, arg3, arg4})
 	fake.proposeConfigUpdateMutex.Unlock()
-	if fake.ProposeConfigUpdateStub != nil {
-		return fake.ProposeConfigUpdateStub(arg1, arg2, arg3, arg4)
+	if stub != nil {
+		return stub(arg1, arg2, arg3, arg4)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.proposeConfigUpdateReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -180,10 +182,6 @@ func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateReturnsOnCall(i int, re
 func (fake *FakeConfigUpdateProposer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.authorizeAndVerifyConfigUpdateMutex.RLock()
-	defer fake.authorizeAndVerifyConfigUpdateMutex.RUnlock()
-	fake.proposeConfigUpdateMutex.RLock()
-	defer fake.proposeConfigUpdateMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

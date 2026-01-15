@@ -30,6 +30,10 @@ func (s ECDSASigner) Serialize() ([]byte, error) {
 	return []byte("creator"), nil
 }
 
+func (s ECDSASigner) SerializeWithIDOfCert() ([]byte, error) {
+	return []byte("creator"), nil
+}
+
 func signECDSA(k *ecdsa.PrivateKey, digest []byte) (signature []byte, err error) {
 	r, s, err := ecdsa.Sign(rand.Reader, k, digest)
 	if err != nil {

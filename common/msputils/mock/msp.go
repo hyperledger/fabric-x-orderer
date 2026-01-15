@@ -5,15 +5,16 @@ import (
 	"sync"
 
 	mspa "github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-orderer/common/msputils"
 )
 
 type MSP struct {
-	DeserializeIdentityStub        func([]byte) (msp.Identity, error)
+	DeserializeIdentityStub        func(*msppb.Identity) (msp.Identity, error)
 	deserializeIdentityMutex       sync.RWMutex
 	deserializeIdentityArgsForCall []struct {
-		arg1 []byte
+		arg1 *msppb.Identity
 	}
 	deserializeIdentityReturns struct {
 		result1 msp.Identity
@@ -98,10 +99,10 @@ type MSP struct {
 	getVersionReturnsOnCall map[int]struct {
 		result1 msp.MSPVersion
 	}
-	IsWellFormedStub        func(*mspa.SerializedIdentity) error
+	IsWellFormedStub        func(*msppb.Identity) error
 	isWellFormedMutex       sync.RWMutex
 	isWellFormedArgsForCall []struct {
-		arg1 *mspa.SerializedIdentity
+		arg1 *msppb.Identity
 	}
 	isWellFormedReturns struct {
 		result1 error
@@ -147,20 +148,15 @@ type MSP struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *MSP) DeserializeIdentity(arg1 []byte) (msp.Identity, error) {
-	var arg1Copy []byte
-	if arg1 != nil {
-		arg1Copy = make([]byte, len(arg1))
-		copy(arg1Copy, arg1)
-	}
+func (fake *MSP) DeserializeIdentity(arg1 *msppb.Identity) (msp.Identity, error) {
 	fake.deserializeIdentityMutex.Lock()
 	ret, specificReturn := fake.deserializeIdentityReturnsOnCall[len(fake.deserializeIdentityArgsForCall)]
 	fake.deserializeIdentityArgsForCall = append(fake.deserializeIdentityArgsForCall, struct {
-		arg1 []byte
-	}{arg1Copy})
+		arg1 *msppb.Identity
+	}{arg1})
 	stub := fake.DeserializeIdentityStub
 	fakeReturns := fake.deserializeIdentityReturns
-	fake.recordInvocation("DeserializeIdentity", []interface{}{arg1Copy})
+	fake.recordInvocation("DeserializeIdentity", []interface{}{arg1})
 	fake.deserializeIdentityMutex.Unlock()
 	if stub != nil {
 		return stub(arg1)
@@ -177,13 +173,13 @@ func (fake *MSP) DeserializeIdentityCallCount() int {
 	return len(fake.deserializeIdentityArgsForCall)
 }
 
-func (fake *MSP) DeserializeIdentityCalls(stub func([]byte) (msp.Identity, error)) {
+func (fake *MSP) DeserializeIdentityCalls(stub func(*msppb.Identity) (msp.Identity, error)) {
 	fake.deserializeIdentityMutex.Lock()
 	defer fake.deserializeIdentityMutex.Unlock()
 	fake.DeserializeIdentityStub = stub
 }
 
-func (fake *MSP) DeserializeIdentityArgsForCall(i int) []byte {
+func (fake *MSP) DeserializeIdentityArgsForCall(i int) *msppb.Identity {
 	fake.deserializeIdentityMutex.RLock()
 	defer fake.deserializeIdentityMutex.RUnlock()
 	argsForCall := fake.deserializeIdentityArgsForCall[i]
@@ -601,11 +597,11 @@ func (fake *MSP) GetVersionReturnsOnCall(i int, result1 msp.MSPVersion) {
 	}{result1}
 }
 
-func (fake *MSP) IsWellFormed(arg1 *mspa.SerializedIdentity) error {
+func (fake *MSP) IsWellFormed(arg1 *msppb.Identity) error {
 	fake.isWellFormedMutex.Lock()
 	ret, specificReturn := fake.isWellFormedReturnsOnCall[len(fake.isWellFormedArgsForCall)]
 	fake.isWellFormedArgsForCall = append(fake.isWellFormedArgsForCall, struct {
-		arg1 *mspa.SerializedIdentity
+		arg1 *msppb.Identity
 	}{arg1})
 	stub := fake.IsWellFormedStub
 	fakeReturns := fake.isWellFormedReturns
@@ -626,13 +622,13 @@ func (fake *MSP) IsWellFormedCallCount() int {
 	return len(fake.isWellFormedArgsForCall)
 }
 
-func (fake *MSP) IsWellFormedCalls(stub func(*mspa.SerializedIdentity) error) {
+func (fake *MSP) IsWellFormedCalls(stub func(*msppb.Identity) error) {
 	fake.isWellFormedMutex.Lock()
 	defer fake.isWellFormedMutex.Unlock()
 	fake.IsWellFormedStub = stub
 }
 
-func (fake *MSP) IsWellFormedArgsForCall(i int) *mspa.SerializedIdentity {
+func (fake *MSP) IsWellFormedArgsForCall(i int) *msppb.Identity {
 	fake.isWellFormedMutex.RLock()
 	defer fake.isWellFormedMutex.RUnlock()
 	argsForCall := fake.isWellFormedArgsForCall[i]
@@ -849,30 +845,6 @@ func (fake *MSP) ValidateReturnsOnCall(i int, result1 error) {
 func (fake *MSP) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.deserializeIdentityMutex.RLock()
-	defer fake.deserializeIdentityMutex.RUnlock()
-	fake.getDefaultSigningIdentityMutex.RLock()
-	defer fake.getDefaultSigningIdentityMutex.RUnlock()
-	fake.getIdentifierMutex.RLock()
-	defer fake.getIdentifierMutex.RUnlock()
-	fake.getKnownDeserializedIdentityMutex.RLock()
-	defer fake.getKnownDeserializedIdentityMutex.RUnlock()
-	fake.getTLSIntermediateCertsMutex.RLock()
-	defer fake.getTLSIntermediateCertsMutex.RUnlock()
-	fake.getTLSRootCertsMutex.RLock()
-	defer fake.getTLSRootCertsMutex.RUnlock()
-	fake.getTypeMutex.RLock()
-	defer fake.getTypeMutex.RUnlock()
-	fake.getVersionMutex.RLock()
-	defer fake.getVersionMutex.RUnlock()
-	fake.isWellFormedMutex.RLock()
-	defer fake.isWellFormedMutex.RUnlock()
-	fake.satisfiesPrincipalMutex.RLock()
-	defer fake.satisfiesPrincipalMutex.RUnlock()
-	fake.setupMutex.RLock()
-	defer fake.setupMutex.RUnlock()
-	fake.validateMutex.RLock()
-	defer fake.validateMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

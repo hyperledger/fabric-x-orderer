@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
@@ -40,7 +41,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
+func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger arma_types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	if lastConfigBlock == nil {
 		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
 		return nil

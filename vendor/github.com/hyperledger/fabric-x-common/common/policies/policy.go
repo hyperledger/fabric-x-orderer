@@ -368,7 +368,8 @@ func SignatureSetToValidIdentities(signedData []*protoutil.SignedData, identityD
 	for i, sd := range signedData {
 		identity, err := identityDeserializer.DeserializeIdentity(sd.Identity)
 		if err != nil {
-			logger.Warnw("invalid identity", "error", err.Error(), "identity", protoutil.LogMessageForSerializedIdentity(sd.Identity))
+			logger.Warnw("invalid identity", "error", err.Error(), "identity",
+				protoutil.LogMessageForIdentity(sd.Identity))
 			continue
 		}
 

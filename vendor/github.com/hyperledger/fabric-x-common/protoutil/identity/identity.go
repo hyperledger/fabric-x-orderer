@@ -22,10 +22,22 @@ type Serializer interface {
 	Serialize() ([]byte, error)
 }
 
+// ExtendedSerializer is an interface which wraps the Serialize and SerializeWithIDOfCert functions.
+type ExtendedSerializer interface {
+	Serialize() ([]byte, error)
+	SerializeWithIDOfCert() ([]byte, error)
+}
+
 //go:generate counterfeiter -o mocks/signer_serializer.go --fake-name SignerSerializer . SignerSerializer
 
 // SignerSerializer groups the Sign and Serialize methods.
 type SignerSerializer interface {
 	Signer
 	Serializer
+}
+
+// ExtendedSignerSerializer groups the Sign and ExtendedSignerSerializer methods.
+type ExtendedSignerSerializer interface {
+	Signer
+	ExtendedSerializer
 }

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"

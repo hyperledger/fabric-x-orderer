@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -33,7 +34,7 @@ func (mp *MSPPrincipal) VariablyOpaqueFieldProto(name string) (proto.Message, er
 	case msp.MSPPrincipal_ORGANIZATION_UNIT:
 		return &msp.OrganizationUnit{}, nil
 	case msp.MSPPrincipal_IDENTITY:
-		return &msp.SerializedIdentity{}, nil
+		return &msppb.Identity{}, nil
 	default:
 		return nil, fmt.Errorf("unable to decode MSP type: %v", mp.PrincipalClassification)
 	}

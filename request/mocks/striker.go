@@ -85,10 +85,6 @@ func (fake *FakeStriker) OnSecondStrikeTimeoutCalls(stub func()) {
 func (fake *FakeStriker) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.onFirstStrikeTimeoutMutex.RLock()
-	defer fake.onFirstStrikeTimeoutMutex.RUnlock()
-	fake.onSecondStrikeTimeoutMutex.RLock()
-	defer fake.onSecondStrikeTimeoutMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

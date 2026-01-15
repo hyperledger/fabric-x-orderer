@@ -79,8 +79,6 @@ func (fake *FakeConfigSequenceGetter) ConfigSequenceReturnsOnCall(i int, result1
 func (fake *FakeConfigSequenceGetter) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.configSequenceMutex.RLock()
-	defer fake.configSequenceMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

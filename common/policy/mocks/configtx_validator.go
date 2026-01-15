@@ -71,15 +71,16 @@ func (fake *FakeConfigtxValidator) ChannelID() string {
 	ret, specificReturn := fake.channelIDReturnsOnCall[len(fake.channelIDArgsForCall)]
 	fake.channelIDArgsForCall = append(fake.channelIDArgsForCall, struct {
 	}{})
+	stub := fake.ChannelIDStub
+	fakeReturns := fake.channelIDReturns
 	fake.recordInvocation("ChannelID", []interface{}{})
 	fake.channelIDMutex.Unlock()
-	if fake.ChannelIDStub != nil {
-		return fake.ChannelIDStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.channelIDReturns
 	return fakeReturns.result1
 }
 
@@ -123,15 +124,16 @@ func (fake *FakeConfigtxValidator) ConfigProto() *common.Config {
 	ret, specificReturn := fake.configProtoReturnsOnCall[len(fake.configProtoArgsForCall)]
 	fake.configProtoArgsForCall = append(fake.configProtoArgsForCall, struct {
 	}{})
+	stub := fake.ConfigProtoStub
+	fakeReturns := fake.configProtoReturns
 	fake.recordInvocation("ConfigProto", []interface{}{})
 	fake.configProtoMutex.Unlock()
-	if fake.ConfigProtoStub != nil {
-		return fake.ConfigProtoStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.configProtoReturns
 	return fakeReturns.result1
 }
 
@@ -176,15 +178,16 @@ func (fake *FakeConfigtxValidator) ProposeConfigUpdate(arg1 *common.Envelope) (*
 	fake.proposeConfigUpdateArgsForCall = append(fake.proposeConfigUpdateArgsForCall, struct {
 		arg1 *common.Envelope
 	}{arg1})
+	stub := fake.ProposeConfigUpdateStub
+	fakeReturns := fake.proposeConfigUpdateReturns
 	fake.recordInvocation("ProposeConfigUpdate", []interface{}{arg1})
 	fake.proposeConfigUpdateMutex.Unlock()
-	if fake.ProposeConfigUpdateStub != nil {
-		return fake.ProposeConfigUpdateStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.proposeConfigUpdateReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -238,15 +241,16 @@ func (fake *FakeConfigtxValidator) Sequence() uint64 {
 	ret, specificReturn := fake.sequenceReturnsOnCall[len(fake.sequenceArgsForCall)]
 	fake.sequenceArgsForCall = append(fake.sequenceArgsForCall, struct {
 	}{})
+	stub := fake.SequenceStub
+	fakeReturns := fake.sequenceReturns
 	fake.recordInvocation("Sequence", []interface{}{})
 	fake.sequenceMutex.Unlock()
-	if fake.SequenceStub != nil {
-		return fake.SequenceStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.sequenceReturns
 	return fakeReturns.result1
 }
 
@@ -291,15 +295,16 @@ func (fake *FakeConfigtxValidator) Validate(arg1 *common.ConfigEnvelope) error {
 	fake.validateArgsForCall = append(fake.validateArgsForCall, struct {
 		arg1 *common.ConfigEnvelope
 	}{arg1})
+	stub := fake.ValidateStub
+	fakeReturns := fake.validateReturns
 	fake.recordInvocation("Validate", []interface{}{arg1})
 	fake.validateMutex.Unlock()
-	if fake.ValidateStub != nil {
-		return fake.ValidateStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.validateReturns
 	return fakeReturns.result1
 }
 
@@ -348,16 +353,6 @@ func (fake *FakeConfigtxValidator) ValidateReturnsOnCall(i int, result1 error) {
 func (fake *FakeConfigtxValidator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.channelIDMutex.RLock()
-	defer fake.channelIDMutex.RUnlock()
-	fake.configProtoMutex.RLock()
-	defer fake.configProtoMutex.RUnlock()
-	fake.proposeConfigUpdateMutex.RLock()
-	defer fake.proposeConfigUpdateMutex.RUnlock()
-	fake.sequenceMutex.RLock()
-	defer fake.sequenceMutex.RUnlock()
-	fake.validateMutex.RLock()
-	defer fake.validateMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
