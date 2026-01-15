@@ -16,16 +16,18 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/bccsp/signer"
 	"github.com/hyperledger/fabric-lib-go/bccsp/sw"
 	"github.com/hyperledger/fabric-lib-go/bccsp/utils"
 	m "github.com/hyperledger/fabric-protos-go-apiv2/msp"
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/protomsp"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 // mspSetupFuncType is the prototype of the setup function
@@ -393,23 +395,23 @@ func (msp *bccspmsp) hasOURoleInternal(id *identity, mspRole m.MSPRole_MSPRoleTy
 	return errors.Errorf("The identity does not contain OU [%s], MSP: [%s]", mspRole, msp.name)
 }
 
-// DeserializeIdentity returns an Identity given the byte-level
-// representation of a SerializedIdentity struct
-func (msp *bccspmsp) DeserializeIdentity(serializedID []byte) (Identity, error) {
+// DeserializeIdentity returns an msp.Identity given the applicationpb.Identity.
+func (msp *bccspmsp) DeserializeIdentity(identity *applicationpb.Identity) (Identity, error) { //nolint:ireturn
 	mspLogger.Debug("Obtaining identity")
 
-	// We first deserialize to a SerializedIdentity to get the MSP ID
-	sId := &m.SerializedIdentity{}
-	err := proto.Unmarshal(serializedID, sId)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not deserialize a SerializedIdentity")
+	if identity.MspId != msp.name {
+		return nil, errors.Errorf("expected MSP ID %s, received %s", msp.name, identity.MspId)
 	}
 
-	if sId.Mspid != msp.name {
-		return nil, errors.Errorf("expected MSP ID %s, received %s", msp.name, sId.Mspid)
+	switch identity.Creator.(type) {
+	case *applicationpb.Identity_Certificate:
+		return msp.deserializeIdentityInternal(identity.GetCertificate())
+	case *applicationpb.Identity_CertificateId:
+		return msp.GetKnownDeserializedIdentity(
+			IdentityIdentifier{Mspid: identity.MspId, Id: identity.GetCertificateId()}), nil
+	default:
+		return nil, errors.New("unknown creator type in the identity")
 	}
-
-	return msp.deserializeIdentityInternal(sId.IdBytes)
 }
 
 // deserializeIdentityInternal returns an identity given its byte-level representation
@@ -543,13 +545,27 @@ func (msp *bccspmsp) satisfiesPrincipalInternalPreV13(id Identity, principal *m.
 	case m.MSPPrincipal_IDENTITY:
 		// in this case we have to deserialize the principal's identity
 		// and compare it byte-by-byte with our cert
-		principalId, err := msp.DeserializeIdentity(principal.Principal)
+		idty, err := protoutil.UnmarshalIdentity(principal.Principal)
+		if err != nil {
+			return err
+		}
+		principalID, err := msp.DeserializeIdentity(idty)
 		if err != nil {
 			return errors.WithMessage(err, "invalid identity principal, not a certificate")
 		}
 
-		if bytes.Equal(id.(*identity).cert.Raw, principalId.(*identity).cert.Raw) {
-			return principalId.Validate()
+		mspIdty, ok := id.(*identity)
+		if !ok {
+			return errors.New("id does not cast to msp.identity")
+		}
+
+		prinIdty, ok := principalID.(*identity)
+		if !ok {
+			return errors.New("principal id does not cast to msp.identity")
+		}
+
+		if bytes.Equal(mspIdty.cert.Raw, prinIdty.cert.Raw) {
+			return principalID.Validate()
 		}
 
 		return errors.New("The identities do not match")
@@ -956,13 +972,32 @@ func (msp *bccspmsp) sanitizeCert(cert *x509.Certificate) (*x509.Certificate, er
 // IsWellFormed checks if the given identity can be deserialized into its provider-specific form.
 // In this MSP implementation, well formed means that the PEM has a Type which is either
 // the string 'CERTIFICATE' or the Type is missing altogether.
-func (msp *bccspmsp) IsWellFormed(identity *m.SerializedIdentity) error {
-	bl, rest := pem.Decode(identity.IdBytes)
-	if bl == nil {
-		return errors.New("PEM decoding resulted in an empty block")
-	}
-	if len(rest) > 0 {
-		return errors.Errorf("identity %s for MSP %s has trailing bytes", string(identity.IdBytes), identity.Mspid)
+func (msp *bccspmsp) IsWellFormed(idty *applicationpb.Identity) error {
+	var bl *pem.Block
+	switch idty.Creator.(type) {
+	case *applicationpb.Identity_Certificate:
+		idBytes := idty.GetCertificate()
+		var rest []byte
+		bl, rest = pem.Decode(idBytes)
+		if bl == nil {
+			return errors.New("PEM decoding resulted in an empty block")
+		}
+		if len(rest) > 0 {
+			return errors.Errorf("identity %s for MSP %s has trailing bytes", string(idBytes), idty.MspId)
+		}
+	case *applicationpb.Identity_CertificateId:
+		id := msp.GetKnownDeserializedIdentity(
+			IdentityIdentifier{Mspid: idty.MspId, Id: idty.GetCertificateId()})
+		if id == nil {
+			return errors.New("identity is unknown")
+		}
+		internalIdty, ok := id.(*identity)
+		if !ok {
+			return errors.New("knownw Identity does not cast to internal identity")
+		}
+		bl = &pem.Block{Bytes: internalIdty.cert.Raw, Type: "CERTIFICATE"}
+	default:
+		return errors.New("unknown creator type in the identity")
 	}
 
 	// Important: This method looks very similar to getCertFromPem(idBytes []byte) (*x509.Certificate, error)
@@ -982,7 +1017,7 @@ func (msp *bccspmsp) IsWellFormed(identity *m.SerializedIdentity) error {
 		return nil
 	}
 
-	return isIdentitySignedInCanonicalForm(cert.Signature, identity.Mspid, identity.IdBytes)
+	return isIdentitySignedInCanonicalForm(cert.Signature, idty.MspId, pem.EncodeToMemory(bl))
 }
 
 func isIdentitySignedInCanonicalForm(sig []byte, mspID string, pemEncodedIdentity []byte) error {

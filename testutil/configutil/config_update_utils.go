@@ -17,7 +17,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -604,10 +604,7 @@ func CreateConfigTX(t *testing.T, dir string, numOfParties int, genesisBlockPath
 		require.NotNil(t, adminSigner)
 		require.NotNil(t, adminCertBytes)
 
-		sId := &msp.SerializedIdentity{
-			Mspid:   fmt.Sprintf("org%d", i+1),
-			IdBytes: adminCertBytes,
-		}
+		sId := applicationpb.NewIdentity(fmt.Sprintf("org%d", i+1), adminCertBytes)
 
 		sigHeader, err := protoutil.NewSignatureHeader(adminSigner)
 		require.NoError(t, err)

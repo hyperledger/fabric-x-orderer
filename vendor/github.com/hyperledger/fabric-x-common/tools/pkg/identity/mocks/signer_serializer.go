@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 )
 
 type SignerSerializer struct {
@@ -17,6 +17,18 @@ type SignerSerializer struct {
 		result2 error
 	}
 	serializeReturnsOnCall map[int]struct {
+		result1 []byte
+		result2 error
+	}
+	SerializeWithIDOfCertStub        func() ([]byte, error)
+	serializeWithIDOfCertMutex       sync.RWMutex
+	serializeWithIDOfCertArgsForCall []struct {
+	}
+	serializeWithIDOfCertReturns struct {
+		result1 []byte
+		result2 error
+	}
+	serializeWithIDOfCertReturnsOnCall map[int]struct {
 		result1 []byte
 		result2 error
 	}
@@ -88,6 +100,62 @@ func (fake *SignerSerializer) SerializeReturnsOnCall(i int, result1 []byte, resu
 		})
 	}
 	fake.serializeReturnsOnCall[i] = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *SignerSerializer) SerializeWithIDOfCert() ([]byte, error) {
+	fake.serializeWithIDOfCertMutex.Lock()
+	ret, specificReturn := fake.serializeWithIDOfCertReturnsOnCall[len(fake.serializeWithIDOfCertArgsForCall)]
+	fake.serializeWithIDOfCertArgsForCall = append(fake.serializeWithIDOfCertArgsForCall, struct {
+	}{})
+	stub := fake.SerializeWithIDOfCertStub
+	fakeReturns := fake.serializeWithIDOfCertReturns
+	fake.recordInvocation("SerializeWithIDOfCert", []interface{}{})
+	fake.serializeWithIDOfCertMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *SignerSerializer) SerializeWithIDOfCertCallCount() int {
+	fake.serializeWithIDOfCertMutex.RLock()
+	defer fake.serializeWithIDOfCertMutex.RUnlock()
+	return len(fake.serializeWithIDOfCertArgsForCall)
+}
+
+func (fake *SignerSerializer) SerializeWithIDOfCertCalls(stub func() ([]byte, error)) {
+	fake.serializeWithIDOfCertMutex.Lock()
+	defer fake.serializeWithIDOfCertMutex.Unlock()
+	fake.SerializeWithIDOfCertStub = stub
+}
+
+func (fake *SignerSerializer) SerializeWithIDOfCertReturns(result1 []byte, result2 error) {
+	fake.serializeWithIDOfCertMutex.Lock()
+	defer fake.serializeWithIDOfCertMutex.Unlock()
+	fake.SerializeWithIDOfCertStub = nil
+	fake.serializeWithIDOfCertReturns = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *SignerSerializer) SerializeWithIDOfCertReturnsOnCall(i int, result1 []byte, result2 error) {
+	fake.serializeWithIDOfCertMutex.Lock()
+	defer fake.serializeWithIDOfCertMutex.Unlock()
+	fake.SerializeWithIDOfCertStub = nil
+	if fake.serializeWithIDOfCertReturnsOnCall == nil {
+		fake.serializeWithIDOfCertReturnsOnCall = make(map[int]struct {
+			result1 []byte
+			result2 error
+		})
+	}
+	fake.serializeWithIDOfCertReturnsOnCall[i] = struct {
 		result1 []byte
 		result2 error
 	}{result1, result2}
@@ -165,10 +233,6 @@ func (fake *SignerSerializer) SignReturnsOnCall(i int, result1 []byte, result2 e
 func (fake *SignerSerializer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.serializeMutex.RLock()
-	defer fake.serializeMutex.RUnlock()
-	fake.signMutex.RLock()
-	defer fake.signMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

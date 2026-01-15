@@ -95,9 +95,14 @@ func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.Sign
 	// 	return nil, fmt.Errorf("channelID is incorrect. expected: %s, actual: %s", sf.channelID, chdr.ChannelId)
 	// }
 
+	id, err := protoutil.UnmarshalIdentity(shdr.Creator)
+	if err != nil {
+		return nil, reqType, err
+	}
+
 	return &protoutil.SignedData{
 		Data:      request.Payload,
-		Identity:  shdr.Creator,
+		Identity:  id,
 		Signature: request.Signature,
 	}, common.HeaderType(chdr.Type), nil
 }
