@@ -7,10 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package msp
 
 import (
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
@@ -73,34 +72,36 @@ func (mgr *mspManagerImpl) GetMSPs() (map[string]MSP, error) {
 }
 
 // DeserializeIdentity returns an identity given its serialized version supplied as argument
-func (mgr *mspManagerImpl) DeserializeIdentity(serializedID []byte) (Identity, error) {
+func (mgr *mspManagerImpl) DeserializeIdentity(sID *applicationpb.Identity) (Identity, error) { //nolint:ireturn
 	if !mgr.up {
 		return nil, errors.New("channel doesn't exist")
 	}
-	// We first deserialize to a SerializedIdentity to get the MSP ID
-	sId := &msp.SerializedIdentity{}
-	err := proto.Unmarshal(serializedID, sId)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not deserialize a SerializedIdentity")
-	}
 
 	// we can now attempt to obtain the MSP
-	msp := mgr.mspsMap[sId.Mspid]
+	msp := mgr.mspsMap[sID.MspId]
 	if msp == nil {
-		return nil, errors.Errorf("MSP %s is not defined on channel", sId.Mspid)
+		return nil, errors.Errorf("MSP %s is not defined on channel", sID.MspId)
 	}
 
 	switch t := msp.(type) {
 	case *bccspmsp:
-		return t.deserializeIdentityInternal(sId.IdBytes)
+		switch sID.Creator.(type) {
+		case *applicationpb.Identity_Certificate:
+			return t.deserializeIdentityInternal(sID.GetCertificate())
+		case *applicationpb.Identity_CertificateId:
+			return msp.GetKnownDeserializedIdentity(
+				IdentityIdentifier{Mspid: sID.MspId, Id: sID.GetCertificateId()}), nil
+		default:
+			return nil, errors.New("unknown creator type")
+		}
 	case *idemixMSPWrapper:
-		return t.deserializeIdentityInternal(sId.IdBytes)
+		return t.deserializeIdentityInternal(sID.GetCertificate())
 	default:
-		return t.DeserializeIdentity(serializedID)
+		return t.DeserializeIdentity(sID)
 	}
 }
 
-func (mgr *mspManagerImpl) IsWellFormed(identity *msp.SerializedIdentity) error {
+func (mgr *mspManagerImpl) IsWellFormed(identity *applicationpb.Identity) error {
 	// Iterate over all the MSPs by their providers, and find at least 1 MSP that can attest
 	// that this identity is well formed
 	for _, mspList := range mgr.mspsByProviders {

@@ -1,0 +1,24 @@
+-- Copyright IBM Corp. All Rights Reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+-- Any change to [*protoblocktx.Tx] requires a change to this schema.
+-- Quick reference: https://www.oss.com/asn1/resources/asn1-made-simple/asn1-quick-reference.html
+
+TxWithNamespace ::= SEQUENCE {
+    txID             UTF8String,
+    namespaceID      UTF8String,
+    namespaceVersion INTEGER,
+    reads            SEQUENCE OF SEQUENCE {
+        key     OCTET STRING,
+        version INTEGER OPTIONAL DEFAULT "-1"
+    },
+    readWrites       SEQUENCE OF SEQUENCE {
+        key     OCTET STRING,
+        value   OCTET STRING
+        version INTEGER OPTIONAL DEFAULT "-1",
+    },
+    writes           SEQUENCE OF SEQUENCE {
+        key   OCTET STRING,
+        value OCTET STRING
+    }
+}
