@@ -646,7 +646,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 		Pending: []types.BatchAttestationFragment{baf2},
 	}
 
-	for i := 0; i < numParties; i++ {
+	for i := range numParties {
 		stubConsenters[i].UpdateState(termChangeWithPendingState)
 	}
 	require.Eventually(t, func() bool {
@@ -668,4 +668,39 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	require.Equal(t, types.PartyID(2), bafAgain.BAF.Primary())
 	require.Equal(t, types.BatchSequence(0), bafAgain.BAF.Seq())
 	require.Equal(t, baf.BAF.Digest(), bafAgain.BAF.Digest())
+
+	// now with config
+
+	configBlock := block.BlockWithGroups(&common.ConfigGroup{}, "arma", 1)
+
+	for i := range numParties {
+		require.NoError(t, batchers[i].ConfigStore.Add(configBlock)) // as if it is already stored
+	}
+
+	availableCommonBlocks := []*common.Block{configBlock}
+
+	stPending := &state.State{
+		N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
+		Pending: []types.BatchAttestationFragment{baf2},
+	}
+
+	for i := range numParties {
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), availableCommonBlocks, stPending)
+	}
+
+	// this batch is from the pending baf in the state (with config)
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(2) == uint64(2) && batchers[1].Ledger.Height(2) == uint64(2)
+	}, 10*time.Second, 100*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[1].BAFCount() == 4*numParties && stubConsenters[2].BAFCount() == 4*numParties
+	}, 10*time.Second, 100*time.Millisecond)
+
+	bafAfterConfig := stubConsenters[0].LastControlEvent()
+	require.NotNil(t, bafAfterConfig)
+	require.NotNil(t, bafAfterConfig.BAF)
+	require.Equal(t, types.PartyID(2), bafAfterConfig.BAF.Primary())
+	require.Equal(t, types.BatchSequence(1), bafAfterConfig.BAF.Seq())
+	require.Equal(t, baf.BAF.Digest(), bafAfterConfig.BAF.Digest())
 }
