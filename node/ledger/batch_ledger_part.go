@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
-	"fmt"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
@@ -38,7 +36,7 @@ func newBatchLedgerPart(
 	partyID, primaryPartyID types.PartyID,
 	logger types.Logger,
 ) (*BatchLedgerPart, error) {
-	name := fmt.Sprintf("shard%dparty%d", shardID, primaryPartyID)
+	name := ShardPartyToChannelName(shardID, primaryPartyID)
 	ledger, err := provider.Open(name)
 	if err != nil {
 		return nil, err
