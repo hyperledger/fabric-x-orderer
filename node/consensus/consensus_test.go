@@ -442,6 +442,11 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	complaint1.Signature = sig
 
+	complaint1ConfigSeq1 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 1, ConfigSeq: 1}
+	sig, err = signer1.Sign(complaint1ConfigSeq1.ToBeSigned())
+	require.NoError(t, err)
+	complaint1ConfigSeq1.Signature = sig
+
 	signer2 := crypto.ECDSASigner(*sks[1])
 	complaint2 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 2}
 	sig, err = signer2.Sign(complaint2.ToBeSigned())
@@ -454,12 +459,21 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	complaint3.Signature = sig
 
+	complaint3ConfigSeq1 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 3, ConfigSeq: 1}
+	sig, err = signer3.Sign(complaint3ConfigSeq1.ToBeSigned())
+	require.NoError(t, err)
+	complaint3ConfigSeq1.Signature = sig
+
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
 	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
 	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0)
+	assert.NoError(t, err)
+	baf123id1p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 1)
+	assert.NoError(t, err)
+	baf123id2p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 1)
 	assert.NoError(t, err)
 
 	dig124 := append([]byte{1, 2, 4}, dig...)
@@ -581,6 +595,20 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: tx.CreateStructuredConfigUpdateEnvelope([]byte{1})}}},
 			withConfig: true,
 		},
+		{
+			name: "filtering mismatch config seq",
+			initialAppContext: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: nil,
+				DataHash:     nil,
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 0,
+			},
+			ces:           []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1cs1}, {Complaint: complaint2}, {Complaint: complaint3ConfigSeq1}},
+			numPending:    1,
+			numComplaints: 1,
+		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
 			initialState := &state.State{
@@ -590,6 +618,8 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				Threshold:  2,
 				Quorum:     3,
 				AppContext: protoutil.MarshalOrPanic(tst.initialAppContext),
+				Pending:    []arma_types.BatchAttestationFragment{baf123id1p1s1cs1},
+				Complaints: []state.Complaint{*complaint1ConfigSeq1},
 			}
 
 			consenter := &node_consensus.Consenter{
