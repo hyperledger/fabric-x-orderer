@@ -61,7 +61,7 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		return nil, err
 	}
 	for _, name := range names {
-		primaryPartyID, err := getPartyIDFromName(name)
+		_, primaryPartyID, err := ChannelNameToShardParty(name)
 		if err != nil {
 			return nil, err
 		}
