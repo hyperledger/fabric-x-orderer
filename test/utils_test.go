@@ -558,6 +558,8 @@ type BlockPullerInfo struct {
 	Status      common.Status
 }
 
+type UserAction func(types.PartyID, *common.Block) bool
+
 type BlockPullerOptions struct {
 	UserConfig       *armageddon.UserConfig
 	Parties          []types.PartyID
@@ -571,6 +573,7 @@ type BlockPullerOptions struct {
 	LogString        string
 	Status           *common.Status
 	Verifier         *crypto.ECDSAVerifier
+	UserAction       UserAction
 }
 
 func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.PartyID]*BlockPullerInfo {
@@ -608,7 +611,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 			defer waitForPullDone.Done()
 
 			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, (len(options.Parties)-1)/3, options.Transactions,
-				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier)
+				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.UserAction)
 			lock.Lock()
 			defer lock.Unlock()
 			pullInfos[partyID] = pullInfo
@@ -641,7 +644,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 
 func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID,
 	startBlock uint64, endBlock uint64, fval, transactions, blocks, timeout int,
-	needVerification bool, sigVerifier *crypto.ECDSAVerifier,
+	needVerification bool, sigVerifier *crypto.ECDSAVerifier, userAction UserAction,
 ) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
@@ -666,6 +669,12 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		}
 		if block.Header == nil {
 			return errors.New("nil block header")
+		}
+
+		if userAction != nil {
+			if !userAction(partyID, block) {
+				toCancel()
+			}
 		}
 
 		totalBlocks++

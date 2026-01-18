@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package testutil
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -186,10 +188,10 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		Assembler: "local_config_assembler",
 	}
 
-	nodeInfos := make([]ArmaNodeInfo, 0, len(netInfo))
+	nodeInfos := make([]*ArmaNodeInfo, 0, len(netInfo))
 	numOfParties := 0
 	for n := range netInfo {
-		nodeInfos = append(nodeInfos, *netInfo[n])
+		nodeInfos = append(nodeInfos, netInfo[n])
 		if strings.Contains(n, "consensus") {
 			numOfParties++
 		}
@@ -224,7 +226,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
 		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
-		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, &netNode)
+		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
 
 	return &armaNetwork
@@ -241,7 +243,7 @@ func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time
 	}
 }
 
-func sortArmaNodeInfo(infos []ArmaNodeInfo) func(i, j int) bool {
+func sortArmaNodeInfo(infos []*ArmaNodeInfo) func(i, j int) bool {
 	return func(i, j int) bool {
 		runOrderMap := map[string]int{Consensus: 1, Batcher: 2, Assembler: 3, Router: 4}
 
@@ -269,4 +271,20 @@ func LoadCryptoMaterialsFromDir(t *testing.T, mspDir string) (*crypto.ECDSASigne
 	require.NoError(t, err, "failed to read sign certificate file")
 
 	return (*crypto.ECDSASigner)(privateKey), certBytes, nil
+}
+
+// CaptureOutput captures output to stderr during the execution of function f.
+func CaptureOutput(f func()) string {
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	f()
+
+	w.Close()
+	os.Stderr = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String()
 }
