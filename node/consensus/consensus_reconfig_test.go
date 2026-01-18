@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	consensusRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	configrequestMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
@@ -44,6 +45,9 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 	setup.consensusNodes[0].ConfigRequestValidator = mockConfigRequestValidator
+	mockConfigRulesVerifier := &consensusRulesMocks.FakeConsensusRules{}
+	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+	setup.consensusNodes[0].ConfigRulesVerifier = mockConfigRulesVerifier
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 		return s, nil
@@ -133,6 +137,8 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
+	mockConfigRulesVerifier := &consensusRulesMocks.FakeConsensusRules{}
+	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 		return s, nil
@@ -140,6 +146,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	for i := 0; i < parties; i++ {
 		setup.consensusNodes[i].ConfigUpdateProposer = mockConfigUpdateProposer
 		setup.consensusNodes[i].ConfigRequestValidator = mockConfigRequestValidator
+		setup.consensusNodes[i].ConfigRulesVerifier = mockConfigRulesVerifier
 		setup.consensusNodes[i].ConfigApplier = mockConfigApplier
 	}
 

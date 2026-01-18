@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	fabricx_config "github.com/hyperledger/fabric-x-orderer/config"
+	consensusRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -87,6 +88,9 @@ func TestConfigDisseminate(t *testing.T) {
 		mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
 		mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 		consenters[i].ConfigRequestValidator = mockConfigRequestValidator
+		mockConfigRulesVerifier := &consensusRulesMocks.FakeConsensusRules{}
+		mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+		consenters[i].ConfigRulesVerifier = mockConfigRulesVerifier
 	}
 
 	// submit data txs and make sure the assembler got them

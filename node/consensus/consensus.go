@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
@@ -99,6 +100,7 @@ type Consensus struct {
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
 	ConfigApplier                ConfigApplier
 	ConfigRequestValidator       configrequest.ConfigRequestValidator
+	ConfigRulesVerifier          verify.ConsensusRules
 	softStopCh                   chan struct{}
 	softStopOnce                 sync.Once
 }
@@ -671,6 +673,9 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		err := c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
+		}
+		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
+			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
 		// TODO: revisit this return
 		return reqID, ce, nil
