@@ -219,6 +219,12 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		if err != nil {
 			return err
 		}
+		// copy the org admin to user/msp/admincerts
+		dst = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "msp", "admincerts")
+		err = copyPEMFiles(adminCertsOfOrgPath, dst)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -487,6 +493,16 @@ func copyCACerts(networkConfig *genconfig.Network, outputDir string) error {
 			if err != nil {
 				return fmt.Errorf("err copying file from %s to %s", tlscaDir, tlscaDstDir)
 			}
+		}
+	}
+
+	for i := range networkConfig.Parties {
+		orgDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1))
+		cacertsDir := filepath.Join(orgDir, "msp", "cacerts")
+		cacertsDstDir := filepath.Join(orgDir, "users", "user", "msp", "cacerts")
+		err := copyPEMFiles(cacertsDir, cacertsDstDir)
+		if err != nil {
+			return fmt.Errorf("err copying file from %s to %s", cacertsDir, cacertsDstDir)
 		}
 	}
 
