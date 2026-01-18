@@ -147,6 +147,8 @@ func TestRestartPool(t *testing.T) {
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
 
+	assert.Equal(t, 5*time.Second, pool.pending.FirstStrikeThreshold)
+
 	pool.Restart(true)
 
 	count := 100
@@ -215,6 +217,8 @@ func TestBasicBatching(t *testing.T) {
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
 
+	assert.Equal(t, 5*time.Second, pool.pending.FirstStrikeThreshold)
+
 	pool.Restart(true)
 
 	ctx, cancel1 := context.WithTimeout(context.Background(), time.Second)
@@ -254,7 +258,12 @@ func TestBasicBatching(t *testing.T) {
 		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
 		SubmitTimeout:         time.Second * 10,
+		BatchTimeout:          time.Second,
 	}, &striker{})
+
+	t.Logf("First strike with random is %f seconds\n", pool.pending.FirstStrikeThreshold.Seconds())
+	assert.GreaterOrEqual(t, 7*time.Second, pool.pending.FirstStrikeThreshold)
+	assert.LessOrEqual(t, 3*time.Second, pool.pending.FirstStrikeThreshold)
 
 	pool.Restart(true)
 
