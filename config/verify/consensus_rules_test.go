@@ -4,16 +4,16 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package configrulesverifier_test
+package verify_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/common/configrulesverifier"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -43,8 +43,8 @@ func TestValidateNewConfig(t *testing.T) {
 	env, err := protoutil.ExtractEnvelope(block, 0)
 	require.NoError(t, err)
 
-	cv := configrulesverifier.DefaultConfigRulesVerifier{}
-	require.NoError(t, cv.ValidateNewConfig(env))
+	cr := verify.DefaultConsensusRules{}
+	require.NoError(t, cr.ValidateNewConfig(env))
 }
 
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
@@ -96,8 +96,8 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	env.Payload, err = proto.Marshal(payload)
 	require.NoError(t, err)
 
-	cv := configrulesverifier.DefaultConfigRulesVerifier{}
-	err = cv.ValidateNewConfig(env)
+	cr := verify.DefaultConsensusRules{}
+	err = cr.ValidateNewConfig(env)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "batch creation timeout")

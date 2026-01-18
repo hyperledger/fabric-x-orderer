@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	configRulesMocks "github.com/hyperledger/fabric-x-orderer/common/configrulesverifier/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	consensusRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	configrequestMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
@@ -45,7 +45,7 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 	setup.consensusNodes[0].ConfigRequestValidator = mockConfigRequestValidator
-	mockConfigRulesVerifier := &configRulesMocks.FakeConfigRulesVerifier{}
+	mockConfigRulesVerifier := &consensusRulesMocks.FakeConsensusRules{}
 	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
 	setup.consensusNodes[0].ConfigRulesVerifier = mockConfigRulesVerifier
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
@@ -137,7 +137,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 	mockConfigRequestValidator := &configrequestMocks.FakeConfigRequestValidator{}
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
-	mockConfigRulesVerifier := &configRulesMocks.FakeConfigRulesVerifier{}
+	mockConfigRulesVerifier := &consensusRulesMocks.FakeConsensusRules{}
 	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {

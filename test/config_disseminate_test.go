@@ -26,11 +26,11 @@ import (
 	"github.com/onsi/gomega/gexec"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	configRulesMocks "github.com/hyperledger/fabric-x-orderer/common/configrulesverifier/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	fabricx_config "github.com/hyperledger/fabric-x-orderer/config"
+	consensusRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -88,7 +88,7 @@ func TestConfigDisseminate(t *testing.T) {
 		mockConfigRequestValidator := &mocks.FakeConfigRequestValidator{}
 		mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 		consenters[i].ConfigRequestValidator = mockConfigRequestValidator
-		mockConfigRulesVerifier := &configRulesMocks.FakeConfigRulesVerifier{}
+		mockConfigRulesVerifier := &consensusRulesMocks.FakeConsensusRules{}
 		mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
 		consenters[i].ConfigRulesVerifier = mockConfigRulesVerifier
 	}

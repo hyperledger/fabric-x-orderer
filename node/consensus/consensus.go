@@ -22,11 +22,11 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/common/configrulesverifier"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
@@ -100,7 +100,7 @@ type Consensus struct {
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
 	ConfigApplier                ConfigApplier
 	ConfigRequestValidator       configrequest.ConfigRequestValidator
-	ConfigRulesVerifier          configrulesverifier.ConfigRulesVerifier
+	ConfigRulesVerifier          verify.ConsensusRules
 	softStopCh                   chan struct{}
 	softStopOnce                 sync.Once
 }

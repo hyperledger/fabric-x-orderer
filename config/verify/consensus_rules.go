@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package configrulesverifier
+package verify
 
 import (
 	"time"
@@ -17,15 +17,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate counterfeiter -o mocks/configrulesverifier.go . ConfigRulesVerifier
-type ConfigRulesVerifier interface {
+//go:generate counterfeiter -o mocks/consensus_rules.go . ConsensusRules
+type ConsensusRules interface {
 	ValidateNewConfig(envelope *common.Envelope) error
+	// TODO: add ValidateTransition method to verify config transitions from current to next.
 }
 
-type DefaultConfigRulesVerifier struct{}
+type DefaultConsensusRules struct{}
 
 // ValidateNewConfig validates that the rules of the new config are valid before it is applied.
-func (cr *DefaultConfigRulesVerifier) ValidateNewConfig(envelope *common.Envelope) error {
+func (cr *DefaultConsensusRules) ValidateNewConfig(envelope *common.Envelope) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {
 		return err
@@ -52,7 +53,7 @@ func (cr *DefaultConfigRulesVerifier) ValidateNewConfig(envelope *common.Envelop
 	}
 
 	// TODO: Validate BFT request max bytes.
-	// TODO: Validate orderer endpoints.
+	// TODO: Validate endpoints in the Orderer Org definitions.
 	// TODO: Validate BFT parameters.
 	// TODO: Validate certificates.
 	// TODO: Validate consenter mapping.
