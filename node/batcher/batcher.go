@@ -134,9 +134,10 @@ func (b *Batcher) replicateState() {
 			if header.Num == header.DecisionNumOfLastConfigBlock && header.Num != 0 {
 				lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 				if protoutil.IsConfigBlock(lastBlock) {
-					// check if the config block exists; after restart the batcher may pull the same decision again, so skip it.
+					// check if the config block exists; after restart the batcher will pull the same decision again.
 					if _, err := b.ConfigStore.GetByNumber(lastBlock.Header.Number); err == nil {
 						b.logger.Infof("Config block %d already exists in config store", lastBlock.Header.Number)
+						b.batcher.ResubmitPendingBAFs(header.State, 0, true)
 					} else {
 						b.logger.Infof("Received config block number %d", lastBlock.Header.Number)
 						if err := b.ConfigStore.Add(lastBlock); err != nil {
