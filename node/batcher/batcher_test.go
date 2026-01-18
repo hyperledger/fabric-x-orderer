@@ -584,3 +584,88 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	_, err = batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
 	require.Error(t, err)
 }
+
+func TestResubmitPendingBAFs(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	// submit the first request and verify it was received
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[1].BAFCount() == 1*numParties && stubConsenters[2].BAFCount() == 1*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	for i := range numParties {
+		require.Equal(t, types.PartyID(1), batchers[i].GetPrimaryID())
+	}
+
+	baf := stubConsenters[0].LastControlEvent()
+	require.NotNil(t, baf)
+	require.NotNil(t, baf.BAF)
+	require.Equal(t, types.PartyID(1), baf.BAF.Primary())
+	require.Equal(t, types.BatchSequence(0), baf.BAF.Seq())
+
+	baf2 := types.NewSimpleBatchAttestationFragment(shardID, 1, 0, baf.BAF.Digest(), 2, 0)
+
+	for i := range numParties {
+		require.Equal(t, types.PartyID(1), batchers[i].GetPrimaryID())
+	}
+
+	// submit another request and verify it was received
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(2) && batchers[1].Ledger.Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[1].BAFCount() == 2*numParties && stubConsenters[2].BAFCount() == 2*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	termChangeWithPendingState := &state.State{
+		N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
+		Pending: []types.BatchAttestationFragment{baf2},
+	}
+
+	for i := 0; i < numParties; i++ {
+		stubConsenters[i].UpdateState(termChangeWithPendingState)
+	}
+	require.Eventually(t, func() bool {
+		return batchers[0].GetPrimaryID() == types.PartyID(2) && batchers[3].GetPrimaryID() == types.PartyID(2)
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// this batch is from the pending baf in the state
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(2) == uint64(1) && batchers[1].Ledger.Height(2) == uint64(1)
+	}, 10*time.Second, 100*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[1].BAFCount() == 3*numParties && stubConsenters[2].BAFCount() == 3*numParties
+	}, 10*time.Second, 100*time.Millisecond)
+
+	bafAgain := stubConsenters[0].LastControlEvent()
+	require.NotNil(t, bafAgain)
+	require.NotNil(t, bafAgain.BAF)
+	require.Equal(t, types.PartyID(2), bafAgain.BAF.Primary())
+	require.Equal(t, types.BatchSequence(0), bafAgain.BAF.Seq())
+	require.Equal(t, baf.BAF.Digest(), bafAgain.BAF.Digest())
+}
