@@ -12,6 +12,7 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	mspa "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
@@ -34,7 +35,8 @@ func EncodeBFTBlockVerificationPolicy(consenterProtos []*cb.Consenter, ordererGr
 		})
 		identities = append(identities, &mspa.MSPPrincipal{
 			PrincipalClassification: mspa.MSPPrincipal_IDENTITY,
-			Principal:               protoutil.MarshalOrPanic(&mspa.SerializedIdentity{Mspid: consenter.MspId, IdBytes: consenter.Identity}),
+			Principal: protoutil.MarshalOrPanic(
+				applicationpb.NewIdentity(consenter.MspId, consenter.Identity)),
 		})
 	}
 

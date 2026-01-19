@@ -146,12 +146,26 @@ func MakePayloadHeader(ch *cb.ChannelHeader, sh *cb.SignatureHeader) *cb.Header 
 	}
 }
 
-// NewSignatureHeader returns a SignatureHeader with a valid nonce.
+// NewSignatureHeader creates the signature header with cert.
 func NewSignatureHeader(id identity.Serializer) (*cb.SignatureHeader, error) {
 	creator, err := id.Serialize()
 	if err != nil {
 		return nil, err
 	}
+	return newSignatureHeader(creator)
+}
+
+// NewSignatureHeaderWithIDOfCert creates the signature header with ID of the cert.
+func NewSignatureHeaderWithIDOfCert(id identity.Serializer) (*cb.SignatureHeader, error) {
+	creator, err := id.SerializeWithIDOfCert()
+	if err != nil {
+		return nil, err
+	}
+
+	return newSignatureHeader(creator)
+}
+
+func newSignatureHeader(creator []byte) (*cb.SignatureHeader, error) {
 	nonce, err := CreateNonce()
 	if err != nil {
 		return nil, err

@@ -1,0 +1,79 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-common/api/applicationpb";
+
+package applicationpb;
+
+// Represents a transaction in the blockchain.
+message Tx {
+    // A list of namespaces that define the transaction's scope.
+    repeated TxNamespace namespaces = 1;
+
+    // A list of endorsements.
+    // IMPORTANT: This list MUST be the same size as the namespaces list.
+    // The Endorsement at index i corresponds to the namespace at index i.
+    repeated Endorsements endorsements = 2;
+}
+
+// Represents a namespace within a transaction.
+message TxNamespace {
+    string ns_id = 1;                   // The namespace ID.
+    uint64 ns_version = 2;              // The version of the namespace.
+    repeated Read reads_only = 3;       // List of read only operations within the namespace.
+    repeated ReadWrite read_writes = 4; // List of read-write operations within the namespace.
+    repeated Write blind_writes = 5;    // List of blind write operations within the namespace.
+}
+
+// Represents a read operation.
+message Read {
+    bytes key = 1;               // The key being read.
+    optional uint64 version = 2; // The version of the key being read. Nil version means it doesn't exist.
+}
+
+// Represents a read-write operation.
+message ReadWrite {
+    bytes key = 1;               // The key involved in the read-write operation.
+    optional uint64 version = 2; // The version of the key being read and written. Nil version means it doesn't exist.
+    bytes value = 3;             // The value associated with the key being written.
+}
+
+// Represents a write operation.
+message Write {
+    bytes key = 1;   // The key being written.
+    bytes value = 2; // The value associated with the key being written.
+}
+
+// Endorsements holds all the signatures that correspond to a single namespace
+// in the transaction's namespaces list.
+message Endorsements {
+    // The list of individual signatures for the corresponding namespace.
+    repeated EndorsementWithIdentity endorsements_with_identity = 1;
+}
+
+// EndorsementWithIdentity bundles a single signature with the identity of its creator.
+message EndorsementWithIdentity {
+    // The actual cryptographic signature bytes.
+    bytes endorsement = 1;
+
+    // The identity of the creator who produced the signature, i.e., the endorsement.
+    Identity identity = 2;
+}
+
+message Identity {
+    // The identifier of the associated membership service provider
+    string msp_id = 1;
+
+    oneof creator {
+        // The full raw bytes of the creator's certificate (e.g., an X.509 certificate).
+        bytes certificate = 2;
+
+        // An identifier for a certificate that is pre-stored or known by the committer.
+        string certificate_id = 3;
+    }
+}

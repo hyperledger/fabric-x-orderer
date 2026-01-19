@@ -20,6 +20,7 @@ type Signer interface {
 // Serialize converts an identity to bytes.  It returns an error on failure.
 type Serializer interface {
 	Serialize() ([]byte, error)
+	SerializeWithIDOfCert() ([]byte, error)
 }
 
 //go:generate counterfeiter -o mocks/signer_serializer.go --fake-name SignerSerializer . SignerSerializer

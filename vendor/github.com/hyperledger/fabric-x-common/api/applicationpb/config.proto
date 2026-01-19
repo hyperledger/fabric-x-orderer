@@ -1,0 +1,43 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-common/api/applicationpb";
+
+package applicationpb;
+
+// Represents a namespace policy.
+message NamespacePolicy {
+    oneof rule {
+        ThresholdRule threshold_rule = 1;
+        bytes msp_rule = 2;
+    }
+}
+
+// Represents a threshold signature rule.
+message ThresholdRule {
+    string scheme = 1;      // The scheme for signature verification.
+    bytes public_key = 2;   // The public key for signature verification.
+}
+
+// A batch of namespace policies.
+message NamespacePolicies {
+    repeated PolicyItem policies = 1;
+}
+
+// A namespace policy item with the update version.
+message PolicyItem {
+    string namespace = 1;
+    bytes policy = 2;
+    uint64 version = 3;
+}
+
+// The config TX envelope with the update version.
+message ConfigTransaction {
+    bytes envelope = 1;
+    uint64 version = 2;
+}

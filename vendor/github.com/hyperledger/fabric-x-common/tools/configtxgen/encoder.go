@@ -723,7 +723,8 @@ func MakeChannelCreationTransactionFromTemplate(
 
 	}
 
-	return protoutil.CreateSignedEnvelope(cb.HeaderType_CONFIG_UPDATE, channelID, signer, newConfigUpdateEnv, msgVersion, epoch)
+	return protoutil.CreateSignedEnvelope(
+		cb.HeaderType_CONFIG_UPDATE, channelID, signer, newConfigUpdateEnv, msgVersion, epoch)
 }
 
 // HasSkippedForeignOrgs is used to detect whether a configuration includes
