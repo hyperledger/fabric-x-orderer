@@ -65,7 +65,7 @@ type SigVerifier interface {
 
 type Arma interface {
 	SimulateStateTransition(prevState *state.State, configSeq arma_types.ConfigSequence, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
-	Commit(batchAttestations [][]arma_types.BatchAttestationFragment)
+	Commit([][]byte)
 }
 
 type BFT interface {
@@ -601,24 +601,23 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		c.Logger.Panicf("Failed deserializing header: %v", err)
 	}
 
-	var controlEvents arma_types.BatchedRequests
-	if err := controlEvents.Deserialize(proposal.Payload); err != nil {
-		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
+	var digests [][]byte
+	for _, ab := range hdr.AvailableCommonBlocks {
+		if !protoutil.IsConfigBlock(ab) {
+			digests = append(digests, ab.Header.DataHash)
+		}
 	}
 
-	// Why do we first give Arma the batchAttestations and then append the decision to storage?
-	// Upon commit, Arma indexes the batch attestations which passed the threshold in its index,
+	// Why do we first give Arma the batchAttestations (digests) and then append the decision to storage?
+	// Upon commit, Arma indexes the batch attestations (digests) which passed the threshold in its index,
 	// to avoid signing them again in the (near) future.
 	// If we crash after this, we will replicate the block and will overwrite the index again.
 	// However, if we first commit the decision and then index afterwards and crash during or right before
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
-	// This is true because a Commit(batchAttestations) with the same batchAttestations is idempotent.
-	c.stateLock.Lock()
-	_, batchAttestations, _ := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(proposal.VerificationSequence), controlEvents)
-	c.stateLock.Unlock()
+	// This is true because a Commit(digests) with the same digests is idempotent.
 
-	c.Arma.Commit(batchAttestations)
+	c.Arma.Commit(digests)
 	c.Storage.Append(rawDecision)
 
 	// update metrics
