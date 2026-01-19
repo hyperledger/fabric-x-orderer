@@ -225,12 +225,12 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum) {
 	height := ledger.Height()
 	logger.Infof("Initial consenter ledger height is: %d", height)
+	// If consensus node is joining to the cluster, i.e., it bootstraps from block with block.Header.Number > 0, then do not append the block to the ledger
 	if height == 0 {
 		initState := initialStateFromConfig(config)
-		if lastConfigBlock == nil {
-			panic(fmt.Sprintf("Error creating Consensus%d, genesis block is nil", config.PartyId))
+		if lastConfigBlock.Header.Number == 0 {
+			appendGenesisBlock(lastConfigBlock, initState, ledger)
 		}
-		appendGenesisBlock(lastConfigBlock, initState, ledger)
 		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0
 	}
 
