@@ -65,6 +65,9 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		if err != nil {
 			return nil, err
 		}
+		if ledgerPartsMap[primaryPartyID] != nil {
+			continue
+		}
 		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, logger)
 		if err != nil {
 			return nil, err
