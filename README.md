@@ -50,14 +50,14 @@ service AtomicBroadcast {
 // broadcast receives a reply of Acknowledgement for each common.Envelope in order, indicating success or type of failure
 rpc Broadcast(stream common.Envelope) returns (stream BroadcastResponse);
 
-// deliver first requires an Envelope of type DELIVER_SEEK_INFO with Payload data as a mashaled SeekInfo message, then a stream of block replies is received.
+// deliver first requires an Envelope of type DELIVER_SEEK_INFO with Payload data as a marshaled SeekInfo message, then a stream of block replies is received.
 rpc Deliver(stream common.Envelope) returns (stream DeliverResponse);
 }
 ```
 
 The Arma routers implement the `Broadcast` service whereas the Arma assemblers implement the `Deliver` service.
 
-In order to submit a TX the submiting client must connect to the router endpoints and try to submit to all the routers, from all parties.
+In order to submit a TX the submitting client must connect to the router endpoints and try to submit to all the routers, from all parties.
 Even though a submitting party may submit to a single party it trusts, that may incur a performance penalty and may lead to censorship, and thus is strongly discouraged.
 
 In order to pull blocks it is enough for a scalable committer (peer) to connect to the assembler that belongs to its own party.
@@ -137,3 +137,20 @@ For more information about deployment of Arma, please refer to [arma-deployment]
 ## Tools
 
 Armageddon is a command-line tool that provides a simple way to config an ARMA network, for more information please refer to [armageddon](cmd/armageddon/README.md).
+
+## Performance
+
+We evaluated the Fabric-X Orderer performance by deploying it on 4 data centers across the US and loading it with transactions, measuring the transaction rate and latency.
+
+The figure below shows the service’s throughput with varying numbers of parties and shards, maintaining a latency of approximately 0.8 seconds, using 300 Byte transactions.
+
+The 300 Byte transaction size represents a typical token transaction carrying two inputs and two outputs.
+
+<figure>
+  <img src=./doc/figures/throughput_shards_parties_plot.png alt="Fabric-X Orderer Throughput, by number of parties and shards" width="1000" height="auto">
+</figure>
+
+This experiment ran on 4 AWS sites: us-east-2 (Ohio), us-east-1 (N. Virginia), us-west-1 (N. California), and us-west-2 (Oregon).
+The virtual machine instance was "c5a.8xlarge", with 32 vCPU, 64 GiB Memory, running RHEL 10, with EBS General Purpose (SSD).
+The attached volume was gp3 100 GiB, supporting 3000 IOPS and 125 GiB/S bandwidth.
+The experiment date was January 15, 2026.
