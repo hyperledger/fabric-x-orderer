@@ -8,7 +8,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 )
 
-type FakeConsensusRules struct {
+type FakeOrdererRules struct {
 	ValidateNewConfigStub        func(*common.Envelope) error
 	validateNewConfigMutex       sync.RWMutex
 	validateNewConfigArgsForCall []struct {
@@ -24,7 +24,7 @@ type FakeConsensusRules struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusRules) ValidateNewConfig(arg1 *common.Envelope) error {
+func (fake *FakeOrdererRules) ValidateNewConfig(arg1 *common.Envelope) error {
 	fake.validateNewConfigMutex.Lock()
 	ret, specificReturn := fake.validateNewConfigReturnsOnCall[len(fake.validateNewConfigArgsForCall)]
 	fake.validateNewConfigArgsForCall = append(fake.validateNewConfigArgsForCall, struct {
@@ -43,26 +43,26 @@ func (fake *FakeConsensusRules) ValidateNewConfig(arg1 *common.Envelope) error {
 	return fakeReturns.result1
 }
 
-func (fake *FakeConsensusRules) ValidateNewConfigCallCount() int {
+func (fake *FakeOrdererRules) ValidateNewConfigCallCount() int {
 	fake.validateNewConfigMutex.RLock()
 	defer fake.validateNewConfigMutex.RUnlock()
 	return len(fake.validateNewConfigArgsForCall)
 }
 
-func (fake *FakeConsensusRules) ValidateNewConfigCalls(stub func(*common.Envelope) error) {
+func (fake *FakeOrdererRules) ValidateNewConfigCalls(stub func(*common.Envelope) error) {
 	fake.validateNewConfigMutex.Lock()
 	defer fake.validateNewConfigMutex.Unlock()
 	fake.ValidateNewConfigStub = stub
 }
 
-func (fake *FakeConsensusRules) ValidateNewConfigArgsForCall(i int) *common.Envelope {
+func (fake *FakeOrdererRules) ValidateNewConfigArgsForCall(i int) *common.Envelope {
 	fake.validateNewConfigMutex.RLock()
 	defer fake.validateNewConfigMutex.RUnlock()
 	argsForCall := fake.validateNewConfigArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakeConsensusRules) ValidateNewConfigReturns(result1 error) {
+func (fake *FakeOrdererRules) ValidateNewConfigReturns(result1 error) {
 	fake.validateNewConfigMutex.Lock()
 	defer fake.validateNewConfigMutex.Unlock()
 	fake.ValidateNewConfigStub = nil
@@ -71,7 +71,7 @@ func (fake *FakeConsensusRules) ValidateNewConfigReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakeConsensusRules) ValidateNewConfigReturnsOnCall(i int, result1 error) {
+func (fake *FakeOrdererRules) ValidateNewConfigReturnsOnCall(i int, result1 error) {
 	fake.validateNewConfigMutex.Lock()
 	defer fake.validateNewConfigMutex.Unlock()
 	fake.ValidateNewConfigStub = nil
@@ -85,7 +85,7 @@ func (fake *FakeConsensusRules) ValidateNewConfigReturnsOnCall(i int, result1 er
 	}{result1}
 }
 
-func (fake *FakeConsensusRules) Invocations() map[string][][]interface{} {
+func (fake *FakeOrdererRules) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
@@ -95,7 +95,7 @@ func (fake *FakeConsensusRules) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
-func (fake *FakeConsensusRules) recordInvocation(key string, args []interface{}) {
+func (fake *FakeOrdererRules) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
 	if fake.invocations == nil {
@@ -107,4 +107,4 @@ func (fake *FakeConsensusRules) recordInvocation(key string, args []interface{})
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ verify.ConsensusRules = new(FakeConsensusRules)
+var _ verify.OrdererRules = new(FakeOrdererRules)

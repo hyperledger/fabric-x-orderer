@@ -100,7 +100,7 @@ type Consensus struct {
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
 	ConfigApplier                ConfigApplier
 	ConfigRequestValidator       configrequest.ConfigRequestValidator
-	ConfigRulesVerifier          verify.ConsensusRules
+	ConfigRulesVerifier          verify.OrdererRules
 	softStopCh                   chan struct{}
 	softStopOnce                 sync.Once
 }

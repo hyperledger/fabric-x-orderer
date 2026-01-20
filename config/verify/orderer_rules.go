@@ -17,16 +17,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate counterfeiter -o mocks/consensus_rules.go . ConsensusRules
-type ConsensusRules interface {
+//go:generate counterfeiter -o mocks/orderer_rules.go . OrdererRules
+type OrdererRules interface {
 	ValidateNewConfig(envelope *common.Envelope) error
 	// TODO: add ValidateTransition method to verify config transitions from current to next.
 }
 
-type DefaultConsensusRules struct{}
+type DefaultOrdererRules struct{}
 
 // ValidateNewConfig validates that the rules of the new config are valid before it is applied.
-func (cr *DefaultConsensusRules) ValidateNewConfig(envelope *common.Envelope) error {
+func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {
 		return err

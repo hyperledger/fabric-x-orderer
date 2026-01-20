@@ -100,7 +100,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 			ConfigUpdateProposer: configUpdateProposer,
 			Bundle:               conf.Bundle,
 		},
-		ConfigRulesVerifier: &verify.DefaultConsensusRules{},
+		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)

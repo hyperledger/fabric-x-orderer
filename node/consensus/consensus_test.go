@@ -24,7 +24,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	consensusRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
+	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	node_consensus "github.com/hyperledger/fabric-x-orderer/node/consensus"
@@ -640,7 +640,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			mockConfigRequestValidator := &configrequest_mocks.FakeConfigRequestValidator{}
 			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 
-			mockConfigRulesVerifier := &consensusRulesMocks.FakeConsensusRules{}
+			mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 			mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
 
 			mockConfigApplier := &consensus_mocks.FakeConfigApplier{}
