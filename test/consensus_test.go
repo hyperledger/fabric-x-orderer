@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"math"
 	"os"
@@ -238,11 +239,18 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
 	require.NoError(t, err)
-	routerCert, err := x509.ParseCertificate(routerCertBytes)
+	block, _ := pem.Decode(routerCertBytes)
+	require.NotNil(t, block)
+	require.Equal(t, "CERTIFICATE", block.Type)
+	routerCert, err := x509.ParseCertificate(block.Bytes)
 	ctx, err := createContextForSubmitConfig(routerCert)
 	require.NoError(t, err)
 	_, err = consensus.SubmitConfig(ctx, configReq)
 	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		b := <-ledgerListener.c
+		return b.Header.Number == uint64(2)
+	}, 30*time.Second, 100*time.Millisecond)
 }
 
 type storageListener struct {
