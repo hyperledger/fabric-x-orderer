@@ -65,6 +65,11 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 
 	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
 
+	// indicate that sync is required on startup when new consensus node joins the cluster
+	if consLedger.Height() == 0 && lastConfigBlock.Header.Number > 0 {
+		conf.BFTConfig.SyncOnStart = true
+	}
+
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
 
@@ -225,7 +230,6 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum) {
 	height := ledger.Height()
 	logger.Infof("Initial consenter ledger height is: %d", height)
-	// If consensus node is joining to the cluster, i.e., it bootstraps from block with block.Header.Number > 0, then do not append the block to the ledger
 	if height == 0 {
 		initState := initialStateFromConfig(config)
 		if lastConfigBlock.Header.Number == 0 {
