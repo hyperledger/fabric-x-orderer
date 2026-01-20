@@ -153,4 +153,4 @@ The 300 Byte transaction size represents a typical token transaction carrying tw
 This experiment ran on 4 AWS sites: us-east-2 (Ohio), us-east-1 (N. Virginia), us-west-1 (N. California), and us-west-2 (Oregon).
 The virtual machine instance was "c5a.8xlarge", with 32 vCPU, 64 GiB Memory, running RHEL 10, with EBS General Purpose (SSD).
 The attached volume was gp3 100 GiB, supporting 3000 IOPS and 125 GiB/S bandwidth.
-The experiment date was January 15, 2026.
+The experiment date was January 20, 2026.
