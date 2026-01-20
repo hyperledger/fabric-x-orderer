@@ -65,7 +65,7 @@ type SigVerifier interface {
 
 type Arma interface {
 	SimulateStateTransition(prevState *state.State, configSeq arma_types.ConfigSequence, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
-	Commit([][]byte)
+	Index([][]byte)
 }
 
 type BFT interface {
@@ -601,10 +601,10 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		c.Logger.Panicf("Failed deserializing header: %v", err)
 	}
 
-	var digests [][]byte
+	digests := make([][]byte, 0, len(hdr.AvailableCommonBlocks))
 	for _, ab := range hdr.AvailableCommonBlocks {
 		if !protoutil.IsConfigBlock(ab) {
-			digests = append(digests, ab.Header.DataHash)
+			digests = append(digests, ab.GetHeader().GetDataHash())
 		}
 	}
 
@@ -612,12 +612,12 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// Upon commit, Arma indexes the batch attestations (digests) which passed the threshold in its index,
 	// to avoid signing them again in the (near) future.
 	// If we crash after this, we will replicate the block and will overwrite the index again.
-	// However, if we first commit the decision and then index afterwards and crash during or right before
+	// However, if we first append the decision and then index afterwards and crash during or right before
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
-	// This is true because a Commit(digests) with the same digests is idempotent.
+	// This is true because a Index(digests) with the same digests is idempotent.
 
-	c.Arma.Commit(digests)
+	c.Arma.Index(digests)
 	c.Storage.Append(rawDecision)
 
 	// update metrics

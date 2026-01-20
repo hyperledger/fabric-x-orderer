@@ -44,7 +44,7 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, batchAttestations)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Commit([][]byte{})
+	consenter.Index([][]byte{})
 	assert.Zero(t, db.PutCallCount())
 
 	// Test a valid event below threshold
@@ -53,7 +53,7 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, batchAttestations)
 	assert.Len(t, newState.Pending, 1)
 
-	consenter.Commit([][]byte{})
+	consenter.Index([][]byte{})
 	assert.Zero(t, db.PutCallCount())
 
 	// Test valid events meeting the threshold
@@ -65,7 +65,7 @@ func TestConsenter(t *testing.T) {
 	assert.Len(t, batchAttestations[0], 2)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Commit([][]byte{batchAttestations[0][0].Digest()})
+	consenter.Index([][]byte{batchAttestations[0][0].Digest()})
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test the complaint is not stored in the DB
@@ -79,7 +79,7 @@ func TestConsenter(t *testing.T) {
 
 	_, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
 	assert.Empty(t, batchAttestations)
-	consenter.Commit([][]byte{})
+	consenter.Index([][]byte{})
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test ConfigRequest is returned by SimulateStateTransition

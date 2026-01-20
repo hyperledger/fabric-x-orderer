@@ -53,10 +53,10 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, configSeq ty
 	return newState, batchAttestations, configRequests
 }
 
-// Commit indexes BAs (digests).
-// Note that this must hold: Commit(digests) with the same digests is idempotent.
-// TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
-func (c *Consenter) Commit(digests [][]byte) {
+// Index indexes BAs (digests).
+// Note that this must hold: Index(digests) with the same digests is idempotent.
+// TODO revise the recovery from failure or shutdown, specifically the order of Index and Append.
+func (c *Consenter) Index(digests [][]byte) {
 	if len(digests) > 0 {
 		epochs := make([]uint64, len(digests)) // TODO remove
 		c.DB.Put(digests, epochs)
