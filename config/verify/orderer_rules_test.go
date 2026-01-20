@@ -43,8 +43,8 @@ func TestValidateNewConfig(t *testing.T) {
 	env, err := protoutil.ExtractEnvelope(block, 0)
 	require.NoError(t, err)
 
-	cr := verify.DefaultConsensusRules{}
-	require.NoError(t, cr.ValidateNewConfig(env))
+	or := verify.DefaultOrdererRules{}
+	require.NoError(t, or.ValidateNewConfig(env))
 }
 
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
@@ -96,8 +96,8 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	env.Payload, err = proto.Marshal(payload)
 	require.NoError(t, err)
 
-	cr := verify.DefaultConsensusRules{}
-	err = cr.ValidateNewConfig(env)
+	or := verify.DefaultOrdererRules{}
+	err = or.ValidateNewConfig(env)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "batch creation timeout")
