@@ -6,6 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"math"
 	"os"
@@ -32,10 +35,13 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 // Scenario:
@@ -220,6 +226,23 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		b := <-ledgerListener.c
 		return b.Header.Number == uint64(1)
 	}, 30*time.Second, 100*time.Millisecond)
+
+	// Submit to consensus a config request from router
+	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	defer cleanUp()
+	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
+	env := configutil.CreateConfigTX(t, dir, numOfParties, 1, configUpdatePbData)
+	configReq := &protos.Request{
+		Payload:   env.Payload,
+		Signature: env.Signature,
+	}
+	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
+	require.NoError(t, err)
+	routerCert, err := x509.ParseCertificate(routerCertBytes)
+	ctx, err := createContextForSubmitConfig(routerCert)
+	require.NoError(t, err)
+	_, err = consensus.SubmitConfig(ctx, configReq)
+	require.NoError(t, err)
 }
 
 type storageListener struct {
@@ -232,4 +255,15 @@ func (l *storageListener) OnAppend(block *common.Block) {
 		defer l.f()
 	}
 	l.c <- block
+}
+
+func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, error) {
+	tlsInfo := credentials.TLSInfo{
+		State: tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		},
+	}
+	p := &peer.Peer{AuthInfo: tlsInfo}
+	ctx := peer.NewContext(context.Background(), p)
+	return ctx, nil
 }
