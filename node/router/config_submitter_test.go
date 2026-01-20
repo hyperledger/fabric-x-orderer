@@ -13,8 +13,10 @@ import (
 
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -50,9 +52,13 @@ func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 	fakeSigner := &mocks.SignerSerializer{}
 
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+	req := &protos.Request{}
+	mockConfigUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
-	configSubmitter := NewConfigSubmitter(stubConsenter.GetConsenterEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, logger, bundle, verifier, fakeSigner, mockConfigUpdateProposer)
+	mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
+	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+
+	configSubmitter := NewConfigSubmitter(stubConsenter.GetConsenterEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, logger, bundle, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier)
 
 	return configSubmitTestSetup{configSubmitter: configSubmitter, stubConsenter: &stubConsenter}
 }

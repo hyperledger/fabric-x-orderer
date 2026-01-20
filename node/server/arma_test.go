@@ -35,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -395,7 +396,8 @@ func TestLaunchArmaNode(t *testing.T) {
 		require.NoError(t, err)
 
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+		req := &protos.Request{}
+		mockConfigUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
 		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, signer, mockConfigUpdateProposer)
 		require.NotNil(t, consensus)

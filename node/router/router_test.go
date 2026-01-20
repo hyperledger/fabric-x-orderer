@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	fabricx_config "github.com/hyperledger/fabric-x-orderer/config"
+	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -981,9 +982,13 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	}
 
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-	configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+	req := &protos.Request{}
+	configUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
-	r := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
+	configRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
+	configRulesVerifier.ValidateNewConfigReturns(nil)
+
+	r := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
 	r.StartRouterService()
 
 	return r, conf
