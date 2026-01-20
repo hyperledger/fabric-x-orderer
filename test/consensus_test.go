@@ -15,11 +15,24 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/msp"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	config "github.com/hyperledger/fabric-x-orderer/config"
+	arma_node "github.com/hyperledger/fabric-x-orderer/node"
+	batcher_node "github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // Scenario:
@@ -136,4 +149,78 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		ErrString:    "cancelled pull from assembler: %d",
 		Timeout:      30,
 	})
+}
+
+func TestConsensusWithRealConfigUpdate(t *testing.T) {
+	// 1. Compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// 2. Create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	numOfParties := 1
+	numOfShards := 1
+
+	// 3. Create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "none")
+	require.NoError(t, err)
+
+	// 4. Generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	configStoreDir := t.TempDir()
+	defer os.RemoveAll(configStoreDir)
+
+	netInfo["Party11consensus"].Listener.Close()
+	nodeConfigPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
+
+	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+	require.NoError(t, err)
+
+	localConfig.NodeLocalConfig.FileStore.Path = configStoreDir
+	utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
+
+	configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+	require.NoError(t, err)
+
+	consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
+	require.NotNil(t, consenterConfig)
+
+	localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	signer, err := localmsp.GetDefaultSigningIdentity()
+	require.NoError(t, err)
+
+	consenterLogger := testutil.CreateLogger(t, int(numOfParties))
+
+	server := arma_node.CreateGRPCConsensus(consenterConfig)
+	consensus := consensus.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
+
+	protos.RegisterConsensusServer(server.Server(), consensus)
+	orderer.RegisterAtomicBroadcastServer(server.Server(), consensus.DeliverService)
+	orderer.RegisterClusterNodeServiceServer(server.Server(), consensus)
+
+	go func() {
+		server.Start()
+	}()
+
+	consensus.Start()
+
+	digest := make([]byte, 32-3)
+	digest123 := append([]byte{1, 2, 3}, digest...)
+
+	keyBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/batcher1/tls/key.pem"))
+	require.NoError(t, err)
+	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
+	require.NoError(t, err, "failed to create private key")
+
+	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 1, 0, 0)
+	require.NoError(t, err)
+	controlEvent := &state.ControlEvent{BAF: baf}
+	consensus.SubmitRequest(controlEvent.Bytes())
 }
