@@ -22,6 +22,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/msp"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -247,10 +248,22 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	_, err = consensus.SubmitConfig(ctx, configReq)
 	require.NoError(t, err)
+	var lastDecision *common.Block
 	require.Eventually(t, func() bool {
-		b := <-ledgerListener.c
-		return b.Header.Number == uint64(2)
+		lastDecision = <-ledgerListener.c
+		return lastDecision.Header.Number == uint64(2)
 	}, 30*time.Second, 100*time.Millisecond)
+	proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
+	require.NotNil(t, proposal)
+	require.NoError(t, err)
+
+	header := &state.Header{}
+	err = header.Deserialize(proposal.Header)
+	require.NoError(t, err)
+
+	lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+	require.True(t, protoutil.IsConfigBlock(lastBlock))
+	require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
 }
 
 type storageListener struct {
