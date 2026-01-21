@@ -162,6 +162,7 @@ func NewDefaultAssembler(
 
 	assembler.logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(assembler.opsSystem, assembler.logger))
 	assembler.logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(assembler.opsSystem, assembler.logger))
+	assembler.logger.Infof("Logging spec service serving on URL: %s", operations.LogSpecServiceURL(assembler.opsSystem, assembler.logger))
 	assembler.metrics.StartMetricsTracker()
 
 	return assembler
