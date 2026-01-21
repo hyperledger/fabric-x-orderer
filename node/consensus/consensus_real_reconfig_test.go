@@ -24,7 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	arma_node "github.com/hyperledger/fabric-x-orderer/node"
 	batcher_node "github.com/hyperledger/fabric-x-orderer/node/batcher"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	consensus_node "github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -72,7 +72,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	consenterLogger := testutil.CreateLogger(t, int(numOfParties))
 	server := arma_node.CreateGRPCConsensus(consenterConfig)
-	consensus := consensus.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
+	consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
 
 	// Register and start grpc server
 	protos.RegisterConsensusServer(server.Server(), consensus)
@@ -88,8 +88,6 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	consensus.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
 
 	// Submit to consensus a simple request (baf) from batcher
-	digest := make([]byte, 32-3)
-	digest123 := append([]byte{1, 2, 3}, digest...)
 	keyBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/batcher1/msp/keystore/priv_sk"))
 	require.NoError(t, err)
 	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
@@ -97,7 +95,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 1, 0, 0)
 	require.NoError(t, err)
 	controlEvent := &state.ControlEvent{BAF: baf}
-	consensus.SubmitRequest(controlEvent.Bytes())
+	err = consensus.SubmitRequest(controlEvent.Bytes())
+	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		b := <-ledgerListener.c
 		return b.Header.Number == uint64(1)
@@ -122,6 +121,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	_, err = consensus.SubmitConfig(ctx, configReq)
 	require.NoError(t, err)
+
+	// make sure the config block is committed and stop the consensus node
 	var lastDecision *common.Block
 	require.Eventually(t, func() bool {
 		lastDecision = <-ledgerListener.c
@@ -130,12 +131,53 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
 	require.NotNil(t, proposal)
 	require.NoError(t, err)
-
 	header := &state.Header{}
 	err = header.Deserialize(proposal.Header)
 	require.NoError(t, err)
-
 	lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 	require.True(t, protoutil.IsConfigBlock(lastBlock))
 	require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
+
+	consensus.Stop()
+
+	// Get all to create consensus again
+	configContent, lastConfigBlock, err = config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+	require.NoError(t, err)
+	consenterConfig = configContent.ExtractConsenterConfig(lastConfigBlock)
+	require.NotNil(t, consenterConfig)
+	localmsp = msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	signer, err = localmsp.GetDefaultSigningIdentity()
+	require.NoError(t, err)
+	consenterLogger = testutil.CreateLogger(t, int(numOfParties))
+	server = arma_node.CreateGRPCConsensus(consenterConfig)
+	consensus = consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
+
+	// Register and start grpc server
+	protos.RegisterConsensusServer(server.Server(), consensus)
+	orderer.RegisterAtomicBroadcastServer(server.Server(), consensus.DeliverService)
+	orderer.RegisterClusterNodeServiceServer(server.Server(), consensus)
+	go func() {
+		server.Start()
+	}()
+
+	// Start consensus
+	consensus.Start()
+	ledgerListener = &storageListener{c: make(chan *common.Block, 100)}
+	consensus.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+
+	// Send another simple request
+	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest124, 1, 0, 0)
+	require.NoError(t, err)
+	controlEvent = &state.ControlEvent{BAF: baf}
+	err = consensus.SubmitRequest(controlEvent.Bytes())
+	require.ErrorContains(t, err, "mismatch config sequence")
+	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest124, 1, 0, 1)
+	require.NoError(t, err)
+	controlEvent.BAF = baf
+	err = consensus.SubmitRequest(controlEvent.Bytes())
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		b := <-ledgerListener.c
+		return b.Header.Number == uint64(3)
+	}, 30*time.Second, 100*time.Millisecond)
 }
