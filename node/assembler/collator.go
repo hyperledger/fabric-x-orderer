@@ -74,14 +74,15 @@ func (c *Collator) processOrderedBatchAttestations() {
 			c.Logger.Infof("Config decision: shard: %d, Ordering Info: %s", oba.BatchAttestation().Shard(), orderingInfo.String())
 			c.Ledger.AppendConfig(orderingInfo)
 
-			// if the configBlcok number is greater than current config sequence, we need to restart the assembler
+			// if the config block number is greater than the current config block number, we need to restart the assembler
 			if orderingInfo.CommonBlock.GetHeader().GetNumber() > c.AssemblerRestarter.ConfigBlockNumber() {
 				c.Logger.Infof("Config block number %d is greater than assembler's current config block number %d, initiating soft stop", orderingInfo.CommonBlock.GetHeader().GetNumber(), c.AssemblerRestarter.ConfigBlockNumber())
 				go c.AssemblerRestarter.SoftStop()
 				// TODO apply new config and update lastConfigBlockNumber in assembler
 				return
 			}
-			continue
+
+			continue // skip collating for BA's with config blocks
 		}
 
 		batch, err := c.collateAttestationWithBatch(oba.BatchAttestation())

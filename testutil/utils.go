@@ -51,9 +51,11 @@ func (n NodeType) String() string {
 	return string(n)
 }
 
-var runingOrderMap = map[NodeType]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
+// var runningOrderMap = map[NodeType]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
 
-// EditDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
+// EditDirectoryInNodeConfigYAML updates a node YAML config file at the given path.
+// It sets the FileStore.Path to storagePath, clears the monitoring listen port,
+// and updates the bootstrap file location.
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string, bootstrapFilePath string) {
 	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
@@ -147,12 +149,18 @@ func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatch
 	return netInfo
 }
 
+type NodeName struct {
+	PartyID  types.PartyID
+	NodeType NodeType
+	ShardID  types.ShardID
+}
+
 // ExtendNetwork extends an existing network configuration by adding a party to it.
-func ExtendNetwork(t *testing.T, path string) (map[string]*ArmaNodeInfo, *genconfig.Network) {
-	netInfo := make(map[string]*ArmaNodeInfo)
+func ExtendNetwork(t *testing.T, configPath string) (map[NodeName]*ArmaNodeInfo, *genconfig.Network) {
+	netInfo := make(map[NodeName]*ArmaNodeInfo)
 
 	networkConfig := genconfig.Network{}
-	err := utils.ReadFromYAML(&networkConfig, path)
+	err := utils.ReadFromYAML(&networkConfig, configPath)
 	require.NoError(t, err, "failed to read network config file")
 
 	networkConfig.MaxPartyID++
@@ -181,21 +189,20 @@ func ExtendNetwork(t *testing.T, path string) (map[string]*ArmaNodeInfo, *gencon
 
 	networkConfig.Parties = append(networkConfig.Parties, newPartyConfig)
 
-	nodeName := fmt.Sprintf("Party%d%d%s", networkConfig.MaxPartyID, runingOrderMap[Router], Router)
+	nodeName := NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Router}
 	netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(networkConfig.MaxPartyID)}
 
 	for j, b := range llbs {
-		nodeName = fmt.Sprintf("Party%d%d%s%d", networkConfig.MaxPartyID, runingOrderMap[Batcher], Batcher, j+1)
+		nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Batcher, ShardID: types.ShardID(j + 1)}
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(networkConfig.MaxPartyID), ShardId: types.ShardID(j + 1)}
 	}
 
-	nodeName = fmt.Sprintf("Party%d%d%s", networkConfig.MaxPartyID, runingOrderMap[Consensus], Consensus)
+	nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Consensus}
 	netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(networkConfig.MaxPartyID)}
-
-	nodeName = fmt.Sprintf("Party%d%d%s", networkConfig.MaxPartyID, runingOrderMap[Assembler], Assembler)
+	nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Assembler}
 	netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(networkConfig.MaxPartyID)}
 
-	err = utils.WriteToYAML(networkConfig, path)
+	err = utils.WriteToYAML(networkConfig, configPath)
 	require.NoError(t, err)
 
 	return netInfo, &genconfig.Network{Parties: []genconfig.Party{newPartyConfig}, UseTLSRouter: networkConfig.UseTLSRouter, UseTLSAssembler: networkConfig.UseTLSAssembler}
@@ -354,7 +361,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		require.NoError(t, err)
 
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, netNode.ConfigBlockPath)
-		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
+		sess := runNode(t, netNode.NodeType.String(), armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
 		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
