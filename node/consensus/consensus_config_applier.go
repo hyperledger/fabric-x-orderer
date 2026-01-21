@@ -10,12 +10,12 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
@@ -42,7 +42,7 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 	}
 
 	consensusMetadata := ordererConfig.ConsensusMetadata()
-	sharedConfig := &config_protos.SharedConfig{}
+	sharedConfig := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(consensusMetadata, sharedConfig); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
 	}
@@ -83,7 +83,7 @@ func (ca *DefaultConfigApplier) ExtractSmartBFTConfigFromBlock(configBlock *comm
 		return nil, smartbft_types.Configuration{}, errors.New("orderer entry in the config block is empty")
 	}
 	consensusMetadata := ordererConfig.ConsensusMetadata()
-	sharedConfig := &config_protos.SharedConfig{}
+	sharedConfig := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(consensusMetadata, sharedConfig); err != nil {
 		return nil, smartbft_types.Configuration{}, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
 	}

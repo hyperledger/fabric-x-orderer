@@ -93,7 +93,7 @@ func TestRemovePartyRunAll(t *testing.T) {
 	remainingParties := make([]types.PartyID, 0, numOfParties-1)
 	for i := 1; i <= numOfParties; i++ {
 		if types.PartyID(i) != partyToRemove {
-			parties = append(parties, types.PartyID(i))
+			remainingParties = append(remainingParties, types.PartyID(i))
 		}
 	}
 

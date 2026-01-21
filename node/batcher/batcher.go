@@ -20,12 +20,12 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -294,7 +294,7 @@ func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	}
 }
 
-func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuration) (*config_protos.BatcherNodeConfig, error) {
+func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuration) (*ordererpb.BatcherNodeConfig, error) {
 	partyID := conf.LocalConfig.NodeLocalConfig.PartyID
 	partyConfig, err := config.FindParty(partyID, conf)
 	if err != nil {

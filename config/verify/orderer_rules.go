@@ -15,21 +15,21 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
 // partyChanges keeps information about membership changes introduced during configuration update.
 type partyChanges struct {
-	Added    []*config_protos.PartyConfig
-	Removed  []*config_protos.PartyConfig
-	Modified []*config_protos.PartyConfig
+	Added    []*ordererpb.PartyConfig
+	Removed  []*ordererpb.PartyConfig
+	Modified []*ordererpb.PartyConfig
 }
 
 //go:generate counterfeiter -o mocks/orderer_rules.go . OrdererRules
@@ -67,7 +67,7 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		return errors.Errorf("orderer entry in the config block is empty")
 	}
 
-	sharedConfig := &config_protos.SharedConfig{}
+	sharedConfig := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(ordererConfig.ConsensusMetadata(), sharedConfig); err != nil {
 		return errors.Wrap(err, "failed to unmarshal consensus metadata")
 	}
@@ -174,7 +174,7 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		return errors.New("no orderer config found")
 	}
 
-	currCfg := &config_protos.SharedConfig{}
+	currCfg := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(currOrdererCfg.ConsensusMetadata(), currCfg); err != nil {
 		return errors.Wrap(err, "failed to unmarshal current consensus metadata")
 	}
@@ -195,13 +195,13 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		return errors.New("orderer entry in the config block is empty")
 	}
 
-	nextCfg := &config_protos.SharedConfig{}
+	nextCfg := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(nextOrdererCfg.ConsensusMetadata(), nextCfg); err != nil {
 		return errors.Wrap(err, "failed to unmarshal next consensus metadata")
 	}
 
-	currMap := make(map[uint32]*config_protos.PartyConfig)
-	nextMap := make(map[uint32]*config_protos.PartyConfig)
+	currMap := make(map[uint32]*ordererpb.PartyConfig)
+	nextMap := make(map[uint32]*ordererpb.PartyConfig)
 
 	for _, p := range currCfg.PartiesConfig {
 		if p == nil {
@@ -282,7 +282,7 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	return nil
 }
 
-func validateBatchTimeout(bt *config_protos.BatchTimeouts) error {
+func validateBatchTimeout(bt *ordererpb.BatchTimeouts) error {
 	if bt == nil {
 		return errors.New("batch timeouts are nil")
 	}
@@ -320,7 +320,7 @@ func validateBatchTimeout(bt *config_protos.BatchTimeouts) error {
 	return nil
 }
 
-func validateSmartBFTConfig(id uint64, cfg *config_protos.SmartBFTConfig) error {
+func validateSmartBFTConfig(id uint64, cfg *ordererpb.SmartBFTConfig) error {
 	if cfg == nil {
 		return errors.New("smartbft config is nil")
 	}
@@ -405,12 +405,12 @@ func validateOrdererOrgEndpoints(endpoints []string) error {
 	return nil
 }
 
-func validateConsenterConsistency(consenters []*common.Consenter, parties []*config_protos.PartyConfig) error {
+func validateConsenterConsistency(consenters []*common.Consenter, parties []*ordererpb.PartyConfig) error {
 	if len(consenters) != len(parties) {
 		return errors.Errorf("number of parties in Orderer consenters mapping (%d) does not match number of parties in Shared config (%d)", len(consenters), len(parties))
 	}
 
-	partiesMap := make(map[uint32]*config_protos.PartyConfig)
+	partiesMap := make(map[uint32]*ordererpb.PartyConfig)
 	for _, p := range parties {
 		if p == nil {
 			return errors.New("party config is nil in shared config")
@@ -455,7 +455,7 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 }
 
 // computePartyChanges computes the membership changes between the current and next parties config.
-func computePartyChanges(currMap map[uint32]*config_protos.PartyConfig, nextMap map[uint32]*config_protos.PartyConfig) (*partyChanges, error) {
+func computePartyChanges(currMap map[uint32]*ordererpb.PartyConfig, nextMap map[uint32]*ordererpb.PartyConfig) (*partyChanges, error) {
 	changes := &partyChanges{}
 
 	// detect added
@@ -487,7 +487,7 @@ func computePartyChanges(currMap map[uint32]*config_protos.PartyConfig, nextMap 
 
 // validatePartyModification checks whether a party was modified.
 // Certificates and endpoints may change, but batcher shard IDs must not.
-func validatePartyModification(curr, next *config_protos.PartyConfig) (bool, error) {
+func validatePartyModification(curr, next *ordererpb.PartyConfig) (bool, error) {
 	// no change
 	if proto.Equal(curr, next) {
 		return false, nil

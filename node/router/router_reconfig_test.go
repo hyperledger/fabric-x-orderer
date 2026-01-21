@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -23,7 +24,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
@@ -280,7 +280,7 @@ type reconfigTestSetup struct {
 	netInfo            map[testutil.NodeName]*testutil.ArmaNodeInfo
 
 	userConfig   *armageddon.UserConfig
-	sharedConfig *config_protos.SharedConfig
+	sharedConfig *ordererpb.SharedConfig
 }
 
 func (s *reconfigTestSetup) CreateRouterClient() (*grpc.ClientConn, error) {
@@ -384,7 +384,7 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 
 	ordererConfig, ok := routerBundle.OrdererConfig()
 	require.True(t, ok)
-	sharedConfig := config_protos.SharedConfig{}
+	sharedConfig := ordererpb.SharedConfig{}
 	err = proto.Unmarshal(ordererConfig.ConsensusMetadata(), &sharedConfig)
 	require.NoError(t, err)
 

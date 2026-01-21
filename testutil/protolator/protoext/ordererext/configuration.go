@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -83,7 +83,7 @@ func (ct *ConsensusType) VariablyOpaqueFieldProto(name string) (proto.Message, e
 	case "etcdraft":
 		return &etcdraft.ConfigMetadata{}, nil
 	case "arma":
-		return &protos.SharedConfig{}, nil
+		return &ordererpb.SharedConfig{}, nil
 	case "BFT":
 		return &smartbft.Options{}, nil
 	default:

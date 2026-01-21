@@ -11,12 +11,12 @@ import (
 	"encoding/pem"
 	"time"
 
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/pkg/errors"
 )
 
 // validatePartyCertificates validates TLS CA and CA certificates, and verifies TLS and signing certificates for the party.
-func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiration bool) error {
+func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bool) error {
 	if len(party.TLSCACerts) == 0 {
 		return errors.New("empty TLS CA certificates")
 	}
