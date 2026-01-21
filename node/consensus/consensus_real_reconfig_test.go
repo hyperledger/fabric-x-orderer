@@ -17,7 +17,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-orderer/common/msp"
+	"github.com/hyperledger/fabric-x-orderer/common/msputils"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -67,7 +67,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
 	require.NotNil(t, consenterConfig)
-	localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	localmsp := msputils.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 	signer, err := localmsp.GetDefaultSigningIdentity()
 	require.NoError(t, err)
 	consenterLogger := testutil.CreateLogger(t, int(numOfParties))
@@ -117,6 +117,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NotNil(t, block)
 	require.Equal(t, "CERTIFICATE", block.Type)
 	routerCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
 	ctx, err := createContextForSubmitConfig(routerCert)
 	require.NoError(t, err)
 	_, err = consensus.SubmitConfig(ctx, configReq)
@@ -145,7 +146,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	consenterConfig = configContent.ExtractConsenterConfig(lastConfigBlock)
 	require.NotNil(t, consenterConfig)
-	localmsp = msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	localmsp = msputils.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 	signer, err = localmsp.GetDefaultSigningIdentity()
 	require.NoError(t, err)
 	consenterLogger = testutil.CreateLogger(t, int(numOfParties))
