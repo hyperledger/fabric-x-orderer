@@ -41,7 +41,6 @@ type ArmaNodeInfo struct {
 	PartyId         types.PartyID
 	ShardId         types.ShardID
 	ConfigBlockPath string
-	RunningOrder    int
 }
 
 func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType NodeType, partyIdx int, nodeInfo *ArmaNodeInfo) {

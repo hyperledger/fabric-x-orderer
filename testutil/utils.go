@@ -85,6 +85,7 @@ func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[NodeName]*ArmaNodeInfo {
 	var parties []genconfig.Party
 	netInfo := make(map[NodeName]*ArmaNodeInfo)
+	var maxPartyID types.PartyID
 
 	for i := range numOfParties {
 		assemblerPort, lla := GetAvailablePort(t)
@@ -110,26 +111,30 @@ func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatch
 
 		parties = append(parties, party)
 
+		if partyID > maxPartyID {
+			maxPartyID = partyID
+		}
+
 		nodeName := NodeName{PartyID: types.PartyID(i + 1), NodeType: Router}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1), RunningOrder: 4}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1)}
 
 		for j, b := range llbs {
 			nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Batcher, ShardID: types.ShardID(j + 1)}
-			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1), RunningOrder: 3}
+			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1)}
 		}
 
 		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Consensus}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1), RunningOrder: 1}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1)}
 
 		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Assembler}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1), RunningOrder: 2}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1)}
 	}
 
 	network := genconfig.Network{
 		Parties:         parties,
 		UseTLSRouter:    useTLSRouter,
 		UseTLSAssembler: useTLSAssembler,
-		MaxPartyID:      types.PartyID(numOfParties),
+		MaxPartyID:      maxPartyID,
 	}
 
 	err := utils.WriteToYAML(network, configPath)
@@ -316,6 +321,8 @@ func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 }
 
 func sortArmaNodeInfo(infos []*ArmaNodeInfo) func(i, j int) bool {
+	runningOrder := map[NodeType]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
+
 	return func(i, j int) bool {
 		if infos[i].PartyId < infos[j].PartyId {
 			return true
@@ -324,7 +331,7 @@ func sortArmaNodeInfo(infos []*ArmaNodeInfo) func(i, j int) bool {
 			if infos[i].NodeType == infos[j].NodeType {
 				return infos[i].ShardId < infos[j].ShardId
 			}
-			return infos[i].RunningOrder < infos[j].RunningOrder
+			return runningOrder[infos[i].NodeType] < runningOrder[infos[j].NodeType]
 		}
 		return false
 	}
