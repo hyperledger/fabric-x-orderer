@@ -7,9 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package basic
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -19,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	test_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -555,5 +559,125 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 		}
 		t.Logf("Fetched version info: CommitSHA=%s, Version=%s", val.CommitSHA, val.Version)
 		return val.CommitSHA == metadata.CommitSHA && val.Version == metadata.Version
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+func TestSecuredTLSOperationsService(t *testing.T) {
+	// 1. compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// 2. create network with 2 parties and 1 shard
+	parties := 1
+	shards := 1
+
+	t.Logf("Running test with %d parties and %d shards", parties, shards)
+
+	// Create a temporary directory for the test
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, parties, shards, "none", "none")
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
+	require.NotNil(t, netInfo)
+	numOfArmaNodes := len(netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	routerConfigPath := path.Join(dir, "config/party1/local_config_router.yaml")
+	routerLocalConfig := testutil.ReadNodeConfigFromYaml(t, routerConfigPath)
+	routerLocalConfig.OperationsConfig.TLSConfig.Enabled = true
+	routerLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
+	routerLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	err = test_utils.WriteToYAML(&routerLocalConfig, routerConfigPath)
+	require.NoError(t, err)
+
+	batcherConfigPath := path.Join(dir, "config/party1/local_config_batcher1.yaml")
+	batcherLocalConfig := testutil.ReadNodeConfigFromYaml(t, batcherConfigPath)
+	batcherLocalConfig.OperationsConfig.TLSConfig.Enabled = true
+	batcherLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
+	batcherLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	err = test_utils.WriteToYAML(&batcherLocalConfig, batcherConfigPath)
+	require.NoError(t, err)
+
+	consenterConfigPath := path.Join(dir, "config/party1/local_config_consenter.yaml")
+	consenterLocalConfig := testutil.ReadNodeConfigFromYaml(t, consenterConfigPath)
+	consenterLocalConfig.OperationsConfig.TLSConfig.Enabled = true
+	consenterLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
+	consenterLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	err = test_utils.WriteToYAML(&consenterLocalConfig, consenterConfigPath)
+	require.NoError(t, err)
+
+	assemblerConfigPath := path.Join(dir, "config/party1/local_config_assembler.yaml")
+	assemblerLocalConfig := testutil.ReadNodeConfigFromYaml(t, assemblerConfigPath)
+	assemblerLocalConfig.OperationsConfig.TLSConfig.Enabled = true
+	assemblerLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
+	assemblerLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	err = test_utils.WriteToYAML(&assemblerLocalConfig, assemblerConfigPath)
+	require.NoError(t, err)
+
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	routerToMonitor := armaNetwork.GetRouter(t, 1)
+	routerPrometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, routerToMonitor)
+
+	batcherToMonitor := armaNetwork.GetBatcher(t, 1, 1)
+	batcherPrometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
+
+	consenterToMonitor := armaNetwork.GetConsenter(t, 1)
+	consenterPrometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, consenterToMonitor)
+
+	assemblerToMonitor := armaNetwork.GetAssembler(t, 1)
+	assemblerPrometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
+
+	tlsOpts := []func(config *tls.Config){
+		func(config *tls.Config) {
+			cert, err := tls.LoadX509KeyPair(
+				path.Join(dir, "crypto/ordererOrganizations/org1/users/user/tls/user-tls-cert.pem"),
+				path.Join(dir, "crypto/ordererOrganizations/org1/users/user/tls/user-key.pem"),
+			)
+			require.NoError(t, err)
+			config.Certificates = []tls.Certificate{cert}
+		},
+		func(config *tls.Config) {
+			pemBytes, err := os.ReadFile(path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem"))
+			require.NoError(t, err)
+
+			clientCAPool := x509.NewCertPool()
+			clientCAPool.AppendCertsFromPEM(pemBytes)
+			config.RootCAs = clientCAPool
+		},
+	}
+
+	re := regexp.MustCompile(fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, routerPrometheusURL, tlsOpts...) == 0
+	}, 30*time.Second, 100*time.Millisecond)
+
+	re = regexp.MustCompile(fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, batcherPrometheusURL, tlsOpts...) == 0
+	}, 30*time.Second, 100*time.Millisecond)
+
+	re = regexp.MustCompile(fmt.Sprintf(`consensus_bafs_count\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, consenterPrometheusURL, tlsOpts...) == 0
+	}, 30*time.Second, 100*time.Millisecond)
+
+	re = regexp.MustCompile(fmt.Sprintf(`assembler_ledger_transaction_count_total\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, assemblerPrometheusURL, tlsOpts...) == 1
 	}, 30*time.Second, 100*time.Millisecond)
 }

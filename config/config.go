@@ -276,7 +276,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
@@ -339,7 +339,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
@@ -417,7 +417,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
@@ -441,6 +441,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 			break
 		}
 	}
+
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
 	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
@@ -476,7 +477,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
