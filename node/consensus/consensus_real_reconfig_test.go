@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-orderer/common/msputils"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -75,8 +75,11 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
 		require.NotNil(t, consenterConfig)
-		localmsp := msputils.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
-		signer, err := localmsp.GetDefaultSigningIdentity()
+		keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i), "users", "user", "msp", "keystore", "priv_sk")
+		certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i), "users", "user", "msp", "signcerts", "sign-cert.pem")
+		mspID := fmt.Sprintf("org%d", i)
+		signer, err := NewTestSigner(keyPath, certPath, mspID)
+		require.NotNil(t, signer)
 		require.NoError(t, err)
 		consenterLogger := testutil.CreateLogger(t, i)
 		server := arma_node.CreateGRPCConsensus(consenterConfig)
@@ -171,8 +174,11 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
 		require.NotNil(t, consenterConfig)
-		localmsp := msputils.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
-		signer, err := localmsp.GetDefaultSigningIdentity()
+		keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i), "users", "user", "msp", "keystore", "priv_sk")
+		certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i), "users", "user", "msp", "signcerts", "sign-cert.pem")
+		mspID := fmt.Sprintf("org%d", i)
+		signer, err := NewTestSigner(keyPath, certPath, mspID)
+		require.NotNil(t, signer)
 		require.NoError(t, err)
 		consenterLogger := testutil.CreateLogger(t, i)
 		server := arma_node.CreateGRPCConsensus(consenterConfig)
@@ -217,4 +223,41 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		b := <-ledgerListeners[0].c
 		return b.Header.Number == uint64(3)
 	}, 30*time.Second, 100*time.Millisecond)
+}
+
+type TestSigner struct {
+	ecdsaSigner crypto.ECDSASigner
+	creator     *msp.SerializedIdentity
+}
+
+func NewTestSigner(keyPath, certPath, mspID string) (*TestSigner, error) {
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key, err: %v", err)
+	}
+
+	// Create a ECDSA Singer
+	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ECDSA Signer, err: %v", err)
+	}
+
+	certBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read certificate, err: %v", err)
+	}
+	sid := &msp.SerializedIdentity{
+		Mspid:   mspID,
+		IdBytes: certBytes,
+	}
+
+	return &TestSigner{ecdsaSigner: crypto.ECDSASigner(*privateKey), creator: sid}, nil
+}
+
+func (s TestSigner) Sign(message []byte) ([]byte, error) {
+	return s.ecdsaSigner.Sign(message)
+}
+
+func (s TestSigner) Serialize() ([]byte, error) {
+	return protoutil.MarshalOrPanic(s.creator), nil
 }
