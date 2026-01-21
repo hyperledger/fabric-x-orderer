@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"

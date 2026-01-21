@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 )
 
 type SignerSerializer struct {
@@ -42,16 +42,15 @@ func (fake *SignerSerializer) Serialize() ([]byte, error) {
 	ret, specificReturn := fake.serializeReturnsOnCall[len(fake.serializeArgsForCall)]
 	fake.serializeArgsForCall = append(fake.serializeArgsForCall, struct {
 	}{})
-	stub := fake.SerializeStub
-	fakeReturns := fake.serializeReturns
 	fake.recordInvocation("Serialize", []interface{}{})
 	fake.serializeMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.SerializeStub != nil {
+		return fake.SerializeStub()
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
+	fakeReturns := fake.serializeReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -104,16 +103,15 @@ func (fake *SignerSerializer) Sign(arg1 []byte) ([]byte, error) {
 	fake.signArgsForCall = append(fake.signArgsForCall, struct {
 		arg1 []byte
 	}{arg1Copy})
-	stub := fake.SignStub
-	fakeReturns := fake.signReturns
 	fake.recordInvocation("Sign", []interface{}{arg1Copy})
 	fake.signMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.SignStub != nil {
+		return fake.SignStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
+	fakeReturns := fake.signReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
