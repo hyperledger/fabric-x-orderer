@@ -85,7 +85,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "router")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "batcher1")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editConsentersInSharedConfig(dir, 4)
 		require.NoError(t, err)
@@ -145,7 +145,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "consenter")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 
 		originalLogger := testLogger
@@ -173,7 +173,7 @@ func TestLaunchArmaNode(t *testing.T) {
 
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assembler")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 
 		originalLogger := testLogger
@@ -202,7 +202,7 @@ func TestLaunchArmaNode(t *testing.T) {
 	t.Run("TestRouterWithLastConfigBlock", func(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "router")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -248,7 +248,7 @@ func TestLaunchArmaNode(t *testing.T) {
 	t.Run("TestBatcherWithLastConfigBlock", func(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "batcher1")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -294,7 +294,7 @@ func TestLaunchArmaNode(t *testing.T) {
 	t.Run("TestAssemblerWithLastConfigBlock", func(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assemblerWithLastConfigBlock")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -364,7 +364,7 @@ func TestLaunchArmaNode(t *testing.T) {
 	t.Run("TestConsensusWithLastConfigBlock", func(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "consenterWithLastConfigBlock")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)

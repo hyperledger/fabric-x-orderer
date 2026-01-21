@@ -16,9 +16,10 @@ import (
 // UseTLSRouter and UseTLSAssembler indicate whether the connection between a client to a router and an assembler is a none|TLS|mTLS.
 // This is typically used in a test environment.
 type Network struct {
-	Parties         []Party `yaml:"Parties"`
-	UseTLSRouter    string  `yaml:"UseTLSRouter"`
-	UseTLSAssembler string  `yaml:"UseTLSAssembler"`
+	Parties         []Party       `yaml:"Parties"`
+	UseTLSRouter    string        `yaml:"UseTLSRouter"`
+	UseTLSAssembler string        `yaml:"UseTLSAssembler"`
+	MaxPartyID      types.PartyID `yaml:"MaxPartyID"`
 }
 
 type Party struct {
@@ -35,6 +36,7 @@ type NetworkLocalConfig struct {
 }
 
 type PartyLocalConfig struct {
+	ID                   types.PartyID
 	RouterLocalConfig    *config.NodeLocalConfig
 	BatchersLocalConfig  []*config.NodeLocalConfig
 	ConsenterLocalConfig *config.NodeLocalConfig
