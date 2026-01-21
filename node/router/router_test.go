@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -979,8 +980,10 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
-		MonitoringListenAddress:             testutil.AllocateLocalhostAddress(t),
-		MetricsLogInterval:                  1 * time.Second,
+		Operations: &monitoring.Operations{
+			ListenAddress: "127.0.0.1:0",
+		},
+		Metrics: &monitoring.Metrics{Provider: "disabled", MetricsLogInterval: 1 * time.Second},
 	}
 
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}

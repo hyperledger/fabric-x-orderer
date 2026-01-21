@@ -13,6 +13,7 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"gopkg.in/yaml.v3"
 )
@@ -90,9 +91,9 @@ type RouterNodeConfig struct {
 	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
 	// Bundle collects resources (e.g., policy manager, configTx validator, etc.) that are used by the router for validation of transactions
-	Bundle                  channelconfig.Resources
-	MonitoringListenAddress string
-	MetricsLogInterval      time.Duration
+	Bundle     channelconfig.Resources
+	Operations *monitoring.Operations
+	Metrics    *monitoring.Metrics
 }
 
 type AssemblerNodeConfig struct {
@@ -109,14 +110,14 @@ type AssemblerNodeConfig struct {
 	ReplicationChannelSize    int
 	BatchRequestsChannelSize  int
 	// Shared config
-	Shards                  []ShardInfo
-	Consenter               ConsenterInfo
-	UseTLS                  bool
-	ClientAuthRequired      bool
-	ClientRootCAs           [][]byte
-	Bundle                  channelconfig.Resources
-	MonitoringListenAddress string
-	MetricsLogInterval      time.Duration
+	Shards             []ShardInfo
+	Consenter          ConsenterInfo
+	UseTLS             bool
+	ClientAuthRequired bool
+	ClientRootCAs      [][]byte
+	Bundle             channelconfig.Resources
+	Operations         *monitoring.Operations
+	Metrics            *monitoring.Metrics
 }
 
 type BatcherNodeConfig struct {
@@ -143,10 +144,10 @@ type BatcherNodeConfig struct {
 	AutoRemoveTimeout                   time.Duration
 	BatchCreationTimeout                time.Duration
 	BatchSequenceGap                    types.BatchSequence
-	MonitoringListenAddress             string
 	ClientSignatureVerificationRequired bool
 	Bundle                              channelconfig.Resources
-	MetricsLogInterval                  time.Duration
+	Operations                          *monitoring.Operations
+	Metrics                             *monitoring.Metrics
 }
 
 type ConsenterNodeConfig struct {
@@ -164,12 +165,12 @@ type ConsenterNodeConfig struct {
 	SigningPrivateKey                   RawBytes
 	WALDir                              string
 	BFTConfig                           smartbft_types.Configuration
-	MonitoringListenAddress             string
 	MonitoringInterval                  int32
-	MetricsLogInterval                  time.Duration
 	ClientSignatureVerificationRequired bool
 	Bundle                              channelconfig.Resources
 	RequestMaxBytes                     uint64
+	Operations                          *monitoring.Operations
+	Metrics                             *monitoring.Metrics
 }
 
 func NodeConfigToYAML(config interface{}, path string) error {

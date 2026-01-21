@@ -55,7 +55,7 @@ type RouterMetrics struct {
 
 // NewRouterMetrics creates the Metrics
 func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *flogging.FabricLogger) *RouterMetrics {
-	host, port, err := net.SplitHostPort(routerNodeConfig.MonitoringListenAddress)
+	host, port, err := net.SplitHostPort(routerNodeConfig.Operations.ListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
 	}
@@ -71,7 +71,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 	rejectedTxs := p.NewCounter(rejectedTxs)
 
 	return &RouterMetrics{
-		interval:               routerNodeConfig.MetricsLogInterval,
+		interval:               routerNodeConfig.Metrics.MetricsLogInterval,
 		logger:                 logger,
 		stopChan:               make(chan struct{}),
 		monitor:                monitor,

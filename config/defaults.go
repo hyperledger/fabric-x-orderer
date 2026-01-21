@@ -67,3 +67,8 @@ var DefaultBatchingConfig = BatchingConfig{
 	},
 	RequestMaxBytes: 1024 * 1024,
 }
+
+var DefaultNodeLocalConfig = NodeLocalConfig{
+	OperationsConfig: &Operations{ListenAddress: "127.0.0.1", ListenPort: 0},
+	MetricsConfig:    &Metrics{Provider: "prometheus", MetricsLogInterval: time.Second * 10},
+}

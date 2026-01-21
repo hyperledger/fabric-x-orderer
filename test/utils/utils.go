@@ -33,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -126,13 +127,15 @@ func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		require.NoError(t, cs.Add(genesisBlock))
 
 		config := &node_config.RouterNodeConfig{
-			ListenAddress:           testutil.AllocateLocalhostAddress(t),
-			MonitoringListenAddress: testutil.AllocateLocalhostAddress(t),
-			MetricsLogInterval:      5 * time.Second,
-			FileStorePath:           fileStorePath,
-			TLSPrivateKeyFile:       kp.Key,
-			TLSCertificateFile:      kp.Cert,
-			PartyID:                 types.PartyID(i + 1),
+			ListenAddress: "0.0.0.0:0",
+			Operations: &monitoring.Operations{
+				ListenAddress: "127.0.0.1:0",
+			},
+			Metrics:            &monitoring.Metrics{Provider: "disabled", MetricsLogInterval: 10 * time.Second},
+			FileStorePath:      fileStorePath,
+			TLSPrivateKeyFile:  kp.Key,
+			TLSCertificateFile: kp.Cert,
+			PartyID:            types.PartyID(i + 1),
 			Shards: []node_config.ShardInfo{{
 				ShardId:  shardId,
 				Batchers: batcherInfos,
@@ -191,9 +194,11 @@ func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 			Consenter:                 consenterInfos[i],
 			UseTLS:                    true,
 			ClientAuthRequired:        false,
-			MonitoringListenAddress:   testutil.AllocateLocalhostAddress(t),
-			MetricsLogInterval:        5 * time.Second,
-			Bundle:                    testutil.CreateAssemblerBundleForTest(0),
+			Operations: &monitoring.Operations{
+				ListenAddress: "127.0.0.1:0",
+			},
+			Metrics: &monitoring.Metrics{Provider: "disabled", MetricsLogInterval: 10 * time.Second},
+			Bundle:  testutil.CreateAssemblerBundleForTest(0),
 		}
 		configs = append(configs, assemblerConf)
 
@@ -259,8 +264,13 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			Bundle:                              bundle,
 			ClientSignatureVerificationRequired: false,
 			RequestMaxBytes:                     1000,
-			MonitoringListenAddress:             testutil.AllocateLocalhostAddress(t),
-			MetricsLogInterval:                  5 * time.Second,
+			Operations: &monitoring.Operations{
+				ListenAddress: "127.0.0.1:0",
+			},
+			Metrics: &monitoring.Metrics{
+				Provider:           "disabled",
+				MetricsLogInterval: 10 * time.Second,
+			},
 		}
 		configs = append(configs, conf)
 
@@ -341,8 +351,13 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
-			MonitoringListenAddress:             testutil.AllocateLocalhostAddress(t),
-			MetricsLogInterval:                  3 * time.Second,
+			Operations: &monitoring.Operations{
+				ListenAddress: "127.0.0.1:0",
+			},
+			Metrics: &monitoring.Metrics{
+				Provider:           "disabled",
+				MetricsLogInterval: 10 * time.Second,
+			},
 		}
 
 		configs = append(configs, batcherConf)

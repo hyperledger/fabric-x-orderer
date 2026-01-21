@@ -35,7 +35,7 @@ type Metrics struct {
 }
 
 func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
-	host, port, err := net.SplitHostPort(assemblerNodeConfig.MonitoringListenAddress)
+	host, port, err := net.SplitHostPort(assemblerNodeConfig.Operations.ListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
 	}
@@ -53,7 +53,7 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *
 	return &Metrics{
 		ledgerMetrics:  ledgerMetrics,
 		deliverMetrics: deliverMetrics,
-		interval:       assemblerNodeConfig.MetricsLogInterval,
+		interval:       assemblerNodeConfig.Metrics.MetricsLogInterval,
 		logger:         logger,
 		stopChan:       make(chan struct{}),
 		monitor:        monitor,

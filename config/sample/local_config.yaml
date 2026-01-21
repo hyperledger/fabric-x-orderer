@@ -165,8 +165,6 @@ General:
   # ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
   ClientSignatureVerificationRequired: false
 
-  # MetricsLogInterval defines metrics log period; 0 disables.
-  MetricsLogInterval: 0s
 
 ################################################################################
 #
@@ -216,3 +214,51 @@ Assembler:
   PopWaitMonitorTimeout: 1s
   ReplicationChannelSize: 100
   BatchRequestsChannelSize: 1000
+
+################################################################################
+#
+#   Operations Configuration
+#
+#   - This configures the operations server endpoint for the orderer
+#
+################################################################################
+Operations:
+  # host for the operations server
+  ListenAddress: 127.0.0.1:0
+
+ # port for the operations server
+  ListenPort: 8334
+
+  # TLS configuration for the operations endpoint
+  TLS:
+    # TLS enabled
+    Enabled: false
+
+    # Certificate is the location of the PEM encoded TLS certificate
+    Certificate:
+
+    # PrivateKey points to the location of the PEM-encoded key
+    PrivateKey:
+
+    # Most operations service endpoints require client authentication when TLS
+    # is enabled. ClientAuthRequired requires client certificate authentication
+    # at the TLS layer to access all resources.
+    ClientAuthRequired: false
+
+    # Paths to PEM encoded ca certificates to trust for client authentication
+    ClientRootCAs: []
+
+################################################################################
+#
+#   Metrics Configuration
+#
+#   - This configures metrics collection for the orderer
+#
+################################################################################
+Metrics:
+  # The metrics provider is one of statsd, prometheus, or disabled
+  Provider: prometheus
+
+   # MetricsLogInterval defines metrics log period; 0 disables.
+  MetricsLogInterval: 0s
+
