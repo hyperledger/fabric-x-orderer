@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-lib-go/common/flogging/httpadmin"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-lib-go/healthz"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -87,6 +88,10 @@ func HealthCheckServiceURL(system *System, logger *flogging.FabricLogger) string
 	return operationServiceURL("healthz", system.Addr(), logger)
 }
 
+func LogSpecServiceURL(system *System, logger *flogging.FabricLogger) string {
+	return operationServiceURL("logspec", system.Addr(), logger)
+}
+
 // NewOperationsSystem creates a new operations system with the provided configuration.
 func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 	o := Options{
@@ -122,6 +127,7 @@ func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 
 	system.initializeMetricsProvider()
 	system.initializeHealthCheckHandler()
+	system.initializeLoggingHandler()
 
 	return system
 }
@@ -164,4 +170,32 @@ func (s *System) initializeHealthCheckHandler() {
 	//     '503':
 	//        description: Service unavailable.
 	s.RegisterHandler("/healthz", s.healthHandler, false)
+}
+
+func (s *System) initializeLoggingHandler() {
+	// swagger:operation GET /logspec operations logspecget
+	// ---
+	// summary: Retrieves the active logging spec for a peer or orderer.
+	// responses:
+	//     '200':
+	//        description: Ok.
+
+	// swagger:operation PUT /logspec operations logspecput
+	// ---
+	// summary: Updates the active logging spec for a peer or orderer.
+	//
+	// parameters:
+	// - name: payload
+	//   in: formData
+	//   type: string
+	//   description: The payload must consist of a single attribute named spec.
+	//   required: true
+	// responses:
+	//     '204':
+	//        description: No content.
+	//     '400':
+	//        description: Bad request.
+	// consumes:
+	//   - multipart/form-data
+	s.RegisterHandler("/logspec", httpadmin.NewSpecHandler(), s.options.TLS.Enabled)
 }

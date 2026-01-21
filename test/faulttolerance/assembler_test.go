@@ -21,9 +21,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging/httpadmin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
@@ -155,15 +157,23 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 // 6. Stops and restarts the monitored assembler node
 // 7. Verifies that the metrics remain accurate after the node restart
 // 8. Checks the health check endpoint to ensure the assembler node is healthy
+// 9. Verifies that the assembler's log output does not contain DEBUG level logs
+// 10. Checks the log specification endpoint to ensure the log spec is "info"
+// 11. Updates the log specification to "debug" and verifies the change is reflected
+// 12. Pull transactions to generate DEBUG level logs and verifies that the assembler's log output contains DEBUG logs
 func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "TLS", "TLS")
-	defer netInfo.CleanUp()
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
 
 	// 2.
 	armageddonCLI := armageddon.NewCLI()
@@ -181,7 +191,9 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	readyChan := make(chan string, nodesNumber)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, nodesNumber, 10)
 
@@ -194,10 +206,7 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
-		os.Exit(3)
-	}
+	require.NoError(t, err)
 
 	uc, err := testutil.GetUserConfig(dir, 1)
 	require.NoError(t, err)
@@ -207,10 +216,7 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 
 	for i := range totalTxNumber {
 		status := rl.GetToken()
-		if !status {
-			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-			os.Exit(3)
-		}
+		require.Truef(t, status, "failed to send tx %d", i+1)
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
 		env := tx.CreateStructuredEnvelope(txContent)
 		err = broadcastClient.SendTx(env)
@@ -218,8 +224,8 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	}
 
 	// 5.
-	assemblerToMonitor := armaNetwork.GetAssembler(t, types.PartyID(1))
-	url := testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
+	assemblerToTest := armaNetwork.GetAssembler(t, types.PartyID(1))
+	prometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToTest)
 
 	txsCountPattern := fmt.Sprintf(`assembler_ledger_transaction_count_total\{party_id="%d"\} \d+`, types.PartyID(1))
 	txsCountRe := regexp.MustCompile(txsCountPattern)
@@ -228,32 +234,81 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	blocksCountRe := regexp.MustCompile(blocksCountPattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, txsCountRe, url) == totalTxNumber+1
+		return testutil.FetchPrometheusMetricValue(t, txsCountRe, prometheusURL) == totalTxNumber+1
 	}, 30*time.Second, 100*time.Millisecond)
 
-	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
+	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, prometheusURL), 2)
 
 	// 6.
-	assemblerToMonitor.StopArmaNode()
-	assemblerToMonitor.RestartArmaNode(t, readyChan)
+	assemblerToTest.StopArmaNode()
+	assemblerToTest.RestartArmaNode(t, readyChan)
 
 	// 7.
 	testutil.WaitReady(t, readyChan, 1, 10)
-	url = testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
+	prometheusURL = testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToTest)
 
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, txsCountRe, url) == totalTxNumber+1
+		return testutil.FetchPrometheusMetricValue(t, txsCountRe, prometheusURL) == totalTxNumber+1
 	}, 30*time.Second, 100*time.Millisecond)
 
-	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
+	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, prometheusURL), 2)
 
 	// 8.
-	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, assemblerToMonitor)
-
-	pattern := `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
-	re := regexp.MustCompile(pattern)
+	healthCheckURL := testutil.CaptureArmaNodeHealthCheckServiceURL(t, assemblerToTest)
+	healthCheckRe := regexp.MustCompile(`^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`)
 
 	require.Eventually(t, func() bool {
-		return testutil.GetHealthCheckStatus(t, re, url)
+		return testutil.GetHealthCheckStatus(t, healthCheckRe, healthCheckURL)
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 9.
+	debugRe := regexp.MustCompile("DEBU")
+	matches := debugRe.FindStringSubmatch(string(assemblerToTest.RunInfo.Session.Err.Contents()))
+	require.Len(t, matches, 0, "expected to not find DEBUG logs in assembler output")
+
+	// 10.
+	logSpecURL := testutil.CaptureArmaNodeLogSpecServiceURL(t, assemblerToTest)
+	logSpecRe := regexp.MustCompile(`^\{\s*"spec"\s*:\s*"([^"]*)"\s*\}`)
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, logSpecURL)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "info" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 11.
+	testutil.UpdateLogSpecValue(t, logSpecURL, &httpadmin.LogSpec{Spec: "debug"})
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, logSpecURL)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "debug" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 12.
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		Parties:      []types.PartyID{1},
+		UserConfig:   uc,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: totalTxNumber,
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d",
+		Signer:       signutil.CreateTestSigner(t, "org1", dir),
+	})
+
+	require.Eventually(t, func() bool {
+		matches := debugRe.FindStringSubmatch(string(assemblerToTest.RunInfo.Session.Err.Contents()))
+		return len(matches) > 0
 	}, 30*time.Second, 100*time.Millisecond)
 }

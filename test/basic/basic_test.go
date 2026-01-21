@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging/httpadmin"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -286,51 +287,131 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 
 // TestRunNodesAndGetResponseFromOperationEndpoints verifies that the nodes respond correctly to operation endpoints INSECURED.
 // The test performs the following steps:
-// 1. Creates a test network configuration
-// 2. Generates network artifacts using armageddon CLI
-// 3. Builds and starts the arma node binary
-// 4. Sends a configurable number of transactions (10) using a rate-limited broadcast client
-// 5. Monitors Prometheus metrics to verify transaction count (totalTxNumber+1) and block count (2)
-// 6. Stops and restarts the monitored assembler node
-// 7. Verifies that the metrics remain accurate after the node restart
-// 8. Checks the health check endpoint to ensure the assembler node is healthy
+// 1. Compile the arma binary.
+// 2. Create a network with 2 parties and 1 shard.
+// 3. Generate network artifacts using the arma generate command.
+// 4. Run the arma nodes and wait for them to be ready.
+// 5. Verify that the batcher is running and has no DEBUG logs in its output.
+// 6. Verify that the consenter is running and has no DEBUG logs in its output.
+// 7. Update log spec to DEBUG for both batcher and consenter, and verify the change.
+// 8. Send transactions to the routers.
+// 9. Verify that the batcher and consenter have DEBUG logs in their output after sending transactions.
+// 10. Verify that the batcher and consenter Prometheus metrics reflect the transactions sent.
+// 11. Verify that the batcher and consenter health check endpoints respond with status "OK".
 func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	defer gexec.CleanupBuildArtifacts()
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
-	// 2. create network with 2 parties and 1 shard
-	parties := 2
+	// 2. create network with 1 parties and 1 shard
+	parties := 1
 	shards := 1
 
 	t.Logf("Running test with %d parties and %d shards", parties, shards)
 
-	// Create a temporary directory for the test
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
 
+	// 3. create config.yaml and generate network artifacts
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, parties, shards, "none", "none")
-	defer netInfo.CleanUp()
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
 	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
+	// 4. run arma nodes
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	debugRe := regexp.MustCompile("DEBU")
+
+	batcherToTest := armaNetwork.GetBatcher(t, types.PartyID(1), types.ShardID(1))
+
+	// 5. Verify that the batcher is running and has no DEBUG logs in its output
+	matches := debugRe.FindStringSubmatch(string(batcherToTest.RunInfo.Session.Err.Contents()))
+	require.Len(t, matches, 0, "expected to not find DEBUG logs in batcher output")
+
+	batcherLogSpecURL := testutil.CaptureArmaNodeLogSpecServiceURL(t, batcherToTest)
+	logSpecRe := regexp.MustCompile(`^\{\s*"spec"\s*:\s*"([^"]*)"\s*\}`)
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, batcherLogSpecURL)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "info" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
+
+	consenterToTest := armaNetwork.GetConsenter(t, 1)
+
+	// 6. Verify that the consenter is running and has no DEBUG logs in its output
+	matches = debugRe.FindStringSubmatch(string(consenterToTest.RunInfo.Session.Err.Contents()))
+	require.Len(t, matches, 0, "expected to not find DEBUG logs in consenter output")
+
+	consenterLogSpecURL := testutil.CaptureArmaNodeLogSpecServiceURL(t, consenterToTest)
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, consenterLogSpecURL)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "info" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 7. Update log spec to DEBUG for both batcher and consenter, and verify the change
+	testutil.UpdateLogSpecValue(t, batcherLogSpecURL, &httpadmin.LogSpec{Spec: "debug"})
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, batcherLogSpecURL)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "debug" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
+
+	testutil.UpdateLogSpecValue(t, consenterLogSpecURL, &httpadmin.LogSpec{Spec: "debug"})
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, consenterLogSpecURL)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "debug" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
 
 	uc, err := testutil.GetUserConfig(dir, 1)
 	assert.NoError(t, err)
 	assert.NotNil(t, uc)
 
-	// 2. Send To Routers
+	// 8. Send transactions to the routers.
 	totalTxNumber := 10
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
@@ -338,19 +419,13 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
-		os.Exit(3)
-	}
+	require.NoError(t, err)
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := range totalTxNumber {
 		status := rl.GetToken()
-		if !status {
-			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-			os.Exit(3)
-		}
+		require.Truef(t, status, "failed to send tx %d", i+1)
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
 		env := tx.CreateStructuredEnvelope(txContent)
 		err = broadcastClient.SendTx(env)
@@ -360,41 +435,43 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 	t.Log("Finished submit")
 	broadcastClient.Stop()
 
-	batcherToMonitor := armaNetwork.GetBatcher(t, types.PartyID(1), types.ShardID(1))
-	url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
-
-	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
-	re := regexp.MustCompile(pattern)
-
+	// 9. Verify that the batcher and consenter have DEBUG logs in their output after sending transactions
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
+		matches := debugRe.FindStringSubmatch(string(batcherToTest.RunInfo.Session.Err.Contents()))
+		return len(matches) > 0
 	}, 30*time.Second, 100*time.Millisecond)
 
-	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, batcherToMonitor)
-
-	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
-	re = regexp.MustCompile(pattern)
-
 	require.Eventually(t, func() bool {
-		return testutil.GetHealthCheckStatus(t, re, url)
+		matches := debugRe.FindStringSubmatch(string(consenterToTest.RunInfo.Session.Err.Contents()))
+		return len(matches) > 0
 	}, 30*time.Second, 100*time.Millisecond)
 
-	consenterToMonitor := armaNetwork.GetConsenter(t, 1)
-	url = testutil.CaptureArmaNodePrometheusServiceURL(t, consenterToMonitor)
-
-	pattern = fmt.Sprintf(`consensus_bafs_count\{party_id="%d"\} \d+`, types.PartyID(1))
-	re = regexp.MustCompile(pattern)
+	// 10. Verify that the batcher and consenter Prometheus metrics reflect the transactions sent
+	batcherPrometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToTest)
+	batcherPrometheusRe := regexp.MustCompile(fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1)))
 
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, re, url) >= parties*shards
+		return testutil.FetchPrometheusMetricValue(t, batcherPrometheusRe, batcherPrometheusURL) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
 
-	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, consenterToMonitor)
-
-	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
-	re = regexp.MustCompile(pattern)
+	consenterPrometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, consenterToTest)
+	consenterPrometheusRe := regexp.MustCompile(fmt.Sprintf(`consensus_bafs_count\{party_id="%d"\} \d+`, types.PartyID(1)))
 
 	require.Eventually(t, func() bool {
-		return testutil.GetHealthCheckStatus(t, re, url)
+		return testutil.FetchPrometheusMetricValue(t, consenterPrometheusRe, consenterPrometheusURL) >= parties*shards
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 11. Verify that the batcher and consenter health check endpoints respond with status "OK"
+	batcherHealthCheckURL := testutil.CaptureArmaNodeHealthCheckServiceURL(t, batcherToTest)
+	healthCheckRe := regexp.MustCompile(`^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, healthCheckRe, batcherHealthCheckURL)
+	}, 30*time.Second, 100*time.Millisecond)
+
+	consenterHealthCheckURL := testutil.CaptureArmaNodeHealthCheckServiceURL(t, consenterToTest)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, healthCheckRe, consenterHealthCheckURL)
 	}, 30*time.Second, 100*time.Millisecond)
 }
