@@ -8,8 +8,6 @@ package assembler
 
 import (
 	"fmt"
-	"net"
-	"strconv"
 	"sync"
 	"time"
 
@@ -17,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,25 +29,19 @@ type Metrics struct {
 	stopChan       chan struct{}
 	stopOnce       sync.Once
 	startOnce      sync.Once
-	monitor        *monitoring.Monitor
 	partyID        arma_types.PartyID
 }
 
 func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
-	host, port, err := net.SplitHostPort(assemblerNodeConfig.Operations.ListenAddress)
-	if err != nil {
-		logger.Panicf("failed to get hostname: %v", err)
-	}
-	portInt, err := strconv.Atoi(port)
-	if err != nil {
-		logger.Panicf("failed to convert port to int: %v", err)
-	}
 	partyID := fmt.Sprintf("%d", assemblerNodeConfig.PartyId)
 
-	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("assembler_%s", partyID))
-	p := monitor.Provider
-	ledgerMetrics.NewAssemblerLedgerMetrics(p, partyID, logger)
-	deliverMetrics := deliver.NewMetrics(p)
+	provider := monitoring.NewProvider(assemblerNodeConfig.Metrics.Provider, logger)
+
+	versionGauge := monitoring.VersionGauge(provider)
+	versionGauge.With(metadata.Version).Set(1)
+
+	ledgerMetrics.NewAssemblerLedgerMetrics(provider, partyID, logger)
+	deliverMetrics := deliver.NewMetrics(provider)
 
 	return &Metrics{
 		ledgerMetrics:  ledgerMetrics,
@@ -56,27 +49,21 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *
 		interval:       assemblerNodeConfig.Metrics.MetricsLogInterval,
 		logger:         logger,
 		stopChan:       make(chan struct{}),
-		monitor:        monitor,
 		partyID:        assemblerNodeConfig.PartyId,
 	}
 }
 
-func (m *Metrics) Start() {
+func (m *Metrics) StartMetricsTracker() {
 	m.startOnce.Do(func() {
-		m.monitor.Start()
 		if m.interval > 0 {
 			go m.trackMetrics()
 		}
 	})
 }
 
-func (m *Metrics) Stop() {
+func (m *Metrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		m.logger.Infof("Reporting routine is stopping")
-		if m.monitor != nil {
-			m.monitor.Stop()
-			m.monitor = nil
-		}
 		close(m.stopChan)
 
 		txCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))

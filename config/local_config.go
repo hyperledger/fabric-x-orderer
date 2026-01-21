@@ -53,8 +53,6 @@ type Operations struct {
 	ListenAddress string `yaml:"ListenAddress,omitempty"`
 	// Port for the operations server
 	ListenPort uint32 `yaml:"ListenPort,omitempty"`
-	// TLS config for the operations server
-	TLS *TLSConfig
 }
 
 // Metrics configures the metrics provider for the orderer.

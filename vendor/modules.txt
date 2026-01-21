@@ -237,9 +237,11 @@ github.com/hyperledger/fabric-lib-go/bccsp/sw
 github.com/hyperledger/fabric-lib-go/bccsp/utils
 github.com/hyperledger/fabric-lib-go/common/flogging
 github.com/hyperledger/fabric-lib-go/common/flogging/fabenc
+github.com/hyperledger/fabric-lib-go/common/flogging/httpadmin
 github.com/hyperledger/fabric-lib-go/common/metrics
 github.com/hyperledger/fabric-lib-go/common/metrics/disabled
 github.com/hyperledger/fabric-lib-go/common/metrics/metricsfakes
+github.com/hyperledger/fabric-lib-go/healthz
 # github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
 ## explicit; go 1.22.0
 github.com/hyperledger/fabric-protos-go-apiv2/common

@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	xprotoutil "github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -115,6 +116,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.SigVerifier = buildVerifier(nodeConfig.Consenters, nodeConfig.Shards, c.Logger)
 	c.synchronizerFactory = &bft_synch.SynchronizerCreator{}
 	c.Metrics = NewConsensusMetrics(nodeConfig, consLedger.Height(), txCount, c.Logger)
+	c.System = operations.NewOperationsSystem(*nodeConfig.Operations, *nodeConfig.Metrics)
 	c.RequestVerifier = CreateConsensusRulesVerifier(nodeConfig)
 	c.ConfigUpdateProposer = configUpdateProposer
 	c.ConfigApplier = &DefaultConfigApplier{}

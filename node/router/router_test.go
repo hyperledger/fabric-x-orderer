@@ -23,12 +23,13 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
-	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	fabricx_config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -99,7 +100,7 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int,
 
 	// create stub batchers
 	var batchers []*stub.StubBatcher
-	for i := 0; i < numOfShards; i++ {
+	for i := range numOfShards {
 		batcher := stub.NewStubBatcher(t, ca, partyID, types.ShardID(i+1))
 		batchers = append(batchers, &batcher)
 	}
@@ -980,10 +981,10 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: "127.0.0.1:0",
 		},
-		Metrics: &monitoring.Metrics{Provider: "disabled", MetricsLogInterval: 1 * time.Second},
+		Metrics: &operations.Metrics{Provider: generate.DefaultMetricsProviderType, MetricsLogInterval: 1 * time.Second},
 	}
 
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}

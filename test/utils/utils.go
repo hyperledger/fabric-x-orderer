@@ -33,7 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
-	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -128,10 +128,10 @@ func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 
 		config := &node_config.RouterNodeConfig{
 			ListenAddress: "0.0.0.0:0",
-			Operations: &monitoring.Operations{
+			Operations: &operations.Operations{
 				ListenAddress: "127.0.0.1:0",
 			},
-			Metrics:            &monitoring.Metrics{Provider: "disabled", MetricsLogInterval: 10 * time.Second},
+			Metrics:            &operations.Metrics{Provider: "disabled", MetricsLogInterval: 10 * time.Second},
 			FileStorePath:      fileStorePath,
 			TLSPrivateKeyFile:  kp.Key,
 			TLSCertificateFile: kp.Cert,
@@ -194,10 +194,10 @@ func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 			Consenter:                 consenterInfos[i],
 			UseTLS:                    true,
 			ClientAuthRequired:        false,
-			Operations: &monitoring.Operations{
+			Operations: &operations.Operations{
 				ListenAddress: "127.0.0.1:0",
 			},
-			Metrics: &monitoring.Metrics{Provider: "disabled", MetricsLogInterval: 10 * time.Second},
+			Metrics: &operations.Metrics{Provider: "disabled", MetricsLogInterval: 10 * time.Second},
 			Bundle:  testutil.CreateAssemblerBundleForTest(0),
 		}
 		configs = append(configs, assemblerConf)
@@ -264,10 +264,10 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			Bundle:                              bundle,
 			ClientSignatureVerificationRequired: false,
 			RequestMaxBytes:                     1000,
-			Operations: &monitoring.Operations{
+			Operations: &operations.Operations{
 				ListenAddress: "127.0.0.1:0",
 			},
-			Metrics: &monitoring.Metrics{
+			Metrics: &operations.Metrics{
 				Provider:           "disabled",
 				MetricsLogInterval: 10 * time.Second,
 			},
@@ -351,10 +351,10 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
-			Operations: &monitoring.Operations{
+			Operations: &operations.Operations{
 				ListenAddress: "127.0.0.1:0",
 			},
-			Metrics: &monitoring.Metrics{
+			Metrics: &operations.Metrics{
 				Provider:           "disabled",
 				MetricsLogInterval: 10 * time.Second,
 			},
