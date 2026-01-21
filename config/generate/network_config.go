@@ -36,6 +36,7 @@ type NetworkLocalConfig struct {
 }
 
 type PartyLocalConfig struct {
+	ID                   types.PartyID
 	RouterLocalConfig    *config.NodeLocalConfig
 	BatchersLocalConfig  []*config.NodeLocalConfig
 	ConsenterLocalConfig *config.NodeLocalConfig
