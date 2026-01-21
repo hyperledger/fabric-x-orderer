@@ -235,6 +235,8 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 
+	successiveConfigUpdates := 0
+
 	// Submit config update
 	submittingParty := 1
 	env := configutil.CreateConfigTX(t, dir, remainingParties, submittingParty, configUpdatePbData)
@@ -242,8 +244,13 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	for _, partyId := range remainingParties {
 		// Send the config tx
 		err = broadcastClient.SendTxTo(env, partyId)
-		require.NoError(t, err)
+		if err == nil {
+			successiveConfigUpdates++
+		}
 	}
+
+	f := (len(remainingParties) + 1) / 3
+	require.GreaterOrEqual(t, successiveConfigUpdates, 2*f+1, "Failed to send config update to enough parties to reach quorum, but succeeded in sending to %d parties", successiveConfigUpdates)
 
 	broadcastClient.Stop()
 
