@@ -641,12 +641,20 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	inLatestDecision := false
 	// check if this decision includes a config block
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
-		lastBlockNum := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
+		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
+		lastBlockNum := configBlock.Header.Number
+		var err error
+		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.Config.PartyId)
+		if err != nil {
+			c.Logger.Panicf("Failed extracting smartBFT config from config block: %v", err)
+		}
+		inLatestDecision = true
 		c.Logger.Infof("Delivering config block number %d", lastBlockNum)
-		c.decisionNumOfLastConfigBlock = hdr.Num
+		// if this is a new config block (with a larger number) then apply (soft stop)
 		if c.lastConfigBlockNum < lastBlockNum {
+			c.decisionNumOfLastConfigBlock = hdr.Num
 			c.lastConfigBlockNum = lastBlockNum
-			c.Logger.Warnf("Soft stop: pending restart")
+			c.Logger.Infof("Soft stop: pending restart")
 			go c.SoftStop()
 			// TODO apply reconfig after deliver
 		}

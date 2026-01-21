@@ -15,7 +15,7 @@ import (
 
 func BuildLocalMSP(localMSPDir string, localMSPID string, factoryOpts *factory.FactoryOpts) msp.MSP {
 	mspConfig, err := msp.GetLocalMspConfig(localMSPDir, factoryOpts, localMSPID)
-	if err != nil || mspConfig == nil {
+	if err != nil {
 		panic(fmt.Sprintf("Failed to get local msp config: %v", err))
 	}
 

@@ -22,20 +22,19 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
-	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
-var partiesConfigPath = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "PartiesConfig"}
+var (
+	partiesConfigPath = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "PartiesConfig"}
+	sharedConfigPath  = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata"}
+)
 
 type (
 	batchSizeConfigName     string
@@ -179,7 +178,6 @@ type ConfigUpdateBuilder struct {
 	configDir         string
 	jsonConfigPath    string
 	configData        map[string]any
-	maxPartiesNum     int
 }
 
 func NewConfigUpdateBuilder(t *testing.T, configDir string, lastConfigBlockPath string) (*ConfigUpdateBuilder, func()) {
@@ -216,7 +214,6 @@ func getJSONConfigBlockData(t *testing.T, dir string, configtxlatorPath string, 
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, "Command failed with output: %s", string(output))
 
-	// configtxlator.DecodeProto("common.Block", MustOpen(genesisBlockPath), MustCreate(jsonPath))
 	require.FileExists(t, jsonPath)
 
 	// Read the block in the json representation
@@ -593,15 +590,11 @@ func (c *ConfigUpdateBuilder) UpdateOrgEndpoints(t *testing.T, partyID types.Par
 }
 
 func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyConfig) []byte {
-	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
-	partiesConfigList := partiesConfig.([]any)
+	sharedConfig := getNestedJSONValue(t, c.configData, sharedConfigPath...)
+	maxPartyID := sharedConfig.(map[string]any)["MaxPartyID"].(float64)
+	partiesConfig := sharedConfig.(map[string]any)["PartiesConfig"].([]any)
 
-	if c.maxPartiesNum == 0 {
-		c.maxPartiesNum = len(partiesConfigList)
-	}
-
-	c.maxPartiesNum++
-	newPartyID := c.maxPartiesNum
+	maxPartyID++
 
 	batchersConfig := []map[string]any{}
 	for _, bc := range newParty.BatchersConfig {
@@ -615,9 +608,9 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyCo
 			})
 	}
 
-	partiesConfigList = append(partiesConfigList,
+	partiesConfig = append(partiesConfig,
 		map[string]any{
-			"PartyID":    float64(newPartyID),
+			"PartyID":    maxPartyID,
 			"CACerts":    newParty.CACerts,
 			"TLSCACerts": newParty.TLSCACerts,
 
@@ -640,17 +633,15 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyCo
 			"BatchersConfig": batchersConfig,
 		})
 
-	overwriteNestedJSONValue(t, c.configData, partiesConfigList, partiesConfigPath...)
+	sharedConfig.(map[string]any)["MaxPartyID"] = maxPartyID
+	sharedConfig.(map[string]any)["PartiesConfig"] = partiesConfig
+	overwriteNestedJSONValue(t, c.configData, sharedConfig, sharedConfigPath...)
 	return c.createConfigUpdate(t, c.configData)
 }
 
 func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) []byte {
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
-
-	if c.maxPartiesNum == 0 {
-		c.maxPartiesNum = len(partiesConfigList)
-	}
 
 	found := false
 	for i, party := range partiesConfigList {
@@ -867,44 +858,4 @@ func overwriteNestedJSONValue(t *testing.T, data map[string]any, value any, path
 			require.FailNow(t, fmt.Sprintf("unexpected type encountered at path %v", path[:i]))
 		}
 	}
-}
-
-func NewConfigBlock(t *testing.T, dir string, configUpdate *common.Envelope, configBlockPath string) *common.Block {
-	sharedConfigProto, sharedConfigYaml, err := config.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
-	require.NoError(t, err)
-	sharedConfigBytes, err := proto.Marshal(sharedConfigProto)
-	require.NoError(t, err)
-	sharedConfigBinaryPath := filepath.Join(dir, "shared_config.bin")
-	err = os.WriteFile(sharedConfigBinaryPath, sharedConfigBytes, 0o644)
-	require.NoError(t, err)
-	profile, err := generate.CreateProfile(dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
-	require.NoError(t, err)
-
-	payloadChannelHeader := protoutil.MakeChannelHeader(common.HeaderType_CONFIG, 1, "arma", 0)
-	require.NotNil(t, payloadChannelHeader)
-	payloadSignatureHeader := protoutil.MakeSignatureHeader(nil, protoutil.CreateNonceOrPanic())
-	require.NotNil(t, payloadSignatureHeader)
-	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
-	payloadHeader := protoutil.MakePayloadHeader(payloadChannelHeader, payloadSignatureHeader)
-	require.NotNil(t, payloadHeader)
-	channelGroup, err := configtxgen.NewChannelGroup(profile)
-	require.NoError(t, err)
-	payload := &common.Payload{Header: payloadHeader, Data: protoutil.MarshalOrPanic(&common.ConfigEnvelope{Config: &common.Config{ChannelGroup: channelGroup}, LastUpdate: configUpdate})}
-	envelope := &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: nil}
-
-	block := protoutil.NewBlock(0, nil)
-	block.Data = &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(envelope)}}
-	block.Header.DataHash = protoutil.ComputeBlockDataHash(block.Data)
-	block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
-		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 0}),
-	})
-	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
-		Value: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
-			LastConfig: &common.LastConfig{Index: 0},
-		}),
-	})
-
-	err = configtxgen.WriteOutputBlock(block, configBlockPath)
-	require.NoError(t, err)
-	return block
 }
