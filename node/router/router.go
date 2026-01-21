@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -65,7 +66,7 @@ type Router struct {
 	configSeq        uint32
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -108,7 +109,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 
 	verifier := createVerifier(config)
 	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
-		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer)
+		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer, configRulesVerifier)
 
 	metrics := NewRouterMetrics(config, logger)
 

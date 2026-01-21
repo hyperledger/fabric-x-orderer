@@ -17,6 +17,7 @@ import (
 	msp "github.com/hyperledger/fabric-x-orderer/common/msputils"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -214,7 +215,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		} else {
 			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", routerConf.PartyID))
 		}
-		r := router.NewRouter(routerConf, routerLogger, signer, &policy.DefaultConfigUpdateProposer{})
+		r := router.NewRouter(routerConf, routerLogger, signer, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
 		ch := r.StartRouterService()
 
 		go func() {

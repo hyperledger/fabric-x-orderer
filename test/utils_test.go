@@ -33,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
 	node2 "github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
@@ -146,9 +147,13 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		certs = append(certs, kp.Cert)
 
 		configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-		configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+		req := &protos.Request{}
+		configUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
-		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer)
+		configRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
+		configRulesVerifier.ValidateNewConfigReturns(nil)
+
+		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer, configRulesVerifier)
 		routers = append(routers, router)
 	}
 
@@ -529,9 +534,13 @@ func recoverRouter(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger
 	fakeSigner := &mocks.SignerSerializer{}
 
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-	configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+	req := &protos.Request{}
+	configUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
-	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer)
+	configRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
+	configRulesVerifier.ValidateNewConfigReturns(nil)
+
+	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
 	router.StartRouterService()
 
 	return router
