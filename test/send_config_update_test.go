@@ -44,7 +44,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 2
+	numOfParties := 4
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
@@ -134,7 +134,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.UpdateRouterEndpoint(t, partyToUpdate, routerIP, newPort)
 
 	// Submit config update
-	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, int(submittingParty), configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -259,7 +259,7 @@ func TestRemovePartyRunAll(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 2
+	numOfParties := 4
 	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
@@ -296,8 +296,13 @@ func TestRemovePartyRunAll(t *testing.T) {
 	partyToRemove := types.PartyID(2)
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
 	// Submit config update
-	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, int(submittingParty), configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -334,7 +339,13 @@ func TestRemovePartyRunAll(t *testing.T) {
 	numOfArmaNodes = (numOfParties - 1) * numOfNodesPerParty
 	readyChan = make(chan string, numOfArmaNodes)
 	// Restart the remaining parties' nodes
-	armaNetwork.RestartParties(t, []types.PartyID{1}, readyChan)
+	remainingParties := []types.PartyID{}
+	for i := 1; i <= numOfParties; i++ {
+		if types.PartyID(i) != partyToRemove {
+			remainingParties = append(remainingParties, types.PartyID(i))
+		}
+	}
+	armaNetwork.RestartParties(t, remainingParties, readyChan)
 	// Expect the rest of the nodes to start successfully
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 }
@@ -504,7 +515,7 @@ func TestRemoveParty(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 2
+	numOfParties := 4
 	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
@@ -617,7 +628,6 @@ func TestRemoveParty(t *testing.T) {
 	// Send transactions to remaining parties to verify they are processed
 
 	uc.RouterEndpoints = append(uc.RouterEndpoints[:partyToRemove-1], uc.RouterEndpoints[partyToRemove:]...)
-	uc.AssemblerEndpoints = append(uc.AssemblerEndpoints[:partyToRemove-1], uc.AssemblerEndpoints[partyToRemove:]...)
 
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
@@ -653,7 +663,7 @@ func TestAddNewParty(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 3
+	numOfParties := 4
 	numOfShards := 1
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
@@ -917,7 +927,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 3
+	numOfParties := 4
 	numOfShards := 2
 	submittingParty := types.PartyID(2)
 	submittingOrg := fmt.Sprintf("org%d", submittingParty)
