@@ -65,6 +65,11 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 
 	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
 
+	// indicate that sync is required on startup when new consensus node joins the cluster
+	if consLedger.Height() == 0 && lastConfigBlock.Header.Number > 0 {
+		conf.BFTConfig.SyncOnStart = true
+	}
+
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
 
@@ -227,10 +232,9 @@ func getInitialStateAndMetadata(logger arma_types.Logger, config *config.Consent
 	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
 		initState := initialStateFromConfig(config)
-		if lastConfigBlock == nil {
-			panic(fmt.Sprintf("Error creating Consensus%d, genesis block is nil", config.PartyId))
+		if lastConfigBlock.Header.Number == 0 {
+			appendGenesisBlock(lastConfigBlock, initState, ledger)
 		}
-		appendGenesisBlock(lastConfigBlock, initState, ledger)
 		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0
 	}
 
