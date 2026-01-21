@@ -35,6 +35,7 @@ import (
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials"
@@ -236,18 +237,19 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 	bundle.PolicyManagerReturns(policyManager)
 
 	return &nodeconfig.ConsenterNodeConfig{
-		Shards:                  []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
-		Consenters:              consentersInfo,
-		PartyId:                 partyID,
-		TLSPrivateKeyFile:       n.TLSKey,
-		TLSCertificateFile:      n.TLSCert,
-		SigningPrivateKey:       pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-		Directory:               dir,
-		BFTConfig:               BFTConfig,
-		Bundle:                  bundle,
-		RequestMaxBytes:         1000,
-		MetricsLogInterval:      2 * time.Second,
-		MonitoringListenAddress: "127.0.0.1:0",
+		Shards:             []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
+		Consenters:         consentersInfo,
+		PartyId:            partyID,
+		TLSPrivateKeyFile:  n.TLSKey,
+		TLSCertificateFile: n.TLSCert,
+		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
+		Directory:          dir,
+		BFTConfig:          BFTConfig,
+		Bundle:             bundle,
+		RequestMaxBytes:    1000,
+		MetricsLogInterval: 2 * time.Second,
+		Operations:         &localconfig.Defaults.Operations,
+		Metrics:            &localconfig.Metrics{Provider: "prometheus"},
 	}
 }
 

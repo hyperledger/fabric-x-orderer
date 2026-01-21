@@ -64,7 +64,7 @@ func (n NodeType) String() string {
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string, bootstrapFilePath string, monitoringListenPort uint32) {
 	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
-	nodeConfig.GeneralConfig.MonitoringListenPort = monitoringListenPort
+	nodeConfig.OperationsConfig.ListenPort = monitoringListenPort
 	if bootstrapFilePath != "" {
 		nodeConfig.GeneralConfig.Bootstrap.File = bootstrapFilePath
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
@@ -318,7 +319,8 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Consenter:                 consenterInfo,
 		UseTLS:                    true,
 		ClientAuthRequired:        ClientAuthRequired,
-		MonitoringListenAddress:   "127.0.0.1:0",
+		Operations:                &localconfig.Defaults.Operations,
+		Metrics:                   &localconfig.Metrics{Provider: "prometheus"},
 		ClientRootCAs:             clientRootCAs,
 		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 	}

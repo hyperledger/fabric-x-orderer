@@ -42,6 +42,7 @@ import (
 	cfgutil "github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/onsi/gomega/gexec"
 	"github.com/pkg/errors"
 
@@ -979,7 +980,8 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
-		MonitoringListenAddress:             "127.0.0.1:0",
+		Operations:                          &localconfig.Defaults.Operations,
+		Metrics:                             &localconfig.Metrics{Provider: "prometheus"},
 		MetricsLogInterval:                  1 * time.Second,
 	}
 

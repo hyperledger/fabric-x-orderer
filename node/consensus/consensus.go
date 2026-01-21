@@ -25,6 +25,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -41,6 +43,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
+
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -109,6 +112,7 @@ type Consensus struct {
 	PrevHash                     []byte
 	softStopCh                   chan struct{}
 	Metrics                      *ConsensusMetrics
+	system                       *operations.System
 	BFT                          *smartbft_consensus.Consensus
 	Net                          NetStopper
 	BADB                         *badb.BatchAttestationDB
@@ -128,11 +132,24 @@ func (c *Consensus) Start() error {
 	c.lock.Lock()
 	c.status.SetState(node_utils.StateRunning)
 	c.softStopCh = make(chan struct{})
-	c.Metrics.Start()
+	if err := c.system.Start(); err != nil {
+		c.Logger.Panicf("failed to start operations subsystem: %s", err)
+	}
+
+	c.Logger.Infof("Prometheus serving on URL: %s", c.MonitoringServiceAddress())
+	c.Metrics.StartMetricsTracker()
 	bft := c.BFT
 	c.lock.Unlock()
 
 	return bft.Start()
+}
+
+func (c *Consensus) MonitoringServiceAddress() string {
+	url, err := monitoring.MakeMetricsURL(c.system.Addr())
+	if err != nil {
+		c.Logger.Panicf("failed to construct metrics URL: %s", err)
+	}
+	return url
 }
 
 func (c *Consensus) StartConsensusService() {
@@ -172,11 +189,12 @@ func (c *Consensus) Stop() {
 		c.BFT.Stop()
 		c.Synchronizer.Stop()
 		c.BADB.Close()
-		c.Metrics.Stop()
+		c.Metrics.StopMetricsTracker()
 	}
 
 	c.Storage.Close()
 	c.Net.Stop()
+	c.system.Stop()
 	c.status.SetState(node_utils.StateStopped)
 
 	close(c.MainExitChan)
@@ -225,7 +243,7 @@ func (c *Consensus) SoftStop() {
 	c.BFT.Stop()
 	c.Synchronizer.Stop()
 	c.BADB.Close()
-	c.Metrics.Stop()
+	c.Metrics.StopMetricsTracker()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
@@ -960,6 +978,7 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	c.Logger.Infof("Applying new config with sequence %d (current: %d), consensus will be restarted dynamically", newConfigSeq, currentConfigSeq)
 	c.Storage.Close()
 	c.Net.Stop()
+	c.system.Stop()
 	c.status.Set(node_utils.StateInitializing, newConfigSeq)
 	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{})
 	c.lock.Unlock()

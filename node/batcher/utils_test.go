@@ -31,19 +31,13 @@ import (
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/stretchr/testify/require"
 )
 
 const (
 	localhost = "127.0.0.1"
 )
-
-// allocateMonitoringAddress allocates a unique port for monitoring/metrics endpoint
-func allocateMonitoringAddress(t *testing.T) string {
-	port, listener := testutil.SharedTestPortAllocator().Allocate(t)
-	listener.Close()
-	return net.JoinHostPort(localhost, port)
-}
 
 type node struct {
 	*comm.GRPCServer
@@ -169,7 +163,8 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
-			MonitoringListenAddress:             allocateMonitoringAddress(t),
+			Operations:                          &localconfig.Defaults.Operations,
+			Metrics:                             &localconfig.Metrics{Provider: "prometheus"},
 			MetricsLogInterval:                  5 * time.Second,
 		}
 		configs = append(configs, conf)

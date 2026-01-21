@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
@@ -96,6 +97,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 	b.Ledger = ledgerArray
 	b.batcherCerts2IDs = make(map[string]types.PartyID)
 	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerArray, b.logger)
+	b.system = operations.NewOperationsSystem(*b.config.Operations, *b.config.Metrics)
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(b.config.Consenters))
 	for i, consenterInfo := range b.config.Consenters {

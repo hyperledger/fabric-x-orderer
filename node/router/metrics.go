@@ -8,8 +8,6 @@ package router
 
 import (
 	"fmt"
-	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -49,51 +48,51 @@ type RouterMetrics struct {
 	stopChan               chan struct{}
 	stopOnce               sync.Once
 	startOnce              sync.Once
-	monitor                *monitoring.Monitor
-	partyID                arma_types.PartyID
+	// monitor                *monitoring.Monitor
+	// provider metrics.Provider
+	partyID arma_types.PartyID
 }
 
 // NewRouterMetrics creates the Metrics
 func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *flogging.FabricLogger) *RouterMetrics {
-	host, port, err := net.SplitHostPort(routerNodeConfig.MonitoringListenAddress)
-	if err != nil {
-		logger.Panicf("failed to get hostname: %v", err)
-	}
-	portInt, err := strconv.Atoi(port)
-	if err != nil {
-		logger.Panicf("failed to convert port to int: %v", err)
-	}
 	partyID := fmt.Sprintf("%d", routerNodeConfig.PartyID)
 
-	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("router_%s", partyID))
-	p := monitor.Provider
+	// monitor := monitoring.NewMonitor(routerNodeConfig.Operations, routerNodeConfig.Metrics, fmt.Sprintf("router_%s", partyID))
+	// p := monitor.Provider
+	provider := monitoring.NewProvider(routerNodeConfig.Metrics.Provider, logger)
 
-	rejectedTxs := p.NewCounter(rejectedTxs)
+	rejectedTxs := provider.NewCounter(rejectedTxs)
+	versionGauge := monitoring.VersionGauge(provider)
+	versionGauge.With(metadata.Version).Set(1)
 
 	return &RouterMetrics{
-		interval:               routerNodeConfig.MetricsLogInterval,
-		logger:                 logger,
-		stopChan:               make(chan struct{}),
-		monitor:                monitor,
-		incomingTxs:            p.NewCounter(incomingTxs).With([]string{partyID}...),
+		interval: routerNodeConfig.MetricsLogInterval,
+		logger:   logger,
+		stopChan: make(chan struct{}),
+		// monitor:                monitor,
+		incomingTxs:            provider.NewCounter(incomingTxs).With([]string{partyID}...),
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		partyID:                routerNodeConfig.PartyID,
 	}
 }
 
-func (m *RouterMetrics) Stop() {
+// func (m *RouterMetrics) Provider() metrics.Provider {
+// 	return m.provider
+// }
+
+func (m *RouterMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
 		m.reportMetrics()
-		m.monitor.Stop()
+		// m.monitor.Stop()
 	})
 }
 
-func (m *RouterMetrics) Start() {
+func (m *RouterMetrics) StartMetricsTracker() {
 	m.startOnce.Do(func() {
-		m.monitor.Start()
+		// m.monitor.Start()
 		if m.interval > 0 {
 			go m.trackMetrics()
 		}
