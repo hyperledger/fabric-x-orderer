@@ -55,7 +55,8 @@ func TestExtractAppTrustedRootsFromConfigBlock(t *testing.T) {
 	t.Run("real envelope", func(t *testing.T) {
 		dir := t.TempDir()
 		configPath := filepath.Join(dir, "config.yaml")
-		_ = testutil.CreateNetwork(t, configPath, 4, 2, "mTLS", "mTLS")
+		netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "mTLS", "mTLS")
+		defer netInfo.CleanUp()
 		armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
 
 		genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
@@ -79,7 +80,8 @@ func TestConfigurationCheckIfRouterNodeExistsInSharedConfig(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	configPath := filepath.Join(dir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
 
 	testLogger := testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel)
@@ -126,7 +128,8 @@ func TestConfigurationCheckIfBatcherNodeExistsInSharedConfig(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	configPath := filepath.Join(dir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
 
 	testLogger := testutil.CreateLoggerForModule(t, "ReadConfigBatcher", zap.DebugLevel)
@@ -191,7 +194,8 @@ func TestConfigurationCheckIfConsenterNodeExistsInSharedConfig(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	configPath := filepath.Join(dir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
 
 	testLogger := testutil.CreateLoggerForModule(t, "ReadConfigConsenter", zap.DebugLevel)
@@ -250,7 +254,8 @@ func TestConfigurationCheckIfAssemblerNodeExistsInSharedConfig(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	configPath := filepath.Join(dir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
 
 	testLogger := testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel)
@@ -297,7 +302,8 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	configPath := filepath.Join(dir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
 
 	testLogger := testutil.CreateLoggerForModule(t, "UpdateConfigAssembler", zap.DebugLevel)

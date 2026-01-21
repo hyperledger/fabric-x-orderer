@@ -562,6 +562,7 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "none")
+	defer netInfo.CleanUp()
 	require.NoError(t, err)
 
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.

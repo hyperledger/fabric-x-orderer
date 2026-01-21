@@ -70,6 +70,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	updateFileStorePath(t, dir, parties)
 
+	netInfo.CleanUp()
 	consensusNodes, servers := createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners := startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 

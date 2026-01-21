@@ -228,7 +228,8 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
@@ -451,7 +452,8 @@ func TestConfigTXDisseminationVerificationFailure(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})

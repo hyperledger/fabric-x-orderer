@@ -22,7 +22,6 @@ import (
 	mocksVerifier "github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -287,40 +286,23 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 	dir, _, bundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
 	defer cleanup()
 
-	// add 2 parties
-	builder.AddNewParty(t, &protos.PartyConfig{
-		CACerts:    [][]byte{[]byte("newCACert-1")},
-		TLSCACerts: [][]byte{[]byte("newTLSCACert-1")},
-		ConsenterConfig: &protos.ConsenterNodeConfig{
-			Host: "localhost", Port: 7050, TlsCert: []byte("consenterNewCert-1"),
-		},
-		RouterConfig: &protos.RouterNodeConfig{
-			Host: "localhost", Port: 8050, TlsCert: []byte("routerNewCert-1"),
-		},
-		AssemblerConfig: &protos.AssemblerNodeConfig{
-			Host: "localhost", Port: 9050, TlsCert: []byte("assemblerNewCert-1"),
-		},
-		BatchersConfig: []*protos.BatcherNodeConfig{
-			{ShardID: 1, Host: "localhost", Port: 10050, TlsCert: []byte("batcherNewCert-1")},
-		},
-	})
-
-	builder.AddNewParty(t, &protos.PartyConfig{
-		CACerts:    [][]byte{[]byte("newCACert-2")},
-		TLSCACerts: [][]byte{[]byte("newTLSCACert-2")},
-		ConsenterConfig: &protos.ConsenterNodeConfig{
-			Host: "localhost", Port: 7051, TlsCert: []byte("consenterNewCert-2"),
-		},
-		RouterConfig: &protos.RouterNodeConfig{
-			Host: "localhost", Port: 8051, TlsCert: []byte("routerNewCert-2"),
-		},
-		AssemblerConfig: &protos.AssemblerNodeConfig{
-			Host: "localhost", Port: 9051, TlsCert: []byte("assemblerNewCert-2"),
-		},
-		BatchersConfig: []*protos.BatcherNodeConfig{
-			{ShardID: 1, Host: "localhost", Port: 10051, TlsCert: []byte("batcherNewCert-2")},
-		},
-	})
+	// add two parties
+	_, netInfo1 := builder.PrepareAndAddNewParty(t, dir)
+	defer func() {
+		for _, ni := range netInfo1 {
+			if ni != nil {
+				ni.Close()
+			}
+		}
+	}()
+	_, netInfo2 := builder.PrepareAndAddNewParty(t, dir)
+	defer func() {
+		for _, ni := range netInfo2 {
+			if ni != nil {
+				ni.Close()
+			}
+		}
+	}()
 
 	updatePb := builder.ConfigUpdatePBData(t)
 	require.NotEmpty(t, updatePb)
@@ -405,22 +387,14 @@ func TestValidateTransition_FailedAddAndModify(t *testing.T) {
 	defer cleanup()
 
 	// add a new party
-	builder.AddNewParty(t, &protos.PartyConfig{
-		CACerts:    [][]byte{[]byte("newCACert")},
-		TLSCACerts: [][]byte{[]byte("newTLSCACert")},
-		ConsenterConfig: &protos.ConsenterNodeConfig{
-			Host: "localhost", Port: 7050, TlsCert: []byte("consenterNewCert"),
-		},
-		RouterConfig: &protos.RouterNodeConfig{
-			Host: "localhost", Port: 8050, TlsCert: []byte("routerNewCert"),
-		},
-		AssemblerConfig: &protos.AssemblerNodeConfig{
-			Host: "localhost", Port: 9050, TlsCert: []byte("assemblerNewCert"),
-		},
-		BatchersConfig: []*protos.BatcherNodeConfig{
-			{ShardID: 1, Host: "localhost", Port: 10050, TlsCert: []byte("batcherNewCert")},
-		},
-	})
+	_, netInfo := builder.PrepareAndAddNewParty(t, dir)
+	defer func() {
+		for _, ni := range netInfo {
+			if ni != nil {
+				ni.Close()
+			}
+		}
+	}()
 
 	// also modify an existing party
 	builder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("modified-tls-cert"))

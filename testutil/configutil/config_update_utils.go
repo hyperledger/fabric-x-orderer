@@ -23,8 +23,10 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
@@ -716,7 +718,13 @@ func (c *ConfigUpdateBuilder) UpdateOrgEndpoints(t *testing.T, partyID types.Par
 	return c.createConfigUpdate(t, c.configData)
 }
 
-func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyConfig) []byte {
+type PartyConfig struct {
+	protos.PartyConfig
+	AdminCerts [][]byte
+}
+
+// AddNewParty adds a new party to the config with the given configuration and returns the config update bytes
+func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) []byte {
 	sharedConfig := getNestedJSONValue(t, c.configData, sharedConfigPath...)
 	maxPartyID := sharedConfig.(map[string]any)["MaxPartyID"].(float64)
 	partiesConfig := sharedConfig.(map[string]any)["PartiesConfig"].([]any)
@@ -793,13 +801,23 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyCo
 	var newOrg map[string]any
 	require.NoError(t, json.Unmarshal(data, &newOrg))
 
+	orgName := fmt.Sprintf("org%d", uint32(maxPartyID))
+
 	// Update endpoints
-	endpoints := newOrg["values"].(map[string]any)["Endpoints"].(map[string]any)
-	endpoints["value"].(map[string]any)["addresses"] = []string{
+	addresses := []string{
 		fmt.Sprintf("id=%d,broadcast,%s:%d", int(maxPartyID), newParty.RouterConfig.Host, newParty.RouterConfig.Port),
 		fmt.Sprintf("id=%d,deliver,%s:%d", int(maxPartyID), newParty.AssemblerConfig.Host, newParty.AssemblerConfig.Port),
 	}
-	orgName := fmt.Sprintf("org%d", uint32(maxPartyID))
+	overwriteNestedJSONValue(t, newOrg, addresses, "values", "Endpoints", "value", "addresses")
+
+	overwriteNestedJSONValue(t, newOrg, orgName, "values", "MSP", "value", "config", "name")
+	overwriteNestedJSONValue(t, newOrg, orgName, "policies", "Admins", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, orgName, "policies", "Endorsement", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, orgName, "policies", "Readers", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, orgName, "policies", "Writers", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, newParty.CACerts, "values", "MSP", "value", "config", "root_certs")
+	overwriteNestedJSONValue(t, newOrg, newParty.TLSCACerts, "values", "MSP", "value", "config", "tls_root_certs")
+	overwriteNestedJSONValue(t, newOrg, newParty.AdminCerts, "values", "MSP", "value", "config", "admins")
 	orgs[orgName] = newOrg
 
 	overwriteNestedJSONValue(t, c.configData, sharedConfig, sharedConfigPath...)
@@ -1059,4 +1077,83 @@ func overwriteNestedJSONValue(t *testing.T, data map[string]any, value any, path
 			require.FailNow(t, fmt.Sprintf("unexpected type encountered at path %v", path[:i]))
 		}
 	}
+}
+
+// PrepareAndAddNewParty prepares the config update for adding a new party with the configuration from the given directory,
+// and adds the new party to the builder's config data. It returns the added party ID and the network information of the added party.
+func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
+	addedNetInfo, addedPartyConfig := testutil.ExtendNetwork(t, filepath.Join(dir, "config.yaml"))
+	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true)
+
+	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
+	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)
+	addedOrg := fmt.Sprintf("org%d", addedPartyId)
+
+	consenterConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_consenter.yaml"))
+	require.NoError(t, err)
+	consenterTlsCert, err := os.ReadFile(consenterConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+	require.NoError(t, err)
+	routerLocalConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_router.yaml"))
+	require.NoError(t, err)
+	routerTlsCert, err := os.ReadFile(routerLocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+	require.NoError(t, err)
+	assemblerConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_assembler.yaml"))
+	require.NoError(t, err)
+	assemblerTlsCert, err := os.ReadFile(assemblerConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+	require.NoError(t, err)
+
+	batchersConfig := make([]*protos.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
+
+	for i := range addedPartyConfig.Parties[0].BatchersEndpoints {
+		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)))
+		require.NoError(t, err)
+		batcherTlsCert, err := os.ReadFile(batcherNodeConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+		require.NoError(t, err)
+		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+		require.NoError(t, err)
+
+		batchersConfig[i] = &protos.BatcherNodeConfig{
+			ShardID:  uint32(i + 1),
+			Host:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+			Port:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+			TlsCert:  batcherTlsCert,
+			SignCert: batcherSignCert,
+		}
+	}
+
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "cacerts", "ca-cert.pem"))
+	require.NoError(t, err)
+	tlsCACert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
+	require.NoError(t, err)
+	consenterSignCert, err := os.ReadFile(filepath.Join(consenterConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+	require.NoError(t, err)
+	adminCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts", fmt.Sprintf("Admin@Org%d-cert.pem", addedPartyId)))
+	require.NoError(t, err)
+
+	c.AddNewParty(t, &PartyConfig{
+		PartyConfig: protos.PartyConfig{
+			CACerts:    [][]byte{caCert},
+			TLSCACerts: [][]byte{tlsCACert},
+			ConsenterConfig: &protos.ConsenterNodeConfig{
+				Host:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+				Port:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+				SignCert: consenterSignCert,
+				TlsCert:  consenterTlsCert,
+			},
+			RouterConfig: &protos.RouterNodeConfig{
+				Host:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+				Port:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+				TlsCert: routerTlsCert,
+			},
+			AssemblerConfig: &protos.AssemblerNodeConfig{
+				Host:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+				Port:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+				TlsCert: assemblerTlsCert,
+			},
+			BatchersConfig: batchersConfig,
+		},
+		AdminCerts: [][]byte{adminCert},
+	})
+
+	return addedPartyId, addedNetInfo
 }
