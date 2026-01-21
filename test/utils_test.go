@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -615,15 +616,12 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	var waitForPullDone sync.WaitGroup
 	pullInfos := make(map[types.PartyID]*BlockPullerInfo, len(options.Parties))
 	lock := sync.Mutex{}
+	potentialNumberOfBlocks := atomic.Int32{}
 
 	for _, partyID := range options.Parties {
-		waitForPullDone.Add(1)
-
-		go func() {
-			defer waitForPullDone.Done()
-
+		waitForPullDone.Go(func() {
 			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, (len(options.Parties)-1)/3, options.Transactions,
-				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.BlockHandler)
+				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.BlockHandler, &potentialNumberOfBlocks)
 			lock.Lock()
 			defer lock.Unlock()
 			pullInfos[partyID] = pullInfo
@@ -647,7 +645,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 				logString := fmt.Sprintf(options.LogString, partyID)
 				require.Contains(t, logOutput, logString, "Expected log output to contain specified log string")
 			}
-		}()
+		})
 	}
 
 	waitForPullDone.Wait()
@@ -656,11 +654,9 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 
 func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID,
 	startBlock uint64, endBlock uint64, fval, transactions, blocks, timeout int,
-	needVerification bool, sigVerifier *crypto.ECDSAVerifier, blockHandler TestBlockHandler,
+	needVerification bool, sigVerifier *crypto.ECDSAVerifier, blockHandler TestBlockHandler, potentialNumberOfBlocks *atomic.Int32,
 ) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
-	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer toCancel()
 
 	totalTxs := 0
 	totalBlocks := 0
@@ -675,121 +671,144 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		m[uint64(i)] = 0
 	}
 
-	handler := func(block *common.Block) error {
-		if block == nil {
-			return errors.New("nil block")
-		}
-		if block.Header == nil {
-			return errors.New("nil block header")
-		}
-
-		if blockHandler != nil {
-			if err := blockHandler.HandleBlock(t, block); err != nil {
-				toCancel()
+	handler := func(toCancel context.CancelFunc) client.BlockHandler {
+		return func(block *common.Block) error {
+			if block == nil {
+				return errors.New("nil block")
 			}
-		}
-
-		totalBlocks++
-
-		data := block.GetData().GetData()
-		transactionsNumber := len(data)
-
-		// Check if the block is genesis block or not
-		isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
-		isConfigBlock := protoutil.IsConfigBlock(block)
-
-		if !isGenesisBlock {
-			shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
-			shardID := types.ShardID(binary.BigEndian.Uint16(shardIDBytes))
-			primaryIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][0:2]
-			primaryID := types.PartyID(binary.BigEndian.Uint16(primaryIDBytes))
-
-			if pr, ok := primaryMap[shardID]; !ok {
-				primaryMap[shardID] = primaryID
-			} else if pr != primaryID {
-				t.Logf("primary id changed from %d to %d", pr, primaryID)
-				termChanged = true
-				primaryMap[shardID] = primaryID
-			}
-		} else if needVerification {
-			require.Equal(t, 1, transactionsNumber)
-			totalTxs++
-			t.Log("skipping genesis block")
-			return nil
-		}
-
-		if sigVerifier != nil && !isGenesisBlock {
-			bhdr := &common.BlockHeader{Number: block.Header.Number, DataHash: block.Header.DataHash, PreviousHash: block.Header.PreviousHash}
-			sigsBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
-			md := &common.Metadata{}
-			if err := proto.Unmarshal(sigsBytes, md); err != nil {
-				return errors.Wrapf(err, "error unmarshalling signatures from metadata: %v", err)
+			if block.Header == nil {
+				return errors.New("nil block header")
 			}
 
-			verifiedSigns := 0
-			for _, metadataSignature := range md.Signatures {
-				identifierHeader, err := protoutil.UnmarshalIdentifierHeader(metadataSignature.IdentifierHeader)
+			if blockHandler != nil {
+				if err := blockHandler.HandleBlock(t, block); err != nil {
+					toCancel()
+				}
+			}
+
+			totalBlocks++
+
+			data := block.GetData().GetData()
+			transactionsNumber := len(data)
+
+			// Check if the block is genesis block or not
+			isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
+			isConfigBlock := protoutil.IsConfigBlock(block)
+
+			if !isGenesisBlock {
+				shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
+				shardID := types.ShardID(binary.BigEndian.Uint16(shardIDBytes))
+				primaryIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][0:2]
+				primaryID := types.PartyID(binary.BigEndian.Uint16(primaryIDBytes))
+
+				if pr, ok := primaryMap[shardID]; !ok {
+					primaryMap[shardID] = primaryID
+				} else if pr != primaryID {
+					t.Logf("primary id changed from %d to %d", pr, primaryID)
+					termChanged = true
+					primaryMap[shardID] = primaryID
+				}
+			} else if needVerification {
+				require.Equal(t, 1, transactionsNumber)
+				totalTxs++
+				t.Log("skipping genesis block")
+				return nil
+			}
+
+			if sigVerifier != nil && !isGenesisBlock {
+				bhdr := &common.BlockHeader{Number: block.Header.Number, DataHash: block.Header.DataHash, PreviousHash: block.Header.PreviousHash}
+				sigsBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
+				md := &common.Metadata{}
+				if err := proto.Unmarshal(sigsBytes, md); err != nil {
+					return errors.Wrapf(err, "error unmarshalling signatures from metadata: %v", err)
+				}
+
+				verifiedSigns := 0
+				for _, metadataSignature := range md.Signatures {
+					identifierHeader, err := protoutil.UnmarshalIdentifierHeader(metadataSignature.IdentifierHeader)
+					if err != nil {
+						return fmt.Errorf("failed unmarshalling identifier header for block %d: %v", block.Header.GetNumber(), err)
+					}
+					if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, protoutil.BlockHeaderBytes(bhdr), metadataSignature.GetSignature()); err != nil {
+						t.Logf("failed verifying signature for block %d: %v", block.Header.GetNumber(), err)
+						continue
+					}
+
+					verifiedSigns++
+				}
+
+				if verifiedSigns < 2*fval+1 {
+					return fmt.Errorf("not enough signatures: got %d, need at least %d (2*f + 1)", verifiedSigns, 2*fval+1)
+				}
+
+				if isConfigBlock {
+					log.Printf("configuration block %d partyID %d verified with %d signatures\n", block.Header.Number, partyID, verifiedSigns)
+				}
+			}
+
+			if isConfigBlock && needVerification {
+				require.Equal(t, 1, transactionsNumber)
+				// skip config block txs
+				m[uint64(len(m)-1)]++
+				totalTxs++
+				return nil
+			}
+
+			for i := range transactionsNumber {
+				envelope, err := protoutil.UnmarshalEnvelope(data[i])
 				if err != nil {
-					return fmt.Errorf("failed unmarshalling identifier header for block %d: %v", block.Header.GetNumber(), err)
-				}
-				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, protoutil.BlockHeaderBytes(bhdr), metadataSignature.GetSignature()); err != nil {
-					t.Logf("failed verifying signature for block %d: %v", block.Header.GetNumber(), err)
-					continue
+					return errors.Wrapf(err, "failed to unmarshal envelope %v", err)
 				}
 
-				verifiedSigns++
-			}
-
-			if verifiedSigns < 2*fval+1 {
-				return fmt.Errorf("not enough signatures: got %d, need at least %d (2*f + 1)", verifiedSigns, 2*fval+1)
-			}
-
-			if isConfigBlock {
-				log.Printf("configuration block %d partyID %d verified with %d signatures\n", block.Header.Number, partyID, verifiedSigns)
-			}
-		}
-
-		if isConfigBlock && needVerification {
-			require.Equal(t, 1, transactionsNumber)
-			// skip config block txs
-			m[uint64(len(m)-1)]++
-			totalTxs++
-			return nil
-		}
-
-		for i := range transactionsNumber {
-			envelope, err := protoutil.UnmarshalEnvelope(data[i])
-			if err != nil {
-				return errors.Wrapf(err, "failed to unmarshal envelope %v", err)
-			}
-
-			if needVerification && transactions > 0 {
-				data, err := tx.GetDataFromEnvelope(envelope)
-				require.NoError(t, err)
-				require.NotNil(t, data)
-				txNumber := binary.BigEndian.Uint64(data[0:8])
-				// count only unique txs
-				if m[txNumber] == 0 {
+				if needVerification && transactions > 0 {
+					data, err := tx.GetDataFromEnvelope(envelope)
+					require.NoError(t, err)
+					require.NotNil(t, data)
+					txNumber := binary.BigEndian.Uint64(data[0:8])
+					// count only unique txs
+					if m[txNumber] == 0 {
+						totalTxs++
+					}
+					m[txNumber]++
+				} else {
 					totalTxs++
 				}
-				m[txNumber]++
-			} else {
-				totalTxs++
 			}
-		}
 
-		if blocks > 0 && totalBlocks >= expectedNumOfBlocks {
-			toCancel()
-		}
-		if transactions > 0 && totalTxs >= expectedNumOfTxs {
-			toCancel()
-		}
+			if blocks > 0 && totalBlocks >= expectedNumOfBlocks {
+				potentialNumberOfBlocks.Store(int32(totalBlocks))
+				toCancel()
+			}
+			if transactions > 0 && totalTxs >= expectedNumOfTxs {
+				potentialNumberOfBlocks.Store(int32(totalBlocks))
+				toCancel()
+			}
 
-		return nil
+			return nil
+		}
 	}
 
+	var err error
+	var status common.Status
+	var isDeadlineExceeded bool
+
 	t.Logf("Pulling from party: %d\n", partyID)
-	status, err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler)
+
+	for range 3 {
+		status, err, isDeadlineExceeded = attemptToPullBlocksWithTimeout(t, dc, partyID, startBlock, endBlock, handler, time.Duration(timeout)*time.Second, 3*time.Second)
+		// Retry only if timeout occurred and we have potentially more blocks to pull
+		hasMoreBlocks := potentialNumberOfBlocks.Load() > int32(totalBlocks)
+
+		if isDeadlineExceeded && hasMoreBlocks {
+			// Update start block to the next block after the last pulled block
+			startBlock += uint64(totalBlocks + 1)
+			t.Logf("Retrying pulling from party: %d, start block: %d\n", partyID, startBlock)
+			continue
+		}
+
+		potentialNumberOfBlocks.Store(int32(totalBlocks))
+		break
+	}
 	t.Logf("Finished pull and count: blocks %d, txs %d from party: %d\n", totalBlocks, totalTxs, partyID)
 	blockPullerInfo := &BlockPullerInfo{TotalTxs: totalTxs, TotalBlocks: totalBlocks, Primary: primaryMap, TermChanged: termChanged, Missing: make([]uint64, 0), Duplicate: make([]uint64, 0), Status: status}
 
@@ -803,6 +822,45 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		}
 	}
 	return blockPullerInfo, err
+}
+
+type cancelableBlockHandler func(toCancel context.CancelFunc) client.BlockHandler
+
+func attemptToPullBlocksWithTimeout(
+	t *testing.T,
+	dc *client.DeliverClient,
+	partyID types.PartyID,
+	startBlock uint64,
+	endBlock uint64,
+	handler cancelableBlockHandler,
+	timeout time.Duration,
+	tick time.Duration,
+) (common.Status, error, bool) {
+	var deadline time.Time
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		toCtx, toCancel := context.WithTimeout(context.Background(), timeout)
+		defer toCancel()
+
+		status, err := dc.PullBlocks(toCtx, partyID, startBlock, endBlock, handler(toCancel))
+		isDeadlineExceeded := (toCtx.Err() != nil && toCtx.Err().Error() == context.DeadlineExceeded.Error())
+		if status != common.Status_NOT_FOUND {
+			return status, err, isDeadlineExceeded
+		}
+
+		if deadline.IsZero() {
+			t.Logf("Blocks not found from party: %d, retrying after %ds\n", partyID, int(tick.Seconds()))
+			deadline = time.Now().Add(timeout)
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("Blocks not found from party: %d, start block: %d\n", partyID, startBlock)
+		}
+
+		<-ticker.C
+	}
 }
 
 func BuildVerifier(configDir string, partyID types.PartyID, logger types.Logger) *crypto.ECDSAVerifier {
