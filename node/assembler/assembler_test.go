@@ -27,6 +27,7 @@ import (
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 
@@ -111,7 +112,8 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		ReplicationChannelSize:    100,
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shardsInfo,
-		MonitoringListenAddress:   "127.0.0.1:0",
+		Operations:                &localconfig.Defaults.Operations,
+		Metrics:                   &localconfig.Metrics{Provider: "prometheus"},
 		Consenter: config.ConsenterInfo{
 			PartyID:    myParty,
 			Endpoint:   consenterEndpoint,

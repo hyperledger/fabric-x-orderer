@@ -8,8 +8,6 @@ package batcher
 
 import (
 	"fmt"
-	"net"
-	"strconv"
 	"sync"
 	"time"
 
@@ -17,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -107,23 +106,20 @@ type BatcherMetrics struct {
 	firstResendsTotal   metrics.Counter
 
 	// monitor
-	monitor *monitoring.Monitor
+	// monitor *monitoring.Monitor
 }
 
 func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo []config.BatcherInfo, ledger BatchLedger, logger *flogging.FabricLogger) *BatcherMetrics {
-	host, port, err := net.SplitHostPort(batcherNodeConfig.MonitoringListenAddress)
-	if err != nil {
-		logger.Panicf("failed to get hostname: %v", err)
-	}
-	portInt, err := strconv.Atoi(port)
-	if err != nil {
-		logger.Panicf("failed to convert port to int: %v", err)
-	}
 	partyID := fmt.Sprintf("%d", batcherNodeConfig.PartyId)
 	shardID := fmt.Sprintf("%d", batcherNodeConfig.ShardId)
 
-	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("batcher_%s_%s", partyID, shardID))
-	p := monitor.Provider
+	// monitor := monitoring.NewMonitor(batcherNodeConfig.Operations, batcherNodeConfig.Metrics, fmt.Sprintf("batcher_%s_%s", partyID, shardID))
+	// p := monitor.Provider
+
+	provider := monitoring.NewProvider(batcherNodeConfig.Metrics.Provider, logger)
+
+	versionGauge := monitoring.VersionGauge(provider)
+	versionGauge.With(metadata.Version).Set(1)
 
 	// initialize metrics from ledger
 	var batches, pulled uint64
@@ -135,10 +131,10 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 		batches += h
 	}
 
-	batchesPulledTotal := p.NewCounter(batchesPulledTotalOpts).With([]string{partyID, shardID}...)
+	batchesPulledTotal := provider.NewCounter(batchesPulledTotalOpts).With([]string{partyID, shardID}...)
 	batchesPulledTotal.Add(float64(pulled))
 
-	batchesCreatedTotal := p.NewCounter(batchesCreatedTotalOpts).With([]string{partyID, shardID}...)
+	batchesCreatedTotal := provider.NewCounter(batchesCreatedTotalOpts).With([]string{partyID, shardID}...)
 	batchesCreatedTotal.Add(float64(batches))
 
 	return &BatcherMetrics{
@@ -147,37 +143,37 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 		shardID:  batcherNodeConfig.ShardId,
 		logger:   logger,
 		stopChan: make(chan struct{}),
-		monitor:  monitor,
+		// monitor:  monitor,
 
-		currentRole:         p.NewGauge(currentRoleOpts).With([]string{partyID, shardID}...),
-		roleChangesTotal:    p.NewCounter(roleChangesTotalOpts).With([]string{partyID, shardID}...),
+		currentRole:         provider.NewGauge(currentRoleOpts).With([]string{partyID, shardID}...),
+		roleChangesTotal:    provider.NewCounter(roleChangesTotalOpts).With([]string{partyID, shardID}...),
 		batchesCreatedTotal: batchesCreatedTotal,
 		batchesPulledTotal:  batchesPulledTotal,
-		batchedTxsTotal:     p.NewCounter(batchedTxsTotalOpts).With([]string{partyID, shardID}...),
-		routerTxsTotal:      p.NewCounter(routerTxsTotalOpts).With([]string{partyID, shardID}...),
-		complaintsTotal:     p.NewCounter(complaintsTotalOpts).With([]string{partyID, shardID}...),
-		memPoolSize:         p.NewGauge(memPoolSizeOOpts).With([]string{partyID, shardID}...),
-		firstResendsTotal:   p.NewCounter(firstResendsTotalOpts).With([]string{partyID, shardID}...),
+		batchedTxsTotal:     provider.NewCounter(batchedTxsTotalOpts).With([]string{partyID, shardID}...),
+		routerTxsTotal:      provider.NewCounter(routerTxsTotalOpts).With([]string{partyID, shardID}...),
+		complaintsTotal:     provider.NewCounter(complaintsTotalOpts).With([]string{partyID, shardID}...),
+		memPoolSize:         provider.NewGauge(memPoolSizeOOpts).With([]string{partyID, shardID}...),
+		firstResendsTotal:   provider.NewCounter(firstResendsTotalOpts).With([]string{partyID, shardID}...),
 	}
 }
 
-func (m *BatcherMetrics) Start() {
+func (m *BatcherMetrics) StartMetricsTracker() {
 	m.startOnce.Do(func() {
-		m.monitor.Start()
+		// m.monitor.Start()
 		if m.interval > 0 {
 			go m.trackMetrics()
 		}
 	})
 }
 
-func (m *BatcherMetrics) Stop() {
+func (m *BatcherMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
-		if m.monitor != nil {
-			m.monitor.Stop()
-			m.monitor = nil
-		}
+		// if m.monitor != nil {
+		// 	m.monitor.Stop()
+		// 	m.monitor = nil
+		// }
 		m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
 			m.partyID,
 			m.shardID,

@@ -14,6 +14,7 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"gopkg.in/yaml.v3"
 )
 
@@ -90,9 +91,10 @@ type RouterNodeConfig struct {
 	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
 	// Bundle collects resources (e.g., policy manager, configTx validator, etc.) that are used by the router for validation of transactions
-	Bundle                  channelconfig.Resources
-	MonitoringListenAddress string
-	MetricsLogInterval      time.Duration
+	Bundle             channelconfig.Resources
+	Operations         *localconfig.Operations
+	Metrics            *localconfig.Metrics
+	MetricsLogInterval time.Duration
 }
 
 type AssemblerNodeConfig struct {
@@ -109,14 +111,15 @@ type AssemblerNodeConfig struct {
 	ReplicationChannelSize    int
 	BatchRequestsChannelSize  int
 	// Shared config
-	Shards                  []ShardInfo
-	Consenter               ConsenterInfo
-	UseTLS                  bool
-	ClientAuthRequired      bool
-	ClientRootCAs           [][]byte
-	Bundle                  channelconfig.Resources
-	MonitoringListenAddress string
-	MetricsLogInterval      time.Duration
+	Shards             []ShardInfo
+	Consenter          ConsenterInfo
+	UseTLS             bool
+	ClientAuthRequired bool
+	ClientRootCAs      [][]byte
+	Bundle             channelconfig.Resources
+	Operations         *localconfig.Operations
+	Metrics            *localconfig.Metrics
+	MetricsLogInterval time.Duration
 }
 
 type BatcherNodeConfig struct {
@@ -127,25 +130,27 @@ type BatcherNodeConfig struct {
 	ListenAddress   string
 	ConfigStorePath string
 	// Private config
-	PartyId                             types.PartyID
-	ShardId                             types.ShardID
-	TLSPrivateKeyFile                   RawBytes
-	TLSCertificateFile                  RawBytes
-	ClientRootCAs                       [][]byte
-	SigningPrivateKey                   RawBytes
-	MemPoolMaxSize                      uint64
-	BatchMaxSize                        uint32
-	BatchMaxBytes                       uint32
-	RequestMaxBytes                     uint64 // TODO how can this be uint64 when BatchMaxBytes is uint32?
-	SubmitTimeout                       time.Duration
-	FirstStrikeThreshold                time.Duration
-	SecondStrikeThreshold               time.Duration
-	AutoRemoveTimeout                   time.Duration
-	BatchCreationTimeout                time.Duration
-	BatchSequenceGap                    types.BatchSequence
-	MonitoringListenAddress             string
+	PartyId               types.PartyID
+	ShardId               types.ShardID
+	TLSPrivateKeyFile     RawBytes
+	TLSCertificateFile    RawBytes
+	ClientRootCAs         [][]byte
+	SigningPrivateKey     RawBytes
+	MemPoolMaxSize        uint64
+	BatchMaxSize          uint32
+	BatchMaxBytes         uint32
+	RequestMaxBytes       uint64 // TODO how can this be uint64 when BatchMaxBytes is uint32?
+	SubmitTimeout         time.Duration
+	FirstStrikeThreshold  time.Duration
+	SecondStrikeThreshold time.Duration
+	AutoRemoveTimeout     time.Duration
+	BatchCreationTimeout  time.Duration
+	BatchSequenceGap      types.BatchSequence
+	// MonitoringListenAddress             string
 	ClientSignatureVerificationRequired bool
 	Bundle                              channelconfig.Resources
+	Operations                          *localconfig.Operations
+	Metrics                             *localconfig.Metrics
 	MetricsLogInterval                  time.Duration
 }
 
@@ -157,19 +162,21 @@ type ConsenterNodeConfig struct {
 	Directory     string
 	ListenAddress string
 	// Private config
-	PartyId                             types.PartyID
-	TLSPrivateKeyFile                   RawBytes
-	TLSCertificateFile                  RawBytes
-	ClientRootCAs                       [][]byte
-	SigningPrivateKey                   RawBytes
-	WALDir                              string
-	BFTConfig                           smartbft_types.Configuration
-	MonitoringListenAddress             string
+	PartyId            types.PartyID
+	TLSPrivateKeyFile  RawBytes
+	TLSCertificateFile RawBytes
+	ClientRootCAs      [][]byte
+	SigningPrivateKey  RawBytes
+	WALDir             string
+	BFTConfig          smartbft_types.Configuration
+	// MonitoringListenAddress string
 	MonitoringInterval                  int32
 	MetricsLogInterval                  time.Duration
 	ClientSignatureVerificationRequired bool
 	Bundle                              channelconfig.Resources
 	RequestMaxBytes                     uint64
+	Operations                          *localconfig.Operations
+	Metrics                             *localconfig.Metrics
 }
 
 func NodeConfigToYAML(config interface{}, path string) error {

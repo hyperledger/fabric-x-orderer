@@ -22,6 +22,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -85,10 +87,15 @@ type Batcher struct {
 	primaryID   types.PartyID
 
 	metrics *BatcherMetrics
+	system  *operations.System
 }
 
 func (b *Batcher) MonitoringServiceAddress() string {
-	return b.metrics.monitor.Address()
+	url, err := monitoring.MakeMetricsURL(b.system.Addr())
+	if err != nil {
+		b.logger.Panicf("failed to construct metrics URL: %s", err)
+	}
+	return url
 }
 
 func (b *Batcher) ConfigSequence() types.ConfigSequence {
@@ -143,7 +150,13 @@ func (b *Batcher) Run() {
 
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
-	b.metrics.Start()
+
+	if err := b.system.Start(); err != nil {
+		b.logger.Panicf("failed to start operations subsystem: %s", err)
+	}
+
+	b.metrics.StartMetricsTracker()
+	b.logger.Infof("Prometheus serving on URL: %s", b.MonitoringServiceAddress())
 }
 
 func (b *Batcher) GetStatus() string {
@@ -177,7 +190,8 @@ func (b *Batcher) Stop() {
 		b.primaryAckConnector.Stop()
 		b.primaryReqConnector.Stop()
 		b.running.Wait()
-		b.metrics.Stop()
+		b.metrics.StopMetricsTracker()
+		b.system.Stop()
 	}
 
 	b.wal.Close()
@@ -210,7 +224,8 @@ func (b *Batcher) SoftStop() {
 	b.primaryAckConnector.Stop()
 	b.primaryReqConnector.Stop()
 	b.running.Wait()
-	b.metrics.Stop()
+	b.metrics.StopMetricsTracker()
+	b.system.Stop()
 }
 
 // replicateDecision runs by a separate go routine

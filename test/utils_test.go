@@ -52,6 +52,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -125,13 +126,14 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		require.NoError(t, cs.Add(genesisBlock))
 
 		config := &node_config.RouterNodeConfig{
-			ListenAddress:           "0.0.0.0:0",
-			MonitoringListenAddress: "127.0.0.1:0",
-			MetricsLogInterval:      5 * time.Second,
-			FileStorePath:           fileStorePath,
-			TLSPrivateKeyFile:       kp.Key,
-			TLSCertificateFile:      kp.Cert,
-			PartyID:                 types.PartyID(i + 1),
+			ListenAddress:      "0.0.0.0:0",
+			Operations:         &localconfig.Defaults.Operations,
+			Metrics:            &localconfig.Defaults.Metrics,
+			MetricsLogInterval: 5 * time.Second,
+			FileStorePath:      fileStorePath,
+			TLSPrivateKeyFile:  kp.Key,
+			TLSCertificateFile: kp.Cert,
+			PartyID:            types.PartyID(i + 1),
 			Shards: []node_config.ShardInfo{{
 				ShardId:  shardId,
 				Batchers: batcherInfos,
@@ -190,7 +192,8 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 			Consenter:                 consenterInfos[i],
 			UseTLS:                    true,
 			ClientAuthRequired:        false,
-			MonitoringListenAddress:   "127.0.0.1:0",
+			Operations:                &localconfig.Defaults.Operations,
+			Metrics:                   &localconfig.Defaults.Metrics,
 			MetricsLogInterval:        5 * time.Second,
 			Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 		}
@@ -258,7 +261,8 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			Bundle:                              bundle,
 			ClientSignatureVerificationRequired: false,
 			RequestMaxBytes:                     1000,
-			MonitoringListenAddress:             "127.0.0.1:0",
+			Operations:                          &localconfig.Defaults.Operations,
+			Metrics:                             &localconfig.Defaults.Metrics,
 			MetricsLogInterval:                  5 * time.Second,
 		}
 		configs = append(configs, conf)
@@ -340,7 +344,8 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
-			MonitoringListenAddress:             "127.0.0.1:0",
+			Operations:                          &localconfig.Defaults.Operations,
+			Metrics:                             &localconfig.Defaults.Metrics,
 			MetricsLogInterval:                  3 * time.Second,
 		}
 
@@ -512,7 +517,7 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	return consenter
 }
 
-func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
+func recoverAssembler(conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
 	assembler := assembler.NewAssembler(conf, &config.Configuration{}, lastConfigBlock, make(chan struct{}), logger)
 	assembler.StartAssemblerService()
 	return assembler

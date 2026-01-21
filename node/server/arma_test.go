@@ -323,7 +323,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger, err := assemblerLedgerFactory.Create(testLogger, configuration.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
-		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))
+		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(configuration.LocalConfig.NodeLocalConfig.MetricsConfig.Provider, testLogger), "party1", testutil.CreateLogger(t, 0))
 		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(0))
 		require.Equal(t, assemblerLedger.GetTxCount(), uint64(0))
 		assemblerLedger.Close()
@@ -339,7 +339,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger, err = assemblerLedgerFactory.Create(testLogger, configuration.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
-		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))
+		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(configuration.LocalConfig.NodeLocalConfig.MetricsConfig.Provider, testLogger), "party1", testutil.CreateLogger(t, 0))
 		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(1))
 
 		// Add a fake config block with block number 1 to the ledger
