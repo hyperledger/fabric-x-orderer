@@ -178,6 +178,7 @@ type ConfigUpdateBuilder struct {
 	configDir         string
 	jsonConfigPath    string
 	configData        map[string]any
+	maxPartiesNum     int
 }
 
 func NewConfigUpdateBuilder(t *testing.T, configDir string, lastConfigBlockPath string) (*ConfigUpdateBuilder, func()) {
@@ -213,7 +214,6 @@ func getJSONConfigBlockData(t *testing.T, dir string, configtxlatorPath string, 
 	cmd := exec.Command(configtxlatorPath, "proto_decode", "--input", genesisBlockPath, "--type", "common.Block", "--output", jsonPath)
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, "Command failed with output: %s", string(output))
-
 	require.FileExists(t, jsonPath)
 
 	// Read the block in the json representation
@@ -339,6 +339,26 @@ func (c *ConfigUpdateBuilder) UpdatePartyTLSCACerts(t *testing.T, partyID types.
 	return c.createConfigUpdate(t, c.configData)
 }
 
+func (c *ConfigUpdateBuilder) AppendPartyTLSCACerts(t *testing.T, partyID types.PartyID, tlsCACerts [][]byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			for _, cert := range tlsCACerts {
+				partyMap["TLSCACerts"] = append(partyMap["TLSCACerts"].([]any), cert)
+			}
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
 func (c *ConfigUpdateBuilder) UpdatePartyCACerts(t *testing.T, partyID types.PartyID, caCerts [][]byte) []byte {
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
@@ -354,6 +374,81 @@ func (c *ConfigUpdateBuilder) UpdatePartyCACerts(t *testing.T, partyID types.Par
 	}
 
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) AppendPartyCACerts(t *testing.T, partyID types.PartyID, caCerts [][]byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			for _, cert := range caCerts {
+				partyMap["CACerts"] = append(partyMap["CACerts"].([]any), cert)
+			}
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) GetPartyCACerts(t *testing.T, partyID types.PartyID) [][]string {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	var caCerts [][]string
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			for _, cert := range partyMap["CACerts"].([]any) {
+				caCerts = append(caCerts, []string{cert.(string)})
+			}
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	require.NotNil(t, caCerts, "CACerts not found for PartyID %d", partyID)
+	return caCerts
+}
+
+func (c *ConfigUpdateBuilder) UpdateMSPRootCerts(t *testing.T, partyID types.PartyID, rootCerts [][]byte) []byte {
+	overwriteNestedJSONValue(t, c.configData, rootCerts, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "root_certs")
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) AppendMSPRootCerts(t *testing.T, partyID types.PartyID, rootCerts [][]byte) []byte {
+	orgRootCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "root_certs").([]any)
+	for _, cert := range rootCerts {
+		orgRootCerts = append(orgRootCerts, cert)
+	}
+	overwriteNestedJSONValue(t, c.configData, orgRootCerts, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "root_certs")
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateMSPAdminCerts(t *testing.T, partyID types.PartyID, adminCerts [][]byte) []byte {
+	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "admins")
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateMSPTLSRootCerts(t *testing.T, partyID types.PartyID, tlsCerts [][]byte) []byte {
+	overwriteNestedJSONValue(t, c.configData, tlsCerts, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "tls_root_certs")
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) AppendMSPTLSRootCerts(t *testing.T, partyID types.PartyID, tlsCerts [][]byte) []byte {
+	orgTlsCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "tls_root_certs").([]any)
+	for _, cert := range tlsCerts {
+		orgTlsCerts = append(orgTlsCerts, cert)
+	}
+	overwriteNestedJSONValue(t, c.configData, orgTlsCerts, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "tls_root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -642,6 +737,10 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyCo
 func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) []byte {
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
+
+	if c.maxPartiesNum == 0 {
+		c.maxPartiesNum = len(partiesConfigList)
+	}
 
 	found := false
 	for i, party := range partiesConfigList {
