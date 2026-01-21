@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -84,11 +85,12 @@ type Batcher struct {
 	term        uint64
 	primaryID   types.PartyID
 
-	metrics *BatcherMetrics
+	metrics   *BatcherMetrics
+	opsSystem *operations.System
 }
 
 func (b *Batcher) MonitoringServiceAddress() string {
-	return b.metrics.monitor.Address()
+	return operations.PrometheusMetricsServiceURL(b.opsSystem, b.logger)
 }
 
 func (b *Batcher) ConfigSequence() types.ConfigSequence {
@@ -143,7 +145,13 @@ func (b *Batcher) Run() {
 
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
-	b.metrics.Start()
+
+	if err := b.opsSystem.Start(); err != nil {
+		b.logger.Panicf("failed to start operations subsystem: %s", err)
+	}
+
+	b.metrics.StartMetricsTracker()
+	b.logger.Infof("Prometheus serving on URL: %s", b.MonitoringServiceAddress())
 }
 
 func (b *Batcher) GetStatus() string {
@@ -177,7 +185,8 @@ func (b *Batcher) Stop() {
 		b.primaryAckConnector.Stop()
 		b.primaryReqConnector.Stop()
 		b.running.Wait()
-		b.metrics.Stop()
+		b.metrics.StopMetricsTracker()
+		b.opsSystem.Stop()
 	}
 
 	b.wal.Close()
@@ -210,7 +219,8 @@ func (b *Batcher) SoftStop() {
 	b.primaryAckConnector.Stop()
 	b.primaryReqConnector.Stop()
 	b.running.Wait()
-	b.metrics.Stop()
+	b.metrics.StopMetricsTracker()
+	b.opsSystem.Stop()
 }
 
 // replicateDecision runs by a separate go routine

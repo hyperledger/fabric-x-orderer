@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -114,6 +115,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.SigVerifier = buildVerifier(nodeConfig.Consenters, nodeConfig.Shards, c.Logger)
 	c.synchronizerFactory = &bft_synch.SynchronizerCreator{}
 	c.Metrics = NewConsensusMetrics(nodeConfig, consLedger.Height(), txCount, c.Logger)
+	c.InitOperationSystem()
 	c.RequestVerifier = CreateConsensusRulesVerifier(nodeConfig)
 	c.ConfigUpdateProposer = configUpdateProposer
 	c.ConfigApplier = &DefaultConfigApplier{}
@@ -150,6 +152,16 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 
 	c.BFT.Synchronizer = bftSynch
 	c.Synchronizer = bftSynch
+}
+
+func (c *Consensus) InitOperationSystem() {
+	if c.Config == nil {
+		c.Logger.Panic("Consenter node config is nil")
+	}
+	if c.Config.Operations == nil || c.Config.Metrics == nil {
+		c.Logger.Panic("Operations or Metrics config is nil")
+	}
+	c.opsSystem = operations.NewOperationsSystem(*c.Config.Operations, *c.Config.Metrics)
 }
 
 func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *smartbft_consensus.Consensus {

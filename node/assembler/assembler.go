@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	common_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
@@ -44,6 +45,7 @@ type Assembler struct {
 	lastConfigBlockNumber uint64
 	metrics               *Metrics
 	ds                    *AssemblerDeliverService
+	opsSystem             *operations.System
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -76,7 +78,8 @@ func (a *Assembler) Stop() {
 		a.collator.Stop()
 	}
 
-	a.metrics.Stop()
+	a.metrics.StopMetricsTracker()
+	a.opsSystem.Stop()
 	a.net.Stop()
 	a.collator.Ledger.Close()
 
@@ -147,7 +150,13 @@ func NewDefaultAssembler(
 
 	assembler.initFromConfig(net, nodeConfig, configuration, configBlock, prefetchIndexFactory, prefetcherFactory, batchBringerFactory, consensusBringerFactory)
 
-	assembler.metrics.Start()
+	assembler.opsSystem = operations.NewOperationsSystem(*assembler.assemblerNodeConfig.Operations, *assembler.assemblerNodeConfig.Metrics)
+	if err := assembler.opsSystem.Start(); err != nil {
+		assembler.logger.Panicf("failed to start operations subsystem: %s", err)
+	}
+
+	assembler.logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(assembler.opsSystem, assembler.logger))
+	assembler.metrics.StartMetricsTracker()
 
 	return assembler
 }

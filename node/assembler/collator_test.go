@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -254,7 +255,7 @@ func createCollator(t *testing.T, shardCount int, ConfigProcessor assembler.Conf
 	ledger, err := ledgerFactory.Create(logger, tempDir)
 	require.NoError(t, err)
 
-	ledger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, t.Name()).Provider, "test_party", testutil.CreateLogger(t, 0))
+	ledger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, logger), "test_party", testutil.CreateLogger(t, 0))
 
 	ledger.AppendConfig(&state.OrderingInformation{
 		CommonBlock: utils.EmptyGenesisBlock("test"),

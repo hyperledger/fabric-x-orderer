@@ -9,6 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
+	github.com/tedsuo/ifrit v0.0.0-20260418191334-846868129986
 	go.uber.org/zap v1.27.1
 	golang.org/x/sync v0.20.0
 	google.golang.org/grpc v1.79.3

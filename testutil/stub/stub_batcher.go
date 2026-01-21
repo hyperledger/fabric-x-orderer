@@ -114,7 +114,7 @@ func NewStubBatchersAndInfos(t *testing.T, numParties int, shardIDs []types.Shar
 
 	// prepare CA for each party
 	var partiesCAs []tlsgen.CA
-	for i := 0; i < numParties; i++ {
+	for range numParties {
 		certificateAuthority, err := tlsgen.NewCA()
 		require.NoError(t, err)
 		partiesCAs = append(partiesCAs, certificateAuthority)
@@ -122,7 +122,7 @@ func NewStubBatchersAndInfos(t *testing.T, numParties int, shardIDs []types.Shar
 
 	for idx, shardID := range shardIDs {
 		batcherInfos = []nodeconfig.BatcherInfo{}
-		for i := 0; i < numParties; i++ {
+		for i := range numParties {
 			batcher := NewStubBatcher(t, partiesCAs[i], types.PartyID(i+1), shardID)
 			batchers = append(batchers, &batcher)
 			batcherInfo := nodeconfig.BatcherInfo{

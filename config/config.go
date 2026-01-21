@@ -25,7 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
-	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -246,14 +246,27 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
 	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
 	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
+	}
+
+	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		}
 	}
 
 	// use shards to get every party's RootCAs
@@ -283,10 +296,17 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+			TLS: operations.TLS{
+				Enabled:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled,
+				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
+				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
+				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
+				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+			},
 		},
-		Metrics: &monitoring.Metrics{
+		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
 		},
@@ -299,14 +319,27 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
 	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
 	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
 	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
+	}
+
+	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		}
 	}
 
 	// use shards to get every party's RootCAs
@@ -348,10 +381,17 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		RequestMaxBytes:    config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		SubmitTimeout:      config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
 		BatchSequenceGap:   types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+			TLS: operations.TLS{
+				Enabled:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled,
+				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
+				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
+				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
+				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+			},
 		},
-		Metrics: &monitoring.Metrics{
+		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
 		},
@@ -387,14 +427,27 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
 	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
 	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
+	}
+
+	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		}
 	}
 
 	// TODO: avoid duplications in clientRootCAs
@@ -423,10 +476,17 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		SigningPrivateKey:  signingPrivateKey,
 		WALDir:             DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
 		BFTConfig:          BFTConfig,
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+			TLS: operations.TLS{
+				Enabled:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled,
+				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
+				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
+				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
+				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+			},
 		},
-		Metrics: &monitoring.Metrics{
+		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
 		},
@@ -446,14 +506,27 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 			break
 		}
 	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
 	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
 	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
+	}
+
+	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
+		}
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		}
 	}
 
 	// use shards to get every party's RootCAs
@@ -484,10 +557,17 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
 		ClientRootCAs:             trustedRoots,
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+			TLS: operations.TLS{
+				Enabled:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled,
+				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
+				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
+				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
+				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+			},
 		},
-		Metrics: &monitoring.Metrics{
+		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
 		},

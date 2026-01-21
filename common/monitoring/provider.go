@@ -7,106 +7,63 @@ SPDX-License-Identifier: Apache-2.0
 package monitoring
 
 import (
-	"context"
-	"net"
-	"net/http"
-	"net/url"
-	"time"
+	"fmt"
+	"sync"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	promgo "github.com/prometheus/client_model/go"
-	"golang.org/x/sync/errgroup"
 )
 
-const (
-	scheme         = "http://"
-	metricsSubPath = "/metrics"
-)
+var providerRegistryLock = &sync.Mutex{}
 
 // Provider is a prometheus metrics provider.
 type Provider struct {
-	logger   *flogging.FabricLogger
-	registry *prometheus.Registry
-	url      string
+	disabled bool
 }
 
-// NewProvider creates a new prometheus metrics provider.
-func NewProvider(logger *flogging.FabricLogger) *Provider {
-	return &Provider{logger: logger, registry: prometheus.NewRegistry()}
+func NewProvider(providerType string, logger *flogging.FabricLogger) metrics.Provider {
+	var provider metrics.Provider
+
+	switch providerType {
+	case "prometheus":
+		provider = &Provider{}
+	default:
+		if providerType != "disabled" {
+			logger.Warnf("Unknown provider type: %s; metrics disabled", providerType)
+		}
+		provider = &Provider{disabled: true}
+	}
+
+	return provider
 }
 
-// StartPrometheusServer starts a prometheus server.
-// It also starts the given monitoring methods. Their context will cancel once the server is cancelled.
-// This method returns once the server is shutdown and all monitoring methods returns.
-func (p *Provider) StartPrometheusServer(
-	ctx context.Context, listener net.Listener, monitor ...func(context.Context),
-) error {
-	p.logger.Debugf("Creating prometheus server")
-	mux := http.NewServeMux()
-	mux.Handle(
-		metricsSubPath,
-		promhttp.HandlerFor(
-			p.Registry(),
-			promhttp.HandlerOpts{
-				Registry: p.Registry(),
-			},
-		),
-	)
-	server := &http.Server{
-		ReadTimeout: 30 * time.Second,
-		Handler:     mux,
+func (p *Provider) register(c prometheus.Collector) error {
+	if p.disabled {
+		return nil
 	}
 
-	var err error
-	p.url, err = MakeMetricsURL(listener.Addr().String())
-	if err != nil {
-		return errors.Wrap(err, "failed formatting URL")
-	}
+	providerRegistryLock.Lock()
+	defer providerRegistryLock.Unlock()
 
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		p.logger.Infof("Prometheus serving on URL: %s", p.url)
-		defer p.logger.Infof("Prometheus stopped serving on URL: %s", p.url)
-		return server.Serve(listener)
-	})
-
-	// The following ensures the method does not return before all monitor methods return.
-	for _, m := range monitor {
-		g.Go(func() error {
-			m(gCtx)
-			return nil
-		})
-	}
-
-	// The following ensures the method does not return before the close procedure is complete.
-	stopAfter := context.AfterFunc(ctx, func() {
-		go func() error {
-			if errClose := server.Close(); errClose != nil {
-				return errors.Wrap(errClose, "failed to close prometheus server")
+	// Attempt to register the collector
+	if err := prometheus.Register(c); err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			// Unregister the existing collector and register the new one
+			if !prometheus.Unregister(are.ExistingCollector) {
+				return fmt.Errorf("failed to unregister existing collector")
+			}
+			// Retry registration after unregistering
+			if err := prometheus.Register(c); err != nil {
+				return fmt.Errorf("failed to re-register collector: %w", err)
 			}
 			return nil
-		}()
-	})
-	defer stopAfter()
-
-	if err = g.Wait(); !errors.Is(err, http.ErrServerClosed) {
-		return errors.Wrap(err, "prometheus server stopped with an error")
+		}
+		return fmt.Errorf("failed to register collector: %w", err)
 	}
+
 	return nil
-}
-
-// URL returns the prometheus server URL.
-func (p *Provider) URL() string {
-	return p.url
-}
-
-// MakeMetricsURL construct the Prometheus metrics URL.
-func MakeMetricsURL(address string) (string, error) {
-	return url.JoinPath(scheme, address, metricsSubPath)
 }
 
 func (p *Provider) NewCounter(o metrics.CounterOpts) metrics.Counter {
@@ -122,11 +79,14 @@ func (p *Provider) NewCounter(o metrics.CounterOpts) metrics.Counter {
 		),
 	}
 
-	p.registry.MustRegister(c.cv)
+	if err := p.register(c.cv); err != nil {
+		panic(err)
+	}
 
 	if len(o.LabelNames) == 0 {
 		c.Counter = c.cv.WithLabelValues()
 	}
+
 	return c
 }
 
@@ -143,7 +103,9 @@ func (p *Provider) NewGauge(o metrics.GaugeOpts) metrics.Gauge {
 		),
 	}
 
-	p.registry.MustRegister(g.gv)
+	if err := p.register(g.gv); err != nil {
+		panic(err)
+	}
 	return g
 }
 
@@ -161,7 +123,9 @@ func (p *Provider) NewHistogram(o metrics.HistogramOpts) metrics.Histogram {
 		),
 	}
 
-	p.registry.MustRegister(h.hv)
+	if err := p.register(h.hv); err != nil {
+		panic(err)
+	}
 	return h
 }
 
@@ -171,7 +135,7 @@ type Counter struct {
 }
 
 func (c *Counter) With(labelValues ...string) metrics.Counter {
-	return &Counter{Counter: c.cv.WithLabelValues(labelValues...)}
+	return &Counter{Counter: c.cv.WithLabelValues(labelValues...), cv: c.cv}
 }
 
 type Gauge struct {
@@ -180,7 +144,7 @@ type Gauge struct {
 }
 
 func (g *Gauge) With(labelValues ...string) metrics.Gauge {
-	return &Gauge{Gauge: g.gv.WithLabelValues(labelValues...)}
+	return &Gauge{Gauge: g.gv.WithLabelValues(labelValues...), gv: g.gv}
 }
 
 type Histogram struct {
@@ -189,19 +153,14 @@ type Histogram struct {
 }
 
 func (h *Histogram) With(labelValues ...string) metrics.Histogram {
-	return &Histogram{Histogram: h.hv.WithLabelValues(labelValues...).(prometheus.Histogram)}
-}
-
-// Registry returns the prometheus registry.
-func (p *Provider) Registry() *prometheus.Registry {
-	return p.registry
+	return &Histogram{Histogram: h.hv.WithLabelValues(labelValues...).(prometheus.Histogram), hv: h.hv}
 }
 
 func GetMetricValue(m prometheus.Metric, logger *flogging.FabricLogger) float64 {
 	gm := promgo.Metric{}
 	err := m.Write(&gm)
 	if err != nil {
-		logger.Errorf("%v", err.Error())
+		logger.Error(err)
 		return 0
 	}
 
