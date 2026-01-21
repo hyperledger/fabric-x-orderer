@@ -116,10 +116,11 @@ func LoadCryptoMaterialForSigner(mspDir string) (*crypto.ECDSASigner, []byte, er
 }
 
 func GetMspIDfromDir(mspDir string) (string, error) {
-	re := regexp.MustCompile(`/ordererOrganizations/([^/]+)/`)
+	mspDir = filepath.ToSlash(mspDir)
+	re := regexp.MustCompile(`/(orderer|peer)Organizations/([^/]+)(/|$)`)
 	matches := re.FindStringSubmatch(mspDir)
-	if matches == nil || len(matches) > 2 {
+	if len(matches) < 4 {
 		return "", fmt.Errorf("failed to extract mspID from path: %s", mspDir)
 	}
-	return matches[1], nil
+	return matches[2], nil
 }
