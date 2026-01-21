@@ -763,7 +763,7 @@ func checkCryptoDir(outputDir string) error {
 				return fmt.Errorf("missing directory: %s\n", userMSPPath)
 			}
 
-			requiredMSPSubDirs := []string{"cacerts", "intermediatecerts", "admincerts", "keystore", "signcerts", "tlscacerts", "tlsintermediatecerts"}
+			requiredMSPSubDirs := []string{"cacerts", "admincerts", "keystore", "signcerts", "tlscacerts"}
 			for _, mspSubDir := range requiredMSPSubDirs {
 				mspSubDirPath := filepath.Join(userMSPPath, mspSubDir)
 				if _, err := os.Stat(mspSubDirPath); os.IsNotExist(err) {
@@ -791,8 +791,8 @@ func checkCryptoDir(outputDir string) error {
 				return fmt.Errorf("error reading directory %s\n", userTLSPath)
 			}
 			for _, file := range files {
-				if !strings.HasSuffix(file.Name(), ".pem") {
-					return fmt.Errorf("error reading %s files, suffix file is not pem\n", userTLSPath)
+				if !strings.HasSuffix(file.Name(), ".crt") && !strings.HasSuffix(file.Name(), ".key") {
+					return fmt.Errorf("error reading %s files, suffix file is not crt or key\n", userTLSPath)
 				}
 			}
 		}
@@ -819,7 +819,7 @@ func checkCryptoDir(outputDir string) error {
 			if _, err := os.Stat(mspPath); os.IsNotExist(err) {
 				return fmt.Errorf("missing directory: %s\n", mspPath)
 			}
-			requiredMSPSubDirs := []string{"cacerts", "intermediatecerts", "admincerts", "keystore", "signcerts", "tlscacerts", "tlsintermediatecerts"}
+			requiredMSPSubDirs := []string{"cacerts", "admincerts", "keystore", "signcerts", "tlscacerts"}
 			for _, mspSubDir := range requiredMSPSubDirs {
 				mspSubDirPath := filepath.Join(mspPath, mspSubDir)
 				if _, err := os.Stat(mspSubDirPath); os.IsNotExist(err) {
@@ -847,8 +847,8 @@ func checkCryptoDir(outputDir string) error {
 				return fmt.Errorf("error reading directory %s\n", tlsPath)
 			}
 			for _, file := range files {
-				if !strings.HasSuffix(file.Name(), ".pem") {
-					return fmt.Errorf("error reading %s files, suffix file is not pem\n", tlsPath)
+				if !strings.HasSuffix(file.Name(), ".crt") && !strings.HasSuffix(file.Name(), ".key") {
+					return fmt.Errorf("error reading %s files, suffix file is not crt or key\n", tlsPath)
 				}
 			}
 		}

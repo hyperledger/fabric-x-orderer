@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
@@ -60,8 +61,9 @@ func (s TestSigner) Serialize() ([]byte, error) {
 }
 
 func CreateTestSigner(t *testing.T, mspID, dir string) *TestSigner {
-	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", mspID, "users", "user", "msp", "keystore", "priv_sk")
-	certPath := filepath.Join(dir, "crypto", "ordererOrganizations", mspID, "users", "user", "msp", "signcerts", "sign-cert.pem")
+	clientName := fmt.Sprintf("client@%s", mspID)
+	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", mspID, "users", clientName, "msp", "keystore", "priv_sk")
+	certPath := filepath.Join(dir, "crypto", "ordererOrganizations", mspID, "users", clientName, "msp", "signcerts", clientName+"-cert.pem")
 	Signer, err := NewTestSigner(keyPath, certPath, mspID)
 	require.NotNil(t, Signer)
 	require.NoError(t, err)
@@ -102,7 +104,11 @@ func LoadCryptoMaterialForSigner(mspDir string) (*crypto.ECDSASigner, []byte, er
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create private key: %w", err)
 	}
-	certBytes, err := os.ReadFile(filepath.Join(mspDir, "signcerts", "sign-cert.pem"))
+	pemFiles, err := utils.PemFilesFromDir(filepath.Join(mspDir, "signcerts"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list pem files from signcerts directory: %w", err)
+	}
+	certBytes, err := os.ReadFile(filepath.Join(mspDir, "signcerts", pemFiles[0]))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read sign certificate: %w", err)
 	}

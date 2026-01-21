@@ -291,7 +291,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	// Verify that the removed party's batcher fails to connect to the primary batcher of its shard (as seen from its own stale view).
 	detectCh := removedBatcher.RunInfo.Session.Err.Detect(
-		`Failed creating Deliver stream to %s: .*error: tls: unknown certificate authority`,
+		`Failed creating Deliver stream to %s: .*error: tls: certificate required`,
 		primaryBatcherEndpoint,
 	)
 	defer removedBatcher.RunInfo.Session.Err.CancelDetects()
@@ -824,11 +824,13 @@ func TestPartiesFullReplacement(t *testing.T) {
 		// 6.
 		t.Log("Get the config block from an assembler ledger and write it to a temp location")
 		submittingPartyID = parties[0]
+		submittingOrg := fmt.Sprintf("org%d", submittingPartyID)
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
 		require.NoError(t, err)
 		configBlockStoreDir := t.TempDir()
 		configBlockPath = filepath.Join(configBlockStoreDir, fmt.Sprintf("config_%d.block", configSeq))
 
+		pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
 		test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 			UserConfig:   uc,
 			Parties:      parties,

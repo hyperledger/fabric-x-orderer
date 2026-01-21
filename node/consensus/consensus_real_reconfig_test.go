@@ -100,7 +100,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(t.Context(), configReq)
 		require.Error(t, err)
 		// create context with the router's certificate
-		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
+		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/server.crt"))
 		require.NoError(t, err)
 		block, _ := pem.Decode(routerCertBytes)
 		require.NotNil(t, block)
@@ -158,10 +158,10 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
 		consenterToUpdate := types.PartyID(4)
-		caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
+		caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", fmt.Sprintf("tlsorg%d-CA-cert.pem", consenterToUpdate))
 		caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
-		newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
-		newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls", "key.pem")
+		newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls", "server.crt")
+		newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls", "server.key")
 		newCert, err := armageddon.CreateNewCertificateFromCA(caCertPath, caPrivKeyPath, "tls", newCertPath, newKeyPath, nodesIPs)
 		require.NoError(t, err)
 		configUpdatePbData := configUpdateBuilder.UpdateConsensusTLSCert(t, consenterToUpdate, newCert)
@@ -362,7 +362,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
 		configUpdatePbData := configUpdateBuilder.UpdateOrderingEndpoint(t, consenterPartyToUpdate, nodeIP, newPort)
-		env := configutil.CreateConfigTX(t, dir, parties[0:4], 1, configUpdatePbData)
+		env := configutil.CreateConfigTX(t, dir, parties[0:4], int(parties[0]), configUpdatePbData)
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
@@ -374,7 +374,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		startConsensusNodesAndRegisterGRPCServers(t, parties, consensusNodes, servers)
 
 		// use a different router's certificate to submit config update (as the old router's party was removed in the previous test)
-		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org2/orderers/party2/router/tls/tls-cert.pem"))
+		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org2/orderers/party2/router/tls/server.crt"))
 		require.NoError(t, err)
 		block, _ := pem.Decode(routerCertBytes)
 		require.NotNil(t, block)

@@ -39,7 +39,9 @@ import (
 //     propagated and signed.
 func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	defer gexec.CleanupBuildArtifacts()
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -49,12 +51,16 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	// create temp dir
 	dir, err := os.MkdirTemp("", fmt.Sprintf("%s_%d_%d_", "TestSubmitReceiveAndVerifySignaturesAssemblerBlocks", numOfParties, numOfShards))
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
-	defer netInfo.CleanUp()
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
 	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
@@ -66,7 +72,9 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -92,7 +100,7 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 	defer broadcastClient.Stop()
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		require.True(t, status)
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))

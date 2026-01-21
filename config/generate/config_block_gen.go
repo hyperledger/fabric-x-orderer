@@ -104,7 +104,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
 			MSPType:          templateOrdererOrg.MSPType,
 			Policies:         make(map[string]*configtxgen.Policy),
-			OrdererEndpoints: buildOrdererEndpoints(uint32(p.PartyID), p.RouterConfig.Host, int(p.RouterConfig.Port), p.AssemblerConfig.Host, int(p.AssemblerConfig.Port)),
+			OrdererEndpoints: BuildOrdererEndpoints(uint32(p.PartyID), p.RouterConfig.Host, int(p.RouterConfig.Port), p.AssemblerConfig.Host, int(p.AssemblerConfig.Port)),
 			AdminPrincipal:   templateOrdererOrg.AdminPrincipal,
 			SkipAsForeign:    templateOrdererOrg.SkipAsForeign,
 		}
@@ -126,7 +126,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	return profile, nil
 }
 
-func buildOrdererEndpoints(id uint32, routerHost string, routerPort int, assemblerHost string, assemblerPort int) []*types.OrdererEndpoint {
+func BuildOrdererEndpoints(id uint32, routerHost string, routerPort int, assemblerHost string, assemblerPort int) []*types.OrdererEndpoint {
 	return []*types.OrdererEndpoint{
 		{Host: routerHost, Port: routerPort, ID: id, API: []string{types.Broadcast}},
 		{Host: assemblerHost, Port: assemblerPort, ID: id, API: []string{types.Deliver}},

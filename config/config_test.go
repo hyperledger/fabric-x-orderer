@@ -81,7 +81,7 @@ func TestExtractAppTrustedRootsFromConfigBlock(t *testing.T) {
 		require.NoError(t, err)
 
 		res := config.ExtractAppTrustedRootsFromConfigBlock(bundle)
-		require.Equal(t, len(res), 4)
+		require.Equal(t, len(res), 1)
 	})
 }
 
@@ -109,7 +109,7 @@ func TestConfigurationCheckIfRouterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change router1 cert
-	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "org1-CA-cert.pem"))
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestConfigurationCheckIfBatcherNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, genesisBlock)
 
-	localSignCert, err := os.ReadFile(filepath.Join(fullConfig.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+	localSignCert, err := os.ReadFile(filepath.Join(fullConfig.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "batcher1-cert.pem"))
 	require.NoError(t, err)
 	require.NotNil(t, localSignCert)
 
@@ -161,7 +161,7 @@ func TestConfigurationCheckIfBatcherNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change batcher11 sign cert
-	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "org1-CA-cert.pem"))
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
@@ -218,7 +218,7 @@ func TestConfigurationCheckIfConsenterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, genesisBlock)
 
-	localSignCert, err := os.ReadFile(filepath.Join(fullConfig.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+	localSignCert, err := os.ReadFile(filepath.Join(fullConfig.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "consenter-cert.pem"))
 	require.NoError(t, err)
 	require.NotNil(t, localSignCert)
 
@@ -227,7 +227,7 @@ func TestConfigurationCheckIfConsenterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change consenter1 tls cert
-	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "org1-CA-cert.pem"))
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
@@ -283,7 +283,7 @@ func TestConfigurationCheckIfAssemblerNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change assembler1 cert
-	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "org1-CA-cert.pem"))
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)

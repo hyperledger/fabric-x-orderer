@@ -253,7 +253,7 @@ func ExtendNetworkWithPortAllocator(t *testing.T, configPath string, allocator P
 // ExtendConfigAndCrypto generates crypto materials for the network, extends the config with the new party and writes the updated config to a file.
 func ExtendConfigAndCrypto(networkConfig *genconfig.Network, outputDir string, clientSignatureVerificationRequired bool) {
 	// generate crypto material
-	err := armageddon.GenerateCryptoConfig(networkConfig, outputDir)
+	_, err := armageddon.GenerateCryptoConfigWithProfile(networkConfig, outputDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating crypto config: %s", err)
 		os.Exit(-1)
@@ -288,9 +288,9 @@ func ExtendConfigAndCrypto(networkConfig *genconfig.Network, outputDir string, c
 	}
 
 	for _, party := range networkConfig.Parties {
-		userTLSPrivateKeyPath := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "tls", "user-key.pem")
-		userTLSCertPath := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "tls", "user-tls-cert.pem")
-		mspDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "msp")
+		userTLSPrivateKeyPath := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", fmt.Sprintf("client@org%d", party.ID), "tls", "client.key")
+		userTLSCertPath := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", fmt.Sprintf("client@org%d", party.ID), "tls", "client.crt")
+		mspDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", fmt.Sprintf("client@org%d", party.ID), "msp")
 
 		userConfig, err := armageddon.NewUserConfig(mspDir, userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
 		if err != nil {
@@ -318,7 +318,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 // The function returns the path to the file and the shared config in the yaml format.
 // This function is used in testing only.
 func PrepareSharedConfigBinaryFromNetwork(t *testing.T, networkConfig genconfig.Network, dir string) (*config.SharedConfigYaml, string) {
-	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	_, err := armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir)
 	require.NoError(t, err)
 
 	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(networkConfig, dir, dir, false)

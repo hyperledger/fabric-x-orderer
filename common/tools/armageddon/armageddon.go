@@ -24,12 +24,14 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin"
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
@@ -42,6 +44,10 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	armaSharedConfigFileName = "shared_config.binpb"
 )
 
 var defaultConfig = `Parties:
@@ -270,7 +276,7 @@ func sharedConfigToProto(sharedConfig *ordererpb.SharedConfig, outputDir *string
 		os.Exit(-1)
 	}
 
-	sharedConfigBinaryPath := filepath.Join(*outputDir, "shared_config.binpb")
+	sharedConfigBinaryPath := filepath.Join(*outputDir, armaSharedConfigFileName)
 	err = os.WriteFile(sharedConfigBinaryPath, sharedConfigBytes, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing the shared config binary: %s", err)
@@ -317,8 +323,8 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 		os.Exit(-1)
 	}
 
-	// generate crypto material
-	err = GenerateCryptoConfig(networkConfig, *outputDir)
+	// generate crypto material and profile for the config block
+	profile, err := GenerateCryptoConfigWithProfile(networkConfig, *outputDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating crypto config: %s", err)
 		os.Exit(-1)
@@ -332,7 +338,7 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 	}
 
 	// generate shared config yaml file
-	sharedConfigYaml, err := genconfig.CreateArmaSharedConfig(*networkConfig, networkLocalConfig, *outputDir, *outputDir)
+	_, err = genconfig.CreateArmaSharedConfig(*networkConfig, networkLocalConfig, *outputDir, *outputDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating shared config: %s", err)
 		os.Exit(-1)
@@ -344,8 +350,11 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 		os.Exit(-1)
 	}
 
-	blockDir := filepath.Join(*outputDir, "bootstrap")
-	sharedConfigToBlock(sharedConfig, sharedConfigYaml, &blockDir, outputDir, sampleConfigPath)
+	err = createConfigBlockWithArmaSharedConfig(profile, sharedConfig, *outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error updating config block with new meta: %s", err)
+		os.Exit(-1)
+	}
 
 	// generate user config yaml file for each party
 	// user will be able to connect to each of the routers and assemblers only if it receives for each router the CA that signed the certificate of that router.
@@ -356,9 +365,9 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 	}
 
 	for i := range sharedConfig.PartiesConfig {
-		userTLSPrivateKeyPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "tls", "user-key.pem")
-		userTLSCertPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "tls", "user-tls-cert.pem")
-		mspDir := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", "user", "msp")
+		userTLSPrivateKeyPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", fmt.Sprintf("client@org%d", i+1), "tls", "client.key")
+		userTLSCertPath := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", fmt.Sprintf("client@org%d", i+1), "tls", "client.crt")
+		mspDir := filepath.Join(*outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "users", fmt.Sprintf("client@org%d", i+1), "msp")
 
 		userConfig, err := NewUserConfig(mspDir, userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
 		if err != nil {
@@ -1194,4 +1203,25 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 	}
 
 	return numOfBlocksCalculated, sumOfDelayTimes
+}
+
+// createConfigBlockWithArmaSharedConfig creates a new config block with the updated shared config and writes it to the output directory.
+func createConfigBlockWithArmaSharedConfig(profile *configtxgen.Profile, sharedConfig *ordererpb.SharedConfig, outputDir string) error {
+	// Convert the shared config to its protobuf representation and write it to the output directory.
+	sharedConfigProtoDir := filepath.Join(outputDir, "bootstrap")
+	sharedConfigToProto(sharedConfig, &sharedConfigProtoDir)
+
+	profile.Orderer.Arma.Path = filepath.Join(sharedConfigProtoDir, armaSharedConfigFileName)
+
+	block, err := configtxgen.GetOutputBlock(profile, "arma")
+	if err != nil {
+		return errors.Wrap(err, "failed to get output block")
+	}
+
+	err = configtxgen.WriteOutputBlock(block, filepath.Join(outputDir, "bootstrap", "bootstrap.block"))
+	if err != nil {
+		return errors.Wrap(err, "error writing output block")
+	}
+
+	return nil
 }

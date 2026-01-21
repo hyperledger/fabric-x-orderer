@@ -110,29 +110,21 @@ func CertificateToString(cert *x509.Certificate) string {
 }
 
 func GetPortFromEndpoint(endpoint string) uint32 {
-	if strings.Contains(endpoint, ":") {
-		_, portS, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		port, err := strconv.ParseUint(portS, 10, 32)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		return uint32(port)
+	_, portS, err := net.SplitHostPort(endpoint)
+	if err != nil || len(portS) == 0 {
+		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
 	}
-
-	return 0
+	port, err := strconv.ParseUint(portS, 10, 32)
+	if err != nil {
+		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
+	}
+	return uint32(port)
 }
 
 func TrimPortFromEndpoint(endpoint string) string {
-	if strings.Contains(endpoint, ":") {
-		host, _, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		return host
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil || len(host) == 0 {
+		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
 	}
-
-	return endpoint
+	return host
 }

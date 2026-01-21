@@ -863,8 +863,8 @@ github.com/hyperledger/fabric-lib-go v1.1.5-0.20260708100132-163bcc919208 h1:qA4
 github.com/hyperledger/fabric-lib-go v1.1.5-0.20260708100132-163bcc919208/go.mod h1:EKqTudBsC2yovZdcJq5ekWvkq3USF1mbau07I0y8zMs=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7 h1:sQ5qv8vQQfwewa1JlCiSCC8dLElmaU2/frLolpgibEY=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7/go.mod h1:bJnwzfv03oZQeCc863pdGTDgf5nmCy6Za3RAE7d2XsQ=
-github.com/hyperledger/fabric-x-common v0.2.8 h1:gTKJlORCjZjZo+4gPAvOUjTlOYBG8GToy3BTMLOI7sA=
-github.com/hyperledger/fabric-x-common v0.2.8/go.mod h1:f30Yws3c5Cg22yHLy2oT2XR0wwZI+JdqbUqB2fwFIsM=
+github.com/hyperledger/fabric-x-common v0.2.9-0.20260723080247-bb9c7dc14898 h1:cCKBihleE/Y9mSa3ePVHuTOCg9eByHUKz2aQckbOf5s=
+github.com/hyperledger/fabric-x-common v0.2.9-0.20260723080247-bb9c7dc14898/go.mod h1:f30Yws3c5Cg22yHLy2oT2XR0wwZI+JdqbUqB2fwFIsM=
 github.com/iancoleman/strcase v0.2.0/go.mod h1:iwCmte+B7n89clKwxIoIXy/HfoL7AsD47ZCWhYzw7ho=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
