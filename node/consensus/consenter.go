@@ -53,28 +53,14 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, configSeq ty
 	return newState, batchAttestations, configRequests
 }
 
-// Commit indexes BAs.
-// Note that this must hold: Commit(batchAttestations) with the same batchAttestations is idempotent.
-// TODO revise the recovery from failure or shutdown, specifically the order of Commit and Append.
-func (c *Consenter) Commit(batchAttestations [][]types.BatchAttestationFragment) {
-	if len(batchAttestations) > 0 {
-		c.indexAttestationsInDB(batchAttestations)
+// Index indexes BAs (digests).
+// Note that this must hold: Index(digests) with the same digests is idempotent.
+// TODO revise the recovery from failure or shutdown, specifically the order of Index and Append.
+func (c *Consenter) Index(digests [][]byte) {
+	if len(digests) > 0 {
+		epochs := make([]uint64, len(digests)) // TODO remove
+		c.DB.Put(digests, epochs)
 	}
-}
-
-func (c *Consenter) indexAttestationsInDB(batchAttestations [][]types.BatchAttestationFragment) {
-	digests := make([][]byte, 0, len(batchAttestations))
-	epochs := make([]uint64, 0, len(batchAttestations))
-	for _, bafs := range batchAttestations {
-		if len(bafs) == 0 {
-			continue
-		}
-		digests = append(digests, bafs[0].Digest())
-		epochs = append(epochs, 0) // TODO remove
-
-		c.Logger.Debugf("Indexed batch attestation for digest %x", bafs[0].Digest())
-	}
-	c.DB.Put(digests, epochs)
 }
 
 func aggregateFragments(batchAttestationFragments []types.BatchAttestationFragment) [][]types.BatchAttestationFragment {
