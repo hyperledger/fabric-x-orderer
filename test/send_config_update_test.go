@@ -41,9 +41,10 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	numOfParties := 2
+	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
-	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
 	require.NotNil(t, netInfo)
 	require.NoError(t, err)
 

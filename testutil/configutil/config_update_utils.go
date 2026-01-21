@@ -22,9 +22,13 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
@@ -863,4 +867,44 @@ func overwriteNestedJSONValue(t *testing.T, data map[string]any, value any, path
 			require.FailNow(t, fmt.Sprintf("unexpected type encountered at path %v", path[:i]))
 		}
 	}
+}
+
+func NewConfigBlock(t *testing.T, dir string, configUpdate *common.Envelope, configBlockPath string) *common.Block {
+	sharedConfigProto, sharedConfigYaml, err := config.LoadSharedConfig(filepath.Join(dir, "bootstrap", "shared_config.yaml"))
+	require.NoError(t, err)
+	sharedConfigBytes, err := proto.Marshal(sharedConfigProto)
+	require.NoError(t, err)
+	sharedConfigBinaryPath := filepath.Join(dir, "shared_config.bin")
+	err = os.WriteFile(sharedConfigBinaryPath, sharedConfigBytes, 0o644)
+	require.NoError(t, err)
+	profile, err := generate.CreateProfile(dir, sharedConfigYaml, sharedConfigBinaryPath, fabric.GetDevConfigDir())
+	require.NoError(t, err)
+
+	payloadChannelHeader := protoutil.MakeChannelHeader(common.HeaderType_CONFIG, 1, "arma", 0)
+	require.NotNil(t, payloadChannelHeader)
+	payloadSignatureHeader := protoutil.MakeSignatureHeader(nil, protoutil.CreateNonceOrPanic())
+	require.NotNil(t, payloadSignatureHeader)
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
+	payloadHeader := protoutil.MakePayloadHeader(payloadChannelHeader, payloadSignatureHeader)
+	require.NotNil(t, payloadHeader)
+	channelGroup, err := configtxgen.NewChannelGroup(profile)
+	require.NoError(t, err)
+	payload := &common.Payload{Header: payloadHeader, Data: protoutil.MarshalOrPanic(&common.ConfigEnvelope{Config: &common.Config{ChannelGroup: channelGroup}, LastUpdate: configUpdate})}
+	envelope := &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: nil}
+
+	block := protoutil.NewBlock(0, nil)
+	block.Data = &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(envelope)}}
+	block.Header.DataHash = protoutil.ComputeBlockDataHash(block.Data)
+	block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 0}),
+	})
+	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+			LastConfig: &common.LastConfig{Index: 0},
+		}),
+	})
+
+	err = configtxgen.WriteOutputBlock(block, configBlockPath)
+	require.NoError(t, err)
+	return block
 }
