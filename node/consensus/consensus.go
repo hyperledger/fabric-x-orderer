@@ -133,8 +133,10 @@ func (c *Consensus) Start() error {
 		c.Logger.Panicf("failed to start operations subsystem: %s", err)
 		panic(err)
 	}
+	RegisterHealthCheckers(c)
 
 	c.Logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(c.opsSystem, c.Logger))
+	c.Logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(c.opsSystem, c.Logger))
 	c.Metrics.StartMetricsTracker()
 	bft := c.BFT
 	c.lock.Unlock()

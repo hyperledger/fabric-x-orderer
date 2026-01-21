@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/healthz"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,6 +83,50 @@ func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int
 func CaptureArmaNodePrometheusServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
 	var url string
 	re := regexp.MustCompile(`Prometheus serving on URL:\s+(https?://[^/\s]+/metrics)`)
+	require.Eventually(t, func() bool {
+		output := string(armaNodeInfo.RunInfo.Session.Err.Contents())
+		matches := re.FindStringSubmatch(output)
+		if len(matches) > 1 {
+			url = matches[1]
+			return true
+		}
+		return false
+	}, 60*time.Second, 10*time.Millisecond)
+
+	return url
+}
+
+// GetHealthCheckStatus retrieves the health status from the given health check endpoint URL using the provided regular expression.
+// It returns true if the status is "OK", false if the status is "Unavailable", and fails the test for any unexpected response.
+func GetHealthCheckStatus(t *testing.T, re *regexp.Regexp, url string) bool {
+	resp, err := http.Get(url)
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	t.Log(string(body))
+
+	// Find all matches
+	matches := re.FindStringSubmatch(string(body))
+	if len(matches) > 1 {
+		if matches[1] == healthz.StatusOK {
+			return true
+		}
+		if matches[1] == healthz.StatusUnavailable {
+			return false
+		}
+	}
+	t.Fatalf("Unexpected health check response: %s", string(body))
+	return false
+}
+
+// CaptureArmaNodeHealthCheckServiceURL retrieves the health check endpoint URL from the given ArmaNodeInfo's session output.
+// It waits until the URL is found or times out, and returns the health check endpoint as a string.
+func CaptureArmaNodeHealthCheckServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
+	var url string
+	re := regexp.MustCompile(`Health check serving on URL:\s+(https?://[^/\s]+/healthz)`)
 	require.Eventually(t, func() bool {
 		output := string(armaNodeInfo.RunInfo.Session.Err.Contents())
 		matches := re.FindStringSubmatch(output)

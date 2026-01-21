@@ -284,8 +284,17 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 	})
 }
 
-// TestRunNodesAndGetMetrics verifies that the batcher and consensus metrics are correctly exposed and updated.
-func TestRunNodesAndGetMetrics(t *testing.T) {
+// TestRunNodesAndGetResponseFromOperationEndpoints verifies that the nodes respond correctly to operation endpoints INSECURED.
+// The test performs the following steps:
+// 1. Creates a test network configuration
+// 2. Generates network artifacts using armageddon CLI
+// 3. Builds and starts the arma node binary
+// 4. Sends a configurable number of transactions (10) using a rate-limited broadcast client
+// 5. Monitors Prometheus metrics to verify transaction count (totalTxNumber+1) and block count (2)
+// 6. Stops and restarts the monitored assembler node
+// 7. Verifies that the metrics remain accurate after the node restart
+// 8. Checks the health check endpoint to ensure the assembler node is healthy
+func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	defer gexec.CleanupBuildArtifacts()
@@ -361,6 +370,15 @@ func TestRunNodesAndGetMetrics(t *testing.T) {
 		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
 
+	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, batcherToMonitor)
+
+	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
+	re = regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, re, url)
+	}, 30*time.Second, 100*time.Millisecond)
+
 	consenterToMonitor := armaNetwork.GetConsenter(t, 1)
 	url = testutil.CaptureArmaNodePrometheusServiceURL(t, consenterToMonitor)
 
@@ -369,5 +387,14 @@ func TestRunNodesAndGetMetrics(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return testutil.FetchPrometheusMetricValue(t, re, url) >= parties*shards
+	}, 30*time.Second, 100*time.Millisecond)
+
+	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, consenterToMonitor)
+
+	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
+	re = regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, re, url)
 	}, 30*time.Second, 100*time.Millisecond)
 }

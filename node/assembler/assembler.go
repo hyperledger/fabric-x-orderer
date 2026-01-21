@@ -158,8 +158,10 @@ func NewDefaultAssembler(
 	if err := assembler.opsSystem.Start(); err != nil {
 		assembler.logger.Panicf("failed to start operations subsystem: %s", err)
 	}
+	RegisterHealthCheckers(assembler)
 
 	assembler.logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(assembler.opsSystem, assembler.logger))
+	assembler.logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(assembler.opsSystem, assembler.logger))
 	assembler.metrics.StartMetricsTracker()
 
 	return assembler
