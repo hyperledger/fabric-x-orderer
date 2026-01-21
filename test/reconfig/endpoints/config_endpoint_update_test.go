@@ -116,8 +116,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	})
 
 	// Create config update
-	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToUpdate := submittingParty
 	nonUpdatedRouterParties := []types.PartyID{2, 3, 4}

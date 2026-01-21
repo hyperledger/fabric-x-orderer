@@ -34,16 +34,14 @@ import (
 
 func TestValidateNewConfig(t *testing.T) {
 	numOfParties := 1
-	_, env, _, _, _, _, _, cleanup := setupOrdererRulesTest(t, numOfParties)
-	defer cleanup()
+	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, numOfParties)
 
 	or := verify.DefaultOrdererRules{}
 	require.NoError(t, or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1)))
 }
 
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
-	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
-	defer cleanup()
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
 
 	// update the batch timeout to an invalid value
 	updatePb := builder.UpdateBatchTimeouts(t, configutil.NewBatchTimeoutsConfig(configutil.BatchTimeoutsConfigName.BatchCreationTimeout, "0s"))
@@ -68,8 +66,7 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 }
 
 func TestValidateNewConfig_BFTParams(t *testing.T) {
-	dir, env, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
-	defer cleanup()
+	dir, env, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
 
 	or := verify.DefaultOrdererRules{}
 	bccsp := factory.GetDefault()
@@ -100,8 +97,7 @@ func TestValidateNewConfig_BFTParams(t *testing.T) {
 }
 
 func TestValidateNewConfig_InvalidRequestMaxBytes(t *testing.T) {
-	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
-	defer cleanup()
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
 
 	or := verify.DefaultOrdererRules{}
 	bccsp := factory.GetDefault()
@@ -130,8 +126,7 @@ func TestValidateNewConfig_InvalidRequestMaxBytes(t *testing.T) {
 }
 
 func TestValidateNewConfig_InvalidOrdererEndpoint(t *testing.T) {
-	_, env, _, _, _, _, _, cleanup := setupOrdererRulesTest(t, 1)
-	defer cleanup()
+	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 1)
 
 	payload, err := protoutil.UnmarshalPayload(env.Payload)
 	require.NoError(t, err)
@@ -168,8 +163,7 @@ func TestValidateNewConfig_InvalidOrdererEndpoint(t *testing.T) {
 }
 
 func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
-	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
-	defer cleanup()
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
 
 	// create a valid config update first
 	cert := []byte("fake1-tls-cert")
@@ -223,8 +217,7 @@ func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	bccsp := factory.GetDefault()
 
 	// create a config with 3 parties
-	dir, currEnv, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
-	defer cleanup()
+	dir, currEnv, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 3)
 
 	// remove partyID=3, MaxPartyID is still 3
 	updatePb := builder.RemoveParty(t, 3)
@@ -258,8 +251,7 @@ func TestValidateTransition_FailedRemoveTwoParties(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
 
 	// create a config with 5 parties
-	dir, _, bundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 5)
-	defer cleanup()
+	dir, _, bundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 5)
 
 	// remove two parties
 	builder.RemoveParty(t, 5)
@@ -284,8 +276,7 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
 
 	// create a config with 3 parties
-	dir, _, bundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
-	defer cleanup()
+	dir, _, bundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 3)
 
 	// add two parties
 	_, netInfo1 := builder.PrepareAndAddNewParty(t, dir)
@@ -326,8 +317,7 @@ func TestValidateTransition_ModifyOneParty(t *testing.T) {
 	bccsp := factory.GetDefault()
 
 	// create a config with 2 parties
-	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 2)
-	defer cleanup()
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 2)
 
 	// modify party 1 TLS cert
 	newCert := generateConsenterTLSCert(t, dir, 1)
@@ -354,8 +344,7 @@ func TestValidateTransition_FailedModifyTwoParties(t *testing.T) {
 	bccsp := factory.GetDefault()
 	// create a config with 3 parties
 
-	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
-	defer cleanup()
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 3)
 
 	// modify two parties TLS certs
 	builder.UpdateConsensusTLSCert(t, types.PartyID(1), generateConsenterTLSCert(t, dir, 1))
@@ -384,8 +373,7 @@ func TestValidateTransition_FailedAddAndModify(t *testing.T) {
 	bccsp := factory.GetDefault()
 
 	// create a config with 2 parties
-	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 2)
-	defer cleanup()
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 2)
 
 	// add a new party
 	_, netInfo := builder.PrepareAndAddNewParty(t, dir)
@@ -424,8 +412,7 @@ func TestValidateTransition_FailedRemoveAndModify(t *testing.T) {
 	bccsp := factory.GetDefault()
 
 	// create a config with 3 parties
-	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
-	defer cleanup()
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 3)
 
 	// remove party 3
 	builder.RemoveParty(t, 3)
@@ -456,8 +443,7 @@ func TestValidateTransition_ChannelID(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
 	bccsp := factory.GetDefault()
 
-	_, env, currBundle, _, _, _, _, cleanup := setupOrdererRulesTest(t, 2)
-	defer cleanup()
+	_, env, currBundle, _, _, _, _ := setupOrdererRulesTest(t, 2)
 
 	payload := &common.Payload{}
 	require.NoError(t, proto.Unmarshal(env.Payload, payload))
@@ -478,7 +464,7 @@ func TestValidateTransition_ChannelID(t *testing.T) {
 	require.Contains(t, err.Error(), "channel ID cannot change")
 }
 
-func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope, channelconfig.Resources, *configutil.ConfigUpdateBuilder, *policy.DefaultConfigUpdateProposer, identity.SignerSerializer, *requestfilter.RulesVerifier, func()) {
+func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope, channelconfig.Resources, *configutil.ConfigUpdateBuilder, *policy.DefaultConfigUpdateProposer, identity.SignerSerializer, *requestfilter.RulesVerifier) {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -497,7 +483,7 @@ func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope,
 	bundle, err := channelconfig.NewBundleFromEnvelope(env, factory.GetDefault())
 	require.NoError(t, err)
 
-	builder, cleanup := configutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
+	builder := configutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
 
 	proposer := &policy.DefaultConfigUpdateProposer{}
 
@@ -510,7 +496,7 @@ func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope,
 	sr.VerifyAndClassifyReturns(common.HeaderType_CONFIG, nil)
 	verifier.AddStructureRule(sr)
 
-	return dir, env, bundle, builder, proposer, fakeSigner, verifier, cleanup
+	return dir, env, bundle, builder, proposer, fakeSigner, verifier
 }
 
 func generateConsenterTLSCert(t *testing.T, dir string, partyID int) []byte {
