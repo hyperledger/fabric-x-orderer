@@ -57,11 +57,16 @@ func TestBroadcastControlEventQuorumScenarios(t *testing.T) {
 				senders = append(senders, s)
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			b := batcher.NewControlEventBroadcaster(senders, tt.n, tt.f, 10*time.Millisecond, 100*time.Millisecond, logger, ctx, cancel)
+			b := batcher.NewControlEventBroadcaster(senders, tt.n, tt.f, 10*time.Millisecond, 100*time.Millisecond, logger, context.Background(), func() {})
 			defer b.Stop()
 
-			err := b.BroadcastControlEvent(state.ControlEvent{})
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				time.Sleep(3 * time.Second)
+				cancel()
+			}()
+			defer cancel()
+			err := b.BroadcastControlEvent(state.ControlEvent{}, ctx)
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
@@ -97,6 +102,6 @@ func TestControlEventBroadcasterSenderRetry(t *testing.T) {
 	b := batcher.NewControlEventBroadcaster(senders, 4, 1, 10*time.Millisecond, 100*time.Millisecond, logger, ctx, cancel)
 	defer b.Stop()
 
-	err := b.BroadcastControlEvent(state.ControlEvent{})
+	err := b.BroadcastControlEvent(state.ControlEvent{}, ctx)
 	require.NoError(t, err)
 }

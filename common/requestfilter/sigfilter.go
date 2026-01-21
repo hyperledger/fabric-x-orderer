@@ -39,7 +39,7 @@ func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType
 		return reqType, fmt.Errorf("failed to convert request to signedData : %s", err)
 	}
 
-	if sf.clientSignatureVerificationRequired {
+	if sf.clientSignatureVerificationRequired || reqType == common.HeaderType_CONFIG_UPDATE {
 		policy, exists := sf.policyManager.GetPolicy(sf.policyName)
 		if !exists {
 			return reqType, fmt.Errorf("no policies in config block")

@@ -7,6 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package armageddon_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,10 +22,14 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
+	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // Scenario:
@@ -327,7 +335,7 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	// restart router
 	time.Sleep(10 * time.Second)
 	t.Log("Restart Router")
-	armaNetwork.GetRouter(t, 1).RestartArmaNode(t, readyChan, 4)
+	armaNetwork.GetRouter(t, 1).RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
 	waitForTxToBeSentAndReceived.Wait()
@@ -372,6 +380,103 @@ func TestArmageddonNonTLS(t *testing.T) {
 	txs := "1000"
 	txSize := "128"
 	armageddon.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
+}
+
+// Scenario:
+// 1. Create a config YAML file to be an input to armageddon
+// 2. Run armageddon generate command to create config files in a folder structure with a mTLS connection between client and router and assembler
+// 3. Update the clients credentials, and add the new CA to ClientRootCAs in the Router and Assebmler local configs
+// 4. Run arma with the generated config files to run each of the nodes for all parties
+// 5. Run armageddon submit command to make 1000 txs, send txs to all routers at a specified rate and pull blocks from some assembler to observe that txs appear in some block
+func TestArmageddonMutualTLS_SendFromClientSpecifiedInLocalConfig(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "mTLS", "mTLS")
+
+	// 2.
+	armageddonCLI := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddonCLI.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	// Edit local config of routers and assemblers to include a new CA in ClientRootCAs, which is not the CA of any party
+	caAndCertKeyPairPath := filepath.Join(dir, "crypto", "client")
+	tlsCA, err := ca.NewCA(caAndCertKeyPairPath, "tlsCA", "client-tlsca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
+	require.NoError(t, err)
+	require.NotNil(t, tlsCA)
+
+	var paths []string
+	for i := 0; i < 4; i++ {
+		paths = append(paths, filepath.Join(dir, "config", fmt.Sprintf("party%d", i+1), "local_config_router.yaml"))
+		paths = append(paths, filepath.Join(dir, "config", fmt.Sprintf("party%d", i+1), "local_config_assembler.yaml"))
+	}
+
+	for _, path := range paths {
+		nodeConfig := testutil.ReadNodeConfigFromYaml(t, path)
+		nodeConfig.GeneralConfig.TLSConfig.ClientRootCAs = append(nodeConfig.GeneralConfig.TLSConfig.ClientRootCAs, filepath.Join(caAndCertKeyPairPath, "client-tlsca-cert.pem"))
+		err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
+		require.NoError(t, err)
+	}
+
+	// Issue a TLS certificate and key from the CA and update user credentials
+	var userPaths []string
+	for i := 0; i < 4; i++ {
+		userPaths = append(userPaths, filepath.Join(dir, "config", fmt.Sprintf("party%d", i+1), "user_config.yaml"))
+	}
+
+	for _, userPath := range userPaths {
+		f, err := os.ReadFile(userPath)
+		require.NoError(t, err)
+		userConfig := armageddon.UserConfig{}
+		err = yaml.Unmarshal(f, &userConfig)
+		require.NoError(t, err)
+
+		privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.NoError(t, err)
+		privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+		require.NoError(t, err)
+		_, err = tlsCA.SignCertificate(caAndCertKeyPairPath, "client-tls", nil, nil, armageddon.GetPublicKey(privateKey), x509.KeyUsageKeyEncipherment|x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		})
+		require.NoError(t, err)
+		err = utils.WritePEMToFile(filepath.Join(caAndCertKeyPairPath, "client-tlskey.pem"), "PRIVATE KEY", privateKeyBytes)
+		require.NoError(t, err)
+
+		priv, err := utils.ReadPem(filepath.Join(caAndCertKeyPairPath, "client-tlskey.pem"))
+		require.NoError(t, err)
+		c, err := utils.ReadPem(filepath.Join(caAndCertKeyPairPath, "client-tls-cert.pem"))
+		require.NoError(t, err)
+		userConfig.TLSPrivateKey = priv
+		userConfig.TLSCertificate = c
+		err = utils.WriteToYAML(&userConfig, userPath)
+		require.NoError(t, err)
+	}
+
+	// 4.
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan struct{}, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	// 5.
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
+	rate := "500"
+	txs := "1000"
+	txSize := "128"
+	armageddonCLI.Run([]string{"submit", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
 }
 
 // Scenario:

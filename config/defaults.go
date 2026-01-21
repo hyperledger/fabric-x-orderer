@@ -42,6 +42,9 @@ var DefaultArmaBFTConfig = func() smartbft_types.Configuration {
 
 	config.RequestBatchMaxInterval = time.Millisecond * 500
 	config.RequestForwardTimeout = time.Second * 10
+	// config.RequestMaxBytes must be greater than or equal to BatchingConfig.RequestMaxBytes
+	// to ensure that config transactions rejected by the Routers due to size are also rejected by Consenters.
+	config.RequestMaxBytes = 1024 * 1024
 	config.DecisionsPerLeader = 0
 	config.LeaderRotation = false
 	config.IncomingMessageBufferSize = 10000

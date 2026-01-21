@@ -1,10 +1,9 @@
 # Hyperledger Fabric-X Orderer
 
-This repository contains the ordering service of fabric-x. 
+This repository contains the ordering service of fabric-x.
 The ordering service is based on the Arma protocol:
 
 "Arma: a scalable Byzantine Fault Tolerant ordering service".
-
 
 ## Abstract
 
@@ -36,29 +35,29 @@ Clients submit transactions to the routers, whereas blocks are consumed from the
 
 More details on the internal architecture and inner workings of Arma can be found in the white paper: [https://ia.cr/2024/808]
 
-
 ## Client API
 
 Arma provides a gRPC service for submitting transactions and consuming blocks. This service is identical to Fabric's "Atomic Broadcast API".
 The gRPC service is defined here: [https://github.com/hyperledger/fabric-protos/blob/main/orderer/ab.proto]
 
 It defines two services:
--	The `Broadcast` service allows a client to submit transactions for ordering by the ordering servers.
--	The `Deliver` service allows clients to consume ordered blocks.
+
+- The `Broadcast` service allows a client to submit transactions for ordering by the ordering servers.
+- The `Deliver` service allows clients to consume ordered blocks.
 
 ```protobuf
 service AtomicBroadcast {
 // broadcast receives a reply of Acknowledgement for each common.Envelope in order, indicating success or type of failure
 rpc Broadcast(stream common.Envelope) returns (stream BroadcastResponse);
 
-// deliver first requires an Envelope of type DELIVER_SEEK_INFO with Payload data as a mashaled SeekInfo message, then a stream of block replies is received.
+// deliver first requires an Envelope of type DELIVER_SEEK_INFO with Payload data as a marshaled SeekInfo message, then a stream of block replies is received.
 rpc Deliver(stream common.Envelope) returns (stream DeliverResponse);
 }
 ```
 
 The Arma routers implement the `Broadcast` service whereas the Arma assemblers implement the `Deliver` service.
 
-In order to submit a TX the submiting client must connect to the router endpoints and try to submit to all the routers, from all parties.
+In order to submit a TX the submitting client must connect to the router endpoints and try to submit to all the routers, from all parties.
 Even though a submitting party may submit to a single party it trusts, that may incur a performance penalty and may lead to censorship, and thus is strongly discouraged.
 
 In order to pull blocks it is enough for a scalable committer (peer) to connect to the assembler that belongs to its own party.
@@ -88,41 +87,70 @@ signatures.
 Arma is composed of 4 types of servers: `router`, `batcher`, `consensus` and `assembler`; also known as "server roles".
 To start a server use the arma CLI tool:
 
-* To run a router node:
-   ```bash
-   ./arma router --config=arma-config/Party1/router_node_config.yaml
-   ```
-* To run a batcher node:
-   ```bash
-   ./arma batcher --config=arma-config/Party1/batcher_node_1_config.yaml
-   ```
-* To run a consenter node:
-   ```bash
-   ./arma consensus --config=arma-config/Party1/consenter_node_config.yaml
-   ```
-* To run an assembler node:
-   ```bash
-   ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
-   ```
+- To run a router node:
+
+  ```bash
+  ./arma router --config=arma-config/Party1/router_node_config.yaml
+  ```
+
+- To run a batcher node:
+
+  ```bash
+  ./arma batcher --config=arma-config/Party1/batcher_node_1_config.yaml
+  ```
+
+- To run a consenter node:
+
+  ```bash
+  ./arma consensus --config=arma-config/Party1/consenter_node_config.yaml
+  ```
+
+- To run an assembler node:
+
+  ```bash
+  ./arma assembler --config=arma-config/Party1/assembler_node_config.yaml
+  ```
 
 Each server role expects a config file, specified in the command line (mandatory).
 For more details please refer to [arma-deployment](deployment/README.md).
 
+## Build Docker image locally
+
+To build the Docker image locally with either `Docker` or `Podman`, run:
+
+```bash
+make build-image
+```
+
 ### Starting with a genesis block
 
 The local configuration of each node points to the location of the genesis block.  
-That way, when a node starts up, it bootstraps from the genesis block and extract its shared configuration. 
+That way, when a node starts up, it bootstraps from the genesis block and extract its shared configuration.
 
 NOTE: All parties and all servers must be given the same genesis block.
 If a genesis block is not found, Arma will fail to start.
-
 
 ## Configuration and deployment
 
 For more information about deployment of Arma, please refer to [arma-deployment](deployment/README.md).
 
-
-
 ## Tools
+
 Armageddon is a command-line tool that provides a simple way to config an ARMA network, for more information please refer to [armageddon](cmd/armageddon/README.md).
 
+## Performance
+
+We evaluated the Fabric-X Orderer performance by deploying it on 4 data centers across the US and loading it with transactions, measuring the transaction rate and latency.
+
+The figure below shows the service’s throughput with varying numbers of parties and shards, maintaining a latency of approximately 0.8 seconds, using 300 Byte transactions.
+
+The 300 Byte transaction size represents a typical token transaction carrying two inputs and two outputs.
+
+<figure>
+  <img src=./doc/figures/throughput_shards_parties_plot.png alt="Fabric-X Orderer Throughput, by number of parties and shards" width="1000" height="auto">
+</figure>
+
+This experiment ran on 4 AWS sites: us-east-2 (Ohio), us-east-1 (N. Virginia), us-west-1 (N. California), and us-west-2 (Oregon).
+The virtual machine instance was "c5a.8xlarge", with 32 vCPU, 64 GiB Memory, running RHEL 10, with EBS General Purpose (SSD).
+The attached volume was gp3 100 GiB, supporting 3000 IOPS and 125 GiB/S bandwidth.
+The experiment date was January 20, 2026.

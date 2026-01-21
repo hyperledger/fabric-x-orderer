@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"unicode/utf8"
 
+	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/snapshot"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
@@ -92,7 +92,7 @@ func (index *blockIndex) indexBlock(blockIdxInfo *blockIdxInfo) error {
 	txOffsets := blockIdxInfo.txOffsets
 	blkNum := blockIdxInfo.blockNum
 	blkHash := blockIdxInfo.blockHash
-	txsfltr := txflags.ValidationFlags(blockIdxInfo.metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+	txsfltr := xcommon_txflags.ValidationFlags(blockIdxInfo.metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 	batch := index.db.NewUpdateBatch()
 	flpBytes := flp.marshal()
 

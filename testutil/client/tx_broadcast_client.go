@@ -18,8 +18,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 )
 
 type StreamInfo struct {
@@ -46,7 +46,7 @@ func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Du
 	}
 }
 
-func (c *BroadcastTxClient) SendTx(txContent []byte) error {
+func (c *BroadcastTxClient) SendTxTo(envelope *common.Envelope, partyID types.PartyID) error {
 	c.streamsMapLock.Lock()
 	defer c.streamsMapLock.Unlock()
 
@@ -54,6 +54,52 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 	if err != nil {
 		return err
 	}
+
+	if len(c.streamRoutersMap) == 0 {
+		return fmt.Errorf("failed to create a gRPC client connection to routers")
+	}
+
+	// RouterEndpoints are ordered by PartyID, where RouterEndpoints[0] corresponds to PartyID 1
+	sInfo, ok := c.streamRoutersMap[c.userConfig.RouterEndpoints[partyID-1]]
+	if !ok {
+		return fmt.Errorf("no stream found for party ID %d", partyID)
+	}
+
+	err = sInfo.stream.Send(envelope)
+	if err != nil {
+		sInfo.stream = nil
+		return fmt.Errorf("failed to send tx to %s: %s", sInfo.endpoint, err.Error())
+	}
+	resp, err := sInfo.stream.Recv()
+	if err != nil {
+		if err != io.EOF {
+			sInfo.stream = nil
+			return fmt.Errorf("received error response from %s: %s", sInfo.endpoint, err.Error())
+		}
+		return nil
+	}
+	if resp.Status != common.Status_SUCCESS {
+		return fmt.Errorf("received error response from %s: %s, Info: %s", sInfo.endpoint, resp.Status.String(), resp.Info)
+	}
+
+	// increment the total transactions sent for this stream
+	sInfo.totalTxSent++
+	return nil
+}
+
+func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {
+	c.streamsMapLock.Lock()
+	defer c.streamsMapLock.Unlock()
+
+	err := c.createSendStreams()
+	if err != nil {
+		return err
+	}
+
+	if len(c.streamRoutersMap) == 0 {
+		return fmt.Errorf("failed to create a gRPC client connection to routers")
+	}
+
 	var errorsAccumulator strings.Builder
 	failures := 0
 	var waitForReceiveDone sync.WaitGroup
@@ -78,12 +124,11 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 			streamInfo.streamLock.Lock()
 			defer streamInfo.streamLock.Unlock()
 
-			env := tx.CreateStructuredEnvelope(txContent)
-			err := streamInfo.stream.Send(env)
+			err := streamInfo.stream.Send(envelope)
 			if err != nil {
 				updateStateLock.Lock()
 				streamInfo.stream = nil
-				errorsAccumulator.WriteString(fmt.Sprintf("failed to send tx to %s: %s", streamInfo.endpoint, err.Error()))
+				fmt.Fprintf(&errorsAccumulator, "failed to send tx to %s: %s\n", streamInfo.endpoint, err.Error())
 				failures++
 				updateStateLock.Unlock()
 				return
@@ -94,7 +139,7 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 					// some other error occurred
 					updateStateLock.Lock()
 					streamInfo.stream = nil
-					errorsAccumulator.WriteString(fmt.Sprintf("received error response from %s: %s", streamInfo.endpoint, err.Error()))
+					fmt.Fprintf(&errorsAccumulator, "received error response from %s: %s\n", streamInfo.endpoint, err.Error())
 					failures++
 					updateStateLock.Unlock()
 				}
@@ -102,7 +147,7 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 			}
 			if resp.Status != common.Status_SUCCESS {
 				updateStateLock.Lock()
-				errorsAccumulator.WriteString(fmt.Sprintf("received error response from %s: %s", streamInfo.endpoint, resp.Status.String()))
+				fmt.Fprintf(&errorsAccumulator, "received error response from %s: %s, Info: %s\n", streamInfo.endpoint, resp.Status.String(), resp.Info)
 				failures++
 				updateStateLock.Unlock()
 				return
@@ -121,7 +166,7 @@ func (c *BroadcastTxClient) SendTx(txContent []byte) error {
 	}
 	if failures > possibleNumOfFailures {
 		er := fmt.Sprintf("\nfailed to send tx to %d out of %d send streams", failures, len(c.streamRoutersMap))
-		errorsAccumulator.WriteString(er)
+		fmt.Fprint(&errorsAccumulator, er)
 	}
 	if errorsAccumulator.Len() > 0 {
 		return fmt.Errorf("%v", errorsAccumulator.String())
@@ -174,6 +219,8 @@ func (c *BroadcastTxClient) createSendStreams() error {
 			// if stream is created successfully, add it to the map
 			if stream != nil {
 				c.streamRoutersMap[routerEndpoint] = &StreamInfo{stream: stream, totalTxSent: 0, endpoint: routerEndpoint}
+			} else {
+				logger.Infof("failed to create a gRPC client connection to router: %s", routerEndpoint)
 			}
 		} else {
 			if streamInfo.stream == nil {
@@ -215,5 +262,5 @@ func (c *BroadcastTxClient) Stop() {
 
 	c.streamRoutersMap = nil
 
-	logger.Infof("Total sent by all routers: txs %d\n", totalTxSent)
+	logger.Infof("Total sent to all routers: txs %d\n", totalTxSent)
 }

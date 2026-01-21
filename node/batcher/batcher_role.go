@@ -41,6 +41,11 @@ type StateProvider interface {
 	GetLatestStateChan() <-chan *state.State
 }
 
+//go:generate counterfeiter -o mocks/config_sequence_getter.go . ConfigSequenceGetter
+type ConfigSequenceGetter interface {
+	ConfigSequence() types.ConfigSequence
+}
+
 //go:generate counterfeiter -o mocks/complainer.go . Complainer
 type Complainer interface {
 	Complain(string)
@@ -64,7 +69,7 @@ type BatchAcker interface {
 
 // BAFSender sends the baf to the consenters
 type BAFSender interface {
-	SendBAF(baf types.BatchAttestationFragment)
+	SendBAF(baf types.BatchAttestationFragment, ctx context.Context)
 }
 
 //go:generate counterfeiter -o mocks/baf_creator.go . BAFCreator
@@ -75,7 +80,7 @@ type BAFCreator interface {
 }
 
 type BatchLedgerWriter interface {
-	Append(partyID types.PartyID, batchSeq types.BatchSequence, batchedRequests types.BatchedRequests)
+	Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests)
 }
 
 type BatchLedgeReader interface {
@@ -101,6 +106,7 @@ type BatcherRole struct {
 	Ledger                  BatchLedger
 	BatchPuller             BatchesPuller
 	StateProvider           StateProvider
+	ConfigSequenceGetter    ConfigSequenceGetter
 	BAFCreator              BAFCreator
 	BAFSender               BAFSender
 	BatchAcker              BatchAcker
@@ -203,7 +209,7 @@ func (b *BatcherRole) getTermAndNotifyChange() {
 				atomic.StoreUint64(&b.term, newTerm)
 				b.termChan <- newTerm
 				b.resubmitPendingBAFs(state, b.getPrimaryID(currentTerm))
-				b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
+				b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 			}
 		}
 	}
@@ -240,7 +246,7 @@ func (b *BatcherRole) Submit(request []byte) error {
 		return err
 	}
 
-	b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
+	b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 	return nil
 }
 
@@ -254,7 +260,7 @@ func (b *BatcherRole) HandleAck(seq types.BatchSequence, from types.PartyID) {
 
 func (b *BatcherRole) runPrimary() {
 	b.Logger.Infof("Batcher %d acting as primary (shard %d)", b.ID, b.Shard)
-	b.Metrics.currentRole.Store(1)
+	b.Metrics.currentRole.Set(1)
 
 	defer func() {
 		b.Logger.Infof("Batcher %d stopped acting as primary (shard %d)", b.ID, b.Shard)
@@ -298,11 +304,29 @@ func (b *BatcherRole) runPrimary() {
 
 		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest)
 
-		b.Ledger.Append(b.ID, b.seq, currentBatch)
+		// After the batch is appended to the ledger the batcher sends the BAF to the consenters
+		// (this BAF is a declaration that the batch is stored in the ledger)
+		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
-		// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
-		b.BAFSender.SendBAF(baf)
-		b.Metrics.batchedTxsTotal.Add(uint64(len(currentBatch)))
+		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch)
+
+		sendBAFDone := make(chan struct{})
+		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
+		defer sendBafCancel()
+		go func() {
+			b.BAFSender.SendBAF(baf, ctx)
+			close(sendBAFDone)
+		}()
+		select {
+		case <-sendBAFDone:
+		case newTerm := <-b.termChan:
+			b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+			return
+		case <-b.stopChan:
+			return
+		}
+
+		b.Metrics.batchedTxsTotal.Add(float64(len(currentBatch)))
 
 		b.ackerLock.RLock()
 		b.acker.HandleAck(b.seq, b.ID)
@@ -322,13 +346,13 @@ func (b *BatcherRole) removeRequests(batch types.BatchedRequests) {
 		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
 	}
 	b.MemPool.RemoveRequests(reqInfos...)
-	b.Metrics.memPoolSize.Store(b.MemPool.RequestCount())
+	b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 }
 
 func (b *BatcherRole) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
-	b.Metrics.currentRole.Store(2)
+	b.Metrics.currentRole.Set(2)
 
 	for {
 		out := b.BatchPuller.PullBatches(b.primary)
@@ -354,13 +378,36 @@ func (b *BatcherRole) runSecondary() {
 			}
 			b.Metrics.batchesPulledTotal.Add(1)
 			requests := batch.Requests()
+
+			// After the batch is appended to the ledger the batcher sends the BAF to the consenters
+			// (this BAF is a declaration that the batch is stored in the ledger)
+			// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
+
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
-			b.Ledger.Append(b.primary, b.seq, requests)
-			b.removeRequests(requests)
+			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests)
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
-			// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
-			b.BAFSender.SendBAF(baf)
-			b.Metrics.batchedTxsTotal.Add(uint64(len(requests)))
+
+			sendBAFDone := make(chan struct{})
+			ctx, sendBafCancel := context.WithCancel(b.stopCtx)
+			defer sendBafCancel()
+			go func() {
+				b.BAFSender.SendBAF(baf, ctx)
+				close(sendBAFDone)
+			}()
+			select {
+			case <-sendBAFDone:
+			case newTerm := <-b.termChan:
+				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+				b.BatchPuller.Stop()
+				return
+			case <-b.stopChan:
+				b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
+				b.BatchPuller.Stop()
+				return
+			}
+
+			b.Metrics.batchedTxsTotal.Add(float64(len(requests)))
+			b.removeRequests(requests)
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
 		}
@@ -368,6 +415,9 @@ func (b *BatcherRole) runSecondary() {
 }
 
 func (b *BatcherRole) verifyBatch(batch types.Batch) error {
+	if batch.ConfigSequence() != b.ConfigSequenceGetter.ConfigSequence() {
+		b.Logger.Warnf("Batch config seq (%d) does not match batcher's current config seq (%d)", batch.ConfigSequence(), b.ConfigSequenceGetter.ConfigSequence())
+	}
 	if batch.Primary() != b.primary {
 		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
 	}

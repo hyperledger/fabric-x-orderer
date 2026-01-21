@@ -116,7 +116,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		Timeout:      30,
 	})
 
-	consenterToRestart.RestartArmaNode(t, readyChan, numOfParties)
+	consenterToRestart.RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
 	waitForTxSent.Add(1)

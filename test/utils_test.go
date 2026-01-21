@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,8 +16,10 @@ import (
 	"encoding/binary"
 	"encoding/pem"
 	"fmt"
+	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -25,17 +28,22 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	config "github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/identity/mocks"
+	"github.com/hyperledger/fabric-x-orderer/config"
+	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
+	node2 "github.com/hyperledger/fabric-x-orderer/node"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
-	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
+	consensusMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
@@ -59,7 +67,7 @@ type node struct {
 	TLSCert []byte
 	TLSKey  []byte
 	sk      *ecdsa.PrivateKey
-	pk      nodeconfig.RawBytes
+	pk      node_config.RawBytes
 }
 
 func (n *node) ToString() string {
@@ -88,10 +96,14 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo, ca tlsgen.CA, shardId types.ShardID) []*router.Router {
+func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*zap.SugaredLogger) {
 	var routers []*router.Router
+	var certs []node_config.RawBytes
+	var configs []*node_config.RouterNodeConfig
+	var loggers []*zap.SugaredLogger
 	for i := 0; i < num; i++ {
 		l := testutil.CreateLogger(t, i)
+		loggers = append(loggers, l)
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
 
@@ -99,16 +111,20 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		policy := &policyMocks.FakePolicyEvaluator{}
+		policy.EvaluateSignedDataReturns(nil)
+		policyManager := &policyMocks.FakePolicyManager{}
+		policyManager.GetPolicyReturns(policy, true)
+		bundle.PolicyManagerReturns(policyManager)
+
 		fakeSigner := &mocks.SignerSerializer{}
 
 		configStorePath := t.TempDir()
 		cs, err := configstore.NewStore(configStorePath)
 		require.NoError(t, err)
-		// add dummy genesis block
-		block := tx.CreateConfigBlock(0, []byte("genesis block data"))
-		require.NoError(t, cs.Add(block))
+		require.NoError(t, cs.Add(genesisBlock))
 
-		config := &nodeconfig.RouterNodeConfig{
+		config := &node_config.RouterNodeConfig{
 			ListenAddress:           "0.0.0.0:0",
 			MonitoringListenAddress: "127.0.0.1:0",
 			MetricsLogInterval:      5 * time.Second,
@@ -116,7 +132,7 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 			TLSPrivateKeyFile:       kp.Key,
 			TLSCertificateFile:      kp.Cert,
 			PartyID:                 types.PartyID(i + 1),
-			Shards: []nodeconfig.ShardInfo{{
+			Shards: []node_config.ShardInfo{{
 				ShardId:  shardId,
 				Batchers: batcherInfos,
 			}},
@@ -124,21 +140,86 @@ func createRouters(t *testing.T, num int, batcherInfos []nodeconfig.BatcherInfo,
 			RequestMaxBytes:                     1 << 10,
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
+			Consenter:                           node_config.ConsenterInfo{PartyID: types.PartyID(i + 1), Endpoint: consenterEndpoint[i], TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
 		}
+		configs = append(configs, config)
+
+		certs = append(certs, kp.Cert)
 
 		configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-		configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+		req := &protos.Request{}
+		configUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
-		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer)
+		configRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
+		configRulesVerifier.ValidateNewConfigReturns(nil)
+
+		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer, configRulesVerifier)
 		routers = append(routers, router)
 	}
 
-	return routers
+	return routers, certs, configs, loggers
 }
 
-func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []nodeconfig.ConsenterInfo, shardInfo []nodeconfig.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, func()) {
+func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*zap.SugaredLogger, func()) {
+	var assemblerDirs []string
+	var assemblers []*assembler.Assembler
+	var loggers []*zap.SugaredLogger
+	var configs []*node_config.AssemblerNodeConfig
+
+	for i := 0; i < num; i++ {
+		ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
+		require.NoError(t, err)
+
+		assemblerDir := t.TempDir()
+		assemblerDirs = append(assemblerDirs, assemblerDir)
+
+		assemblerConf := &node_config.AssemblerNodeConfig{
+			TLSPrivateKeyFile:         ckp.Key,
+			TLSCertificateFile:        ckp.Cert,
+			PartyId:                   types.PartyID(i + 1),
+			Directory:                 assemblerDir,
+			ListenAddress:             "0.0.0.0:0",
+			PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024, // 1GB
+			RestartLedgerScanTimeout:  5 * time.Second,
+			PrefetchEvictionTtl:       time.Hour,
+			PopWaitMonitorTimeout:     time.Second,
+			ReplicationChannelSize:    100,
+			BatchRequestsChannelSize:  1000,
+			Shards:                    shards,
+			Consenter:                 consenterInfos[i],
+			UseTLS:                    true,
+			ClientAuthRequired:        false,
+			MonitoringListenAddress:   "127.0.0.1:0",
+			MetricsLogInterval:        5 * time.Second,
+		}
+		configs = append(configs, assemblerConf)
+
+		logger := testutil.CreateLogger(t, i+1)
+		loggers = append(loggers, logger)
+
+		assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
+
+		assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, logger)
+		assemblers = append(assemblers, assembler)
+
+		orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
+
+		go func() {
+			assemblerGRPC.Start()
+		}()
+	}
+
+	return assemblers, assemblerDirs, configs, loggers, func() {
+		for i := range assemblers {
+			assemblers[i].Stop()
+		}
+	}
+}
+
+func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*zap.SugaredLogger, func()) {
 	var consensuses []*consensus.Consensus
-	var cleans []func()
+	var loggers []*zap.SugaredLogger
+	var configs []*node_config.ConsenterNodeConfig
 
 	for i := 0; i < num; i++ {
 
@@ -147,16 +228,12 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		partyID := types.PartyID(i + 1)
 
 		logger := testutil.CreateLogger(t, int(partyID))
+		loggers = append(loggers, logger)
 
 		sk, err := x509.MarshalPKCS8PrivateKey(consenterNodes[i].sk)
 		require.NoError(t, err)
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-consenter%d", t.Name(), i+1))
-		require.NoError(t, err)
-
-		cleans = append(cleans, func() {
-			defer os.RemoveAll(dir)
-		})
+		dir := t.TempDir()
 
 		BFTConfig := config.DefaultArmaBFTConfig()
 		BFTConfig.SelfID = uint64(partyID)
@@ -166,18 +243,29 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
-		conf := &nodeconfig.ConsenterNodeConfig{
-			ListenAddress:      "0.0.0.0:0",
-			Shards:             shardInfo,
-			Consenters:         consenterInfos,
-			PartyId:            partyID,
-			TLSPrivateKeyFile:  consenterNodes[i].TLSKey,
-			TLSCertificateFile: consenterNodes[i].TLSCert,
-			SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-			Directory:          dir,
-			BFTConfig:          BFTConfig,
-			Bundle:             bundle,
+		policy := &policyMocks.FakePolicyEvaluator{}
+		policy.EvaluateSignedDataReturns(nil)
+		policyManager := &policyMocks.FakePolicyManager{}
+		policyManager.GetPolicyReturns(policy, true)
+		bundle.PolicyManagerReturns(policyManager)
+
+		conf := &node_config.ConsenterNodeConfig{
+			ListenAddress:                       "0.0.0.0:0",
+			Shards:                              shardInfo,
+			Consenters:                          consenterInfos,
+			PartyId:                             partyID,
+			TLSPrivateKeyFile:                   consenterNodes[i].TLSKey,
+			TLSCertificateFile:                  consenterNodes[i].TLSCert,
+			SigningPrivateKey:                   pem.EncodeToMemory(&pem.Block{Bytes: sk}),
+			Directory:                           dir,
+			BFTConfig:                           BFTConfig,
+			Bundle:                              bundle,
+			ClientSignatureVerificationRequired: false,
+			RequestMaxBytes:                     1000,
+			MonitoringListenAddress:             "127.0.0.1:0",
+			MetricsLogInterval:                  5 * time.Second,
 		}
+		configs = append(configs, conf)
 
 		net := consenterNodes[i].GRPCServer
 		signer := crypto.ECDSASigner(*consenterNodes[i].sk)
@@ -186,6 +274,11 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
 		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, signer, mockConfigUpdateProposer)
+		mockConfigApplier := &consensusMocks.FakeConfigApplier{}
+		mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+			return s, nil
+		})
+		c.ConfigApplier = mockConfigApplier
 
 		consensuses = append(consensuses, c)
 		protos.RegisterConsensusServer(gRPCServer, c)
@@ -198,18 +291,17 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		t.Log("Consenter gRPC service listening on", consenterNodes[i].Address())
 	}
 
-	return consensuses, func() {
-		for i, clean := range cleans {
-			clean()
+	return consensuses, configs, loggers, func() {
+		for i := range consensuses {
 			consensuses[i].Stop()
 		}
 	}
 }
 
-func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []nodeconfig.ShardInfo, consenterInfos []nodeconfig.ConsenterInfo, shardID types.ShardID) ([]*batcher.Batcher, []*nodeconfig.BatcherNodeConfig, []*zap.SugaredLogger, func()) {
+func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*zap.SugaredLogger, func()) {
 	var batchers []*batcher.Batcher
 	var loggers []*zap.SugaredLogger
-	var configs []*nodeconfig.BatcherNodeConfig
+	var configs []*node_config.BatcherNodeConfig
 
 	for i := 0; i < num; i++ {
 		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-batcher%d", t.Name(), i+1))
@@ -223,16 +315,21 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
-		batcherConf := &nodeconfig.BatcherNodeConfig{
+		configStorePath := t.TempDir()
+		cs, err := configstore.NewStore(configStorePath)
+		require.NoError(t, err)
+		require.NoError(t, cs.Add(genesisBlock))
+
+		batcherConf := &node_config.BatcherNodeConfig{
 			ListenAddress:                       "0.0.0.0:0",
 			Shards:                              shards,
 			ShardId:                             shardID,
-			ConfigStorePath:                     t.TempDir(),
+			ConfigStorePath:                     configStorePath,
 			PartyId:                             types.PartyID(i + 1),
 			Consenters:                          consenterInfos,
 			TLSPrivateKeyFile:                   batcherNodes[i].TLSKey,
 			TLSCertificateFile:                  batcherNodes[i].TLSCert,
-			SigningPrivateKey:                   nodeconfig.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
+			SigningPrivateKey:                   node_config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),
 			Directory:                           dir,
 			MemPoolMaxSize:                      1000000,
 			BatchMaxSize:                        10000,
@@ -246,6 +343,8 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
+			MonitoringListenAddress:             "127.0.0.1:0",
+			MetricsLogInterval:                  3 * time.Second,
 		}
 
 		configs = append(configs, batcherConf)
@@ -279,16 +378,16 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 	}
 }
 
-func createBatcherNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []nodeconfig.BatcherInfo) {
+func createBatcherNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []node_config.BatcherInfo) {
 	nodes := createNodes(t, num, ca)
 
-	var batchersInfo []nodeconfig.BatcherInfo
+	var batchersInfo []node_config.BatcherInfo
 	for i := 0; i < num; i++ {
-		batchersInfo = append(batchersInfo, nodeconfig.BatcherInfo{
+		batchersInfo = append(batchersInfo, node_config.BatcherInfo{
 			PartyID:    types.PartyID(i + 1),
 			Endpoint:   nodes[i].Address(),
 			TLSCert:    nodes[i].TLSCert,
-			TLSCACerts: []nodeconfig.RawBytes{ca.CertBytes()},
+			TLSCACerts: []node_config.RawBytes{ca.CertBytes()},
 			PublicKey:  nodes[i].pk,
 		})
 	}
@@ -296,15 +395,15 @@ func createBatcherNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []
 	return nodes, batchersInfo
 }
 
-func createConsenterNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []nodeconfig.ConsenterInfo) {
+func createConsenterNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []node_config.ConsenterInfo) {
 	nodes := createNodes(t, num, ca)
 
-	var consentersInfo []nodeconfig.ConsenterInfo
+	var consentersInfo []node_config.ConsenterInfo
 	for i := 0; i < num; i++ {
-		consentersInfo = append(consentersInfo, nodeconfig.ConsenterInfo{
+		consentersInfo = append(consentersInfo, node_config.ConsenterInfo{
 			PartyID:    types.PartyID(i + 1),
 			Endpoint:   nodes[i].Address(),
-			TLSCACerts: []nodeconfig.RawBytes{ca.CertBytes()},
+			TLSCACerts: []node_config.RawBytes{ca.CertBytes()},
 			PublicKey:  nodes[i].pk,
 		})
 	}
@@ -315,7 +414,7 @@ func createConsenterNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, 
 func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 	var result []*node
 	var sks []*ecdsa.PrivateKey
-	var pks []nodeconfig.RawBytes
+	var pks []node_config.RawBytes
 
 	for i := 0; i < num; i++ {
 		sk, rawPK := keygen(t)
@@ -335,7 +434,7 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 	return result
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf *nodeconfig.BatcherNodeConfig, batcherNode *node) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *zap.SugaredLogger) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -363,12 +462,88 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf 
 
 	go func() {
 		err := newBatcherNode.Start()
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 	}()
 
 	return batcher
+}
+
+func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *zap.SugaredLogger, lastConfigBlock *common.Block) *consensus.Consensus {
+	newConsenterNode := &node{
+		TLSCert: consenterNode.TLSCert,
+		TLSKey:  consenterNode.TLSKey,
+		sk:      consenterNode.sk,
+		pk:      consenterNode.pk,
+	}
+	var err error
+
+	kp := &tlsgen.CertKeyPair{
+		Key:  newConsenterNode.TLSKey,
+		Cert: newConsenterNode.TLSCert,
+	}
+
+	newConsenterNode.GRPCServer, err = newGRPCServer(consenterNode.Address(), ca, kp)
+	require.NoError(t, err)
+	signer := crypto.ECDSASigner(*newConsenterNode.sk)
+
+	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+
+	consenter := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, signer, mockConfigUpdateProposer)
+	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
+	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+		return s, nil
+	})
+	consenter.ConfigApplier = mockConfigApplier
+
+	gRPCServer := newConsenterNode.Server()
+	protos.RegisterConsensusServer(gRPCServer, consenter)
+	orderer.RegisterAtomicBroadcastServer(gRPCServer, consenter.DeliverService)
+	orderer.RegisterClusterNodeServiceServer(gRPCServer, consenter)
+
+	go func() {
+		err := newConsenterNode.Start()
+		require.NoError(t, err)
+	}()
+
+	err = consenter.Start()
+	require.NoError(t, err)
+
+	return consenter
+}
+
+func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *zap.SugaredLogger) *assembler.Assembler {
+	assemblerGRPC := node2.CreateGRPCAssembler(conf)
+	assembler := assembler.NewAssembler(conf, assemblerGRPC, nil, logger)
+
+	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
+
+	go func() {
+		err := assemblerGRPC.Start()
+		require.NoError(t, err)
+	}()
+
+	return assembler
+}
+
+func recoverRouter(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger) *router.Router {
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	fakeSigner := &mocks.SignerSerializer{}
+
+	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+	req := &protos.Request{}
+	configUpdateProposer.ProposeConfigUpdateReturns(req, nil)
+
+	configRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
+	configRulesVerifier.ValidateNewConfigReturns(nil)
+
+	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
+	router.StartRouterService()
+
+	return router
 }
 
 func sendTxn(workerID int, txnNum int, routers []*router.Router) {
@@ -392,6 +567,11 @@ type BlockPullerInfo struct {
 	Status      common.Status
 }
 
+// TestBlockHandler defines an interface for performing an action by an user on a block.
+type TestBlockHandler interface {
+	HandleBlock(t *testing.T, block *common.Block) error
+}
+
 type BlockPullerOptions struct {
 	UserConfig       *armageddon.UserConfig
 	Parties          []types.PartyID
@@ -402,8 +582,10 @@ type BlockPullerOptions struct {
 	Blocks           int
 	Timeout          int
 	ErrString        string
+	LogString        string
 	Status           *common.Status
 	Verifier         *crypto.ECDSAVerifier
+	BlockHandler     TestBlockHandler
 }
 
 func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.PartyID]*BlockPullerInfo {
@@ -414,6 +596,13 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	require.GreaterOrEqual(t, options.EndBlock, uint64(0))
 	require.GreaterOrEqual(t, options.Transactions, 0)
 	require.GreaterOrEqual(t, options.Blocks, 0)
+
+	var buf bytes.Buffer
+	// Set log output to the buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(nil) // Reset log output at the end of the test
+
+	log.SetFlags(0) // Disable log flags like date/time
 
 	if options.Timeout <= 0 {
 		options.Timeout = 30
@@ -434,14 +623,14 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 			defer waitForPullDone.Done()
 
 			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, (len(options.Parties)-1)/3, options.Transactions,
-				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier)
+				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.BlockHandler)
 			lock.Lock()
 			defer lock.Unlock()
 			pullInfos[partyID] = pullInfo
 
 			require.True(t, err != nil && options.ErrString != "" || options.ErrString == "" && err == nil)
 
-			if options.ErrString != "" {
+			if len(options.ErrString) > 0 {
 				errString := fmt.Sprintf(options.ErrString, partyID)
 				require.ErrorContains(t, err, errString)
 			}
@@ -452,6 +641,12 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 			require.GreaterOrEqual(t, int64(pullInfo.TotalTxs), int64(options.Transactions))
 			require.GreaterOrEqual(t, int64(pullInfo.TotalBlocks), int64(options.Blocks))
 			require.Empty(t, pullInfo.Missing)
+
+			if len(options.LogString) > 0 {
+				logOutput := buf.String()
+				logString := fmt.Sprintf(options.LogString, partyID)
+				require.Contains(t, logOutput, logString, "Expected log output to contain specified log string")
+			}
 		}()
 	}
 
@@ -461,7 +656,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 
 func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID,
 	startBlock uint64, endBlock uint64, fval, transactions, blocks, timeout int,
-	needVerification bool, sigVerifier *crypto.ECDSAVerifier,
+	needVerification bool, sigVerifier *crypto.ECDSAVerifier, blockHandler TestBlockHandler,
 ) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
@@ -476,7 +671,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	expectedNumOfBlocks := blocks
 
 	m := make(map[uint64]int, transactions)
-	for i := 0; i < transactions; i++ {
+	for i := range transactions {
 		m[uint64(i)] = 0
 	}
 
@@ -488,6 +683,12 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			return errors.New("nil block header")
 		}
 
+		if blockHandler != nil {
+			if err := blockHandler.HandleBlock(t, block); err != nil {
+				toCancel()
+			}
+		}
+
 		totalBlocks++
 
 		data := block.GetData().GetData()
@@ -495,6 +696,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 
 		// Check if the block is genesis block or not
 		isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
+		isConfigBlock := protoutil.IsConfigBlock(block)
 
 		if !isGenesisBlock {
 			shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
@@ -541,9 +743,21 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			if verifiedSigns < 2*fval+1 {
 				return fmt.Errorf("not enough signatures: got %d, need at least %d (2*f + 1)", verifiedSigns, 2*fval+1)
 			}
+
+			if isConfigBlock {
+				log.Printf("configuration block %d partyID %d verified with %d signatures\n", block.Header.Number, partyID, verifiedSigns)
+			}
 		}
 
-		for i := 0; i < transactionsNumber; i++ {
+		if isConfigBlock && needVerification {
+			require.Equal(t, 1, transactionsNumber)
+			// skip config block txs
+			m[uint64(len(m)-1)]++
+			totalTxs++
+			return nil
+		}
+
+		for i := range transactionsNumber {
 			envelope, err := protoutil.UnmarshalEnvelope(data[i])
 			if err != nil {
 				return errors.Wrapf(err, "failed to unmarshal envelope %v", err)
@@ -591,9 +805,24 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	return blockPullerInfo, err
 }
 
-func BuildVerifier(consenters []nodeconfig.ConsenterInfo, logger types.Logger) crypto.ECDSAVerifier {
+func BuildVerifier(configDir string, partyID types.PartyID, logger types.Logger) *crypto.ECDSAVerifier {
+	localConfig, _, err := config.LoadLocalConfig(filepath.Join(configDir, fmt.Sprintf("config/party%d/local_config_consenter.yaml", int(partyID))))
+	if err != nil {
+		logger.Panicf("Failed loading local config: %v", err)
+	}
+	sharedConfig, _, err := config.LoadSharedConfig(filepath.Join(configDir, "bootstrap/shared_config.yaml"))
+	if err != nil {
+		logger.Panicf("Failed loading shared config: %v", err)
+	}
+
+	conf := &config.Configuration{
+		LocalConfig:  localConfig,
+		SharedConfig: sharedConfig,
+	}
+	consenterInfos := conf.ExtractConsenters()
+
 	verifier := make(crypto.ECDSAVerifier)
-	for _, ci := range consenters {
+	for _, ci := range consenterInfos {
 		pk, _ := pem.Decode(ci.PublicKey)
 		if pk == nil || pk.Bytes == nil {
 			logger.Panicf("Failed decoding consenter public key")
@@ -607,5 +836,5 @@ func BuildVerifier(consenters []nodeconfig.ConsenterInfo, logger types.Logger) c
 		verifier[crypto.ShardPartyKey{Shard: types.ShardIDConsensus, Party: types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
 	}
 
-	return verifier
+	return &verifier
 }

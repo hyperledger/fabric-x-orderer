@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,7 +26,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/onsi/gomega/gbytes"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -41,7 +43,7 @@ const (
 
 // EditDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string) {
-	nodeConfig := readNodeConfigFromYaml(t, path)
+	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
 	nodeConfig.GeneralConfig.MonitoringListenPort = 0
 	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
@@ -53,13 +55,13 @@ func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string
 // This variable holds the key store path which is the local msp path and is initialized once with the local msp of the first node.
 // To avoid conflicts and access to wrong directories, we can override the local msp field to be the same.
 func EditLocalMSPDirForNode(t *testing.T, path string, localMSPPath string) {
-	nodeConfig := readNodeConfigFromYaml(t, path)
+	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.GeneralConfig.LocalMSPDir = localMSPPath
 	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
 	require.NoError(t, err)
 }
 
-func readNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
+func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)
 	config := config.NodeLocalConfig{}
@@ -132,7 +134,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 
-	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(networkConfig, dir, dir)
+	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(networkConfig, dir, dir, false)
 	require.NoError(t, err)
 	require.NotNil(t, networkLocalConfig)
 
@@ -158,7 +160,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 	return networkSharedConfig, sharedConfigPath
 }
 
-func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener, numOfParties int) *gexec.Session {
+func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan struct{}, listener net.Listener) *gexec.Session {
 	listener.Close()
 	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
 	require.NotNil(t, cmd)
@@ -166,13 +168,15 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	sess, err := gexec.Start(cmd, os.Stdout, os.Stderr)
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool {
-		match, err := gbytes.Say("listening on").Match(sess.Err)
-		require.NoError(t, err)
-		return match
-	}, 60*time.Second, 10*time.Millisecond)
+	select {
+	case <-time.After(60 * time.Second):
+		require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to start", name))
+	case <-sess.Err.Detect("panic"):
+		panic("arma node failed to start")
+	case <-sess.Err.Detect("listening on"):
+		readyChan <- struct{}{}
+	}
 
-	readyChan <- struct{}{}
 	return sess
 }
 
@@ -184,10 +188,10 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		Assembler: "local_config_assembler",
 	}
 
-	nodeInfos := make([]ArmaNodeInfo, 0, len(netInfo))
+	nodeInfos := make([]*ArmaNodeInfo, 0, len(netInfo))
 	numOfParties := 0
 	for n := range netInfo {
-		nodeInfos = append(nodeInfos, *netInfo[n])
+		nodeInfos = append(nodeInfos, netInfo[n])
 		if strings.Contains(n, "consensus") {
 			numOfParties++
 		}
@@ -220,9 +224,9 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		require.NoError(t, err)
 
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
-		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener, numOfParties)
+		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
-		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, &netNode)
+		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
 
 	return &armaNetwork
@@ -230,7 +234,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 
 func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time.Duration) {
 	startTimeout := time.After(duration * time.Second)
-	for i := 0; i < waitFor; i++ {
+	for range waitFor {
 		select {
 		case <-readyChan:
 		case <-startTimeout:
@@ -239,7 +243,34 @@ func WaitReady(t *testing.T, readyChan chan struct{}, waitFor int, duration time
 	}
 }
 
-func sortArmaNodeInfo(infos []ArmaNodeInfo) func(i, j int) bool {
+func WaitSoftStopped(t *testing.T, netInfo map[string]*ArmaNodeInfo) {
+	stopChan := make(chan struct{})
+
+	go func() {
+		defer close(stopChan)
+		wg := sync.WaitGroup{}
+
+		for _, n := range netInfo {
+			wg.Go(func() {
+				select {
+				case <-n.RunInfo.Session.Err.Detect("Soft stop"):
+				case <-n.RunInfo.Session.Err.Detect("soft stop"):
+				case <-time.After(45 * time.Second):
+					require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to stop", n.NodeType))
+				}
+			})
+		}
+		wg.Wait()
+	}()
+
+	select {
+	case <-stopChan:
+	case <-time.After(60 * time.Second):
+		require.Fail(t, "Timed out waiting for Arma nodes to stop")
+	}
+}
+
+func sortArmaNodeInfo(infos []*ArmaNodeInfo) func(i, j int) bool {
 	return func(i, j int) bool {
 		runOrderMap := map[string]int{Consensus: 1, Batcher: 2, Assembler: 3, Router: 4}
 
@@ -254,4 +285,17 @@ func sortArmaNodeInfo(infos []ArmaNodeInfo) func(i, j int) bool {
 		}
 		return false
 	}
+}
+
+func LoadCryptoMaterialsFromDir(t *testing.T, mspDir string) (*crypto.ECDSASigner, []byte, error) {
+	keyBytes, err := os.ReadFile(filepath.Join(mspDir, "keystore", "priv_sk"))
+	require.NoError(t, err, "failed to read private key file")
+
+	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
+	require.NoError(t, err, "failed to create private key")
+
+	certBytes, err := os.ReadFile(filepath.Join(mspDir, "signcerts", "sign-cert.pem"))
+	require.NoError(t, err, "failed to read sign certificate file")
+
+	return (*crypto.ECDSASigner)(privateKey), certBytes, nil
 }

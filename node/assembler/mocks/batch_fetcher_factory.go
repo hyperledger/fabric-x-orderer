@@ -93,8 +93,6 @@ func (fake *FakeBatchBringerFactory) CreateReturnsOnCall(i int, result1 assemble
 func (fake *FakeBatchBringerFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.createMutex.RLock()
-	defer fake.createMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

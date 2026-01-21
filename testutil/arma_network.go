@@ -70,6 +70,16 @@ func (armaNetwork *ArmaNetwork) Kill() {
 	}
 }
 
+func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan struct{}) {
+	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+		for i := range armaNetwork.armaNodes[k] {
+			for j := range armaNetwork.armaNodes[k][i] {
+				armaNetwork.armaNodes[k][i][j].RestartArmaNode(t, readyChan)
+			}
+		}
+	}
+}
+
 func (armaNetwork *ArmaNetwork) GetAssembler(t *testing.T, partyID types.PartyID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
 	require.True(t, len(armaNetwork.armaNodes[Assembler]) >= int(partyID))
@@ -88,7 +98,7 @@ func (armaNetwork *ArmaNetwork) GetConsenter(t *testing.T, partyID types.PartyID
 	return armaNetwork.armaNodes[Consensus][partyID-1][0]
 }
 
-func (armaNetwork *ArmaNetwork) GeBatcher(t *testing.T, partyID types.PartyID, shardID types.ShardID) *ArmaNodeInfo {
+func (armaNetwork *ArmaNetwork) GetBatcher(t *testing.T, partyID types.PartyID, shardID types.ShardID) *ArmaNodeInfo {
 	require.True(t, int(partyID) > 0)
 	require.True(t, int(shardID) > 0)
 	require.True(t, len(armaNetwork.armaNodes[Batcher]) >= int(partyID))
@@ -96,14 +106,14 @@ func (armaNetwork *ArmaNetwork) GeBatcher(t *testing.T, partyID types.PartyID, s
 	return armaNetwork.armaNodes[Batcher][partyID-1][shardID-1]
 }
 
-func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}, numOfParties int) {
+func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan struct{}) {
 	require.FileExists(t, armaNodeInfo.RunInfo.NodeConfigPath)
-	nodeConfig := readNodeConfigFromYaml(t, armaNodeInfo.RunInfo.NodeConfigPath)
+	nodeConfig := ReadNodeConfigFromYaml(t, armaNodeInfo.RunInfo.NodeConfigPath)
 	storagePath := nodeConfig.FileStore.Path
 	require.DirExists(t, storagePath)
 
 	armaNodeInfo.RunInfo.Session = runNode(t, armaNodeInfo.NodeType, armaNodeInfo.RunInfo.ArmaBinaryPath,
-		armaNodeInfo.RunInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener, numOfParties)
+		armaNodeInfo.RunInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener)
 }
 
 func (armaNodeInfo *ArmaNodeInfo) StopArmaNode() {

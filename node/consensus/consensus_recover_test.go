@@ -13,10 +13,13 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"
 )
+
+func init() {
+	grpclog.SetLoggerV2(&testutil.SilentLogger{})
+}
 
 var (
 	digest    = make([]byte, 32-3)
@@ -26,8 +29,6 @@ var (
 )
 
 func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
-	grpclog.SetLoggerV2(&testutil.SilentLogger{})
-
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
@@ -37,8 +38,6 @@ func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
 }
 
 func TestCreateOneConsensusNode(t *testing.T) {
-	grpclog.SetLoggerV2(&testutil.SilentLogger{})
-
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
@@ -85,29 +84,31 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	setup := setupConsensusTest(t, ca, parties, genesisBlock)
 
+	time.Sleep(30 * time.Second)
+
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
 	require.NoError(t, err)
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
 	require.NoError(t, err)
 
-	b := <-setup.listeners[0].c
-	require.Equal(t, uint64(1), b.Header.Number)
-	b1 := <-setup.listeners[1].c
-	require.Equal(t, uint64(1), b1.Header.Number)
-	b2 := <-setup.listeners[2].c
-	require.Equal(t, uint64(1), b2.Header.Number)
+	require.Eventually(t, func() bool {
+		b := <-setup.listeners[0].c
+		b1 := <-setup.listeners[1].c
+		b2 := <-setup.listeners[2].c
+		return b.Header.Number == uint64(1) && b1.Header.Number == uint64(1) && b2.Header.Number == uint64(1)
+	}, 2*time.Minute, 1*time.Second)
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
 	require.NoError(t, err)
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
 	require.NoError(t, err)
 
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(2), b.Header.Number)
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(2), b1.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(2), b2.Header.Number)
+	require.Eventually(t, func() bool {
+		b := <-setup.listeners[0].c
+		b1 := <-setup.listeners[1].c
+		b2 := <-setup.listeners[2].c
+		return b.Header.Number == uint64(2) && b1.Header.Number == uint64(2) && b2.Header.Number == uint64(2)
+	}, 2*time.Minute, 1*time.Second)
 
 	setup.consensusNodes[0].Stop()
 
@@ -116,40 +117,45 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
 	require.NoError(t, err)
 
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(3), b1.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(3), b2.Header.Number)
+	require.Eventually(t, func() bool {
+		b1 := <-setup.listeners[1].c
+		b2 := <-setup.listeners[2].c
+		return b1.Header.Number == uint64(3) && b2.Header.Number == uint64(3)
+	}, 2*time.Minute, 1*time.Second)
 
-	b3 := <-setup.listeners[3].c
-	require.Equal(t, uint64(1), b3.Header.Number)
-	b3 = <-setup.listeners[3].c
-	require.Equal(t, uint64(2), b3.Header.Number)
-	b3 = <-setup.listeners[3].c
-	require.Equal(t, uint64(3), b3.Header.Number)
+	require.Eventually(t, func() bool {
+		b31 := <-setup.listeners[3].c
+		b32 := <-setup.listeners[3].c
+		b33 := <-setup.listeners[3].c
+		return b31.Header.Number == uint64(1) && b32.Header.Number == uint64(2) && b33.Header.Number == uint64(3)
+	}, 2*time.Minute, 1*time.Second)
 
 	err = recoverNode(t, setup, 0, ca, genesisBlock)
 	require.NoError(t, err)
 
 	time.Sleep(time.Minute)
 
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(3), b.Header.Number)
+	require.Eventually(t, func() bool {
+		b := <-setup.listeners[0].c
+		return b.Header.Number == uint64(3)
+	}, 2*time.Minute, 1*time.Second)
 
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
 	require.NoError(t, err)
 	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
 	require.NoError(t, err)
 
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(4), b1.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(4), b2.Header.Number)
-	b3 = <-setup.listeners[3].c
-	require.Equal(t, uint64(4), b3.Header.Number)
+	require.Eventually(t, func() bool {
+		b1 := <-setup.listeners[1].c
+		b2 := <-setup.listeners[2].c
+		b3 := <-setup.listeners[3].c
+		return b1.Header.Number == uint64(4) && b2.Header.Number == uint64(4) && b3.Header.Number == uint64(4)
+	}, 2*time.Minute, 1*time.Second)
 
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(4), b.Header.Number)
+	require.Eventually(t, func() bool {
+		b := <-setup.listeners[0].c
+		return b.Header.Number == uint64(4)
+	}, 2*time.Minute, 1*time.Second)
 
 	for _, c := range setup.consensusNodes {
 		c.Stop()
@@ -580,6 +586,60 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(4), b.Header.Number)
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(4), b2.Header.Number)
+
+	for _, c := range setup.consensusNodes {
+		c.Stop()
+	}
+}
+
+func TestSyncFromSoftStoppedNodes(t *testing.T) {
+	t.Parallel()
+	parties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	setup := setupConsensusTest(t, ca, parties, genesisBlock)
+
+	// Commit the first request
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	require.NoError(t, err)
+
+	b := <-setup.listeners[0].c
+	require.Equal(t, uint64(1), b.Header.Number)
+	b1 := <-setup.listeners[1].c
+	require.Equal(t, uint64(1), b1.Header.Number)
+	b2 := <-setup.listeners[2].c
+	require.Equal(t, uint64(1), b2.Header.Number)
+
+	// Node 3 fails and submit the second request
+	setup.consensusNodes[2].Stop()
+
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	require.NoError(t, err)
+
+	b = <-setup.listeners[0].c
+	require.Equal(t, uint64(2), b.Header.Number)
+	b1 = <-setup.listeners[1].c
+	require.Equal(t, uint64(2), b1.Header.Number)
+
+	// SoftStop all nodes except node 3
+	for i, c := range setup.consensusNodes {
+		if i != 2 {
+			c.SoftStop()
+		}
+	}
+
+	// Recover node 3
+	err = recoverNode(t, setup, 2, ca, genesisBlock)
+	require.NoError(t, err)
+
+	// Verify node 3 synced correctly from other nodes during SoftStop
+	b2 = <-setup.listeners[2].c
+	require.Equal(t, uint64(2), b2.Header.Number)
 
 	for _, c := range setup.consensusNodes {
 		c.Stop()

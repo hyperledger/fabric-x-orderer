@@ -12,12 +12,14 @@ import (
 	"path/filepath"
 
 	"github.com/IBM/idemix"
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
-	"github.com/pkg/errors"
+	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/proto"
-	"gopkg.in/yaml.v2"
+
+	"github.com/hyperledger/fabric-x-common/api/protomsp"
 )
 
 // OrganizationalUnitIdentifiersConfiguration is used to represent an OU
@@ -130,6 +132,7 @@ const (
 	configfilename       = "config.yaml"
 	tlscacerts           = "tlscacerts"
 	tlsintermediatecerts = "tlsintermediatecerts"
+	knowncerts           = "knowncerts"
 )
 
 func SetupBCCSPKeystoreConfig(bccspConfig *factory.FactoryOpts, keystoreDir string) *factory.FactoryOpts {
@@ -212,6 +215,7 @@ func getMspConfig(dir string, ID string, sigid *msp.SigningIdentityInfo) (*msp.M
 	configFile := filepath.Join(dir, configfilename)
 	tlscacertDir := filepath.Join(dir, tlscacerts)
 	tlsintermediatecertsDir := filepath.Join(dir, tlsintermediatecerts)
+	knownCertsDir := filepath.Join(dir, knowncerts)
 
 	cacerts, err := getPemMaterialFromDir(cacertDir)
 	if err != nil || len(cacerts) == 0 {
@@ -221,6 +225,13 @@ func getMspConfig(dir string, ID string, sigid *msp.SigningIdentityInfo) (*msp.M
 	admincert, err := getPemMaterialFromDir(admincertDir)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, errors.WithMessagef(err, "could not load a valid admin certificate from directory %s", admincertDir)
+	}
+
+	knowncerts, err := getPemMaterialFromDir(knownCertsDir)
+	if os.IsNotExist(err) {
+		mspLogger.Debugf("known certs folder not found at [%s]. Skipping. [%s]", knownCertsDir, err)
+	} else if err != nil {
+		return nil, errors.WithMessagef(err, "failed loading known certs at [%s]", knownCertsDir)
 	}
 
 	intermediatecerts, err := getPemMaterialFromDir(intermediatecertsDir)
@@ -340,7 +351,7 @@ func getMspConfig(dir string, ID string, sigid *msp.SigningIdentityInfo) (*msp.M
 	}
 
 	// Compose FabricMSPConfig
-	fmspconf := &msp.FabricMSPConfig{
+	fmspconf := &protomsp.FabricMSPConfig{
 		Admins:                        admincert,
 		RootCerts:                     cacerts,
 		IntermediateCerts:             intermediatecerts,
@@ -352,6 +363,7 @@ func getMspConfig(dir string, ID string, sigid *msp.SigningIdentityInfo) (*msp.M
 		TlsRootCerts:                  tlsCACerts,
 		TlsIntermediateCerts:          tlsIntermediateCerts,
 		FabricNodeOus:                 nodeOUs,
+		KnownCerts:                    knowncerts,
 	}
 
 	fmpsjs, err := proto.Marshal(fmspconf)

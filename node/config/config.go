@@ -86,6 +86,7 @@ type RouterNodeConfig struct {
 	NumOfgRPCStreamsPerConnection       int
 	UseTLS                              bool
 	ClientAuthRequired                  bool
+	ClientRootCAs                       [][]byte
 	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
 	// Bundle collects resources (e.g., policy manager, configTx validator, etc.) that are used by the router for validation of transactions
@@ -112,6 +113,8 @@ type AssemblerNodeConfig struct {
 	Consenter               ConsenterInfo
 	UseTLS                  bool
 	ClientAuthRequired      bool
+	ClientRootCAs           [][]byte
+	Bundle                  channelconfig.Resources
 	MonitoringListenAddress string
 	MetricsLogInterval      time.Duration
 }
@@ -128,6 +131,7 @@ type BatcherNodeConfig struct {
 	ShardId                             types.ShardID
 	TLSPrivateKeyFile                   RawBytes
 	TLSCertificateFile                  RawBytes
+	ClientRootCAs                       [][]byte // Clients that are specified in the local configuration of the Batcher node only
 	SigningPrivateKey                   RawBytes
 	MemPoolMaxSize                      uint64
 	BatchMaxSize                        uint32
@@ -156,6 +160,7 @@ type ConsenterNodeConfig struct {
 	PartyId                             types.PartyID
 	TLSPrivateKeyFile                   RawBytes
 	TLSCertificateFile                  RawBytes
+	ClientRootCAs                       [][]byte // Clients that are specified in the local configuration of the Consenter node only
 	SigningPrivateKey                   RawBytes
 	WALDir                              string
 	BFTConfig                           smartbft_types.Configuration

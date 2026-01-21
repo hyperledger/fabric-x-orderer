@@ -12,7 +12,7 @@ import (
 	"path"
 	"strconv"
 
-	"github.com/hyperledger/fabric-x-orderer/internal/fileutil"
+	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 )
 
 // ResetBlockStore drops the block storage index and truncates the blocks files for all channels/ledgers to genesis blocks

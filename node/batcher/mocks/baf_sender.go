@@ -2,6 +2,7 @@
 package mocks
 
 import (
+	"context"
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -9,24 +10,27 @@ import (
 )
 
 type FakeBAFSender struct {
-	SendBAFStub        func(types.BatchAttestationFragment)
+	SendBAFStub        func(types.BatchAttestationFragment, context.Context)
 	sendBAFMutex       sync.RWMutex
 	sendBAFArgsForCall []struct {
 		arg1 types.BatchAttestationFragment
+		arg2 context.Context
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBAFSender) SendBAF(arg1 types.BatchAttestationFragment) {
+func (fake *FakeBAFSender) SendBAF(arg1 types.BatchAttestationFragment, arg2 context.Context) {
 	fake.sendBAFMutex.Lock()
 	fake.sendBAFArgsForCall = append(fake.sendBAFArgsForCall, struct {
 		arg1 types.BatchAttestationFragment
-	}{arg1})
-	fake.recordInvocation("SendBAF", []interface{}{arg1})
+		arg2 context.Context
+	}{arg1, arg2})
+	stub := fake.SendBAFStub
+	fake.recordInvocation("SendBAF", []interface{}{arg1, arg2})
 	fake.sendBAFMutex.Unlock()
-	if fake.SendBAFStub != nil {
-		fake.SendBAFStub(arg1)
+	if stub != nil {
+		fake.SendBAFStub(arg1, arg2)
 	}
 }
 
@@ -36,17 +40,17 @@ func (fake *FakeBAFSender) SendBAFCallCount() int {
 	return len(fake.sendBAFArgsForCall)
 }
 
-func (fake *FakeBAFSender) SendBAFCalls(stub func(types.BatchAttestationFragment)) {
+func (fake *FakeBAFSender) SendBAFCalls(stub func(types.BatchAttestationFragment, context.Context)) {
 	fake.sendBAFMutex.Lock()
 	defer fake.sendBAFMutex.Unlock()
 	fake.SendBAFStub = stub
 }
 
-func (fake *FakeBAFSender) SendBAFArgsForCall(i int) types.BatchAttestationFragment {
+func (fake *FakeBAFSender) SendBAFArgsForCall(i int) (types.BatchAttestationFragment, context.Context) {
 	fake.sendBAFMutex.RLock()
 	defer fake.sendBAFMutex.RUnlock()
 	argsForCall := fake.sendBAFArgsForCall[i]
-	return argsForCall.arg1
+	return argsForCall.arg1, argsForCall.arg2
 }
 
 func (fake *FakeBAFSender) Invocations() map[string][][]interface{} {

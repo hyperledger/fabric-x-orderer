@@ -28,7 +28,7 @@ func TestSimpleBAF(t *testing.T) {
 		require.True(t, bytes.Equal([]byte{9, 10, 11, 12}, baf.Signature()))
 		require.Equal(t, types.ConfigSequence(18), baf.ConfigSequence())
 
-		require.Equal(t, "BAF: Signer: 8; Sh,Pr,Sq,Dg: <1,2,3,04050607>", baf.String())
+		require.Equal(t, "BAF: Signer: 8; Sh,Pr,Sq,Dg: <1,2,3,04050607>; Config Seq: 18", baf.String())
 
 		baf.SetSignature([]byte{19, 20, 21, 22})
 		require.True(t, bytes.Equal([]byte{19, 20, 21, 22}, baf.Signature()))

@@ -19,13 +19,15 @@ import (
 	"strings"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v3"
+
+	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
-var logger = flogging.MustGetLogger("viperutil")
+var logger = util.MustGetLogger("viperutil")
 
 // ConfigPaths returns the paths from environment and
 // defaults which are CWD and /etc/hyperledger/fabric.
@@ -211,57 +213,59 @@ func toMapStringInterface(m map[interface{}]interface{}) map[string]interface{} 
 	return result
 }
 
-// customDecodeHook parses strings of the format "[thing1, thing2, thing3]"
+// StringSliceViaEnvDecodeHook parses strings of the format "[thing1, thing2, thing3]"
 // into string slices. Note that whitespace around slice elements is removed.
-func customDecodeHook(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
-	if f.Kind() != reflect.String {
+func StringSliceViaEnvDecodeHook(f, t reflect.Type, data any) (any, error) {
+	raw, ok := GetStringData(f, data)
+	raw = strings.TrimSpace(raw)
+	sz := len(raw)
+	if !ok || sz < 2 || !reflect.TypeFor[[]string]().AssignableTo(t) {
 		return data, nil
 	}
 
-	raw := data.(string)
-	l := len(raw)
-	if l > 1 && raw[0] == '[' && raw[l-1] == ']' {
-		slice := strings.Split(raw[1:l-1], ",")
-		for i, v := range slice {
-			slice[i] = strings.TrimSpace(v)
-		}
-		return slice, nil
+	if raw[0] != '[' || raw[sz-1] != ']' {
+		return data, nil
 	}
-
-	return data, nil
+	slice := strings.Split(raw[1:sz-1], ",")
+	for i, v := range slice {
+		slice[i] = strings.TrimSpace(v)
+	}
+	return slice, nil
 }
 
-func byteSizeDecodeHook(f reflect.Kind, t reflect.Kind, data interface{}) (interface{}, error) {
-	if f != reflect.String || t != reflect.Uint32 {
+var byteSizeRegexp = regexp.MustCompile(`(?i)^(\d+)\s*([kmg])b?$`)
+
+// ByteSizeDecodeHook is a decoder that can parse byte size encodings.
+func ByteSizeDecodeHook(f, t reflect.Type, data any) (any, error) {
+	raw, ok := GetStringData(f, data)
+	targetKind := t.Kind()
+	if !ok || raw == "" || (targetKind != reflect.Uint64 && targetKind != reflect.Uint32) {
 		return data, nil
 	}
-	raw := data.(string)
-	if raw == "" {
+	match := byteSizeRegexp.FindStringSubmatch(raw)
+	if match == nil {
 		return data, nil
 	}
-	re := regexp.MustCompile(`^(?P<size>[0-9]+)\s*(?i)(?P<unit>(k|m|g))b?$`)
-	if re.MatchString(raw) {
-		size, err := strconv.ParseUint(re.ReplaceAllString(raw, "${size}"), 0, 64)
-		if err != nil {
-			return data, nil
-		}
-		unit := re.ReplaceAllString(raw, "${unit}")
-		switch strings.ToLower(unit) {
-		case "g":
-			size = size << 10
-			fallthrough
-		case "m":
-			size = size << 10
-			fallthrough
-		case "k":
-			size = size << 10
-		}
-		if size > math.MaxUint32 {
-			return size, fmt.Errorf("value '%s' overflows uint32", raw)
-		}
+	size, err := strconv.ParseUint(match[1], 10, 64)
+	if err != nil {
+		return data, err
+	}
+	switch strings.ToLower(match[2]) {
+	case "g":
+		size <<= 30
+	case "m":
+		size <<= 20
+	case "k":
+		size <<= 10
+	}
+
+	if targetKind == reflect.Uint64 {
 		return size, nil
 	}
-	return data, nil
+	if size > math.MaxUint32 {
+		err = fmt.Errorf("value '%s' overflows uint32", raw)
+	}
+	return uint32(size), err
 }
 
 func stringFromFileDecodeHook(f reflect.Kind, t reflect.Kind, data interface{}) (interface{}, error) {
@@ -371,6 +375,25 @@ func bccspHook(f reflect.Type, t reflect.Type, data interface{}) (interface{}, e
 	return config, nil
 }
 
+// OrdererEndpointDecoder is a decoder that can parse orderer endpoint.
+func OrdererEndpointDecoder(dataType, targetType reflect.Type, rawData any) (result any, err error) {
+	stringData, ok := GetStringData(dataType, rawData)
+	if !ok || !reflect.TypeFor[types.OrdererEndpoint]().AssignableTo(targetType) {
+		return rawData, nil
+	}
+	endpoint, err := types.ParseOrdererEndpoint(stringData)
+	return endpoint, errors.Wrap(err, "failed to parse orderer endpoint")
+}
+
+// GetStringData tries to convert the raw type to string.
+func GetStringData(dataType reflect.Type, rawData any) (stringData string, isStringData bool) {
+	if dataType.Kind() != reflect.String {
+		return stringData, false
+	}
+	stringData, isStringData = rawData.(string)
+	return stringData, isStringData
+}
+
 // EnhancedExactUnmarshal is intended to unmarshal a config file into a structure
 // producing error when extraneous variables are introduced and supporting
 // the time.Duration type
@@ -396,10 +419,11 @@ func (c *ConfigParser) EnhancedExactUnmarshal(output interface{}) error {
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
 			bccspHook,
 			mapstructure.StringToTimeDurationHookFunc(),
-			customDecodeHook,
-			byteSizeDecodeHook,
+			StringSliceViaEnvDecodeHook,
+			ByteSizeDecodeHook,
 			stringFromFileDecodeHook,
 			pemBlocksFromFileDecodeHook,
+			OrdererEndpointDecoder,
 		),
 	}
 
@@ -408,20 +432,4 @@ func (c *ConfigParser) EnhancedExactUnmarshal(output interface{}) error {
 		return err
 	}
 	return decoder.Decode(leafKeys)
-}
-
-// YamlStringToStructHook is a hook for viper(viper.Unmarshal(*,*, here)), it is able to parse a string of minified yaml into a slice of structs
-func YamlStringToStructHook(m interface{}) func(rf reflect.Kind, rt reflect.Kind, data interface{}) (interface{}, error) {
-	return func(rf reflect.Kind, rt reflect.Kind, data interface{}) (interface{}, error) {
-		if rf != reflect.String || rt != reflect.Slice {
-			return data, nil
-		}
-
-		raw := data.(string)
-		if raw == "" {
-			return m, nil
-		}
-
-		return m, yaml.UnmarshalStrict([]byte(raw), &m)
-	}
 }

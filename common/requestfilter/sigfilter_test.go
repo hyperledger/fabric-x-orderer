@@ -60,12 +60,46 @@ func TestSigVerifyFilter(t *testing.T) {
 	_, err = v.VerifyStructureAndClassify(req)
 	require.ErrorContains(t, err, "failed unmarshalling channel header")
 
-	chdr := &common.ChannelHeader{ChannelId: "ChannelId", Type: int32(common.HeaderType_CONFIG_UPDATE)}
+	chdr := &common.ChannelHeader{ChannelId: "ChannelId", Type: int32(common.HeaderType_MESSAGE)}
 	chdrBytes, err := proto.Marshal(chdr)
 	require.NoError(t, err)
 	payload = &common.Payload{Header: &common.Header{ChannelHeader: chdrBytes, SignatureHeader: sigheader}}
 	p, err = proto.Marshal(payload)
 	require.NoError(t, err)
+	req.Payload = p
+	reqType, err := v.VerifyStructureAndClassify(req)
+	require.NoError(t, err)
+	require.Equal(t, common.HeaderType_MESSAGE, reqType)
+}
+
+func TestSigVerifyConfigUpdate(t *testing.T) {
+	var v requestfilter.RulesVerifier
+	fc := &mocks.FakeFilterConfig{}
+
+	policy := &policyMock.FakePolicyEvaluator{}
+	policy.EvaluateSignedDataReturns(nil)
+	policyManager := &policyMock.FakePolicyManager{}
+	policyManager.GetPolicyReturns(policy, true)
+	fc.GetPolicyManagerReturns(policyManager)
+	fc.GetChannelIDReturns("arma")
+	fc.GetClientSignatureVerificationRequiredReturns(false)
+
+	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
+	_, err := v.VerifyStructureAndClassify(nil)
+	require.EqualError(t, err, "failed to convert request to signedData : nil request")
+
+	chdr := &common.ChannelHeader{ChannelId: "arma", Type: int32(common.HeaderType_CONFIG_UPDATE)}
+	chdrBytes, err := proto.Marshal(chdr)
+	require.NoError(t, err)
+	sigheader, err := proto.Marshal(&common.SignatureHeader{
+		Creator: []byte("user"),
+		Nonce:   []byte("nonce"),
+	})
+	require.NoError(t, err)
+	payload := &common.Payload{Header: &common.Header{ChannelHeader: chdrBytes, SignatureHeader: sigheader}}
+	p, err := proto.Marshal(payload)
+	require.NoError(t, err)
+	req := &comm.Request{Payload: p}
 	req.Payload = p
 	reqType, err := v.VerifyStructureAndClassify(req)
 	require.NoError(t, err)

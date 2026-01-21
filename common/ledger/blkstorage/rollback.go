@@ -9,8 +9,8 @@ package blkstorage
 import (
 	"os"
 
+	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
-	"github.com/hyperledger/fabric-x-orderer/internal/fileutil"
 
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"

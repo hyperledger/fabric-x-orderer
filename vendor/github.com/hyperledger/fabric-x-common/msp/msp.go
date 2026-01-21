@@ -20,6 +20,9 @@ type IdentityDeserializer interface {
 	// the deserialization.
 	DeserializeIdentity(serializedIdentity []byte) (Identity, error)
 
+	// GetKnownDeserializedIdentity returns a known identity matching the given IdentityIdentifier.
+	GetKnownDeserializedIdentity(IdentityIdentifier) Identity
+
 	// IsWellFormed checks if the given identity can be deserialized into its provider-specific form
 	IsWellFormed(identity *msp.SerializedIdentity) error
 }
@@ -44,7 +47,6 @@ type IdentityDeserializer interface {
 // to the appropriate MSP.
 // This object is immutable, it is initialized once and never changed.
 type MSPManager interface {
-
 	// IdentityDeserializer interface needs to be implemented by MSPManager
 	IdentityDeserializer
 
@@ -58,7 +60,6 @@ type MSPManager interface {
 // MSP is the minimal Membership Service Provider Interface to be implemented
 // to accommodate peer functionality
 type MSP interface {
-
 	// IdentityDeserializer interface needs to be implemented by MSP
 	IdentityDeserializer
 
@@ -113,7 +114,6 @@ type OUIdentifier struct {
 // at the peer side when verifying certificates that transactions are signed
 // with, and verifying signatures that correspond to these certificates.///
 type Identity interface {
-
 	// ExpiresAt returns the time at which the Identity expires.
 	// If the returned time is the zero value, it implies
 	// the Identity does not expire, or that its expiration
@@ -168,7 +168,6 @@ type Identity interface {
 // to sign transactions, or fabric endorser who wishes to sign proposal
 // processing outcomes.
 type SigningIdentity interface {
-
 	// Extends Identity
 	Identity
 
@@ -182,7 +181,6 @@ type SigningIdentity interface {
 // IdentityIdentifier is a holder for the identifier of a specific
 // identity, naturally namespaced, by its provider identifier.
 type IdentityIdentifier struct {
-
 	// The identifier of the associated membership service provider
 	Mspid string
 

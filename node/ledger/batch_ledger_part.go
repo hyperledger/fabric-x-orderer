@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
-	"fmt"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
@@ -38,7 +36,7 @@ func newBatchLedgerPart(
 	partyID, primaryPartyID types.PartyID,
 	logger types.Logger,
 ) (*BatchLedgerPart, error) {
-	name := fmt.Sprintf("shard%dparty%d", shardID, primaryPartyID)
+	name := ShardPartyToChannelName(shardID, primaryPartyID)
 	ledger, err := provider.Open(name)
 	if err != nil {
 		return nil, err
@@ -68,10 +66,10 @@ func newBatchLedgerPart(
 
 // Append adds a batch to the end of the ledger chain.
 // The `seq` must match the expected block number (i.e. Height()).
-func (b *BatchLedgerPart) Append(seq types.BatchSequence, batchedRequests types.BatchedRequests) {
-	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, batchedRequests.SizeBytes(), b.primaryPartyID)
+func (b *BatchLedgerPart) Append(seq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests) {
+	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d and config sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, configSeq, batchedRequests.SizeBytes(), b.primaryPartyID)
 
-	block := NewFabricBatchFromRequests(b.shardID, b.primaryPartyID, seq, batchedRequests, 0, b.prevHash)
+	block := NewFabricBatchFromRequests(b.shardID, b.primaryPartyID, seq, batchedRequests, configSeq, b.prevHash)
 
 	// Note: We do this only because we reuse the Fabric ledger, we don't really need a hash chain here.
 	b.prevHash = protoutil.BlockHeaderHash(block.Header)

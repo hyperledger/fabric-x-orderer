@@ -13,15 +13,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/pkg/errors"
 )
@@ -53,15 +50,12 @@ func CreateGenesisBlock(blockDir string, baseDir string, sharedConfigYaml *confi
 	return genesisBlock, nil
 }
 
-func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string, sampleConfigPath string) (*genesisconfig.Profile, error) {
+func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, sharedConfigPath string, sampleConfigPath string) (*configtxgen.Profile, error) {
 	// collect relevant shared configuration
-	var consenterMapping []*genesisconfig.Consenter
-	var routerAndAssemblerEndpoints []string
-	for _, party := range sharedConfigYaml.PartiesConfig {
-		routerAndAssemblerEndpoints = append(routerAndAssemblerEndpoints, net.JoinHostPort(party.RouterConfig.Host, strconv.Itoa(int(party.RouterConfig.Port))))
-		routerAndAssemblerEndpoints = append(routerAndAssemblerEndpoints, net.JoinHostPort(party.AssemblerConfig.Host, strconv.Itoa(int(party.AssemblerConfig.Port))))
+	var consenterMapping []*configtxgen.Consenter
 
-		consenter := &genesisconfig.Consenter{
+	for _, party := range sharedConfigYaml.PartiesConfig {
+		consenter := &configtxgen.Consenter{
 			ID:            uint32(party.PartyID),
 			Host:          party.ConsenterConfig.Host,
 			Port:          party.ConsenterConfig.Port,
@@ -74,30 +68,65 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	}
 
 	// load SampleFabricX profile
-	profile := genesisconfig.Load(genesisconfig.SampleFabricX, sampleConfigPath)
+	profile := configtxgen.Load(configtxgen.SampleFabricX, sampleConfigPath)
 
 	// update profile with some more relevant orderer information
 	profile.Orderer.Arma.Path = sharedConfigPath
 
-	for i, org := range profile.Application.Organizations {
-		org.ID = fmt.Sprintf("org%d", i+1)
-		org.Name = fmt.Sprintf("org%d", i+1)
-		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
-		// Update policy rules to use correct org names
-		for _, policy := range org.Policies {
-			policy.Rule = strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1))
+	templateAppOrg := profile.Application.Organizations[0]
+	profile.Application.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
+
+	for i := 0; i < len(sharedConfigYaml.PartiesConfig); i++ {
+		org := &configtxgen.Organization{
+			Name:             fmt.Sprintf("org%d", i+1),
+			ID:               fmt.Sprintf("org%d", i+1),
+			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
+			MSPType:          templateAppOrg.MSPType,
+			Policies:         make(map[string]*configtxgen.Policy),
+			AnchorPeers:      templateAppOrg.AnchorPeers,
+			OrdererEndpoints: templateAppOrg.OrdererEndpoints, // TODO: org.OrdererEndpoints in the new format
+			AdminPrincipal:   templateAppOrg.AdminPrincipal,
+			SkipAsForeign:    templateAppOrg.SkipAsForeign,
 		}
+
+		// Update policy rules to use correct org names
+		for key, policy := range templateAppOrg.Policies {
+			orgPolicy := &configtxgen.Policy{
+				Type: policy.Type,
+				Rule: strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1)),
+			}
+			org.Policies[key] = orgPolicy
+		}
+
+		profile.Application.Organizations[i] = org
 	}
 
-	for i, org := range profile.Orderer.Organizations {
-		org.ID = fmt.Sprintf("org%d", i+1)
-		org.Name = fmt.Sprintf("org%d", i+1)
-		org.MSPDir = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp")
-		org.OrdererEndpoints = routerAndAssemblerEndpoints
-		// Update policy rules to use correct org names
-		for _, policy := range org.Policies {
-			policy.Rule = strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1))
+	templateOrdererOrg := profile.Orderer.Organizations[0]
+	profile.Orderer.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
+
+	for i := 0; i < len(sharedConfigYaml.PartiesConfig); i++ {
+		org := &configtxgen.Organization{
+			Name:             fmt.Sprintf("org%d", i+1),
+			ID:               fmt.Sprintf("org%d", i+1),
+			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
+			MSPType:          templateOrdererOrg.MSPType,
+			Policies:         make(map[string]*configtxgen.Policy),
+			AnchorPeers:      templateOrdererOrg.AnchorPeers,
+			OrdererEndpoints: templateOrdererOrg.OrdererEndpoints, // TODO: org.OrdererEndpoints in the new format
+			AdminPrincipal:   templateOrdererOrg.AdminPrincipal,
+			SkipAsForeign:    templateOrdererOrg.SkipAsForeign,
 		}
+
+		// Update policy rules to use correct org names
+		for key, policy := range templateOrdererOrg.Policies {
+			orgPolicy := &configtxgen.Policy{
+				Type: policy.Type,
+				Rule: strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1)),
+			}
+			org.Policies[key] = orgPolicy
+		}
+
+		profile.Orderer.Organizations[i] = org
 	}
 
 	profile.Orderer.ConsenterMapping = consenterMapping

@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	delivery_mocks "github.com/hyperledger/fabric-x-orderer/node/delivery/mocks"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -35,10 +36,10 @@ type assemblerTest struct {
 	genesisBlock                   *common.Block
 	nodeConfig                     *config.AssemblerNodeConfig
 	orderedBatchAttestationCreator *OrderedBatchAttestationCreator
-	expectedLedgerBA               []types.OrderedBatchAttestation
+	expectedLedgerBA               []*state.AvailableBatchOrdered
 	assembler                      *assembler.Assembler
 	shardToBatcherChan             map[types.ShardID]chan types.Batch
-	consensusBAChan                chan types.OrderedBatchAttestation
+	consensusBAChan                chan *state.AvailableBatchOrdered
 	batchBringerMock               *assembler_mocks.FakeBatchBringer
 	ledgerMock                     *ledger_mocks.FakeAssemblerLedgerReaderWriter
 	prefetcherMock                 *assembler_mocks.FakePrefetcherController
@@ -66,7 +67,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		ledgerDir:                      t.TempDir(),
 		genesisBlock:                   genesisBlock,
 		orderedBatchAttestationCreator: orderedBatchAttestationCreator,
-		expectedLedgerBA:               []types.OrderedBatchAttestation{},
+		expectedLedgerBA:               []*state.AvailableBatchOrdered{},
 		batchBringerMock:               &assembler_mocks.FakeBatchBringer{},
 		ledgerMock:                     &ledger_mocks.FakeAssemblerLedgerReaderWriter{},
 		prefetcherMock:                 &assembler_mocks.FakePrefetcherController{},
@@ -102,6 +103,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		ReplicationChannelSize:    100,
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shardsInfo,
+		MonitoringListenAddress:   "127.0.0.1:0",
 		Consenter: config.ConsenterInfo{
 			PartyID:    myParty,
 			Endpoint:   consenterEndpoint,
@@ -115,7 +117,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 	return test
 }
 
-func (at *assemblerTest) SendBAToAssembler(oba types.OrderedBatchAttestation) {
+func (at *assemblerTest) SendBAToAssembler(oba *state.AvailableBatchOrdered) {
 	at.consensusBAChan <- oba
 	at.expectedLedgerBA = append(at.expectedLedgerBA, oba)
 }
@@ -134,7 +136,7 @@ func (at *assemblerTest) StopAssembler() {
 
 func (at *assemblerTest) StartAssembler() {
 	at.shardToBatcherChan = make(map[types.ShardID]chan types.Batch)
-	at.consensusBAChan = make(chan types.OrderedBatchAttestation, 100_000)
+	at.consensusBAChan = make(chan *state.AvailableBatchOrdered, 100_000)
 
 	prefetchIndexerFactory := &assembler.DefaultPrefetchIndexerFactory{}
 
@@ -170,7 +172,7 @@ func (at *assemblerTest) StartAssembler() {
 	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l types.Logger) delivery.ConsensusBringer {
 		return at.consensusBringerMock
 	})
-	at.consensusBringerMock.ReplicateCalls(func() <-chan types.OrderedBatchAttestation {
+	at.consensusBringerMock.ReplicateCalls(func() <-chan *state.AvailableBatchOrdered {
 		return at.consensusBAChan
 	})
 

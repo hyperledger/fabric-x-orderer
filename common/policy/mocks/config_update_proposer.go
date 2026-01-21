@@ -4,14 +4,29 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/internaltools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
 type FakeConfigUpdateProposer struct {
+	AuthorizeAndVerifyConfigUpdateStub        func(*common.Envelope, channelconfig.Resources) (*common.ConfigEnvelope, error)
+	authorizeAndVerifyConfigUpdateMutex       sync.RWMutex
+	authorizeAndVerifyConfigUpdateArgsForCall []struct {
+		arg1 *common.Envelope
+		arg2 channelconfig.Resources
+	}
+	authorizeAndVerifyConfigUpdateReturns struct {
+		result1 *common.ConfigEnvelope
+		result2 error
+	}
+	authorizeAndVerifyConfigUpdateReturnsOnCall map[int]struct {
+		result1 *common.ConfigEnvelope
+		result2 error
+	}
 	ProposeConfigUpdateStub        func(*comm.Request, channelconfig.Resources, identity.SignerSerializer, *requestfilter.RulesVerifier) (*comm.Request, error)
 	proposeConfigUpdateMutex       sync.RWMutex
 	proposeConfigUpdateArgsForCall []struct {
@@ -30,6 +45,70 @@ type FakeConfigUpdateProposer struct {
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
+}
+
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(arg1 *common.Envelope, arg2 channelconfig.Resources) (*common.ConfigEnvelope, error) {
+	fake.authorizeAndVerifyConfigUpdateMutex.Lock()
+	ret, specificReturn := fake.authorizeAndVerifyConfigUpdateReturnsOnCall[len(fake.authorizeAndVerifyConfigUpdateArgsForCall)]
+	fake.authorizeAndVerifyConfigUpdateArgsForCall = append(fake.authorizeAndVerifyConfigUpdateArgsForCall, struct {
+		arg1 *common.Envelope
+		arg2 channelconfig.Resources
+	}{arg1, arg2})
+	fake.recordInvocation("AuthorizeAndVerifyConfigUpdate", []interface{}{arg1, arg2})
+	fake.authorizeAndVerifyConfigUpdateMutex.Unlock()
+	if fake.AuthorizeAndVerifyConfigUpdateStub != nil {
+		return fake.AuthorizeAndVerifyConfigUpdateStub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.authorizeAndVerifyConfigUpdateReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateCallCount() int {
+	fake.authorizeAndVerifyConfigUpdateMutex.RLock()
+	defer fake.authorizeAndVerifyConfigUpdateMutex.RUnlock()
+	return len(fake.authorizeAndVerifyConfigUpdateArgsForCall)
+}
+
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateCalls(stub func(*common.Envelope, channelconfig.Resources) (*common.ConfigEnvelope, error)) {
+	fake.authorizeAndVerifyConfigUpdateMutex.Lock()
+	defer fake.authorizeAndVerifyConfigUpdateMutex.Unlock()
+	fake.AuthorizeAndVerifyConfigUpdateStub = stub
+}
+
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateArgsForCall(i int) (*common.Envelope, channelconfig.Resources) {
+	fake.authorizeAndVerifyConfigUpdateMutex.RLock()
+	defer fake.authorizeAndVerifyConfigUpdateMutex.RUnlock()
+	argsForCall := fake.authorizeAndVerifyConfigUpdateArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateReturns(result1 *common.ConfigEnvelope, result2 error) {
+	fake.authorizeAndVerifyConfigUpdateMutex.Lock()
+	defer fake.authorizeAndVerifyConfigUpdateMutex.Unlock()
+	fake.AuthorizeAndVerifyConfigUpdateStub = nil
+	fake.authorizeAndVerifyConfigUpdateReturns = struct {
+		result1 *common.ConfigEnvelope
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateReturnsOnCall(i int, result1 *common.ConfigEnvelope, result2 error) {
+	fake.authorizeAndVerifyConfigUpdateMutex.Lock()
+	defer fake.authorizeAndVerifyConfigUpdateMutex.Unlock()
+	fake.AuthorizeAndVerifyConfigUpdateStub = nil
+	if fake.authorizeAndVerifyConfigUpdateReturnsOnCall == nil {
+		fake.authorizeAndVerifyConfigUpdateReturnsOnCall = make(map[int]struct {
+			result1 *common.ConfigEnvelope
+			result2 error
+		})
+	}
+	fake.authorizeAndVerifyConfigUpdateReturnsOnCall[i] = struct {
+		result1 *common.ConfigEnvelope
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeConfigUpdateProposer) ProposeConfigUpdate(arg1 *comm.Request, arg2 channelconfig.Resources, arg3 identity.SignerSerializer, arg4 *requestfilter.RulesVerifier) (*comm.Request, error) {
@@ -101,6 +180,8 @@ func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateReturnsOnCall(i int, re
 func (fake *FakeConfigUpdateProposer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.authorizeAndVerifyConfigUpdateMutex.RLock()
+	defer fake.authorizeAndVerifyConfigUpdateMutex.RUnlock()
 	fake.proposeConfigUpdateMutex.RLock()
 	defer fake.proposeConfigUpdateMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

@@ -25,10 +25,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -42,7 +44,13 @@ type Storage interface {
 	Close()
 }
 
-type Net interface {
+//go:generate counterfeiter -o mocks/net_stopper.go . NetStopper
+type NetStopper interface {
+	Stop()
+}
+
+//go:generate counterfeiter -o mocks/synchronizer_stopper.go . SynchronizerStopper
+type SynchronizerStopper interface {
 	Stop()
 }
 
@@ -56,8 +64,8 @@ type SigVerifier interface {
 }
 
 type Arma interface {
-	SimulateStateTransition(prevState *state.State, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
-	Commit(events [][]byte)
+	SimulateStateTransition(prevState *state.State, configSeq arma_types.ConfigSequence, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
+	Index([][]byte)
 }
 
 type BFT interface {
@@ -71,7 +79,7 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	Net                          Net
+	Net                          NetStopper
 	Config                       *config.ConsenterNodeConfig
 	SigVerifier                  SigVerifier
 	Signer                       Signer
@@ -86,24 +94,37 @@ type Consensus struct {
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
 	Logger                       arma_types.Logger
-	Synchronizer                 *synchronizer
+	Synchronizer                 SynchronizerStopper
 	Metrics                      *ConsensusMetrics
 	RequestVerifier              *requestfilter.RulesVerifier
 	ConfigUpdateProposer         policy.ConfigUpdateProposer
+	ConfigApplier                ConfigApplier
+	ConfigRequestValidator       configrequest.ConfigRequestValidator
+	ConfigRulesVerifier          verify.OrdererRules
+	softStopCh                   chan struct{}
+	softStopOnce                 sync.Once
 }
 
 func (c *Consensus) Start() error {
+	c.softStopCh = make(chan struct{})
 	c.Metrics.Start()
 	return c.BFT.Start()
 }
 
 func (c *Consensus) Stop() {
-	c.BFT.Stop()
-	c.Synchronizer.stop()
-	c.BADB.Close()
+	c.SoftStop()
 	c.Storage.Close()
 	c.Net.Stop()
-	c.Metrics.Stop()
+}
+
+func (c *Consensus) SoftStop() {
+	c.softStopOnce.Do(func() {
+		close(c.softStopCh)
+		c.BFT.Stop()
+		c.Synchronizer.Stop()
+		c.BADB.Close()
+		c.Metrics.Stop()
+	})
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
@@ -130,6 +151,12 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 
 func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
 	for {
+		select {
+		case <-c.softStopCh:
+			return errors.New("consensus is soft-stopped")
+		default:
+		}
+
 		event, err := stream.Recv()
 
 		if err == io.EOF {
@@ -150,6 +177,12 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 
 // SubmitConfig is used to submit a config request from the router in the consenter's party.
 func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	select {
+	case <-c.softStopCh:
+		return nil, errors.New("consensus is soft-stopped")
+	default:
+	}
+
 	if err := c.validateRouterFromContext(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to validate router from context")
 	}
@@ -160,12 +193,25 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to verify and classify request")
 	}
-	_ = configRequest
-	// TODO: submit configRequest.Bytes()
-	return &protos.SubmitResponse{Error: "SubmitConfig is not implemented in consenter", TraceId: request.TraceId}, nil
+
+	ce := &state.ControlEvent{
+		ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{
+			Payload:   configRequest.Payload,
+			Signature: configRequest.Signature,
+		}},
+	}
+	c.BFT.SubmitRequest(ce.Bytes())
+
+	return &protos.SubmitResponse{TraceId: request.TraceId}, nil
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
+	select {
+	case <-c.softStopCh:
+		return errors.New("consensus is soft-stopped")
+	default:
+	}
+
 	_, ce, err := c.verifyCE(req)
 	if err != nil {
 		c.Logger.Warnf("Received bad request: %v", err)
@@ -212,10 +258,15 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	c.stateLock.Lock()
-	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
+	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
+	if configRequests != nil {
+		var err error
+		if computedState, err = c.ConfigApplier.ApplyConfigToState(computedState, configRequests[0]); err != nil {
+			return nil, fmt.Errorf("failed applying config to state, err: %s", err)
+		}
+	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
-	// TODO verify config reqs
 	c.stateLock.Unlock()
 
 	numOfAvailableBlocks := len(attestations)
@@ -225,9 +276,12 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		numOfAvailableBlocks++
 	}
 
-	// TODO verify proposal verification seq
+	verificationSeq := c.VerificationSequence()
+	if verificationSeq != uint64(proposal.VerificationSequence) {
+		return nil, errors.Errorf("expected verification sequence %d, but proposal has %d", verificationSeq, proposal.VerificationSequence)
+	}
 
-	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock { // TODO verify when not zero
+	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock {
 		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to computed %d", hdr.DecisionNumOfLastConfigBlock, decisionNumOfLastConfigBlock)
 	}
 
@@ -253,7 +307,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	if len(configRequests) > 0 {
-		// TODO verify config block
 		computedConfigBlockHeader := &common.BlockHeader{Number: lastBlockNumber + 1, PreviousHash: prevHash}
 		configReq, err := protoutil.Marshal(configRequests[0].Envelope) // TODO handle when there are multiple requests
 		if err != nil {
@@ -263,19 +316,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		computedConfigBlockHeader.DataHash = batchedConfigReq.Digest()
 		computedCommonBlocksHeaders[numOfAvailableBlocks-1] = computedConfigBlockHeader
 
-		lastConfigBlockNum = lastBlockNumber + 1
-
-		// verify last config block number
-		rawLastConfig, err := protoutil.GetMetadataFromBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], common.BlockMetadataIndex_LAST_CONFIG)
-		if err != nil {
-			return nil, err
-		}
-		lastConf := &common.LastConfig{}
-		if err := proto.Unmarshal(rawLastConfig.Value, lastConf); err != nil {
-			return nil, err
-		}
-		if lastConf.Index != lastConfigBlockNum {
-			return nil, errors.Errorf("last config in block metadata points to %d but our persisted last config is %d", lastConf.Index, lastConfigBlockNum)
+		if err := VerifyConfigCommonBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], lastBlockNumber+1, prevHash, computedConfigBlockHeader.DataHash, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1); err != nil {
+			return nil, errors.Wrapf(err, "failed verifying proposed config block num %d", lastBlockNumber+1)
 		}
 	}
 
@@ -289,6 +331,13 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
+		configSeq, err := c.getReqConfigSeq(rawReq)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
+		}
+		if configSeq != c.VerificationSequence() {
+			continue // ignore (no need to verify) request with mismatch config sequence
+		}
 		reqID, err := c.VerifyRequest(rawReq)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
@@ -351,7 +400,7 @@ func (c *Consensus) VerifySignature(signature smartbft_types.Signature) error {
 // VerificationSequence returns the current verification sequence
 // (from SmartBFT API)
 func (c *Consensus) VerificationSequence() uint64 {
-	return 0 // TODO save current verification sequence and return it here
+	return c.Config.Bundle.ConfigtxValidator().Sequence()
 }
 
 // RequestsFromProposal returns from the given proposal the included requests' info
@@ -424,11 +473,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 		c.Logger.Panicf("Failed deserializing proposal header: %v", err)
 	}
 
-	c.stateLock.Lock()
-	_, bafs, _ := c.Arma.SimulateStateTransition(c.State, requests)
-	c.stateLock.Unlock()
-
-	sigs := make([][]byte, 0, len(bafs)+1)
+	sigs := make([][]byte, 0)
 
 	proposalSig, err := c.Signer.Sign([]byte(proposal.Digest()))
 	if err != nil {
@@ -463,7 +508,13 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
 	c.stateLock.Lock()
-	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, requests)
+	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
+	if configRequests != nil {
+		var err error
+		if newState, err = c.ConfigApplier.ApplyConfigToState(newState, configRequests[0]); err != nil {
+			c.Logger.Panicf("failed applying config to state, err: %s", err)
+		}
+	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	c.stateLock.Unlock()
@@ -532,9 +583,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 			Num:                          arma_types.DecisionNum(md.LatestSequence),
 			DecisionNumOfLastConfigBlock: decisionNumOfLastConfigBlock,
 		}).Serialize(),
-		Metadata: metadata,
-		Payload:  reqs.Serialize(),
-		// TODO add VerificationSequence (config sequence)
+		Metadata:             metadata,
+		Payload:              reqs.Serialize(),
+		VerificationSequence: int64(c.Config.Bundle.ConfigtxValidator().Sequence()),
 	}
 }
 
@@ -550,31 +601,37 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		c.Logger.Panicf("Failed deserializing header: %v", err)
 	}
 
-	var controlEvents arma_types.BatchedRequests
-	if err := controlEvents.Deserialize(proposal.Payload); err != nil {
-		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
+	digests := make([][]byte, 0, len(hdr.AvailableCommonBlocks))
+	for _, ab := range hdr.AvailableCommonBlocks {
+		if !protoutil.IsConfigBlock(ab) {
+			digests = append(digests, ab.GetHeader().GetDataHash())
+		}
 	}
 
-	// Why do we first give Arma the events and then append the decision to storage?
-	// Upon commit, Arma indexes the batch attestations which passed the threshold in its index,
+	// Why do we first give Arma the batchAttestations (digests) and then append the decision to storage?
+	// Upon commit, Arma indexes the batch attestations (digests) which passed the threshold in its index,
 	// to avoid signing them again in the (near) future.
 	// If we crash after this, we will replicate the block and will overwrite the index again.
-	// However, if we first commit the decision and then index afterwards and crash during or right before
+	// However, if we first append the decision and then index afterwards and crash during or right before
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
-	// This is true because a Commit(controlEvents) with the same controlEvents is idempotent.
-	c.Arma.Commit(controlEvents)
+	// This is true because a Index(digests) with the same digests is idempotent.
+
+	c.Arma.Index(digests)
 	c.Storage.Append(rawDecision)
 
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)
-	c.Metrics.blocksCount.Add(uint64(len(hdr.AvailableCommonBlocks)))
+	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
 
 	c.stateLock.Lock()
 	c.State = hdr.State
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		c.lastConfigBlockNum = hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
 		c.decisionNumOfLastConfigBlock = hdr.Num
+		c.Logger.Infof("Received config block number %d", c.lastConfigBlockNum)
+		c.Logger.Warnf("Soft stop: pending restart")
+		go c.SoftStop()
 		// TODO apply reconfig after deliver
 	}
 	c.stateLock.Unlock()
@@ -597,6 +654,26 @@ func (c *Consensus) pickEndpoint() string {
 	return c.Config.Consenters[r].Endpoint
 }
 
+func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
+	ce := &state.ControlEvent{}
+	bafd := &state.BAFDeserialize{}
+	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
+		return 0, err
+	}
+
+	switch {
+	case ce.Complaint != nil:
+		return uint64(ce.Complaint.ConfigSeq), nil
+	case ce.BAF != nil:
+		return uint64(ce.BAF.ConfigSequence()), nil
+	case ce.ConfigRequest != nil:
+		return c.VerificationSequence(), nil
+	default:
+		return 0, errors.New("empty control event")
+
+	}
+}
+
 func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
 	ce := &state.ControlEvent{}
 	bafd := &state.BAFDeserialize{}
@@ -606,17 +683,25 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 
 	reqID := c.RequestID(req)
 
+	configSeq := arma_types.ConfigSequence(c.VerificationSequence())
+
 	if ce.Complaint != nil {
+		if ce.Complaint.ConfigSeq != configSeq {
+			return reqID, ce, errors.Errorf("mismatch config sequence; the complaint's config seq is %d while the config seq should be %d", ce.Complaint.ConfigSeq, configSeq)
+		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
+		if ce.BAF.ConfigSequence() != configSeq {
+			return reqID, ce, errors.Errorf("mismatch config sequence; the BAF's config seq is %d while the config seq should be %d", ce.BAF.ConfigSequence(), configSeq)
+		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
-		_, err := c.verifyAndClassifyRequest(&protos.Request{
-			Payload:   ce.ConfigRequest.Envelope.Payload,
-			Signature: ce.ConfigRequest.Envelope.Signature,
-		})
+		err := c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
+		}
+		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
+			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
 		// TODO: revisit this return
 		return reqID, ce, nil
@@ -627,7 +712,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 
 func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
 	// extract the client certificate from the context
-	cert := node.ExtractCertificateFromContext(ctx)
+	cert := utils.ExtractCertificateFromContext(ctx)
 	if cert == nil {
 		return errors.New("error: access denied; could not extract certificate from context")
 	}
@@ -641,7 +726,7 @@ func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
 
 	// compare the two certificates
 	if !bytes.Equal(pemBlock.Bytes, cert.Raw) {
-		c.Logger.Errorf("error: access denied. The client certificate does not match the router's certificate. \n client's certificate: \n %s \n %x \n ", node.CertificateToString(cert), cert.Raw)
+		c.Logger.Errorf("error: access denied. The client certificate does not match the router's certificate. \n client's certificate: \n %s \n %x \n ", utils.CertificateToString(cert), cert.Raw)
 		return errors.New("error: access denied. The client certificate does not match the router's certificate")
 	}
 	return nil
@@ -661,7 +746,9 @@ func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.R
 		return nil, fmt.Errorf("request structure verification error: %s", err)
 	}
 
-	if reqType != common.HeaderType_CONFIG_UPDATE {
+	// if the request comes from the Router then we expect reqType = HeaderType_CONFIG_UPDATE
+	// if the request comes from the Consensus leader then we expect reqType = HeaderType_CONFIG
+	if reqType != common.HeaderType_CONFIG_UPDATE && reqType != common.HeaderType_CONFIG {
 		c.Logger.Debugf("request has unsupported type: %s", reqType)
 		return nil, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
 	}
@@ -669,6 +756,10 @@ func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.R
 	configRequest, err := c.ConfigUpdateProposer.ProposeConfigUpdate(request, c.Config.Bundle, c.Signer, c.RequestVerifier)
 	if err != nil {
 		return nil, fmt.Errorf("propose config update error: %s", err)
+	}
+
+	if configRequest == nil {
+		return nil, errors.Errorf("unexpected config request was verified and proposed")
 	}
 
 	return configRequest, nil

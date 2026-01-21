@@ -4,20 +4,20 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 )
 
 type FakeConsensusBringer struct {
-	ReplicateStub        func() <-chan types.OrderedBatchAttestation
+	ReplicateStub        func() <-chan *state.AvailableBatchOrdered
 	replicateMutex       sync.RWMutex
 	replicateArgsForCall []struct {
 	}
 	replicateReturns struct {
-		result1 <-chan types.OrderedBatchAttestation
+		result1 <-chan *state.AvailableBatchOrdered
 	}
 	replicateReturnsOnCall map[int]struct {
-		result1 <-chan types.OrderedBatchAttestation
+		result1 <-chan *state.AvailableBatchOrdered
 	}
 	StopStub        func()
 	stopMutex       sync.RWMutex
@@ -27,7 +27,7 @@ type FakeConsensusBringer struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusBringer) Replicate() <-chan types.OrderedBatchAttestation {
+func (fake *FakeConsensusBringer) Replicate() <-chan *state.AvailableBatchOrdered {
 	fake.replicateMutex.Lock()
 	ret, specificReturn := fake.replicateReturnsOnCall[len(fake.replicateArgsForCall)]
 	fake.replicateArgsForCall = append(fake.replicateArgsForCall, struct {
@@ -51,32 +51,32 @@ func (fake *FakeConsensusBringer) ReplicateCallCount() int {
 	return len(fake.replicateArgsForCall)
 }
 
-func (fake *FakeConsensusBringer) ReplicateCalls(stub func() <-chan types.OrderedBatchAttestation) {
+func (fake *FakeConsensusBringer) ReplicateCalls(stub func() <-chan *state.AvailableBatchOrdered) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = stub
 }
 
-func (fake *FakeConsensusBringer) ReplicateReturns(result1 <-chan types.OrderedBatchAttestation) {
+func (fake *FakeConsensusBringer) ReplicateReturns(result1 <-chan *state.AvailableBatchOrdered) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = nil
 	fake.replicateReturns = struct {
-		result1 <-chan types.OrderedBatchAttestation
+		result1 <-chan *state.AvailableBatchOrdered
 	}{result1}
 }
 
-func (fake *FakeConsensusBringer) ReplicateReturnsOnCall(i int, result1 <-chan types.OrderedBatchAttestation) {
+func (fake *FakeConsensusBringer) ReplicateReturnsOnCall(i int, result1 <-chan *state.AvailableBatchOrdered) {
 	fake.replicateMutex.Lock()
 	defer fake.replicateMutex.Unlock()
 	fake.ReplicateStub = nil
 	if fake.replicateReturnsOnCall == nil {
 		fake.replicateReturnsOnCall = make(map[int]struct {
-			result1 <-chan types.OrderedBatchAttestation
+			result1 <-chan *state.AvailableBatchOrdered
 		})
 	}
 	fake.replicateReturnsOnCall[i] = struct {
-		result1 <-chan types.OrderedBatchAttestation
+		result1 <-chan *state.AvailableBatchOrdered
 	}{result1}
 }
 
@@ -107,10 +107,6 @@ func (fake *FakeConsensusBringer) StopCalls(stub func()) {
 func (fake *FakeConsensusBringer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.replicateMutex.RLock()
-	defer fake.replicateMutex.RUnlock()
-	fake.stopMutex.RLock()
-	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

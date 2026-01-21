@@ -20,12 +20,14 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/policies"
-	"github.com/hyperledger/fabric-x-common/internaltools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -61,9 +63,10 @@ type Router struct {
 	drainChan        chan struct{}
 	drainOnce        sync.Once
 	feedbackWG       sync.WaitGroup
+	configSeq        uint32
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -106,9 +109,9 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 
 	verifier := createVerifier(config)
 	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
-		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer)
+		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer, configRulesVerifier)
 
-	metrics := NewRouterMetrics(config, logger, config.MetricsLogInterval)
+	metrics := NewRouterMetrics(config, logger)
 
 	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, configPuller)
 	r.init()
@@ -227,12 +230,12 @@ func (r *Router) SoftStop() error {
 }
 
 func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error {
-	clientAddr, err := node.ExtractClientAddressFromContext(stream.Context())
+	clientAddr, err := utils.ExtractClientAddressFromContext(stream.Context())
 	if err == nil {
 		r.logger.Infof("Client connected: %s", clientAddr)
 	}
-	if clientCert := node.ExtractCertificateFromContext(stream.Context()); clientCert != nil {
-		r.logger.Infof("Client's certificate: \n%s", node.CertificateToString(clientCert))
+	if clientCert := utils.ExtractCertificateFromContext(stream.Context()); clientCert != nil {
+		r.logger.Infof("Client's certificate: \n%s", utils.CertificateToString(clientCert))
 	}
 
 	exit := make(chan struct{})
@@ -256,7 +259,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		r.metrics.incomingTxs.Add(1)
 
-		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature}
+		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature, ConfigSeq: r.configSeq}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
 		select {
@@ -308,6 +311,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		stopChan:         make(chan struct{}),
 		drainChan:        make(chan struct{}),
 		metrics:          metrics,
+		configSeq:        uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
 	}
 
 	for _, shardId := range shardIDs {
@@ -350,6 +354,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		default:
 			trace := createTraceID(rand)
 			tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
+			tr.request.ConfigSeq = r.configSeq
 			shardRouter.Forward(tr)
 		}
 	}
@@ -387,6 +392,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	feedbackChan := make(chan Response, 1)
 
 	tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
+	tr.request.ConfigSeq = r.configSeq
 	shardRouter.Forward(tr)
 
 	r.logger.Debugf("Forwarded request %x", request.Payload)
@@ -509,7 +515,7 @@ func (r *Router) pullAndProcessConfigBlocks() {
 				r.logger.Infof("Config blocks channel closed, stopping config blocks processing")
 				return
 			}
-			r.logger.Infof("Received new config block from consensus with block number %d", configBlock.GetHeader().GetNumber())
+			r.logger.Infof("Received config block number %d", configBlock.GetHeader().GetNumber())
 
 			// TODO process the config block. store in config store and apply.
 			if err := r.configStore.Add(configBlock); err != nil {
@@ -518,6 +524,7 @@ func (r *Router) pullAndProcessConfigBlocks() {
 			r.logger.Infof("Added config block %d to config store", configBlock.GetHeader().GetNumber())
 
 			// initiate router restart to apply new config
+			r.logger.Warnf("Soft stop")
 			go r.SoftStop()
 
 			// do not pull additional config blocks, until the router is restarted.

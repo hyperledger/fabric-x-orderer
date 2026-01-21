@@ -21,6 +21,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// DeliverService is a map of a channel name string to a ledger.
+// This is usefull in the batcher where each batcher holds a ledger for each respective primary.
+// Shard+Primary is called "partition".
 type DeliverService map[string]blockledger.Reader
 
 func (d DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -96,6 +99,7 @@ func (c *chain) Sequence() uint64 {
 }
 
 func (c *chain) PolicyManager() policies.Manager {
+	// TODO inplement authorization: channel readers
 	panic("implement me")
 }
 
@@ -121,5 +125,6 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 type noopBindingInspector struct{}
 
 func (nbi *noopBindingInspector) Inspect(context.Context, proto.Message) error {
+	// TODO check the TLS binding
 	return nil
 }

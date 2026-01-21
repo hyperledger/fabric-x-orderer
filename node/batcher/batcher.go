@@ -20,7 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -75,11 +75,20 @@ type Batcher struct {
 	Metrics *BatcherMetrics
 }
 
+func (b *Batcher) MonitoringServiceAddress() string {
+	return b.Metrics.monitor.Address()
+}
+
+func (b *Batcher) ConfigSequence() types.ConfigSequence {
+	return types.ConfigSequence(b.config.Bundle.ConfigtxValidator().Sequence())
+}
+
 func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 
 	b.stateChan = make(chan *state.State, 1)
 
+	b.running.Add(1)
 	go b.replicateState()
 
 	b.logger.Infof("Starting batcher")
@@ -89,24 +98,29 @@ func (b *Batcher) Run() {
 
 func (b *Batcher) Stop() {
 	b.logger.Infof("Stopping batcher node")
-	b.stopOnce.Do(func() { close(b.stopChan) })
-	b.controlEventBroadcaster.Stop()
-	b.batcher.Stop()
-	for len(b.stateChan) > 0 {
-		<-b.stateChan // drain state channel
-	}
+	b.SoftStop()
 	b.Net.Stop()
-	b.primaryAckConnector.Stop()
-	b.primaryReqConnector.Stop()
 	b.Ledger.Close()
-	b.running.Wait()
-	b.Metrics.Stop()
+}
+
+func (b *Batcher) SoftStop() {
+	b.stopOnce.Do(func() {
+		close(b.stopChan)
+		b.controlEventBroadcaster.Stop()
+		b.batcher.Stop()
+		for len(b.stateChan) > 0 {
+			<-b.stateChan // drain state channel
+		}
+		b.primaryAckConnector.Stop()
+		b.primaryReqConnector.Stop()
+		b.running.Wait()
+		b.Metrics.Stop()
+	})
 }
 
 // replicateState runs by a separate go routine
 func (b *Batcher) replicateState() {
 	b.logger.Infof("Started replicating state")
-	b.running.Add(1)
 	defer func() {
 		b.stateReplicator.Stop()
 		b.running.Done()
@@ -120,9 +134,18 @@ func (b *Batcher) replicateState() {
 			if header.Num == header.DecisionNumOfLastConfigBlock && header.Num != 0 {
 				lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 				if protoutil.IsConfigBlock(lastBlock) {
-					b.logger.Infof("Pulled config block %d from consensus", lastBlock.Header.Number)
-					b.ConfigStore.Add(lastBlock)
-					// TODO: apply the config or do a soft stop
+					// check if the config block exists; after restart the batcher may pull the same decision again, so skip it.
+					if _, err := b.ConfigStore.GetByNumber(lastBlock.Header.Number); err == nil {
+						b.logger.Infof("Config block %d already exists in config store", lastBlock.Header.Number)
+					} else {
+						b.logger.Infof("Received config block number %d", lastBlock.Header.Number)
+						if err := b.ConfigStore.Add(lastBlock); err != nil {
+							b.logger.Panicf("Failed adding config block to config store: %s", err)
+						}
+						b.logger.Warnf("Soft stop")
+						go b.SoftStop()
+						// TODO: apply the config
+					}
 				} else {
 					b.logger.Errorf("Pulled config decision but last block is not a config block")
 				}
@@ -163,13 +186,14 @@ func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
+	select {
+	case <-b.stopChan:
+		return nil, errors.New("batcher is stopped")
+	default:
+	}
+
 	// TODO: certificate pinning (bathcer trust router from his own party.)
 	b.logger.Debugf("Received request %x", req.Payload)
-
-	if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
-		b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
-		// TODO should return response with error?
-	}
 
 	b.Metrics.routerTxsTotal.Add(1)
 
@@ -182,6 +206,12 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 
 	var resp protos.SubmitResponse
 	resp.TraceId = req.TraceId
+
+	if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
+		b.logger.Errorf("Failed verifying request before submitting from router; err: %v", err)
+		resp.Error = err.Error()
+		return &resp, nil
+	}
 
 	if err := b.batcher.Submit(rawReq); err != nil {
 		resp.Error = err.Error()
@@ -208,6 +238,12 @@ func (b *Batcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer)
 
 func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamServer, responses chan *protos.SubmitResponse) error {
 	for {
+		select {
+		case <-b.stopChan:
+			return errors.New("batcher is stopped")
+		default:
+		}
+
 		req, err := stream.Recv()
 		if err == io.EOF {
 			return nil
@@ -215,11 +251,6 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 
 		if err != nil {
 			return err
-		}
-
-		if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
-			b.logger.Panicf("Failed verifying request before submitting from router; err: %v", err)
-			// TODO should return response with error?
 		}
 
 		b.Metrics.routerTxsTotal.Add(1)
@@ -233,6 +264,15 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 
 		var resp protos.SubmitResponse
 		resp.TraceId = req.TraceId
+
+		if err := b.requestsInspectorVerifier.VerifyRequestFromRouter(req); err != nil {
+			b.logger.Errorf("Failed verifying request before submitting from router; err: %v", err)
+			resp.Error = err.Error()
+			if len(req.TraceId) > 0 {
+				responses <- &resp
+			}
+			continue
+		}
 
 		if err := b.batcher.Submit(rawReq); err != nil {
 			resp.Error = err.Error()
@@ -262,14 +302,14 @@ func (b *Batcher) sendResponses(stream protos.RequestTransmit_SubmitStreamServer
 }
 
 func (b *Batcher) extractBatcherFromContext(c context.Context) (types.PartyID, error) {
-	cert := node.ExtractCertificateFromContext(c)
+	cert := utils.ExtractCertificateFromContext(c)
 	if cert == nil {
 		return 0, errors.New("access denied; could not extract certificate from context")
 	}
 
 	from, exists := b.batcherCerts2IDs[string(cert.Raw)]
 	if !exists {
-		return 0, errors.Errorf("access denied; unknown certificate; %s", node.CertificateToString(cert))
+		return 0, errors.Errorf("access denied; unknown certificate; %s", utils.CertificateToString(cert))
 	}
 
 	return from, nil
@@ -283,6 +323,12 @@ func (b *Batcher) FwdRequestStream(stream protos.BatcherControlService_FwdReques
 	b.logger.Infof("Starting to handle fwd requests from batcher %d", from)
 
 	for {
+		select {
+		case <-b.stopChan:
+			return errors.New("batcher is stopped")
+		default:
+		}
+
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			return nil
@@ -313,6 +359,12 @@ func (b *Batcher) NotifyAck(stream protos.BatcherControlService_NotifyAckServer)
 
 	b.logger.Infof("Starting to handle acks from batcher %d", from)
 	for {
+		select {
+		case <-b.stopChan:
+			return errors.New("batcher is stopped")
+		default:
+		}
+
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			return nil
@@ -337,7 +389,7 @@ func (b *Batcher) OnSecondStrikeTimeout() {
 }
 
 func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) types.BatchAttestationFragment {
-	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq)
+	baf, err := CreateBAF(b.signer, b.config.PartyId, shard, digest, primary, seq, b.ConfigSequence())
 	if err != nil {
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
@@ -379,7 +431,7 @@ func (b *Batcher) getPrimaryIDAndTerm(state *state.State) (types.PartyID, uint64
 
 func (b *Batcher) createComplaint(reason string) *state.Complaint {
 	term := b.GetTerm()
-	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, reason)
+	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, b.ConfigSequence(), reason)
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
 	}
@@ -414,25 +466,26 @@ func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 }
 
 func (b *Batcher) Complain(reason string) {
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}, context.TODO()); err != nil { // TODO also cancel context on term change and add a timeout
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
 	b.Metrics.complaintsTotal.Add(1)
 }
 
-func (b *Batcher) SendBAF(baf types.BatchAttestationFragment) {
+func (b *Batcher) SendBAF(baf types.BatchAttestationFragment, ctx context.Context) {
 	b.logger.Infof("Sending batch attestation fragment for seq %d with digest %x", baf.Seq(), baf.Digest())
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{BAF: baf}); err != nil {
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{BAF: baf}, ctx); err != nil {
 		b.logger.Errorf("Failed to broadcast batch attestation fragment; err: %v", err)
 	}
 }
 
-func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, reason string) (*state.Complaint, error) {
+func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, configSeq types.ConfigSequence, reason string) (*state.Complaint, error) {
 	c := &state.Complaint{
 		ShardTerm: state.ShardTerm{Shard: shard, Term: term},
 		Signer:    id,
 		Signature: nil,
 		Reason:    reason,
+		ConfigSeq: configSeq,
 	}
 	sig, err := signer.Sign(c.ToBeSigned())
 	if err != nil {
@@ -443,8 +496,8 @@ func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term 
 	return c, nil
 }
 
-func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence) (types.BatchAttestationFragment, error) {
-	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, 0)
+func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence, configSeq types.ConfigSequence) (types.BatchAttestationFragment, error) {
+	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, configSeq)
 	sig, err := signer.Sign(baf.ToBeSigned())
 	if err != nil {
 		return nil, err

@@ -29,7 +29,7 @@ func TestConsenter(t *testing.T) {
 	}
 
 	logger := testutil.CreateLogger(t, 0)
-	consenter := createConsenter(s, logger)
+	consenter := createConsenter(logger)
 
 	db := &mocks.FakeBatchAttestationDB{}
 	consenter.DB = db
@@ -40,22 +40,20 @@ func TestConsenter(t *testing.T) {
 
 	// Test with an event that should be filtered out
 	db.ExistsReturns(true)
-	newState, batchAttestations, _ := consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ := consenter.SimulateStateTransition(s, 0, events)
 	assert.Empty(t, batchAttestations)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Commit(events)
-	assert.Equal(t, consenter.State, newState)
+	consenter.Index([][]byte{})
 	assert.Zero(t, db.PutCallCount())
 
 	// Test a valid event below threshold
 	db.ExistsReturns(false)
-	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
 	assert.Empty(t, batchAttestations)
 	assert.Len(t, newState.Pending, 1)
 
-	consenter.Commit(events)
-	assert.Equal(t, consenter.State, newState)
+	consenter.Index([][]byte{})
 	assert.Zero(t, db.PutCallCount())
 
 	// Test valid events meeting the threshold
@@ -63,12 +61,11 @@ func TestConsenter(t *testing.T) {
 	ba2.SetSignature([]byte{1})
 	events = append(events, (&state.ControlEvent{BAF: ba2}).Bytes())
 
-	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, events)
+	newState, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
 	assert.Len(t, batchAttestations[0], 2)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Commit(events)
-	assert.Equal(t, consenter.State, newState)
+	consenter.Index([][]byte{batchAttestations[0][0].Digest()})
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test the complaint is not stored in the DB
@@ -80,9 +77,10 @@ func TestConsenter(t *testing.T) {
 
 	events = [][]byte{(&state.ControlEvent{Complaint: &c}).Bytes()}
 
-	consenter.Commit(events)
+	_, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
+	assert.Empty(t, batchAttestations)
+	consenter.Index([][]byte{})
 	assert.Equal(t, db.PutCallCount(), 1)
-	assert.Len(t, consenter.State.Complaints, 1)
 
 	// Test ConfigRequest is returned by SimulateStateTransition
 	cr := &state.ConfigRequest{
@@ -93,17 +91,16 @@ func TestConsenter(t *testing.T) {
 	}
 	events = [][]byte{(&state.ControlEvent{ConfigRequest: cr}).Bytes()}
 
-	_, _, configRequests := consenter.SimulateStateTransition(s, events)
+	_, _, configRequests := consenter.SimulateStateTransition(s, 0, events)
 	assert.Equal(t, cr.Envelope.Payload, configRequests[0].Envelope.Payload)
 	assert.Equal(t, cr.Envelope.Signature, configRequests[0].Envelope.Signature)
 }
 
-func createConsenter(s *state.State, logger arma_types.Logger) *consensus.Consenter {
+func createConsenter(logger arma_types.Logger) *consensus.Consenter {
 	consenter := &consensus.Consenter{
 		Logger:          logger,
 		DB:              &mocks.FakeBatchAttestationDB{},
 		BAFDeserializer: &state.BAFDeserialize{},
-		State:           s,
 	}
 
 	return consenter

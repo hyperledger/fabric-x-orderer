@@ -36,18 +36,33 @@ func TestBatchLedgerPart(t *testing.T) {
 	require.Equal(t, uint64(0), part.Height())
 	require.Nil(t, part.RetrieveBatchByNumber(0))
 
-	for seq := uint64(0); seq < 10; seq++ {
+	part, err = newBatchLedgerPart(provider, 5, 1, 2, logger) // no problem reopening the same part
+	require.NoError(t, err)
+	require.NotNil(t, part)
+	require.Equal(t, uint64(0), part.Height())
+	require.Nil(t, part.RetrieveBatchByNumber(0))
+
+	batches := uint64(10)
+	for seq := uint64(0); seq < batches; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
-		part.Append(types.BatchSequence(seq), batchedRequests)
+		part.Append(types.BatchSequence(seq), types.ConfigSequence(seq*10), batchedRequests)
 		require.Equal(t, seq+1, part.Height())
 		batch := part.RetrieveBatchByNumber(seq)
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
 		require.Equal(t, types.PartyID(2), batch.Primary())
 		require.Equal(t, types.ShardID(5), batch.Shard())
+		require.Equal(t, types.BatchSequence(seq), batch.Seq())
+		require.Equal(t, types.ConfigSequence(seq*10), batch.ConfigSequence())
 		require.NotNil(t, batch.Digest())
 	}
 	require.Nil(t, part.RetrieveBatchByNumber(100))
+
+	part, err = newBatchLedgerPart(provider, 5, 1, 2, logger) // no problem reopening the same part without loosing its content
+	require.NoError(t, err)
+	require.NotNil(t, part)
+	require.Equal(t, batches, part.Height())
+	require.NotNil(t, part.RetrieveBatchByNumber(0))
 }
 
 func TestBatchLedgerPart_Iterator(t *testing.T) {
@@ -67,7 +82,7 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 
 	for seq := uint64(0); seq < 10; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
-		part.Append(types.BatchSequence(seq), batchedRequests)
+		part.Append(types.BatchSequence(seq), 0, batchedRequests)
 	}
 
 	ledger := part.Ledger()

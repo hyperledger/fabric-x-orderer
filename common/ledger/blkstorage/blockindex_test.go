@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/snapshot"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 	commonledgerutil "github.com/hyperledger/fabric-x-orderer/common/ledger/util"
-	"github.com/hyperledger/fabric-x-orderer/internal/pkg/txflags"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -183,7 +183,7 @@ func testBlockIndexSelectiveIndexing(t *testing.T, indexItems []IndexableAttr) {
 		}
 
 		for _, block := range blocks {
-			flags := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+			flags := xcommon_txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
 			for idx, d := range block.Data.Data {
 				txid, err = protoutil.GetOrComputeTxIDFromEnvelope(d)

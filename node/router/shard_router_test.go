@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
@@ -37,7 +38,7 @@ func init() {
 type TestSetup struct {
 	ca          tlsgen.CA
 	shardRouter *router.ShardRouter
-	stubBatcher *stubBatcher
+	stubBatcher *stub.StubBatcher
 }
 
 func TestShardRouterConnectivityToBatcherByForward(t *testing.T) {
@@ -90,7 +91,7 @@ func TestShardRouterReconnectToBatcherAndForwardReq(t *testing.T) {
 	testSetup.shardRouter.Forward(tr)
 	response = <-responses
 	require.NotNil(t, response)
-	require.EqualError(t, response.GetResponseError(), "server error: connection between router and batcher "+testSetup.stubBatcher.server.Address()+" is broken, try again later")
+	require.EqualError(t, response.GetResponseError(), "server error: connection between router and batcher "+testSetup.stubBatcher.Server().Address()+" is broken, try again later")
 
 	// restart the batcher
 	testSetup.stubBatcher.Restart()
@@ -137,7 +138,7 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	verifier.AddRule(requestfilter.NewMaxSizeFilter(conf))
 	verifier.AddStructureRule(requestfilter.NewSigFilter(conf, policies.ChannelWriters))
 	// create stub batcher
-	batcher := NewStubBatcher(t, ca, partyID, types.ShardID(1))
+	batcher := stub.NewStubBatcher(t, ca, partyID, types.ShardID(1))
 
 	// create shard router
 	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil)

@@ -37,13 +37,13 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, clean := createConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
+	_, _, _, clean := createConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
 	defer clean()
 
-	batchers0, configs, loggers, clean := createBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, shards[0].ShardId)
+	batchers0, configs, loggers, clean := createBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, shards[0].ShardId, genesisBlock)
 	defer clean()
 
-	batchers1, _, _, clean := createBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, shards[1].ShardId)
+	batchers1, _, _, clean := createBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, shards[1].ShardId, genesisBlock)
 	defer clean()
 
 	for i := 0; i < 4; i++ {
@@ -98,7 +98,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Recover old primary in shard 0
-	batchers0[0] = recoverBatcher(t, ca, loggers[0], configs[0], batcherNodesShard0[0])
+	batchers0[0] = recoverBatcher(t, ca, configs[0], batcherNodesShard0[0], loggers[0])
 
 	require.Eventually(t, func() bool {
 		return batchers0[0].Ledger.Height(2) == 1

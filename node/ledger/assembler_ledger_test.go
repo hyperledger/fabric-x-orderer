@@ -13,10 +13,12 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,8 +28,7 @@ func TestAssemblerLedger_Create(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
-	al, err := createAssemblerLedger(tmpDir, logger)
-	require.NoError(t, err)
+	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
 	count := al.GetTxCount()
@@ -40,11 +41,15 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		assert.Equal(t, uint64(1), al.GetTxCount())
 		assert.Equal(t, uint64(1), al.Ledger.Height())
 
@@ -67,11 +72,15 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		assert.Equal(t, uint64(1), al.GetTxCount())
 		assert.Equal(t, uint64(1), al.Ledger.Height())
 
@@ -93,11 +102,15 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
-	al, err := createAssemblerLedger(tmpDir, logger)
-	require.NoError(t, err)
+	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
-	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+	al.AppendConfig(&state.OrderingInformation{
+		CommonBlock: utils.EmptyGenesisBlock("arma"),
+		DecisionNum: 0,
+		BatchIndex:  0,
+		BatchCount:  1,
+	})
 	assert.Equal(t, uint64(1), al.GetTxCount())
 	assert.Equal(t, uint64(1), al.Ledger.Height())
 
@@ -135,7 +148,7 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 		assert.Equal(t, batches[n].Seq(), batchID.Seq())
 		assert.Equal(t, batches[n].Primary(), batchID.Primary())
 
-		assert.Equal(t, ordInfos[n].Hash(), ordInfo.Hash())
+		assert.Equal(t, protoutil.BlockHeaderHash(ordInfos[n].CommonBlock.Header), protoutil.BlockHeaderHash(ordInfo.CommonBlock.Header))
 		assert.Equal(t, ordInfos[n].DecisionNum, ordInfo.DecisionNum)
 		assert.Equal(t, ordInfos[n].BatchIndex, ordInfo.BatchIndex)
 		assert.Equal(t, ordInfos[n].BatchCount, ordInfo.BatchCount)
@@ -148,11 +161,15 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := flogging.MustGetLogger("arma-assembler")
 
-	al, err := createAssemblerLedger(tmpDir, logger)
-	require.NoError(t, err)
+	al := createAssemblerLedger(t, tmpDir, logger)
 	defer al.Close()
 
-	al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+	al.AppendConfig(&state.OrderingInformation{
+		CommonBlock: utils.EmptyGenesisBlock("arma"),
+		DecisionNum: 0,
+		BatchIndex:  0,
+		BatchCount:  1,
+	})
 	ordInfo, err := al.LastOrderingInfo()
 	require.NoError(t, err)
 	require.NotNil(t, ordInfo)
@@ -167,7 +184,7 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	ordInfo, err = al.LastOrderingInfo()
 	require.NoError(t, err)
 
-	assert.Equal(t, ordInfos[1].Hash(), ordInfo.Hash())
+	assert.Equal(t, protoutil.BlockHeaderHash(ordInfos[1].CommonBlock.Header), protoutil.BlockHeaderHash(ordInfo.CommonBlock.Header))
 	assert.Equal(t, ordInfos[1].DecisionNum, ordInfo.DecisionNum)
 	assert.Equal(t, ordInfos[1].BatchIndex, ordInfo.BatchIndex)
 	assert.Equal(t, ordInfos[1].BatchCount, ordInfo.BatchCount)
@@ -179,11 +196,15 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		num := 128
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -206,15 +227,56 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		}
 	})
 
+	t.Run("party removal", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+
+		num := 128
+		batches, ordInfos := createBatchesAndOrdInfo(t, num)
+
+		for n := 0; n < num; n++ {
+			al.Append(batches[n], ordInfos[n])
+		}
+
+		assert.Equal(t, uint64(1+num*2), al.GetTxCount())
+		assert.Equal(t, uint64(1+num), al.Ledger.Height())
+
+		// remove party 4, and call BatchFrontier. We should not see party 4 in the result.
+		bf, err := al.BatchFrontier([]types.ShardID{1, 2, 3, 4, 5, 6, 7, 8}, []types.PartyID{1, 2, 3}, time.Hour)
+		assert.NoError(t, err)
+		assert.Len(t, bf, 8) // BatchFrontiers contains all shards
+		for _, bfs := range bf {
+			assert.Len(t, bfs, 3) // every shard has only 3 parties now
+			for party, seq := range bfs {
+				assert.NotEqual(t, types.PartyID(4), party)
+				assert.Equal(t, types.BatchSequence(3), seq) // last sequence for every <shard,party> should be 3.
+			}
+		}
+	})
+
 	t.Run("empty ledger", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		assert.Equal(t, uint64(1), al.GetTxCount())
 		assert.Equal(t, uint64(1), al.Ledger.Height())
@@ -228,11 +290,15 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		num := 8
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -257,11 +323,15 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 		tmpDir := t.TempDir()
 		logger := flogging.MustGetLogger("arma-assembler")
 
-		al, err := createAssemblerLedger(tmpDir, logger)
-		require.NoError(t, err)
+		al := createAssemblerLedger(t, tmpDir, logger)
 		defer al.Close()
 
-		al.AppendConfig(utils.EmptyGenesisBlock("arma"), 0)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 
 		num := 10
 		batches, ordInfos := createBatchesAndOrdInfo(t, num)
@@ -280,9 +350,113 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 	})
 }
 
-func createAssemblerLedger(tmpDir string, logger *flogging.FabricLogger) (*node_ledger.AssemblerLedger, error) {
+func TestAssemblerLedger_LastConfig(t *testing.T) {
+	t.Run("last config after AppendConfig", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		genBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: genBlock,
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+
+		idx, err := node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), idx)
+
+		confBlock1 := prepareConfigBlock(1, genBlock)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: confBlock1,
+			DecisionNum: 1,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), idx)
+
+		confBlock2 := prepareConfigBlock(2, confBlock1)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: confBlock2,
+			DecisionNum: 2,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+	})
+
+	t.Run("last config after Append", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		genBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: genBlock,
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+
+		idx, err := node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), idx)
+		block1 := prepareBlockWithLastConfig(1, 0, genBlock)
+
+		ordInfo1 := &state.OrderingInformation{
+			CommonBlock: block1,
+		}
+		batch1 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
+			[]byte("tx1"), []byte("tx2"),
+		}, 0, []byte(""))
+
+		al.Append(batch1, ordInfo1)
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), idx)
+
+		confBlock1 := prepareConfigBlock(2, block1)
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: confBlock1,
+			DecisionNum: 2,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+
+		block2 := prepareBlockWithLastConfig(3, 2, confBlock1)
+		ordInfo2 := &state.OrderingInformation{
+			CommonBlock: block2,
+		}
+		batch2 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
+			[]byte("tx1"), []byte("tx2"),
+		}, 0, []byte(""))
+
+		al.Append(batch2, ordInfo2)
+		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+	})
+}
+
+func createAssemblerLedger(t *testing.T, tmpDir string, logger *flogging.FabricLogger) *node_ledger.AssemblerLedger {
 	al, err := node_ledger.NewAssemblerLedger(logger, tmpDir)
-	return al, err
+	require.NoError(t, err)
+	require.NotNil(t, al)
+	al.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", logger)
+	return al
 }
 
 // createBatchesAndOrdInfo creates a series of batches and their corresponding ordering information, emulating the
@@ -319,13 +493,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		require.NotNil(t, fb)
 
 		transactionCount += len(batchedRequests)
-
-		oi := &state.OrderingInformation{
-			BlockHeader: &state.BlockHeader{
-				Number:   n + 1,
-				PrevHash: nil,
-				Digest:   fb.Digest(),
-			},
+		ordInfo := &state.OrderingInformation{
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: n + 1, DataHash: fb.Digest()}},
 			Signatures: []smartbft_types.Signature{{
 				ID:    1,
@@ -338,18 +506,47 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 			BatchIndex:  0,
 			BatchCount:  1,
 		}
+		protoutil.InitBlockMetadata(ordInfo.CommonBlock)
+
+		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, ordInfo, uint64(transactionCount+len(fb.Requests())))
+		require.NoError(t, err)
+		ordInfo.CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
+
 		if n > 0 {
-			oi.BlockHeader.PrevHash = ordInfos[n-1].Hash()
-			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(ordInfos[n-1].CommonBlock.Header)
+			ordInfo.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(ordInfos[n-1].CommonBlock.Header)
 		} else {
 			genesis := utils.EmptyGenesisBlock("arma")
-			oi.BlockHeader.PrevHash = protoutil.BlockHeaderHash(genesis.Header)
-			oi.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesis.Header)
+			ordInfo.CommonBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesis.Header)
 		}
 
 		batches = append(batches, fb)
-		ordInfos = append(ordInfos, oi)
+		ordInfos = append(ordInfos, ordInfo)
 	}
 
 	return batches, ordInfos
+}
+
+func prepareConfigBlock(blockNumber uint64, prevBlock *common.Block) *common.Block {
+	configBlock := tx.CreateConfigBlock(blockNumber, []byte{1})
+	protoutil.InitBlockMetadata(configBlock)
+	configBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: configBlock.Header.Number}),
+	})
+
+	if prevBlock != nil {
+		configBlock.Header.PreviousHash = protoutil.BlockHeaderHash(prevBlock.Header)
+	}
+	return configBlock
+}
+
+func prepareBlockWithLastConfig(blockNumber uint64, lastConfigIndex uint64, prevBlock *common.Block) *common.Block {
+	block := &common.Block{Header: &common.BlockHeader{Number: blockNumber}}
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: lastConfigIndex}),
+	})
+	if prevBlock != nil {
+		block.Header.PreviousHash = protoutil.BlockHeaderHash(prevBlock.Header)
+	}
+	return block
 }

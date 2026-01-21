@@ -44,7 +44,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2.
-	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
+	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)
 	require.NoError(t, err)
 	require.NotNil(t, networkLocalConfig)
 
@@ -111,7 +111,7 @@ func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 
-	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir)
+	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)
 	require.NoError(t, err)
 	require.NotNil(t, networkLocalConfig)
 

@@ -22,7 +22,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
-	"github.com/hyperledger/fabric-x-orderer/common/msp"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	msp "github.com/hyperledger/fabric-x-orderer/common/msputils"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -34,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -313,12 +315,13 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger, err := assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
+		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))
 		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(0))
 		require.Equal(t, assemblerLedger.GetTxCount(), uint64(0))
 		assemblerLedger.Close()
 
 		// Create the assembler and check genesis block was appended
-		conf := configContent.ExtractAssemblerConfig()
+		conf := configContent.ExtractAssemblerConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
 		srv := node.CreateGRPCAssembler(conf)
 		assembler := assembler.NewAssembler(conf, srv, genesisBlock, testLogger)
@@ -328,6 +331,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger, err = assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
+		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))
 		require.Equal(t, assemblerLedger.LedgerReader().Height(), uint64(1))
 
 		// Add a fake config block with block number 1 to the ledger
@@ -342,7 +346,12 @@ func TestLaunchArmaNode(t *testing.T) {
 		newConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
 			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 1}),
 		})
-		assemblerLedger.AppendConfig(newConfigBlock, 1)
+		assemblerLedger.AppendConfig(&state.OrderingInformation{
+			CommonBlock: newConfigBlock,
+			DecisionNum: 1,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
 		assemblerLedger.Close()
 
 		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)
@@ -387,7 +396,8 @@ func TestLaunchArmaNode(t *testing.T) {
 		require.NoError(t, err)
 
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+		req := &protos.Request{}
+		mockConfigUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
 		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, signer, mockConfigUpdateProposer)
 		require.NotNil(t, consensus)

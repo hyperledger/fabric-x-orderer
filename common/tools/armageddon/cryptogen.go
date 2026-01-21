@@ -13,7 +13,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
@@ -21,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/msp"
@@ -219,6 +219,12 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		if err != nil {
 			return err
 		}
+		// copy the org admin to user/msp/admincerts
+		dst = filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "msp", "admincerts")
+		err = copyPEMFiles(adminCertsOfOrgPath, dst)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -268,11 +274,11 @@ func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role st
 		return fmt.Errorf("err: %s, failed marshaling private key for "+role+" node %s", err, endpoint)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "tls"), "tls", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "tls"), "tls", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
 		x509.ExtKeyUsageClientAuth,
 		x509.ExtKeyUsageServerAuth,
 	})
-	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "tls", "key.pem"), "PRIVATE KEY", privateKeyBytes)
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "tls", "key.pem"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -290,11 +296,11 @@ func createUserTLSCertKeyPair(ca *ca.CA, dir string, partyID types.PartyID, node
 		return fmt.Errorf("err: %s, failed marshaling private key for user for party %d", err, partyID)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "tls"), "user-tls", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageKeyEncipherment|x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "tls"), "user-tls", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageKeyEncipherment|x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{
 		x509.ExtKeyUsageClientAuth,
 		x509.ExtKeyUsageServerAuth,
 	})
-	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "tls", "user-key.pem"), "PRIVATE KEY", privateKeyBytes)
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "tls", "user-key.pem"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -313,8 +319,8 @@ func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, 
 		return fmt.Errorf("err: %s, failed marshaling private key for "+role+" node %s", err, endpoint)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "signcerts"), "sign", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
-	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "signcerts"), "sign", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -332,8 +338,8 @@ func createUserSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.PartyI
 		return fmt.Errorf("err: %s, failed marshaling private key for user of party %d", err, partyID)
 	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "msp", "signcerts"), "sign", nil, nodesIPs, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
-	err = writePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "msp", "signcerts"), "sign", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "user", "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -348,8 +354,17 @@ func createAdminSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.Party
 	if err != nil {
 		return fmt.Errorf("err: %s, failed creating private key for admin of org %d", err, partyID)
 	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for admin of party %d", err, partyID)
+	}
 
-	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "msp", "admincerts"), fmt.Sprintf("Admin@Org%d", partyID), []string{msp.ADMINOU}, nil, getPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "msp", "admincerts"), fmt.Sprintf("Admin@Org%d", partyID), []string{msp.ADMINOU}, nil, GetPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	err = copyPEMFiles(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "msp", "admincerts"), filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "admin", "msp", "signcerts"))
+	if err != nil {
+		return err
+	}
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "users", "admin", "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -421,25 +436,17 @@ func generateOrdererOrg(rootDir string, folders []string, partyID int, shards in
 	}
 	folders = append(folders, filepath.Join(orgDir, "users", "user", "tls"))
 
+	adminUserMSPPath := filepath.Join(orgDir, "users", "admin", "msp")
+	folders = append(folders, adminUserMSPPath)
+	for _, subDir := range mspSubDirs {
+		folders = append(folders, filepath.Join(adminUserMSPPath, subDir))
+	}
+	folders = append(folders, filepath.Join(orgDir, "users", "admin", "tls"))
+
 	return folders
 }
 
-func writePEMToFile(path string, pemType string, bytes []byte) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("err: %s, failed creating %s to %s", err, pemType, path)
-	}
-	defer file.Close()
-
-	err = pem.Encode(file, &pem.Block{Type: pemType, Bytes: bytes})
-	if err != nil {
-		return fmt.Errorf("err: %s, failed writing %s to %s", err, pemType, path)
-	}
-
-	return nil
-}
-
-func getPublicKey(priv crypto.PrivateKey) crypto.PublicKey {
+func GetPublicKey(priv crypto.PrivateKey) crypto.PublicKey {
 	switch kk := priv.(type) {
 	case *ecdsa.PrivateKey:
 		return &(kk.PublicKey)
@@ -486,6 +493,16 @@ func copyCACerts(networkConfig *genconfig.Network, outputDir string) error {
 			if err != nil {
 				return fmt.Errorf("err copying file from %s to %s", tlscaDir, tlscaDstDir)
 			}
+		}
+	}
+
+	for i := range networkConfig.Parties {
+		orgDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1))
+		cacertsDir := filepath.Join(orgDir, "msp", "cacerts")
+		cacertsDstDir := filepath.Join(orgDir, "users", "user", "msp", "cacerts")
+		err := copyPEMFiles(cacertsDir, cacertsDstDir)
+		if err != nil {
+			return fmt.Errorf("err copying file from %s to %s", cacertsDir, cacertsDstDir)
 		}
 	}
 

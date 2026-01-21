@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package consensus
+package consensus_test
 
 import (
 	"crypto/ecdsa"
@@ -24,12 +24,17 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	node_consensus "github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
+	configrequest_mocks "github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest/mocks"
+	consensus_mocks "github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -57,25 +62,25 @@ func TestConsensus(t *testing.T) {
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig123, 1, 1)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig123, 1, 1)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
-	baf123id3p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk3), 3, 1, dig123, 1, 1)
+	baf123id3p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk3), 3, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
-	baf123id4p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk4), 4, 1, dig123, 1, 1)
+	baf123id4p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk4), 4, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
 
 	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf124id1p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 2, dig124, 2, 1)
+	baf124id1p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 2, dig124, 2, 1, 0)
 	assert.NoError(t, err)
-	baf124id2p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 2, dig124, 2, 1)
+	baf124id2p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 2, dig124, 2, 1, 0)
 	assert.NoError(t, err)
 
 	dig125 := append([]byte{1, 2, 5}, dig...)
-	baf125id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig125, 1, 2)
+	baf125id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig125, 1, 2, 0)
 	assert.NoError(t, err)
-	baf125id2p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig125, 1, 2)
+	baf125id2p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig125, 1, 2, 0)
 	assert.NoError(t, err)
 
 	for _, tst := range []struct {
@@ -204,7 +209,7 @@ func TestConsensus(t *testing.T) {
 			wg.Add(4)
 
 			for _, node := range network {
-				go func(node *Consensus) {
+				go func(node *node_consensus.Consensus) {
 					defer wg.Done()
 
 					tstExpectedSequences := make([][]arma_types.BatchSequence, len(tst.expectedSequences))
@@ -254,7 +259,7 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
-func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *state.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*Consensus, func()) {
+func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *state.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*node_consensus.Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
@@ -271,14 +276,22 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	initialState, md := initializeStateAndMetadata(t, initialState, ledger)
 
-	consenter := &Consenter{ // TODO should this be initialized as part of consensus node start?
-		State:           initialState,
+	consenter := &node_consensus.Consenter{ // TODO should this be initialized as part of consensus node start?
 		DB:              db,
 		Logger:          l,
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
-	c := &Consensus{
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{Bundle: bundle, PartyId: partyID, MonitoringListenAddress: "127.0.0.1:0", MetricsLogInterval: 3 * time.Second}
+
+	c := &node_consensus.Consensus{
+		Config:       &consenterNodeConfig,
 		BFTConfig:    smartbft_types.DefaultConfig,
 		Logger:       l,
 		Signer:       signer,
@@ -288,9 +301,9 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Storage:      ledger,
 		Arma:         consenter,
 		BADB:         db,
-		Net:          &mockNet{},
-		Synchronizer: &synchronizer{stopSync: func() {}},
-		Metrics:      NewConsensusMetrics(partyID, l, 0),
+		Net:          &consensus_mocks.FakeNetStopper{},
+		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
+		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), l),
 	}
 
 	c.BFTConfig.SelfID = uint64(partyID)
@@ -359,10 +372,6 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 	return header.State, md
 }
 
-type mockNet struct{}
-
-func (n *mockNet) Stop() {}
-
 type mockComm struct {
 	from  uint64
 	net   network
@@ -381,17 +390,7 @@ func (comm *mockComm) Nodes() []uint64 {
 	return comm.nodes
 }
 
-type network map[uint64]*Consensus
-
-type storageListener struct {
-	f func()
-	c chan *common.Block
-}
-
-func (l *storageListener) OnAppend(block *common.Block) {
-	defer l.f()
-	l.c <- block
-}
+type network map[uint64]*node_consensus.Consensus
 
 func TestAssembleProposalAndVerify(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
@@ -413,12 +412,13 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	}
 	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
+
 	config := &nodeconfig.ConsenterNodeConfig{
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
 		RequestMaxBytes:                     1000,
 	}
-	requestVerifier := createConsensusRulesVerifier(config)
+	requestVerifier := node_consensus.CreateConsensusRulesVerifier(config)
 
 	numOfParties := 4
 
@@ -442,6 +442,11 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	complaint1.Signature = sig
 
+	complaint1ConfigSeq1 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 1, ConfigSeq: 1}
+	sig, err = signer1.Sign(complaint1ConfigSeq1.ToBeSigned())
+	require.NoError(t, err)
+	complaint1ConfigSeq1.Signature = sig
+
 	signer2 := crypto.ECDSASigner(*sks[1])
 	complaint2 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 2}
 	sig, err = signer2.Sign(complaint2.ToBeSigned())
@@ -454,22 +459,31 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	complaint3.Signature = sig
 
+	complaint3ConfigSeq1 := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 3, ConfigSeq: 1}
+	sig, err = signer3.Sign(complaint3ConfigSeq1.ToBeSigned())
+	require.NoError(t, err)
+	complaint3ConfigSeq1.Signature = sig
+
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0)
+	assert.NoError(t, err)
+	baf123id1p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 1)
+	assert.NoError(t, err)
+	baf123id2p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 1)
 	assert.NoError(t, err)
 
 	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf124id3p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[2]), 3, 1, dig124, 1, 2)
+	baf124id3p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[2]), 3, 1, dig124, 1, 2, 0)
 	assert.NoError(t, err)
-	baf124id4p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[3]), 4, 1, dig124, 1, 2)
+	baf124id4p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[3]), 4, 1, dig124, 1, 2, 0)
 	assert.NoError(t, err)
 
 	dig125 := append([]byte{1, 2, 5}, dig...)
-	baf125id1p1s3, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig125, 1, 3)
+	baf125id1p1s3, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig125, 1, 3, 0)
 	assert.NoError(t, err)
 
 	for _, tst := range []struct {
@@ -581,6 +595,20 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: tx.CreateStructuredConfigUpdateEnvelope([]byte{1})}}},
 			withConfig: true,
 		},
+		{
+			name: "filtering mismatch config seq",
+			initialAppContext: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: nil,
+				DataHash:     nil,
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 0,
+			},
+			ces:           []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1cs1}, {Complaint: complaint2}, {Complaint: complaint3ConfigSeq1}},
+			numPending:    1,
+			numComplaints: 1,
+		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
 			initialState := &state.State{
@@ -590,26 +618,47 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				Threshold:  2,
 				Quorum:     3,
 				AppContext: protoutil.MarshalOrPanic(tst.initialAppContext),
+				Pending:    []arma_types.BatchAttestationFragment{baf123id1p1s1cs1},
+				Complaints: []state.Complaint{*complaint1ConfigSeq1},
 			}
 
-			consenter := &Consenter{
+			consenter := &node_consensus.Consenter{
 				DB:              db,
-				State:           initialState,
 				Logger:          logger,
 				BAFDeserializer: &state.BAFDeserialize{},
 			}
 
-			configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
-			configUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
+			payloadBytes := []byte{1}
+			configRequestEnvelope := tx.CreateStructuredConfigEnvelope(payloadBytes)
+			configRequest := &protos.Request{
+				Payload:   configRequestEnvelope.Payload,
+				Signature: configRequestEnvelope.Signature,
+			}
+			mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
+			mockConfigUpdateProposer.ProposeConfigUpdateReturns(configRequest, nil)
 
-			c := &Consensus{
-				Arma:                 consenter,
-				State:                initialState,
-				Logger:               logger,
-				SigVerifier:          verifier,
-				RequestVerifier:      requestVerifier,
-				Config:               config,
-				ConfigUpdateProposer: configUpdateProposer,
+			mockConfigRequestValidator := &configrequest_mocks.FakeConfigRequestValidator{}
+			mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
+
+			mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
+			mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+
+			mockConfigApplier := &consensus_mocks.FakeConfigApplier{}
+			mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+				return s, nil
+			})
+
+			c := &node_consensus.Consensus{
+				Arma:                   consenter,
+				State:                  initialState,
+				Logger:                 logger,
+				SigVerifier:            verifier,
+				RequestVerifier:        requestVerifier,
+				Config:                 config,
+				ConfigUpdateProposer:   mockConfigUpdateProposer,
+				ConfigApplier:          mockConfigApplier,
+				ConfigRequestValidator: mockConfigRequestValidator,
+				ConfigRulesVerifier:    mockConfigRulesVerifier,
 			}
 
 			reqs := make([][]byte, len(tst.ces))
@@ -724,26 +773,32 @@ func TestVerifyProposal(t *testing.T) {
 		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
-	consenter := &Consenter{
+	consenter := &node_consensus.Consenter{
 		DB:              db,
-		State:           &initialState,
 		Logger:          logger,
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
-	c := &Consensus{
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	c := &node_consensus.Consensus{
 		Arma:        consenter,
 		State:       &initialState,
 		Logger:      logger,
 		SigVerifier: verifier,
+		Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
 	}
 
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
 
 	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
@@ -877,9 +932,17 @@ func TestVerifyProposal(t *testing.T) {
 	badBH.PreviousHash[0]++
 	headerBH.AvailableCommonBlocks = []*common.Block{{Header: badBH}}
 	verifyProposalRequireError(t, c, headerBH.Serialize(), brs.Serialize(), mBytes)
+
+	// 11. mismatch verification sequence
+	t.Log("mismatch verification sequence")
+	proposalV := proposal
+	proposalV.VerificationSequence = 1
+	_, err = c.VerifyProposal(proposalV)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "expected verification sequence")
 }
 
-func verifyProposalRequireError(t *testing.T, c *Consensus, header, payload, metadata []byte) {
+func verifyProposalRequireError(t *testing.T, c *node_consensus.Consensus, header, payload, metadata []byte) {
 	proposal := smartbft_types.Proposal{
 		Header:   header,
 		Payload:  payload,
@@ -934,14 +997,13 @@ func TestSignProposal(t *testing.T) {
 		AppContext: protoutil.MarshalOrPanic(initialAppContext),
 	}
 
-	consenter := &Consenter{
+	consenter := &node_consensus.Consenter{
 		DB:              db,
-		State:           &initialState,
 		Logger:          logger,
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
-	c := &Consensus{
+	c := &node_consensus.Consensus{
 		BFTConfig:   smartbft_types.Configuration{SelfID: 1},
 		Arma:        consenter,
 		State:       &initialState,
@@ -959,9 +1021,9 @@ func TestSignProposal(t *testing.T) {
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
 
 	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
@@ -1030,7 +1092,7 @@ func TestConsensusStartStop(t *testing.T) {
 		commitEvent.Done()
 	}
 
-	network := make(map[uint64]*Consensus)
+	network := make(map[uint64]*node_consensus.Consensus)
 
 	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
 	defer cleanup()
@@ -1045,7 +1107,7 @@ func TestConsensusStartStop(t *testing.T) {
 	commitEvent.Add(1)
 	dig := make([]byte, 32-3)
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1, 0)
 	assert.NoError(t, err)
 
 	ce1 := &state.ControlEvent{BAF: baf123id1p1s1}
@@ -1105,7 +1167,7 @@ func TestConsensusStartStop(t *testing.T) {
 
 	// 3. Valid request after recovery node
 	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf124id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2)
+	baf124id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2, 0)
 	assert.NoError(t, err)
 	ce2 := &state.ControlEvent{BAF: baf124id1p1s2}
 	commitEvent.Add(1)
@@ -1143,4 +1205,256 @@ func TestConsensusStartStop(t *testing.T) {
 	err = hdr.Deserialize(decision.Header)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(hdr.AvailableCommonBlocks))
+}
+
+func TestCreateAndVerifyDataCommonBlock(t *testing.T) {
+	for _, tst := range []struct {
+		name            string
+		err             string
+		blockNum        uint64
+		prevHash        []byte
+		primary         arma_types.PartyID
+		shard           arma_types.ShardID
+		seq             arma_types.BatchSequence
+		digest          []byte
+		decisionNum     arma_types.DecisionNum
+		batchCount      int
+		batchIndex      int
+		lastConfigBlock uint64
+	}{
+		{
+			name: "no error",
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed block header number",
+			blockNum: 1,
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed block header prev hash",
+			prevHash: []byte{1},
+		},
+		{
+			name:    "wrong primary",
+			err:     "proposed block metadata",
+			primary: 1,
+		},
+		{
+			name:  "wrong shard",
+			err:   "proposed block metadata",
+			shard: 1,
+		},
+		{
+			name: "wrong seq",
+			err:  "proposed block metadata",
+			seq:  1,
+		},
+		{
+			name:   "wrong digest",
+			err:    "proposed block data hash",
+			digest: []byte{1},
+		},
+		{
+			name:        "wrong decision number",
+			err:         "proposed block metadata",
+			decisionNum: 1,
+		},
+		{
+			name:       "wrong batch count",
+			err:        "proposed block metadata",
+			batchCount: 1,
+		},
+		{
+			name:       "wrong batch index",
+			err:        "proposed block metadata",
+			batchIndex: 1,
+		},
+		{
+			name:            "wrong last config block",
+			err:             "last config in block",
+			lastConfigBlock: 1,
+		},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			block, err := node_consensus.CreateDataCommonBlock(0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			require.NoError(t, err)
+			require.NotNil(t, block)
+			err = node_consensus.VerifyDataCommonBlock(block, tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
+
+			block, err = node_consensus.CreateDataCommonBlock(tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			require.NoError(t, err)
+			require.NotNil(t, block)
+			err = node_consensus.VerifyDataCommonBlock(block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
+		})
+	}
+}
+
+func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
+	for _, tst := range []struct {
+		name        string
+		err         string
+		blockNum    uint64
+		prevHash    []byte
+		dataHash    []byte
+		decisionNum arma_types.DecisionNum
+		batchCount  int
+		batchIndex  int
+	}{
+		{
+			name: "no error",
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed config block header number",
+			blockNum: 1,
+		},
+		{
+			name:     "wrong block number",
+			err:      "proposed config block header prev hash",
+			prevHash: []byte{1},
+		},
+		{
+			name:     "wrong data hash",
+			err:      "proposed config block data hash",
+			dataHash: []byte{1},
+		},
+		{
+			name:        "wrong decision number",
+			err:         "proposed config block metadata",
+			decisionNum: 1,
+		},
+		{
+			name:       "wrong batch count",
+			err:        "proposed config block metadata",
+			batchCount: 1,
+		},
+		{
+			name:       "wrong batch index",
+			err:        "proposed config block metadata",
+			batchIndex: 1,
+		},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			configBlock, err := node_consensus.CreateConfigCommonBlock(0, nil, 0, 0, 0, nil)
+			require.NoError(t, err)
+			require.NotNil(t, configBlock)
+
+			nilConfigReq := arma_types.BatchedRequests([][]byte{nil})
+			dataHash := nilConfigReq.Digest()
+			if tst.dataHash != nil {
+				dataHash = tst.dataHash
+			}
+
+			err = node_consensus.VerifyConfigCommonBlock(configBlock, tst.blockNum, tst.prevHash, dataHash, tst.decisionNum, tst.batchCount, tst.batchIndex)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
+
+			var configReq []byte
+			if tst.dataHash != nil {
+				configReq = tst.dataHash
+			}
+
+			configBlock, err = node_consensus.CreateConfigCommonBlock(tst.blockNum, tst.prevHash, tst.decisionNum, tst.batchCount, tst.batchIndex, configReq)
+			require.NoError(t, err)
+			require.NotNil(t, configBlock)
+
+			err = node_consensus.VerifyConfigCommonBlock(configBlock, 0, nil, nilConfigReq.Digest(), 0, 0, 0)
+			if tst.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tst.err)
+			}
+		})
+	}
+}
+
+func TestConsensusSoftStop(t *testing.T) {
+	dir := t.TempDir()
+
+	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	initialAppContext := &common.BlockHeader{
+		Number:       1,
+		PreviousHash: nil,
+		DataHash:     nil,
+	}
+
+	initialState := &state.State{
+		ShardCount: 1,
+		N:          1,
+		Shards:     []state.ShardTerm{{Shard: 1}},
+		Threshold:  1,
+		Quorum:     1,
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
+	}
+
+	nodeIDs := []uint64{1}
+
+	commitEvent := new(sync.WaitGroup)
+	onCommit := func() {
+		commitEvent.Done()
+	}
+
+	network := make(map[uint64]*node_consensus.Consensus)
+
+	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
+	defer cleanup()
+
+	listener := &storageListener{c: make(chan *common.Block, 100), f: onCommit}
+	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
+
+	err = c.Start()
+	assert.NoError(t, err)
+
+	// submit request and verify block is committed
+	commitEvent.Add(1)
+	dig := make([]byte, 32-3)
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1, 0)
+	assert.NoError(t, err)
+
+	ce1 := &state.ControlEvent{BAF: baf123id1p1s1}
+	err = c.SubmitRequest(ce1.Bytes())
+	assert.NoError(t, err)
+	commitEvent.Wait()
+
+	b := <-listener.c
+	assert.Equal(t, uint64(1), b.Header.Number)
+
+	decision, _, err := state.BytesToDecision(b.Data.Data[0])
+	assert.NoError(t, err)
+
+	hdr := &state.Header{}
+	err = hdr.Deserialize(decision.Header)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(hdr.AvailableCommonBlocks))
+
+	// perform soft stop
+	c.SoftStop()
+
+	// submitting new requests should now fail
+	dig124 := append([]byte{1, 2, 4}, dig...)
+	baf124id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2, 0)
+	assert.NoError(t, err)
+
+	ce2 := &state.ControlEvent{BAF: baf124id1p1s1}
+	err = c.SubmitRequest(ce2.Bytes())
+	assert.Error(t, err)
 }

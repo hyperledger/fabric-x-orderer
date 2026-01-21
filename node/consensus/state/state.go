@@ -21,9 +21,10 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-type Rule func(*State, types.Logger, ...ControlEvent)
+type Rule func(*State, types.ConfigSequence, types.Logger, ...ControlEvent)
 
 var Rules = []Rule{
+	FilterPendingEventsWithDiffConfigSeq,
 	CollectAndDeduplicateEvents,
 	// DetectEquivocation, // TODO: false positive, lets find out why
 	PrimaryRotateDueToComplaints,
@@ -251,6 +252,7 @@ type Complaint struct {
 	Signer    types.PartyID
 	Signature []byte
 	Reason    string
+	ConfigSeq types.ConfigSequence
 }
 
 func (c *Complaint) Bytes() []byte {
@@ -258,9 +260,11 @@ func (c *Complaint) Bytes() []byte {
 	if reasonLen > math.MaxUint16 {
 		reasonLen = math.MaxUint16
 	}
-	buff := make([]byte, 16+len(c.Signature)+reasonLen)
+	buff := make([]byte, 24+len(c.Signature)+reasonLen)
 	var pos int
-	binary.BigEndian.PutUint16(buff, uint16(c.Shard))
+	binary.BigEndian.PutUint64(buff, uint64(c.ConfigSeq))
+	pos += 8
+	binary.BigEndian.PutUint16(buff[pos:], uint16(c.Shard))
 	pos += 2
 	binary.BigEndian.PutUint64(buff[pos:], c.Term)
 	pos += 8
@@ -277,16 +281,17 @@ func (c *Complaint) Bytes() []byte {
 }
 
 func (c *Complaint) FromBytes(bytes []byte) error {
-	if len(bytes) <= 16 {
-		return fmt.Errorf("input too small (%d <= 16)", len(bytes))
+	if len(bytes) <= 24 {
+		return fmt.Errorf("input too small (%d <= 24)", len(bytes))
 	}
-	c.Shard = types.ShardID(binary.BigEndian.Uint16(bytes))
-	c.Term = binary.BigEndian.Uint64(bytes[2:10])
-	c.Signer = types.PartyID(binary.BigEndian.Uint16(bytes[10:12]))
-	sigSize := binary.BigEndian.Uint16(bytes[12:14])
-	c.Signature = bytes[14 : 14+sigSize]
-	rSize := binary.BigEndian.Uint16(bytes[14+sigSize : 14+sigSize+2])
-	c.Reason = string(bytes[14+int(sigSize)+2 : 14+int(sigSize)+2+int(rSize)])
+	c.ConfigSeq = types.ConfigSequence(binary.BigEndian.Uint64(bytes))
+	c.Shard = types.ShardID(binary.BigEndian.Uint16(bytes[8:10]))
+	c.Term = binary.BigEndian.Uint64(bytes[10:18])
+	c.Signer = types.PartyID(binary.BigEndian.Uint16(bytes[18:20]))
+	sigSize := binary.BigEndian.Uint16(bytes[20:22])
+	c.Signature = bytes[22 : 22+sigSize]
+	rSize := binary.BigEndian.Uint16(bytes[22+sigSize : 22+sigSize+2])
+	c.Reason = string(bytes[22+int(sigSize)+2 : 22+int(sigSize)+2+int(rSize)])
 	return nil
 }
 
@@ -296,12 +301,13 @@ func (c *Complaint) ToBeSigned() []byte {
 		Signer:    c.Signer,
 		Signature: nil,
 		Reason:    c.Reason,
+		ConfigSeq: c.ConfigSeq,
 	}
 	return toBeSignedComplaint.Bytes()
 }
 
 func (c *Complaint) String() string {
-	return fmt.Sprintf("Complaint: Signer: %d; Shard: %d; Term %d; Reason: %s", c.Signer, c.Shard, c.Term, c.Reason)
+	return fmt.Sprintf("Complaint: Signer: %d; Shard: %d; Term %d; Config Seq: %d; Reason: %s", c.Signer, c.Shard, c.Term, c.ConfigSeq, c.Reason)
 }
 
 type ConfigRequest struct {
@@ -366,6 +372,7 @@ func (ce *ControlEvent) ID() string {
 			ShardTerm: ce.Complaint.ShardTerm,
 			Signer:    ce.Complaint.Signer,
 			Reason:    ce.Complaint.Reason,
+			ConfigSeq: ce.Complaint.ConfigSeq,
 		}
 		payloadToHash = complaintWithNoSig.Bytes()
 	case ce.ConfigRequest != nil:
@@ -435,11 +442,13 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l types.Logger, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
+func (s *State) Process(l types.Logger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
 	nextState := s.Clone()
 
+	filteredCEs := filterCEsWithDiffConfigSeq(configSeq, l, ces...)
+
 	for _, rule := range Rules {
-		rule(nextState, l, ces...)
+		rule(nextState, configSeq, l, filteredCEs...)
 	}
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
@@ -464,7 +473,7 @@ func (s *State) Clone() *State {
 	return &s2
 }
 
-func CleanupOldComplaints(s *State, l types.Logger, _ ...ControlEvent) {
+func CleanupOldComplaints(s *State, configSeq types.ConfigSequence, l types.Logger, _ ...ControlEvent) {
 	newComplaints := make([]Complaint, 0, len(s.Complaints))
 	for _, c := range s.Complaints {
 		shardIndex, _ := shardExists(c.Shard, s.Shards)
@@ -479,7 +488,7 @@ func CleanupOldComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	s.Complaints = newComplaints
 }
 
-func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
+func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l types.Logger, _ ...ControlEvent) {
 	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
@@ -527,7 +536,7 @@ func PrimaryRotateDueToComplaints(s *State, l types.Logger, _ ...ControlEvent) {
 	s.Complaints = newComplaints
 }
 
-func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) {
+func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l types.Logger, ces ...ControlEvent) {
 	shardsAndSequences := make(map[batchAttestationVote]struct{}, len(s.Pending))
 	complaints := make(map[ShardTerm]map[types.PartyID]struct{})
 
@@ -583,6 +592,49 @@ func CollectAndDeduplicateEvents(s *State, l types.Logger, ces ...ControlEvent) 
 			s.Complaints = append(s.Complaints, *ce.Complaint)
 		}
 	}
+}
+
+func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l types.Logger, ces ...ControlEvent) []ControlEvent {
+	filteredEvents := make([]ControlEvent, 0)
+	for _, ce := range ces {
+		if ce.BAF != nil {
+			if ce.BAF.ConfigSequence() == configSeq {
+				filteredEvents = append(filteredEvents, ce)
+			} else {
+				l.Debugf("filtering ce baf with mismatch config seq (currently %d); %s", configSeq, ce.BAF.String())
+			}
+		}
+		if ce.Complaint != nil {
+			if ce.Complaint.ConfigSeq == configSeq {
+				filteredEvents = append(filteredEvents, ce)
+			} else {
+				l.Debugf("filtering ce complaint with mismatch config seq (currently %d); %s", configSeq, ce.Complaint.String())
+			}
+		}
+	}
+	return filteredEvents
+}
+
+func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequence, l types.Logger, ces ...ControlEvent) {
+	filteredPending := make([]types.BatchAttestationFragment, 0)
+	for _, baf := range s.Pending {
+		if baf.ConfigSequence() == configSeq {
+			filteredPending = append(filteredPending, baf)
+		} else {
+			l.Debugf("filtering pending baf with mismatch config seq (currently %d); %s", configSeq, baf.String())
+		}
+	}
+	s.Pending = filteredPending
+
+	filteredComplaints := make([]Complaint, 0)
+	for _, complaint := range s.Complaints {
+		if complaint.ConfigSeq == configSeq {
+			filteredComplaints = append(filteredComplaints, complaint)
+		} else {
+			l.Debugf("filtering complaint with mismatch config seq (currently %d); %s", configSeq, complaint.String())
+		}
+	}
+	s.Complaints = filteredComplaints
 }
 
 func DetectEquivocation(s *State, l types.Logger, _ ...ControlEvent) {

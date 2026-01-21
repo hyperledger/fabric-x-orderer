@@ -27,7 +27,9 @@ import (
 
 const testTimeout = 1 * time.Second // conservative
 
-type echoServer struct{}
+type echoServer struct {
+	testgrpc.UnimplementedEchoServiceServer
+}
 
 func (es *echoServer) EchoCall(ctx context.Context,
 	echo *testgrpc.Echo,
@@ -148,7 +150,7 @@ func TestClientConfigDial(t *testing.T) {
 				MaxVersion:   tls.VersionTLS12, // https://github.com/golang/go/issues/33368
 			},
 			success:  false,
-			errorMsg: "tls: bad certificate",
+			errorMsg: "(tls: bad certificate|tls: handshake failure)",
 		},
 		{
 			name: "client TLS / server TLS client cert",

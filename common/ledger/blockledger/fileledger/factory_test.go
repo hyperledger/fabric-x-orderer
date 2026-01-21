@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger/mock"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-	"github.com/hyperledger/fabric/orderer/common/filerepo"
+	"github.com/hyperledger/fabric-x-orderer/common/filerepo"
 	"github.com/stretchr/testify/require"
 )
 

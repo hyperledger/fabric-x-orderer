@@ -51,23 +51,24 @@ var (
 )
 
 type GeneralConfigParams struct {
-	listenAddress        string
-	role                 string
-	logLevel             string
-	cryptoBaseDir        string
-	configBaseDir        string
-	listenPort           uint32
-	partyID              types.PartyID
-	shardID              types.ShardID
-	tlsEnabled           bool
-	clientAuthRequired   bool
-	monitoringListenPort uint32
-	metricsLogInterval   time.Duration
+	listenAddress                       string
+	role                                string
+	logLevel                            string
+	cryptoBaseDir                       string
+	configBaseDir                       string
+	listenPort                          uint32
+	partyID                             types.PartyID
+	shardID                             types.ShardID
+	tlsEnabled                          bool
+	clientAuthRequired                  bool
+	monitoringListenPort                uint32
+	metricsLogInterval                  time.Duration
+	clientSignatureVerificationRequired bool
 }
 
 // CreateArmaLocalConfig creates a config directory that includes the local config yaml files for all nodes for all parties.
-func CreateArmaLocalConfig(network Network, cryptoBaseDir string, configBaseDir string) (*NetworkLocalConfig, error) {
-	networkLocalConfig := createNetworkLocalConfig(network, cryptoBaseDir, configBaseDir)
+func CreateArmaLocalConfig(network Network, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) (*NetworkLocalConfig, error) {
+	networkLocalConfig := createNetworkLocalConfig(network, cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 	err := createArmaConfigFiles(networkLocalConfig, configBaseDir)
 	if err != nil {
 		return nil, err
@@ -75,7 +76,7 @@ func CreateArmaLocalConfig(network Network, cryptoBaseDir string, configBaseDir 
 	return networkLocalConfig, nil
 }
 
-func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseDir string) *NetworkLocalConfig {
+func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) *NetworkLocalConfig {
 	var partiesLocalConfig []PartyLocalConfig
 
 	validUseTLSOptions := map[string]struct{}{
@@ -100,12 +101,12 @@ func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseD
 
 	redundantShardID := types.ShardID(0)
 	for _, party := range network.Parties {
-		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", trimPortFromEndpoint(party.RouterEndpoint), getPortFromEndpoint(party.RouterEndpoint), DefaultRouterMonitoringPort, 10*time.Second, useTLSRouter, clientAuthRequiredRouter, "info", cryptoBaseDir, configBaseDir)
-		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", trimPortFromEndpoint(party.ConsenterEndpoint), getPortFromEndpoint(party.ConsenterEndpoint), DefaultConsenterMonitoringPort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir)
-		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", trimPortFromEndpoint(party.AssemblerEndpoint), getPortFromEndpoint(party.AssemblerEndpoint), DefaultAssemblerMonitoringPort, DefaultMetricsLogInterval, useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir)
+		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", trimPortFromEndpoint(party.RouterEndpoint), getPortFromEndpoint(party.RouterEndpoint), DefaultRouterMonitoringPort, 10*time.Second, useTLSRouter, clientAuthRequiredRouter, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", trimPortFromEndpoint(party.ConsenterEndpoint), getPortFromEndpoint(party.ConsenterEndpoint), DefaultConsenterMonitoringPort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", trimPortFromEndpoint(party.AssemblerEndpoint), getPortFromEndpoint(party.AssemblerEndpoint), DefaultAssemblerMonitoringPort, DefaultMetricsLogInterval, useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		partyLocalConfig := PartyLocalConfig{
 			RouterLocalConfig:    NewRouterLocalConfig(routerGeneralParams),
-			BatchersLocalConfig:  NewBatchersLocalConfigPerParty(party.ID, party.BatchersEndpoints, cryptoBaseDir, configBaseDir),
+			BatchersLocalConfig:  NewBatchersLocalConfigPerParty(party.ID, party.BatchersEndpoints, cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired),
 			ConsenterLocalConfig: NewConsensusLocalConfig(consensusGeneralParams),
 			AssemblerLocalConfig: NewAssemblerLocalConfig(assemblerGeneralParams),
 		}
@@ -162,7 +163,7 @@ func createPartyConfigFiles(partyLocalConfig PartyLocalConfig, configBaseDir str
 	return nil
 }
 
-func NewGeneralConfigParams(partyID types.PartyID, shardID types.ShardID, role string, listenAddress string, listenPort uint32, monitoringListenPort uint32, metricsLogInterval time.Duration, tlsEnabled bool, clientAuthRequired bool, logLevel string, cryptoBaseDir string, configBaseDir string) GeneralConfigParams {
+func NewGeneralConfigParams(partyID types.PartyID, shardID types.ShardID, role string, listenAddress string, listenPort uint32, monitoringListenPort uint32, metricsLogInterval time.Duration, tlsEnabled bool, clientAuthRequired bool, logLevel string, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) GeneralConfigParams {
 	return GeneralConfigParams{
 		partyID:            partyID,
 		shardID:            shardID,
@@ -175,8 +176,9 @@ func NewGeneralConfigParams(partyID types.PartyID, shardID types.ShardID, role s
 		tlsEnabled:         tlsEnabled,
 		clientAuthRequired: clientAuthRequired,
 		// set default monitoring values
-		monitoringListenPort: monitoringListenPort,
-		metricsLogInterval:   metricsLogInterval,
+		monitoringListenPort:                monitoringListenPort,
+		metricsLogInterval:                  metricsLogInterval,
+		clientSignatureVerificationRequired: clientSignatureVerificationRequired,
 	}
 }
 
@@ -209,10 +211,10 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 			File:   filepath.Join(generalConfigParams.configBaseDir, "bootstrap", "bootstrap.block"),
 		},
 		LocalMSPDir:                         filepath.Join(partyPath, nodeRole, "msp"),
-		LocalMSPID:                          fmt.Sprintf("OrdererOrg%d", generalConfigParams.partyID),
+		LocalMSPID:                          fmt.Sprintf("org%d", generalConfigParams.partyID),
 		BCCSP:                               &factory.FactoryOpts{},
 		LogSpec:                             generalConfigParams.logLevel,
-		ClientSignatureVerificationRequired: DefaultClientSignatureVerificationRequired,
+		ClientSignatureVerificationRequired: generalConfigParams.clientSignatureVerificationRequired,
 		MetricsLogInterval:                  generalConfigParams.metricsLogInterval,
 	}
 
@@ -251,10 +253,10 @@ func createBatcherLocalConfig(batcherGeneralParams GeneralConfigParams) *config.
 	}
 }
 
-func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []string, cryptoBaseDir string, configBaseDir string) []*config.NodeLocalConfig {
+func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []string, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) []*config.NodeLocalConfig {
 	var batchers []*config.NodeLocalConfig
 	for i, batcherEndpoint := range batcherEndpoints {
-		batcherGeneralParams := NewGeneralConfigParams(partyID, types.ShardID(uint16(i+1)), "batcher", trimPortFromEndpoint(batcherEndpoint), getPortFromEndpoint(batcherEndpoint), DefaultBatcherMonitoringBasePort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir)
+		batcherGeneralParams := NewGeneralConfigParams(partyID, types.ShardID(uint16(i+1)), "batcher", trimPortFromEndpoint(batcherEndpoint), getPortFromEndpoint(batcherEndpoint), DefaultBatcherMonitoringBasePort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		batcher := createBatcherLocalConfig(batcherGeneralParams)
 		batchers = append(batchers, batcher)
 	}

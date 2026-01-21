@@ -19,12 +19,14 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -56,6 +58,10 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 		return nil, nil, err
 	}
 
+	if conf.LocalConfig.NodeLocalConfig.FileStore == nil || conf.LocalConfig.NodeLocalConfig.FileStore.Path == "" {
+		return nil, nil, errors.New("path to the FileStore is missing in local config")
+	}
+
 	var lastConfigBlock *common.Block
 	var configStore *configstore.Store
 
@@ -77,7 +83,6 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed creating %s config store: %s", nodeRole, err)
 			}
-
 			listBlockNumbers, err := configStore.ListBlockNumbers()
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to list blocks from %s config store: %s", nodeRole, err)
@@ -101,22 +106,13 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create assembler ledger instance: %s", err)
 			}
+			defer assemblerLedger.Close()
 			if assemblerLedger.LedgerReader().Height() > 0 {
-				lastBlockIdx := assemblerLedger.LedgerReader().Height() - 1
-				lastBlock, err := assemblerLedger.LedgerReader().RetrieveBlockByNumber(lastBlockIdx)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to retrieve last block from assembler ledger: %s", err)
-				}
-				index, err := protoutil.GetLastConfigIndexFromBlock(lastBlock)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to get last config index from assebmler's last block: %s", err)
-				}
-				lastConfigBlock, err = assemblerLedger.LedgerReader().RetrieveBlockByNumber(index)
+				lastConfigBlock, err = node_ledger.GetLastConfigBlockFromAssemblerLedger(assemblerLedger)
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to retrieve last config block from assembler ledger: %s", err)
 				}
 			}
-			assemblerLedger.Close()
 		}
 
 		// If node is consensus, get the last decision from the ledger, extract the decision number of the last config block and get the last available block from it.
@@ -125,11 +121,12 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create consensus ledger instance: %s", err)
 			}
+			defer consensusLedger.Close()
+
 			lastConfigBlock, err = GetLastConfigBlockFromConsensusLedger(consensusLedger, logger)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to get the last config block from consensus ledger instance: %s", err)
 			}
-			consensusLedger.Close()
 		}
 
 		if lastConfigBlock == nil {
@@ -245,21 +242,34 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
+
+	// use shards to get every party's RootCAs
+	shards := config.ExtractShards()
+	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	bundle := config.extractBundleFromConfigBlock(configBlock)
+	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
+	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(appTrustedRoots)+len(localConfigClientsTrustedRoots))
+	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
+	trustedRoots = append(trustedRoots, appTrustedRoots...)
+	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
+
 	routerConfig := &nodeconfig.RouterNodeConfig{
 		PartyID:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		Shards:                              config.ExtractShards(),
+		Shards:                              shards,
 		Consenter:                           config.ExtractConsenterInParty(),
 		NumOfConnectionsForBatcher:          config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
 		NumOfgRPCStreamsPerConnection:       config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfStreamsPerConnection,
 		UseTLS:                              config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:                  config.LocalConfig.TLSConfig.ClientAuthRequired,
+		ClientRootCAs:                       trustedRoots,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
-		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
+		Bundle:                              bundle,
 		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 	}
@@ -285,6 +295,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		ShardId:                             config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
+		ClientRootCAs:                       config.LocalConfig.TLSConfig.ClientRootCAs,
 		SigningPrivateKey:                   signingPrivateKey,
 		MemPoolMaxSize:                      config.LocalConfig.NodeLocalConfig.BatcherParams.MemPoolMaxSize,
 		BatchMaxSize:                        config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
@@ -338,6 +349,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
+		ClientRootCAs:                       config.LocalConfig.TLSConfig.ClientRootCAs,
 		SigningPrivateKey:                   signingPrivateKey,
 		WALDir:                              DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
 		BFTConfig:                           BFTConfig,
@@ -350,7 +362,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	return consenterConfig
 }
 
-func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeConfig {
+func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -362,6 +374,17 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
+
+	// use shards to get every party's RootCAs
+	shards := config.ExtractShards()
+	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	bundle := config.extractBundleFromConfigBlock(configBlock)
+	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
+	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(appTrustedRoots)+len(localConfigClientsTrustedRoots))
+	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
+	trustedRoots = append(trustedRoots, appTrustedRoots...)
+	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
 
 	assemblerConfig := &nodeconfig.AssemblerNodeConfig{
 		TLSPrivateKeyFile:         config.LocalConfig.TLSConfig.PrivateKey,
@@ -375,14 +398,52 @@ func (config *Configuration) ExtractAssemblerConfig() *nodeconfig.AssemblerNodeC
 		PopWaitMonitorTimeout:     config.LocalConfig.NodeLocalConfig.AssemblerParams.PopWaitMonitorTimeout,
 		ReplicationChannelSize:    config.LocalConfig.NodeLocalConfig.AssemblerParams.ReplicationChannelSize,
 		BatchRequestsChannelSize:  config.LocalConfig.NodeLocalConfig.AssemblerParams.BatchRequestsChannelSize,
-		Shards:                    config.ExtractShards(),
+		Shards:                    shards,
 		Consenter:                 consenterFromMyParty,
 		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
+		ClientRootCAs:             trustedRoots,
 		MonitoringListenAddress:   net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:        config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Bundle:                    bundle,
 	}
 	return assemblerConfig
+}
+
+func ExtractAppTrustedRootsFromConfigBlock(bundle channelconfig.Resources) [][]byte {
+	appRootCAs := [][]byte{}
+	appOrgMSPs := make(map[string]struct{})
+
+	if ac, ok := bundle.ApplicationConfig(); ok {
+		// loop through app orgs and build map of MSPIDs
+		for _, appOrg := range ac.Organizations() {
+			appOrgMSPs[appOrg.MSPID()] = struct{}{}
+		}
+	}
+
+	msps, err := bundle.MSPManager().GetMSPs()
+	if err != nil {
+		panic(fmt.Sprintf("Error getting root CAs from bundle msp manager, err: %s", err))
+	}
+
+	for k, v := range msps {
+		// check to see if this is a FABRIC MSP
+		if v.GetType() == msp.FABRIC {
+			for _, root := range v.GetTLSRootCerts() {
+				// check to see of this is an app org MSP
+				if _, ok := appOrgMSPs[k]; ok {
+					appRootCAs = append(appRootCAs, root)
+				}
+			}
+			for _, intermediate := range v.GetTLSIntermediateCerts() {
+				// check to see of this is an app org MSP
+				if _, ok := appOrgMSPs[k]; ok {
+					appRootCAs = append(appRootCAs, intermediate)
+				}
+			}
+		}
+	}
+	return appRootCAs
 }
 
 func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {

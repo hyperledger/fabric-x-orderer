@@ -22,6 +22,7 @@ message Request {
   bytes identity = 3;
   uint32 identity_id = 4;
   bytes trace_id = 5;
+  uint32 config_seq = 6;
 }
 
 service RequestTransmit {

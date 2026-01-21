@@ -44,15 +44,16 @@ func (fake *FakeRequestVerifier) Verify(arg1 *comm.Request) error {
 	fake.verifyArgsForCall = append(fake.verifyArgsForCall, struct {
 		arg1 *comm.Request
 	}{arg1})
+	stub := fake.VerifyStub
+	fakeReturns := fake.verifyReturns
 	fake.recordInvocation("Verify", []interface{}{arg1})
 	fake.verifyMutex.Unlock()
-	if fake.VerifyStub != nil {
-		return fake.VerifyStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.verifyReturns
 	return fakeReturns.result1
 }
 
@@ -104,15 +105,16 @@ func (fake *FakeRequestVerifier) VerifyStructureAndClassify(arg1 *comm.Request) 
 	fake.verifyStructureAndClassifyArgsForCall = append(fake.verifyStructureAndClassifyArgsForCall, struct {
 		arg1 *comm.Request
 	}{arg1})
+	stub := fake.VerifyStructureAndClassifyStub
+	fakeReturns := fake.verifyStructureAndClassifyReturns
 	fake.recordInvocation("VerifyStructureAndClassify", []interface{}{arg1})
 	fake.verifyStructureAndClassifyMutex.Unlock()
-	if fake.VerifyStructureAndClassifyStub != nil {
-		return fake.VerifyStructureAndClassifyStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.verifyStructureAndClassifyReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 

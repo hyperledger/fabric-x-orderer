@@ -15,6 +15,7 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
@@ -42,6 +43,10 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	batcher.StateProvider = stateProvider
@@ -88,6 +93,10 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
+
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
@@ -111,10 +120,13 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 		return ledger.AppendCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		return pool.RemoveRequestsCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
 	batcher.Stop()
 
 	require.False(t, pool.RestartArgsForCall(0))
-	require.Equal(t, 2, pool.RemoveRequestsCallCount())
 	require.Zero(t, pool.NextRequestsCallCount())
 }
 
@@ -140,6 +152,10 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -222,6 +238,10 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -316,6 +336,10 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
+
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
@@ -343,6 +367,9 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return pool.RemoveRequestsCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
 
 	stateChan <- &state.State{
 		Shards: []state.ShardTerm{
@@ -369,11 +396,14 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return ledger.AppendCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		return pool.RemoveRequestsCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+
 	batcher.Stop()
 
 	require.False(t, pool.RestartArgsForCall(0))
 	require.False(t, pool.RestartArgsForCall(1))
-	require.Equal(t, 2, pool.RemoveRequestsCallCount())
 	require.Zero(t, pool.NextRequestsCallCount())
 
 	require.Eventually(t, func() bool {
@@ -403,6 +433,10 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -474,6 +508,10 @@ func TestPrimaryWaiting(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
+
 	batcher.Start()
 
 	require.Eventually(t, func() bool {
@@ -512,6 +550,10 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -592,6 +634,10 @@ func TestResubmitPending(t *testing.T) {
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	batcher.ConfigSequenceGetter = configSeqGet
 
 	stateProvider := &mocks.FakeStateProvider{}
 	stateChan := make(chan *state.State)
@@ -702,6 +748,10 @@ func TestVerifyBatch(t *testing.T) {
 	ledger := &mocks.FakeBatchLedger{}
 	secondaryBatcher.Ledger = ledger
 
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	secondaryBatcher.ConfigSequenceGetter = configSeqGet
+
 	secondaryBatcher.Start()
 	defer secondaryBatcher.Stop()
 
@@ -741,7 +791,7 @@ func TestVerifyBatch(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 	verifier.VerifyBatchedRequestsReturns(nil)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 0)
+	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 1) // config seq mismatch, log as warning but append anyway
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -754,6 +804,15 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, 0)
 	})
 
+	batchersInfo := make([]config.BatcherInfo, len(batchers))
+	for i, id := range batchers {
+		batchersInfo[i] = config.BatcherInfo{
+			PartyID: id,
+		}
+	}
+
+	ledger := &mocks.FakeBatchLedger{}
+
 	batcher := &batcher.BatcherRole{
 		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
@@ -763,7 +822,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		Threshold:               2,
 		N:                       N,
 		Logger:                  logger,
-		Ledger:                  &mocks.FakeBatchLedger{},
+		Ledger:                  ledger,
 		BatchPuller:             &mocks.FakeBatchesPuller{},
 		StateProvider:           &mocks.FakeStateProvider{},
 		BAFCreator:              bafCreator,
@@ -772,7 +831,12 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		MemPool:                 &mocks.FakeMemPool{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
-		Metrics:                 batcher.NewBatcherMetrics(batcherID, shardID, logger, 0),
+		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
+			PartyId:                 batcherID,
+			ShardId:                 shardID,
+			MonitoringListenAddress: "127.0.0.1:0",
+			MetricsLogInterval:      0 * time.Second,
+		}, batchersInfo, ledger, logger),
 	}
 
 	return batcher

@@ -23,9 +23,10 @@ type UserConfig struct {
 	TLSCACerts         [][]byte `yaml:"TLSCACerts,omitempty"`
 	UseTLSRouter       string   `yaml:"UseTLSRouter,omitempty"`
 	UseTLSAssembler    string   `yaml:"UseTLSAssembler,omitempty"`
+	MSPDir             string   `yaml:"MSPDir,omitempty"`
 }
 
-func NewUserConfig(privateKeyPath string, tlsCertPath string, tlsCACerts [][]byte, network *genconfig.Network) (*UserConfig, error) {
+func NewUserConfig(mspDir string, privateKeyPath string, tlsCertPath string, tlsCACerts [][]byte, network *genconfig.Network) (*UserConfig, error) {
 	// collect router and assembler endpoints, required for defining a user
 	var routerEndpoints []string
 	var assemblerEndpoints []string
@@ -52,5 +53,6 @@ func NewUserConfig(privateKeyPath string, tlsCertPath string, tlsCACerts [][]byt
 		TLSCACerts:         tlsCACerts,
 		UseTLSRouter:       network.UseTLSRouter,
 		UseTLSAssembler:    network.UseTLSAssembler,
+		MSPDir:             mspDir,
 	}, nil
 }

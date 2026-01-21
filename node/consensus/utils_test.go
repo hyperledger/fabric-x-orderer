@@ -7,20 +7,21 @@ SPDX-License-Identifier: Apache-2.0
 package consensus_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
-	"os"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -32,8 +33,12 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 type node struct {
@@ -46,9 +51,13 @@ type node struct {
 
 type storageListener struct {
 	c chan *common.Block
+	f func()
 }
 
 func (l *storageListener) OnAppend(block *common.Block) {
+	if l.f != nil {
+		defer l.f()
+	}
 	l.c <- block
 }
 
@@ -156,8 +165,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 		logger := testutil.CreateLogger(t, int(partyID))
 		loggers = append(loggers, logger)
 
-		dir, err := os.MkdirTemp("", fmt.Sprintf("%s-consenter%d", t.Name(), i+1))
-		require.NoError(t, err)
+		dir := t.TempDir()
 
 		conf := makeConf(dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
@@ -174,7 +182,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 		c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
 		listeners = append(listeners, listener)
 
-		err = c.Start()
+		err := c.Start()
 		require.NoError(t, err)
 
 		consensusNodes = append(consensusNodes, c)
@@ -220,17 +228,25 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
 	bundle.ConfigtxValidatorReturns(configtxValidator)
+	policy := &policyMocks.FakePolicyEvaluator{}
+	policy.EvaluateSignedDataReturns(nil)
+	policyManager := &policyMocks.FakePolicyManager{}
+	policyManager.GetPolicyReturns(policy, true)
+	bundle.PolicyManagerReturns(policyManager)
 
 	return &nodeconfig.ConsenterNodeConfig{
-		Shards:             []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
-		Consenters:         consentersInfo,
-		PartyId:            partyID,
-		TLSPrivateKeyFile:  n.TLSKey,
-		TLSCertificateFile: n.TLSCert,
-		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-		Directory:          dir,
-		BFTConfig:          BFTConfig,
-		Bundle:             bundle,
+		Shards:                  []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
+		Consenters:              consentersInfo,
+		PartyId:                 partyID,
+		TLSPrivateKeyFile:       n.TLSKey,
+		TLSCertificateFile:      n.TLSCert,
+		SigningPrivateKey:       pem.EncodeToMemory(&pem.Block{Bytes: sk}),
+		Directory:               dir,
+		BFTConfig:               BFTConfig,
+		Bundle:                  bundle,
+		RequestMaxBytes:         1000,
+		MetricsLogInterval:      2 * time.Second,
+		MonitoringListenAddress: "127.0.0.1:0",
 	}
 }
 
@@ -268,15 +284,45 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 	return nil
 }
 
-// helper function to create and submit a request for testing
-func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence) error {
-	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence)
+// helper function to create and submit a request with a certain config seq for testing
+func createAndSubmitRequestWithConfigSeq(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence, configSeq types.ConfigSequence) error {
+	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence, configSeq)
 	if err != nil {
 		return err
 	}
 
 	controlEvent := &state.ControlEvent{BAF: baf}
 	return node.SubmitRequest(controlEvent.Bytes())
+}
+
+// helper function to create and submit a request for testing
+func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence) error {
+	return createAndSubmitRequestWithConfigSeq(node, sk, id, shard, digest, primary, sequence, 0)
+}
+
+// createAndSubmitConfigRequest creates and submits a config request control event for testing
+func createAndSubmitConfigRequest(node *consensus.Consensus, routerCert *x509.Certificate, payloadDataBytes []byte) (*protos.SubmitResponse, error) {
+	envelope := tx.CreateStructuredConfigUpdateEnvelope(payloadDataBytes)
+	request := &protos.Request{
+		Payload:   envelope.Payload,
+		Signature: envelope.Signature,
+	}
+	ctx, err := createContextForSubmitConfig(routerCert)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create a context for submit config")
+	}
+	return node.SubmitConfig(ctx, request)
+}
+
+func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, error) {
+	tlsInfo := credentials.TLSInfo{
+		State: tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		},
+	}
+	p := &peer.Peer{AuthInfo: tlsInfo}
+	ctx := peer.NewContext(context.Background(), p)
+	return ctx, nil
 }
 
 func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger types.Logger) consensus.Signer {

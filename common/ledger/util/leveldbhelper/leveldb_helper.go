@@ -11,7 +11,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/hyperledger/fabric-x-orderer/internal/fileutil"
+	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/pkg/errors"

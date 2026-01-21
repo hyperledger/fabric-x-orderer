@@ -9,6 +9,8 @@ package batcher_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"regexp"
 	"testing"
 	"time"
 
@@ -186,6 +188,38 @@ func TestBatcherRun(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 }
 
+func TestRunBatchersGetMetrics(t *testing.T) {
+	shardID := types.ShardID(1)
+	numParties := 1
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	totalTxNumber := 10
+	url := batchers[0].MonitoringServiceAddress()
+
+	for range totalTxNumber {
+		batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{byte(64)}))
+	}
+
+	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
+	re := regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
 func TestBatcherComplainAndReqFwd(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4
@@ -355,9 +389,63 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 		return stubConsenters[2].BAFCount() == 4*numParties && stubConsenters[3].BAFCount() == 4*numParties
 	}, 30*time.Second, 10*time.Millisecond)
 
-	for i := 0; i < numParties; i++ {
+	for i := range numParties {
 		require.Equal(t, uint64(4), batchers[i].Ledger.Height(1))
 	}
+
+	// now check if term change can occur while waiting for send baf
+
+	// stop another consenter – quorum (2/4) is not enough
+	stubConsenters[3].StopNet()
+
+	// submit another request, batch will be created but waiting for quorum
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{5}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(5) && batchers[1].Ledger.Height(1) == uint64(5)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return stubConsenters[2].BAFCount() == 5*numParties
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// submit another request – batcher should wait until the previous batch reaches quorum
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{6}))
+
+	time.Sleep(5 * time.Second)
+
+	// verify the batcher did not create a new batch
+	require.Equal(t, uint64(5), batchers[0].Ledger.Height(1))
+
+	for i := range numParties {
+		require.Equal(t, types.PartyID(1), batchers[i].GetPrimaryID())
+		require.Equal(t, uint64(0), batchers[i].Ledger.Height(2))
+	}
+
+	// change term
+	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	stubConsenters[0].UpdateState(termChangeState)
+	stubConsenters[2].UpdateState(termChangeState)
+
+	require.Eventually(t, func() bool {
+		return batchers[0].GetPrimaryID() == types.PartyID(2) && batchers[2].GetPrimaryID() == types.PartyID(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// recover all stub consenters
+	stubConsenters[3].Restart()
+	stubConsenters[1].Restart()
+
+	stubConsenters[1].UpdateState(termChangeState)
+	stubConsenters[3].UpdateState(termChangeState)
+
+	require.Eventually(t, func() bool {
+		return batchers[1].GetPrimaryID() == types.PartyID(2) && batchers[3].GetPrimaryID() == types.PartyID(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// the baf was not sent and remained in the mem pool, after a first strike the new primary will include it in a new batch
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(2) == uint64(1) && batchers[1].Ledger.Height(2) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
 }
 
 func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
@@ -441,4 +529,58 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 1
 		}, 60*time.Second, 10*time.Millisecond)
 	}
+}
+
+func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
+	defer clean()
+
+	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer clean()
+
+	// submit the first request and verify it was received
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// stopped batcher 2
+	batchers[1].Stop()
+
+	// submit another request
+	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
+
+	require.Eventually(t, func() bool {
+		return batchers[0].Ledger.Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// soft-stop all batchers except batcher 2
+	for i, b := range batchers {
+		if i != 1 {
+			b.SoftStop()
+		}
+	}
+
+	// recover batcher 2
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], batcherNodes[1], stubConsenters[1])
+
+	// batcher 2 should pull the missing batch
+	require.Eventually(t, func() bool {
+		return batchers[1].Ledger.Height(1) == uint64(2)
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// submit another request during soft-stop, should fail
+	_, err = batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	require.Error(t, err)
 }

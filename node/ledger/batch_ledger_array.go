@@ -56,6 +56,27 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		ledgerPartsMap[primaryPartyID] = part
 	}
 
+	names, err := provider.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		_, primaryPartyID, err := ChannelNameToShardParty(name)
+		if err != nil {
+			return nil, err
+		}
+		if ledgerPartsMap[primaryPartyID] != nil {
+			continue
+		}
+		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, logger)
+		if err != nil {
+			return nil, err
+		}
+
+		ledgerPartsMap[primaryPartyID] = part
+	}
+	// TODO consider saving parties and checking when appending to avoid mistakes (appending to a stale part)
+
 	return &BatchLedgerArray{
 		shardID:     shardID,
 		partyID:     partyID,
@@ -77,12 +98,12 @@ func (bla *BatchLedgerArray) Height(partyID types.PartyID) uint64 {
 	return part.Height()
 }
 
-func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchSequence, batchedRequests types.BatchedRequests) {
+func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests) {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
 	}
-	part.Append(batchSeq, batchedRequests)
+	part.Append(batchSeq, configSeq, batchedRequests)
 }
 
 func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch {

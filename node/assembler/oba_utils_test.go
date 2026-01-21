@@ -31,11 +31,6 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 		AvailableBatch: state.NewAvailableBatch(0, math.MaxUint16, 0, genesisDigest),
 		OrderingInformation: &state.OrderingInformation{
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: 0, PreviousHash: nil, DataHash: genesisDigest}},
-			BlockHeader: &state.BlockHeader{
-				Number:   0,
-				PrevHash: nil,
-				Digest:   genesisDigest,
-			},
 			DecisionNum: 0,
 			BatchIndex:  0,
 			BatchCount:  1,
@@ -48,18 +43,13 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 	return orderedBatchAttestationCreator, ba
 }
 
-func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisionNum types.DecisionNum, batchIndex, batchCount int) types.OrderedBatchAttestation {
-	if decisionNum-types.DecisionNum(obac.prevBa.OrderingInformation.Number) > 1 {
+func (obac *OrderedBatchAttestationCreator) Append(batchId types.BatchID, decisionNum types.DecisionNum, batchIndex, batchCount int) *state.AvailableBatchOrdered {
+	if decisionNum-types.DecisionNum(obac.prevBa.OrderingInformation.CommonBlock.Header.Number) > 1 {
 		panic("Cannot create non-consecutive BA")
 	}
 	ba := &state.AvailableBatchOrdered{
 		AvailableBatch: state.NewAvailableBatch(batchId.Primary(), batchId.Shard(), batchId.Seq(), batchId.Digest()),
 		OrderingInformation: &state.OrderingInformation{
-			BlockHeader: &state.BlockHeader{
-				Number:   uint64(decisionNum),
-				PrevHash: obac.headerHash,
-				Digest:   batchId.Digest(),
-			},
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: uint64(decisionNum), PreviousHash: obac.headerHash, DataHash: batchId.Digest()}},
 			DecisionNum: decisionNum,
 			BatchIndex:  batchIndex,

@@ -11,7 +11,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -27,9 +26,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -38,7 +40,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
+func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	if lastConfigBlock == nil {
 		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
 		return nil
@@ -63,6 +65,11 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 
 	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
 
+	// indicate that sync is required on startup when new consensus node joins the cluster
+	if consLedger.Height() == 0 && lastConfigBlock.Header.Number > 0 {
+		conf.BFTConfig.SyncOnStart = true
+	}
+
 	dbDir := filepath.Join(conf.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
 
@@ -77,7 +84,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 		Config:         conf,
 		BFTConfig:      conf.BFTConfig,
 		Arma: &Consenter{
-			State:           initialState,
 			DB:              badb,
 			Logger:          logger,
 			BAFDeserializer: &state.BAFDeserialize{},
@@ -91,15 +97,22 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net Net, lastConfigBlock 
 		Storage:                      consLedger,
 		SigVerifier:                  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:                       signer,
-		Metrics:                      NewConsensusMetrics(conf.PartyId, logger, conf.MetricsLogInterval),
-		RequestVerifier:              createConsensusRulesVerifier(conf),
+		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), logger),
+		RequestVerifier:              CreateConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
+		ConfigApplier:                &DefaultConfigApplier{},
+		ConfigRequestValidator: &configrequest.DefaultValidateConfigRequest{
+			ConfigUpdateProposer: configUpdateProposer,
+			Bundle:               conf.Bundle,
+		},
+		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
 	setupComm(c)
-	c.Synchronizer = createSynchronizer(consLedger, c)
-	c.BFT.Synchronizer = c.Synchronizer
+	sync := createSynchronizer(consLedger, c)
+	c.BFT.Synchronizer = sync
+	c.Synchronizer = sync
 
 	return c
 }
@@ -219,10 +232,9 @@ func getInitialStateAndMetadata(logger arma_types.Logger, config *config.Consent
 	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
 		initState := initialStateFromConfig(config)
-		if lastConfigBlock == nil {
-			panic(fmt.Sprintf("Error creating Consensus%d, genesis block is nil", config.PartyId))
+		if lastConfigBlock.Header.Number == 0 {
+			appendGenesisBlock(lastConfigBlock, initState, ledger)
 		}
-		appendGenesisBlock(lastConfigBlock, initState, ledger)
 		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0
 	}
 
@@ -253,9 +265,9 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 	var initState state.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
-	F := (uint16(initState.N) - 1) / 3
-	initState.Threshold = F + 1
-	initState.Quorum = uint16(math.Ceil((float64(initState.N) + float64(F) + 1) / 2.0))
+	_, T, Q := utils.ComputeFTQ(initState.N)
+	initState.Threshold = T
+	initState.Quorum = Q
 
 	for _, shard := range config.Shards {
 		initState.Shards = append(initState.Shards, state.ShardTerm{
@@ -418,7 +430,7 @@ func getSelfID(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID
 	return myIdentity
 }
 
-func createConsensusRulesVerifier(config *config.ConsenterNodeConfig) *requestfilter.RulesVerifier {
+func CreateConsensusRulesVerifier(config *config.ConsenterNodeConfig) *requestfilter.RulesVerifier {
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(config))

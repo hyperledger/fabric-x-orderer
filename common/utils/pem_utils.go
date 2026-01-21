@@ -26,6 +26,21 @@ func ReadPem(path string) ([]byte, error) {
 	return data, nil
 }
 
+func WritePEMToFile(path string, pemType string, bytes []byte) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed creating %s to %s", err, pemType, path)
+	}
+	defer file.Close()
+
+	err = pem.Encode(file, &pem.Block{Type: pemType, Bytes: bytes})
+	if err != nil {
+		return fmt.Errorf("err: %s, failed writing %s to %s", err, pemType, path)
+	}
+
+	return nil
+}
+
 func blockToPublicKey(block *pem.Block) []byte {
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {

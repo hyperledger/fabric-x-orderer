@@ -116,11 +116,7 @@ func AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block *common.Block) (types
 
 	ab := state.NewAvailableBatch(pr, sh, seq, block.GetHeader().GetDataHash())
 	oi := &state.OrderingInformation{
-		BlockHeader: &state.BlockHeader{
-			Number:   block.GetHeader().GetNumber(),
-			PrevHash: block.GetHeader().GetPreviousHash(),
-			Digest:   block.GetHeader().GetDataHash(),
-		},
+		CommonBlock: block,
 		Signatures:  bftSigs,
 		DecisionNum: num,
 		BatchIndex:  int(bI),
@@ -182,4 +178,32 @@ func BatchFrontierToString(frontier BatchFrontier) string {
 	sb.WriteString("}")
 
 	return sb.String()
+}
+
+func GetLastConfigIndexFromAssemblerLedger(assemblerLedger AssemblerLedgerReaderWriter) (uint64, error) {
+	ledgerHeight := assemblerLedger.LedgerReader().Height()
+	if ledgerHeight == 0 {
+		return 0, fmt.Errorf("assembler ledger is empty")
+	}
+	lastBlock, err := assemblerLedger.LedgerReader().RetrieveBlockByNumber(ledgerHeight - 1)
+	if err != nil {
+		return 0, fmt.Errorf("failed to retrieve last block from assembler ledger: %s", err)
+	}
+	lastConfigIndex, err := protoutil.GetLastConfigIndexFromBlock(lastBlock)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last config index from assebmler's last block: %s", err)
+	}
+	return lastConfigIndex, nil
+}
+
+func GetLastConfigBlockFromAssemblerLedger(assemblerLedger AssemblerLedgerReaderWriter) (*common.Block, error) {
+	lastConfigIndex, err := GetLastConfigIndexFromAssemblerLedger(assemblerLedger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last config block: %s", err)
+	}
+	lastConfigBlock, err := assemblerLedger.LedgerReader().RetrieveBlockByNumber(lastConfigIndex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last config block: %s", err)
+	}
+	return lastConfigBlock, nil
 }

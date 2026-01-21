@@ -30,15 +30,16 @@ func (fake *FakeConsenterControlEventSender) SendControlEvent(arg1 state.Control
 	fake.sendControlEventArgsForCall = append(fake.sendControlEventArgsForCall, struct {
 		arg1 state.ControlEvent
 	}{arg1})
+	stub := fake.SendControlEventStub
+	fakeReturns := fake.sendControlEventReturns
 	fake.recordInvocation("SendControlEvent", []interface{}{arg1})
 	fake.sendControlEventMutex.Unlock()
-	if fake.SendControlEventStub != nil {
-		return fake.SendControlEventStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.sendControlEventReturns
 	return fakeReturns.result1
 }
 
