@@ -8,6 +8,7 @@ package testutil
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/healthz"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,11 +80,50 @@ func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int
 	return -1
 }
 
+func FetchVersionInfoValue(t *testing.T, re *regexp.Regexp, url string) *operations.VersionInfoHandler {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	t.Log(string(body))
+
+	// Find all matches
+	matches := re.FindAllString(string(body), -1)
+
+	if len(matches) > 0 {
+		val := &operations.VersionInfoHandler{}
+		err := json.Unmarshal([]byte(matches[0]), val)
+		require.NoError(t, err)
+		return val
+	}
+
+	return nil
+}
+
 // CaptureArmaNodePrometheusServiceURL retrieves the Prometheus metrics endpoint URL from the given ArmaNodeInfo's session output.
 // It waits until the URL is found or times out, and returns the metrics endpoint as a string.
 func CaptureArmaNodePrometheusServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
+	return captureArmaNodeServiceURL(t, armaNodeInfo, `Prometheus serving on URL:\s+(https?://[^/\s]+/metrics)`)
+}
+
+// CaptureArmaNodeVersionInfoServiceURL retrieves the version info endpoint URL from the given ArmaNodeInfo's session output.
+// It waits until the URL is found or times out, and returns the version info endpoint as a string.
+func CaptureArmaNodeVersionInfoServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
+	return captureArmaNodeServiceURL(t, armaNodeInfo, `Version info serving on URL:\s+(https?://[^/\s]+/version)`)
+}
+
+func captureArmaNodeServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo, regex string) string {
 	var url string
-	re := regexp.MustCompile(`Prometheus serving on URL:\s+(https?://[^/\s]+/metrics)`)
+	re := regexp.MustCompile(regex)
 	require.Eventually(t, func() bool {
 		output := string(armaNodeInfo.RunInfo.Session.Err.Contents())
 		matches := re.FindStringSubmatch(output)
