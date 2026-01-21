@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -286,18 +287,8 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 }
 
 // TestRunNodesAndGetResponseFromOperationEndpoints verifies that the nodes respond correctly to operation endpoints INSECURED.
-// The test performs the following steps:
-// 1. Create a config YAML file to be an input to armageddon
-// 2. Run armageddon generate command to create config files in a folder structure
-// 3. Run arma with the generated config files to run each of the nodes for all parties
-// 4. Send transactions to the routers
-// 5. Verify that the batcher, consenter, and assembler are running and have no DEBUG logs in their output
-// 6. Update log spec to DEBUG for batcher, consenter, and assembler, and verify the change
-// 7. Verify that the batcher, consenter, and assembler have DEBUG logs in their output after sending transactions
-// 8. Query the batcher, consenter, and assembler's metrics endpoint and assert the incoming transaction count
-// 9. Query the batcher, consenter, and assembler's health check endpoint and assert the health status
 func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
-	// 1.
+	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	t.Cleanup(func() {
 		gexec.CleanupBuildArtifacts()
@@ -469,7 +460,7 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
-	require.NoError(t, err)
+	require.NoError(t, err, "failed to start a rate limiter")
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
@@ -538,5 +529,31 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return testutil.GetHealthCheckStatus(t, healthCheckRe, consenterHealthCheckURL)
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 14. Verify that the batcher and consenter version info endpoints respond with the correct commit SHA and version
+	consenterVersionInfoUrl := testutil.CaptureArmaNodeVersionInfoServiceURL(t, consenterToTest)
+
+	versionInfoRe := regexp.MustCompile(`^\{\s*"CommitSHA"\s*:\s*"([^"]*)"\s*,\s*"Version"\s*:\s*"([^"]*)"\s*\}$`)
+
+	require.Eventually(t, func() bool {
+		val := testutil.FetchVersionInfoValue(t, versionInfoRe, consenterVersionInfoUrl)
+		if val == nil {
+			return false
+		}
+		t.Logf("Fetched version info: CommitSHA=%s, Version=%s", val.CommitSHA, val.Version)
+		return val.CommitSHA == metadata.CommitSHA && val.Version == metadata.Version
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 15. Verify that the batcher version info endpoint responds with the correct commit SHA and version
+	batcherVersionInfoUrl := testutil.CaptureArmaNodeVersionInfoServiceURL(t, batcherToTest)
+
+	require.Eventually(t, func() bool {
+		val := testutil.FetchVersionInfoValue(t, versionInfoRe, batcherVersionInfoUrl)
+		if val == nil {
+			return false
+		}
+		t.Logf("Fetched version info: CommitSHA=%s, Version=%s", val.CommitSHA, val.Version)
+		return val.CommitSHA == metadata.CommitSHA && val.Version == metadata.Version
 	}, 30*time.Second, 100*time.Millisecond)
 }
