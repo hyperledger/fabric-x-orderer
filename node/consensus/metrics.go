@@ -76,7 +76,7 @@ type ConsensusMetrics struct {
 }
 
 func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, txCount uint64, logger *flogging.FabricLogger) *ConsensusMetrics {
-	host, port, err := net.SplitHostPort(consenterNodeConfig.MonitoringListenAddress)
+	host, port, err := net.SplitHostPort(consenterNodeConfig.Operations.ListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
 	}
@@ -96,7 +96,7 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisi
 	txsCount.Add(float64(txCount))
 
 	return &ConsensusMetrics{
-		interval: consenterNodeConfig.MetricsLogInterval,
+		interval: consenterNodeConfig.Metrics.MetricsLogInterval,
 		partyID:  consenterNodeConfig.PartyId,
 		logger:   logger,
 		stopChan: make(chan struct{}),

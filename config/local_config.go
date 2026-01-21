@@ -41,6 +41,28 @@ type NodeLocalConfig struct {
 	ConsensusParams *ConsensusParams `yaml:"Consensus,omitempty"`
 	// AssemblerParams controls Assembler specific params. For Router, Batcher or Consensus nodes this field is expected to be empty
 	AssemblerParams *AssemblerParams `yaml:"Assembler,omitempty"`
+	// OperationsConfig configures the operations server endpoint
+	OperationsConfig *Operations `yaml:"Operations,omitempty"`
+	// MetricsConfig configures the metrics provider
+	MetricsConfig *Metrics `yaml:"Metrics,omitempty"`
+}
+
+// Operations configures the operations endpoint for the orderer.
+type Operations struct {
+	// Host for the operations server
+	ListenAddress string `yaml:"ListenAddress,omitempty"`
+	// Port for the operations server
+	ListenPort uint32 `yaml:"ListenPort,omitempty"`
+	// TLS config for the operations server
+	TLS *TLSConfig
+}
+
+// Metrics configures the metrics provider for the orderer.
+type Metrics struct {
+	// The metrics provider is one of prometheus, or disabled
+	Provider string `yaml:"Provider,omitempty"`
+	// MetricsLogInterval defines metrics log period; 0 disables.
+	MetricsLogInterval time.Duration `yaml:"MetricsLogInterval,omitempty"`
 }
 
 // LocalConfig saves the node local config and the TLS and cluster settings with embedded crypto (not paths).
@@ -55,11 +77,6 @@ type GeneralConfig struct {
 	ListenAddress string `yaml:"ListenAddress,omitempty"`
 	// ListenPort is the port on which to bind to listen
 	ListenPort uint32 `yaml:"ListenPort,omitempty"`
-	// MonitoringListenPort is the port on which to expose the monitoring service
-	// If empty, the General.ListenAddress is used.
-	MonitoringListenPort uint32 `yaml:"MonitoringListenPort,omitempty"`
-	// MonitoringListenAddress is the address on which to bind to listen the monitoring service
-	MonitoringListenAddress string `yaml:"MonitoringListenAddress,omitempty"`
 	// TLSConfig is the TLS settings for the GRPC server
 	TLSConfig TLSConfigYaml `yaml:"TLS,omitempty"`
 	// Keepalive is the Keepalive settings for the GRPC server.
@@ -84,8 +101,6 @@ type GeneralConfig struct {
 	LogSpec string `yaml:"LogSpec,omitempty"`
 	// ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
 	ClientSignatureVerificationRequired bool `yaml:"ClientSignatureVerificationRequired,omitempty"`
-	// MetricsLogInterval defines metrics log period; 0 disables.
-	MetricsLogInterval time.Duration `yaml:"MetricsLogInterval,omitempty"`
 }
 
 type TLSConfigYaml struct {
@@ -211,6 +226,14 @@ func LoadLocalConfig(filePath string) (*LocalConfig, string, error) {
 	clusterConfig, err = loadClusterCryptoConfig(&nodeLocalConfig.GeneralConfig.Cluster)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
+	}
+
+	if nodeLocalConfig.OperationsConfig == nil {
+		nodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
+	}
+
+	if nodeLocalConfig.MetricsConfig == nil {
+		nodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
 	}
 
 	return &LocalConfig{
