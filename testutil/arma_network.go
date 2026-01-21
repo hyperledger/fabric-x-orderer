@@ -80,6 +80,16 @@ func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan string) {
 	}
 }
 
+func (armaNetwork *ArmaNetwork) StopParties(parties []types.PartyID) {
+	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+		for _, partyID := range parties {
+			for j := range armaNetwork.armaNodes[k][partyID-1] {
+				armaNetwork.armaNodes[k][partyID-1][j].StopArmaNode()
+			}
+		}
+	}
+}
+
 func (armaNetwork *ArmaNetwork) RestartParties(t *testing.T, parties []types.PartyID, readyChan chan string) {
 	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
 		for _, partyID := range parties {

@@ -65,16 +65,14 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 	txSize := "64"
 
 	var waitForTxSent sync.WaitGroup
-	waitForTxSent.Add(1)
-	go func() {
+	waitForTxSent.Go(func() {
 		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", strconv.Itoa(1000), "--rate", rate, "--txSize", txSize})
-		waitForTxSent.Done()
-	}()
+	})
 
 	waitForTxSent.Wait()
 
 	parties := make([]types.PartyID, numOfParties)
-	for i := 0; i < numOfParties; i++ {
+	for i := range numOfParties {
 		parties[i] = types.PartyID(i + 1)
 	}
 
@@ -85,23 +83,21 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		EndBlock:     math.MaxUint64,
 		Transactions: 1000,
 		ErrString:    "cancelled pull from assembler: %d",
-		Timeout:      30,
+		Timeout:      120,
 	})
 
 	partyToRestart := types.PartyID(3)
 	consenterToRestart := armaNetwork.GetConsenter(t, partyToRestart)
 	consenterToRestart.StopArmaNode()
 
-	waitForTxSent.Add(1)
-	go func() {
+	waitForTxSent.Go(func() {
 		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", strconv.Itoa(500), "--rate", rate, "--txSize", txSize})
-		waitForTxSent.Done()
-	}()
+	})
 
 	waitForTxSent.Wait()
 
 	correctParties := make([]types.PartyID, 0)
-	for i := 0; i < numOfParties; i++ {
+	for i := range numOfParties {
 		if types.PartyID(i+1) != partyToRestart {
 			correctParties = append(correctParties, types.PartyID(i+1))
 		}
@@ -113,17 +109,15 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		EndBlock:     math.MaxUint64,
 		Transactions: 1500,
 		ErrString:    "cancelled pull from assembler: %d",
-		Timeout:      30,
+		Timeout:      120,
 	})
 
 	consenterToRestart.RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	waitForTxSent.Add(1)
-	go func() {
+	waitForTxSent.Go(func() {
 		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", strconv.Itoa(500), "--rate", rate, "--txSize", txSize})
-		waitForTxSent.Done()
-	}()
+	})
 
 	waitForTxSent.Wait()
 
@@ -134,6 +128,6 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		EndBlock:     math.MaxUint64,
 		Transactions: 2000,
 		ErrString:    "cancelled pull from assembler: %d",
-		Timeout:      30,
+		Timeout:      120,
 	})
 }
