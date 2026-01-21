@@ -152,7 +152,9 @@ func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	defer gexec.CleanupBuildArtifacts()
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -161,12 +163,16 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	// 2. Create a temporary directory for the test.
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
 
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "none", "none")
-	defer netInfo.CleanUp()
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
 	numOfArmaNodes := len(netInfo)
 
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
@@ -190,7 +196,9 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	// Obtains a test user configuration and constructs a broadcast client.
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -266,7 +274,9 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	// compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	defer gexec.CleanupBuildArtifacts()
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -279,12 +289,16 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	// create a temporary directory for the test.
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
 
 	// create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
-	defer netInfo.CleanUp()
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
 	numOfArmaNodes := len(netInfo)
 
 	// generate the config files in the temporary directory using the armageddon generate command.
@@ -294,7 +308,9 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -317,7 +333,9 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	}
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
-	defer broadcastClient.Stop()
+	t.Cleanup(func() {
+		broadcastClient.Stop()
+	})
 
 	for i := range totalTxNumber {
 		status := rl.GetToken()
@@ -358,7 +376,9 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	uc.TLSCertificate = fakeClientCertKeyPair.Cert
 
 	broadcastClientInvalid := client.NewBroadcastTxClient(uc, 10*time.Second)
-	defer broadcastClientInvalid.Stop()
+	t.Cleanup(func() {
+		broadcastClientInvalid.Stop()
+	})
 
 	txContent := tx.PrepareTxWithTimestamp(0, 64, []byte("sessionNumber"))
 	env := tx.CreateStructuredEnvelope(txContent)

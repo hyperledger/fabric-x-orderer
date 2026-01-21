@@ -290,7 +290,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	// Verify that the removed party's batcher fails to connect to the primary batcher of its shard (as seen from its own stale view).
 	detectCh := removedBatcher.RunInfo.Session.Err.Detect(
-		`Failed creating Deliver stream to %s: .*error: tls: unknown certificate authority`,
+		`Failed creating Deliver stream to %s: .*error: tls: certificate required`,
 		primaryBatcherEndpoint,
 	)
 	defer removedBatcher.RunInfo.Session.Err.CancelDetects()

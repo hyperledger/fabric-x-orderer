@@ -230,7 +230,7 @@ github.com/hyperledger/fabric-protos-go-apiv2/orderer
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft
 github.com/hyperledger/fabric-protos-go-apiv2/peer
-# github.com/hyperledger/fabric-x-common v0.2.8
+# github.com/hyperledger/fabric-x-common v0.2.9-0.20260723080247-bb9c7dc14898
 ## explicit; go 1.26.5
 github.com/hyperledger/fabric-x-common/api/msppb
 github.com/hyperledger/fabric-x-common/api/ordererpb
@@ -260,8 +260,10 @@ github.com/hyperledger/fabric-x-common/protolator/protoext/peerext
 github.com/hyperledger/fabric-x-common/protoutil
 github.com/hyperledger/fabric-x-common/protoutil/identity
 github.com/hyperledger/fabric-x-common/protoutil/identity/mocks
+github.com/hyperledger/fabric-x-common/sampleconfig
 github.com/hyperledger/fabric-x-common/tools/configtxgen
 github.com/hyperledger/fabric-x-common/tools/configtxlator/update
+github.com/hyperledger/fabric-x-common/tools/cryptogen
 github.com/hyperledger/fabric-x-common/tools/fileutil
 github.com/hyperledger/fabric-x-common/tools/pkg/comm
 github.com/hyperledger/fabric-x-common/tools/pkg/comm/testpb

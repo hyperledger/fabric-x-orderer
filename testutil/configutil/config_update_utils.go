@@ -46,6 +46,7 @@ var (
 	sharedConfigPath               = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata"}
 	consenterMappingPath           = []string{"channel_group", "groups", "Orderer", "values", "Orderers", "value", "consenter_mapping"}
 	blockValidationPolicyValuePath = []string{"channel_group", "groups", "Orderer", "policies", "BlockValidation", "policy", "value"}
+	ordererGroupsMapPath           = []string{"channel_group", "groups", "Orderer", "groups"}
 )
 
 type (
@@ -530,7 +531,7 @@ func (c *ConfigUpdateBuilder) UpdatePartyTLSCACerts(t *testing.T, partyID types.
 
 	org := fmt.Sprintf("org%d", partyID)
 	overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
-	overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
+	// overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -559,11 +560,11 @@ func (c *ConfigUpdateBuilder) AppendPartyTLSCACerts(t *testing.T, partyID types.
 	}
 	overwriteNestedJSONValue(t, c.configData, ordererCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
 
-	applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs").([]any)
-	for _, cert := range tlsCACerts {
-		applicationCerts = append(applicationCerts, cert)
-	}
-	overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
+	// applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs").([]any)
+	// for _, cert := range tlsCACerts {
+	// 	applicationCerts = append(applicationCerts, cert)
+	// }
+	// overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
 
 	return c.createConfigUpdate(t, c.configData)
 }
@@ -586,7 +587,7 @@ func (c *ConfigUpdateBuilder) UpdatePartyCACerts(t *testing.T, partyID types.Par
 
 	org := fmt.Sprintf("org%d", partyID)
 	overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "root_certs")
-	overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
+	// overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -614,11 +615,32 @@ func (c *ConfigUpdateBuilder) AppendPartyCACerts(t *testing.T, partyID types.Par
 	}
 	overwriteNestedJSONValue(t, c.configData, ordererCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "root_certs")
 
-	applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs").([]any)
-	for _, cert := range caCerts {
-		applicationCerts = append(applicationCerts, cert)
-	}
-	overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
+	// applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs").([]any)
+	// for _, cert := range caCerts {
+	// 	applicationCerts = append(applicationCerts, cert)
+	// }
+	// overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateOrgKnownCerts(t *testing.T, orgID string, knownCerts [][]byte) []byte {
+	groupsList := getNestedJSONValue(t, c.configData, ordererGroupsMapPath...).(map[string]any)
+	org, exists := groupsList[orgID].(map[string]any)
+	require.True(t, exists, "OrgID %s not found in Orderer groups", orgID)
+
+	overwriteNestedJSONValue(t, org, knownCerts, "values", "MSP", "value", "config", "known_certs")
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) AppendOrgKnownCerts(t *testing.T, orgID string, knownCerts [][]byte) []byte {
+	groupsList := getNestedJSONValue(t, c.configData, ordererGroupsMapPath...).(map[string]any)
+	org, exists := groupsList[orgID].(map[string]any)
+	require.True(t, exists, "OrgID %s not found in Orderer groups", orgID)
+
+	orgKnownCerts := getNestedJSONValue(t, org, "values", "MSP", "value", "config", "known_certs").([][]byte)
+	orgKnownCerts = append(orgKnownCerts, knownCerts...)
+
+	overwriteNestedJSONValue(t, org, orgKnownCerts, "values", "MSP", "value", "config", "known_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -661,7 +683,7 @@ func (c *ConfigUpdateBuilder) AppendMSPRootCerts(t *testing.T, partyID types.Par
 func (c *ConfigUpdateBuilder) UpdateMSPAdminCerts(t *testing.T, partyID types.PartyID, adminCerts [][]byte) []byte {
 	org := fmt.Sprintf("org%d", partyID)
 	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "admins")
-	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "admins")
+	// overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "admins")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -933,7 +955,7 @@ type PartyConfig struct {
 }
 
 // AddNewParty adds a new party to the config with the given configuration and returns the config update bytes
-func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) []byte {
+func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, knownCerts [][]byte) []byte {
 	sharedConfig := getNestedJSONValue(t, c.configData, sharedConfigPath...)
 	maxPartyID := sharedConfig.(map[string]any)["MaxPartyID"].(float64)
 	partiesConfig := sharedConfig.(map[string]any)["PartiesConfig"].([]any)
@@ -1027,6 +1049,7 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) [
 	overwriteNestedJSONValue(t, newOrg, orgName, "policies", "Writers", "policy", "value", "identities", "principal", "msp_identifier")
 	overwriteNestedJSONValue(t, newOrg, newParty.CACerts, "values", "MSP", "value", "config", "root_certs")
 	overwriteNestedJSONValue(t, newOrg, newParty.TLSCACerts, "values", "MSP", "value", "config", "tls_root_certs")
+	overwriteNestedJSONValue(t, newOrg, knownCerts, "values", "MSP", "value", "config", "known_certs")
 	overwriteNestedJSONValue(t, newOrg, newParty.AdminCerts, "values", "MSP", "value", "config", "admins")
 	orgs[orgName] = newOrg
 
@@ -1143,13 +1166,13 @@ func CreateConfigTX(t *testing.T, dir string, signingParties []types.PartyID, su
 }
 
 func createAdminCertAndSigner(dir string, submittingParty int) (*crypto.ECDSASigner, []byte, error) {
-	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", submittingParty), "users", "admin", "msp", "keystore", "priv_sk")
+	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", submittingParty), "users", fmt.Sprintf("Admin@org%d", submittingParty), "msp", "keystore", "priv_sk")
 	submittingAdminSigner, err := createSigner(keyPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating a signer, err: %s", err)
 	}
 
-	certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", submittingParty), "users", "admin", "msp", "signcerts", fmt.Sprintf("Admin@Org%d-cert.pem", submittingParty))
+	certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", submittingParty), "users", fmt.Sprintf("Admin@org%d", submittingParty), "msp", "signcerts", fmt.Sprintf("Admin@org%d-cert.pem", submittingParty))
 	submittingAdminCert, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating a certificate, err: %s", err)
@@ -1319,7 +1342,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 		require.NoError(t, err)
 		batcherTlsCert, err := os.ReadFile(batcherNodeConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
 		require.NoError(t, err)
-		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", fmt.Sprintf("batcher%d-cert.pem", i+1)))
 		require.NoError(t, err)
 
 		batchersConfig[i] = &ordererpb.BatcherNodeConfig{
@@ -1331,14 +1354,31 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 		}
 	}
 
-	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "cacerts", "ca-cert.pem"))
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "cacerts", fmt.Sprintf("%s-CA-cert.pem", addedOrg)))
 	require.NoError(t, err)
-	tlsCACert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
+	tlsCACert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "tlscacerts", fmt.Sprintf("tls%s-CA-cert.pem", addedOrg)))
 	require.NoError(t, err)
-	consenterSignCert, err := os.ReadFile(filepath.Join(consenterConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+	consenterSignCert, err := os.ReadFile(filepath.Join(consenterConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "consenter-cert.pem"))
 	require.NoError(t, err)
-	adminCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts", fmt.Sprintf("Admin@Org%d-cert.pem", addedPartyId)))
+	adminCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts", fmt.Sprintf("Admin@%s-cert.pem", addedOrg)))
 	require.NoError(t, err)
+	knownCerts := [][]byte{}
+	knownCertsDir := filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "knowncerts")
+	if _, err := os.Stat(knownCertsDir); err == nil {
+		files, err := os.ReadDir(knownCertsDir)
+		require.NoError(t, err)
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			certPath := filepath.Join(knownCertsDir, file.Name())
+			certBytes, err := os.ReadFile(certPath)
+			require.NoError(t, err)
+			knownCerts = append(knownCerts, certBytes)
+		}
+	} else if !os.IsNotExist(err) {
+		require.NoError(t, err)
+	}
 
 	c.AddNewParty(t, &PartyConfig{
 		PartyConfig: ordererpb.PartyConfig{
@@ -1363,7 +1403,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 			BatchersConfig: batchersConfig,
 		},
 		AdminCerts: [][]byte{adminCert},
-	})
+	}, knownCerts)
 
 	return addedPartyId, addedNetInfo
 }
