@@ -156,6 +156,7 @@ func NewDefaultAssembler(
 	}
 
 	assembler.logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(assembler.opsSystem, assembler.logger))
+	assembler.logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(assembler.opsSystem, assembler.logger))
 	assembler.metrics.StartMetricsTracker()
 
 	return assembler

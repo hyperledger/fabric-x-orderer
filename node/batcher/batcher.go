@@ -152,6 +152,7 @@ func (b *Batcher) Run() {
 
 	b.metrics.StartMetricsTracker()
 	b.logger.Infof("Prometheus serving on URL: %s", b.MonitoringServiceAddress())
+	b.logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(b.opsSystem, b.logger))
 }
 
 func (b *Batcher) GetStatus() string {
