@@ -32,6 +32,32 @@ func CreateArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 	return &sharedConfig, nil
 }
 
+func ExtendArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string, outputBaseDir string) (*config.SharedConfigYaml, error) {
+	newSharedConfig := createNetworkSharedConfig(network, networkLocalConfig, cryptoBaseDir)
+
+	outputPath := filepath.Join(outputBaseDir, "bootstrap")
+	err := os.MkdirAll(outputPath, 0o755)
+	if err != nil {
+		return nil, err
+	}
+
+	sharedConfig := config.SharedConfigYaml{}
+	err = utils.ReadFromYAML(&sharedConfig, filepath.Join(outputPath, "shared_config.yaml"))
+	if err != nil {
+		return nil, err
+	}
+
+	sharedConfig.PartiesConfig = append(sharedConfig.PartiesConfig, newSharedConfig.PartiesConfig...)
+	sharedConfig.ConsensusConfig = newSharedConfig.ConsensusConfig
+	sharedConfig.BatchingConfig = newSharedConfig.BatchingConfig
+
+	err = utils.WriteToYAML(&sharedConfig, filepath.Join(outputPath, "shared_config.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	return &sharedConfig, nil
+}
+
 func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) config.SharedConfigYaml {
 	sharedConfig := config.SharedConfigYaml{
 		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
