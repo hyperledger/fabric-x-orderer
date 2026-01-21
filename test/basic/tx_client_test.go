@@ -60,7 +60,7 @@ func TestTxClientSend(t *testing.T) {
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 	defer broadcastClient.Stop()
 	require.NoError(t, err)
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		txContent := tx.PrepareTxWithTimestamp(i, 100, []byte("sessionNumber"))
 		env := tx.CreateStructuredEnvelope(txContent)
 		err = broadcastClient.SendTx(env)

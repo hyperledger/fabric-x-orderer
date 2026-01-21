@@ -17,13 +17,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -127,7 +127,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	})
 
 	// Create config update to change a party's certificates
-	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
@@ -207,7 +207,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	routerConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
-	var updatedPartyConfig *protos.PartyConfig
+	var updatedPartyConfig *ordererpb.PartyConfig
 	for _, partyConfig := range routerConfig.SharedConfig.GetPartiesConfig() {
 		if partyConfig.PartyID == uint32(partyToUpdate) {
 			updatedPartyConfig = partyConfig
@@ -382,7 +382,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	})
 
 	// 3.
-	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToUpdate := types.PartyID(1)
 	nonUpdatedParties := slices.DeleteFunc(slices.Clone(parties), func(partyID types.PartyID) bool {
@@ -463,11 +463,11 @@ func TestChangePartyCACertificates(t *testing.T) {
 	ordererConfig, ok := routerNodeConfig.Bundle.OrdererConfig()
 	require.True(t, ok, "failed to extract orderer config from the last config block")
 
-	routerSharedConfig := protos.SharedConfig{}
+	routerSharedConfig := ordererpb.SharedConfig{}
 	err = proto.Unmarshal(ordererConfig.ConsensusMetadata(), &routerSharedConfig)
 	require.NoError(t, err)
 
-	var updatedPartyConfig *protos.PartyConfig
+	var updatedPartyConfig *ordererpb.PartyConfig
 	for _, partyConfig := range routerSharedConfig.GetPartiesConfig() {
 		if partyConfig.PartyID == uint32(partyToUpdate) {
 			updatedPartyConfig = partyConfig
@@ -528,7 +528,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
 	require.NoError(t, err)
 
-	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
+	configUpdateBuilder = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
 	// Update the router TLS certs in the config
 	newRouterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "tls-cert.pem"))
@@ -624,7 +624,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	})
 
 	// 12.
-	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
+	configUpdateBuilder = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
 	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
 	require.NoError(t, err)

@@ -51,8 +51,7 @@ func TestSendConfigUpdate(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
 	require.NotNil(t, configUpdatePbData)
 
@@ -86,8 +85,7 @@ func TestPartyEvicted(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 	require.NotNil(t, configUpdatePbData)
 
@@ -120,8 +118,7 @@ func TestAssemblerEndpointUpdate(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.UpdateAssemblerEndpoint(t, partyId, "9.9.9.9", 9999)
 	require.NotNil(t, configUpdatePbData)
 
@@ -154,8 +151,7 @@ func TestAssemblerCertUpdate(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(testSetup.netInfo)
 	require.NotNil(t, nodesIPs)

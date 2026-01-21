@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,20 +30,20 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 	signCertPEM := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
 
 	t.Run("Valid party certificates", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
 				SignCert: signCertPEM,
 			},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
 					TlsCert:  tlsCertPEM,
 					SignCert: signCertPEM,
@@ -56,7 +56,7 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 	})
 
 	t.Run("Empty TLS CA certificates", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{},
 		}
 
@@ -66,7 +66,7 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 	})
 
 	t.Run("Invalid TLS CA certificate", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{[]byte("invalid")},
 			CACerts:    [][]byte{signCACertPEM},
 		}
@@ -77,10 +77,10 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 	})
 
 	t.Run("Invalid router TLS certificate", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: []byte("invalid"),
 			},
 		}
@@ -93,10 +93,10 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 	t.Run("TLS certificate not signed by provided CA", func(t *testing.T) {
 		_, _, differentTLSCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
 
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{differentTLSCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
 		}
@@ -110,20 +110,20 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 		// expired consenter cert
 		expiredConsenterTLSCert := generateTestTLSCert(t, tlsCACert, tlsCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  expiredConsenterTLSCert,
 				SignCert: signCertPEM,
 			},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
 					TlsCert:  tlsCertPEM,
 					SignCert: signCertPEM,
@@ -151,7 +151,7 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	signCertPEM := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
 
 	t.Run("Empty signing CA certificates", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{},
 		}
@@ -162,7 +162,7 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	})
 
 	t.Run("Invalid signing CA certificate", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{[]byte("invalid")},
 		}
@@ -173,16 +173,16 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	})
 
 	t.Run("Invalid consenter signing certificate", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
 				SignCert: []byte("invalid"),
 			},
@@ -196,16 +196,16 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	t.Run("Signing certificate not signed by provided CA", func(t *testing.T) {
 		_, _, differentSignCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
 
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{differentSignCACertPEM}, // Different CA
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
 				SignCert: signCertPEM, // Signed by different CA
 			},
@@ -219,20 +219,20 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	t.Run("Expired consenter signing certificate", func(t *testing.T) {
 		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
 				SignCert: expiredSignCert,
 			},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
 					TlsCert:  tlsCertPEM,
 					SignCert: signCertPEM,
@@ -250,20 +250,20 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("Invalid batcher signing certificate", func(t *testing.T) {
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
 				SignCert: signCertPEM,
 			},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
 					TlsCert:  tlsCertPEM,
 					SignCert: []byte("invalid"),
@@ -279,20 +279,20 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	t.Run("Expired batcher signing certificate", func(t *testing.T) {
 		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 
-		partyConfig := &config_protos.PartyConfig{
+		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
-			RouterConfig: &config_protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				TlsCert: tlsCertPEM,
 			},
-			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
 				SignCert: signCertPEM,
 			},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
 					TlsCert:  tlsCertPEM,
 					SignCert: expiredSignCert,

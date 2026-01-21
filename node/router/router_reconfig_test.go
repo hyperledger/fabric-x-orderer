@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -23,7 +24,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
@@ -66,8 +66,7 @@ func TestSendConfigUpdate(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
 	require.NotNil(t, configUpdatePbData)
 	testSetup.SendConfigUpdate(t, parties, configUpdatePbData, dir, 1)
@@ -102,8 +101,7 @@ func TestPartyEvicted(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 	require.NotNil(t, configUpdatePbData)
 	testSetup.SendConfigUpdate(t, parties, configUpdatePbData, dir, 1)
@@ -138,8 +136,7 @@ func TestUpdateRouterEndpoint(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.UpdateRouterEndpoint(t, partyToUpdate, "9.9.9.9", 9999)
 	require.NotNil(t, configUpdatePbData)
 	testSetup.SendConfigUpdate(t, parties, configUpdatePbData, dir, 1)
@@ -173,8 +170,7 @@ func TestUpdateRouterCert(t *testing.T) {
 	}, 20*time.Second, 100*time.Millisecond)
 
 	// create and deliver a config update that changes the router TLS certificate.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(testSetup.netInfo)
 	require.NotNil(t, nodesIPs)
@@ -239,8 +235,7 @@ func TestUpdateRouterMaxRequestBytes(t *testing.T) {
 	require.ErrorContains(t, err, "request verification error: the request's size exceeds the maximum size")
 
 	// create and deliver a config update that increases RequestMaxBytes.
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.UpdateBatchRequestMaxBytes(t, 3*requestMaxBytes)
 	require.NotNil(t, configUpdatePbData)
 
@@ -280,7 +275,7 @@ type reconfigTestSetup struct {
 	netInfo            map[testutil.NodeName]*testutil.ArmaNodeInfo
 
 	userConfig   *armageddon.UserConfig
-	sharedConfig *config_protos.SharedConfig
+	sharedConfig *ordererpb.SharedConfig
 }
 
 func (s *reconfigTestSetup) CreateRouterClient() (*grpc.ClientConn, error) {
@@ -384,7 +379,7 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 
 	ordererConfig, ok := routerBundle.OrdererConfig()
 	require.True(t, ok)
-	sharedConfig := config_protos.SharedConfig{}
+	sharedConfig := ordererpb.SharedConfig{}
 	err = proto.Unmarshal(ordererConfig.ConsensusMetadata(), &sharedConfig)
 	require.NoError(t, err)
 

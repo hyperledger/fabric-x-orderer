@@ -17,7 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	protosorderer "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
@@ -333,7 +333,7 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 	err = proto.Unmarshal(consensusTypeConfigValue.Value, consensusTypeValue)
 	require.NoError(t, err)
 	require.NotNil(t, consensusTypeValue)
-	sharedConfig := &protos.SharedConfig{}
+	sharedConfig := &ordererpb.SharedConfig{}
 	err = proto.Unmarshal(consensusTypeValue.Metadata, sharedConfig)
 	require.NoError(t, err)
 	sharedConfig.PartiesConfig[0].AssemblerConfig.Port = newPort

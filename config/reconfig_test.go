@@ -10,20 +10,20 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/stretchr/testify/require"
 )
 
 func TestIsPartyEvicted(t *testing.T) {
 	partyID := types.PartyID(1)
-	partyConfig := &protos.PartyConfig{
+	partyConfig := &ordererpb.PartyConfig{
 		PartyID: 2,
 	}
 	conf := &config.Configuration{
-		SharedConfig: &protos.SharedConfig{
-			PartiesConfig: []*protos.PartyConfig{partyConfig},
+		SharedConfig: &ordererpb.SharedConfig{
+			PartiesConfig: []*ordererpb.PartyConfig{partyConfig},
 			MaxPartyID:    1,
 		},
 	}
@@ -40,11 +40,11 @@ func TestIsPartyEvicted(t *testing.T) {
 func TestIsNodeConfigChangeRestartRequired_Fail(t *testing.T) {
 	logger := flogging.MustGetLogger("TestIsNodeConfigChangeRestartRequired")
 
-	_, err := config.IsNodeConfigChangeRestartRequired(nil, &protos.RouterNodeConfig{}, logger)
+	_, err := config.IsNodeConfigChangeRestartRequired(nil, &ordererpb.RouterNodeConfig{}, logger)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "config is nil")
 
-	_, err = config.IsNodeConfigChangeRestartRequired(&protos.ConsenterNodeConfig{}, &protos.RouterNodeConfig{}, logger)
+	_, err = config.IsNodeConfigChangeRestartRequired(&ordererpb.ConsenterNodeConfig{}, &ordererpb.RouterNodeConfig{}, logger)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "type mismatch")
 }
@@ -53,13 +53,13 @@ func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
 	logger := flogging.MustGetLogger("TestIsNodeConfigChangeRestartRequired")
 
 	// Test Router
-	currRouterConfig := &protos.RouterNodeConfig{
+	currRouterConfig := &ordererpb.RouterNodeConfig{
 		Host:    "127.0.0.1",
 		Port:    5060,
 		TlsCert: []byte("cert"),
 	}
 
-	newRouterConfig := &protos.RouterNodeConfig{
+	newRouterConfig := &ordererpb.RouterNodeConfig{
 		Host:    "127.0.0.1",
 		Port:    5060,
 		TlsCert: []byte("cert"),
@@ -83,7 +83,7 @@ func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
 	require.True(t, isRestartRequired)
 
 	// Test Batcher
-	currBatcherConfig := &protos.BatcherNodeConfig{
+	currBatcherConfig := &ordererpb.BatcherNodeConfig{
 		ShardID:  1,
 		Host:     "127.0.0.1",
 		Port:     5060,
@@ -91,7 +91,7 @@ func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
 		TlsCert:  []byte("TLSCert"),
 	}
 
-	newBatcherConfig := &protos.BatcherNodeConfig{
+	newBatcherConfig := &ordererpb.BatcherNodeConfig{
 		ShardID:  1,
 		Host:     "127.0.0.1",
 		Port:     5060,
