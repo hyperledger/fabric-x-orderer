@@ -8,6 +8,7 @@ package testutil
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -52,8 +53,23 @@ func GetAvailablePort(t testing.TB) (port string, ll net.Listener) {
 
 // FetchPrometheusMetricValue fetches the value of a Prometheus metric from the specified URL using the provided regular expression.
 // It returns the metric value as an integer. If the metric is not found or cannot be converted to an integer, it returns -1.
-func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int {
-	resp, err := http.Get(url)
+func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string, tlsOpts ...func(config *tls.Config)) int {
+	require.NotEmpty(t, url, "URL cannot be empty")
+	require.NotNil(t, re, "Regular expression cannot be nil")
+
+	tlsClientConfig := &tls.Config{}
+
+	for _, opt := range tlsOpts {
+		opt(tlsClientConfig)
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: tlsClientConfig,
+		},
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Get(url)
 	require.NoError(t, err)
 
 	defer resp.Body.Close()
