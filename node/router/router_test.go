@@ -571,14 +571,14 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	defer os.RemoveAll(configStoreDir)
 
 	// 5. Launch the batcher node stub
-	batcher := stub.NewStubBatcherFromConfig(t, configStoreDir, filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml"), netInfo["Party13batcher1"].Listener)
+	batcher := stub.NewStubBatcherFromConfig(t, configStoreDir, filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml"), netInfo[testutil.NodeName{PartyID: types.PartyID(1), NodeType: testutil.Batcher, ShardID: types.ShardID(1)}].Listener)
 	batcher.Start()
 	defer batcher.Stop()
 
 	// 6. Launch the router node
 	readyChan := make(chan string, 1)
 
-	routerNodeInfo := netInfo["Party14router"]
+	routerNodeInfo := netInfo[testutil.NodeName{PartyID: types.PartyID(1), NodeType: testutil.Router}]
 	routerNodeConfigPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 	localConfig, _, err := fabricx_config.LoadLocalConfig(routerNodeConfigPath)
 	require.NoError(t, err)
@@ -587,11 +587,11 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	localConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
 	utils.WriteToYAML(localConfig.NodeLocalConfig, routerNodeConfigPath)
 
-	testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, map[string]*testutil.ArmaNodeInfo{"Party14router": routerNodeInfo})
+	testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, map[testutil.NodeName]*testutil.ArmaNodeInfo{{PartyID: types.PartyID(1), NodeType: testutil.Router}: routerNodeInfo})
 	testutil.WaitReady(t, readyChan, 1, 10)
 
 	// 7. Launch the consenter node stub
-	consenterStub := stub.NewStubConsenterFromConfig(t, configStoreDir, filepath.Join(dir, "config", "party1", "local_config_consenter.yaml"), netInfo["Party11consensus"].Listener)
+	consenterStub := stub.NewStubConsenterFromConfig(t, configStoreDir, filepath.Join(dir, "config", "party1", "local_config_consenter.yaml"), netInfo[testutil.NodeName{PartyID: types.PartyID(1), NodeType: testutil.Consensus}].Listener)
 	consenterStub.Start()
 	defer consenterStub.Stop()
 
