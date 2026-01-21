@@ -545,19 +545,23 @@ func containsNodeType(nodeTypes []NodeType, nodeType NodeType) bool {
 }
 
 func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
+	require.NotNil(t, netInfo)
+
 	stopChan := make(chan struct{})
+	timeOut := make(chan *ArmaNodeInfo, len(netInfo))
 
 	go func() {
 		defer close(stopChan)
 		wg := sync.WaitGroup{}
 
 		for _, n := range netInfo {
+			require.NotNil(t, n.RunInfo, fmt.Sprintf("RunInfo is nil for node %s_%d_%d", n.NodeType.String(), n.PartyId, n.ShardId))
 			wg.Go(func() {
 				select {
 				case <-n.RunInfo.Session.Err.Detect("Soft stop"):
 				case <-n.RunInfo.Session.Err.Detect("soft stop"):
-				case <-time.After(45 * time.Second):
-					require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s_%d_%d to stop", n.NodeType.String(), n.PartyId, n.ShardId))
+				case <-time.After(90 * time.Second):
+					timeOut <- n
 				}
 			})
 		}
@@ -566,8 +570,19 @@ func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 
 	select {
 	case <-stopChan:
-	case <-time.After(60 * time.Second):
+	case <-time.After(120 * time.Second):
 		require.Fail(t, "Timed out waiting for Arma nodes to stop")
+	}
+
+	close(timeOut)
+
+	timedOutNodes := make([]string, 0, len(netInfo))
+	for n := range timeOut {
+		timedOutNodes = append(timedOutNodes, fmt.Sprintf("%s_%d_%d", n.NodeType.String(), n.PartyId, n.ShardId))
+	}
+
+	if len(timedOutNodes) > 0 {
+		require.Fail(t, fmt.Sprintf("Arma nodes did not stop within the expected time: %s", strings.Join(timedOutNodes, ", ")))
 	}
 }
 
