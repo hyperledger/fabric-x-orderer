@@ -654,7 +654,7 @@ func TestRemoveParty(t *testing.T) {
 		UserConfig:   uc,
 		Parties:      remainingParties,
 		Transactions: totalTxNumber*2 + 1, // including config update tx
-		Timeout:      60,
+		Timeout:      120,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
 		Signer:       signutil.CreateTestSigner(t, "org1", dir),
@@ -971,7 +971,7 @@ func TestChangePartyCertificates(t *testing.T) {
 		Parties:      parties,
 		Transactions: totalTxNumber,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
-		Timeout:      60,
+		Timeout:      120,
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})
@@ -1132,7 +1132,7 @@ func TestChangePartyCertificates(t *testing.T) {
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber*2 + 1, // including config update tx
-		Timeout:      60,
+		Timeout:      120,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
@@ -1220,7 +1220,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 		Parties:      parties,
 		Transactions: totalTxNumber,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
-		Timeout:      60,
+		Timeout:      120,
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})

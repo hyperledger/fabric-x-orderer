@@ -85,6 +85,19 @@ func (armaNetwork *ArmaNetwork) Stop() {
 	}
 }
 
+func (armaNetwork *ArmaNetwork) Len() int {
+	totalNodes := 0
+	for k := range armaNetwork.armaNodes {
+		for i := range armaNetwork.armaNodes[k] {
+			for range armaNetwork.armaNodes[k][i] {
+				totalNodes++
+			}
+		}
+	}
+
+	return totalNodes
+}
+
 func (armaNetwork *ArmaNetwork) Kill() {
 	for _, k := range []NodeType{Assembler, Consensus, Batcher, Router} {
 		for i := range armaNetwork.armaNodes[k] {
