@@ -198,6 +198,8 @@ func createSendStream(userConfig *armageddon.UserConfig, serverRootCAs [][]byte,
 		} else {
 			gRPCRouterClientConn.Close()
 		}
+	} else {
+		logger.Infof("failed to create gRPC connection to router %s: %s", endpoint, err.Error())
 	}
 	return nil
 }
