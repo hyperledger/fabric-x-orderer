@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger/mock"
@@ -165,7 +166,8 @@ func TestNewErrors(t *testing.T) {
 		})
 
 		_, err = New(dir, metricsProvider)
-		require.EqualError(t, err, fmt.Sprintf("error checking if dir [%s] is empty: lstat %s: permission denied", fileRepoDir, removeFile))
+		re := regexp.MustCompile(`^error checking if dir \[.*\] is empty: (lstat [^:]+: permission denied|fstatat [^:]+: permission denied)$`)
+		require.Regexp(t, re, err.Error())
 	})
 
 	t.Run("removal fails", func(t *testing.T) {

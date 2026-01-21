@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-ARG GO_VERSION=1.25.5
+ARG GO_VERSION=1.26.2
 
 FROM golang:${GO_VERSION}
 
