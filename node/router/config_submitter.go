@@ -118,7 +118,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
 	if err = cs.configRulesVerifier.ValidateNewConfig(env); err != nil {
-		feedback.err = fmt.Errorf("error in validating config roles: %w", err)
+		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
 		tr.responses <- feedback
 		return err
 	}
