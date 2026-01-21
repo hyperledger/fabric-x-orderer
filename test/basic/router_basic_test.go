@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging/httpadmin"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -34,18 +35,24 @@ import (
 // TestSubmitToRouterGetResponseFromOperationEndpoints tests the end-to-end flow of submitting transactions to the router
 // and verifying that the correct response is received from the operation endpoints INSECURED.
 // The test performs the following steps:
-//  1. Compiles the arma binary.
-//  2. Creates a temporary directory for test artifacts.
-//  3. Generates a network configuration YAML file.
-//  4. Uses the armageddon CLI to generate config files for the network.
-//  5. Starts the arma nodes and waits for them to be ready.
-//  6. Sends a specified number of transactions to the router using a rate limiter.
-//  7. Queries the router's metrics endpoint and asserts that the number of incoming transactions matches the number sent, within a timeout period.
-//  8. Queries the router's health check endpoint and asserts that the health status is "healthy" within a timeout period.
+// 1. Compile the arma binary.
+// 2. Create a temporary directory for the test.
+// 3. Create a config YAML file in the temporary directory.
+// 4. Generate the config files in the temporary directory using the armageddon generate command.
+// 5. Run the arma nodes.
+// 6. Send transactions to the routers.
+// 7. Verify that the router's log output contains DEBUG level logs after sending transactions.
+// 8. Query the router's metrics endpoint and assert the incoming transaction count.
+// 9. Query the router's health check endpoint and assert the health status.
+// 10. Verify that the router's log output contains DEBUG level logs after sending transactions.
+// 11. Query the router's metrics endpoint and assert the incoming transaction count.
+// 12. Query the router's health check endpoint and assert the health status.
 func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	defer gexec.CleanupBuildArtifacts()
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -57,12 +64,16 @@ func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 	// 2. Create a temporary directory for the test.
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
 
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
-	defer netInfo.CleanUp()
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
 	numOfArmaNodes := len(netInfo)
 
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
@@ -72,7 +83,9 @@ func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -80,7 +93,43 @@ func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, uc)
 
-	// 6. Send transactions to the routers.
+	routerToTest := armaNetwork.GetRouter(t, 1)
+
+	// 6. verify that the router's log output does not contain DEBUG level logs
+	debugRe := regexp.MustCompile("DEBU")
+	matches := debugRe.FindStringSubmatch(string(routerToTest.RunInfo.Session.Err.Contents()))
+	require.Len(t, matches, 0, "expected to not find DEBUG logs in router output")
+
+	// 7. Query the router's log specification endpoint.
+	logSpecUrl := testutil.CaptureArmaNodeLogSpecServiceURL(t, routerToTest)
+	logSpecRe := regexp.MustCompile(`^\{\s*"spec"\s*:\s*"([^"]*)"\s*\}`)
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, logSpecUrl)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "info" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 8. Update the router's log specification to "debug" and assert the change is reflected.
+	testutil.UpdateLogSpecValue(t, logSpecUrl, &httpadmin.LogSpec{Spec: "debug"})
+
+	require.Eventually(t, func() bool {
+		logSpec := testutil.FetchLogSpecValue(t, logSpecRe, logSpecUrl)
+		if logSpec == nil {
+			return false
+		}
+		if logSpec.Spec == "debug" {
+			return true
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 9. Send transactions to the routers.
 	totalTxNumber := 100
 	// rate limiter parameters
 	fillInterval := 10 * time.Millisecond
@@ -89,44 +138,40 @@ func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
-		os.Exit(3)
-	}
+	require.NoError(t, err)
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 	defer broadcastClient.Stop()
 
 	for i := range totalTxNumber {
 		status := rl.GetToken()
-		if !status {
-			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-			os.Exit(3)
-		}
+		require.Truef(t, status, "failed to send tx %d", i+1)
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
 		env := tx.CreateStructuredEnvelope(txContent)
 		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
-	// 7. Query the router's metrics endpoint and assert the incoming transaction count.
-	routerToMonitor := armaNetwork.GetRouter(t, 1)
-	url := testutil.CaptureArmaNodePrometheusServiceURL(t, routerToMonitor)
 
-	pattern := fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1))
-	re := regexp.MustCompile(pattern)
-
+	// 10. Verify that the router's log output contains DEBUG level logs after sending transactions.
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
+		matches := debugRe.FindStringSubmatch(string(routerToTest.RunInfo.Session.Err.Contents()))
+		return len(matches) > 0
 	}, 30*time.Second, 100*time.Millisecond)
 
-	// 8. Query the router's health check endpoint and assert the health status.
-	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, routerToMonitor)
-
-	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
-	re = regexp.MustCompile(pattern)
+	// 11. Query the router's metrics endpoint and assert the incoming transaction count.
+	prometheusUrl := testutil.CaptureArmaNodePrometheusServiceURL(t, routerToTest)
+	prometheusRe := regexp.MustCompile(fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1)))
 
 	require.Eventually(t, func() bool {
-		return testutil.GetHealthCheckStatus(t, re, url)
+		return testutil.FetchPrometheusMetricValue(t, prometheusRe, prometheusUrl) == totalTxNumber
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 12. Query the router's health check endpoint and assert the health status.
+	healthCheckUrl := testutil.CaptureArmaNodeHealthCheckServiceURL(t, routerToTest)
+	healthCheckRe := regexp.MustCompile(`^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, healthCheckRe, healthCheckUrl)
 	}, 30*time.Second, 100*time.Millisecond)
 }
 

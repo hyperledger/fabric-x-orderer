@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package testutil
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -18,7 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging/httpadmin"
 	"github.com/hyperledger/fabric-lib-go/healthz"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,10 +58,15 @@ func GetAvailablePort(t testing.TB) (port string, ll net.Listener) {
 // FetchPrometheusMetricValue fetches the value of a Prometheus metric from the specified URL using the provided regular expression.
 // It returns the metric value as an integer. If the metric is not found or cannot be converted to an integer, it returns -1.
 func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int {
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
 	require.NoError(t, err)
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return -1
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -81,8 +90,12 @@ func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int
 // CaptureArmaNodePrometheusServiceURL retrieves the Prometheus metrics endpoint URL from the given ArmaNodeInfo's session output.
 // It waits until the URL is found or times out, and returns the metrics endpoint as a string.
 func CaptureArmaNodePrometheusServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
+	return captureArmaNodeServiceURL(t, armaNodeInfo, `Prometheus serving on URL:\s+(https?://[^/\s]+/metrics)`)
+}
+
+func captureArmaNodeServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo, regex string) string {
 	var url string
-	re := regexp.MustCompile(`Prometheus serving on URL:\s+(https?://[^/\s]+/metrics)`)
+	re := regexp.MustCompile(regex)
 	require.Eventually(t, func() bool {
 		output := string(armaNodeInfo.RunInfo.Session.Err.Contents())
 		matches := re.FindStringSubmatch(output)
@@ -94,6 +107,39 @@ func CaptureArmaNodePrometheusServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInf
 	}, 60*time.Second, 10*time.Millisecond)
 
 	return url
+}
+
+// CaptureArmaNodeLogSpecServiceURL retrieves the log specification endpoint URL from the given ArmaNodeInfo's session output.
+// It waits until the URL is found or times out, and returns the log specification endpoint as a string.
+func CaptureArmaNodeLogSpecServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
+	return captureArmaNodeServiceURL(t, armaNodeInfo, `Logging spec service serving on URL:\s+(https?://[^/\s]+/logspec)`)
+}
+
+// FetchLogSpecValue fetches the log specification value from the specified URL using the provided regular expression.
+// It returns a pointer to a LogSpec struct if the value is successfully retrieved and parsed, or nil if an error occurs.
+func FetchLogSpecValue(t *testing.T, re *regexp.Regexp, url string) *httpadmin.LogSpec {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	t.Log(string(body))
+
+	// Find all matches
+	matches := re.FindStringSubmatch(string(body))
+	if len(matches) > 1 {
+		return &httpadmin.LogSpec{Spec: matches[1]}
+	}
+
+	return nil
 }
 
 // GetHealthCheckStatus retrieves the health status from the given health check endpoint URL using the provided regular expression.
@@ -125,17 +171,29 @@ func GetHealthCheckStatus(t *testing.T, re *regexp.Regexp, url string) bool {
 // CaptureArmaNodeHealthCheckServiceURL retrieves the health check endpoint URL from the given ArmaNodeInfo's session output.
 // It waits until the URL is found or times out, and returns the health check endpoint as a string.
 func CaptureArmaNodeHealthCheckServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) string {
-	var url string
-	re := regexp.MustCompile(`Health check serving on URL:\s+(https?://[^/\s]+/healthz)`)
-	require.Eventually(t, func() bool {
-		output := string(armaNodeInfo.RunInfo.Session.Err.Contents())
-		matches := re.FindStringSubmatch(output)
-		if len(matches) > 1 {
-			url = matches[1]
-			return true
-		}
-		return false
-	}, 60*time.Second, 10*time.Millisecond)
+	return captureArmaNodeServiceURL(t, armaNodeInfo, `Health check serving on URL:\s+(https?://[^/\s]+/healthz)`)
+}
 
-	return url
+// UpdateLogSpecValue updates the log specification value at the specified URL using an HTTP PUT request with the provided LogSpec.
+// It asserts that the request is successful and returns without error.
+func UpdateLogSpecValue(t *testing.T, url string, logSpec *httpadmin.LogSpec) {
+	resp, err := putJSON(url, logSpec)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+func putJSON(url string, v any) (*http.Response, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	return client.Do(req)
 }

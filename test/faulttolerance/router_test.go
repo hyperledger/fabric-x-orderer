@@ -253,10 +253,7 @@ func TestRouterRestartRecover(t *testing.T) {
 
 	for i := range totalTxNumber {
 		status := rl.GetToken()
-		if !status {
-			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-			os.Exit(3)
-		}
+		require.Truef(t, status, "failed to send tx %d", i+1)
 		txContent := tx.PrepareTxWithTimestamp(totalTxSent+i, 64, []byte("sessionNumber"))
 		env := tx.CreateStructuredEnvelope(txContent)
 		err = broadcastClient.SendTx(env)
