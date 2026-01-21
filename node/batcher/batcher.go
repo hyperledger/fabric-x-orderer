@@ -143,9 +143,9 @@ func (b *Batcher) replicateState() {
 						if err := b.ConfigStore.Add(lastBlock); err != nil {
 							b.logger.Panicf("Failed adding config block to config store: %s", err)
 						}
-						b.logger.Warnf("Soft stop")
+						b.logger.Infof("Soft stop")
 						go b.SoftStop()
-						// TODO: apply the config
+						return
 					}
 				} else {
 					b.logger.Errorf("Pulled config decision but last block is not a config block")

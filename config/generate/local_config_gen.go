@@ -105,6 +105,7 @@ func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseD
 		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", trimPortFromEndpoint(party.ConsenterEndpoint), getPortFromEndpoint(party.ConsenterEndpoint), DefaultConsenterMonitoringPort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", trimPortFromEndpoint(party.AssemblerEndpoint), getPortFromEndpoint(party.AssemblerEndpoint), DefaultAssemblerMonitoringPort, DefaultMetricsLogInterval, useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		partyLocalConfig := PartyLocalConfig{
+			ID:                   party.ID,
 			RouterLocalConfig:    NewRouterLocalConfig(routerGeneralParams),
 			BatchersLocalConfig:  NewBatchersLocalConfigPerParty(party.ID, party.BatchersEndpoints, cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired),
 			ConsenterLocalConfig: NewConsensusLocalConfig(consensusGeneralParams),
@@ -121,8 +122,8 @@ func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseD
 }
 
 func createArmaConfigFiles(networkLocalConfig *NetworkLocalConfig, configBaseDir string) error {
-	for i, partyLocalConfig := range networkLocalConfig.PartiesLocalConfig {
-		err := createPartyConfigFiles(partyLocalConfig, configBaseDir, types.PartyID(uint16(i+1)))
+	for _, partyLocalConfig := range networkLocalConfig.PartiesLocalConfig {
+		err := createPartyConfigFiles(partyLocalConfig, configBaseDir, partyLocalConfig.ID)
 		if err != nil {
 			return err
 		}
