@@ -131,7 +131,7 @@ type BatcherNodeConfig struct {
 	ShardId                             types.ShardID
 	TLSPrivateKeyFile                   RawBytes
 	TLSCertificateFile                  RawBytes
-	ClientRootCAs                       [][]byte // Clients that are specified in the local configuration of the Batcher node only
+	ClientRootCAs                       [][]byte
 	SigningPrivateKey                   RawBytes
 	MemPoolMaxSize                      uint64
 	BatchMaxSize                        uint32
@@ -160,7 +160,7 @@ type ConsenterNodeConfig struct {
 	PartyId                             types.PartyID
 	TLSPrivateKeyFile                   RawBytes
 	TLSCertificateFile                  RawBytes
-	ClientRootCAs                       [][]byte // Clients that are specified in the local configuration of the Consenter node only
+	ClientRootCAs                       [][]byte
 	SigningPrivateKey                   RawBytes
 	WALDir                              string
 	BFTConfig                           smartbft_types.Configuration
