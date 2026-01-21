@@ -2357,3 +2357,167 @@ func TestReplacePartiesPartially(t *testing.T) {
 		Signer:       pullRequestSigner,
 	})
 }
+
+// TestRemoveMultipleParties verifies that the Arma orderer network can dynamically remove multiple parties
+// through configuration updates and continue operating correctly with the remaining parties.
+func TestRemoveMultipleParties(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 7
+	numOfShards := 1
+	submittingPartyID := types.PartyID(1)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	require.NotNil(t, netInfo)
+	defer netInfo.CleanUp()
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	configFilePath := filepath.Join(
+		dir,
+		"config",
+		fmt.Sprintf("party%d", types.PartyID(submittingPartyID)),
+		"local_config_router.yaml",
+	)
+	conf, _, err := config.LoadLocalConfig(configFilePath)
+	require.NoError(t, err)
+
+	// Modify the router configuration to require client signature verification.
+	conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+	err = utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+	require.NoError(t, err)
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	uc, err := testutil.GetUserConfig(dir, submittingPartyID)
+	require.NoError(t, err)
+
+	txNumber := 10
+	totalTxNumber := 0
+	// Send transactions to all parties to ensure network is operational before config update
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	submittingOrg := fmt.Sprintf("org%d", submittingPartyID)
+
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown := common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Timeout:      60,
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	broadcastClient.Stop()
+
+	configBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
+
+	for range 3 {
+		// Create config update to remove a party
+		builder, _ := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		builder.RemoveParty(t, types.PartyID(numOfParties))
+
+		broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+		// Send the config tx
+		env := configutil.CreateConfigTX(t, dir, parties, int(submittingPartyID), builder.ConfigUpdatePBData(t))
+		require.NotNil(t, env)
+
+		err = broadcastClient.SendTxTo(env, submittingPartyID)
+		require.NoError(t, err)
+		totalTxNumber++
+
+		// Wait for Arma nodes to stop
+		testutil.WaitSoftStopped(t, netInfo)
+
+		broadcastClient.Stop()
+		// Stop Arma nodes
+		armaNetwork.Stop()
+
+		// Read the last config block to get the updated config after removing a party
+		_, lastConfigBlock, err := config.ReadConfig(filepath.Join(dir, "config", fmt.Sprintf("party%d", submittingPartyID), "local_config_assembler.yaml"), flogging.MustGetLogger("TestRemoveMultipleParties"))
+		require.NoError(t, err)
+		// Write the last config block to a separate location to be used for restarting the Arma nodes with the updated config
+		configBlockPath = filepath.Join(dir, fmt.Sprintf("config.block.%d", numOfParties))
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
+		require.NoError(t, err)
+
+		uc.RouterEndpoints = slices.DeleteFunc(uc.RouterEndpoints, func(endpoint string) bool {
+			return endpoint == netInfo[testutil.NodeName{PartyID: types.PartyID(numOfParties), NodeType: testutil.Router}].Listener.Addr().String()
+		})
+		uc.AssemblerEndpoints = slices.DeleteFunc(uc.AssemblerEndpoints, func(endpoint string) bool {
+			return endpoint == netInfo[testutil.NodeName{PartyID: types.PartyID(numOfParties), NodeType: testutil.Assembler}].Listener.Addr().String()
+		})
+		maps.DeleteFunc(netInfo, func(nodeName testutil.NodeName, _ *testutil.ArmaNodeInfo) bool {
+			return nodeName.PartyID == types.PartyID(numOfParties)
+		})
+		parties = parties[:numOfParties-1]
+		numOfParties--
+
+		numOfArmaNodes = len(netInfo)
+		readyChan = make(chan string, numOfArmaNodes)
+		armaNetwork = testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+		testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	}
+	// After removing parties, verify that the remaining parties can still process transactions with the updated config
+	// Send transactions to all parties to ensure network is operational after all the config updates
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	submittingOrg = fmt.Sprintf("org%d", submittingPartyID)
+
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+
+	broadcastClient.Stop()
+
+	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Timeout:      60,
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+}
