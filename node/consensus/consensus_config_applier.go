@@ -31,13 +31,12 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 	}
 	ordererConfig, exists := bundle.OrdererConfig()
 	if !exists {
-		return nil, errors.Wrapf(err, "orderer entry in the config block is empty")
+		return nil, errors.New("orderer entry in the config block is empty")
 	}
 
 	consensusMetadata := ordererConfig.ConsensusMetadata()
 	sharedConfig := &config_protos.SharedConfig{}
-	err = proto.Unmarshal(consensusMetadata, sharedConfig)
-	if err != nil {
+	if err := proto.Unmarshal(consensusMetadata, sharedConfig); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
 	}
 
