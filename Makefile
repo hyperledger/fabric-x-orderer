@@ -94,5 +94,5 @@ CREATED=$(ORDERER_CREATED)
 .PHONY: build-multiplatform-image
 build-multiplatform-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) 
---build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --
+	build-arg CREATED=$(ORDERER_CREATED)
