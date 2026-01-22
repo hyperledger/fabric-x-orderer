@@ -555,8 +555,6 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	// Ensure node recovers correctly
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(2), b2.Header.Number)
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(3), b2.Header.Number)
 
 	// Restart the other node
 	err = recoverNode(t, setup, 0, ca, genesisBlock)
@@ -584,6 +582,8 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	require.Equal(t, uint64(3), b.Header.Number)
 	b = <-setup.listeners[0].c
 	require.Equal(t, uint64(4), b.Header.Number)
+	b2 = <-setup.listeners[2].c
+	require.Equal(t, uint64(3), b2.Header.Number)
 	b2 = <-setup.listeners[2].c
 	require.Equal(t, uint64(4), b2.Header.Number)
 
