@@ -87,12 +87,10 @@ sample-tests:
 .PHONY: build-image
 build-image:
 	@echo "Building the image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg 
-CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the HLFX Orderer multiplatform image
 .PHONY: build-multiplatform-image
 build-multiplatform-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --
-	build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
