@@ -18,9 +18,11 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/msputils"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	arma_node "github.com/hyperledger/fabric-x-orderer/node"
@@ -144,22 +146,24 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure the config block is committed and stop the consensus node
-	var lastDecision *common.Block
-	require.Eventually(t, func() bool {
-		lastDecision = <-ledgerListeners[0].c
-		return lastDecision.Header.Number == uint64(2)
-	}, 30*time.Second, 100*time.Millisecond)
-	proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
-	require.NotNil(t, proposal)
-	require.NoError(t, err)
-	header := &state.Header{}
-	err = header.Deserialize(proposal.Header)
-	require.NoError(t, err)
-	lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
-	require.True(t, protoutil.IsConfigBlock(lastBlock))
-	require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
+	var lastConfigBlock *common.Block
+	for i, consensusNode := range consensusNodes {
+		var lastDecision *common.Block
+		require.Eventually(t, func() bool {
+			lastDecision = <-ledgerListeners[i].c
+			return lastDecision.Header.Number == uint64(2)
+		}, 30*time.Second, 100*time.Millisecond)
 
-	for _, consensusNode := range consensusNodes {
+		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
+		require.NotNil(t, proposal)
+		require.NoError(t, err)
+		header := &state.Header{}
+		err = header.Deserialize(proposal.Header)
+		require.NoError(t, err)
+		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
+
 		consensusNode.Stop()
 	}
 
@@ -217,8 +221,110 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	controlEvent.BAF = baf
 	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		b := <-ledgerListeners[0].c
-		return b.Header.Number == uint64(3)
-	}, 30*time.Second, 100*time.Millisecond)
+	for i := range numOfParties {
+		require.Eventually(t, func() bool {
+			b := <-ledgerListeners[i].c
+			return b.Header.Number == uint64(3)
+		}, 30*time.Second, 100*time.Millisecond)
+	}
+
+	// Submit to consensus a config request from router that removes a party
+	configBlockStoreDir := t.TempDir()
+	defer os.RemoveAll(configBlockStoreDir)
+	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(configBlockStoreDir, "config.block"))
+	require.NoError(t, err)
+	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
+	defer cleanUp()
+	configUpdatePbData = configUpdateBuilder.RemoveParty(t, types.PartyID(5))
+	env = configutil.CreateConfigTX(t, dir, numOfParties, 1, configUpdatePbData)
+	configReq = &protos.Request{
+		Payload:   env.Payload,
+		Signature: env.Signature,
+	}
+	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
+	require.NoError(t, err)
+
+	// make sure the config block is committed and stop the consensus node
+	for i, consensusNode := range consensusNodes {
+		var lastDecision *common.Block
+		require.Eventually(t, func() bool {
+			lastDecision = <-ledgerListeners[i].c
+			return lastDecision.Header.Number == uint64(4)
+		}, 30*time.Second, 100*time.Millisecond)
+
+		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
+		require.NotNil(t, proposal)
+		require.NoError(t, err)
+		header := &state.Header{}
+		err = header.Deserialize(proposal.Header)
+		require.NoError(t, err)
+		lastConfigBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
+
+		consensusNode.Stop()
+	}
+
+	numOfParties = 4
+
+	// Get all to create consensus again
+	consensusNodes = make([]*consensus_node.Consensus, 0, numOfParties)
+	servers = make([]*comm.GRPCServer, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
+		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+		require.NoError(t, err)
+		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
+		require.NotNil(t, consenterConfig)
+		localmsp := msputils.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := localmsp.GetDefaultSigningIdentity()
+		require.NoError(t, err)
+		require.NotNil(t, signer)
+		consenterLogger := testutil.CreateLogger(t, i)
+		server := arma_node.CreateGRPCConsensus(consenterConfig)
+		servers = append(servers, server)
+		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
+		consensusNodes = append(consensusNodes, consensus)
+	}
+
+	// Register and start grpc server
+	for i, consensusNode := range consensusNodes {
+		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
+		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
+		orderer.RegisterClusterNodeServiceServer(servers[i].Server(), consensusNode)
+		go func() {
+			servers[i].Start()
+		}()
+	}
+
+	// Start consensus
+	ledgerListeners = make([]*storageListener, 0, numOfParties)
+	for _, consensusNode := range consensusNodes {
+		consensusNode.Start()
+		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+		ledgerListeners = append(ledgerListeners, ledgerListener)
+	}
+
+	time.Sleep(5 * time.Second)
+
+	// Send another simple request
+	for _, consensusNode := range consensusNodes {
+		baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest125, 1, 0, 1)
+		require.NoError(t, err)
+		controlEvent = &state.ControlEvent{BAF: baf}
+		err = consensusNode.SubmitRequest(controlEvent.Bytes())
+		require.ErrorContains(t, err, "mismatch config sequence")
+	}
+	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest125, 1, 0, 2)
+	require.NoError(t, err)
+	controlEvent.BAF = baf
+	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
+	require.NoError(t, err)
+	for i := range numOfParties {
+		require.Eventually(t, func() bool {
+			b := <-ledgerListeners[i].c
+			return b.Header.Number == uint64(5)
+		}, 30*time.Second, 100*time.Millisecond)
+	}
 }
