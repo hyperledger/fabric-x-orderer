@@ -76,14 +76,14 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 	netInfo := make(map[string]*ArmaNodeInfo)
 	runOrderMap := map[string]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
 
-	for i := 0; i < numOfParties; i++ {
+	for i := range numOfParties {
 		assemblerPort, lla := GetAvailablePort(t)
 		consenterPort, llc := GetAvailablePort(t)
 		routerPort, llr := GetAvailablePort(t)
 		var llbs []net.Listener
 		var batchersEndpoints []string
 
-		for n := 0; n < numOfBatcherShards; n++ {
+		for range numOfBatcherShards {
 			batcherPort, llb := GetAvailablePort(t)
 			llbs = append(llbs, llb)
 			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
@@ -172,6 +172,7 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	case <-time.After(60 * time.Second):
 		require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to start", name))
 	case <-sess.Err.Detect("panic"):
+		// panic in order to catch it in the test
 		panic("arma node failed to start")
 	case <-sess.Err.Detect("listening on"):
 		readyChan <- struct{}{}
