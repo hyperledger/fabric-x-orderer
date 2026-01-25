@@ -287,6 +287,12 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		consensusNodes = append(consensusNodes, consensus)
 	}
 
+	// Try to get the removed party
+	removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", numOfParties+1), "local_config_consenter.yaml")
+	removedNodeConfigContent, removedNodeLastConfigBlock, err := config.ReadConfig(removedNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+	require.NoError(t, err)
+	require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
+
 	// Register and start grpc server
 	for i, consensusNode := range consensusNodes {
 		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
