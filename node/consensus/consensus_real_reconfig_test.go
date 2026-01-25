@@ -205,11 +205,13 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// Send another simple request
-	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest124, 1, 0, 0)
-	require.NoError(t, err)
-	controlEvent = &state.ControlEvent{BAF: baf}
-	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
-	require.ErrorContains(t, err, "mismatch config sequence")
+	for _, consensusNode := range consensusNodes {
+		baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest124, 1, 0, 0)
+		require.NoError(t, err)
+		controlEvent = &state.ControlEvent{BAF: baf}
+		err = consensusNode.SubmitRequest(controlEvent.Bytes())
+		require.ErrorContains(t, err, "mismatch config sequence")
+	}
 	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest124, 1, 0, 1)
 	require.NoError(t, err)
 	controlEvent.BAF = baf
