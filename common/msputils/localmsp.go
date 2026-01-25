@@ -8,35 +8,25 @@ package msputils
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric/msp"
 )
 
 func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *factory.FactoryOpts) msp.MSP {
-	var factoryOpts *factory.FactoryOpts
-	if bccspConfig != nil {
-		if bccspConfig.Default != "" {
-			factoryOpts = &factory.FactoryOpts{
-				Default: bccspConfig.Default,
-			}
-		}
-
-		if bccspConfig.SW != nil {
-			factoryOpts.SW = &factory.SwOpts{
-				Security: bccspConfig.SW.Security,
-				Hash:     bccspConfig.SW.Hash,
-			}
-
-			if bccspConfig.SW.FileKeystore != nil {
-				factoryOpts.SW.FileKeystore = &factory.FileKeystoreOpts{
-					KeyStorePath: bccspConfig.SW.FileKeystore.KeyStorePath,
-				}
-			}
-		}
+	cspOpts := &factory.FactoryOpts{
+		Default: "SW",
+		SW: &factory.SwOpts{
+			Security: 256,
+			Hash:     "SHA2",
+			FileKeystore: &factory.FileKeystoreOpts{
+				KeyStorePath: filepath.Join(localMSPDir, "keystore"),
+			},
+		},
 	}
 
-	mspConfig, err := msp.GetLocalMspConfig(localMSPDir, factoryOpts, localMSPID)
+	mspConfig, err := msp.GetLocalMspConfig(localMSPDir, cspOpts, localMSPID)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get local msp config: %v", err))
 	}
@@ -47,7 +37,12 @@ func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *factory.F
 		panic(fmt.Sprintf("MSP option for type %s is not found", typ))
 	}
 
-	localmsp, err := msp.New(opts, factory.GetDefault())
+	csp, err := factory.GetBCCSPFromOpts(cspOpts)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to get bccsp from options: %v", err))
+	}
+
+	localmsp, err := msp.New(opts, csp)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to load local msp config: %v", err))
 	}
