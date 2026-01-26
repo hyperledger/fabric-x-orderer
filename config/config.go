@@ -239,6 +239,10 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
+	if !config.CheckIfPartyIDExistsInSharedConfig() {
+		panic(fmt.Sprintf("Router with party ID %d is not present in the shared configuration's party list", config.LocalConfig.NodeLocalConfig.PartyID))
+	}
+
 	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
@@ -277,6 +281,10 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 }
 
 func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *nodeconfig.BatcherNodeConfig {
+	if !config.CheckIfPartyIDExistsInSharedConfig() {
+		panic(fmt.Sprintf("Batcher with party ID %d is not present in the shared configuration's party list", config.LocalConfig.NodeLocalConfig.PartyID))
+	}
+
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
@@ -329,6 +337,10 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 }
 
 func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *nodeconfig.ConsenterNodeConfig {
+	if !config.CheckIfPartyIDExistsInSharedConfig() {
+		panic(fmt.Sprintf("Consenter with party ID %d is not present in the shared configuration's party list", config.LocalConfig.NodeLocalConfig.PartyID))
+	}
+
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
@@ -363,6 +375,10 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 }
 
 func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
+	if !config.CheckIfPartyIDExistsInSharedConfig() {
+		panic(fmt.Sprintf("Assembler with party ID %d is not present in the shared configuration's party list", config.LocalConfig.NodeLocalConfig.PartyID))
+	}
+
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -603,4 +619,13 @@ func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.Consensu
 	}
 	lastConfigBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 	return lastConfigBlock, nil
+}
+
+func (config *Configuration) CheckIfPartyIDExistsInSharedConfig() bool {
+	for i := 0; i < len(config.SharedConfig.PartiesConfig); i++ {
+		if uint32(config.LocalConfig.NodeLocalConfig.PartyID) == config.SharedConfig.PartiesConfig[i].PartyID {
+			return true
+		}
+	}
+	return false
 }
