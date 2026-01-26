@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -240,6 +241,10 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
+	if err := config.CheckIfRouterNodeExistsInSharedConfig(); err != nil {
+		panic(err)
+	}
+
 	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
@@ -278,6 +283,10 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 }
 
 func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *nodeconfig.BatcherNodeConfig {
+	if err := config.CheckIfBatcherNodeExistsInSharedConfig(); err != nil {
+		panic(err)
+	}
+
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
@@ -351,6 +360,10 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 }
 
 func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *nodeconfig.ConsenterNodeConfig {
+	if err := config.CheckIfConsenterNodeExistsInSharedConfig(); err != nil {
+		panic(err)
+	}
+
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
@@ -399,6 +412,10 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 }
 
 func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
+	if err := config.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
+		panic(err)
+	}
+
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -639,4 +656,110 @@ func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.Consensu
 	}
 	lastConfigBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 	return lastConfigBlock, nil
+}
+
+func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig() error {
+	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
+	localTLSCert := config.LocalConfig.TLSConfig.Certificate
+
+	for _, sharedPartyConfig := range config.SharedConfig.PartiesConfig {
+		if localPartyID == sharedPartyConfig.PartyID {
+			if sharedPartyConfig.RouterConfig == nil {
+				return fmt.Errorf("router with partyID %d is not present in the shared configuration's party%d list", localPartyID, localPartyID)
+			}
+			if !bytes.Equal(localTLSCert, sharedPartyConfig.RouterConfig.TlsCert) {
+				return fmt.Errorf("TLS certificate mismatch. Router%d is attempting to load with tls certificate that differs from the shared configuration tls certificate", localPartyID)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
+}
+
+func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig() error {
+	localConfig := config.LocalConfig.NodeLocalConfig
+	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
+	localShardID := uint32(localConfig.BatcherParams.ShardID)
+	localTLSCert := config.LocalConfig.TLSConfig.Certificate
+
+	localSignCert, err := os.ReadFile(filepath.Join(localConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+	if err != nil {
+		return err
+	}
+
+	for _, sharedPartyConfig := range config.SharedConfig.PartiesConfig {
+		if localPartyID != sharedPartyConfig.PartyID {
+			continue
+		}
+
+		for _, sharedBatcherConfig := range sharedPartyConfig.BatchersConfig {
+			if localShardID != sharedBatcherConfig.ShardID {
+				continue
+			}
+
+			if !bytes.Equal(localTLSCert, sharedBatcherConfig.TlsCert) {
+				return fmt.Errorf("TLS certificate mismatch. Batcher%d shard%d is attempting to load with tls certificate that differs from the shared configuration tls certificate", localPartyID, localShardID)
+			}
+
+			if !bytes.Equal(localSignCert, sharedBatcherConfig.SignCert) {
+				return fmt.Errorf("sign certificate mismatch. Batcher%d shard%d is attempting to load with sign certificate that differs from the shared configuration sign certificate", localPartyID, localShardID)
+			}
+
+			return nil
+		}
+		return fmt.Errorf("batcher in shard%d does not exist for party%d in the shared config", localShardID, localPartyID)
+	}
+
+	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
+}
+
+func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig() error {
+	localConfig := config.LocalConfig.NodeLocalConfig.GeneralConfig
+	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
+	localTLSCert := config.LocalConfig.TLSConfig.Certificate
+
+	localSignCert, err := os.ReadFile(filepath.Join(localConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+	if err != nil {
+		return err
+	}
+
+	for _, sharedPartyConfig := range config.SharedConfig.PartiesConfig {
+		if localPartyID != sharedPartyConfig.PartyID {
+			continue
+		}
+
+		if sharedPartyConfig.ConsenterConfig == nil {
+			return fmt.Errorf("consenter with partyID %d is not present in the shared configuration's party%d list", localPartyID, localPartyID)
+		}
+
+		if !bytes.Equal(localSignCert, sharedPartyConfig.ConsenterConfig.SignCert) {
+			return fmt.Errorf("sign certificate mismatch. Consenter%d is attempting to load with sign certificate that differs from the shared configuration sign certificate", localPartyID)
+		}
+
+		if !bytes.Equal(localTLSCert, sharedPartyConfig.ConsenterConfig.TlsCert) {
+			return fmt.Errorf("TLS certificate mismatch. Consenter%d is attempting to load with tls certificate that differs from the shared configuration tls certificate", localPartyID)
+		}
+
+		return nil
+	}
+	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
+}
+
+func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
+	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
+	localTLSCert := config.LocalConfig.TLSConfig.Certificate
+
+	for _, sharedPartyConfig := range config.SharedConfig.PartiesConfig {
+		if localPartyID == sharedPartyConfig.PartyID {
+			if sharedPartyConfig.AssemblerConfig == nil {
+				return fmt.Errorf("assembler with partyID %d is not present in the shared configuration's party%d list", localPartyID, localPartyID)
+			}
+			if !bytes.Equal(localTLSCert, sharedPartyConfig.AssemblerConfig.TlsCert) {
+				return fmt.Errorf("TLS certificate mismatch. Assembler%d is attempting to load with tls certificate that differs from the shared configuration tls certificate", localPartyID)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
 }
