@@ -587,7 +587,9 @@ func (c *ConfigUpdateBuilder) ConfigUpdatePBData(t *testing.T) []byte {
 	return c.createConfigUpdate(t, c.configData)
 }
 
-func CreateConfigTX(t *testing.T, dir string, numOfParties int, submittingParty int, configUpdateBytes []byte) *common.Envelope {
+// CreateConfigTX creates a config transaction signed by the specified administrators.
+// To satisfy majority requirement, the signingParties list must explicitly include the IDs of all participating parties necessary to reach that majority.
+func CreateConfigTX(t *testing.T, dir string, signingParties []types.PartyID, submittingParty int, configUpdateBytes []byte) *common.Envelope {
 	// Create ConfigUpdateBytes
 	require.NotNil(t, configUpdateBytes)
 
@@ -597,16 +599,16 @@ func CreateConfigTX(t *testing.T, dir string, numOfParties int, submittingParty 
 		Signatures:   []*common.ConfigSignature{},
 	}
 
-	// sign with majority admins (for 4 parties the majority is 3)
-	for i := 0; i < (numOfParties/2)+1; i++ {
+	// sign with admins
+	for _, partyID := range signingParties {
 		// Read admin of organization i
-		adminSigner, adminCertBytes, err := createCertAndSigner(dir, i+1)
+		adminSigner, adminCertBytes, err := createAdminCertAndSigner(dir, int(partyID))
 		require.NoError(t, err)
 		require.NotNil(t, adminSigner)
 		require.NotNil(t, adminCertBytes)
 
 		sId := &msp.SerializedIdentity{
-			Mspid:   fmt.Sprintf("org%d", i+1),
+			Mspid:   fmt.Sprintf("org%d", partyID),
 			IdBytes: adminCertBytes,
 		}
 
@@ -628,7 +630,7 @@ func CreateConfigTX(t *testing.T, dir string, numOfParties int, submittingParty 
 	require.NoError(t, err)
 
 	// Wrap the ConfigUpdateEnvelope with an Envelope signed by the admin of the submitting party
-	submittingAdminSigner, submittingAdminCert, err := createCertAndSigner(dir, submittingParty)
+	submittingAdminSigner, submittingAdminCert, err := createAdminCertAndSigner(dir, submittingParty)
 	require.NoError(t, err)
 	require.NotNil(t, submittingAdminSigner)
 	require.NotNil(t, submittingAdminCert)
@@ -642,7 +644,7 @@ func CreateConfigTX(t *testing.T, dir string, numOfParties int, submittingParty 
 	return env
 }
 
-func createCertAndSigner(dir string, submittingParty int) (*crypto.ECDSASigner, []byte, error) {
+func createAdminCertAndSigner(dir string, submittingParty int) (*crypto.ECDSASigner, []byte, error) {
 	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", submittingParty), "users", "admin", "msp", "keystore", "priv_sk")
 	submittingAdminSigner, err := createSigner(keyPath)
 	if err != nil {
