@@ -128,7 +128,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	defer cleanUp()
 	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
-	env := configutil.CreateConfigTX(t, dir, len(parties), 1, configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 	configReq := &protos.Request{
 		Payload:   env.Payload,
 		Signature: env.Signature,
@@ -238,7 +238,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
 	defer cleanUp()
 	configUpdatePbData = configUpdateBuilder.RemoveParty(t, removedParty)
-	env = configutil.CreateConfigTX(t, dir, len(parties), 1, configUpdatePbData)
+	env = configutil.CreateConfigTX(t, dir, parties[0:5], 1, configUpdatePbData)
 	configReq = &protos.Request{
 		Payload:   env.Payload,
 		Signature: env.Signature,
@@ -260,7 +260,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		header := &state.Header{}
 		err = header.Deserialize(proposal.Header)
 		require.NoError(t, err)
-		lastConfigBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
 		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
 
@@ -334,5 +334,91 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 			b := <-ledgerListener.c
 			return b.Header.Number == uint64(5)
 		}, 30*time.Second, 100*time.Millisecond)
+	}
+
+	removedPartyLeader := types.PartyID(1)
+
+	// Submit to consensus a config request from router that removes a party (leader)
+	anotherConfigBlockStoreDir := t.TempDir()
+	defer os.RemoveAll(anotherConfigBlockStoreDir)
+	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
+	require.NoError(t, err)
+	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
+	defer cleanUp()
+	configUpdatePbData = configUpdateBuilder.RemoveParty(t, removedPartyLeader)
+	env = configutil.CreateConfigTX(t, dir, parties[1:5], 1, configUpdatePbData)
+	configReq = &protos.Request{
+		Payload:   env.Payload,
+		Signature: env.Signature,
+	}
+	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
+	require.NoError(t, err)
+
+	// make sure the config block is committed and stop the consensus node
+	for i, consensusNode := range consensusNodes {
+		var lastDecision *common.Block
+		require.Eventually(t, func() bool {
+			lastDecision = <-ledgerListeners[i].c
+			return lastDecision.Header.Number == uint64(6)
+		}, 30*time.Second, 100*time.Millisecond)
+
+		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
+		require.NotNil(t, proposal)
+		require.NoError(t, err)
+		header := &state.Header{}
+		err = header.Deserialize(proposal.Header)
+		require.NoError(t, err)
+		lastConfigBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
+
+		consensusNode.Stop()
+	}
+
+	parties = []types.PartyID{2, 3, 4, 5}
+
+	// Get all to create consensus again
+	consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+	servers = make([]*comm.GRPCServer, 0, len(parties))
+	for _, i := range parties {
+		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
+		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+		require.NoError(t, err)
+		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
+		require.NotNil(t, consenterConfig)
+		localmsp := msputils.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := localmsp.GetDefaultSigningIdentity()
+		require.NoError(t, err)
+		require.NotNil(t, signer)
+		consenterLogger := testutil.CreateLogger(t, int(i))
+		server := arma_node.CreateGRPCConsensus(consenterConfig)
+		servers = append(servers, server)
+		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
+		consensusNodes = append(consensusNodes, consensus)
+	}
+
+	// Try to get the removed party
+	removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
+	removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+	require.NoError(t, err)
+	require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
+
+	// Register and start grpc server
+	for i, consensusNode := range consensusNodes {
+		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
+		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
+		orderer.RegisterClusterNodeServiceServer(servers[i].Server(), consensusNode)
+		go func() {
+			servers[i].Start()
+		}()
+	}
+
+	// Start consensus
+	ledgerListeners = make([]*storageListener, 0, len(parties))
+	for _, consensusNode := range consensusNodes {
+		consensusNode.Start()
+		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+		ledgerListeners = append(ledgerListeners, ledgerListener)
 	}
 }
