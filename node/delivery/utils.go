@@ -96,6 +96,13 @@ func clientConfig(TLSCACerts []config.RawBytes, tlsKey, tlsCert []byte) comm.Cli
 }
 
 func createAssemblerConsensusPosition(oi *state.OrderingInformation) types.AssemblerConsensusPosition {
+	// if we start with an empty ledger, and last config block is not the genesis block, we have oi=nil
+	if oi == nil {
+		return types.AssemblerConsensusPosition{
+			DecisionNum: 0,
+		}
+	}
+
 	if oi.BatchIndex != oi.BatchCount-1 {
 		return types.AssemblerConsensusPosition{
 			DecisionNum: oi.DecisionNum,
