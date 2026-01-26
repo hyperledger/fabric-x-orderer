@@ -46,19 +46,19 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	numOfParties := 5
+	parties := []types.PartyID{1, 2, 3, 4, 5, 6}
 	numOfShards := 1
 
 	// Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "none")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
 	require.NotNil(t, netInfo)
 
 	// Generate the config files in the temporary directory using the armageddon generate command.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// Update the file store path
-	for i := 1; i <= numOfParties; i++ {
+	for _, i := range parties {
 		fileStoreDir := t.TempDir()
 		defer os.RemoveAll(fileStoreDir)
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
@@ -69,9 +69,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 
 	// Get all for create consensus
-	consensusNodes := make([]*consensus_node.Consensus, 0, numOfParties)
-	servers := make([]*comm.GRPCServer, 0, numOfParties)
-	for i := 1; i <= numOfParties; i++ {
+	consensusNodes := make([]*consensus_node.Consensus, 0, len(parties))
+	servers := make([]*comm.GRPCServer, 0, len(parties))
+	for _, i := range parties {
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
 		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 		require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		require.NoError(t, err)
 		require.NotNil(t, signer)
-		consenterLogger := testutil.CreateLogger(t, i)
+		consenterLogger := testutil.CreateLogger(t, int(i))
 		server := arma_node.CreateGRPCConsensus(consenterConfig)
 		servers = append(servers, server)
 		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
@@ -99,7 +99,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 
 	// Start consensus
-	ledgerListeners := make([]*storageListener, 0, numOfParties)
+	ledgerListeners := make([]*storageListener, 0, len(parties))
 	for _, consensusNode := range consensusNodes {
 		consensusNode.Start()
 		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
@@ -128,7 +128,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	defer cleanUp()
 	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
-	env := configutil.CreateConfigTX(t, dir, numOfParties, 1, configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, len(parties), 1, configUpdatePbData)
 	configReq := &protos.Request{
 		Payload:   env.Payload,
 		Signature: env.Signature,
@@ -168,9 +168,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 
 	// Get all to create consensus again
-	consensusNodes = make([]*consensus_node.Consensus, 0, numOfParties)
-	servers = make([]*comm.GRPCServer, 0, numOfParties)
-	for i := 1; i <= numOfParties; i++ {
+	consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+	servers = make([]*comm.GRPCServer, 0, len(parties))
+	for _, i := range parties {
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
 		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 		require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		require.NoError(t, err)
 		require.NotNil(t, signer)
-		consenterLogger := testutil.CreateLogger(t, i)
+		consenterLogger := testutil.CreateLogger(t, int(i))
 		server := arma_node.CreateGRPCConsensus(consenterConfig)
 		servers = append(servers, server)
 		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
@@ -198,7 +198,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 
 	// Start consensus
-	ledgerListeners = make([]*storageListener, 0, numOfParties)
+	ledgerListeners = make([]*storageListener, 0, len(parties))
 	for _, consensusNode := range consensusNodes {
 		consensusNode.Start()
 		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
@@ -221,12 +221,14 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	controlEvent.BAF = baf
 	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
 	require.NoError(t, err)
-	for i := range numOfParties {
+	for _, ledgerListener := range ledgerListeners {
 		require.Eventually(t, func() bool {
-			b := <-ledgerListeners[i].c
+			b := <-ledgerListener.c
 			return b.Header.Number == uint64(3)
 		}, 30*time.Second, 100*time.Millisecond)
 	}
+
+	removedParty := types.PartyID(6)
 
 	// Submit to consensus a config request from router that removes a party
 	configBlockStoreDir := t.TempDir()
@@ -235,8 +237,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
 	defer cleanUp()
-	configUpdatePbData = configUpdateBuilder.RemoveParty(t, types.PartyID(5))
-	env = configutil.CreateConfigTX(t, dir, numOfParties, 1, configUpdatePbData)
+	configUpdatePbData = configUpdateBuilder.RemoveParty(t, removedParty)
+	env = configutil.CreateConfigTX(t, dir, len(parties), 1, configUpdatePbData)
 	configReq = &protos.Request{
 		Payload:   env.Payload,
 		Signature: env.Signature,
@@ -265,12 +267,12 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		consensusNode.Stop()
 	}
 
-	numOfParties = 4
+	parties = []types.PartyID{1, 2, 3, 4, 5}
 
 	// Get all to create consensus again
-	consensusNodes = make([]*consensus_node.Consensus, 0, numOfParties)
-	servers = make([]*comm.GRPCServer, 0, numOfParties)
-	for i := 1; i <= numOfParties; i++ {
+	consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+	servers = make([]*comm.GRPCServer, 0, len(parties))
+	for _, i := range parties {
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
 		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 		require.NoError(t, err)
@@ -280,7 +282,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		require.NoError(t, err)
 		require.NotNil(t, signer)
-		consenterLogger := testutil.CreateLogger(t, i)
+		consenterLogger := testutil.CreateLogger(t, int(i))
 		server := arma_node.CreateGRPCConsensus(consenterConfig)
 		servers = append(servers, server)
 		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
@@ -288,7 +290,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 
 	// Try to get the removed party
-	removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", numOfParties+1), "local_config_consenter.yaml")
+	removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
 	removedNodeConfigContent, removedNodeLastConfigBlock, err := config.ReadConfig(removedNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 	require.NoError(t, err)
 	require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
@@ -304,7 +306,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 
 	// Start consensus
-	ledgerListeners = make([]*storageListener, 0, numOfParties)
+	ledgerListeners = make([]*storageListener, 0, len(parties))
 	for _, consensusNode := range consensusNodes {
 		consensusNode.Start()
 		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
@@ -327,9 +329,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	controlEvent.BAF = baf
 	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
 	require.NoError(t, err)
-	for i := range numOfParties {
+	for _, ledgerListener := range ledgerListeners {
 		require.Eventually(t, func() bool {
-			b := <-ledgerListeners[i].c
+			b := <-ledgerListener.c
 			return b.Header.Number == uint64(5)
 		}, 30*time.Second, 100*time.Millisecond)
 	}
