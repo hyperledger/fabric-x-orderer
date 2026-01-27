@@ -21,6 +21,8 @@ DOCKERFILE ?= images/multi-platform/Dockerfile
 IMAGE_NAMESPACE = docker.io/hyperledger
 IMAGE_NAME = fabric-x-orderer
 VERSION = latest
+ORDERER_REVISION = $(shell git rev-parse HEAD)
+ORDERER_CREATED = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 .PHONY: basic-checks
 basic-checks: check-license check-dco check-protos linter
@@ -85,10 +87,10 @@ sample-tests:
 .PHONY: build-image
 build-image:
 	@echo "Building the image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg VERSION=${VERSION}
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the HLFX Orderer multiplatform image
 .PHONY: build-multiplatform-image
 build-multiplatform-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg VERSION=${VERSION}
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)

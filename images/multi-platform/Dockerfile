@@ -31,6 +31,8 @@ RUN make binary
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6 AS prod
 
 ARG VERSION=1.0
+ARG CREATED
+ARG REVISION=1.0
 
 # Add non-root user (10001) without installing extra packages
 RUN /usr/sbin/useradd -u 10001 -r -g root -s /sbin/nologin -c "Hyperledger Fabric-X Orderer user" orderer && \
@@ -43,12 +45,15 @@ COPY --from=builder /src/bin/arma /usr/local/bin/arma
 COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 
 # OCI metadata labels
-LABEL name="fabric-x-orderer" \
-    maintainer="IBM Research Decentralized Trust Group" \
-    version="${VERSION}" \
-    description="Hyperledger Fabric-X Orderer service packaged in a UBI image" \
-    license="Apache-2.0" \
-    vendor="IBM"
+LABEL org.opencontainers.image.created="${CREATED}" \
+    org.opencontainers.image.description="Hyperledger Fabric-X Orderer service packaged in a UBI image." \
+    org.opencontainers.image.licenses="Apache-2.0" \
+    org.opencontainers.image.ref.name="ubi9/ubi-minimal" \
+    org.opencontainers.image.revision="${REVISION}" \
+    org.opencontainers.image.source="https://github.com/hyperledger/fabric-x-orderer" \
+    org.opencontainers.image.title="fabric-x-orderer" \
+    org.opencontainers.image.url="https://github.com/hyperledger/fabric-x-orderer" \
+    org.opencontainers.image.version="${VERSION}"
 
 # Use non-root user and set workdir using BIN argument
 USER 10001
