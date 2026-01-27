@@ -52,10 +52,12 @@ jobs:
             exit 1
           fi
 
-      - name: Set image prefix
+      - name: Set image build prefix and metadata
         run: |
+          echo "CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+          echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_ENV        
           if [ "$GITHUB_REPOSITORY_OWNER" == "hyperledger" ]; then
-           echo "IMAGE_PREFIX=hyperledger"  >> $GITHUB_ENV
+           echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
           else
            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
@@ -68,6 +70,8 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/s390x
           build-args: |
             VERSION=${{ env.VERSION }}
+            CREATED=${{ env.CREATED }}
+            REVISION=${{ env.REVISION }}
           push: true
           tags: |
             docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
