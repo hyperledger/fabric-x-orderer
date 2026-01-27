@@ -613,7 +613,7 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)
 
-	env := cfgutil.CreateConfigTX(t, dir, numOfParties, submittingParty, configUpdatePbData)
+	env := cfgutil.CreateConfigTX(t, dir, []types.PartyID{1}, submittingParty, configUpdatePbData)
 	require.NotNil(t, env)
 
 	// 10. Send the config tx

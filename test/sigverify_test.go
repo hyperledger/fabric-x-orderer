@@ -177,7 +177,7 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)
 
-	env := cfgutil.CreateConfigTX(t, dir, numOfParties, submittingPartyID, configUpdatePbData)
+	env := cfgutil.CreateConfigTX(t, dir, []types.PartyID{1}, submittingPartyID, configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
