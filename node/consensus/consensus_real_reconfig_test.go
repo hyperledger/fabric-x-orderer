@@ -133,6 +133,10 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		Payload:   env.Payload,
 		Signature: env.Signature,
 	}
+	// Submit config with bad ctx should be rejected
+	_, err = consensusNodes[0].SubmitConfig(t.Context(), configReq)
+	require.Error(t, err)
+	// Create context with the router's certificate
 	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
 	require.NoError(t, err)
 	block, _ := pem.Decode(routerCertBytes)
@@ -142,6 +146,15 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	ctx, err := createContextForSubmitConfig(routerCert)
 	require.NoError(t, err)
+	// Submit config update not signed by majority should be rejected
+	badEnv := configutil.CreateConfigTX(t, dir, parties[1:3], 1, configUpdatePbData)
+	badConfigReq := &protos.Request{
+		Payload:   badEnv.Payload,
+		Signature: badEnv.Signature,
+	}
+	_, err = consensusNodes[0].SubmitConfig(ctx, badConfigReq)
+	require.Error(t, err)
+	// Submit a good config update
 	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
 	require.NoError(t, err)
 
