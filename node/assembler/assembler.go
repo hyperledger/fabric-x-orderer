@@ -27,13 +27,14 @@ type NetStopper interface {
 }
 
 type Assembler struct {
-	collator     Collator
-	logger       types.Logger
-	ds           delivery.DeliverService // TODO the assembler need only one reader, not a map.
-	prefetcher   PrefetcherController
-	baReplicator delivery.ConsensusBringer
-	netStopper   NetStopper
-	metrics      *Metrics
+	collator              Collator
+	logger                types.Logger
+	ds                    delivery.DeliverService // TODO the assembler need only one reader, not a map.
+	prefetcher            PrefetcherController
+	baReplicator          delivery.ConsensusBringer
+	netStopper            NetStopper
+	metrics               *Metrics
+	lastConfigBlockNumber uint64
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -67,6 +68,10 @@ func (a *Assembler) SoftStop() {
 	a.baReplicator.Stop()
 	a.collator.Stop()
 	a.logger.Warnf("Assembler has been partially stopped, delivery service is available. Pending restart")
+}
+
+func (a *Assembler) ConfigBlockNumber() uint64 {
+	return a.lastConfigBlockNumber
 }
 
 func NewDefaultAssembler(
@@ -161,11 +166,12 @@ func NewDefaultAssembler(
 			Ledger:                            al,
 			ShardCount:                        len(config.Shards),
 		},
-		logger:       logger,
-		netStopper:   net,
-		prefetcher:   prefetcher,
-		baReplicator: baReplicator,
-		metrics:      metrics,
+		logger:                logger,
+		netStopper:            net,
+		prefetcher:            prefetcher,
+		baReplicator:          baReplicator,
+		metrics:               metrics,
+		lastConfigBlockNumber: configBlock.GetHeader().GetNumber(),
 	}
 
 	// TODO: we do not need multiple ledgers in the assembler

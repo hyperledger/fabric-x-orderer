@@ -191,6 +191,7 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 			ClientAuthRequired:        false,
 			MonitoringListenAddress:   "127.0.0.1:0",
 			MetricsLogInterval:        5 * time.Second,
+			Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 		}
 		configs = append(configs, assemblerConf)
 
