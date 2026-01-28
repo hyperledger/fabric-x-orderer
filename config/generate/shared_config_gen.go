@@ -37,6 +37,7 @@ func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocal
 		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
 		ConsensusConfig: config.ConsensusConfig{BFTConfig: config.DefaultArmaBFTConfig()},
 		BatchingConfig:  createBatchingConfig(),
+		MaxPartyID:      computeMaxPartyID(network.Parties),
 	}
 	return sharedConfig
 }
@@ -97,4 +98,14 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 	}
 
 	return partiesConfig
+}
+
+func computeMaxPartyID(parties []Party) uint32 {
+	var max uint32
+	for _, p := range parties {
+		if uint32(p.ID) > max {
+			max = uint32(p.ID)
+		}
+	}
+	return max
 }
