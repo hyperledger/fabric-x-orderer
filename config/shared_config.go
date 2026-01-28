@@ -20,6 +20,7 @@ type SharedConfigYaml struct {
 	PartiesConfig   []PartyConfig   `yaml:"Parties,omitempty"`
 	ConsensusConfig ConsensusConfig `yaml:"Consensus,omitempty"`
 	BatchingConfig  BatchingConfig  `yaml:"Batching,omitempty"`
+	MaxPartyID      uint32          `yaml:"MaxPartyID,omitempty"`
 }
 
 // LoadSharedConfig reads the shared config yaml and translate it to the proto shared config.
@@ -132,6 +133,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*protos.SharedCo
 			},
 			RequestMaxBytes: sharedConfigYaml.BatchingConfig.RequestMaxBytes,
 		},
+		MaxPartyID: sharedConfigYaml.MaxPartyID,
 	}
 	return &sharedConfig, nil
 }
