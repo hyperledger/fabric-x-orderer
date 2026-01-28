@@ -191,6 +191,7 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 			ClientAuthRequired:        false,
 			MonitoringListenAddress:   "127.0.0.1:0",
 			MetricsLogInterval:        5 * time.Second,
+			Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 		}
 		configs = append(configs, assemblerConf)
 
@@ -512,9 +513,9 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	return consenter
 }
 
-func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *zap.SugaredLogger) *assembler.Assembler {
+func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *zap.SugaredLogger, lastConfigBlock *common.Block) *assembler.Assembler {
 	assemblerGRPC := node2.CreateGRPCAssembler(conf)
-	assembler := assembler.NewAssembler(conf, assemblerGRPC, nil, logger)
+	assembler := assembler.NewAssembler(conf, assemblerGRPC, lastConfigBlock, logger)
 
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 
