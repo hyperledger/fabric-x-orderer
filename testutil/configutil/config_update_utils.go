@@ -178,14 +178,14 @@ type ConfigUpdateBuilder struct {
 	maxPartiesNum     int
 }
 
-func NewConfigUpdateBuilder(t *testing.T, configDir string, genesisBlockPath string) (*ConfigUpdateBuilder, func()) {
+func NewConfigUpdateBuilder(t *testing.T, configDir string, lastConfigBlockPath string) (*ConfigUpdateBuilder, func()) {
 	// Compile configtxlator tool
 	configtxlatorPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/testutil/configtxlator", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	require.NoError(t, err)
 	require.NotNil(t, configtxlatorPath)
 
 	// Get the config data in json representation
-	configBlockData := getJSONConfigBlockData(t, configDir, configtxlatorPath, genesisBlockPath)
+	configBlockData := getJSONConfigBlockData(t, configDir, configtxlatorPath, lastConfigBlockPath)
 
 	configDataPath := []string{"data", "data[0]", "payload", "data", "config"}
 	configData := getNestedJSONValue(t, configBlockData, configDataPath...)
