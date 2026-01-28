@@ -82,7 +82,7 @@ func (s *synchronizer) run() {
 		s.lock.Lock()
 		defer s.lock.Unlock()
 
-		if s.latestCommittedBlock >= block.Header.Number {
+		if s.latestCommittedBlock >= block.Header.Number && s.latestCommittedBlock != 0 {
 			return
 		}
 
@@ -99,20 +99,27 @@ func (s *synchronizer) memStoreTooBig() bool {
 }
 
 func (s *synchronizer) Sync() smartbft_types.SyncResponse {
-	height := s.currentHeight()
+	height := s.getHeight()
 
-	lastSeqInLedger := height - 1
-	latestBlock := s.getBlock(lastSeqInLedger)
+	var lastSeqInLedger uint64
+	var latestBlock *common.Block
+	var nextSeqToCommit uint64
+	if height > 0 {
+		lastSeqInLedger = height - 1
+		latestBlock = s.getBlock(lastSeqInLedger)
+		nextSeqToCommit = lastSeqInLedger + 1
+	}
 
 	// Iterate over blocks retrieved from pulling asynchronously and commit them.
-
-	nextSeqToCommit := lastSeqInLedger + 1
 	for {
 		s.lock.Lock()
 		retrievedBlock, exists := s.memStore[nextSeqToCommit]
 		s.lock.Unlock()
 
 		if !exists {
+			if nextSeqToCommit == 0 {
+				continue
+			}
 			break
 		}
 
@@ -124,13 +131,20 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
 		}
 
-		var batch arma_types.BatchedRequests
-		if err := batch.Deserialize(proposal.Payload); err != nil {
-			s.logger.Panicf("Failed deserializing proposal payload: %v", err)
+		hdr := &state.Header{}
+		if err := hdr.Deserialize(proposal.Header); err != nil {
+			s.logger.Panicf("Failed deserializing header: %v", err)
 		}
 
-		for _, req := range batch {
-			s.pruneRequestsFromMemPool(req)
+		if hdr.DecisionNumOfLastConfigBlock != hdr.Num { // not a config block
+			var batch arma_types.BatchedRequests
+			if err := batch.Deserialize(proposal.Payload); err != nil {
+				s.logger.Panicf("Failed deserializing proposal payload: %v", err)
+			}
+
+			for _, req := range batch {
+				s.pruneRequestsFromMemPool(req)
+			}
 		}
 
 		s.deliver(proposal, signatures)
@@ -148,13 +162,4 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 		},
 		Latest: smartbft_types.Decision{Proposal: proposal, Signatures: signatures},
 	}
-}
-
-func (s *synchronizer) currentHeight() uint64 {
-	height := s.getHeight()
-	for height == 0 {
-		time.Sleep(time.Second)
-		height = s.getHeight()
-	}
-	return height
 }
