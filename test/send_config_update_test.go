@@ -125,7 +125,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.UpdateRouterEndpoint(t, partyToUpdate, routerIP, newPort)
 
 	// Submit config update
-	env := configutil.CreateConfigTX(t, dir, numOfParties, int(submittingParty), configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
