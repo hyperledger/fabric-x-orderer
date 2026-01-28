@@ -81,6 +81,7 @@ func (c *Collator) processOrderedBatchAttestations() {
 				// TODO apply new config and update lastConfigBlockNumber in assembler
 				return
 			}
+			continue
 		}
 
 		batch, err := c.collateAttestationWithBatch(oba.BatchAttestation())
