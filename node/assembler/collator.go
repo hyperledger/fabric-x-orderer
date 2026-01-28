@@ -80,6 +80,8 @@ func (c *Collator) processOrderedBatchAttestations() {
 				go c.AssemblerRestarter.SoftStop()
 				// TODO apply new config and update lastConfigBlockNumber in assembler
 				return
+			} else {
+				continue
 			}
 		}
 
