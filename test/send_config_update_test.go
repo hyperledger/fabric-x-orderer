@@ -339,7 +339,7 @@ func TestAddNewParty(t *testing.T) {
 		BatchersConfig: batchersConfig,
 	})
 
-	env := configutil.CreateConfigTX(t, dir, numOfParties, int(submittingParty), configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -422,62 +422,43 @@ func TestAddNewParty(t *testing.T) {
 	err = broadcastClient.SendTxTo(env, addedPartyId)
 	require.NoError(t, err)
 
-	// totalTxNumber := 100
-	// // rate limiter parameters
-	// fillInterval := 10 * time.Millisecond
-	// fillFrequency := 1000 / int(fillInterval.Milliseconds())
-	// rate := 500
+	totalTxNumber := 100
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
 
-	// capacity := rate / fillFrequency
-	// rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
-	// if err != nil {
-	// 	fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
-	// 	os.Exit(3)
-	// }
-
-	// for i := range totalTxNumber {
-	// 	status := rl.GetToken()
-	// 	if !status {
-	// 		fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-	// 		os.Exit(3)
-	// 	}
-	// 	txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
-	// 	env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
-	// 	err = broadcastClient.SendTx(env)
-	// 	require.NoError(t, err)
-	// }
-
-	// var parties []types.PartyID
-	// for i := 1; i <= numOfParties; i++ {
-	// 	parties = append(parties, types.PartyID(i))
-	// }
-
-	// statusUknown := common.Status_UNKNOWN
-	// PullFromAssemblers(t, &BlockPullerOptions{
-	// 	UserConfig:   userConfig,
-	// 	Parties:      parties,
-	// 	Transactions: totalTxNumber,
-	// 	Timeout:      120,
-	// 	ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
-	// 	Status:       &statusUknown,
-	// })
-}
-
-func mergeUniqueCerts(certs1, certs2 [][]byte) [][]byte {
-	uniqueMap := make(map[string]struct{})
-
-	for _, item := range certs1 {
-		uniqueMap[string(item)] = struct{}{}
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
 	}
 
-	for _, item := range certs2 {
-		uniqueMap[string(item)] = struct{}{}
+	for i := range totalTxNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
 	}
 
-	mergedSlice := make([][]byte, 0, len(uniqueMap))
-	for key := range uniqueMap {
-		mergedSlice = append(mergedSlice, []byte(key))
+	var parties []types.PartyID
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
 	}
 
-	return mergedSlice
+	statusUknown := common.Status_UNKNOWN
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		Timeout:      120,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUknown,
+	})
 }
