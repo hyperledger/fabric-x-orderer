@@ -61,6 +61,7 @@ func TestSharedConfigLoading(t *testing.T) {
 	require.NotNil(t, sharedConfig)
 	require.NotNil(t, sharedConfig.BatchingConfig)
 	require.NotNil(t, sharedConfig.ConsensusConfig)
+	require.NotNil(t, sharedConfig.MaxPartyID)
 	require.NotNil(t, sharedConfig.PartiesConfig)
 	require.Equal(t, len(sharedConfig.PartiesConfig), len(networkConfig.Parties))
 
