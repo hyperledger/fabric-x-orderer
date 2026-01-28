@@ -13,11 +13,12 @@ message SharedConfig {
   repeated PartyConfig PartiesConfig = 1;
   ConsensusConfig ConsensusConfig = 2;
   BatchingConfig BatchingConfig = 3;
+  uint32 MaxPartyID = 4;
 }
 
 // PartyConfig carries the identity, certificates and nodes configuration of a party.
 message PartyConfig {
-  // the identity of the party, type unit16, id > 0
+  // the identity of the party, type uint32, id > 0
   uint32 PartyID = 1;
   // the certificates of the certificate authorities who generates the party's signing key-pairs
   repeated bytes CACerts = 2;
