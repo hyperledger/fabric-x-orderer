@@ -8,12 +8,75 @@ import (
 )
 
 type FakeAssemblerRestarter struct {
+	ConfigBlockNumberStub        func() uint64
+	configBlockNumberMutex       sync.RWMutex
+	configBlockNumberArgsForCall []struct {
+	}
+	configBlockNumberReturns struct {
+		result1 uint64
+	}
+	configBlockNumberReturnsOnCall map[int]struct {
+		result1 uint64
+	}
 	SoftStopStub        func()
 	softStopMutex       sync.RWMutex
 	softStopArgsForCall []struct {
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
+}
+
+func (fake *FakeAssemblerRestarter) ConfigBlockNumber() uint64 {
+	fake.configBlockNumberMutex.Lock()
+	ret, specificReturn := fake.configBlockNumberReturnsOnCall[len(fake.configBlockNumberArgsForCall)]
+	fake.configBlockNumberArgsForCall = append(fake.configBlockNumberArgsForCall, struct {
+	}{})
+	stub := fake.ConfigBlockNumberStub
+	fakeReturns := fake.configBlockNumberReturns
+	fake.recordInvocation("ConfigBlockNumber", []interface{}{})
+	fake.configBlockNumberMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeAssemblerRestarter) ConfigBlockNumberCallCount() int {
+	fake.configBlockNumberMutex.RLock()
+	defer fake.configBlockNumberMutex.RUnlock()
+	return len(fake.configBlockNumberArgsForCall)
+}
+
+func (fake *FakeAssemblerRestarter) ConfigBlockNumberCalls(stub func() uint64) {
+	fake.configBlockNumberMutex.Lock()
+	defer fake.configBlockNumberMutex.Unlock()
+	fake.ConfigBlockNumberStub = stub
+}
+
+func (fake *FakeAssemblerRestarter) ConfigBlockNumberReturns(result1 uint64) {
+	fake.configBlockNumberMutex.Lock()
+	defer fake.configBlockNumberMutex.Unlock()
+	fake.ConfigBlockNumberStub = nil
+	fake.configBlockNumberReturns = struct {
+		result1 uint64
+	}{result1}
+}
+
+func (fake *FakeAssemblerRestarter) ConfigBlockNumberReturnsOnCall(i int, result1 uint64) {
+	fake.configBlockNumberMutex.Lock()
+	defer fake.configBlockNumberMutex.Unlock()
+	fake.ConfigBlockNumberStub = nil
+	if fake.configBlockNumberReturnsOnCall == nil {
+		fake.configBlockNumberReturnsOnCall = make(map[int]struct {
+			result1 uint64
+		})
+	}
+	fake.configBlockNumberReturnsOnCall[i] = struct {
+		result1 uint64
+	}{result1}
 }
 
 func (fake *FakeAssemblerRestarter) SoftStop() {
