@@ -73,14 +73,22 @@ func NewDefaultAssembler(
 	logger types.Logger,
 	net NetStopper,
 	config *config.AssemblerNodeConfig,
-	genesisBlock *common.Block,
+	configBlock *common.Block,
 	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
 	prefetchIndexFactory PrefetchIndexerFactory,
 	prefetcherFactory PrefetcherFactory,
 	batchBringerFactory BatchBringerFactory,
 	consensusBringerFactory delivery.ConsensusBringerFactory,
 ) *Assembler {
-	logger.Infof("Creating assembler, party: %d, address: %s, with genesis block: %t", config.PartyId, config.ListenAddress, genesisBlock != nil)
+	logger.Infof("Creating assembler, party: %d, address: %s", config.PartyId, config.ListenAddress)
+	if configBlock == nil {
+		logger.Panicf("Error creating Assembler%d, config block is nil", config.PartyId)
+		return nil
+	}
+	if configBlock.Header == nil {
+		logger.Panicf("Error creating Assembler%d, config block header is nil", config.PartyId)
+		return nil
+	}
 
 	al, err := assemblerLedgerFactory.Create(logger, config.Directory)
 	if err != nil {
@@ -109,17 +117,20 @@ func NewDefaultAssembler(
 	logger.Infof("Starting with ledger height: %d", al.LedgerReader().Height())
 
 	if al.LedgerReader().Height() == 0 {
-		if genesisBlock == nil {
-			logger.Panicf("Error creating Assembler%d, genesis block is nil", config.PartyId)
+		// append config block only if it is the genesis block
+		blockNumber := configBlock.GetHeader().Number
+		if blockNumber == 0 {
+			ordInfo := &state.OrderingInformation{
+				CommonBlock: configBlock,
+				DecisionNum: 0,
+				BatchIndex:  0,
+				BatchCount:  1,
+			}
+			al.AppendConfig(ordInfo)
+			logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(configBlock.GetHeader())))
+		} else {
+			logger.Infof("Assembler started with non-genesis config block, block number: %d", blockNumber)
 		}
-		ordInfo := &state.OrderingInformation{
-			CommonBlock: genesisBlock,
-			DecisionNum: 0,
-			BatchIndex:  0,
-			BatchCount:  1,
-		}
-		al.AppendConfig(ordInfo)
-		logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(genesisBlock.GetHeader())))
 	}
 
 	shardIds := shardsFromAssemblerConfig(config)
@@ -168,12 +179,12 @@ func NewDefaultAssembler(
 	return assembler
 }
 
-func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, genesisBlock *common.Block, logger types.Logger) *Assembler {
+func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, logger types.Logger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
 		net,
 		config,
-		genesisBlock,
+		configBlock,
 		&node_ledger.DefaultAssemblerLedgerFactory{},
 		&DefaultPrefetchIndexerFactory{},
 		&DefaultPrefetcherFactory{},
