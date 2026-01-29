@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -509,6 +510,12 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
 		require.NoError(t, err)
 		require.Equal(t, len(blocks), 1)
+	}
+
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	for i := 0; i < numParties; i++ {
+		err := batchers[i].ConfigStore.Add(genesisBlock)
+		require.NoError(t, err)
 	}
 
 	// receive config block from consensus

@@ -139,12 +139,22 @@ func (b *Batcher) replicateState() {
 			if header.Num == header.DecisionNumOfLastConfigBlock && header.Num != 0 {
 				lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 				if protoutil.IsConfigBlock(lastBlock) {
+					lastBlockNum := lastBlock.GetHeader().GetNumber()
+					lastConfig, err := b.ConfigStore.Last()
+					if err != nil {
+						b.logger.Panicf("Failed getting last config block from config store: %s", err)
+					}
+					lastConfigBlockNum := lastConfig.GetHeader().GetNumber()
+					b.logger.Infof("Got config block number %d; Last config block in config store is with number %d", lastBlockNum, lastConfigBlockNum)
 					// check if the config block exists; after restart the batcher will pull the same decision again.
-					if _, err := b.ConfigStore.GetByNumber(lastBlock.Header.Number); err == nil {
-						b.logger.Infof("Config block %d already exists in config store", lastBlock.Header.Number)
+					if lastConfigBlockNum == lastBlockNum {
+						b.logger.Infof("Config block %d already exists in config store", lastBlockNum)
 						b.batcher.ResubmitPendingBAFs(header.State, 0, true)
+					} else if lastConfigBlockNum > lastBlockNum {
+						b.logger.Infof("Batcher already processed this config block")
+						continue
 					} else {
-						b.logger.Infof("Received config block number %d", lastBlock.Header.Number)
+						b.logger.Infof("Adding config block number %d to config store", lastBlock.Header.Number)
 						if err := b.ConfigStore.Add(lastBlock); err != nil {
 							b.logger.Panicf("Failed adding config block to config store: %s", err)
 						}
