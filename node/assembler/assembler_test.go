@@ -23,6 +23,7 @@ import (
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	ledger_mocks "github.com/hyperledger/fabric-x-orderer/node/ledger/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -196,7 +197,7 @@ func TestAssembler_StartPanicsSinceGenesisBlockIsNil(t *testing.T) {
 	test := setupAssemblerTest(t, shards, parties, parties[0], nil)
 
 	// Act
-	require.PanicsWithValue(t, "Error creating Assembler1, genesis block is nil", func() {
+	require.PanicsWithValue(t, "Error creating Assembler1, config block is nil", func() {
 		test.StartAssembler()
 	})
 }
@@ -219,6 +220,30 @@ func TestAssembler_StartAndThenStopShouldOnlyWriteGenesisBlockToLedger(t *testin
 	genesisBlock, err := al.Ledger.RetrieveBlockByNumber(0)
 	require.NoError(t, err)
 	require.True(t, protoutil.IsConfigBlock(genesisBlock))
+	al.Close()
+}
+
+func TestAssembler_SkipNonGenesisConfigBlock(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	var blockNumber uint64 = 7
+	configBlock := tx.CreateConfigBlock(blockNumber, []byte("config block data"))
+
+	test := setupAssemblerTest(t, shards, parties, parties[0], configBlock)
+
+	// Act
+	test.StartAssembler()
+	<-time.After(100 * time.Millisecond)
+	test.StopAssembler()
+
+	// Assert
+	al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), al.Ledger.Height())
+	genesisBlock, err := al.Ledger.RetrieveBlockByNumber(blockNumber)
+	require.ErrorContains(t, err, "no such block number")
+	require.Nil(t, genesisBlock)
 	al.Close()
 }
 

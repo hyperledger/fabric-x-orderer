@@ -135,6 +135,7 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 				return nil, nil, fmt.Errorf("failed to read genesis block from bootstrap file, err: %v", err)
 			}
 
+			// this is relevant only for batcher and router nodes
 			if configStore != nil {
 				err = configStore.Add(lastConfigBlock)
 				if err != nil {
