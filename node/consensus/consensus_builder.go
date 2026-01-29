@@ -150,6 +150,10 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 }
 
 func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchronizer {
+	latestCommittedBlock := uint64(0)
+	if ledger.Height() > 0 {
+		latestCommittedBlock = ledger.Height() - 1
+	}
 	synchronizer := &synchronizer{
 		deliver: func(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) {
 			c.Deliver(proposal, signatures)
@@ -174,7 +178,7 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 		nextSeq: func() uint64 {
 			return ledger.Height()
 		},
-		latestCommittedBlock: ledger.Height() - 1,
+		latestCommittedBlock: latestCommittedBlock,
 		BFTConfig:            c.BFTConfig,
 		CurrentNodes:         c.CurrentNodes,
 	}

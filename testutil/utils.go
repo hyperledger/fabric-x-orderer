@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -27,6 +30,7 @@ import (
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
@@ -41,11 +45,16 @@ const (
 	Assembler string = "assembler"
 )
 
+var runingOrderMap = map[string]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
+
 // EditDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
-func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string) {
+func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string, bootstrapFilePath string) {
 	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
 	nodeConfig.GeneralConfig.MonitoringListenPort = 0
+	if bootstrapFilePath != "" {
+		nodeConfig.GeneralConfig.Bootstrap.File = bootstrapFilePath
+	}
 	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
 	require.NoError(t, err)
 }
@@ -74,16 +83,15 @@ func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[string]*ArmaNodeInfo {
 	var parties []genconfig.Party
 	netInfo := make(map[string]*ArmaNodeInfo)
-	runOrderMap := map[string]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
 
-	for i := 0; i < numOfParties; i++ {
+	for i := range numOfParties {
 		assemblerPort, lla := GetAvailablePort(t)
 		consenterPort, llc := GetAvailablePort(t)
 		routerPort, llr := GetAvailablePort(t)
 		var llbs []net.Listener
 		var batchersEndpoints []string
 
-		for n := 0; n < numOfBatcherShards; n++ {
+		for range numOfBatcherShards {
 			batcherPort, llb := GetAvailablePort(t)
 			llbs = append(llbs, llb)
 			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
@@ -99,18 +107,18 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 
 		parties = append(parties, party)
 
-		nodeName := fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Router], Router)
+		nodeName := fmt.Sprintf("Party%d%d%s", i+1, runingOrderMap[Router], Router)
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1)}
 
 		for j, b := range llbs {
-			nodeName = fmt.Sprintf("Party%d%d%s%d", i+1, runOrderMap[Batcher], Batcher, j+1)
+			nodeName = fmt.Sprintf("Party%d%d%s%d", i+1, runingOrderMap[Batcher], Batcher, j+1)
 			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1)}
 		}
 
-		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Consensus], Consensus)
+		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runingOrderMap[Consensus], Consensus)
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1)}
 
-		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Assembler], Assembler)
+		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runingOrderMap[Assembler], Assembler)
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1)}
 	}
 
@@ -118,12 +126,122 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 		Parties:         parties,
 		UseTLSRouter:    useTLSRouter,
 		UseTLSAssembler: useTLSAssembler,
+		MaxPartyID:      types.PartyID(numOfParties),
 	}
 
 	err := utils.WriteToYAML(network, path)
 	require.NoError(t, err)
 
 	return netInfo
+}
+
+// ExtendNetwork extends an existing network configuration by adding a party to it.
+func ExtendNetwork(t *testing.T, path string) (map[string]*ArmaNodeInfo, *genconfig.Network) {
+	netInfo := make(map[string]*ArmaNodeInfo)
+
+	networkConfig := genconfig.Network{}
+	err := utils.ReadFromYAML(&networkConfig, path)
+	require.NoError(t, err, "failed to read network config file")
+
+	networkConfig.MaxPartyID++
+
+	numOfBatcherShards := len(networkConfig.Parties[0].BatchersEndpoints)
+
+	assemblerPort, lla := GetAvailablePort(t)
+	consenterPort, llc := GetAvailablePort(t)
+	routerPort, llr := GetAvailablePort(t)
+	var llbs []net.Listener
+	var batchersEndpoints []string
+
+	for range numOfBatcherShards {
+		batcherPort, llb := GetAvailablePort(t)
+		llbs = append(llbs, llb)
+		batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
+	}
+
+	newPartyConfig := genconfig.Party{
+		ID:                networkConfig.MaxPartyID,
+		AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
+		ConsenterEndpoint: "127.0.0.1:" + consenterPort,
+		RouterEndpoint:    "127.0.0.1:" + routerPort,
+		BatchersEndpoints: batchersEndpoints,
+	}
+
+	networkConfig.Parties = append(networkConfig.Parties, newPartyConfig)
+
+	nodeName := fmt.Sprintf("Party%d%d%s", networkConfig.MaxPartyID, runingOrderMap[Router], Router)
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(networkConfig.MaxPartyID)}
+
+	for j, b := range llbs {
+		nodeName = fmt.Sprintf("Party%d%d%s%d", networkConfig.MaxPartyID, runingOrderMap[Batcher], Batcher, j+1)
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(networkConfig.MaxPartyID), ShardId: types.ShardID(j + 1)}
+	}
+
+	nodeName = fmt.Sprintf("Party%d%d%s", networkConfig.MaxPartyID, runingOrderMap[Consensus], Consensus)
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(networkConfig.MaxPartyID)}
+
+	nodeName = fmt.Sprintf("Party%d%d%s", networkConfig.MaxPartyID, runingOrderMap[Assembler], Assembler)
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(networkConfig.MaxPartyID)}
+
+	err = utils.WriteToYAML(networkConfig, path)
+	require.NoError(t, err)
+
+	return netInfo, &genconfig.Network{Parties: []genconfig.Party{newPartyConfig}, UseTLSRouter: networkConfig.UseTLSRouter, UseTLSAssembler: networkConfig.UseTLSAssembler}
+}
+
+func ExtendConfigAndCrypto(networkConfig *genconfig.Network, outputDir string, clientSignatureVerificationRequired bool) {
+	// generate crypto material
+	err := armageddon.GenerateCryptoConfig(networkConfig, outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating crypto config: %s", err)
+		os.Exit(-1)
+	}
+
+	// generate local config yaml files
+	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(*networkConfig, outputDir, outputDir, clientSignatureVerificationRequired)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating local config: %s", err)
+		os.Exit(-1)
+	}
+
+	// generate shared config yaml file
+	_, err = genconfig.ExtendArmaSharedConfig(*networkConfig, networkLocalConfig, outputDir, outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	sharedConfig, _, err := config.LoadSharedConfig(filepath.Join(outputDir, "bootstrap", "shared_config.yaml"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading shared config: %s", err)
+		os.Exit(-1)
+	}
+
+	// generate user config yaml file for each party
+	// user will be able to connect to each of the routers and assemblers only if it receives for each router the CA that signed the certificate of that router.
+	// therefore, the CA created per party must be collected for each party, to which the router is associated.
+	var tlsCACertsBytesPartiesCollection [][]byte
+	for _, party := range sharedConfig.PartiesConfig {
+		tlsCACertsBytesPartiesCollection = append(tlsCACertsBytesPartiesCollection, party.TLSCACerts...)
+	}
+
+	for _, party := range networkConfig.Parties {
+		userTLSPrivateKeyPath := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "tls", "user-key.pem")
+		userTLSCertPath := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "tls", "user-tls-cert.pem")
+		mspDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "users", "user", "msp")
+
+		userConfig, err := armageddon.NewUserConfig(mspDir, userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating user config: %s", err)
+			os.Exit(-1)
+		}
+
+		err = utils.WriteToYAML(userConfig, filepath.Join(outputDir, "config", fmt.Sprintf("party%d", party.ID), "user_config.yaml"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating user config yaml: %s", err)
+			os.Exit(-1)
+		}
+	}
 }
 
 // PrepareSharedConfigBinary generates a shared configuration and writes the encoded configuration to a file.
@@ -223,7 +341,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		err := os.MkdirAll(storagePath, 0o755)
 		require.NoError(t, err)
 
-		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
+		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, netNode.ConfigBlockPath)
 		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
 		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
@@ -298,4 +416,25 @@ func LoadCryptoMaterialsFromDir(t *testing.T, mspDir string) (*crypto.ECDSASigne
 	require.NoError(t, err, "failed to read sign certificate file")
 
 	return (*crypto.ECDSASigner)(privateKey), certBytes, nil
+}
+
+func CreateAssemblerBundleForTest(sequence uint64) channelconfig.Resources {
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configEnvelope := &common.ConfigEnvelope{
+		Config:     nil,
+		LastUpdate: nil,
+	}
+	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
+	configtxValidator.SequenceReturns(sequence)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	policy := &policyMocks.FakePolicyEvaluator{}
+	policy.EvaluateSignedDataReturns(nil)
+	policyManager := &policyMocks.FakePolicyManager{}
+	policyManager.GetPolicyReturns(policy, true)
+	bundle.PolicyManagerReturns(policyManager)
+
+	return bundle
 }
