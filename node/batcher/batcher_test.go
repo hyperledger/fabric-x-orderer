@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -511,6 +512,12 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 		require.Equal(t, len(blocks), 0)
 	}
 
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	for i := 0; i < numParties; i++ {
+		err := batchers[i].ConfigStore.Add(genesisBlock)
+		require.NoError(t, err)
+	}
+
 	// receive config block from consensus
 	groups := &common.ConfigGroup{}
 	configBlock := block.BlockWithGroups(groups, "arma", 1)
@@ -526,7 +533,7 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 		require.Eventually(t, func() bool {
 			block, err1 := batchers[j].ConfigStore.Last()
 			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
-			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 1
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 }
