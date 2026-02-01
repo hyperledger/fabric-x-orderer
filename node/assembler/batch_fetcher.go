@@ -8,6 +8,7 @@ package assembler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -212,12 +213,12 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 
 	// canceling ctx will not cancel br.cancelCtx,
 	// canceling br.cancelCtx will cancel ctx.
-	ctx, cancelFunc := context.WithCancel(br.cancelCtx)
+	ctx, cancelFunc := context.WithCancelCause(br.cancelCtx)
 	res := make(chan types.Batch, len(shardInfo.Batchers))
-
+	successErr := errors.New("batch was found")
 	for _, fromBatcher := range shardInfo.Batchers {
 		go func(from config.BatcherInfo) {
-			br.pullSingleBatch(ctx, from, batchID, res)
+			br.pullSingleBatch(ctx, from, batchID, res, successErr)
 		}(fromBatcher)
 	}
 
@@ -227,26 +228,25 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 		// TODO use select with case for shutdown, will be implemented in next PR
 		select {
 		case <-ctx.Done():
-			cancelFunc()
+			cancelFunc(errors.New("batch fetcher is shutting down, assembler is stopping"))
 			br.logger.Errorf("operation canceled")
 			return nil, context.Canceled
 		case fb := <-res:
 			count++
 			if types.BatchIDEqual(fb, batchID) {
 				br.logger.Infof("Found batch %s", types.BatchIDToString(fb))
-				cancelFunc()
+				cancelFunc(successErr)
 				return fb, nil
 			} else if count == len(shardInfo.Batchers) {
 				br.logger.Errorf("We got responses from all %d batchers in shard %d, but none match the desired BatchID: %s", count, shardInfo.ShardId, types.BatchIDToString(batchID))
-
-				cancelFunc()
+				cancelFunc(errors.New("batch was not found in any batcher in the shard"))
 				return nil, fmt.Errorf("failed finding batchID %s within shard: %d", types.BatchIDToString(batchID), shardInfo.ShardId)
 			}
 		}
 	}
 }
 
-func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom config.BatcherInfo, batchID types.BatchID, resultChan chan types.Batch) {
+func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom config.BatcherInfo, batchID types.BatchID, resultChan chan types.Batch, successErr error) {
 	br.logger.Infof("Assembler trying to pull a single batch from %s, batch-ID: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(batchID))
 
 	channelName := ledger.ShardPartyToChannelName(batchID.Shard(), batchID.Primary())
@@ -276,15 +276,25 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		batcherToPullFrom.Endpoint,
 		requestEnvelopeFactoryFunc,
 		br.clientConfig,
+		successErr,
 	)
 	if err != nil {
-		br.logger.Errorf("Assembler failed to pull batch %s from batcher: shard: %d, party: %d, endpoint: %s", types.BatchIDToString(batchID), batchID.Shard(), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint)
+		if cause := context.Cause(ctx); cause == successErr {
+			br.logger.Infof("Assembler canceled pulling batch %s from batcher: shard: %d, party: %d, endpoint: %s. cause: %v", types.BatchIDToString(batchID), batchID.Shard(), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint, cause)
+		} else if cause != nil {
+			br.logger.Errorf("Assembler failed pulling batch %s from batcher, because context was canceled with cause %v. shard: %d, party: %d, endpoint: %s. error: %s", cause, types.BatchIDToString(batchID), batchID.Shard(), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint, err)
+		} else {
+			// context was not canceled, this is an actual error.
+			br.logger.Errorf("Assembler failed pulling batch %s from batcher: shard: %d, party: %d, endpoint: %s. error: %s", types.BatchIDToString(batchID), batchID.Shard(), batcherToPullFrom.PartyID, batcherToPullFrom.Endpoint, err)
+		}
 		resultChan <- nil
+		return
 	}
 
 	fb, err := ledger.NewFabricBatchFromBlock(block)
 	if err != nil {
 		br.logger.Errorf("Assembler pulled from %s a block that cannot be converted to a FabricBatch: %s", batcherToPullFrom.Endpoint, err)
+		resultChan <- nil
 		return
 	}
 	br.logger.Infof("Assembler pulled from %s batch: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
