@@ -119,7 +119,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 	return r
 }
 
-// NextSeekInfoFromConfigStore creates a SeekInfo to start pulling config blocks from consensus, based on the last connfig block stored in the config store.
+// NextSeekInfoFromConfigStore creates a SeekInfo to start pulling config blocks from consensus, based on the last config block stored in the config store.
 func NextSeekInfoFromConfigStore(configStore *configstore.Store, logger types.Logger) *orderer.SeekInfo {
 	lastBlock, err := configStore.Last()
 	if err != nil {
@@ -538,7 +538,7 @@ func (r *Router) pullAndProcessConfigBlocks() {
 	}
 }
 
-// IsAllStreamsOK checks that all the streams accross all shard-routers are non-faulty.
+// IsAllStreamsOK checks that all the streams across all shard-routers are non-faulty.
 // Use for testing only.
 func (r *Router) IsAllStreamsOK() bool {
 	for _, sr := range r.shardRouters {
