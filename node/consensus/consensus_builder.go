@@ -120,7 +120,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *consensus.Consensus {
 	walDir := walPath
 	if walDir == "" {
-		walDir = filepath.Join(c.Config.Directory, "wal")
+		walDir = filepath.Join(c.Config.WALDir)
 	}
 
 	bftWAL, walInitState, err := wal.InitializeAndReadAll(c.Logger, walDir, wal.DefaultOptions())

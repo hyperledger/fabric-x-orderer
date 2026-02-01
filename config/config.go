@@ -260,6 +260,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		WALDir:                              filepath.Join(config.LocalConfig.NodeLocalConfig.FileStore.Path, "wal"),
 		Shards:                              shards,
 		Consenter:                           config.ExtractConsenterInParty(),
 		NumOfConnectionsForBatcher:          config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,
@@ -290,7 +291,8 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		Consenters:                          config.ExtractConsenters(),
 		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
-		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path, // TODO: maybe store it in subdir
+		WALDir:                              filepath.Join(config.LocalConfig.NodeLocalConfig.FileStore.Path, "wal"),
 		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		ShardId:                             config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
@@ -351,7 +353,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
 		ClientRootCAs:                       config.LocalConfig.TLSConfig.ClientRootCAs,
 		SigningPrivateKey:                   signingPrivateKey,
-		WALDir:                              DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
+		WALDir:                              filepath.Join(config.LocalConfig.NodeLocalConfig.FileStore.Path, "wal"), // TODO: should come from local config consensus wal ?
 		BFTConfig:                           BFTConfig,
 		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
