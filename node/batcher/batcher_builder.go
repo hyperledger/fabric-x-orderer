@@ -20,37 +20,33 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	var parties []types.PartyID
-	for shIdx, sh := range conf.Shards {
-		if sh.ShardId != conf.ShardId {
+	for shIdx, sh := range config.Shards {
+		if sh.ShardId != config.ShardId {
 			continue
 		}
 
-		for _, b := range conf.Shards[shIdx].Batchers {
+		for _, b := range config.Shards[shIdx].Batchers {
 			parties = append(parties, b.PartyID)
 		}
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(conf.ShardId, conf.PartyId, parties, conf.Directory, logger)
+	ledger, err := node_ledger.NewBatchLedgerArray(config.ShardId, config.PartyId, parties, config.Directory, logger)
 	if err != nil {
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
 
-	deliveryService := &BatcherDeliverService{
-		LedgerArray: ledgerArray,
+	ds := &BatcherDeliverService{
+		LedgerArray: ledger,
 		Logger:      logger,
 	}
 
-	bp := NewBatchPuller(conf, ledgerArray, logger)
+	bp := NewBatchPuller(config, ledger, logger)
 
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), senderCreator, net, signer)
+	sr := csrc.CreateStateConsensusReplicator(config, logger)
 
-	return batcher
-}
-
-func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp BatchesPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
 
 	configStore, err := configstore.NewStore(config.ConfigStorePath)
