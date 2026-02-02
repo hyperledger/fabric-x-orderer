@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -27,6 +30,7 @@ import (
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
@@ -298,4 +302,25 @@ func LoadCryptoMaterialsFromDir(t *testing.T, mspDir string) (*crypto.ECDSASigne
 	require.NoError(t, err, "failed to read sign certificate file")
 
 	return (*crypto.ECDSASigner)(privateKey), certBytes, nil
+}
+
+func CreateAssemblerBundleForTest(sequence uint64) channelconfig.Resources {
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configEnvelope := &common.ConfigEnvelope{
+		Config:     nil,
+		LastUpdate: nil,
+	}
+	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
+	configtxValidator.SequenceReturns(sequence)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	policy := &policyMocks.FakePolicyEvaluator{}
+	policy.EvaluateSignedDataReturns(nil)
+	policyManager := &policyMocks.FakePolicyManager{}
+	policyManager.GetPolicyReturns(policy, true)
+	bundle.PolicyManagerReturns(policyManager)
+
+	return bundle
 }
