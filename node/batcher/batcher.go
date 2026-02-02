@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -61,6 +62,7 @@ type Batcher struct {
 	config                    *node_config.BatcherNodeConfig
 	batchers                  []node_config.BatcherInfo
 	signer                    Signer
+	WAL                       *wal.WriteAheadLogFile
 
 	stateChan chan *state.State
 
@@ -115,6 +117,7 @@ func (b *Batcher) SoftStop() {
 		b.primaryReqConnector.Stop()
 		b.running.Wait()
 		b.Metrics.Stop()
+		b.WAL.Close()
 	})
 }
 
@@ -130,6 +133,8 @@ func (b *Batcher) replicateState() {
 	for {
 		select {
 		case header := <-headerChan:
+			rawHeader := header.Serialize()
+			b.WAL.Append(rawHeader, true)
 			// check if decision contains a config block, and if so, append it to the batcher config store, skip the genesis block.
 			if header.Num == header.DecisionNumOfLastConfigBlock && header.Num != 0 {
 				lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]

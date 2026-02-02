@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -26,6 +27,7 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -117,11 +119,18 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
+		configStorePath := t.TempDir()
+		cs, err := configstore.NewStore(configStorePath)
+		require.NoError(t, err)
+		// add dummy genesis block
+		block := tx.CreateConfigBlock(0, []byte("genesis block data"))
+		require.NoError(t, cs.Add(block))
+
 		conf := &config.BatcherNodeConfig{
 			Shards:                              []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
 			Consenters:                          consentersInfo,
 			Directory:                           t.TempDir(),
-			ConfigStorePath:                     t.TempDir(),
+			ConfigStorePath:                     configStorePath,
 			PartyId:                             parties[i],
 			ShardId:                             shardID,
 			SigningPrivateKey:                   config.RawBytes(pem.EncodeToMemory(&pem.Block{Bytes: key})),

@@ -9,9 +9,12 @@ package batcher
 import (
 	"context"
 	"encoding/pem"
+	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
@@ -35,7 +38,7 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, n
 
 	ledger, err := node_ledger.NewBatchLedgerArray(config.ShardId, config.PartyId, parties, config.Directory, logger)
 	if err != nil {
-		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
+		logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
 
 	ds := &BatcherDeliverService{
@@ -45,14 +48,43 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, n
 
 	bp := NewBatchPuller(config, ledger, logger)
 
-	sr := csrc.CreateStateConsensusReplicator(config, logger)
-
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
+	walDir := filepath.Join(config.Directory, "wal")
+	batcherWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
+	if err != nil {
+		logger.Panicf("Failed creating WAL: %s", err.Error())
+	}
+	var lastKnownDecisionNum types.DecisionNum
+	if len(walInitState) > 0 {
+		header := &state.Header{}
+		if err := header.Deserialize(walInitState[len(walInitState)-1]); err != nil {
+			logger.Panicf("Could not read header from WAL: %s", err.Error())
+		}
+		lastKnownDecisionNum = header.Num
+	}
 
 	configStore, err := configstore.NewStore(config.ConfigStorePath)
 	if err != nil {
-		logger.Panicf("Failed creating batcher config store: %s", err)
+		logger.Panicf("Failed creating batcher config store: %s", err.Error())
 	}
+
+	if lastKnownDecisionNum == 0 {
+		lastConfigBlock, err := configStore.Last()
+		if err != nil {
+			logger.Panicf("Failed getting last config block from config store: %s", err.Error())
+		}
+		if lastConfigBlock.GetHeader().GetNumber() != 0 {
+			ordererBlockMetadata := lastConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+			_, _, _, lastDecisionNumber, _, _, _, err := node_ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
+			if err != nil {
+				logger.Panicf("Failed extracting decision number from last config block: %s", err)
+			}
+			lastKnownDecisionNum = lastDecisionNumber
+		}
+	}
+
+	sr := csrc.CreateStateConsensusReplicator(config, logger, lastKnownDecisionNum)
+
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
 
 	batchers := batchersFromConfig(config)
 	if len(batchers) == 0 {
@@ -72,6 +104,7 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, n
 		batcherCerts2IDs:          make(map[string]types.PartyID),
 		config:                    config,
 		Metrics:                   NewBatcherMetrics(config, batchers, ledger, logger),
+		WAL:                       batcherWAL,
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))

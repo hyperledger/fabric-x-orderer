@@ -14,12 +14,12 @@ import (
 
 //go:generate counterfeiter -o mocks/consensus_state_replicator_creator.go . ConsensusStateReplicatorCreator
 type ConsensusStateReplicatorCreator interface {
-	CreateStateConsensusReplicator(conf *node_config.BatcherNodeConfig, logger types.Logger) StateReplicator
+	CreateStateConsensusReplicator(conf *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) StateReplicator
 }
 
 type ConsensusStateReplicatorFactory struct{}
 
-func (c *ConsensusStateReplicatorFactory) CreateStateConsensusReplicator(config *node_config.BatcherNodeConfig, logger types.Logger) StateReplicator {
+func (c *ConsensusStateReplicatorFactory) CreateStateConsensusReplicator(config *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) StateReplicator {
 	var endpoint string
 	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(config.Consenters); i++ {
@@ -33,5 +33,5 @@ func (c *ConsensusStateReplicatorFactory) CreateStateConsensusReplicator(config 
 	if endpoint == "" || len(tlsCAs) == 0 {
 		logger.Panicf("Failed finding endpoint and TLS CAs for party %d", config.PartyId)
 	}
-	return delivery.NewConsensusStateReplicator(tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, nil, logger) // TODO use a real ledger instead of nil
+	return delivery.NewConsensusStateReplicator(tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, logger, uint64(lastKnownDecisionNum))
 }
