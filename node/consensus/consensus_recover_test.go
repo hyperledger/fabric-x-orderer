@@ -26,6 +26,7 @@ var (
 	digest123 = append([]byte{1, 2, 3}, digest...)
 	digest124 = append([]byte{1, 2, 4}, digest...)
 	digest125 = append([]byte{1, 2, 5}, digest...)
+	digest126 = append([]byte{1, 2, 6}, digest...)
 )
 
 func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
