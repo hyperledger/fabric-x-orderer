@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/credentials"
@@ -83,4 +84,32 @@ func CertificateToString(cert *x509.Certificate) string {
 	// pem.Encode(&sb, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 
 	return sb.String()
+}
+
+func GetPortFromEndpoint(endpoint string) uint32 {
+	if strings.Contains(endpoint, ":") {
+		_, portS, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
+		}
+		port, err := strconv.ParseUint(portS, 10, 32)
+		if err != nil {
+			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
+		}
+		return uint32(port)
+	}
+
+	return 0
+}
+
+func TrimPortFromEndpoint(endpoint string) string {
+	if strings.Contains(endpoint, ":") {
+		host, _, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
+		}
+		return host
+	}
+
+	return endpoint
 }

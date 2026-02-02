@@ -40,6 +40,7 @@ type ArmaNodeInfo struct {
 	Listener net.Listener
 	PartyId  types.PartyID
 	ShardId  types.ShardID
+	Endpoint string
 }
 
 func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType string, partyIdx int, nodeInfo *ArmaNodeInfo) {
