@@ -126,16 +126,14 @@ func TestConfigDisseminate(t *testing.T) {
 	req := tx.CreateStructuredRequest([]byte{2})
 	require.Eventually(t, func() bool {
 		resp, err := routers[0].Submit(context.Background(), req)
-		require.NoError(t, err)
-		return strings.Contains(resp.Error, "router is stopping, cannot process request")
+		return err == nil && strings.Contains(resp.Error, "router is stopping, cannot process request")
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// make sure batcher said it is stopping
 	batchers[0].Submit(context.Background(), req)
 	require.Eventually(t, func() bool {
 		_, err := batchers[0].Submit(context.Background(), req)
-		require.Error(t, err)
-		return strings.Contains(err.Error(), "batcher is stopped")
+		return err != nil && strings.Contains(err.Error(), "batcher is stopped")
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// make sure consenter said it is stopping
@@ -143,8 +141,7 @@ func TestConfigDisseminate(t *testing.T) {
 		baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2}, types.PartyID(1), 0)
 		ce := &state.ControlEvent{BAF: baf}
 		err := consenters[0].SubmitRequest(ce.Bytes())
-		require.Error(t, err)
-		return strings.Contains(err.Error(), "consensus is soft-stopped")
+		return err != nil && strings.Contains(err.Error(), "consensus is soft-stopped")
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// check all assemblers appended to the ledger a config block
