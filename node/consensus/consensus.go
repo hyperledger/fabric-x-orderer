@@ -626,8 +626,18 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 
 	c.stateLock.Lock()
 	c.State = hdr.State
+	currentNodes := c.CurrentNodes
+	currentBFTConfig := c.BFTConfig
+	inLatestDecision := false
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
-		lastBlockNum := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1].Header.Number
+		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
+		lastBlockNum := configBlock.Header.Number
+		var err error
+		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.Config.PartyId)
+		if err != nil {
+			c.Logger.Panicf("Failed extracting config from config block: %v", err)
+		}
+		inLatestDecision = true
 		c.Logger.Infof("Delivering config block number %d", lastBlockNum)
 		c.decisionNumOfLastConfigBlock = hdr.Num
 		if c.lastConfigBlockNum < lastBlockNum {
@@ -640,8 +650,9 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	c.stateLock.Unlock()
 
 	return smartbft_types.Reconfig{
-		CurrentNodes:  c.CurrentNodes,
-		CurrentConfig: c.BFTConfig,
+		CurrentNodes:     currentNodes,
+		CurrentConfig:    currentBFTConfig,
+		InLatestDecision: inLatestDecision,
 	}
 }
 
