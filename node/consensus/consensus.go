@@ -633,7 +633,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
 		lastBlockNum := configBlock.Header.Number
 		var err error
-		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractConfigFromConfigBlock(configBlock, c.Config.PartyId)
+		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.Config.PartyId)
 		if err != nil {
 			c.Logger.Panicf("Failed extracting config from config block: %v", err)
 		}

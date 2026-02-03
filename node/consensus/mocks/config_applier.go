@@ -26,18 +26,18 @@ type FakeConfigApplier struct {
 		result1 *state.State
 		result2 error
 	}
-	ExtractConfigFromConfigBlockStub        func(*common.Block, typesa.PartyID) ([]uint64, types.Configuration, error)
-	extractConfigFromConfigBlockMutex       sync.RWMutex
-	extractConfigFromConfigBlockArgsForCall []struct {
+	ExtractSmartBFTConfigFromBlockStub        func(*common.Block, typesa.PartyID) ([]uint64, types.Configuration, error)
+	extractSmartBFTConfigFromBlockMutex       sync.RWMutex
+	extractSmartBFTConfigFromBlockArgsForCall []struct {
 		arg1 *common.Block
 		arg2 typesa.PartyID
 	}
-	extractConfigFromConfigBlockReturns struct {
+	extractSmartBFTConfigFromBlockReturns struct {
 		result1 []uint64
 		result2 types.Configuration
 		result3 error
 	}
-	extractConfigFromConfigBlockReturnsOnCall map[int]struct {
+	extractSmartBFTConfigFromBlockReturnsOnCall map[int]struct {
 		result1 []uint64
 		result2 types.Configuration
 		result3 error
@@ -111,17 +111,17 @@ func (fake *FakeConfigApplier) ApplyConfigToStateReturnsOnCall(i int, result1 *s
 	}{result1, result2}
 }
 
-func (fake *FakeConfigApplier) ExtractConfigFromConfigBlock(arg1 *common.Block, arg2 typesa.PartyID) ([]uint64, types.Configuration, error) {
-	fake.extractConfigFromConfigBlockMutex.Lock()
-	ret, specificReturn := fake.extractConfigFromConfigBlockReturnsOnCall[len(fake.extractConfigFromConfigBlockArgsForCall)]
-	fake.extractConfigFromConfigBlockArgsForCall = append(fake.extractConfigFromConfigBlockArgsForCall, struct {
+func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlock(arg1 *common.Block, arg2 typesa.PartyID) ([]uint64, types.Configuration, error) {
+	fake.extractSmartBFTConfigFromBlockMutex.Lock()
+	ret, specificReturn := fake.extractSmartBFTConfigFromBlockReturnsOnCall[len(fake.extractSmartBFTConfigFromBlockArgsForCall)]
+	fake.extractSmartBFTConfigFromBlockArgsForCall = append(fake.extractSmartBFTConfigFromBlockArgsForCall, struct {
 		arg1 *common.Block
 		arg2 typesa.PartyID
 	}{arg1, arg2})
-	stub := fake.ExtractConfigFromConfigBlockStub
-	fakeReturns := fake.extractConfigFromConfigBlockReturns
-	fake.recordInvocation("ExtractConfigFromConfigBlock", []interface{}{arg1, arg2})
-	fake.extractConfigFromConfigBlockMutex.Unlock()
+	stub := fake.ExtractSmartBFTConfigFromBlockStub
+	fakeReturns := fake.extractSmartBFTConfigFromBlockReturns
+	fake.recordInvocation("ExtractSmartBFTConfigFromBlock", []interface{}{arg1, arg2})
+	fake.extractSmartBFTConfigFromBlockMutex.Unlock()
 	if stub != nil {
 		return stub(arg1, arg2)
 	}
@@ -131,48 +131,48 @@ func (fake *FakeConfigApplier) ExtractConfigFromConfigBlock(arg1 *common.Block, 
 	return fakeReturns.result1, fakeReturns.result2, fakeReturns.result3
 }
 
-func (fake *FakeConfigApplier) ExtractConfigFromConfigBlockCallCount() int {
-	fake.extractConfigFromConfigBlockMutex.RLock()
-	defer fake.extractConfigFromConfigBlockMutex.RUnlock()
-	return len(fake.extractConfigFromConfigBlockArgsForCall)
+func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlockCallCount() int {
+	fake.extractSmartBFTConfigFromBlockMutex.RLock()
+	defer fake.extractSmartBFTConfigFromBlockMutex.RUnlock()
+	return len(fake.extractSmartBFTConfigFromBlockArgsForCall)
 }
 
-func (fake *FakeConfigApplier) ExtractConfigFromConfigBlockCalls(stub func(*common.Block, typesa.PartyID) ([]uint64, types.Configuration, error)) {
-	fake.extractConfigFromConfigBlockMutex.Lock()
-	defer fake.extractConfigFromConfigBlockMutex.Unlock()
-	fake.ExtractConfigFromConfigBlockStub = stub
+func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlockCalls(stub func(*common.Block, typesa.PartyID) ([]uint64, types.Configuration, error)) {
+	fake.extractSmartBFTConfigFromBlockMutex.Lock()
+	defer fake.extractSmartBFTConfigFromBlockMutex.Unlock()
+	fake.ExtractSmartBFTConfigFromBlockStub = stub
 }
 
-func (fake *FakeConfigApplier) ExtractConfigFromConfigBlockArgsForCall(i int) (*common.Block, typesa.PartyID) {
-	fake.extractConfigFromConfigBlockMutex.RLock()
-	defer fake.extractConfigFromConfigBlockMutex.RUnlock()
-	argsForCall := fake.extractConfigFromConfigBlockArgsForCall[i]
+func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlockArgsForCall(i int) (*common.Block, typesa.PartyID) {
+	fake.extractSmartBFTConfigFromBlockMutex.RLock()
+	defer fake.extractSmartBFTConfigFromBlockMutex.RUnlock()
+	argsForCall := fake.extractSmartBFTConfigFromBlockArgsForCall[i]
 	return argsForCall.arg1, argsForCall.arg2
 }
 
-func (fake *FakeConfigApplier) ExtractConfigFromConfigBlockReturns(result1 []uint64, result2 types.Configuration, result3 error) {
-	fake.extractConfigFromConfigBlockMutex.Lock()
-	defer fake.extractConfigFromConfigBlockMutex.Unlock()
-	fake.ExtractConfigFromConfigBlockStub = nil
-	fake.extractConfigFromConfigBlockReturns = struct {
+func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlockReturns(result1 []uint64, result2 types.Configuration, result3 error) {
+	fake.extractSmartBFTConfigFromBlockMutex.Lock()
+	defer fake.extractSmartBFTConfigFromBlockMutex.Unlock()
+	fake.ExtractSmartBFTConfigFromBlockStub = nil
+	fake.extractSmartBFTConfigFromBlockReturns = struct {
 		result1 []uint64
 		result2 types.Configuration
 		result3 error
 	}{result1, result2, result3}
 }
 
-func (fake *FakeConfigApplier) ExtractConfigFromConfigBlockReturnsOnCall(i int, result1 []uint64, result2 types.Configuration, result3 error) {
-	fake.extractConfigFromConfigBlockMutex.Lock()
-	defer fake.extractConfigFromConfigBlockMutex.Unlock()
-	fake.ExtractConfigFromConfigBlockStub = nil
-	if fake.extractConfigFromConfigBlockReturnsOnCall == nil {
-		fake.extractConfigFromConfigBlockReturnsOnCall = make(map[int]struct {
+func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlockReturnsOnCall(i int, result1 []uint64, result2 types.Configuration, result3 error) {
+	fake.extractSmartBFTConfigFromBlockMutex.Lock()
+	defer fake.extractSmartBFTConfigFromBlockMutex.Unlock()
+	fake.ExtractSmartBFTConfigFromBlockStub = nil
+	if fake.extractSmartBFTConfigFromBlockReturnsOnCall == nil {
+		fake.extractSmartBFTConfigFromBlockReturnsOnCall = make(map[int]struct {
 			result1 []uint64
 			result2 types.Configuration
 			result3 error
 		})
 	}
-	fake.extractConfigFromConfigBlockReturnsOnCall[i] = struct {
+	fake.extractSmartBFTConfigFromBlockReturnsOnCall[i] = struct {
 		result1 []uint64
 		result2 types.Configuration
 		result3 error
@@ -184,8 +184,8 @@ func (fake *FakeConfigApplier) Invocations() map[string][][]interface{} {
 	defer fake.invocationsMutex.RUnlock()
 	fake.applyConfigToStateMutex.RLock()
 	defer fake.applyConfigToStateMutex.RUnlock()
-	fake.extractConfigFromConfigBlockMutex.RLock()
-	defer fake.extractConfigFromConfigBlockMutex.RUnlock()
+	fake.extractSmartBFTConfigFromBlockMutex.RLock()
+	defer fake.extractSmartBFTConfigFromBlockMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

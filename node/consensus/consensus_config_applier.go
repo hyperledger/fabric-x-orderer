@@ -25,8 +25,8 @@ import (
 type ConfigApplier interface {
 	// ApplyConfigToState update the current state based on the config request
 	ApplyConfigToState(state *state.State, configRequest *state.ConfigRequest) (*state.State, error)
-	// ExtractConfigFromConfigBlock extracts the config from a config block
-	ExtractConfigFromConfigBlock(configBlock *common.Block, selfID arma_types.PartyID) ([]uint64, smartbft_types.Configuration, error)
+	// ExtractSmartBFTConfigFromBlock extracts the smartBFT config from a config block
+	ExtractSmartBFTConfigFromBlock(configBlock *common.Block, selfID arma_types.PartyID) ([]uint64, smartbft_types.Configuration, error)
 }
 
 type DefaultConfigApplier struct{}
@@ -63,17 +63,16 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 	return newState, nil
 }
 
-func (ca *DefaultConfigApplier) ExtractConfigFromConfigBlock(configBlock *common.Block, selfID arma_types.PartyID) ([]uint64, smartbft_types.Configuration, error) {
+func (ca *DefaultConfigApplier) ExtractSmartBFTConfigFromBlock(configBlock *common.Block, selfID arma_types.PartyID) ([]uint64, smartbft_types.Configuration, error) {
 	if configBlock == nil {
 		return nil, smartbft_types.Configuration{}, errors.New("block is nil")
 	}
 	if !protoutil.IsConfigBlock(configBlock) {
 		return nil, smartbft_types.Configuration{}, errors.New("not a config block")
 	}
-	configReqBytes := configBlock.GetData().GetData()[0]
-	configReqEnv, err := protoutil.UnmarshalEnvelope(configReqBytes)
+	configReqEnv, err := protoutil.ExtractEnvelope(configBlock, 0)
 	if err != nil {
-		return nil, smartbft_types.Configuration{}, errors.Wrap(err, "unable to unmarshal config req")
+		return nil, smartbft_types.Configuration{}, errors.Wrap(err, "unable to extract config req env")
 	}
 	bundle, err := channelconfig.NewBundleFromEnvelope(configReqEnv, factory.GetDefault())
 	if err != nil {
