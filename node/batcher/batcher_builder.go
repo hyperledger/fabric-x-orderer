@@ -53,34 +53,13 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, n
 	if err != nil {
 		logger.Panicf("Failed creating WAL: %s", err.Error())
 	}
-	var lastKnownDecisionNum types.DecisionNum
-	if len(walInitState) > 0 {
-		header := &state.Header{}
-		if err := header.Deserialize(walInitState[len(walInitState)-1]); err != nil {
-			logger.Panicf("Could not read header from WAL: %s", err.Error())
-		}
-		lastKnownDecisionNum = header.Num
-	}
 
 	configStore, err := configstore.NewStore(config.ConfigStorePath)
 	if err != nil {
 		logger.Panicf("Failed creating batcher config store: %s", err.Error())
 	}
 
-	if lastKnownDecisionNum == 0 {
-		lastConfigBlock, err := configStore.Last()
-		if err != nil {
-			logger.Panicf("Failed getting last config block from config store: %s", err.Error())
-		}
-		if lastConfigBlock.GetHeader().GetNumber() != 0 {
-			ordererBlockMetadata := lastConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
-			_, _, _, lastDecisionNumber, _, _, _, err := node_ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
-			if err != nil {
-				logger.Panicf("Failed extracting decision number from last config block: %s", err)
-			}
-			lastKnownDecisionNum = lastDecisionNumber
-		}
-	}
+	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
 
 	sr := csrc.CreateStateConsensusReplicator(config, logger, lastKnownDecisionNum)
 
@@ -208,4 +187,32 @@ func indexTLSCerts(batchers []node_config.BatcherInfo, logger types.Logger) map[
 	}
 
 	return batcherCertToID
+}
+
+func getLastKnownDecisionNum(walInitState [][]byte, configStore *configstore.Store, logger types.Logger) types.DecisionNum {
+	var lastKnownDecisionNum types.DecisionNum
+	if len(walInitState) > 0 {
+		header := &state.Header{}
+		if err := header.Deserialize(walInitState[len(walInitState)-1]); err != nil {
+			logger.Panicf("Could not read header from WAL: %s", err.Error())
+		}
+		lastKnownDecisionNum = header.Num
+	}
+
+	if lastKnownDecisionNum == 0 {
+		lastConfigBlock, err := configStore.Last()
+		if err != nil {
+			logger.Panicf("Failed getting last config block from config store: %s", err.Error())
+		}
+		if lastConfigBlock.GetHeader().GetNumber() != 0 {
+			ordererBlockMetadata := lastConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+			_, _, _, lastDecisionNumber, _, _, _, err := node_ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
+			if err != nil {
+				logger.Panicf("Failed extracting decision number from last config block: %s", err)
+			}
+			lastKnownDecisionNum = lastDecisionNumber
+		}
+	}
+
+	return lastKnownDecisionNum
 }
