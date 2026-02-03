@@ -626,6 +626,11 @@ func TestSyncFromSoftStoppedNodes(t *testing.T) {
 	b1 = <-setup.listeners[1].c
 	require.Equal(t, uint64(2), b1.Header.Number)
 
+	b3 := <-setup.listeners[3].c
+	require.Equal(t, uint64(1), b3.Header.Number)
+	b3 = <-setup.listeners[3].c
+	require.Equal(t, uint64(2), b3.Header.Number)
+
 	// SoftStop all nodes except node 3
 	for i, c := range setup.consensusNodes {
 		if i != 2 {
