@@ -133,7 +133,6 @@ Edit the ``prometheus.yml`` file as shown below.
 The following example describes a deployment with **4 parties** and **2 batcher shards per party**.
 
 ```yaml
-
 global:
   scrape_interval: 5s
 
