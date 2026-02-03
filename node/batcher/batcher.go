@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -62,7 +62,7 @@ type Batcher struct {
 	config                    *node_config.BatcherNodeConfig
 	batchers                  []node_config.BatcherInfo
 	signer                    Signer
-	WAL                       *wal.WriteAheadLogFile
+	wal                       *smartbft_wal.WriteAheadLogFile
 
 	stateChan chan *state.State
 
@@ -74,11 +74,11 @@ type Batcher struct {
 	term        uint64
 	primaryID   types.PartyID
 
-	Metrics *BatcherMetrics
+	metrics *BatcherMetrics
 }
 
 func (b *Batcher) MonitoringServiceAddress() string {
-	return b.Metrics.monitor.Address()
+	return b.metrics.monitor.Address()
 }
 
 func (b *Batcher) ConfigSequence() types.ConfigSequence {
@@ -95,7 +95,7 @@ func (b *Batcher) Run() {
 
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
-	b.Metrics.Start()
+	b.metrics.Start()
 }
 
 func (b *Batcher) Stop() {
@@ -116,8 +116,8 @@ func (b *Batcher) SoftStop() {
 		b.primaryAckConnector.Stop()
 		b.primaryReqConnector.Stop()
 		b.running.Wait()
-		b.Metrics.Stop()
-		b.WAL.Close()
+		b.metrics.Stop()
+		b.wal.Close()
 	})
 }
 
@@ -134,7 +134,7 @@ func (b *Batcher) replicateState() {
 		select {
 		case header := <-headerChan:
 			rawHeader := header.Serialize()
-			b.WAL.Append(rawHeader, true)
+			b.wal.Append(rawHeader, true)
 			// check if decision contains a config block, and if so, append it to the batcher config store, skip the genesis block.
 			if header.Num == header.DecisionNumOfLastConfigBlock && header.Num != 0 {
 				lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
@@ -166,7 +166,7 @@ func (b *Batcher) replicateState() {
 				b.primaryID = primaryID
 				b.term = term
 				changed = true
-				b.Metrics.roleChangesTotal.Add(1)
+				b.metrics.roleChangesTotal.Add(1)
 			}
 			b.primaryLock.Unlock()
 			if changed {
@@ -201,7 +201,7 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 	// TODO: certificate pinning (bathcer trust router from his own party.)
 	b.logger.Debugf("Received request %x", req.Payload)
 
-	b.Metrics.routerTxsTotal.Add(1)
+	b.metrics.routerTxsTotal.Add(1)
 
 	// Make sure batched requests contain only bytes of Envelope, not Request.
 	// This is done to maintain compatibility with the Fabric block structure.
@@ -259,7 +259,7 @@ func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamSer
 			return err
 		}
 
-		b.Metrics.routerTxsTotal.Add(1)
+		b.metrics.routerTxsTotal.Add(1)
 
 		// Make sure batched requests contain only bytes of Envelope, not Request.
 		// This is done to maintain compatibility with the Fabric block structure.
@@ -384,7 +384,7 @@ func (b *Batcher) NotifyAck(stream protos.BatcherControlService_NotifyAckServer)
 }
 
 func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
-	b.Metrics.firstResendsTotal.Add(1)
+	b.metrics.firstResendsTotal.Add(1)
 	b.logger.Debugf("First strike timeout occurred on request %s", b.requestsInspectorVerifier.RequestID(req))
 	b.sendReq(req)
 }
@@ -400,7 +400,7 @@ func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shar
 		b.logger.Panicf("Failed creating batch attestation fragment: %v", err)
 	}
 
-	b.Metrics.batchesCreatedTotal.Add(1)
+	b.metrics.batchesCreatedTotal.Add(1)
 	return baf
 }
 
@@ -475,7 +475,7 @@ func (b *Batcher) Complain(reason string) {
 	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}, context.TODO()); err != nil { // TODO also cancel context on term change and add a timeout
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
-	b.Metrics.complaintsTotal.Add(1)
+	b.metrics.complaintsTotal.Add(1)
 }
 
 func (b *Batcher) SendBAF(baf types.BatchAttestationFragment, ctx context.Context) {

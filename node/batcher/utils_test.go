@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"path"
 	"testing"
 	"time"
 
@@ -119,7 +120,8 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 
-		configStorePath := t.TempDir()
+		dir := t.TempDir()
+		configStorePath := path.Join(dir, "configstore")
 		cs, err := configstore.NewStore(configStorePath)
 		require.NoError(t, err)
 		// add dummy genesis block
@@ -129,7 +131,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		conf := &config.BatcherNodeConfig{
 			Shards:                              []config.ShardInfo{{ShardId: shardID, Batchers: batchersInfo}},
 			Consenters:                          consentersInfo,
-			Directory:                           t.TempDir(),
+			Directory:                           dir,
 			ConfigStorePath:                     configStorePath,
 			PartyId:                             parties[i],
 			ShardId:                             shardID,
