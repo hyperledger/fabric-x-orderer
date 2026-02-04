@@ -85,6 +85,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	configUpdateBuilder.UpdateConsenterSignCert(t, types.PartyID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdatePartyTLSCACerts(t, types.PartyID(1), newTLSCACerts)
 	configUpdateBuilder.UpdatePartyCACerts(t, types.PartyID(1), newCACerts)
+	configUpdateBuilder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("newSignCert"))
 
 	configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
 
@@ -113,4 +114,6 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	require.Equal(t, newTLSCACerts, partiesConfig[0].TLSCACerts)
 
 	// Further checks can be added here to verify other updates
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].BatchersConfig[0].SignCert)
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].ConsenterConfig.TlsCert)
 }

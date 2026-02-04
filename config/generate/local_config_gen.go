@@ -8,12 +8,9 @@ package generate
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
@@ -101,9 +98,9 @@ func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseD
 
 	redundantShardID := types.ShardID(0)
 	for _, party := range network.Parties {
-		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", trimPortFromEndpoint(party.RouterEndpoint), getPortFromEndpoint(party.RouterEndpoint), DefaultRouterMonitoringPort, 10*time.Second, useTLSRouter, clientAuthRequiredRouter, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
-		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", trimPortFromEndpoint(party.ConsenterEndpoint), getPortFromEndpoint(party.ConsenterEndpoint), DefaultConsenterMonitoringPort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
-		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", trimPortFromEndpoint(party.AssemblerEndpoint), getPortFromEndpoint(party.AssemblerEndpoint), DefaultAssemblerMonitoringPort, DefaultMetricsLogInterval, useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", utils.TrimPortFromEndpoint(party.RouterEndpoint), utils.GetPortFromEndpoint(party.RouterEndpoint), DefaultRouterMonitoringPort, 10*time.Second, useTLSRouter, clientAuthRequiredRouter, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", utils.TrimPortFromEndpoint(party.ConsenterEndpoint), utils.GetPortFromEndpoint(party.ConsenterEndpoint), DefaultConsenterMonitoringPort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", utils.TrimPortFromEndpoint(party.AssemblerEndpoint), utils.GetPortFromEndpoint(party.AssemblerEndpoint), DefaultAssemblerMonitoringPort, DefaultMetricsLogInterval, useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		partyLocalConfig := PartyLocalConfig{
 			RouterLocalConfig:    NewRouterLocalConfig(routerGeneralParams),
 			BatchersLocalConfig:  NewBatchersLocalConfigPerParty(party.ID, party.BatchersEndpoints, cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired),
@@ -256,7 +253,7 @@ func createBatcherLocalConfig(batcherGeneralParams GeneralConfigParams) *config.
 func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []string, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) []*config.NodeLocalConfig {
 	var batchers []*config.NodeLocalConfig
 	for i, batcherEndpoint := range batcherEndpoints {
-		batcherGeneralParams := NewGeneralConfigParams(partyID, types.ShardID(uint16(i+1)), "batcher", trimPortFromEndpoint(batcherEndpoint), getPortFromEndpoint(batcherEndpoint), DefaultBatcherMonitoringBasePort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		batcherGeneralParams := NewGeneralConfigParams(partyID, types.ShardID(uint16(i+1)), "batcher", utils.TrimPortFromEndpoint(batcherEndpoint), utils.GetPortFromEndpoint(batcherEndpoint), DefaultBatcherMonitoringBasePort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		batcher := createBatcherLocalConfig(batcherGeneralParams)
 		batchers = append(batchers, batcher)
 	}
@@ -281,32 +278,4 @@ func NewAssemblerLocalConfig(assemblerGeneralParams GeneralConfigParams) *config
 		FileStore:       &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
 		AssemblerParams: &params,
 	}
-}
-
-func getPortFromEndpoint(endpoint string) uint32 {
-	if strings.Contains(endpoint, ":") {
-		_, portS, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		port, err := strconv.ParseUint(portS, 10, 32)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		return uint32(port)
-	}
-
-	return 0
-}
-
-func trimPortFromEndpoint(endpoint string) string {
-	if strings.Contains(endpoint, ":") {
-		host, _, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		return host
-	}
-
-	return endpoint
 }
