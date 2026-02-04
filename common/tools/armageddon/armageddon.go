@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -571,18 +570,6 @@ func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *s
 	// pull blocks from the assembler and report statistics to statistics.csv file
 	pullBlocksFromAssemblerAndCollectStatistics(userConfig, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs)
 	logger.Infof("Receive command finished, statistics can be found in: %v\n", path.Join(*receiveOutputDir, "statistics.csv"))
-}
-
-func trimPortFromEndpoint(endpoint string) string {
-	if strings.Contains(endpoint, ":") {
-		host, _, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-		}
-		return host
-	}
-
-	return endpoint
 }
 
 func nextSeekInfo(startSeq uint64) *ab.SeekInfo {

@@ -110,18 +110,18 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 		}
 
 		nodeName := fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Router], Router)
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1)}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1), Endpoint: party.RouterEndpoint}
 
 		for j, b := range llbs {
 			nodeName = fmt.Sprintf("Party%d%d%s%d", i+1, runOrderMap[Batcher], Batcher, j+1)
-			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1)}
+			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1), Endpoint: party.BatchersEndpoints[j]}
 		}
 
 		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Consensus], Consensus)
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1)}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1), Endpoint: party.ConsenterEndpoint}
 
 		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Assembler], Assembler)
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1)}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1), Endpoint: party.AssemblerEndpoint}
 	}
 
 	network := genconfig.Network{
@@ -357,4 +357,12 @@ func CreateAssemblerBundleForTest(sequence uint64) channelconfig.Resources {
 	bundle.PolicyManagerReturns(policyManager)
 
 	return bundle
+}
+
+func GetNodesIPsFromNetInfo(netInfo map[string]*ArmaNodeInfo) []string {
+	var ips []string
+	for _, val := range netInfo {
+		ips = append(ips, utils.TrimPortFromEndpoint(val.Endpoint))
+	}
+	return ips
 }
