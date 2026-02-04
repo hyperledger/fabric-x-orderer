@@ -13,7 +13,7 @@ The gRPC service is defined here: [Atomic Broadcast API](https://github.com/hype
 It defines two services:
 
 - The `Broadcast` service allows a client to submit transactions for ordering by the ordering servers.
-- The `Deliver` service allows clients to consume ordered blocks. This service is also used for consuming batches from batchers and decisions from consenters.
+- The `Deliver` service allows clients to consume ordered blocks. This service is also used internally by the Arma nodes for consuming batches from batchers and decisions from consenters.
 
 ```protobuf
 service AtomicBroadcast {
@@ -26,7 +26,7 @@ rpc Deliver(stream common.Envelope) returns (stream DeliverResponse);
 ```
 
 ### Request Transmit API 
-Arma provides a gRPC service that allows clients to submit requests to the batchers, either as a single request or a stream.
+Arma provides a gRPC service that allows clients to submit requests to the routers and batchers, either as a single request or a stream.
 ```protobuf
 service RequestTransmit {
 
@@ -43,7 +43,7 @@ The primary Batcher exposes the `BatcherControlService` API, used to manage ackn
 Recall that batchers are grouped into shards.
 Each party runs a single batcher for every shard in the system, and that batcher can be either a primary or a secondary. 
 Each shard has a single designated primary batcher node, while the rest are secondaries.
-The secondaries act as clients of the primary batcher, pulling batches, sending acknowledgments on requests and forwarding requests to the primary if a timeout is reached.  
+The secondaries act as clients of the primary batcher, pulling batches, sending acknowledgments on batches and forwarding requests to the primary if a timeout is reached.  
 
 ```protobuf
 service BatcherControlService {
@@ -55,7 +55,7 @@ service BatcherControlService {
 ```
 
 ### Consensus API
-The Consenter nodes expose the Consensus API, used to send events and configuration requests from clients.
+The Consenter nodes expose the Consensus API, used to send events from batcher and configuration requests from routers.
 Event can be a batch attestation fragment (BAF), which are signatures over batch digests, or a complaint vote sent by secondary batchers
 that suspects the primary node of censorship. 
 
@@ -75,17 +75,18 @@ The following describes the gRPC services implemented by each node role.
 Router:
 * `Broadcast` - the router accepts transactions from submitting clients, performs some validation on the transactions, and dispatch them to batchers.
 In order to submit a TX the submitting client must connect to the router endpoints and try to submit to all the routers, from all parties.
+* `RequestTransmit` - exposed by the router to accept transactions, either as a single request or stream. This is an experimental API, and `Broadcast` is the recommended API.
 
 Batcher:
-* `RequestTransmit` - the batcher receives client requests, batches and processes them, and streams responses back to the client. This applies to both primary and secondary batcher.
+* `RequestTransmit` - the batcher receives client requests from routers, batches and processes them, and streams responses back to the router. This applies to both primary and secondary batcher.
 * `BatcherControlService` - implemented by the primary batcher to manage acknowledgments and handle requests from the secondary batchers.
-* `Deliver` - exposed by each batcher (primary or secondary) to allow clients to pull batches.
-The deliver service allows assemblers to pull batches from primary or secondary batchers for block assembly, and allows secondary batchers to pull batches from the primary batcher.
+* `Deliver` - exposed by each batcher (primary or secondary) to enable pulling batches.
+The deliver service enables assemblers to pull batches from primary or secondary batchers for block assembly, and enables secondary batchers to pull batches from the primary batcher.
 
 Consenter:
 * `Consensus` - the consenter accepts events (BAF or complaint), which then are totally ordered through the BFT consensus protocol.
 It also accepts configuration requests, performs validation checks and processes them.
-* `Deliver` - exposed by each consenter to allow clients to pull decisions. 
+* `Deliver` - exposed by each consenter to enable pulling decisions. 
 Routers, Batchers and Assebmlers consume decisions from consensus nodes acting as clients of the consensus nodes.
 
 Assembler:
