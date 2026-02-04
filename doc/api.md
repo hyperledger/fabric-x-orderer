@@ -1,6 +1,15 @@
 ## APIs
 Arma decomposes the ordering service into 4 types of servers: routers, batchers, consenters and assemblers, and distributes logic across components.   
-Each server implements one or more gRPC services secured with mutual TLS (mTLS), ensuring authenticated and trusted communication between nodes.   
+Each server implements one or more gRPC services secured with mutual TLS (mTLS), ensuring authenticated and trusted communication between nodes.  
+All gRPC services listen on the address specified in the node's local configuration under `General.ListenAddress` and `General.ListenPort`, for example:
+```yaml
+General:
+# Listen address: The IP on which to bind to listen.
+ListenAddress: 127.0.0.1
+
+# Listen port: The port on which to bind to listen.
+ListenPort: 7050
+```
 In addition, each node exposes a monitoring endpoint that provides runtime metrics such as transaction throughput and latency. 
 For more details on monitoring see [Monitoring and Metrics](https://github.com/hyperledger/fabric-x-orderer/blob/main/doc/monitoring/metrics.md).  
 
