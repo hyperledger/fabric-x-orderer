@@ -23,7 +23,7 @@ import (
 )
 
 // uint16 + uint16 + uint64 + uint64 + uint32 + uint32 + uint64
-const assemblerBlockMetadataSerializedSize = 2 + 2 + 8 + 8 + 4 + 4 + 8
+const AssemblerBlockMetadataSerializedSize = 2 + 2 + 8 + 8 + 4 + 4 + 8
 
 func AssemblerBlockMetadataToBytes(batchID types.BatchID, orderingInfo *state.OrderingInformation, transactionCount uint64) ([]byte, error) {
 	if batchID == nil {
@@ -33,7 +33,7 @@ func AssemblerBlockMetadataToBytes(batchID types.BatchID, orderingInfo *state.Or
 		return nil, errors.Errorf("nil orderingInfo")
 	}
 
-	buff := make([]byte, assemblerBlockMetadataSerializedSize)
+	buff := make([]byte, AssemblerBlockMetadataSerializedSize)
 	var pos int
 	binary.BigEndian.PutUint16(buff[pos:], uint16(batchID.Primary()))
 	pos += 2
@@ -57,8 +57,8 @@ func AssemblerBlockMetadataFromBytes(metadata []byte) (primary types.PartyID, sh
 	if metadata == nil {
 		return 0, 0, 0, 0, 0, 0, 0, errors.Errorf("nil bytes")
 	}
-	if len(metadata) < assemblerBlockMetadataSerializedSize {
-		return 0, 0, 0, 0, 0, 0, 0, errors.Errorf("len of metadata %d smaller than expected size %d", len(metadata), assemblerBlockMetadataSerializedSize)
+	if len(metadata) < AssemblerBlockMetadataSerializedSize {
+		return 0, 0, 0, 0, 0, 0, 0, errors.Errorf("len of metadata %d smaller than expected size %d", len(metadata), AssemblerBlockMetadataSerializedSize)
 	}
 
 	primary = types.PartyID(binary.BigEndian.Uint16(metadata[0:2]))
