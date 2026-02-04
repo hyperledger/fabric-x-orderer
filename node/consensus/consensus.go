@@ -717,6 +717,9 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
+		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope); err != nil {
+			return reqID, ce, errors.Wrap(err, "failed to validate config transition rules")
+		}
 		// TODO: revisit this return
 		return reqID, ce, nil
 	} else {

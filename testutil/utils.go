@@ -77,6 +77,7 @@ func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 // CreateNetwork creates a config.yaml file with the network configuration. This file is the input for armageddon generate command.
 func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[string]*ArmaNodeInfo {
 	var parties []genconfig.Party
+	var maxPartyID types.PartyID
 	netInfo := make(map[string]*ArmaNodeInfo)
 	runOrderMap := map[string]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
 
@@ -93,8 +94,9 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
 		}
 
+		partyID := types.PartyID(i + 1)
 		party := genconfig.Party{
-			ID:                types.PartyID(i + 1),
+			ID:                partyID,
 			AssemblerEndpoint: "127.0.0.1:" + assemblerPort,
 			ConsenterEndpoint: "127.0.0.1:" + consenterPort,
 			RouterEndpoint:    "127.0.0.1:" + routerPort,
@@ -102,6 +104,10 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 		}
 
 		parties = append(parties, party)
+
+		if partyID > maxPartyID {
+			maxPartyID = partyID
+		}
 
 		nodeName := fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Router], Router)
 		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1)}
@@ -122,6 +128,7 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 		Parties:         parties,
 		UseTLSRouter:    useTLSRouter,
 		UseTLSAssembler: useTLSAssembler,
+		MaxPartyID:      types.PartyID(maxPartyID),
 	}
 
 	err := utils.WriteToYAML(network, path)
