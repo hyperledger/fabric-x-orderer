@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 )
 
@@ -18,6 +19,18 @@ type FakeOrdererRules struct {
 		result1 error
 	}
 	validateNewConfigReturnsOnCall map[int]struct {
+		result1 error
+	}
+	ValidateTransitionStub        func(channelconfig.Resources, *common.Envelope) error
+	validateTransitionMutex       sync.RWMutex
+	validateTransitionArgsForCall []struct {
+		arg1 channelconfig.Resources
+		arg2 *common.Envelope
+	}
+	validateTransitionReturns struct {
+		result1 error
+	}
+	validateTransitionReturnsOnCall map[int]struct {
 		result1 error
 	}
 	invocations      map[string][][]interface{}
@@ -81,6 +94,68 @@ func (fake *FakeOrdererRules) ValidateNewConfigReturnsOnCall(i int, result1 erro
 		})
 	}
 	fake.validateNewConfigReturnsOnCall[i] = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeOrdererRules) ValidateTransition(arg1 channelconfig.Resources, arg2 *common.Envelope) error {
+	fake.validateTransitionMutex.Lock()
+	ret, specificReturn := fake.validateTransitionReturnsOnCall[len(fake.validateTransitionArgsForCall)]
+	fake.validateTransitionArgsForCall = append(fake.validateTransitionArgsForCall, struct {
+		arg1 channelconfig.Resources
+		arg2 *common.Envelope
+	}{arg1, arg2})
+	stub := fake.ValidateTransitionStub
+	fakeReturns := fake.validateTransitionReturns
+	fake.recordInvocation("ValidateTransition", []interface{}{arg1, arg2})
+	fake.validateTransitionMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeOrdererRules) ValidateTransitionCallCount() int {
+	fake.validateTransitionMutex.RLock()
+	defer fake.validateTransitionMutex.RUnlock()
+	return len(fake.validateTransitionArgsForCall)
+}
+
+func (fake *FakeOrdererRules) ValidateTransitionCalls(stub func(channelconfig.Resources, *common.Envelope) error) {
+	fake.validateTransitionMutex.Lock()
+	defer fake.validateTransitionMutex.Unlock()
+	fake.ValidateTransitionStub = stub
+}
+
+func (fake *FakeOrdererRules) ValidateTransitionArgsForCall(i int) (channelconfig.Resources, *common.Envelope) {
+	fake.validateTransitionMutex.RLock()
+	defer fake.validateTransitionMutex.RUnlock()
+	argsForCall := fake.validateTransitionArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *FakeOrdererRules) ValidateTransitionReturns(result1 error) {
+	fake.validateTransitionMutex.Lock()
+	defer fake.validateTransitionMutex.Unlock()
+	fake.ValidateTransitionStub = nil
+	fake.validateTransitionReturns = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeOrdererRules) ValidateTransitionReturnsOnCall(i int, result1 error) {
+	fake.validateTransitionMutex.Lock()
+	defer fake.validateTransitionMutex.Unlock()
+	fake.ValidateTransitionStub = nil
+	if fake.validateTransitionReturnsOnCall == nil {
+		fake.validateTransitionReturnsOnCall = make(map[int]struct {
+			result1 error
+		})
+	}
+	fake.validateTransitionReturnsOnCall[i] = struct {
 		result1 error
 	}{result1}
 }
