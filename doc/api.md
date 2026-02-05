@@ -77,6 +77,7 @@ service Consensus {
 }
 ```
 
+   Note: `RequestTransmit`, `BatcherControlService` and `Consensus` gRPC services are found in: [communication.proto](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/protos/comm/communication.proto).
 ## gRPC services distribution across roles
 
 The following describes the gRPC services implemented by each node role.
