@@ -79,6 +79,7 @@ type RouterNodeConfig struct {
 	TLSPrivateKeyFile  RawBytes
 	ListenAddress      string
 	ConfigStorePath    string
+	WALDir             string
 	// Shared config
 	Shards                              []ShardInfo
 	Consenter                           ConsenterInfo
@@ -126,6 +127,7 @@ type BatcherNodeConfig struct {
 	Directory       string
 	ListenAddress   string
 	ConfigStorePath string
+	WALDir          string
 	// Private config
 	PartyId                             types.PartyID
 	ShardId                             types.ShardID
