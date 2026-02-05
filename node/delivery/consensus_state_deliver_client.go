@@ -13,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -31,9 +30,10 @@ type ConsensusStateReplicator struct {
 	logger          types.Logger
 	cancelCtx       context.Context
 	ctxCancelFunc   context.CancelFunc
+	startSeq        uint64
 }
 
-func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) *ConsensusStateReplicator {
+func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger, startSeq uint64) *ConsensusStateReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	baReplicator := &ConsensusStateReplicator{
 		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
@@ -43,6 +43,7 @@ func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.Raw
 		tlsCert:       tlsCert,
 		cancelCtx:     ctx,
 		ctxCancelFunc: cancelFunc,
+		startSeq:      startSeq,
 	}
 	return baReplicator
 }
@@ -57,7 +58,7 @@ func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.Header {
 			common.HeaderType_DELIVER_SEEK_INFO,
 			"consensus",
 			nil,
-			NewestSeekInfo(),
+			NextSeekInfo(uint64(cr.startSeq)),
 			int32(0),
 			uint64(0),
 			nil,

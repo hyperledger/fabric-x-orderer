@@ -159,6 +159,6 @@ func (sc *stubConsenter) ReplicateState() <-chan *state.Header {
 	return sc.headerChan
 }
 
-func (sc *stubConsenter) CreateStateConsensusReplicator(conf *config.BatcherNodeConfig, logger types.Logger) batcher.StateReplicator {
+func (sc *stubConsenter) CreateStateConsensusReplicator(conf *config.BatcherNodeConfig, logger types.Logger, num types.DecisionNum) batcher.StateReplicator {
 	return sc
 }

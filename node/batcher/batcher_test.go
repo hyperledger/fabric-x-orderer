@@ -76,11 +76,11 @@ func TestBatcherRun(t *testing.T) {
 
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
-	stubConsenters[0].UpdateState(&state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}})
+	stubConsenters[0].UpdateState(&state.State{N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}})
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
 
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 
 	for i := 0; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
@@ -159,7 +159,7 @@ func TestBatcherRun(t *testing.T) {
 	// stop primary, change term, and recover after a batch
 	batchers[1].Stop()
 
-	termChangeAgainState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 2}}}
+	termChangeAgainState := &state.State{N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 2}}}
 
 	for i := 0; i < numParties; i++ {
 		if i != 1 {
@@ -273,7 +273,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	require.Equal(t, numParties, stubConsenters[2].BAFCount())
 
 	// change term
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 	for i := 1; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
 	}
@@ -423,7 +423,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}
 
 	// change term
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 	stubConsenters[0].UpdateState(termChangeState)
 	stubConsenters[2].UpdateState(termChangeState)
 
@@ -508,7 +508,7 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 	for i := 0; i < numParties; i++ {
 		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
 		require.NoError(t, err)
-		require.Equal(t, len(blocks), 0)
+		require.Equal(t, len(blocks), 1)
 	}
 
 	// receive config block from consensus
@@ -516,7 +516,7 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 	configBlock := block.BlockWithGroups(groups, "arma", 1)
 	availableCommonBlocks := []*common.Block{configBlock}
 
-	st := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
+	st := &state.State{N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
 
 	for i := 0; i < numParties; i++ {
 		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), availableCommonBlocks, st)
@@ -526,7 +526,7 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 		require.Eventually(t, func() bool {
 			block, err1 := batchers[j].ConfigStore.Last()
 			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
-			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 1
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 }
@@ -642,7 +642,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	termChangeWithPendingState := &state.State{
-		N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
+		N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
 		Pending: []types.BatchAttestationFragment{baf2},
 	}
 
@@ -680,7 +680,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	availableCommonBlocks := []*common.Block{configBlock}
 
 	stPending := &state.State{
-		N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
+		N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
 		Pending: []types.BatchAttestationFragment{baf2},
 	}
 

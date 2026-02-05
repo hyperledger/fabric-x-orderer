@@ -9,9 +9,12 @@ package batcher
 import (
 	"context"
 	"encoding/pem"
+	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
@@ -20,43 +23,47 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(conf *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	var parties []types.PartyID
-	for shIdx, sh := range conf.Shards {
-		if sh.ShardId != conf.ShardId {
+	for shIdx, sh := range config.Shards {
+		if sh.ShardId != config.ShardId {
 			continue
 		}
 
-		for _, b := range conf.Shards[shIdx].Batchers {
+		for _, b := range config.Shards[shIdx].Batchers {
 			parties = append(parties, b.PartyID)
 		}
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(conf.ShardId, conf.PartyId, parties, conf.Directory, logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(config.ShardId, config.PartyId, parties, config.Directory, logger)
 	if err != nil {
-		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
+		logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
 
-	deliveryService := &BatcherDeliverService{
+	deliverService := &BatcherDeliverService{
 		LedgerArray: ledgerArray,
 		Logger:      logger,
 	}
 
-	bp := NewBatchPuller(conf, ledgerArray, logger)
+	batchPuller := NewBatchPuller(config, ledgerArray, logger)
 
-	batcher := NewBatcher(logger, conf, ledgerArray, bp, deliveryService, csrc.CreateStateConsensusReplicator(conf, logger), senderCreator, net, signer)
-
-	return batcher
-}
-
-func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledger *node_ledger.BatchLedgerArray, bp BatchesPuller, ds *BatcherDeliverService, sr StateReplicator, senderCreator ConsenterControlEventSenderCreator, net Net, signer Signer) *Batcher {
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
+	walDir := filepath.Join(config.Directory, "wal")
+	batcherWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
+	if err != nil {
+		logger.Panicf("Failed creating WAL: %s", err.Error())
+	}
 
 	configStore, err := configstore.NewStore(config.ConfigStorePath)
 	if err != nil {
-		logger.Panicf("Failed creating batcher config store: %s", err)
+		logger.Panicf("Failed creating batcher config store: %s", err.Error())
 	}
+
+	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
+
+	sr := csrc.CreateStateConsensusReplicator(config, logger, lastKnownDecisionNum)
+
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
 
 	batchers := batchersFromConfig(config)
 	if len(batchers) == 0 {
@@ -65,17 +72,18 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
-		batcherDeliverService:     ds,
+		batcherDeliverService:     deliverService,
 		stateReplicator:           sr,
 		signer:                    signer,
 		logger:                    logger,
 		Net:                       net,
 		batchers:                  batchers,
-		Ledger:                    ledger,
+		Ledger:                    ledgerArray,
 		ConfigStore:               configStore,
 		batcherCerts2IDs:          make(map[string]types.PartyID),
 		config:                    config,
-		Metrics:                   NewBatcherMetrics(config, batchers, ledger, logger),
+		metrics:                   NewBatcherMetrics(config, batchers, ledgerArray, logger),
+		wal:                       batcherWAL,
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
@@ -99,11 +107,11 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),
-		BatchPuller:             bp,
+		BatchPuller:             batchPuller,
 		Threshold:               int(f + 1),
 		N:                       initState.N,
 		BatchTimeout:            config.BatchCreationTimeout,
-		Ledger:                  ledger,
+		Ledger:                  ledgerArray,
 		MemPool:                 createMemPool(b, config),
 		ID:                      config.PartyId,
 		Shard:                   config.ShardId,
@@ -117,7 +125,7 @@ func NewBatcher(logger types.Logger, config *node_config.BatcherNodeConfig, ledg
 		Complainer:              b,
 		BatchedRequestsVerifier: b.requestsInspectorVerifier,
 		BatchSequenceGap:        config.BatchSequenceGap,
-		Metrics:                 b.Metrics,
+		Metrics:                 b.metrics,
 	}
 
 	return b
@@ -179,4 +187,34 @@ func indexTLSCerts(batchers []node_config.BatcherInfo, logger types.Logger) map[
 	}
 
 	return batcherCertToID
+}
+
+func getLastKnownDecisionNum(walInitState [][]byte, configStore *configstore.Store, logger types.Logger) types.DecisionNum {
+	if len(walInitState) > 0 {
+		header := &state.Header{}
+		if err := header.Deserialize(walInitState[len(walInitState)-1]); err != nil {
+			logger.Panicf("Could not read header from WAL: %s", err.Error())
+		}
+		logger.Infof("Last known decision number in wal is %d", header.Num)
+		if header.Num > 0 {
+			return header.Num
+		}
+	}
+
+	logger.Infof("Checking config store for last known decision number")
+	lastConfigBlock, err := configStore.Last()
+	if err != nil {
+		logger.Panicf("Failed getting last config block from config store: %s", err.Error())
+	}
+	if lastConfigBlock.GetHeader().GetNumber() == 0 {
+		logger.Infof("Returning 0 as last known decision number from config store")
+		return 0
+	}
+	ordererBlockMetadata := lastConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+	_, _, _, lastDecisionNumber, _, _, _, err := node_ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
+	if err != nil {
+		logger.Panicf("Failed extracting decision number from last config block: %s", err)
+	}
+	logger.Infof("Returning %d as last known decision number from config store", lastDecisionNumber)
+	return lastDecisionNumber
 }
