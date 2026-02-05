@@ -43,6 +43,7 @@ func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.Raw
 		tlsCert:       tlsCert,
 		cancelCtx:     ctx,
 		ctxCancelFunc: cancelFunc,
+		startSeq:      startSeq,
 	}
 	return baReplicator
 }
