@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
@@ -124,6 +125,8 @@ func TestRouterRestartRecover(t *testing.T) {
 		parties = append(parties, types.PartyID(partyID))
 	}
 
+	Signer := signutil.CreateTestSigner(t, "org1", dir)
+
 	pullerInfos := PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:       uc,
 		Parties:          parties,
@@ -133,6 +136,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           Signer,
 	})
 
 	primaryPartyId := pullerInfos[types.PartyID(1)].Primary[types.ShardID(1)]
@@ -174,6 +178,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           Signer,
 	})
 
 	// 9. Restart the secondary router.
@@ -204,6 +209,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           Signer,
 	})
 
 	// 11. Stop a primary router.
@@ -242,6 +248,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           Signer,
 	})
 
 	// 13. Restart the primary router.
@@ -275,6 +282,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           Signer,
 	})
 }
 
@@ -468,6 +476,7 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signutil.CreateTestSigner(t, "org1", dir),
 	})
 
 	// Attempt to send a transaction with an invalid signature and expect rejection.
@@ -554,7 +563,7 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	for partyID := range numOfParties {
 		parties = append(parties, types.PartyID(partyID+1))
 	}
-
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:       uc,
 		Parties:          parties,
@@ -563,6 +572,7 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 		Transactions:     totalTxNumber,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           pullRequestSigner,
 	})
 
 	// Attempt to send a transaction from a client whose certificate is not specified in the router's local config.
@@ -588,5 +598,6 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 		UserConfig: uc,
 		Parties:    parties,
 		ErrString:  "failed to create a gRPC client connection to assembler: %d",
+		Signer:     pullRequestSigner,
 	})
 }
