@@ -19,6 +19,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -325,7 +326,7 @@ func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, erro
 	return ctx, nil
 }
 
-func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger types.Logger) consensus.Signer {
+func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger types.Logger) identity.SignerSerializer {
 	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
 	if privateKey == nil || privateKey.Bytes == nil {
 		logger.Panicf("Failed decoding private key PEM")

@@ -6,9 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
-option go_package = "github.com/hyperledger/fabric-x-common/api/protomsp";
+option go_package = "github.com/hyperledger/fabric-x-common/api/msppb";
 
-package protoblocktx;
+package msppb;
 
 import "msp/msp_config.proto";
 
@@ -77,4 +77,17 @@ message FabricMSPConfig {
 
     // List of known certificates of this MSP.
     repeated bytes known_certs = 12;
+}
+
+message Identity {
+    // The identifier of the associated membership service provider
+    string msp_id = 1;
+
+    oneof creator {
+        // The full raw bytes of the creator's certificate (e.g., an X.509 certificate).
+        bytes certificate = 2;
+
+        // An identifier for a certificate that is pre-stored or known by the committer.
+        string certificate_id = 3;
+    }
 }

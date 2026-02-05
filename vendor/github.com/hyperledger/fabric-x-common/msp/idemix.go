@@ -7,7 +7,11 @@ package msp
 
 import (
 	"github.com/IBM/idemix"
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 )
 
 type idemixSigningIdentityWrapper struct {
@@ -26,6 +30,18 @@ func (i *idemixSigningIdentityWrapper) GetOrganizationalUnits() []*OUIdentifier 
 	return i.GetPublicVersion().GetOrganizationalUnits()
 }
 
+func (*idemixSigningIdentityWrapper) SerializeWithIDOfCert() ([]byte, error) {
+	return nil, errors.New("not applicable")
+}
+
+func (*idemixSigningIdentityWrapper) SerializeWithCert() ([]byte, error) {
+	return nil, errors.New("not applicable")
+}
+
+func (*idemixSigningIdentityWrapper) GetCertificatePEM() ([]byte, error) {
+	return nil, nil
+}
+
 type idemixIdentityWrapper struct {
 	*idemix.Idemixidentity
 }
@@ -37,6 +53,19 @@ func (i *idemixIdentityWrapper) GetIdentifier() *IdentityIdentifier {
 		Mspid: id.Mspid,
 		Id:    id.Id,
 	}
+}
+
+func (*idemixIdentityWrapper) SerializeWithIDOfCert() ([]byte, error) {
+	return nil, errors.New("not applicable")
+}
+
+func (*idemixIdentityWrapper) SerializeWithCert() ([]byte, error) {
+	return nil, errors.New("not applicable")
+}
+
+// GetCertificatePEM returns the certificate in PEM format.
+func (*idemixIdentityWrapper) GetCertificatePEM() ([]byte, error) {
+	return nil, nil
 }
 
 func (i *idemixIdentityWrapper) GetOrganizationalUnits() []*OUIdentifier {
@@ -65,8 +94,13 @@ func (i *idemixMSPWrapper) deserializeIdentityInternal(serializedIdentity []byte
 	return &idemixIdentityWrapper{id.(*idemix.Idemixidentity)}, nil
 }
 
-func (i *idemixMSPWrapper) DeserializeIdentity(serializedIdentity []byte) (Identity, error) {
-	id, err := i.Idemixmsp.DeserializeIdentity(serializedIdentity)
+func (i *idemixMSPWrapper) DeserializeIdentity(identity *msppb.Identity) (Identity, error) { //nolint:ireturn
+	si := msp.SerializedIdentity{Mspid: identity.MspId, IdBytes: identity.GetCertificate()}
+	siBytes, err := proto.Marshal(&si)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal serialized identity")
+	}
+	id, err := i.Idemixmsp.DeserializeIdentity(siBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -81,12 +115,20 @@ func (*idemixMSPWrapper) GetKnownDeserializedIdentity(IdentityIdentifier) Identi
 	return nil
 }
 
+func (i *idemixMSPWrapper) IsWellFormed(identity *msppb.Identity) error {
+	return i.Idemixmsp.IsWellFormed(&msp.SerializedIdentity{Mspid: identity.MspId, IdBytes: identity.GetCertificate()})
+}
+
 func (i *idemixMSPWrapper) GetVersion() MSPVersion {
 	return MSPVersion(i.Idemixmsp.GetVersion())
 }
 
 func (i *idemixMSPWrapper) GetType() ProviderType {
 	return ProviderType(i.Idemixmsp.GetType())
+}
+
+func (*idemixMSPWrapper) GetCertificatePEM() ([]byte, error) {
+	return nil, nil
 }
 
 func (i *idemixMSPWrapper) GetDefaultSigningIdentity() (SigningIdentity, error) {

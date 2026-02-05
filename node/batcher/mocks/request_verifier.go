@@ -166,10 +166,6 @@ func (fake *FakeRequestVerifier) VerifyStructureAndClassifyReturnsOnCall(i int, 
 func (fake *FakeRequestVerifier) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.verifyMutex.RLock()
-	defer fake.verifyMutex.RUnlock()
-	fake.verifyStructureAndClassifyMutex.RLock()
-	defer fake.verifyStructureAndClassifyMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -182,10 +182,6 @@ func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlockReturnsOnCall(i int
 func (fake *FakeConfigApplier) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.applyConfigToStateMutex.RLock()
-	defer fake.applyConfigToStateMutex.RUnlock()
-	fake.extractSmartBFTConfigFromBlockMutex.RLock()
-	defer fake.extractSmartBFTConfigFromBlockMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

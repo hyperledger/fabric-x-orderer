@@ -114,7 +114,7 @@ github.com/consensys/gnark-crypto/field/hash
 github.com/consensys/gnark-crypto/field/pool
 github.com/consensys/gnark-crypto/internal/parallel
 github.com/consensys/gnark-crypto/utils/cpu
-# github.com/davecgh/go-spew v1.1.1
+# github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
 # github.com/felixge/httpsnoop v1.0.3
@@ -247,9 +247,10 @@ github.com/hyperledger/fabric-protos-go-apiv2/orderer
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft
 github.com/hyperledger/fabric-protos-go-apiv2/peer
-# github.com/hyperledger/fabric-x-common v0.0.0-20251126094841-085a6ec89996
-## explicit; go 1.24.0
-github.com/hyperledger/fabric-x-common/api/protomsp
+# github.com/hyperledger/fabric-x-common v0.0.0-20260129125220-1e40f2427505
+## explicit; go 1.25.5
+github.com/hyperledger/fabric-x-common/api/msppb
+github.com/hyperledger/fabric-x-common/api/ordererpb
 github.com/hyperledger/fabric-x-common/api/types
 github.com/hyperledger/fabric-x-common/cmd/configtxlator
 github.com/hyperledger/fabric-x-common/common/capabilities
@@ -274,14 +275,15 @@ github.com/hyperledger/fabric-x-common/protolator/protoext/mspext
 github.com/hyperledger/fabric-x-common/protolator/protoext/ordererext
 github.com/hyperledger/fabric-x-common/protolator/protoext/peerext
 github.com/hyperledger/fabric-x-common/protoutil
+github.com/hyperledger/fabric-x-common/protoutil/identity
+github.com/hyperledger/fabric-x-common/protoutil/identity/mocks
 github.com/hyperledger/fabric-x-common/tools/configtxgen
 github.com/hyperledger/fabric-x-common/tools/configtxlator/rest
 github.com/hyperledger/fabric-x-common/tools/configtxlator/update
 github.com/hyperledger/fabric-x-common/tools/fileutil
-github.com/hyperledger/fabric-x-common/tools/pkg/identity
-github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks
 github.com/hyperledger/fabric-x-common/tools/pkg/txflags
 github.com/hyperledger/fabric-x-common/tools/test
+github.com/hyperledger/fabric-x-common/utils/certificate
 # github.com/kilic/bls12-381 v0.1.0
 ## explicit; go 1.13
 github.com/kilic/bls12-381
@@ -291,8 +293,6 @@ github.com/kr/pretty
 # github.com/kr/text v0.2.0
 ## explicit
 github.com/kr/text
-# github.com/maxbrunsfeld/counterfeiter/v6 v6.12.1
-## explicit; go 1.24.0
 # github.com/miekg/pkcs11 v1.1.1
 ## explicit; go 1.12
 github.com/miekg/pkcs11
@@ -349,7 +349,7 @@ github.com/pelletier/go-toml/v2/unstable
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pmezard/go-difflib v1.0.0
+# github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.23.2
@@ -467,8 +467,6 @@ go.yaml.in/yaml/v3
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/hkdf
 golang.org/x/crypto/sha3
-# golang.org/x/mod v0.30.0
-## explicit; go 1.24.0
 # golang.org/x/net v0.47.0
 ## explicit; go 1.24.0
 golang.org/x/net/html

@@ -30,15 +30,16 @@ func (fake *FakeConfigRequestValidator) ValidateConfigRequest(arg1 *common.Envel
 	fake.validateConfigRequestArgsForCall = append(fake.validateConfigRequestArgsForCall, struct {
 		arg1 *common.Envelope
 	}{arg1})
+	stub := fake.ValidateConfigRequestStub
+	fakeReturns := fake.validateConfigRequestReturns
 	fake.recordInvocation("ValidateConfigRequest", []interface{}{arg1})
 	fake.validateConfigRequestMutex.Unlock()
-	if fake.ValidateConfigRequestStub != nil {
-		return fake.ValidateConfigRequestStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.validateConfigRequestReturns
 	return fakeReturns.result1
 }
 
@@ -87,8 +88,6 @@ func (fake *FakeConfigRequestValidator) ValidateConfigRequestReturnsOnCall(i int
 func (fake *FakeConfigRequestValidator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.validateConfigRequestMutex.RLock()
-	defer fake.validateConfigRequestMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

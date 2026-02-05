@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -54,11 +55,6 @@ type SynchronizerStopper interface {
 	Stop()
 }
 
-type Signer interface {
-	Sign(message []byte) ([]byte, error)
-	Serialize() ([]byte, error)
-}
-
 type SigVerifier interface {
 	VerifySignature(id arma_types.PartyID, shardID arma_types.ShardID, msg, sig []byte) error
 }
@@ -82,7 +78,7 @@ type Consensus struct {
 	Net                          NetStopper
 	Config                       *config.ConsenterNodeConfig
 	SigVerifier                  SigVerifier
-	Signer                       Signer
+	Signer                       identity.SignerSerializer
 	CurrentNodes                 []uint64
 	BFTConfig                    smartbft_types.Configuration
 	BFT                          *consensus.Consensus

@@ -178,12 +178,6 @@ func (fake *FakeBatchAttestationDB) PutArgsForCall(i int) ([][]byte, []uint64) {
 func (fake *FakeBatchAttestationDB) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.cleanMutex.RLock()
-	defer fake.cleanMutex.RUnlock()
-	fake.existsMutex.RLock()
-	defer fake.existsMutex.RUnlock()
-	fake.putMutex.RLock()
-	defer fake.putMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
