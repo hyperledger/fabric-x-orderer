@@ -78,7 +78,7 @@ func TestRouterRestartRecover(t *testing.T) {
 
 	// 5. Run the arma nodes.
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -317,7 +317,7 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 
 	// 5. Run the arma nodes.
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -408,7 +408,7 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	// 5. Run the arma nodes.
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	// Obtains a test user configuration and constructs a broadcast client.
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -511,7 +511,7 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 
 	// run the arma nodes.
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 

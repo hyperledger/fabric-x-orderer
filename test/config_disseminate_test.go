@@ -232,7 +232,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 
 	// Run Arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -332,7 +332,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	}
 
 	// Restart all nodes
-	readyChan = make(chan struct{}, numOfArmaNodes)
+	readyChan = make(chan string, numOfArmaNodes)
 	armaNetwork.Restart(t, readyChan)
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -452,7 +452,7 @@ func TestConfigTXDisseminationVerificationFailure(t *testing.T) {
 
 	// Run Arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)

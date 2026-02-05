@@ -113,4 +113,6 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	require.Equal(t, newTLSCACerts, partiesConfig[0].TLSCACerts)
 
 	// Further checks can be added here to verify other updates
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetBatchersConfig()[0].GetSignCert())
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetConsenterConfig().GetSignCert())
 }

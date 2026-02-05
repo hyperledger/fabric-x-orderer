@@ -64,7 +64,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -277,7 +277,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -495,7 +495,7 @@ func TestVerifySignedTxsByBatcherSingleParty(t *testing.T) {
 	// 5. Run the arma nodes.
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	// Obtains a test user configuration and constructs a broadcast client.
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -607,7 +607,7 @@ func TestVerifySignedTxsByBatcherForwardRequest(t *testing.T) {
 	// 5. Run the arma nodes.
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	// Obtains a test user configuration and constructs a broadcast client.
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 

@@ -49,7 +49,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
-	readyChan := make(chan struct{}, len(netInfo))
+	readyChan := make(chan string, len(netInfo))
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
 	defer armaNetwork.Stop()

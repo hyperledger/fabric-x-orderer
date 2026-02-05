@@ -62,7 +62,7 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	// 3.
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
@@ -149,7 +149,7 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 
 	// 4. Starts arma nodes and waits for them to be ready
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
-	readyChan := make(chan struct{}, numOfArmaNodes)
+	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
