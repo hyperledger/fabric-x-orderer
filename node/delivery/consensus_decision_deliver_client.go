@@ -23,7 +23,7 @@ const (
 	replicateDecisionChanSize = 100
 )
 
-// ConsensusDecisionReplicator replicates decisions from consensus and allows the consumption of `core.state`objects.
+// ConsensusDecisionReplicator replicates decisions from consensus and allows the consumption of those decisions.
 type ConsensusDecisionReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
