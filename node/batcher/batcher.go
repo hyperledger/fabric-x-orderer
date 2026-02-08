@@ -151,7 +151,7 @@ func (b *Batcher) replicateState() {
 						b.logger.Infof("Config block %d already exists in config store", lastBlockNum)
 						b.batcher.ResubmitPendingBAFs(header.State, 0, true)
 					} else if lastConfigBlockNum > lastBlockNum {
-						b.logger.Infof("Batcher already processed this config block")
+						b.logger.Warnf("Batcher already processed this config block")
 						continue
 					} else {
 						b.logger.Infof("Adding config block number %d to config store", lastBlock.Header.Number)

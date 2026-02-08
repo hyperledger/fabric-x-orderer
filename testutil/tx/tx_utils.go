@@ -20,7 +20,10 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"google.golang.org/protobuf/proto"
 )
@@ -108,6 +111,7 @@ func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
 }
 
 func CreateConfigBlock(number uint64, data []byte) *common.Block {
+	block := protoutil.NewBlock(number, nil)
 	payload := createStructuredPayload(data, common.HeaderType_CONFIG)
 	payloadBytes := deterministicMarshall(payload)
 	env := &common.Envelope{
@@ -115,7 +119,13 @@ func CreateConfigBlock(number uint64, data []byte) *common.Block {
 		Signature: []byte("signature"),
 	}
 	envBytes := deterministicMarshall(env)
-	return &common.Block{Header: &common.BlockHeader{Number: number}, Data: &common.BlockData{Data: [][]byte{envBytes}}}
+	block.Data = &common.BlockData{Data: [][]byte{envBytes}}
+	md, err := ledger.AssemblerBlockMetadataToBytes(&types.SimpleBatch{}, &state.OrderingInformation{DecisionNum: types.DecisionNum(number)}, 0)
+	if err != nil {
+		panic("could not create block metadata")
+	}
+	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = md
+	return block
 }
 
 func CreateStructuredConfigUpdateRequest(data []byte) *protos.Request {
