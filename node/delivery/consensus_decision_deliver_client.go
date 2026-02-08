@@ -15,27 +15,28 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
 const (
-	replicateStateChanSize = 100
+	replicateDecisionChanSize = 100
 )
 
-// ConsensusStateReplicator replicates decisions from consensus and allows the consumption of `core.state`objects.
-type ConsensusStateReplicator struct {
+// ConsensusDecisionReplicator replicates decisions from consensus and allows the consumption of those decisions.
+type ConsensusDecisionReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
 	logger          types.Logger
 	cancelCtx       context.Context
 	ctxCancelFunc   context.CancelFunc
-	startSeq        uint64
+	seekInfo        *orderer.SeekInfo
 }
 
-func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger, startSeq uint64) *ConsensusStateReplicator {
+func NewConsensusDecisionReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	baReplicator := &ConsensusStateReplicator{
+	baReplicator := &ConsensusDecisionReplicator{
 		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint:      endpoint,
 		logger:        logger,
@@ -43,12 +44,13 @@ func NewConsensusStateReplicator(tlsCACerts []config.RawBytes, tlsKey config.Raw
 		tlsCert:       tlsCert,
 		cancelCtx:     ctx,
 		ctxCancelFunc: cancelFunc,
-		startSeq:      startSeq,
+		seekInfo:      seekInfo,
 	}
 	return baReplicator
 }
 
-func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.Header {
+// TODO refactor ReplicateState to ReplicateDecision.
+func (cr *ConsensusDecisionReplicator) ReplicateState() <-chan *state.Header {
 	endpoint := func() string {
 		return cr.endpoint
 	}
@@ -58,7 +60,7 @@ func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.Header {
 			common.HeaderType_DELIVER_SEEK_INFO,
 			"consensus",
 			nil,
-			NextSeekInfo(uint64(cr.startSeq)),
+			cr.seekInfo,
 			int32(0),
 			uint64(0),
 			nil,
@@ -70,7 +72,7 @@ func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.Header {
 		return requestEnvelope
 	}
 
-	res := make(chan *state.Header, replicateStateChanSize)
+	res := make(chan *state.Header, replicateDecisionChanSize)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header := extractHeaderFromBlock(block, cr.logger)
@@ -81,11 +83,11 @@ func (cr *ConsensusStateReplicator) ReplicateState() <-chan *state.Header {
 		close(res)
 	}
 
-	go Pull(cr.cancelCtx, "consensus-state-replicate", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
+	go Pull(cr.cancelCtx, "consensus-decision-replicate", cr.logger, endpoint, requestEnvelopeFactoryFunc, cr.cc, blockHandlerFunc, onClose)
 
 	return res
 }
 
-func (cr *ConsensusStateReplicator) Stop() {
+func (cr *ConsensusDecisionReplicator) Stop() {
 	cr.ctxCancelFunc()
 }

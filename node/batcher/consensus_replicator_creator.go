@@ -33,5 +33,5 @@ func (c *ConsensusStateReplicatorFactory) CreateStateConsensusReplicator(config 
 	if endpoint == "" || len(tlsCAs) == 0 {
 		logger.Panicf("Failed finding endpoint and TLS CAs for party %d", config.PartyId)
 	}
-	return delivery.NewConsensusStateReplicator(tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, logger, uint64(lastKnownDecisionNum))
+	return delivery.NewConsensusDecisionReplicator(tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, logger, delivery.NextSeekInfo(uint64(lastKnownDecisionNum)))
 }
