@@ -98,6 +98,10 @@ func createConsenterInfo(partyID types.PartyID, n *node, ca tlsgen.CA) config.Co
 }
 
 func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo, stubConsenters []*stubConsenter) ([]*batcher.Batcher, []*zap.SugaredLogger, []*config.BatcherNodeConfig, func()) {
+	return createBatchersWithConfigNumber(t, num, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters, 0)
+}
+
+func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo, stubConsenters []*stubConsenter, configBlockNum uint64) ([]*batcher.Batcher, []*zap.SugaredLogger, []*config.BatcherNodeConfig, func()) {
 	var batchers []*batcher.Batcher
 	var loggers []*zap.SugaredLogger
 	var configs []*config.BatcherNodeConfig
@@ -124,8 +128,7 @@ func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes [
 		configStorePath := path.Join(dir, "configstore")
 		cs, err := configstore.NewStore(configStorePath)
 		require.NoError(t, err)
-		// add dummy genesis block
-		block := tx.CreateConfigBlock(0, []byte("genesis block data"))
+		block := tx.CreateConfigBlock(configBlockNum, []byte("config block data"))
 		require.NoError(t, cs.Add(block))
 
 		conf := &config.BatcherNodeConfig{

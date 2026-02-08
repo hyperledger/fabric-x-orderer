@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -40,11 +41,11 @@ func TestBatcherRun(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
@@ -199,11 +200,11 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	totalTxNumber := 10
 	url := batchers[0].MonitoringServiceAddress()
@@ -231,11 +232,11 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
@@ -328,11 +329,11 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	// submit the first request and verify it was received
 	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
@@ -459,11 +460,11 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	req := tx.CreateStructuredRequest([]byte{1})
 	req.TraceId = []byte("123")
@@ -499,11 +500,11 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	for i := 0; i < numParties; i++ {
 		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
@@ -531,6 +532,80 @@ func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
 	}
 }
 
+func TestBatcherJoin(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 1
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, 1, "127.0.0.1:0")
+	batchersInfo := createBatchersInfo(1, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, 1, "127.0.0.1:0")
+	consentersInfo := createConsentersInfo(1, consenterNodes, ca)
+
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, 1)
+	defer cleanConsenters()
+
+	configBlockNum := uint64(2)
+	batchers, _, _, cleanBatchers := createBatchersWithConfigNumber(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters, configBlockNum)
+	defer cleanBatchers()
+
+	blocks, err := batchers[0].ConfigStore.ListBlockNumbers()
+	require.NoError(t, err)
+	require.Equal(t, len(blocks), 1)
+	lastConfigBlock, err := batchers[0].ConfigStore.Last()
+	require.NoError(t, err)
+	require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+	require.Equal(t, configBlockNum, lastConfigBlock.Header.Number)
+
+	genesisBlock := tx.CreateConfigBlock(0, []byte("genesis block"))
+	availableCommonBlocks := []*common.Block{genesisBlock}
+	st := &state.State{N: 1, ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
+	stubConsenters[0].UpdateStateHeaderWithConfigBlock(types.DecisionNum(0), availableCommonBlocks, st)
+
+	blocks, err = batchers[0].ConfigStore.ListBlockNumbers()
+	require.NoError(t, err)
+	require.Equal(t, len(blocks), 1)
+	lastConfigBlock, err = batchers[0].ConfigStore.Last()
+	require.NoError(t, err)
+	require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+	require.Equal(t, configBlockNum, lastConfigBlock.Header.Number)
+
+	configBlockOne := tx.CreateConfigBlock(1, []byte("config block number one"))
+	availableCommonBlocks = []*common.Block{configBlockOne}
+	stubConsenters[0].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), availableCommonBlocks, st)
+
+	blocks, err = batchers[0].ConfigStore.ListBlockNumbers()
+	require.NoError(t, err)
+	require.Equal(t, len(blocks), 1)
+	lastConfigBlock, err = batchers[0].ConfigStore.Last()
+	require.NoError(t, err)
+	require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+	require.Equal(t, uint64(2), lastConfigBlock.Header.Number)
+
+	configBlockTwo := tx.CreateConfigBlock(configBlockNum, []byte("config block number two"))
+	availableCommonBlocks = []*common.Block{configBlockTwo}
+	stubConsenters[0].UpdateStateHeaderWithConfigBlock(types.DecisionNum(2), availableCommonBlocks, st)
+
+	blocks, err = batchers[0].ConfigStore.ListBlockNumbers()
+	require.NoError(t, err)
+	require.Equal(t, len(blocks), 1)
+	lastConfigBlock, err = batchers[0].ConfigStore.Last()
+	require.NoError(t, err)
+	require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+	require.Equal(t, configBlockNum, lastConfigBlock.Header.Number)
+
+	newConfigBlock := tx.CreateConfigBlock(3, []byte("new config block"))
+	availableCommonBlocks = []*common.Block{newConfigBlock}
+	stubConsenters[0].UpdateStateHeaderWithConfigBlock(types.DecisionNum(3), availableCommonBlocks, st)
+
+	require.Eventually(t, func() bool {
+		block, err1 := batchers[0].ConfigStore.Last()
+		blockNumbers, err2 := batchers[0].ConfigStore.ListBlockNumbers()
+		return err1 == nil && err2 == nil && block.Header.Number == uint64(3) && len(blockNumbers) == 2
+	}, 60*time.Second, 10*time.Millisecond)
+}
+
 func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4
@@ -542,11 +617,11 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	// submit the first request and verify it was received
 	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
@@ -596,11 +671,11 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
-	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
-	defer clean()
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
 
-	batchers, _, _, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer clean()
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	defer cleanBatchers()
 
 	// submit the first request and verify it was received
 	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
