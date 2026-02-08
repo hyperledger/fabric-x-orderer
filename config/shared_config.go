@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
@@ -20,6 +21,7 @@ type SharedConfigYaml struct {
 	PartiesConfig   []PartyConfig   `yaml:"Parties,omitempty"`
 	ConsensusConfig ConsensusConfig `yaml:"Consensus,omitempty"`
 	BatchingConfig  BatchingConfig  `yaml:"Batching,omitempty"`
+	MaxPartyID      types.PartyID   `yaml:"MaxPartyID,omitempty"`
 }
 
 // LoadSharedConfig reads the shared config yaml and translate it to the proto shared config.
@@ -132,6 +134,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*protos.SharedCo
 			},
 			RequestMaxBytes: sharedConfigYaml.BatchingConfig.RequestMaxBytes,
 		},
+		MaxPartyID: uint32(sharedConfigYaml.MaxPartyID),
 	}
 	return &sharedConfig, nil
 }

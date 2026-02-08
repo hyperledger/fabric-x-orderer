@@ -18,8 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
@@ -29,19 +31,7 @@ func TestValidateNewConfig(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	numOfParties := 1
-	numOfShards := 1
-
-	configPath := filepath.Join(dir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "none")
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
-
-	genesisBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
-	blockBytes, err := os.ReadFile(genesisBlockPath)
-	require.NoError(t, err)
-
-	block := protoutil.UnmarshalBlockOrPanic(blockBytes)
-	env, err := protoutil.ExtractEnvelope(block, 0)
-	require.NoError(t, err)
+	env := createConfigEnvTest(t, dir, numOfParties)
 
 	or := verify.DefaultOrdererRules{}
 	require.NoError(t, or.ValidateNewConfig(env))
@@ -53,19 +43,7 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	numOfParties := 1
-	numOfShards := 1
-
-	configPath := filepath.Join(dir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "none")
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
-
-	genesisBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
-	blockBytes, err := os.ReadFile(genesisBlockPath)
-	require.NoError(t, err)
-
-	block := protoutil.UnmarshalBlockOrPanic(blockBytes)
-	env, err := protoutil.ExtractEnvelope(block, 0)
-	require.NoError(t, err)
+	env := createConfigEnvTest(t, dir, numOfParties)
 
 	payload, err := protoutil.UnmarshalPayload(env.Payload)
 	require.NoError(t, err)
@@ -101,4 +79,75 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "batch creation timeout")
+}
+
+func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
+
+	// create a config env with 3 parties
+	env := createConfigEnvTest(t, t.TempDir(), 3)
+
+	// create new bundle from env
+	currBundle, err := channelconfig.NewBundleFromEnvelope(env, factory.GetDefault())
+	require.NoError(t, err)
+
+	// create a new config env by removing partyID=3, MaxPartyID is still 3
+	env2 := proto.Clone(env).(*common.Envelope)
+	payload, err := protoutil.UnmarshalPayload(env2.Payload)
+	require.NoError(t, err)
+
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	ctVal := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"]
+	ct := &orderer.ConsensusType{}
+	require.NoError(t, proto.Unmarshal(ctVal.Value, ct))
+
+	shared := &config_protos.SharedConfig{}
+	require.NoError(t, proto.Unmarshal(ct.Metadata, shared))
+
+	newParties := shared.PartiesConfig[:0]
+	for _, p := range shared.PartiesConfig {
+		if p.PartyID != 3 {
+			newParties = append(newParties, p)
+		}
+	}
+	shared.PartiesConfig = newParties
+
+	ct.Metadata, err = proto.Marshal(shared)
+	require.NoError(t, err)
+	ctVal.Value, err = proto.Marshal(ct)
+	require.NoError(t, err)
+
+	payload.Data, err = proto.Marshal(cfgEnv)
+	require.NoError(t, err)
+	env2.Payload, err = proto.Marshal(payload)
+	require.NoError(t, err)
+
+	// validate the transition after the removal
+	require.NoError(t, or.ValidateTransition(currBundle, env2))
+
+	// try to add partyID=3 again
+	currBundle, err = channelconfig.NewBundleFromEnvelope(env2, factory.GetDefault())
+	require.NoError(t, err)
+
+	err = or.ValidateTransition(currBundle, env)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "proposed party ID 3 must be greater than previous MaxPartyID 3")
+}
+
+func createConfigEnvTest(t *testing.T, baseDir string, numOfParties int) *common.Envelope {
+	numOfShards := 1
+	configPath := filepath.Join(baseDir, "config.yaml")
+	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "none")
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", baseDir})
+	blockBytes, err := os.ReadFile(filepath.Join(baseDir, "bootstrap", "bootstrap.block"))
+	require.NoError(t, err)
+
+	block := protoutil.UnmarshalBlockOrPanic(blockBytes)
+	env, err := protoutil.ExtractEnvelope(block, 0)
+	require.NoError(t, err)
+
+	return env
 }

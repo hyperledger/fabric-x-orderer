@@ -90,6 +90,7 @@ func TestConfigDisseminate(t *testing.T) {
 		consenters[i].ConfigRequestValidator = mockConfigRequestValidator
 		mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 		mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+		mockConfigRulesVerifier.ValidateTransitionReturns(nil)
 		consenters[i].ConfigRulesVerifier = mockConfigRulesVerifier
 	}
 

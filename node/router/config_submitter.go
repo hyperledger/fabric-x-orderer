@@ -123,6 +123,12 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		return err
 	}
 
+	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env); err != nil {
+		feedback.err = fmt.Errorf("error in validating config transition rules: %w", err)
+		tr.responses <- feedback
+		return err
+	}
+
 	var resp *protos.SubmitResponse
 	resp, err = cs.submitConfigRequestToConsensus(tr.request)
 	feedback.SubmitResponse = resp
