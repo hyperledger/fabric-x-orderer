@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -55,6 +56,8 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, len(netInfo), 10)
+
+	time.Sleep(10 * time.Second)
 
 	uc, err := testutil.GetUserConfig(dir, 1)
 	require.NoError(t, err)
