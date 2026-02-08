@@ -11,68 +11,52 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
-	"github.com/hyperledger/fabric-x-orderer/config/verify"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
-
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	mockSigner "github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks"
+	"github.com/hyperledger/fabric-x-orderer/common/policy"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	mocksVerifier "github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
+	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/config/protos"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
+	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric/protoutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateNewConfig(t *testing.T) {
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
-
 	numOfParties := 1
-	env := createConfigEnvTest(t, dir, numOfParties)
+	_, env, _, _, _, _, _, cleanup := setupOrdererRulesTest(t, numOfParties)
+	defer cleanup()
 
 	or := verify.DefaultOrdererRules{}
 	require.NoError(t, or.ValidateNewConfig(env))
 }
 
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
+	defer cleanup()
 
-	numOfParties := 1
-	env := createConfigEnvTest(t, dir, numOfParties)
+	// update the batch timeout to an invalid value
+	updatePb := builder.UpdateBatchTimeouts(t, configutil.NewBatchTimeoutsConfig(configutil.BatchTimeoutsConfigName.BatchCreationTimeout, "0s"))
+	require.NotEmpty(t, updatePb)
 
-	payload, err := protoutil.UnmarshalPayload(env.Payload)
-	require.NoError(t, err)
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	cfgEnv := &common.ConfigEnvelope{}
-	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
-
-	consensusVal := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"]
-	ct := &orderer.ConsensusType{}
-	require.NoError(t, proto.Unmarshal(consensusVal.Value, ct))
-
-	shared := &config_protos.SharedConfig{}
-	err = proto.Unmarshal(ct.Metadata, shared)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
 	require.NoError(t, err)
 
-	// set an invalid value
-	shared.BatchingConfig.BatchTimeouts.BatchCreationTimeout = "0s"
-
-	ct.Metadata, err = proto.Marshal(shared)
-	require.NoError(t, err)
-
-	consensusVal.Value, err = proto.Marshal(ct)
-	require.NoError(t, err)
-
-	payload.Data, err = proto.Marshal(cfgEnv)
-	require.NoError(t, err)
-
-	env.Payload, err = proto.Marshal(payload)
-	require.NoError(t, err)
+	env := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
 
 	or := verify.DefaultOrdererRules{}
 	err = or.ValidateNewConfig(env)
@@ -84,70 +68,153 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
 
-	// create a config env with 3 parties
-	env := createConfigEnvTest(t, t.TempDir(), 3)
+	// create a config with 3 parties
+	dir, currEnv, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
+	defer cleanup()
 
-	// create new bundle from env
-	currBundle, err := channelconfig.NewBundleFromEnvelope(env, factory.GetDefault())
+	// remove partyID=3, MaxPartyID is still 3
+	updatePb := builder.RemoveParty(t, 3)
+	require.NotEmpty(t, updatePb)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
 	require.NoError(t, err)
 
-	// create a new config env by removing partyID=3, MaxPartyID is still 3
-	env2 := proto.Clone(env).(*common.Envelope)
-	payload, err := protoutil.UnmarshalPayload(env2.Payload)
-	require.NoError(t, err)
-
-	cfgEnv := &common.ConfigEnvelope{}
-	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
-
-	ctVal := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"]
-	ct := &orderer.ConsensusType{}
-	require.NoError(t, proto.Unmarshal(ctVal.Value, ct))
-
-	shared := &config_protos.SharedConfig{}
-	require.NoError(t, proto.Unmarshal(ct.Metadata, shared))
-
-	newParties := shared.PartiesConfig[:0]
-	for _, p := range shared.PartiesConfig {
-		if p.PartyID != 3 {
-			newParties = append(newParties, p)
-		}
+	nextEnv := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
 	}
-	shared.PartiesConfig = newParties
-
-	ct.Metadata, err = proto.Marshal(shared)
-	require.NoError(t, err)
-	ctVal.Value, err = proto.Marshal(ct)
-	require.NoError(t, err)
-
-	payload.Data, err = proto.Marshal(cfgEnv)
-	require.NoError(t, err)
-	env2.Payload, err = proto.Marshal(payload)
-	require.NoError(t, err)
 
 	// validate the transition after the removal
-	require.NoError(t, or.ValidateTransition(currBundle, env2))
-
-	// try to add partyID=3 again
-	currBundle, err = channelconfig.NewBundleFromEnvelope(env2, factory.GetDefault())
+	err = or.ValidateTransition(currBundle, nextEnv)
 	require.NoError(t, err)
 
-	err = or.ValidateTransition(currBundle, env)
+	// try to add partyID=3 again, should fail
+	nextBundle, err := channelconfig.NewBundleFromEnvelope(nextEnv, factory.GetDefault())
+	require.NoError(t, err)
+
+	err = or.ValidateTransition(nextBundle, currEnv)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "proposed party ID 3 must be greater than previous MaxPartyID 3")
 }
 
-func createConfigEnvTest(t *testing.T, baseDir string, numOfParties int) *common.Envelope {
-	numOfShards := 1
-	configPath := filepath.Join(baseDir, "config.yaml")
-	_ = testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "none")
+func TestValidateTransition_FailedRemoveTwoParties(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
 
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", baseDir})
-	blockBytes, err := os.ReadFile(filepath.Join(baseDir, "bootstrap", "bootstrap.block"))
+	// create a config with 5 parties
+	dir, _, bundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 5)
+	defer cleanup()
+
+	// remove two parties
+	builder.RemoveParty(t, 5)
+	builder.RemoveParty(t, 4)
+	updatePb := builder.ConfigUpdatePBData(t)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, bundle, signer, verifier)
+	require.NoError(t, err)
+
+	nextEnv := &common.Envelope{Payload: nextCfgEnv.Payload, Signature: nextCfgEnv.Signature}
+
+	// should fail because more than one party is removed
+	err = or.ValidateTransition(bundle, nextEnv)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "more than one party removed in config tx")
+}
+
+func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
+
+	// create a config with 3 parties
+	dir, _, bundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
+	defer cleanup()
+
+	// add 2 parties
+	builder.AddNewParty(t, &protos.PartyConfig{
+		CACerts:    [][]byte{[]byte("newCACert-1")},
+		TLSCACerts: [][]byte{[]byte("newTLSCACert-1")},
+		ConsenterConfig: &protos.ConsenterNodeConfig{
+			Host: "localhost", Port: 7050, TlsCert: []byte("consenterNewCert-1"),
+		},
+		RouterConfig: &protos.RouterNodeConfig{
+			Host: "localhost", Port: 8050, TlsCert: []byte("routerNewCert-1"),
+		},
+		AssemblerConfig: &protos.AssemblerNodeConfig{
+			Host: "localhost", Port: 9050, TlsCert: []byte("assemblerNewCert-1"),
+		},
+		BatchersConfig: []*protos.BatcherNodeConfig{
+			{ShardID: 1, Host: "localhost", Port: 10050, TlsCert: []byte("batcherNewCert-1")},
+		},
+	})
+
+	builder.AddNewParty(t, &protos.PartyConfig{
+		CACerts:    [][]byte{[]byte("newCACert-2")},
+		TLSCACerts: [][]byte{[]byte("newTLSCACert-2")},
+		ConsenterConfig: &protos.ConsenterNodeConfig{
+			Host: "localhost", Port: 7051, TlsCert: []byte("consenterNewCert-2"),
+		},
+		RouterConfig: &protos.RouterNodeConfig{
+			Host: "localhost", Port: 8051, TlsCert: []byte("routerNewCert-2"),
+		},
+		AssemblerConfig: &protos.AssemblerNodeConfig{
+			Host: "localhost", Port: 9051, TlsCert: []byte("assemblerNewCert-2"),
+		},
+		BatchersConfig: []*protos.BatcherNodeConfig{
+			{ShardID: 1, Host: "localhost", Port: 10051, TlsCert: []byte("batcherNewCert-2")},
+		},
+	})
+
+	updatePb := builder.ConfigUpdatePBData(t)
+	require.NotEmpty(t, updatePb)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, bundle, signer, verifier)
+	require.NoError(t, err)
+
+	nextEnv := &common.Envelope{Payload: nextCfgEnv.Payload, Signature: nextCfgEnv.Signature}
+
+	err = or.ValidateTransition(bundle, nextEnv)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "more than one party added in config tx")
+}
+
+func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope, channelconfig.Resources, *configutil.ConfigUpdateBuilder, *policy.DefaultConfigUpdateProposer, identity.SignerSerializer, *requestfilter.RulesVerifier, func()) {
+	t.Helper()
+	dir := t.TempDir()
+
+	configPath := filepath.Join(dir, "config.yaml")
+	testutil.CreateNetwork(t, configPath, parties, 1, "TLS", "none")
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	genesisBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
+	blockBytes, err := os.ReadFile(genesisBlockPath)
 	require.NoError(t, err)
 
 	block := protoutil.UnmarshalBlockOrPanic(blockBytes)
 	env, err := protoutil.ExtractEnvelope(block, 0)
 	require.NoError(t, err)
 
-	return env
+	bundle, err := channelconfig.NewBundleFromEnvelope(env, factory.GetDefault())
+	require.NoError(t, err)
+
+	builder, cleanup := configutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
+
+	proposer := &policy.DefaultConfigUpdateProposer{}
+
+	fakeSigner := &mockSigner.SignerSerializer{}
+	fakeSigner.SignReturns([]byte("signature"), nil)
+	fakeSigner.SerializeReturns([]byte("identity"), nil)
+
+	verifier := requestfilter.NewRulesVerifier(nil)
+	sr := &mocksVerifier.FakeStructureRule{}
+	sr.VerifyAndClassifyReturns(common.HeaderType_CONFIG, nil)
+	verifier.AddStructureRule(sr)
+
+	return dir, env, bundle, builder, proposer, fakeSigner, verifier, cleanup
 }

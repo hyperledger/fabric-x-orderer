@@ -29,7 +29,7 @@ type DefaultOrdererRules struct{}
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create bundle from new envelope config")
 	}
 
 	ordererConfig, exists := bundle.OrdererConfig()
@@ -79,12 +79,12 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	// extract next shared config
 	nextBundle, err := channelconfig.NewBundleFromEnvelope(next, factory.GetDefault())
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create bundle from next envelope config")
 	}
 
 	nextOrdererCfg, ok := nextBundle.OrdererConfig()
 	if !ok {
-		return errors.New("no orderer config found")
+		return errors.New("orderer entry in the config block is empty")
 	}
 
 	nextCfg := &config_protos.SharedConfig{}
@@ -115,7 +115,9 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		}
 	}
 
-	// 2. Validate that if a party is added, its ID is greater than the previous MaxPartyID
+	// 2. Validate MaxPartyID rules in the next config:
+	// when a party is added, next MaxPartyID equals the new PartyID, which equals current MaxPartyID+1.
+	// otherwise, next MaxPartyID equals current MaxPartyID.
 	if added == 1 {
 		if newID <= currCfg.MaxPartyID {
 			return errors.Errorf("proposed party ID %d must be greater than previous MaxPartyID %d", newID, currCfg.MaxPartyID)
@@ -123,9 +125,12 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		if nextCfg.MaxPartyID != newID {
 			return errors.Errorf("proposed MaxPartyID %d must equal the newly added PartyID %d", nextCfg.MaxPartyID, newID)
 		}
+		if nextCfg.MaxPartyID != currCfg.MaxPartyID+1 {
+			return errors.Errorf("proposed MaxPartyID %d must be greater than previous MaxPartyID %d by one", nextCfg.MaxPartyID, currCfg.MaxPartyID)
+		}
 	} else {
 		if nextCfg.MaxPartyID != currCfg.MaxPartyID {
-			return errors.Errorf("MaxPartyID cannot change if no new party is added (prev=%d, next=%d)", currCfg.MaxPartyID, nextCfg.MaxPartyID)
+			return errors.Errorf("MaxPartyID cannot change if no new party is added (current=%d, next=%d)", currCfg.MaxPartyID, nextCfg.MaxPartyID)
 		}
 	}
 
@@ -145,7 +150,7 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d)", added, removed)
 	}
 
-	// TODO: Validate party modifications (certificates / endpoints).
+	// TODO: Validate party modifications (only one certificate / endpoint change in a config tx).
 	// TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 
 	return nil
