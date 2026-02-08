@@ -176,6 +176,7 @@ func TestConfigDisseminate(t *testing.T) {
 		assemblers[i] = recoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i], lastBlock)
 		routers[i] = recoverRouter(routersConfigs[i], routersLoggers[i])
 	}
+	time.Sleep(5 * time.Second)
 
 	// check router and batcher config store after recovery
 	for i := range routers {
