@@ -30,9 +30,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate counterfeiter -o mocks/state_replicator.go . StateReplicator
-type StateReplicator interface {
-	ReplicateState() <-chan *state.Header
+//go:generate counterfeiter -o mocks/decision_replicator.go . DecisionReplicator
+type DecisionReplicator interface {
+	ReplicateDecision() <-chan *state.Header
 	Stop()
 }
 
@@ -48,7 +48,7 @@ type Net interface {
 type Batcher struct {
 	requestsInspectorVerifier *RequestsInspectorVerifier
 	batcherDeliverService     *BatcherDeliverService
-	stateReplicator           StateReplicator
+	decisionReplicator        DecisionReplicator
 	logger                    types.Logger
 	batcher                   *BatcherRole
 	batcherCerts2IDs          map[string]types.PartyID
@@ -91,7 +91,7 @@ func (b *Batcher) Run() {
 	b.stateChan = make(chan *state.State, 1)
 
 	b.running.Add(1)
-	go b.replicateState()
+	go b.replicateDecision()
 
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
@@ -121,15 +121,15 @@ func (b *Batcher) SoftStop() {
 	})
 }
 
-// replicateState runs by a separate go routine
-func (b *Batcher) replicateState() {
+// replicateDecision runs by a separate go routine
+func (b *Batcher) replicateDecision() {
 	b.logger.Infof("Started replicating state")
 	defer func() {
-		b.stateReplicator.Stop()
+		b.decisionReplicator.Stop()
 		b.running.Done()
 		b.logger.Infof("Stopped replicating state")
 	}()
-	headerChan := b.stateReplicator.ReplicateState()
+	headerChan := b.decisionReplicator.ReplicateDecision()
 	for {
 		select {
 		case header := <-headerChan:

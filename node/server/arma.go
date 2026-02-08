@@ -176,7 +176,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 
 		srv := node.CreateGRPCBatcher(conf)
 
-		batcher := batcher.CreateBatcher(conf, batcherLogger, srv, &batcher.ConsensusStateReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher := batcher.CreateBatcher(conf, batcherLogger, srv, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 		defer batcher.Run()
 
 		protos.RegisterRequestTransmitServer(srv.Server(), batcher)

@@ -155,10 +155,10 @@ func (sc *stubConsenter) UpdateStateHeaderWithConfigBlock(decisionNum types.Deci
 	sc.headerChan <- header
 }
 
-func (sc *stubConsenter) ReplicateState() <-chan *state.Header {
+func (sc *stubConsenter) ReplicateDecision() <-chan *state.Header {
 	return sc.headerChan
 }
 
-func (sc *stubConsenter) CreateStateConsensusReplicator(conf *config.BatcherNodeConfig, logger types.Logger, num types.DecisionNum) batcher.StateReplicator {
+func (sc *stubConsenter) CreateDecisionConsensusReplicator(conf *config.BatcherNodeConfig, logger types.Logger, num types.DecisionNum) batcher.DecisionReplicator {
 	return sc
 }
