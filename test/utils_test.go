@@ -152,6 +152,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 
 		configRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 		configRulesVerifier.ValidateNewConfigReturns(nil)
+		configRulesVerifier.ValidateTransitionReturns(nil)
 
 		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer, configRulesVerifier)
 		routers = append(routers, router)
@@ -540,6 +541,7 @@ func recoverRouter(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger
 
 	configRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 	configRulesVerifier.ValidateNewConfigReturns(nil)
+	configRulesVerifier.ValidateTransitionReturns(nil)
 
 	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
 	router.StartRouterService()

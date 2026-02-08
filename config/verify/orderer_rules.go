@@ -20,7 +20,7 @@ import (
 //go:generate counterfeiter -o mocks/orderer_rules.go . OrdererRules
 type OrdererRules interface {
 	ValidateNewConfig(envelope *common.Envelope) error
-	// TODO: add ValidateTransition method to verify config transitions from current to next.
+	ValidateTransition(current channelconfig.Resources, next *common.Envelope) error
 }
 
 type DefaultOrdererRules struct{}
@@ -29,7 +29,7 @@ type DefaultOrdererRules struct{}
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create bundle from new envelope config")
 	}
 
 	ordererConfig, exists := bundle.OrdererConfig()
@@ -58,6 +58,100 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope) erro
 	// TODO: Validate certificates.
 	// TODO: Validate consenter mapping.
 	// TODO: Validate block validation policy.
+
+	return nil
+}
+
+// ValidateTransition validates ordering service config transition rules
+// from the current config to the next config.
+func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope) error {
+	// extract current shared config
+	currOrdererCfg, ok := current.OrdererConfig()
+	if !ok {
+		return errors.New("no orderer config found")
+	}
+
+	currCfg := &config_protos.SharedConfig{}
+	if err := proto.Unmarshal(currOrdererCfg.ConsensusMetadata(), currCfg); err != nil {
+		return errors.Wrap(err, "failed to unmarshal current consensus metadata")
+	}
+
+	// extract next shared config
+	nextBundle, err := channelconfig.NewBundleFromEnvelope(next, factory.GetDefault())
+	if err != nil {
+		return errors.Wrap(err, "failed to create bundle from next envelope config")
+	}
+
+	nextOrdererCfg, ok := nextBundle.OrdererConfig()
+	if !ok {
+		return errors.New("orderer entry in the config block is empty")
+	}
+
+	nextCfg := &config_protos.SharedConfig{}
+	if err := proto.Unmarshal(nextOrdererCfg.ConsensusMetadata(), nextCfg); err != nil {
+		return errors.Wrap(err, "failed to unmarshal next consensus metadata")
+	}
+
+	currMap := make(map[uint32]*config_protos.PartyConfig)
+	nextMap := make(map[uint32]*config_protos.PartyConfig)
+
+	for _, p := range currCfg.PartiesConfig {
+		currMap[p.PartyID] = p
+	}
+	for _, p := range nextCfg.PartiesConfig {
+		nextMap[p.PartyID] = p
+	}
+
+	// 1. Validate that at most one party is added
+	added := 0
+	var newID uint32
+	for id := range nextMap {
+		if _, exists := currMap[id]; !exists {
+			added++
+			newID = id
+			if added > 1 {
+				return errors.New("more than one party added in config tx")
+			}
+		}
+	}
+
+	// 2. Validate MaxPartyID rules in the next config:
+	// when a party is added, next MaxPartyID equals the new PartyID, which equals current MaxPartyID+1.
+	// otherwise, next MaxPartyID equals current MaxPartyID.
+	if added == 1 {
+		if newID <= currCfg.MaxPartyID {
+			return errors.Errorf("proposed party ID %d must be greater than previous MaxPartyID %d", newID, currCfg.MaxPartyID)
+		}
+		if nextCfg.MaxPartyID != newID {
+			return errors.Errorf("proposed MaxPartyID %d must equal the newly added PartyID %d", nextCfg.MaxPartyID, newID)
+		}
+		if nextCfg.MaxPartyID != currCfg.MaxPartyID+1 {
+			return errors.Errorf("proposed MaxPartyID %d must be greater than previous MaxPartyID %d by one", nextCfg.MaxPartyID, currCfg.MaxPartyID)
+		}
+	} else {
+		if nextCfg.MaxPartyID != currCfg.MaxPartyID {
+			return errors.Errorf("MaxPartyID cannot change if no new party is added (current=%d, next=%d)", currCfg.MaxPartyID, nextCfg.MaxPartyID)
+		}
+	}
+
+	// 3. Validate that at most one party is removed
+	removed := 0
+	for id := range currMap {
+		if _, exists := nextMap[id]; !exists {
+			removed++
+			if removed > 1 {
+				return errors.New("more than one party removed in config tx")
+			}
+		}
+	}
+
+	// Ensure at most one membership change per config tx
+	if added+removed > 1 {
+		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d)", added, removed)
+	}
+
+	// TODO: Validate party modifications (only one certificate / endpoint change in a config tx).
+	// TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 
 	return nil
 }

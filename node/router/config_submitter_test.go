@@ -57,6 +57,7 @@ func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 
 	mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+	mockConfigRulesVerifier.ValidateTransitionReturns(nil)
 
 	configSubmitter := NewConfigSubmitter(stubConsenter.GetConsenterEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, logger, bundle, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier)
 

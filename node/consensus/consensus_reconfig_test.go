@@ -47,6 +47,7 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	setup.consensusNodes[0].ConfigRequestValidator = mockConfigRequestValidator
 	mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+	mockConfigRulesVerifier.ValidateTransitionReturns(nil)
 	setup.consensusNodes[0].ConfigRulesVerifier = mockConfigRulesVerifier
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
@@ -139,6 +140,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	mockConfigRequestValidator.ValidateConfigRequestReturns(nil)
 	mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+	mockConfigRulesVerifier.ValidateTransitionReturns(nil)
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 		return s, nil

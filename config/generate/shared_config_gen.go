@@ -37,6 +37,7 @@ func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocal
 		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
 		ConsensusConfig: config.ConsensusConfig{BFTConfig: config.DefaultArmaBFTConfig()},
 		BatchingConfig:  createBatchingConfig(),
+		MaxPartyID:      network.MaxPartyID,
 	}
 	return sharedConfig
 }

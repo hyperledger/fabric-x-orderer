@@ -642,6 +642,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 			mockConfigRulesVerifier := &ordererRulesMocks.FakeOrdererRules{}
 			mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
+			mockConfigRulesVerifier.ValidateTransitionReturns(nil)
 
 			mockConfigApplier := &consensus_mocks.FakeConfigApplier{}
 			mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
