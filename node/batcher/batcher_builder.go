@@ -23,7 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, net Net, csrc ConsensusStateReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, net Net, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	var parties []types.PartyID
 	for shIdx, sh := range config.Shards {
 		if sh.ShardId != config.ShardId {
@@ -61,7 +61,7 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, n
 
 	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
 
-	sr := csrc.CreateStateConsensusReplicator(config, logger, lastKnownDecisionNum)
+	dr := cdrc.CreateDecisionConsensusReplicator(config, logger, lastKnownDecisionNum)
 
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
 
@@ -73,7 +73,7 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, n
 	b := &Batcher{
 		requestsInspectorVerifier: requestsIDAndVerifier,
 		batcherDeliverService:     deliverService,
-		stateReplicator:           sr,
+		decisionReplicator:        dr,
 		signer:                    signer,
 		logger:                    logger,
 		Net:                       net,

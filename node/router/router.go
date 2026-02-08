@@ -499,7 +499,7 @@ func createVerifier(config *nodeconfig.RouterNodeConfig) *requestfilter.RulesVer
 // it store the last decision in wal, and config blocks in config store.
 // this function should be run as a goroutine.
 func (r *Router) pullAndProcessDecisions() {
-	decisionsChan := r.decisionPuller.ReplicateState()
+	decisionsChan := r.decisionPuller.ReplicateDecision()
 	defer func() {
 		r.decisionPuller.Stop()
 		r.logger.Infof("Stopped decision puller")
