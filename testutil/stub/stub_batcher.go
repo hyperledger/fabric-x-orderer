@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"go.uber.org/zap"
 
@@ -93,6 +94,46 @@ func NewStubBatcherFromConfig(t *testing.T, configStoreDir string, nodeConfigPat
 		logger:      testutil.CreateLogger(t, int(batcherConfig.ShardId)),
 	}
 	return stubBatcher
+}
+
+func NewStubBatchersAndInfos(t *testing.T, numParties int, shardIDs []types.ShardID) ([]nodeconfig.ShardInfo, func()) {
+	var batchers []*StubBatcher
+	var batcherInfos []nodeconfig.BatcherInfo
+	shardInfos := make([]nodeconfig.ShardInfo, len(shardIDs))
+
+	// prepare CA for each party
+	var partiesCAs []tlsgen.CA
+	for i := 0; i < numParties; i++ {
+		certificateAuthority, err := tlsgen.NewCA()
+		require.NoError(t, err)
+		partiesCAs = append(partiesCAs, certificateAuthority)
+	}
+
+	for idx, shardID := range shardIDs {
+		batcherInfos = []nodeconfig.BatcherInfo{}
+		for i := 0; i < numParties; i++ {
+			batcher := NewStubBatcher(t, partiesCAs[i], types.PartyID(i+1), shardID)
+			batchers = append(batchers, &batcher)
+			batcherInfo := nodeconfig.BatcherInfo{
+				PartyID:    batcher.partyID,
+				Endpoint:   batcher.server.Address(),
+				TLSCACerts: []nodeconfig.RawBytes{partiesCAs[i].CertBytes()},
+				PublicKey:  batcher.key,
+				TLSCert:    batcher.certificate,
+			}
+			batcherInfos = append(batcherInfos, batcherInfo)
+		}
+		shardInfos[idx] = nodeconfig.ShardInfo{
+			ShardId:  shardID,
+			Batchers: batcherInfos,
+		}
+	}
+
+	return shardInfos, func() {
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}
 }
 
 func (sb *StubBatcher) Server() *comm.GRPCServer {
