@@ -47,6 +47,9 @@ func NewBroadcastTxClient(userConfigFile *armageddon.UserConfig, timeOut time.Du
 }
 
 func (c *BroadcastTxClient) SendTxTo(envelope *common.Envelope, partyID types.PartyID) error {
+	if int(partyID) > len(c.userConfig.RouterEndpoints) {
+		return fmt.Errorf("invalid party ID %d", partyID)
+	}
 	c.streamsMapLock.Lock()
 	defer c.streamsMapLock.Unlock()
 
@@ -118,9 +121,7 @@ func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {
 
 	// send the transaction to all streams.
 	for _, streamInfo := range c.streamRoutersMap {
-		waitForReceiveDone.Add(1)
-		go func() {
-			defer waitForReceiveDone.Done()
+		waitForReceiveDone.Go(func() {
 			streamInfo.streamLock.Lock()
 			defer streamInfo.streamLock.Unlock()
 
@@ -155,7 +156,7 @@ func (c *BroadcastTxClient) SendTx(envelope *common.Envelope) error {
 
 			// increment the total transactions sent for this stream
 			streamInfo.totalTxSent++
-		}()
+		})
 	}
 
 	waitForReceiveDone.Wait()

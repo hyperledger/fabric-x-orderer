@@ -8,6 +8,7 @@ package test
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -324,6 +325,159 @@ func TestRemovePartyRunAll(t *testing.T) {
 	armaNetwork.RestartParties(t, []types.PartyID{1}, readyChan)
 	// Expect the rest of the nodes to start successfully
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+}
+
+// TestRemoveStoppedPartyThenRestart verifies that after removing a stopped party that via a config update
+// and stopping all Arma nodes, restarting the entire network results in all nodes starting successfully,
+// while the removed party's nodes fail to establish connections to the rest of the network.
+func TestRemoveStoppedPartyThenRestart(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 1
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	require.NotNil(t, netInfo)
+	require.NoError(t, err)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// Build Arma binary
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, types.PartyID(1))
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	totalTxNumber := 10
+
+	// Send transactions to all parties to ensure network is operational before config update
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	org := fmt.Sprintf("org%d", 1)
+
+	for i := range totalTxNumber {
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	partyToRemove := types.PartyID(4)
+	// Stop the party to be removed
+	armaNetwork.StopParties([]types.PartyID{partyToRemove})
+
+	// Update user config to remove the party
+	uc.RouterEndpoints = append(uc.RouterEndpoints[:partyToRemove-1], uc.RouterEndpoints[partyToRemove:]...)
+	uc.AssemblerEndpoints = append(uc.AssemblerEndpoints[:partyToRemove-1], uc.AssemblerEndpoints[partyToRemove:]...)
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	// Send more transactions to all remaining parties to ensure network is still operational before config update
+	for i := range totalTxNumber {
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	// Remove the party from netInfo
+	for n := range netInfo {
+		if netInfo[n].PartyId == partyToRemove {
+			delete(netInfo, n)
+		}
+	}
+
+	remainingParties := []types.PartyID{}
+	for i := 1; i <= numOfParties; i++ {
+		if types.PartyID(i) == partyToRemove {
+			continue
+		}
+		remainingParties = append(remainingParties, types.PartyID(i))
+	}
+
+	// Create config update to remove a party
+	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	defer cleanUp()
+
+	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
+
+	// Submit config update
+	for _, partyId := range remainingParties {
+		env := configutil.CreateConfigTX(t, dir, remainingParties, int(partyId), configUpdatePbData)
+		require.NotNil(t, env)
+		// Send the config tx
+		err = broadcastClient.SendTxTo(env, partyId)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	statusUnknown := common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      remainingParties,
+		Transactions: totalTxNumber*2 + 1, // including config update tx
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Timeout:      60,
+		Status:       &statusUnknown,
+	})
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Stop Arma nodes
+	armaNetwork.Stop()
+
+	for _, partyId := range remainingParties {
+		// Verify that the party is removed by checking the assembler's shared config
+		assemblerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), "local_config_assembler.yaml")
+		assemblerNodeConfig, _, err := config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+		require.NoError(t, err)
+		require.Equal(t, numOfParties-1, len(assemblerNodeConfig.SharedConfig.GetPartiesConfig()), "Party was not removed from the config")
+
+		for _, partyConfig := range assemblerNodeConfig.SharedConfig.GetPartiesConfig() {
+			require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
+		}
+	}
+
+	// Restart nodes
+	armaNetwork.Restart(t, readyChan)
+	defer armaNetwork.Stop()
+
+	// Expect all the nodes to start successfully
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	primaryPartyID := types.PartyID((uint64(1))%uint64(numOfParties) + 1)
+
+	primaryBatcher := armaNetwork.GetBatcher(t, primaryPartyID, types.ShardID(1))
+	primaryBatcherEndPoint := fmt.Sprintf("%s:%d", primaryBatcher.Listener.Addr().(*net.TCPAddr).IP.String(), primaryBatcher.Listener.Addr().(*net.TCPAddr).Port)
+	removedBatcher := armaNetwork.GetBatcher(t, partyToRemove, types.ShardID(1))
+
+	// Verify that the removed party's batcher fails to connect to the primary batcher of its shard
+	require.Eventually(t, func() bool {
+		<-removedBatcher.RunInfo.Session.Err.Detect("%s", fmt.Sprintf("Failed creating Deliver stream to %s", primaryBatcherEndPoint))
+		<-removedBatcher.RunInfo.Session.Err.Detect("error: tls: unknown certificate authority")
+		return true
+	}, 10*time.Second, 500*time.Millisecond, "Removed party's batcher succeded to connect to the primary batcher")
 }
 
 // TestRemoveParty verifies that removing a party via a config update succeeds,
