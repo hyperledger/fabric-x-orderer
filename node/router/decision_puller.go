@@ -15,7 +15,7 @@ import (
 )
 
 type DecisionPuller interface {
-	ReplicateState() <-chan *state.Header
+	ReplicateDecision() <-chan *state.Header
 	Stop()
 }
 

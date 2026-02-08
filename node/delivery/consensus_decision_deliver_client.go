@@ -49,8 +49,7 @@ func NewConsensusDecisionReplicator(tlsCACerts []config.RawBytes, tlsKey config.
 	return baReplicator
 }
 
-// TODO refactor ReplicateState to ReplicateDecision.
-func (cr *ConsensusDecisionReplicator) ReplicateState() <-chan *state.Header {
+func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header {
 	endpoint := func() string {
 		return cr.endpoint
 	}

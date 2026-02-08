@@ -12,14 +12,14 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 )
 
-//go:generate counterfeiter -o mocks/consensus_state_replicator_creator.go . ConsensusStateReplicatorCreator
-type ConsensusStateReplicatorCreator interface {
-	CreateStateConsensusReplicator(conf *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) StateReplicator
+//go:generate counterfeiter -o mocks/consensus_decision_replicator_creator.go . ConsensusDecisionReplicatorCreator
+type ConsensusDecisionReplicatorCreator interface {
+	CreateDecisionConsensusReplicator(conf *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) DecisionReplicator
 }
 
-type ConsensusStateReplicatorFactory struct{}
+type ConsensusDecisionReplicatorFactory struct{}
 
-func (c *ConsensusStateReplicatorFactory) CreateStateConsensusReplicator(config *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) StateReplicator {
+func (c *ConsensusDecisionReplicatorFactory) CreateDecisionConsensusReplicator(config *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) DecisionReplicator {
 	var endpoint string
 	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(config.Consenters); i++ {
