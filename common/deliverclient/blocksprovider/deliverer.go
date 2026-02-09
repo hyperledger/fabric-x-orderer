@@ -121,12 +121,12 @@ func (d *Deliverer) Initialize(channelConfig *cb.Config) {
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
 	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, "")
-	globalAddresses, orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+	orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
 		// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
 		d.Logger.Panicf("Bundle creation should not have failed: %s", err)
 	}
-	ordererSource.Update(globalAddresses, orgAddresses)
+	ordererSource.Update(orgAddresses)
 	d.orderers = ordererSource
 }
 
@@ -213,12 +213,12 @@ func (d *Deliverer) DeliverBlocks() {
 			totalDuration = time.Duration(0)
 
 			if channelConfig != nil {
-				globalAddresses, orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+				orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 				if err != nil {
 					// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
 					d.Logger.Panicf("Bundle creation should not have failed: %s", err)
 				}
-				d.orderers.Update(globalAddresses, orgAddresses)
+				d.orderers.Update(orgAddresses)
 			}
 		}
 		if err := blockReceiver.ProcessIncoming(onSuccess); err != nil {

@@ -90,12 +90,12 @@ type timeNumber struct {
 	n uint64
 }
 
-func extractAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.BCCSP) ([]string, map[string]orderers.OrdererOrg, error) {
+func extractAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.BCCSP) (map[string]orderers.OrdererOrg, error) {
 	bundle, err := channelconfig.NewBundle(channelID, config, cryptoProvider)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	globalAddresses := bundle.ChannelConfig().OrdererAddresses()
+
 	orgAddresses := map[string]orderers.OrdererOrg{}
 	if ordererConfig, ok := bundle.OrdererConfig(); ok {
 		for orgName, org := range ordererConfig.Organizations() {
@@ -110,5 +110,5 @@ func extractAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.
 		}
 	}
 
-	return globalAddresses, orgAddresses, nil
+	return orgAddresses, nil
 }

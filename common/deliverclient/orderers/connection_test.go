@@ -89,7 +89,7 @@ var _ = Describe("Connection", func() {
 					RootCerts: overrideCerts,
 				},
 			}, "") // << no self endpoint, as in the peer
-		cs.Update(nil, map[string]orderers.OrdererOrg{
+		cs.Update(map[string]orderers.OrdererOrg{
 			"org1": org1,
 			"org2": org2,
 		})
@@ -172,7 +172,7 @@ var _ = Describe("Connection", func() {
 
 	When("an update does not modify the endpoint set", func() {
 		BeforeEach(func() {
-			cs.Update(nil, map[string]orderers.OrdererOrg{
+			cs.Update(map[string]orderers.OrdererOrg{
 				"org1": org1,
 				"org2": org2,
 			})
@@ -194,7 +194,7 @@ var _ = Describe("Connection", func() {
 		BeforeEach(func() {
 			org1.RootCerts = [][]byte{cert1}
 
-			cs.Update(nil, map[string]orderers.OrdererOrg{
+			cs.Update(map[string]orderers.OrdererOrg{
 				"org1": org1,
 				"org2": org2,
 			})
@@ -236,7 +236,7 @@ var _ = Describe("Connection", func() {
 	When("an update change's an org's endpoint addresses", func() {
 		BeforeEach(func() {
 			org1.Addresses = []string{"org1-address1", "org1-address3"}
-			cs.Update(nil, map[string]orderers.OrdererOrg{
+			cs.Update(map[string]orderers.OrdererOrg{
 				"org1": org1,
 				"org2": org2,
 			})
@@ -275,7 +275,7 @@ var _ = Describe("Connection", func() {
 
 	When("an update references an overridden org endpoint address", func() {
 		BeforeEach(func() {
-			cs.Update(nil, map[string]orderers.OrdererOrg{
+			cs.Update(map[string]orderers.OrdererOrg{
 				"org1": {
 					Addresses: []string{"org1-address1", "override-address"},
 					RootCerts: [][]byte{cert1, cert2},
@@ -302,7 +302,7 @@ var _ = Describe("Connection", func() {
 
 	When("an update removes an ordering organization", func() {
 		BeforeEach(func() {
-			cs.Update(nil, map[string]orderers.OrdererOrg{
+			cs.Update(map[string]orderers.OrdererOrg{
 				"org2": org2,
 			})
 		})
@@ -331,7 +331,7 @@ var _ = Describe("Connection", func() {
 
 		When("the org is added back", func() {
 			BeforeEach(func() {
-				cs.Update(nil, map[string]orderers.OrdererOrg{
+				cs.Update(map[string]orderers.OrdererOrg{
 					"org1": org1,
 					"org2": org2,
 				})
@@ -365,7 +365,7 @@ var _ = Describe("Connection", func() {
 
 	When("an update modifies the global endpoints but does not affect the org endpoints", func() {
 		BeforeEach(func() {
-			cs.Update(nil, map[string]orderers.OrdererOrg{
+			cs.Update(map[string]orderers.OrdererOrg{
 				"org1": org1,
 				"org2": org2,
 			})
@@ -383,191 +383,6 @@ var _ = Describe("Connection", func() {
 		})
 	})
 
-	When("the configuration does not contain orderer org endpoints", func() {
-		var globalCerts [][]byte
-
-		BeforeEach(func() {
-			org1.Addresses = nil
-			org2.Addresses = nil
-
-			globalCerts = [][]byte{cert1, cert2, cert3}
-
-			cs.Update([]string{"global-addr1", "global-addr2"}, map[string]orderers.OrdererOrg{
-				"org1": org1,
-				"org2": org2,
-			})
-		})
-
-		It("creates endpoints for the global addrs", func() {
-			newEndpoints := cs.Endpoints()
-			Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-				stripEndpoints([]*orderers.Endpoint{
-					{
-						Address:   "global-addr1",
-						RootCerts: globalCerts,
-					},
-					{
-						Address:   "global-addr2",
-						RootCerts: globalCerts,
-					},
-				}),
-			))
-		})
-
-		It("closes the refresh channel for all of the old endpoints", func() {
-			for _, endpoint := range endpoints {
-				Expect(endpoint.Refreshed).To(BeClosed())
-			}
-		})
-
-		When("the global list of addresses grows", func() {
-			BeforeEach(func() {
-				cs.Update([]string{"global-addr1", "global-addr2", "global-addr3"}, map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				})
-			})
-
-			It("creates endpoints for the global addrs", func() {
-				newEndpoints := cs.Endpoints()
-				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-					stripEndpoints([]*orderers.Endpoint{
-						{
-							Address:   "global-addr1",
-							RootCerts: globalCerts,
-						},
-						{
-							Address:   "global-addr2",
-							RootCerts: globalCerts,
-						},
-						{
-							Address:   "global-addr3",
-							RootCerts: globalCerts,
-						},
-					}),
-				))
-			})
-
-			It("closes the refresh channel for all of the old endpoints", func() {
-				for _, endpoint := range endpoints {
-					Expect(endpoint.Refreshed).To(BeClosed())
-				}
-			})
-		})
-
-		When("the global set of addresses shrinks", func() {
-			BeforeEach(func() {
-				cs.Update([]string{"global-addr1"}, map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				})
-			})
-
-			It("creates endpoints for the global addrs", func() {
-				newEndpoints := cs.Endpoints()
-				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-					stripEndpoints([]*orderers.Endpoint{
-						{
-							Address:   "global-addr1",
-							RootCerts: globalCerts,
-						},
-					}),
-				))
-			})
-
-			It("closes the refresh channel for all of the old endpoints", func() {
-				for _, endpoint := range endpoints {
-					Expect(endpoint.Refreshed).To(BeClosed())
-				}
-			})
-		})
-
-		When("the global set of addresses is modified", func() {
-			BeforeEach(func() {
-				cs.Update([]string{"global-addr1", "global-addr3"}, map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				})
-			})
-
-			It("creates endpoints for the global addrs", func() {
-				newEndpoints := cs.Endpoints()
-				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-					stripEndpoints([]*orderers.Endpoint{
-						{
-							Address:   "global-addr1",
-							RootCerts: globalCerts,
-						},
-						{
-							Address:   "global-addr3",
-							RootCerts: globalCerts,
-						},
-					}),
-				))
-			})
-
-			It("closes the refresh channel for all of the old endpoints", func() {
-				for _, endpoint := range endpoints {
-					Expect(endpoint.Refreshed).To(BeClosed())
-				}
-			})
-		})
-
-		When("an update to the global addrs references an overridden org endpoint address", func() {
-			BeforeEach(func() {
-				cs.Update([]string{"global-addr1", "override-address"}, map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				},
-				)
-			})
-
-			It("creates a new set of orderer endpoints with overrides", func() {
-				newEndpoints := cs.Endpoints()
-				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-					stripEndpoints([]*orderers.Endpoint{
-						{
-							Address:   "global-addr1",
-							RootCerts: globalCerts,
-						},
-						{
-							Address:   "re-mapped-address",
-							RootCerts: overrideCerts,
-						},
-					}),
-				))
-			})
-		})
-
-		When("an orderer org adds an endpoint", func() {
-			BeforeEach(func() {
-				org1.Addresses = []string{"new-org1-address"}
-				cs.Update([]string{"global-addr1", "global-addr2"}, map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				})
-			})
-
-			It("removes the global endpoints and uses only the org level ones", func() {
-				newEndpoints := cs.Endpoints()
-				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-					stripEndpoints([]*orderers.Endpoint{
-						{
-							Address:   "new-org1-address",
-							RootCerts: org1Certs,
-						},
-					}),
-				))
-			})
-
-			It("closes the refresh channel for all of the old endpoints", func() {
-				for _, endpoint := range endpoints {
-					Expect(endpoint.Refreshed).To(BeClosed())
-				}
-			})
-		})
-	})
-
 	When("a self-endpoint exists as in the orderer", func() {
 		BeforeEach(func() {
 			cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"),
@@ -578,7 +393,7 @@ var _ = Describe("Connection", func() {
 					},
 				},
 				"org1-address1") //<< self-endpoint
-			cs.Update(nil, map[string]orderers.OrdererOrg{
+			cs.Update(map[string]orderers.OrdererOrg{
 				"org1": org1,
 				"org2": org2,
 			})
@@ -650,7 +465,7 @@ var _ = Describe("Connection", func() {
 
 		When("an update does not modify the endpoint set", func() {
 			BeforeEach(func() {
-				cs.Update(nil, map[string]orderers.OrdererOrg{
+				cs.Update(map[string]orderers.OrdererOrg{
 					"org1": org1,
 					"org2": org2,
 				})
@@ -672,7 +487,7 @@ var _ = Describe("Connection", func() {
 			BeforeEach(func() {
 				org1.RootCerts = [][]byte{cert1}
 
-				cs.Update(nil, map[string]orderers.OrdererOrg{
+				cs.Update(map[string]orderers.OrdererOrg{
 					"org1": org1,
 					"org2": org2,
 				})
@@ -710,7 +525,7 @@ var _ = Describe("Connection", func() {
 		When("an update changes an org's endpoint addresses", func() {
 			BeforeEach(func() {
 				org1.Addresses = []string{"org1-address1", "org1-address3"}
-				cs.Update(nil, map[string]orderers.OrdererOrg{
+				cs.Update(map[string]orderers.OrdererOrg{
 					"org1": org1,
 					"org2": org2,
 				})
@@ -745,7 +560,7 @@ var _ = Describe("Connection", func() {
 
 		When("an update removes an ordering organization", func() {
 			BeforeEach(func() {
-				cs.Update(nil, map[string]orderers.OrdererOrg{
+				cs.Update(map[string]orderers.OrdererOrg{
 					"org2": org2,
 				})
 			})
@@ -774,7 +589,7 @@ var _ = Describe("Connection", func() {
 
 			When("the org is added back", func() {
 				BeforeEach(func() {
-					cs.Update(nil, map[string]orderers.OrdererOrg{
+					cs.Update(map[string]orderers.OrdererOrg{
 						"org1": org1,
 						"org2": org2,
 					})
@@ -804,7 +619,7 @@ var _ = Describe("Connection", func() {
 
 		When("an update modifies the global endpoints but does not affect the org endpoints", func() {
 			BeforeEach(func() {
-				cs.Update(nil, map[string]orderers.OrdererOrg{
+				cs.Update(map[string]orderers.OrdererOrg{
 					"org1": org1,
 					"org2": org2,
 				})
@@ -819,364 +634,6 @@ var _ = Describe("Connection", func() {
 				for _, endpoint := range endpoints {
 					Expect(endpoint.Refreshed).NotTo(BeClosed())
 				}
-			})
-		})
-
-		When("the configuration does not contain orderer org endpoints", func() {
-			var globalCerts [][]byte
-
-			BeforeEach(func() {
-				org1.Addresses = nil
-				org2.Addresses = nil
-
-				globalCerts = [][]byte{cert1, cert2, cert3}
-
-				cs.Update([]string{"global-addr1", "global-addr2"}, map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				})
-			})
-
-			It("creates endpoints for the global addrs", func() {
-				newEndpoints := cs.Endpoints()
-				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-					stripEndpoints([]*orderers.Endpoint{
-						{
-							Address:   "global-addr1",
-							RootCerts: globalCerts,
-						},
-						{
-							Address:   "global-addr2",
-							RootCerts: globalCerts,
-						},
-					}),
-				))
-			})
-
-			It("closes the refresh channel for all of the old endpoints", func() {
-				for _, endpoint := range endpoints {
-					Expect(endpoint.Refreshed).To(BeClosed())
-				}
-			})
-
-			When("the global list of addresses grows", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr1", "global-addr2", "global-addr3"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("creates endpoints for the global addrs", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "global-addr1",
-								RootCerts: globalCerts,
-							},
-							{
-								Address:   "global-addr2",
-								RootCerts: globalCerts,
-							},
-							{
-								Address:   "global-addr3",
-								RootCerts: globalCerts,
-							},
-						}),
-					))
-				})
-
-				It("closes the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).To(BeClosed())
-					}
-				})
-			})
-
-			When("the global set of addresses shrinks", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr1"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("creates endpoints for the global addrs", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "global-addr1",
-								RootCerts: globalCerts,
-							},
-						}),
-					))
-				})
-
-				It("closes the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).To(BeClosed())
-					}
-				})
-			})
-
-			When("the global set of addresses is modified", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr1", "global-addr3"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("creates endpoints for the global addrs", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "global-addr1",
-								RootCerts: globalCerts,
-							},
-							{
-								Address:   "global-addr3",
-								RootCerts: globalCerts,
-							},
-						}),
-					))
-				})
-
-				It("closes the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).To(BeClosed())
-					}
-				})
-			})
-
-			When("an update to the global addrs references an overridden org endpoint address", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr1", "override-address"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					},
-					)
-				})
-
-				It("creates a new set of orderer endpoints with overrides", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "global-addr1",
-								RootCerts: globalCerts,
-							},
-							{
-								Address:   "re-mapped-address",
-								RootCerts: overrideCerts,
-							},
-						}),
-					))
-				})
-			})
-
-			When("an orderer org adds an endpoint", func() {
-				BeforeEach(func() {
-					org1.Addresses = []string{"new-org1-address"}
-					cs.Update([]string{"global-addr1", "global-addr2"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("removes the global endpoints and uses only the org level ones", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "new-org1-address",
-								RootCerts: org1Certs,
-							},
-						}),
-					))
-				})
-
-				It("closes the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).To(BeClosed())
-					}
-				})
-			})
-		})
-
-		When("global endpoints are in effect and self-endpoint is from them", func() {
-			var globalCerts [][]byte
-
-			BeforeEach(func() {
-				cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"),
-					map[string]*orderers.Endpoint{
-						"override-address": {
-							Address:   "re-mapped-address",
-							RootCerts: overrideCerts,
-						},
-					},
-					"global-addr1") //<< self-endpoint from global endpoints
-
-				org1.Addresses = nil
-				org2.Addresses = nil
-
-				globalCerts = [][]byte{cert1, cert2, cert3}
-
-				cs.Update([]string{"global-addr1", "global-addr2"}, map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				})
-
-				endpoints = cs.Endpoints()
-			})
-
-			It("creates endpoints for the global endpoints, yet skips the self-endpoint", func() {
-				Expect(stripEndpoints(endpoints)).To(ConsistOf(
-					stripEndpoints([]*orderers.Endpoint{
-						{
-							Address:   "global-addr2",
-							RootCerts: globalCerts,
-						},
-					}),
-				))
-			})
-
-			When("the global list of addresses grows", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr1", "global-addr2", "global-addr3"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("creates endpoints for the global endpoints, yet skips the self-endpoint", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "global-addr2",
-								RootCerts: globalCerts,
-							},
-							{
-								Address:   "global-addr3",
-								RootCerts: globalCerts,
-							},
-						}),
-					))
-				})
-
-				It("closes the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).To(BeClosed())
-					}
-				})
-			})
-
-			When("the global set of addresses shrinks, removing self endpoint", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr2"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("creates endpoints for the global addrs", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "global-addr2",
-								RootCerts: globalCerts,
-							},
-						}),
-					))
-				})
-
-				It("does not close the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).NotTo(BeClosed())
-					}
-				})
-			})
-
-			When("the global set of addresses is modified", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr1", "global-addr3"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("creates endpoints for the global addrs", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "global-addr3",
-								RootCerts: globalCerts,
-							},
-						}),
-					))
-				})
-
-				It("closes the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).To(BeClosed())
-					}
-				})
-			})
-
-			When("an update to the global addrs references an overridden org endpoint address", func() {
-				BeforeEach(func() {
-					cs.Update([]string{"global-addr1", "override-address"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					},
-					)
-				})
-
-				It("creates a new set of orderer endpoints with overrides", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "re-mapped-address",
-								RootCerts: overrideCerts,
-							},
-						}),
-					))
-				})
-			})
-
-			When("an orderer org adds an endpoint", func() {
-				BeforeEach(func() {
-					org1.Addresses = []string{"new-org1-address"}
-					cs.Update([]string{"global-addr1", "global-addr2"}, map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
-					})
-				})
-
-				It("removes the global endpoints and uses only the org level ones", func() {
-					newEndpoints := cs.Endpoints()
-					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-						stripEndpoints([]*orderers.Endpoint{
-							{
-								Address:   "new-org1-address",
-								RootCerts: org1Certs,
-							},
-						}),
-					))
-				})
-
-				It("closes the refresh channel for all of the old endpoints", func() {
-					for _, endpoint := range endpoints {
-						Expect(endpoint.Refreshed).To(BeClosed())
-					}
-				})
 			})
 		})
 	})
