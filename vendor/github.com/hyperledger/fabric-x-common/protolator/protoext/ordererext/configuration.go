@@ -16,6 +16,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 )
 
 type DynamicOrdererGroup struct {
@@ -81,6 +83,8 @@ func (ct *ConsensusType) VariablyOpaqueFieldProto(name string) (proto.Message, e
 	switch ct.Type {
 	case "etcdraft":
 		return &etcdraft.ConfigMetadata{}, nil
+	case "arma":
+		return &ordererpb.SharedConfig{}, nil
 	case "BFT":
 		return &smartbft.Options{}, nil
 	default:
