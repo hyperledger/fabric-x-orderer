@@ -18,7 +18,7 @@ message SharedConfig {
 
 // PartyConfig carries the identity, certificates and nodes configuration of a party.
 message PartyConfig {
-  // the identity of the party, type uint32, id > 0
+  // the identity of the party, range: [0, 2^16-1 (max-uint16)]; valid identities have id > 0.
   uint32 PartyID = 1;
   // the certificates of the certificate authorities who generates the party's signing key-pairs
   repeated bytes CACerts = 2;
@@ -44,7 +44,7 @@ message RouterNodeConfig {
 }
 
 message BatcherNodeConfig {
-  // the ID of the shard to which the batcher is associated
+  // the ID of the shard to which the batcher is associated; range: [0, 2^16-1 (max-uint16)]; valid identities have id > 0, value 2^16-1 has special meaning (consensus cluster).
   uint32 shardID = 1;
   // the hostname or IP on which the gRPC server will listen
   string host = 2;

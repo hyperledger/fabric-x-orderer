@@ -104,7 +104,7 @@ type PartyConfig struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// the identity of the party, type uint32, id > 0
+	// the identity of the party, range: [0, 2^16-1 (max-uint16)]; valid identities have id > 0.
 	PartyID uint32 `protobuf:"varint,1,opt,name=PartyID,proto3" json:"PartyID,omitempty"`
 	// the certificates of the certificate authorities who generates the party's signing key-pairs
 	CACerts [][]byte `protobuf:"bytes,2,rep,name=CACerts,proto3" json:"CACerts,omitempty"`
@@ -272,7 +272,7 @@ type BatcherNodeConfig struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// the ID of the shard to which the batcher is associated
+	// the ID of the shard to which the batcher is associated; range: [0, 2^16-1 (max-uint16)]; valid identities have id > 0, value 2^16-1 has special meaning (consensus cluster).
 	ShardID uint32 `protobuf:"varint,1,opt,name=shardID,proto3" json:"shardID,omitempty"`
 	// the hostname or IP on which the gRPC server will listen
 	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
