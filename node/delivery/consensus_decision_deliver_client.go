@@ -36,7 +36,7 @@ type ConsensusDecisionReplicator struct {
 
 func NewConsensusDecisionReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	baReplicator := &ConsensusDecisionReplicator{
+	decisionReplicator := &ConsensusDecisionReplicator{
 		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint:      endpoint,
 		logger:        logger,
@@ -46,7 +46,7 @@ func NewConsensusDecisionReplicator(tlsCACerts []config.RawBytes, tlsKey config.
 		ctxCancelFunc: cancelFunc,
 		seekInfo:      seekInfo,
 	}
-	return baReplicator
+	return decisionReplicator
 }
 
 func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header {
