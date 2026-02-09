@@ -278,7 +278,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 
 	startBlock := uint64(0)
 	endBlock := uint64(1)
-	Signer := signutil.CreateTestSigner(t, "org1", dir)
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig: uc,
@@ -287,7 +287,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 		EndBlock:   endBlock,
 		Blocks:     2,
 		ErrString:  "cancelled pull from assembler: %d",
-		Signer:     Signer,
+		Signer:     pullRequestSigner,
 	})
 
 	// Check config store size of routers
@@ -364,7 +364,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 		EndBlock:   uint64(2),
 		Blocks:     3,
 		ErrString:  "cancelled pull from assembler: %d",
-		Signer:     Signer,
+		Signer:     pullRequestSigner,
 	})
 
 	// Check that router and batcher config store keep the same size

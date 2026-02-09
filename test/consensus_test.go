@@ -80,7 +80,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		parties[i] = types.PartyID(i + 1)
 	}
 
-	Signer := signutil.CreateTestSigner(t, "org1", dir)
+	signer := signutil.CreateTestSigner(t, "org1", dir)
 
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
@@ -90,7 +90,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		Transactions: 1000,
 		ErrString:    "cancelled pull from assembler: %d",
 		Timeout:      120,
-		Signer:       Signer,
+		Signer:       signer,
 	})
 
 	partyToRestart := types.PartyID(3)
@@ -117,7 +117,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		Transactions: 1500,
 		ErrString:    "cancelled pull from assembler: %d",
 		Timeout:      120,
-		Signer:       Signer,
+		Signer:       signer,
 	})
 
 	consenterToRestart.RestartArmaNode(t, readyChan)
@@ -137,6 +137,6 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 		Transactions: 2000,
 		ErrString:    "cancelled pull from assembler: %d",
 		Timeout:      120,
-		Signer:       Signer,
+		Signer:       signer,
 	})
 }

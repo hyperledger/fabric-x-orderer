@@ -125,7 +125,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		parties = append(parties, types.PartyID(partyID))
 	}
 
-	Signer := signutil.CreateTestSigner(t, "org1", dir)
+	signer := signutil.CreateTestSigner(t, "org1", dir)
 
 	pullerInfos := PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:       uc,
@@ -136,7 +136,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	primaryPartyId := pullerInfos[types.PartyID(1)].Primary[types.ShardID(1)]
@@ -178,7 +178,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// 9. Restart the secondary router.
@@ -209,7 +209,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// 11. Stop a primary router.
@@ -248,7 +248,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// 13. Restart the primary router.
@@ -282,7 +282,7 @@ func TestRouterRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 }
 

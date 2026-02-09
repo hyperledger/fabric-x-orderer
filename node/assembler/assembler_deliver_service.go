@@ -99,12 +99,13 @@ type assemblerChainManager struct {
 }
 
 func (acm *assemblerChainManager) GetChain(chainID string) deliver.Chain {
-	return &assemblerChain{ledger: acm.ledger, bundle: acm.bundle}
+	return &assemblerChain{ledger: acm.ledger, bundle: acm.bundle, errChan: make(chan struct{})}
 }
 
 type assemblerChain struct {
-	ledger blockledger.Reader
-	bundle channelconfig.Resources
+	ledger  blockledger.Reader
+	bundle  channelconfig.Resources
+	errChan chan struct{}
 }
 
 func (c *assemblerChain) Sequence() uint64 {
@@ -120,7 +121,7 @@ func (c *assemblerChain) Reader() blockledger.Reader {
 }
 
 func (c *assemblerChain) Errored() <-chan struct{} {
-	return make(chan struct{})
+	return c.errChan
 }
 
 type delayedReader struct {

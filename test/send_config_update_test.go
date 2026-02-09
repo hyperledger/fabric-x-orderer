@@ -448,6 +448,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Timeout:      60,
 		Status:       &statusUnknown,
+		Signer:       signutil.CreateTestSigner(t, "org1", dir),
 	})
 
 	// Wait for Arma nodes to stop
@@ -543,7 +544,7 @@ func TestRemoveParty(t *testing.T) {
 		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
-
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
@@ -553,6 +554,7 @@ func TestRemoveParty(t *testing.T) {
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Timeout:      60,
 		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
 	})
 
 	// Create config update to remove a party
@@ -633,5 +635,6 @@ func TestRemoveParty(t *testing.T) {
 		Timeout:      60,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
+		Signer:       signutil.CreateTestSigner(t, "org1", dir),
 	})
 }

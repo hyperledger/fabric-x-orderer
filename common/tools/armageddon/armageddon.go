@@ -681,11 +681,17 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 		DialTimeout: time.Second * 5,
 	}
 
+	signer, err := signutil.CreateSignerForUser(userConfig.MSPDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create signer for user: %v", err)
+		os.Exit(3)
+	}
+
 	// prepare request envelope
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"arma",
-		signutil.CreateSignerForUser(userConfig.MSPDir),
+		signer,
 		nextSeekInfo(0),
 		int32(0),
 		uint64(0),
@@ -1000,12 +1006,16 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 		},
 		DialTimeout: time.Second * 5,
 	}
-
+	signer, err := signutil.CreateSignerForUser(userConfig.MSPDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create signer: %v", err)
+		os.Exit(3)
+	}
 	// prepare request envelope
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"arma",
-		signutil.CreateSignerForUser(userConfig.MSPDir),
+		signer,
 		nextSeekInfo(0),
 		int32(0),
 		uint64(0),

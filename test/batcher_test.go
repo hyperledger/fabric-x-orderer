@@ -113,7 +113,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	totalTxSent += totalTxNumber
 
-	Signer := signutil.CreateTestSigner(t, "org1", dir)
+	signer := signutil.CreateTestSigner(t, "org1", dir)
 
 	// Pull from Assemblers
 	infos := PullFromAssemblers(t, &BlockPullerOptions{
@@ -125,7 +125,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// Get the primary batcher
@@ -182,7 +182,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// check that the primary batcher has changed
@@ -204,7 +204,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// 7.
@@ -245,7 +245,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 }
 
@@ -332,7 +332,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	totalTxSent += totalTxNumber
 
-	Signer := signutil.CreateTestSigner(t, "org1", dir)
+	signer := signutil.CreateTestSigner(t, "org1", dir)
 
 	// Pull from Assemblers
 	infos := PullFromAssemblers(t, &BlockPullerOptions{
@@ -344,7 +344,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
@@ -405,7 +405,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// make sure the primary batcher did not change
@@ -427,7 +427,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 
 	// 7.
@@ -464,7 +464,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
-		Signer:           Signer,
+		Signer:           signer,
 	})
 }
 

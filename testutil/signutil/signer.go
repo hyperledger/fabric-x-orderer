@@ -31,7 +31,7 @@ func NewTestSigner(keyPath, certPath, mspID string) (*TestSigner, error) {
 		return nil, fmt.Errorf("failed to read private key, err: %v", err)
 	}
 
-	// Create a ECDSA Singer
+	// Create an ECDSA Signer
 	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ECDSA Signer, err: %v", err)
@@ -66,24 +66,25 @@ func CreateTestSigner(t *testing.T, mspID, dir string) *TestSigner {
 	return Signer
 }
 
-func CreateSignerForUser(userMspDir string) protoutil.Signer {
-	mspID := getMspIDfromDir(userMspDir)
+func CreateSignerForUser(userMspDir string) (protoutil.Signer, error) {
+	mspID, err := getMspIDfromDir(userMspDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mspID from user msp dir: %s, err: %v", userMspDir, err)
+	}
 	keyPath := filepath.Join(userMspDir, "keystore", "priv_sk")
 	certPath := filepath.Join(userMspDir, "signcerts", "sign-cert.pem")
 	signer, err := NewTestSigner(keyPath, certPath, mspID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to get default signing identity: %v", err)
-		os.Exit(3)
+		return nil, fmt.Errorf("failed to get default signing identity: %v", err)
 	}
-	return signer
+	return signer, nil
 }
 
-func getMspIDfromDir(mspDir string) string {
+func getMspIDfromDir(mspDir string) (string, error) {
 	re := regexp.MustCompile(`/ordererOrganizations/([^/]+)/`)
 	matches := re.FindStringSubmatch(mspDir)
 	if matches == nil || len(matches) > 2 {
-		fmt.Fprintf(os.Stderr, "failed to extract mspID from path: %s", mspDir)
-		os.Exit(3)
+		return "", fmt.Errorf("failed to extract mspID from path: %s", mspDir)
 	}
-	return matches[1]
+	return matches[1], nil
 }
