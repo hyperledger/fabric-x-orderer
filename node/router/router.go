@@ -14,9 +14,11 @@ import (
 	"io"
 	"math"
 	rand2 "math/rand"
+	"path/filepath"
 	"sort"
 	"sync"
 
+	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/policies"
@@ -31,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -59,6 +62,7 @@ type Router struct {
 	drainOnce        sync.Once
 	feedbackWG       sync.WaitGroup
 	configSeq        uint32
+	wal              *wal.WriteAheadLogFile
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
@@ -97,9 +101,15 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 		logger.Panicf("Failed creating router config store: %s", err)
 	}
 
-	seekInfo := NextSeekInfoFromConfigStore(configStore, logger)
+	walDir := filepath.Join(config.ConfigStorePath, "wal")
+	routerWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
+	if err != nil {
+		logger.Panicf("Failed initializing router WAL: %s", err)
+	}
 
-	// TODO - pull config blocks from all consenter nodes, not only the one in party
+	seekInfo := delivery.NextSeekInfo(uint64(getNextDecisionNumber(configStore, walInitState, logger)))
+
+	// TODO - pull decisions from all consenter nodes, not only the one in party
 	decisionPuller := CreateConsensusDecisionReplicator(config, seekInfo, logger)
 
 	verifier := createVerifier(config)
@@ -108,31 +118,49 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 
 	metrics := NewRouterMetrics(config, logger)
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, decisionPuller)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, decisionPuller, routerWAL)
 	r.init()
 	r.metrics.Start()
 	return r
 }
 
-// NextSeekInfoFromConfigStore creates a SeekInfo to start pulling config blocks from consensus, based on the last config block stored in the config store.
-func NextSeekInfoFromConfigStore(configStore *configstore.Store, logger types.Logger) *orderer.SeekInfo {
+// getNextDecisionNumber return the number of the next decision to be pulled from consensus, based on the last config block stored in config store and the decision stored in WAL.
+func getNextDecisionNumber(configStore *configstore.Store, walInitState [][]byte, logger types.Logger) types.DecisionNum {
+	if len(walInitState) > 0 {
+		lastWalEntry := walInitState[len(walInitState)-1]
+		decision := &state.Header{}
+		err := decision.Deserialize(lastWalEntry)
+		if err != nil {
+			logger.Panicf("Failed deserializing last decision header from router WAL: %s", err)
+		}
+		logger.Infof("Last decision number in router's WAL is %d", decision.Num)
+		// we pull the same decision again, in case the router failed before storing the config block in that decision
+		logger.Infof("Router will start pulling consensus decisions from decision number %d", decision.Num)
+		return decision.Num
+	}
+
+	logger.Infof("No entries in router's WAL")
+
+	// get last config block from config store
 	lastBlock, err := configStore.Last()
 	if err != nil {
 		logger.Panicf("Failed getting last config block from config store: %s", err)
 	}
 
-	// check if last block is genesis block
-	if lastBlock.GetHeader().GetNumber() == 0 {
-		// skip genesis block that is placed in decision 0
-		return delivery.NextSeekInfo(1)
+	if lastBlock.Header.Number == 0 {
+		logger.Infof("Last config block is genesis block. Router will start pulling consensus decisions from decision number 1")
+		return 1
 	}
 
+	// last config block is not genesis block, extract decision number from its metadata
 	ordererBlockMetadata := lastBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
-	_, _, _, lastDecisionNumber, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
+	_, _, _, lastConfigBlockDecisionNumber, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
 	if err != nil {
 		logger.Panicf("Failed extracting decision number from last config block: %s", err)
 	}
-	return delivery.NextSeekInfo(uint64(lastDecisionNumber) + 1)
+
+	logger.Infof("Last config block decision number in router's config store is %d. Router will start pulling consensus decisions from decision number %d", lastConfigBlockDecisionNumber, lastConfigBlockDecisionNumber+1)
+	return lastConfigBlockDecisionNumber + 1
 }
 
 func (r *Router) StartRouterService() <-chan struct{} {
@@ -181,10 +209,12 @@ func (r *Router) Stop() {
 	// stop config submitter goroutine
 	r.configSubmitter.Stop()
 
-	// stop config puller goroutine
+	// stop decision puller goroutine
 	r.stopOnce.Do(func() {
 		close(r.stopChan)
 	})
+
+	r.wal.Close()
 
 	for _, sr := range r.shardRouters {
 		sr.Stop()
@@ -198,10 +228,12 @@ func (r *Router) SoftStop() error {
 	r.logger.Infof("Initiating soft stop of router listening on %s, PartyID: %d", routerAddress, partyID)
 
 	// stop accepting new requests in broadcast and submit handlers
-	// closing the stop chan will also stop the config puller, if needed.
+	// closing the stop chan will also stop the decision puller, if needed.
 	r.stopOnce.Do(func() {
 		close(r.stopChan)
 	})
+
+	r.wal.Close()
 
 	// next, we stop the shard routers, which will be responsible for sending responses to pending requests
 	for _, sr := range r.shardRouters {
@@ -281,7 +313,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -307,6 +339,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		drainChan:        make(chan struct{}),
 		metrics:          metrics,
 		configSeq:        uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
+		wal:              routerWAL,
 	}
 
 	for _, shardId := range shardIDs {
@@ -513,7 +546,11 @@ func (r *Router) pullAndProcessDecisions() {
 				return
 			}
 
-			// TODO - store the decision in WAL
+			// store the decision in WAL, keeping only the last decision
+			err := r.wal.Append(decision.Serialize(), true)
+			if err != nil {
+				r.logger.Panicf("Failed storing decision in router WAL: %s", err)
+			}
 
 			// check if the header contains a config block
 			if decision.Num != decision.DecisionNumOfLastConfigBlock {
