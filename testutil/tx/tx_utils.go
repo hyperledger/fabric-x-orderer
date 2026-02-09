@@ -16,8 +16,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/api/msppb"
+	"github.com/hyperledger/fabric-x-common/msp"
+
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -46,8 +48,12 @@ func createPayloadHeader(ch *common.ChannelHeader, sh *common.SignatureHeader) *
 
 func createStructuredPayload(data []byte, requestType common.HeaderType) *common.Payload {
 	payloadChannelHeader := createChannelHeader(requestType, 0, "channelID", 0)
+	id, err := msp.NewSerializedIdentity("org1", []byte("cert"))
+	if err != nil {
+		panic(err)
+	}
 	payloadSignatureHeader := &common.SignatureHeader{
-		Creator: []byte("creator"),
+		Creator: id,
 		Nonce:   []byte("nonce"),
 	}
 	return &common.Payload{
@@ -234,13 +240,10 @@ func CreateSignedStructuredEnvelope(data []byte, signer *crypto.ECDSASigner, cer
 func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *common.Payload {
 	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
 
-	sId := msp.SerializedIdentity{
-		Mspid:   org,
-		IdBytes: certBytes,
-	}
+	sId := msppb.NewIdentity(org, certBytes)
 
 	payloadSignatureHeader := &common.SignatureHeader{
-		Creator: deterministicMarshall(&sId),
+		Creator: deterministicMarshall(sId),
 		Nonce:   []byte("nonce"),
 	}
 	return &common.Payload{
@@ -252,13 +255,10 @@ func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *c
 func CreatePayloadWithConfigUpdate(data []byte, certBytes []byte, org string) *common.Payload {
 	payloadChannelHeader := createChannelHeader(common.HeaderType_CONFIG_UPDATE, 0, "arma", 0)
 
-	sId := msp.SerializedIdentity{
-		Mspid:   org,
-		IdBytes: certBytes,
-	}
+	sId := msppb.NewIdentity(org, certBytes)
 
 	payloadSignatureHeader := &common.SignatureHeader{
-		Creator: deterministicMarshall(&sId),
+		Creator: deterministicMarshall(sId),
 		Nonce:   []byte("nonce"),
 	}
 
