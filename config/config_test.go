@@ -7,9 +7,16 @@ SPDX-License-Identifier: Apache-2.0
 package config_test
 
 import (
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
@@ -86,16 +93,22 @@ func TestConfigurationCheckIfRouterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change router1 cert
-	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.TlsCert = []byte("FakeCert")
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	require.NoError(t, err)
+	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
+	require.NoError(t, err)
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.TlsCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.TlsCert = fakeTLSCert
 	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "TLS certificate mismatch")
+	require.ErrorContains(t, err, "certificate mismatch")
 
 	// remove router config from party1
 	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig = nil
 	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "router with partyID 1 is not present in the shared configuration's party1 list")
+	require.ErrorContains(t, err, "router configuration of partyID 1 is missing from the shared configuration")
 
 	// remove router1 from shared config, expect for error
 	fullConfig.SharedConfig.PartiesConfig = fullConfig.SharedConfig.PartiesConfig[1:3]
@@ -127,16 +140,24 @@ func TestConfigurationCheckIfBatcherNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change batcher11 sign cert
-	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].SignCert = []byte("FakeCert")
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	require.NoError(t, err)
+	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
+	require.NoError(t, err)
+	fakeSignCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].SignCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].SignCert = fakeSignCert
 	err = fullConfig.CheckIfBatcherNodeExistsInSharedConfig()
 	require.Error(t, err)
 	require.ErrorContains(t, err, "sign certificate mismatch")
 
 	// change batcher11 TLS cert
-	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].TlsCert = []byte("FakeCert")
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].TlsCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].TlsCert = fakeTLSCert
 	err = fullConfig.CheckIfBatcherNodeExistsInSharedConfig()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "TLS certificate mismatch")
+	require.ErrorContains(t, err, "certificate mismatch")
 
 	// remove shard1 from shared config, expect for error
 	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig = fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[1:]
@@ -180,13 +201,21 @@ func TestConfigurationCheckIfConsenterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change consenter1 cert
-	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.TlsCert = []byte("FakeCert")
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	require.NoError(t, err)
+	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
+	require.NoError(t, err)
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.TlsCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.TlsCert = fakeTLSCert
 	err = fullConfig.CheckIfConsenterNodeExistsInSharedConfig()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "TLS certificate mismatch")
+	require.ErrorContains(t, err, "certificate mismatch")
 
 	// change consenter1 sign cert
-	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.SignCert = []byte("FakeCert")
+	fakeSignCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.SignCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.SignCert = fakeSignCert
 	err = fullConfig.CheckIfConsenterNodeExistsInSharedConfig()
 	require.Error(t, err)
 	require.ErrorContains(t, err, "sign certificate mismatch")
@@ -195,7 +224,7 @@ func TestConfigurationCheckIfConsenterNodeExistsInSharedConfig(t *testing.T) {
 	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig = nil
 	err = fullConfig.CheckIfConsenterNodeExistsInSharedConfig()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "consenter with partyID 1 is not present in the shared configuration's party1 list")
+	require.ErrorContains(t, err, "consenter configuration of partyID 1 is missing from the shared configuration")
 
 	// remove consenter1 from shared config, expect for error
 	fullConfig.SharedConfig.PartiesConfig = fullConfig.SharedConfig.PartiesConfig[1:3]
@@ -227,20 +256,50 @@ func TestConfigurationCheckIfAssemblerNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// change assembler1 cert
-	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.TlsCert = []byte("FakeCert")
+	caCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "ca-cert.pem"))
+	require.NoError(t, err)
+	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
+	require.NoError(t, err)
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.TlsCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.TlsCert = fakeTLSCert
 	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "TLS certificate mismatch")
+	require.ErrorContains(t, err, "certificate mismatch")
 
 	// remove assembler config from party1
 	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig = nil
 	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "assembler with partyID 1 is not present in the shared configuration's party1 list")
+	require.ErrorContains(t, err, "assembler configuration of partyID 1 is missing from the shared configuration")
 
 	// remove assembler1 from shared config, expect for error
 	fullConfig.SharedConfig.PartiesConfig = fullConfig.SharedConfig.PartiesConfig[1:3]
 	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig()
 	require.Error(t, err)
 	require.ErrorContains(t, err, "partyID 1 is not present in the shared configuration's party list")
+}
+
+func ChangeExpirationTimeOfCert(t *testing.T, cert []byte, caCert []byte, caPrivateKey []byte) ([]byte, error) {
+	// Parse the cert to be updated
+	x509Cert, err := utils.Parsex509Cert(cert)
+	require.NoError(t, err)
+
+	// Parse ca cert and key
+	x509CACert, err := utils.Parsex509Cert(caCert)
+	require.NoError(t, err)
+	caPrivKey, err := tx.CreateECDSAPrivateKey(caPrivateKey)
+	require.NoError(t, err)
+
+	// Modify expiration
+	newCertTemplate := *x509Cert
+	newCertTemplate.NotAfter = time.Now().Add(1 * time.Hour)
+
+	// Re-sign the certificate with CA
+	newCert, err := x509.CreateCertificate(rand.Reader, &newCertTemplate, x509CACert, x509Cert.PublicKey, caPrivKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return pem.EncodeToMemory(&pem.Block{Bytes: newCert, Type: "CERTIFICATE"}), nil
 }
