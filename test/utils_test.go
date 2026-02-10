@@ -119,8 +119,8 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 
 		fakeSigner := &mocks.SignerSerializer{}
 
-		configStorePath := t.TempDir()
-		cs, err := configstore.NewStore(configStorePath)
+		fileStorePath := t.TempDir()
+		cs, err := configstore.NewStore(fileStorePath)
 		require.NoError(t, err)
 		require.NoError(t, cs.Add(genesisBlock))
 
@@ -128,7 +128,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 			ListenAddress:           "0.0.0.0:0",
 			MonitoringListenAddress: "127.0.0.1:0",
 			MetricsLogInterval:      5 * time.Second,
-			ConfigStorePath:         configStorePath,
+			FileStorePath:           fileStorePath,
 			TLSPrivateKeyFile:       kp.Key,
 			TLSCertificateFile:      kp.Cert,
 			PartyID:                 types.PartyID(i + 1),

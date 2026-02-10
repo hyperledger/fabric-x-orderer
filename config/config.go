@@ -260,7 +260,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
-		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		FileStorePath:                       config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		Shards:                              shards,
 		Consenter:                           config.ExtractConsenterInParty(),
 		NumOfConnectionsForBatcher:          config.LocalConfig.NodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher,

@@ -78,7 +78,7 @@ type RouterNodeConfig struct {
 	TLSCertificateFile RawBytes
 	TLSPrivateKeyFile  RawBytes
 	ListenAddress      string
-	ConfigStorePath    string
+	FileStorePath      string
 	// Shared config
 	Shards                              []ShardInfo
 	Consenter                           ConsenterInfo
