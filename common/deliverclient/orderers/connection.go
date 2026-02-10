@@ -23,8 +23,7 @@ type ConnectionSource struct {
 	allEndpoints       []*Endpoint       // All endpoints, excluding the self-endpoint.
 	orgToEndpointsHash map[string][]byte // Used to detect whether the endpoints or certificates has changed.
 	logger             *flogging.FabricLogger
-	overrides          map[string]*Endpoint // In the peer, it is used to override an orderer endpoint.
-	selfEndpoint       string               // Empty when used by a peer, or the self-endpoint when used by an orderer.
+	selfEndpoint       string // Empty when used by a peer, or the self-endpoint when used by an orderer.
 }
 
 type Endpoint struct {
@@ -57,11 +56,10 @@ type OrdererOrg struct {
 	RootCerts [][]byte
 }
 
-func NewConnectionSource(logger *flogging.FabricLogger, overrides map[string]*Endpoint, selfEndpoint string) *ConnectionSource {
+func NewConnectionSource(logger *flogging.FabricLogger, selfEndpoint string) *ConnectionSource {
 	return &ConnectionSource{
 		orgToEndpointsHash: map[string][]byte{},
 		logger:             logger,
-		overrides:          overrides,
 		selfEndpoint:       selfEndpoint,
 	}
 }
@@ -178,15 +176,6 @@ func (cs *ConnectionSource) Update(orgs map[string]OrdererOrg) {
 		for _, address := range org.Addresses {
 			if address == cs.selfEndpoint {
 				cs.logger.Debugf("Skipping self endpoint [%s] from org specific endpoints", address)
-				continue
-			}
-			overrideEndpoint, ok := cs.overrides[address]
-			if ok {
-				cs.allEndpoints = append(cs.allEndpoints, &Endpoint{
-					Address:   overrideEndpoint.Address,
-					RootCerts: overrideEndpoint.RootCerts,
-					Refreshed: make(chan struct{}),
-				})
 				continue
 			}
 
