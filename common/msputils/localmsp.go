@@ -10,32 +10,10 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/hyperledger/fabric/msp"
+	"github.com/hyperledger/fabric-x-common/msp"
 )
 
-func BuildLocalMSP(localMSPDir string, localMSPID string, bccspConfig *factory.FactoryOpts) msp.MSP {
-	var factoryOpts *factory.FactoryOpts
-	if bccspConfig != nil {
-		if bccspConfig.Default != "" {
-			factoryOpts = &factory.FactoryOpts{
-				Default: bccspConfig.Default,
-			}
-		}
-
-		if bccspConfig.SW != nil {
-			factoryOpts.SW = &factory.SwOpts{
-				Security: bccspConfig.SW.Security,
-				Hash:     bccspConfig.SW.Hash,
-			}
-
-			if bccspConfig.SW.FileKeystore != nil {
-				factoryOpts.SW.FileKeystore = &factory.FileKeystoreOpts{
-					KeyStorePath: bccspConfig.SW.FileKeystore.KeyStorePath,
-				}
-			}
-		}
-	}
-
+func BuildLocalMSP(localMSPDir string, localMSPID string, factoryOpts *factory.FactoryOpts) msp.MSP {
 	mspConfig, err := msp.GetLocalMspConfig(localMSPDir, factoryOpts, localMSPID)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get local msp config: %v", err))

@@ -191,6 +191,14 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 	partyPath := filepath.Join(generalConfigParams.cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", generalConfigParams.partyID), "orderers", fmt.Sprintf("party%d", generalConfigParams.partyID))
 	orgPath := filepath.Join(generalConfigParams.cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", generalConfigParams.partyID))
 
+	bccsp := &factory.FactoryOpts{
+		Default: "SW",
+		SW: &factory.SwOpts{
+			Hash:     "SHA2",
+			Security: 256,
+		},
+	}
+
 	generalConfig := &config.GeneralConfig{
 		ListenAddress:        generalConfigParams.listenAddress,
 		ListenPort:           generalConfigParams.listenPort,
@@ -212,7 +220,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 		},
 		LocalMSPDir:                         filepath.Join(partyPath, nodeRole, "msp"),
 		LocalMSPID:                          fmt.Sprintf("org%d", generalConfigParams.partyID),
-		BCCSP:                               &factory.FactoryOpts{},
+		BCCSP:                               bccsp,
 		LogSpec:                             generalConfigParams.logLevel,
 		ClientSignatureVerificationRequired: generalConfigParams.clientSignatureVerificationRequired,
 		MetricsLogInterval:                  generalConfigParams.metricsLogInterval,
