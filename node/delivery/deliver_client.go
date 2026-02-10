@@ -191,7 +191,7 @@ func pullBlocks(
 }
 
 // PullOne will pull a single block, as specified in the request.
-func PullOne(context context.Context, channel string, logger types.Logger, endpointToPullFrom string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig) (*common.Block, error) {
+func PullOne(ctx context.Context, channel string, logger types.Logger, endpointToPullFrom string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, successErr error) (*common.Block, error) {
 	logger.Infof("Started pulling one batch, channel: %s, endpoint: %s", channel, endpointToPullFrom)
 
 	count := 0
@@ -209,7 +209,7 @@ func PullOne(context context.Context, channel string, logger types.Logger, endpo
 			logger.Infof("Going to try pulling one block again in %s, channel: %s, endpoint: %s", retryInterval, channel, endpointToPullFrom)
 
 			select {
-			case <-context.Done():
+			case <-ctx.Done():
 				return nil, fmt.Errorf("context is done, pulling one batch from: channel: %s, endpoint: %s", channel, endpointToPullFrom)
 			case <-time.After(retryInterval):
 				logger.Debugf("Attempt %d to connect to %s", count, endpointToPullFrom)
@@ -225,7 +225,7 @@ func PullOne(context context.Context, channel string, logger types.Logger, endpo
 
 		atomicBroadcastClient := orderer.NewAtomicBroadcastClient(conn)
 
-		stream, err := atomicBroadcastClient.Deliver(context)
+		stream, err := atomicBroadcastClient.Deliver(ctx)
 		if err != nil {
 			logger.Errorf("Failed creating Deliver stream to %s: %v", endpointToPullFrom, err)
 			conn.Close()
@@ -241,18 +241,26 @@ func PullOne(context context.Context, channel string, logger types.Logger, endpo
 			continue
 		}
 
-		block, err := readBlock(stream, conn, endpointToPullFrom, channel, logger)
+		block, err := readBlock(ctx, successErr, stream, conn, endpointToPullFrom, channel, logger)
 		if err != nil {
-			logger.Errorf("Failed to read block from %s: %v", endpointToPullFrom, err)
+			if cause := context.Cause(ctx); cause != nil { // context was canceled while trying to read block
+				if cause == successErr {
+					logger.Infof("Block was not read because context was canceled on success, with cause: %v, endpoint: %s, channel: %s, err: %v", cause, endpointToPullFrom, channel, err)
+				} else {
+					logger.Errorf("Failed to read block from %s: %v. context was canceled with cause: %v", endpointToPullFrom, err, cause)
+				}
+				return nil, fmt.Errorf("context is done, pulling one batch from: channel: %s, endpoint: %s", channel, endpointToPullFrom)
+			} else {
+				logger.Errorf("Failed to read block from %s: %v", endpointToPullFrom, err)
+			}
 			continue
 		}
-
 		return block, nil
 	}
 }
 
 // readBlock reads a single block and closes the stream and the connection.
-func readBlock(stream orderer.AtomicBroadcast_DeliverClient, conn *grpc.ClientConn, endpoint string, channel string, logger types.Logger) (*common.Block, error) {
+func readBlock(ctx context.Context, successErr error, stream orderer.AtomicBroadcast_DeliverClient, conn *grpc.ClientConn, endpoint string, channel string, logger types.Logger) (*common.Block, error) {
 	defer func() {
 		stream.CloseSend()
 		conn.Close()
@@ -262,14 +270,26 @@ func readBlock(stream orderer.AtomicBroadcast_DeliverClient, conn *grpc.ClientCo
 
 	resp, err := stream.Recv()
 	if err != nil {
-		logger.Errorf("Failed receiving block from endpoint: %s, channel: %s, err: %s", endpoint, channel, err.Error())
+		if cause := context.Cause(ctx); cause != nil { // context was canceled during recv.
+			if cause == successErr {
+				logger.Infof("Block was not received because context was canceled on success, with cause: %v, endpoint: %s, channel: %s, err: %v", cause, endpoint, channel, err)
+			} else {
+				logger.Errorf("Failed to receive block from endpoint: %s, channel: %s, err: %v. cause: %v", endpoint, channel, err, cause)
+			}
+		}
 		return nil, err
 	}
 
-	if resp.GetBlock() == nil {
-		logger.Errorf("Received a non block message from endpoint: %s, channel: %s,resp: %+v", endpoint, channel, resp)
-		return nil, fmt.Errorf("non block message from endpoint: %s, channel: %s,resp: %+v", endpoint, channel, resp)
+	if resp == nil {
+		logger.Errorf("received nil response from endpoint: %s, channel: %s", endpoint, channel)
+		return nil, fmt.Errorf("received nil response from endpoint: %s, channel: %s", endpoint, channel)
 	}
 
-	return resp.GetBlock(), nil
+	block := resp.GetBlock()
+	if block == nil {
+		logger.Errorf("received a non block message from endpoint: %s, channel: %s, resp: %+v", endpoint, channel, resp)
+		return nil, fmt.Errorf("received a non block message from endpoint: %s, channel: %s, resp: %+v", endpoint, channel, resp)
+	}
+
+	return block, nil
 }
