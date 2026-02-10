@@ -286,17 +286,38 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
 
+	// use shards to get every party's RootCAs
+	shards := config.ExtractShards()
+	shardId := config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID
+	var orderingServiceTrustedRootCAs [][]byte
+	for _, shard := range shards {
+		if shard.ShardId != shardId {
+			continue
+		}
+		for _, batchers := range shard.Batchers {
+			for _, tlsCA := range batchers.TLSCACerts {
+				orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, tlsCA)
+			}
+		}
+	}
+
+	bundle := config.extractBundleFromConfigBlock(configBlock)
+	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(localConfigClientsTrustedRoots))
+	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
+	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
+
 	batcherConfig := &nodeconfig.BatcherNodeConfig{
-		Shards:                              config.ExtractShards(),
+		Shards:                              shards,
 		Consenters:                          config.ExtractConsenters(),
 		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
-		ShardId:                             config.LocalConfig.NodeLocalConfig.BatcherParams.ShardID,
+		ShardId:                             shardId,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
-		ClientRootCAs:                       config.LocalConfig.TLSConfig.ClientRootCAs,
+		ClientRootCAs:                       trustedRoots,
 		SigningPrivateKey:                   signingPrivateKey,
 		MemPoolMaxSize:                      config.LocalConfig.NodeLocalConfig.BatcherParams.MemPoolMaxSize,
 		BatchMaxSize:                        config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
@@ -307,7 +328,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
-		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
+		Bundle:                              bundle,
 	}
 
 	if batcherConfig.FirstStrikeThreshold, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.FirstStrikeThreshold); err != nil {
@@ -341,23 +362,37 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
+
+	// TODO: avoid duplications in clientRootCAs
+	shards := config.ExtractShards()
+	consenters := config.ExtractConsenters()
+
+	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node.TLSCAcertsFromConsenters(consenters)...)
+
+	bundle := config.extractBundleFromConfigBlock(configBlock)
+	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(localConfigClientsTrustedRoots))
+	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
+	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
+
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
-		Shards:                              config.ExtractShards(),
-		Consenters:                          config.ExtractConsenters(),
+		Shards:                              shards,
+		Consenters:                          consenters,
 		Router:                              config.ExtractRouterInParty(),
 		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
 		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
 		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
 		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
-		ClientRootCAs:                       config.LocalConfig.TLSConfig.ClientRootCAs,
+		ClientRootCAs:                       trustedRoots,
 		SigningPrivateKey:                   signingPrivateKey,
 		WALDir:                              DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
 		BFTConfig:                           BFTConfig,
 		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
 		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
-		Bundle:                              config.extractBundleFromConfigBlock(configBlock),
+		Bundle:                              bundle,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 	}
 	return consenterConfig

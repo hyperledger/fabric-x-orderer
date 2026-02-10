@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -93,6 +94,29 @@ func NewStubConsenterFromConfig(t *testing.T, configStoreDir string, nodeConfigP
 	}
 
 	return stubConsenter
+}
+
+func NewStubConsentersAndInfo(t *testing.T, numOfParties int) ([]node_config.ConsenterInfo, func()) {
+	var consentersInfo []node_config.ConsenterInfo
+	var consenters []StubConsenter
+	for i := 0; i < numOfParties; i++ {
+		certificateAuthority, err := tlsgen.NewCA()
+		require.NoError(t, err)
+		node := NewStubConsenter(t, certificateAuthority, types.PartyID(i+1))
+		consenters = append(consenters, node)
+		consentersInfo = append(consentersInfo, node_config.ConsenterInfo{
+			PartyID:    types.PartyID(i + 1),
+			Endpoint:   node.server.Address(),
+			TLSCACerts: []node_config.RawBytes{certificateAuthority.CertBytes()},
+			PublicKey:  node.key,
+		})
+	}
+
+	return consentersInfo, func() {
+		for _, c := range consenters {
+			c.Stop()
+		}
+	}
 }
 
 func (sc *StubConsenter) Server() *comm.GRPCServer {

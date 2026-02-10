@@ -77,32 +77,13 @@ func CreateGRPCRouter(conf *config.RouterNodeConfig) *comm.GRPCServer {
 }
 
 func CreateGRPCConsensus(conf *config.ConsenterNodeConfig) *comm.GRPCServer {
-	// TODO: avoid duplications in clientRootCAs
-	var clientRootCAs [][]byte
-
-	for _, shard := range conf.Shards {
-		for _, batchers := range shard.Batchers {
-			for _, tlsCA := range batchers.TLSCACerts {
-				clientRootCAs = append(clientRootCAs, tlsCA)
-			}
-		}
-	}
-
-	for _, consenter := range conf.Consenters {
-		for _, tlsCA := range consenter.TLSCACerts {
-			clientRootCAs = append(clientRootCAs, tlsCA)
-		}
-	}
-
-	clientRootCAs = append(clientRootCAs, conf.ClientRootCAs...)
-
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(ConsensusListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
 		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     clientRootCAs,
-			ServerRootCAs:     clientRootCAs,
+			ClientRootCAs:     conf.ClientRootCAs,
+			ServerRootCAs:     conf.ClientRootCAs,
 			RequireClientCert: true,
 			UseTLS:            true,
 			Certificate:       conf.TLSCertificateFile,
@@ -137,11 +118,29 @@ func CreateGRPCAssembler(conf *config.AssemblerNodeConfig) *comm.GRPCServer {
 }
 
 func TLSCAcertsFromShards(shards []config.ShardInfo) [][]byte {
+	marker := make(map[string]struct{})
 	var tlsCAs [][]byte
 	for _, shard := range shards {
 		for _, batcher := range shard.Batchers {
 			for _, certBundle := range batcher.TLSCACerts {
-				tlsCAs = append(tlsCAs, certBundle)
+				if _, exists := marker[string(certBundle)]; !exists {
+					marker[string(certBundle)] = struct{}{}
+					tlsCAs = append(tlsCAs, certBundle)
+				}
+			}
+		}
+	}
+	return tlsCAs
+}
+
+func TLSCAcertsFromConsenters(consenters []config.ConsenterInfo) [][]byte {
+	marker := make(map[string]struct{})
+	var tlsCAs [][]byte
+	for _, consenter := range consenters {
+		for _, tlsCA := range consenter.TLSCACerts {
+			if _, exists := marker[string(tlsCA)]; !exists {
+				marker[string(tlsCA)] = struct{}{}
+				tlsCAs = append(tlsCAs, tlsCA)
 			}
 		}
 	}
@@ -149,29 +148,13 @@ func TLSCAcertsFromShards(shards []config.ShardInfo) [][]byte {
 }
 
 func CreateGRPCBatcher(conf *config.BatcherNodeConfig) *comm.GRPCServer {
-	// TODO: avoid duplications in clientRootCAs
-	var clientRootCAs [][]byte
-
-	for _, shard := range conf.Shards {
-		if shard.ShardId != conf.ShardId {
-			continue
-		}
-		for _, batchers := range shard.Batchers {
-			for _, tlsCA := range batchers.TLSCACerts {
-				clientRootCAs = append(clientRootCAs, tlsCA)
-			}
-		}
-	}
-
-	clientRootCAs = append(clientRootCAs, conf.ClientRootCAs...)
-
 	srv, err := comm.NewGRPCServer(ListenAddressForNode(BatcherListenType, conf.ListenAddress), comm.ServerConfig{
 		KaOpts: comm.KeepaliveOptions{
 			ServerMinInterval: time.Microsecond,
 		},
 		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     clientRootCAs,
-			ServerRootCAs:     clientRootCAs,
+			ClientRootCAs:     conf.ClientRootCAs,
+			ServerRootCAs:     conf.ClientRootCAs,
 			RequireClientCert: true,
 			UseTLS:            true,
 			Certificate:       conf.TLSCertificateFile,
