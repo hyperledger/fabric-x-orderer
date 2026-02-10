@@ -23,10 +23,8 @@ type ConnectionSourceCreator interface {
 	CreateConnectionSource(logger *flogging.FabricLogger, selfEndpoint string) ConnectionSourcer
 }
 
-type ConnectionSourceFactory struct {
-	Overrides map[string]*Endpoint
-}
+type ConnectionSourceFactory struct{}
 
 func (f *ConnectionSourceFactory) CreateConnectionSource(logger *flogging.FabricLogger, selfEndpoint string) ConnectionSourcer {
-	return NewConnectionSource(logger, f.Overrides, selfEndpoint)
+	return NewConnectionSource(logger, selfEndpoint)
 }

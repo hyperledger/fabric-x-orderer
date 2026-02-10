@@ -48,9 +48,8 @@ var _ = Describe("Connection", func() {
 		org1 orderers.OrdererOrg
 		org2 orderers.OrdererOrg
 
-		org1Certs     [][]byte
-		org2Certs     [][]byte
-		overrideCerts [][]byte
+		org1Certs [][]byte
+		org2Certs [][]byte
 
 		cs *orderers.ConnectionSource
 
@@ -80,15 +79,8 @@ var _ = Describe("Connection", func() {
 
 		org1Certs = [][]byte{cert1, cert2}
 		org2Certs = [][]byte{cert3}
-		overrideCerts = [][]byte{cert2}
 
-		cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"),
-			map[string]*orderers.Endpoint{
-				"override-address": {
-					Address:   "re-mapped-address",
-					RootCerts: overrideCerts,
-				},
-			}, "") // << no self endpoint, as in the peer
+		cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"), "") // << no self endpoint, as in the peer
 		cs.Update(map[string]orderers.OrdererOrg{
 			"org1": org1,
 			"org2": org2,
@@ -273,33 +265,6 @@ var _ = Describe("Connection", func() {
 		})
 	})
 
-	When("an update references an overridden org endpoint address", func() {
-		BeforeEach(func() {
-			cs.Update(map[string]orderers.OrdererOrg{
-				"org1": {
-					Addresses: []string{"org1-address1", "override-address"},
-					RootCerts: [][]byte{cert1, cert2},
-				},
-			})
-		})
-
-		It("creates a new set of orderer endpoints with overrides", func() {
-			newEndpoints := cs.Endpoints()
-			Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
-				stripEndpoints([]*orderers.Endpoint{
-					{
-						Address:   "org1-address1",
-						RootCerts: org1Certs,
-					},
-					{
-						Address:   "re-mapped-address",
-						RootCerts: overrideCerts,
-					},
-				}),
-			))
-		})
-	})
-
 	When("an update removes an ordering organization", func() {
 		BeforeEach(func() {
 			cs.Update(map[string]orderers.OrdererOrg{
@@ -385,14 +350,7 @@ var _ = Describe("Connection", func() {
 
 	When("a self-endpoint exists as in the orderer", func() {
 		BeforeEach(func() {
-			cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"),
-				map[string]*orderers.Endpoint{
-					"override-address": {
-						Address:   "re-mapped-address",
-						RootCerts: overrideCerts,
-					},
-				},
-				"org1-address1") //<< self-endpoint
+			cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"), "org1-address1") //<< self-endpoint
 			cs.Update(map[string]orderers.OrdererOrg{
 				"org1": org1,
 				"org2": org2,
