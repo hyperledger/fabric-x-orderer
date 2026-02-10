@@ -356,6 +356,87 @@ func (c *ConfigUpdateBuilder) UpdatePartyCACerts(t *testing.T, partyID types.Par
 	return c.createConfigUpdate(t, c.configData)
 }
 
+func (c *ConfigUpdateBuilder) UpdateRouterTLSCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			consenterConfig := partyMap["RouterConfig"].(map[string]any)
+			consenterConfig["tls_cert"] = cert
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateBatcherTLSCert(t *testing.T, partyID types.PartyID, shardID types.ShardID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			batchersConfig := partyMap["BatchersConfig"].([]any)
+			for _, bc := range batchersConfig {
+				bcMap := bc.(map[string]any)
+				if uint32(shardID) == uint32(bcMap["shardID"].(float64)) {
+					bcMap["tls_cert"] = cert
+					found = true
+					break
+				}
+			}
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateConsensusTLSCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)
+			consenterConfig["tls_cert"] = cert
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateAssemblerTLSCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			consenterConfig := partyMap["AssemblerConfig"].(map[string]any)
+			consenterConfig["tls_cert"] = cert
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
 func (c *ConfigUpdateBuilder) UpdateOrderingEndpoint(t *testing.T, partyID types.PartyID, host string, port int) []byte {
 	// Change the endpoint value for the given partyID
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)

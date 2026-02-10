@@ -13,11 +13,15 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/pkg/errors"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -48,6 +52,8 @@ const (
 //
 //		└── ordererOrganizations
 //		        └── org{partyID}
+//		            ├── ca   (sign ca cert + private key)
+//		            ├── tlsca  (tls ca cert + private key)
 //		            ├── msp
 //		                  ├── cacerts
 //		                  ├── tlscacerts
@@ -236,11 +242,13 @@ func createCAsPerParty(dir string, network *genconfig.Network) (map[types.PartyI
 
 	for i, party := range network.Parties {
 		// create a TLS CA for the party
-		tlsCA, err := ca.NewCA(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "tlscacerts"), "tlsCA", "tlsca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
+		pathToTLSCACert := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "tlsca")
+		tlsCA, err := ca.NewCA(pathToTLSCACert, "tlsCA", "tlsca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
 		if err != nil {
 			return nil, nil, fmt.Errorf("err: %s, failed creating a TLS CA for party %d", err, party.ID)
 		}
-		err = os.RemoveAll(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "tlscacerts", "priv_sk"))
+		// copy tls cert to msp/tlscacerts
+		err = copyPEMFiles(pathToTLSCACert, filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "tlscacerts"))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -248,11 +256,12 @@ func createCAsPerParty(dir string, network *genconfig.Network) (map[types.PartyI
 		partiesTLSCAs[party.ID] = []*ca.CA{tlsCA}
 
 		// create a Signing CA for the party
-		signCA, err := ca.NewCA(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "cacerts"), "signCA", "ca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
+		pathToSignCACert := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "ca")
+		signCA, err := ca.NewCA(pathToSignCACert, "signCA", "ca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
 		if err != nil {
 			return nil, nil, fmt.Errorf("err: %s, failed creating a signing CA for party %d", err, party.ID)
 		}
-		err = os.RemoveAll(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "cacerts", "priv_sk"))
+		err = copyPEMFiles(pathToSignCACert, filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "cacerts"))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -396,6 +405,8 @@ func generateNetworkCryptoConfigFolderStructure(dir string, network *genconfig.N
 func generateOrdererOrg(rootDir string, folders []string, partyID int, shards int) []string {
 	orgDir := filepath.Join(rootDir, fmt.Sprintf("org%d", partyID))
 	folders = append(folders, orgDir)
+	folders = append(folders, filepath.Join(orgDir, "ca"))
+	folders = append(folders, filepath.Join(orgDir, "tlsca"))
 	folders = append(folders, filepath.Join(orgDir, "msp", cacerts))
 	folders = append(folders, filepath.Join(orgDir, "msp", tlscacerts))
 	folders = append(folders, filepath.Join(orgDir, "msp", admincerts))
@@ -446,26 +457,15 @@ func generateOrdererOrg(rootDir string, folders []string, partyID int, shards in
 	return folders
 }
 
-func GetPublicKey(priv crypto.PrivateKey) crypto.PublicKey {
-	switch kk := priv.(type) {
-	case *ecdsa.PrivateKey:
-		return &(kk.PublicKey)
-	case ed25519.PrivateKey:
-		return kk.Public()
-	default:
-		panic("unsupported key algorithm")
-	}
-}
-
 func getNodeIPs(network *genconfig.Network) []string {
 	var nodeIPs []string
 	for _, party := range network.Parties {
-		nodeIPs = append(nodeIPs, trimPortFromEndpoint(party.RouterEndpoint))
+		nodeIPs = append(nodeIPs, utils.TrimPortFromEndpoint(party.RouterEndpoint))
 		for _, batcherEndpoint := range party.BatchersEndpoints {
-			nodeIPs = append(nodeIPs, trimPortFromEndpoint(batcherEndpoint))
+			nodeIPs = append(nodeIPs, utils.TrimPortFromEndpoint(batcherEndpoint))
 		}
-		nodeIPs = append(nodeIPs, trimPortFromEndpoint(party.ConsenterEndpoint))
-		nodeIPs = append(nodeIPs, trimPortFromEndpoint(party.AssemblerEndpoint))
+		nodeIPs = append(nodeIPs, utils.TrimPortFromEndpoint(party.ConsenterEndpoint))
+		nodeIPs = append(nodeIPs, utils.TrimPortFromEndpoint(party.AssemblerEndpoint))
 	}
 	return nodeIPs
 }
@@ -554,4 +554,92 @@ func copyFile(src, dst string) error {
 
 	_, err = io.Copy(dstFile, srcFile)
 	return err
+}
+
+func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, pathToNewTLSCert string, pathToNewTLSKey string, nodesIPs []string) ([]byte, error) {
+	caCertBytes, err := utils.ReadPem(caCertPath)
+	if err != nil {
+		return nil, err
+	}
+
+	caCert, err := Parsex509Cert(caCertBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	caPrivKeyBytes, err := utils.ReadPem(caPrivateKeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	caPrivateKey, err := tx.CreateECDSAPrivateKey(caPrivKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	ca := &ca.CA{
+		Name:               "ca",
+		Country:            "US",
+		Province:           "California",
+		Locality:           "San Francisco",
+		OrganizationalUnit: "ARMA",
+		StreetAddress:      "addr",
+		PostalCode:         "12345",
+		Signer:             caPrivateKey,
+		SignCert:           caCert,
+	}
+
+	// create a new private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating a new private key, err: %s", err)
+	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed marshaling private key, err: %s", err)
+	}
+
+	_, err = ca.SignCertificate(pathToNewTLSCert, "tls", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
+		x509.ExtKeyUsageClientAuth,
+		x509.ExtKeyUsageServerAuth,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = utils.WritePEMToFile(pathToNewTLSKey, "PRIVATE KEY", privateKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	newCertBytes, err := os.ReadFile(pathToNewTLSKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return newCertBytes, nil
+}
+
+func Parsex509Cert(certBytes []byte) (*x509.Certificate, error) {
+	pbl, _ := pem.Decode(certBytes)
+	if pbl == nil || pbl.Bytes == nil {
+		return nil, errors.Errorf("no pem content for cert")
+	}
+	if pbl.Type != "CERTIFICATE" && pbl.Type != "PRIVATE KEY" {
+		return nil, errors.Errorf("unexpected pem type, got a %s", strings.ToLower(pbl.Type))
+	}
+
+	cert, err := x509.ParseCertificate(pbl.Bytes)
+	return cert, err
+}
+
+func GetPublicKey(priv crypto.PrivateKey) crypto.PublicKey {
+	switch kk := priv.(type) {
+	case *ecdsa.PrivateKey:
+		return &(kk.PublicKey)
+	case ed25519.PrivateKey:
+		return kk.Public()
+	default:
+		panic("unsupported key algorithm")
+	}
 }
