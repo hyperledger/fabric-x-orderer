@@ -96,12 +96,12 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
 	}
 
-	configStore, err := configstore.NewStore(config.ConfigStorePath)
+	configStore, err := configstore.NewStore(config.FileStorePath)
 	if err != nil {
 		logger.Panicf("Failed creating router config store: %s", err)
 	}
 
-	walDir := filepath.Join(config.ConfigStorePath, "wal")
+	walDir := filepath.Join(config.FileStorePath, "wal")
 	routerWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
 	if err != nil {
 		logger.Panicf("Failed initializing router WAL: %s", err)

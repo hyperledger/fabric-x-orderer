@@ -956,8 +956,8 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 
 	stubConsenterInfo := config.ConsenterInfo{PartyID: partyID, Endpoint: consenter.GetConsenterEndpoint(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}
 
-	configStorePath := t.TempDir()
-	cs, err := configstore.NewStore(configStorePath)
+	fileStorePath := t.TempDir()
+	cs, err := configstore.NewStore(fileStorePath)
 	require.NoError(t, err)
 	// add dummy genesis block
 	block := tx.CreateConfigBlock(0, []byte("genesis block data"))
@@ -970,7 +970,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		ClientRootCAs:                       clientRootCAs,
 		TLSPrivateKeyFile:                   ckp.Key,
 		ListenAddress:                       "127.0.0.1:0",
-		ConfigStorePath:                     configStorePath,
+		FileStorePath:                       fileStorePath,
 		ClientAuthRequired:                  clientAuthRequired,
 		Shards:                              shards,
 		Consenter:                           stubConsenterInfo,
