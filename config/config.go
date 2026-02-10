@@ -302,11 +302,9 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	}
 
 	bundle := config.extractBundleFromConfigBlock(configBlock)
-	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
-	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(appTrustedRoots)+len(localConfigClientsTrustedRoots))
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(localConfigClientsTrustedRoots))
 	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
-	trustedRoots = append(trustedRoots, appTrustedRoots...)
 	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
 
 	batcherConfig := &nodeconfig.BatcherNodeConfig{
@@ -373,11 +371,9 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node.TLSCAcertsFromConsenters(consenters)...)
 
 	bundle := config.extractBundleFromConfigBlock(configBlock)
-	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
-	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(appTrustedRoots)+len(localConfigClientsTrustedRoots))
+	trustedRoots := make([][]byte, 0, len(orderingServiceTrustedRootCAs)+len(localConfigClientsTrustedRoots))
 	trustedRoots = append(trustedRoots, orderingServiceTrustedRootCAs...)
-	trustedRoots = append(trustedRoots, appTrustedRoots...)
 	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
 
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
