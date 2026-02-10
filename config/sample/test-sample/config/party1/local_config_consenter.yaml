@@ -35,6 +35,13 @@ General:
         ClientPrivateKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls/key.pem
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/msp
     LocalMSPID: OrdererOrg1
+    BCCSP:
+        Default: SW
+        SW:
+            Hash: SHA2
+            Security: 256
+            FileKeyStore:
+                KeyStore:
     LogSpec: info
     MetricsLogInterval: 0s
 FileStore:

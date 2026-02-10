@@ -31,6 +31,13 @@ General:
         File: /var/dec-trust/bootstrap/bootstrap.block
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/router/msp
     LocalMSPID: OrdererOrg4
+    BCCSP:
+        Default: SW
+        SW:
+            Hash: SHA2
+            Security: 256
+            FileKeyStore:
+                KeyStore:
     LogSpec: info
     ClientSignatureVerificationRequired: false
 FileStore: {}
