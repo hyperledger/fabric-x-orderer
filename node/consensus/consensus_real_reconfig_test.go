@@ -40,15 +40,10 @@ import (
 )
 
 func TestConsensusWithRealConfigUpdate(t *testing.T) {
-	// Create a temporary directory for the test.
-	dir, err := os.MkdirTemp("", t.Name())
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
-
 	parties := []types.PartyID{1, 2, 3, 4, 5, 6}
 	numOfShards := 1
 
-	// Create a config YAML file in the temporary directory.
+	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
 	require.NotNil(t, netInfo)
@@ -56,13 +51,11 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
 
-	// Generate the config files in the temporary directory using the armageddon generate command.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// Update the file store path
 	for _, i := range parties {
 		fileStoreDir := t.TempDir()
-		defer os.RemoveAll(fileStoreDir)
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
 		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
 		require.NoError(t, err)
@@ -70,45 +63,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 	}
 
-	// Get all for create consensus
-	consensusNodes := make([]*consensus_node.Consensus, 0, len(parties))
-	servers := make([]*comm.GRPCServer, 0, len(parties))
-	for _, i := range parties {
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
-		require.NoError(t, err)
-		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
-		require.NotNil(t, consenterConfig)
-		_, signer, _ := testutil.BuildTestLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID)
-		require.NoError(t, err)
-		require.NotNil(t, signer)
-		consenterLogger := testutil.CreateLogger(t, int(i))
-		server := arma_node.CreateGRPCConsensus(consenterConfig)
-		servers = append(servers, server)
-		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
-		consensusNodes = append(consensusNodes, consensus)
-	}
-
-	// Register and start grpc server
-	for i, consensusNode := range consensusNodes {
-		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
-		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
-		orderer.RegisterClusterNodeServiceServer(servers[i].Server(), consensusNode)
-		go func() {
-			servers[i].Start()
-		}()
-	}
-
-	// Start consensus
-	ledgerListeners := make([]*storageListener, 0, len(parties))
-	for _, consensusNode := range consensusNodes {
-		consensusNode.Start()
-		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
-		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
-		ledgerListeners = append(ledgerListeners, ledgerListener)
-	}
-
-	time.Sleep(5 * time.Second)
+	consensusNodes, servers := createConsensusNodesAndGRPCServers(t, dir, parties)
+	ledgerListeners := startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
 	// Submit to consensus a simple request (baf) from batcher
 	keyBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/batcher1/msp/keystore/priv_sk"))
@@ -181,45 +137,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		consensusNode.Stop()
 	}
 
-	// Get all to create consensus again
-	consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-	servers = make([]*comm.GRPCServer, 0, len(parties))
-	for _, i := range parties {
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
-		require.NoError(t, err)
-		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
-		require.NotNil(t, consenterConfig)
-		_, signer, _ := testutil.BuildTestLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID)
-		require.NoError(t, err)
-		require.NotNil(t, signer)
-		consenterLogger := testutil.CreateLogger(t, int(i))
-		server := arma_node.CreateGRPCConsensus(consenterConfig)
-		servers = append(servers, server)
-		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
-		consensusNodes = append(consensusNodes, consensus)
-	}
-
-	// Register and start grpc server
-	for i, consensusNode := range consensusNodes {
-		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
-		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
-		orderer.RegisterClusterNodeServiceServer(servers[i].Server(), consensusNode)
-		go func() {
-			servers[i].Start()
-		}()
-	}
-
-	// Start consensus
-	ledgerListeners = make([]*storageListener, 0, len(parties))
-	for _, consensusNode := range consensusNodes {
-		consensusNode.Start()
-		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
-		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
-		ledgerListeners = append(ledgerListeners, ledgerListener)
-	}
-
-	time.Sleep(5 * time.Second)
+	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
 	// Send another simple request
 	for _, consensusNode := range consensusNodes {
@@ -285,45 +204,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		consensusNode.Stop()
 	}
 
-	// Get all to create consensus again
-	consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-	servers = make([]*comm.GRPCServer, 0, len(parties))
-	for _, i := range parties {
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
-		require.NoError(t, err)
-		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
-		require.NotNil(t, consenterConfig)
-		_, signer, _ := testutil.BuildTestLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID)
-		require.NoError(t, err)
-		require.NotNil(t, signer)
-		consenterLogger := testutil.CreateLogger(t, int(i))
-		server := arma_node.CreateGRPCConsensus(consenterConfig)
-		servers = append(servers, server)
-		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
-		consensusNodes = append(consensusNodes, consensus)
-	}
-
-	// Register and start grpc server
-	for i, consensusNode := range consensusNodes {
-		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
-		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
-		orderer.RegisterClusterNodeServiceServer(servers[i].Server(), consensusNode)
-		go func() {
-			servers[i].Start()
-		}()
-	}
-
-	// Start consensus
-	ledgerListeners = make([]*storageListener, 0, len(parties))
-	for _, consensusNode := range consensusNodes {
-		consensusNode.Start()
-		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
-		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
-		ledgerListeners = append(ledgerListeners, ledgerListener)
-	}
-
-	time.Sleep(5 * time.Second)
+	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
 	// Send another simple request
 	for _, consensusNode := range consensusNodes {
@@ -386,24 +268,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	parties = []types.PartyID{1, 2, 3, 4, 5}
 
-	// Get all to create consensus again
-	consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-	servers = make([]*comm.GRPCServer, 0, len(parties))
-	for _, i := range parties {
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
-		require.NoError(t, err)
-		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
-		require.NotNil(t, consenterConfig)
-		_, signer, _ := testutil.BuildTestLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID)
-		require.NoError(t, err)
-		require.NotNil(t, signer)
-		consenterLogger := testutil.CreateLogger(t, int(i))
-		server := arma_node.CreateGRPCConsensus(consenterConfig)
-		servers = append(servers, server)
-		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
-		consensusNodes = append(consensusNodes, consensus)
-	}
+	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
 
 	// Try to get the removed party
 	removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
@@ -411,26 +276,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
 
-	// Register and start grpc server
-	for i, consensusNode := range consensusNodes {
-		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
-		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
-		orderer.RegisterClusterNodeServiceServer(servers[i].Server(), consensusNode)
-		go func() {
-			servers[i].Start()
-		}()
-	}
-
-	// Start consensus
-	ledgerListeners = make([]*storageListener, 0, len(parties))
-	for _, consensusNode := range consensusNodes {
-		consensusNode.Start()
-		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
-		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
-		ledgerListeners = append(ledgerListeners, ledgerListener)
-	}
-
-	time.Sleep(5 * time.Second)
+	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
 	// Send another simple request
 	for _, consensusNode := range consensusNodes {
@@ -493,9 +339,20 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	parties = []types.PartyID{2, 3, 4, 5}
 
-	// Get all to create consensus again
-	consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-	servers = make([]*comm.GRPCServer, 0, len(parties))
+	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+
+	// Try to get the removed party
+	removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
+	removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+	require.NoError(t, err)
+	require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
+
+	startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+}
+
+func createConsensusNodesAndGRPCServers(t *testing.T, dir string, parties []types.PartyID) ([]*consensus_node.Consensus, []*comm.GRPCServer) {
+	consensusNodes := make([]*consensus_node.Consensus, 0, len(parties))
+	servers := make([]*comm.GRPCServer, 0, len(parties))
 	for _, i := range parties {
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
 		configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
@@ -511,14 +368,10 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
 		consensusNodes = append(consensusNodes, consensus)
 	}
+	return consensusNodes, servers
+}
 
-	// Try to get the removed party
-	removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
-	removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
-	require.NoError(t, err)
-	require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
-
-	// Register and start grpc server
+func startConsensusNodesAndRegisterGRPCServers(parties []types.PartyID, consensusNodes []*consensus_node.Consensus, servers []*comm.GRPCServer) []*storageListener {
 	for i, consensusNode := range consensusNodes {
 		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
 		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
@@ -528,12 +381,15 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		}()
 	}
 
-	// Start consensus
-	ledgerListeners = make([]*storageListener, 0, len(parties))
+	ledgerListeners := make([]*storageListener, 0, len(parties))
 	for _, consensusNode := range consensusNodes {
 		consensusNode.Start()
 		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
 		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
 		ledgerListeners = append(ledgerListeners, ledgerListener)
 	}
+
+	time.Sleep(5 * time.Second)
+
+	return ledgerListeners
 }
