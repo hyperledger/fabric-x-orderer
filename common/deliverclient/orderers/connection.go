@@ -103,10 +103,11 @@ func (cs *ConnectionSource) ShuffledEndpoints() []*Endpoint {
 //
 // Update skips the self-endpoint (if not empty) when preparing the endpoint array. However, changes to the
 // self-endpoint do trigger the refresh of all the endpoints.
-func (cs *ConnectionSource) Update(globalAddrs []string, orgs map[string]OrdererOrg) {
+func (cs *ConnectionSource) Update(orgs map[string]OrdererOrg) {
 	cs.mutex.Lock()
 	defer cs.mutex.Unlock()
-	cs.logger.Infof("Processing updates for orderer endpoints: global: %v; orgs: %v", globalAddrs, orgs)
+
+	cs.logger.Infof("Processing updates for orderer endpoints: %+v", orgs)
 
 	newOrgToEndpointsHash := map[string][]byte{}
 
@@ -142,39 +143,6 @@ func (cs *ConnectionSource) Update(globalAddrs []string, orgs map[string]Orderer
 		}
 	}
 
-	cs.orgToEndpointsHash = newOrgToEndpointsHash
-
-	if hasOrgEndpoints && len(globalAddrs) > 0 {
-		cs.logger.Warning("Config defines both orderer org specific endpoints and global endpoints, global endpoints will be ignored")
-	}
-
-	if !hasOrgEndpoints && len(globalAddrs) != len(cs.allEndpoints) {
-		cs.logger.Debugf("There are no org endpoints, but the global addresses have changed")
-		anyChange = true
-	}
-
-	if !hasOrgEndpoints && !anyChange && len(globalAddrs) == len(cs.allEndpoints) {
-		// There are no org endpoints, there were no org endpoints, and the number
-		// of the update's  global endpoints is the same as the number of existing endpoints.
-		// So, we check if any of the endpoints addresses differ.
-
-		newAddresses := map[string]struct{}{}
-		for _, address := range globalAddrs {
-			newAddresses[address] = struct{}{}
-		}
-
-		for _, endpoint := range cs.allEndpoints {
-			delete(newAddresses, endpoint.Address)
-		}
-
-		// Set anyChange true if some new address was not
-		// in the set of old endpoints.
-		anyChange = len(newAddresses) != 0
-		if anyChange {
-			cs.logger.Debugf("There are no org endpoints, but some of the global addresses have changed")
-		}
-	}
-
 	if !anyChange {
 		cs.logger.Debugf("No orderer endpoint addresses or TLS certs were changed")
 		// No TLS certs changed, no org specified endpoints changed,
@@ -182,6 +150,8 @@ func (cs *ConnectionSource) Update(globalAddrs []string, orgs map[string]Orderer
 		// as our last set.  No need to update anything.
 		return
 	}
+
+	cs.orgToEndpointsHash = newOrgToEndpointsHash
 
 	for _, endpoint := range cs.allEndpoints {
 		// Alert any existing consumers that have a reference to the old endpoints
@@ -196,15 +166,11 @@ func (cs *ConnectionSource) Update(globalAddrs []string, orgs map[string]Orderer
 
 	cs.allEndpoints = nil
 
-	var globalRootCerts [][]byte
-
 	for _, org := range orgs {
 		var rootCerts [][]byte
 		for _, rootCert := range org.RootCerts {
 			if hasOrgEndpoints {
 				rootCerts = append(rootCerts, rootCert)
-			} else {
-				globalRootCerts = append(globalRootCerts, rootCert)
 			}
 		}
 
@@ -232,34 +198,5 @@ func (cs *ConnectionSource) Update(globalAddrs []string, orgs map[string]Orderer
 		}
 	}
 
-	if len(cs.allEndpoints) != 0 {
-		cs.logger.Debugf("Returning an orderer connection pool source with org specific endpoints only")
-		// There are some org specific endpoints, so we do not
-		// add any of the global endpoints to our pool.
-		return
-	}
-
-	for _, address := range globalAddrs {
-		if address == cs.selfEndpoint {
-			cs.logger.Debugf("Skipping self endpoint [%s] from global endpoints", address)
-			continue
-		}
-		overrideEndpoint, ok := cs.overrides[address]
-		if ok {
-			cs.allEndpoints = append(cs.allEndpoints, &Endpoint{
-				Address:   overrideEndpoint.Address,
-				RootCerts: overrideEndpoint.RootCerts,
-				Refreshed: make(chan struct{}),
-			})
-			continue
-		}
-
-		cs.allEndpoints = append(cs.allEndpoints, &Endpoint{
-			Address:   address,
-			RootCerts: globalRootCerts,
-			Refreshed: make(chan struct{}),
-		})
-	}
-
-	cs.logger.Debug("Returning an orderer connection pool source with global endpoints only")
+	cs.logger.Debugf("Returning an orderer connection pool source with org specific endpoints: %+v", cs.allEndpoints)
 }

@@ -13,7 +13,7 @@ import (
 type ConnectionSourcer interface {
 	RandomEndpoint() (*Endpoint, error)
 	ShuffledEndpoints() []*Endpoint
-	Update(globalAddrs []string, orgs map[string]OrdererOrg)
+	Update(orgs map[string]OrdererOrg)
 }
 
 type ConnectionSourceCreator interface {

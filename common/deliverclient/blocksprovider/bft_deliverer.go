@@ -117,12 +117,12 @@ func (d *BFTDeliverer) Initialize(channelConfig *common.Config, selfEndpoint str
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
 	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, selfEndpoint)
-	globalAddresses, orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+	orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
 		// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
 		d.Logger.Panicf("Bundle creation should not have failed: %s", err)
 	}
-	ordererSource.Update(globalAddresses, orgAddresses)
+	ordererSource.Update(orgAddresses)
 	d.orderers = ordererSource
 }
 
@@ -403,13 +403,13 @@ func (d *BFTDeliverer) onBlockProcessingSuccess(blockNum uint64, channelConfig *
 	d.lastBlockTime = time.Now()
 
 	if channelConfig != nil {
-		globalAddresses, orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+		orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 		if err != nil {
 			// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
 			d.Logger.Panicf("Bundle creation should not have failed: %s", err)
 		}
-		d.Logger.Debugf("Extracted orderer addresses: global %v, orgs: %v", globalAddresses, orgAddresses)
-		d.orderers.Update(globalAddresses, orgAddresses)
+		d.Logger.Debugf("Extracted orderer addresses: %+v", orgAddresses)
+		d.orderers.Update(orgAddresses)
 		d.Logger.Debugf("Updated OrdererConnectionSource")
 	}
 

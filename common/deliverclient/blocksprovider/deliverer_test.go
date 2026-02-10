@@ -711,8 +711,7 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 
 		ginkgo.It("updates the orderer connection source", func() {
 			gomega.Eventually(fakeOrdererConnectionSource.UpdateCallCount, eventuallyTO).Should(gomega.Equal(1))
-			globalAddresses, orgsAddresses := fakeOrdererConnectionSource.UpdateArgsForCall(0)
-			gomega.Expect(globalAddresses).To(gomega.BeNil())
+			orgsAddresses := fakeOrdererConnectionSource.UpdateArgsForCall(0)
 			gomega.Expect(orgsAddresses).ToNot(gomega.BeNil())
 			gomega.Expect(orgsAddresses).To(gomega.HaveLen(1))
 			orgAddr, ok := orgsAddresses["SampleOrg"]
