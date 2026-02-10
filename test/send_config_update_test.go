@@ -420,9 +420,10 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 
 	// Submit config update
+	submittingParty := 1
+	env := configutil.CreateConfigTX(t, dir, remainingParties, submittingParty, configUpdatePbData)
+	require.NotNil(t, env)
 	for _, partyId := range remainingParties {
-		env := configutil.CreateConfigTX(t, dir, remainingParties, int(partyId), configUpdatePbData)
-		require.NotNil(t, env)
 		// Send the config tx
 		err = broadcastClient.SendTxTo(env, partyId)
 		require.NoError(t, err)
