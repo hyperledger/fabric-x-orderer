@@ -11,12 +11,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
-
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,27 +61,27 @@ func TestSharedConfigLoading(t *testing.T) {
 
 	// check that all certificates are valid x509 certificates
 	for _, partyConfig := range sharedConfig.PartiesConfig {
-		cert, err := armageddon.Parsex509Cert(partyConfig.RouterConfig.TlsCert)
+		cert, err := utils.Parsex509Cert(partyConfig.RouterConfig.TlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 
 		for _, batcher := range partyConfig.BatchersConfig {
-			cert, err = armageddon.Parsex509Cert(batcher.TlsCert)
+			cert, err = utils.Parsex509Cert(batcher.TlsCert)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
-			cert, err = armageddon.Parsex509Cert(batcher.SignCert)
+			cert, err = utils.Parsex509Cert(batcher.SignCert)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
 		}
 
-		cert, err = armageddon.Parsex509Cert(partyConfig.ConsenterConfig.TlsCert)
+		cert, err = utils.Parsex509Cert(partyConfig.ConsenterConfig.TlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
-		cert, err = armageddon.Parsex509Cert(partyConfig.ConsenterConfig.SignCert)
+		cert, err = utils.Parsex509Cert(partyConfig.ConsenterConfig.SignCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 
-		cert, err = armageddon.Parsex509Cert(partyConfig.AssemblerConfig.TlsCert)
+		cert, err = utils.Parsex509Cert(partyConfig.AssemblerConfig.TlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 	}

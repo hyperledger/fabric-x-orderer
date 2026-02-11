@@ -56,6 +56,14 @@ func ExtractClientAddressFromContext(ctx context.Context) (string, error) {
 	return peer.Addr.String(), nil
 }
 
+func CertificateBytesToString(cert []byte) (string, error) {
+	x509Cert, err := Parsex509Cert(cert)
+	if err != nil {
+		return "", err
+	}
+	return CertificateToString(x509Cert), nil
+}
+
 func CertificateToString(cert *x509.Certificate) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Certificate:\n")

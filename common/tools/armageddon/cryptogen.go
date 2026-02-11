@@ -13,21 +13,18 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-	"github.com/pkg/errors"
-
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/msp"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 )
 
 const (
@@ -561,7 +558,7 @@ func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, path
 		return nil, err
 	}
 
-	caCert, err := Parsex509Cert(caCertBytes)
+	caCert, err := utils.Parsex509Cert(caCertBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -617,19 +614,6 @@ func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, path
 	}
 
 	return newCertBytes, nil
-}
-
-func Parsex509Cert(certBytes []byte) (*x509.Certificate, error) {
-	pbl, _ := pem.Decode(certBytes)
-	if pbl == nil || pbl.Bytes == nil {
-		return nil, errors.Errorf("no pem content for cert")
-	}
-	if pbl.Type != "CERTIFICATE" && pbl.Type != "PRIVATE KEY" {
-		return nil, errors.Errorf("unexpected pem type, got a %s", strings.ToLower(pbl.Type))
-	}
-
-	cert, err := x509.ParseCertificate(pbl.Bytes)
-	return cert, err
 }
 
 func GetPublicKey(priv crypto.PrivateKey) crypto.PublicKey {

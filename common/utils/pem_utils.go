@@ -12,6 +12,9 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/pkg/errors"
 )
 
 func ReadPem(path string) ([]byte, error) {
@@ -84,4 +87,17 @@ func GetPublicKeyFromCertificate(nodeCert []byte) []byte {
 	}
 
 	return pemPublicKey
+}
+
+func Parsex509Cert(certBytes []byte) (*x509.Certificate, error) {
+	pbl, _ := pem.Decode(certBytes)
+	if pbl == nil || pbl.Bytes == nil {
+		return nil, errors.Errorf("no pem content for cert")
+	}
+	if pbl.Type != "CERTIFICATE" && pbl.Type != "PRIVATE KEY" {
+		return nil, errors.Errorf("unexpected pem type, got a %s", strings.ToLower(pbl.Type))
+	}
+
+	cert, err := x509.ParseCertificate(pbl.Bytes)
+	return cert, err
 }
