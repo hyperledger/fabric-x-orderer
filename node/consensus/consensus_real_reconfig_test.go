@@ -40,6 +40,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// TestConsensusWithRealConfigUpdate tests the consensus behavior when a real config update happens. It covers the following scenarios:
+// 1. submit a simple request to consensus and make sure it's committed
+// 2. submit a config update request with wrong context and make sure it's rejected
+// 3. submit a config update request not signed by majority and make sure it's rejected
+// 4. submit a valid config update request and make sure it's committed with a smart bft parameter update
+// 5. restart consensus nodes and make sure they can pick the new config and process requests
+// 6. submit a config update request that changes a consenter's TLS certificate and make sure it's committed and the new certificate is effective after restart
+// 7. submit a config update request that removes a non-leader consenter and make sure it's committed and the removed consenter cannot participate after restart
+// 8. submit a config update request that removes the leader consenter and make sure it's committed and the removed leader cannot participate after restart
+// TODO: add more scenarios such as adding a new consenter, removing multiple consenters, etc.
 func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4, 5, 6}
 	numOfShards := 1
@@ -59,7 +69,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	consensusNodes, servers := createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners := startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
-	// Submit to consensus a simple request (baf) from batcher
+	// submit to consensus a simple request (baf) from batcher
 	keyBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/batcher1/msp/keystore/priv_sk"))
 	require.NoError(t, err)
 	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
@@ -68,7 +78,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	configSeq := types.ConfigSequence(0)
 	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
-	// Submit to consensus a config request from router
+	// submit to consensus a config request from router, with parameter update
 	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	defer cleanUp()
 	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
@@ -77,10 +87,10 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		Payload:   env.Payload,
 		Signature: env.Signature,
 	}
-	// Submit config with bad ctx should be rejected
+	// try to submit config with bad ctx and it should be rejected
 	_, err = consensusNodes[0].SubmitConfig(t.Context(), configReq)
 	require.Error(t, err)
-	// Create context with the router's certificate
+	// create context with the router's certificate
 	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
 	require.NoError(t, err)
 	block, _ := pem.Decode(routerCertBytes)
@@ -90,7 +100,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	ctx, err := createContextForSubmitConfig(routerCert)
 	require.NoError(t, err)
-	// Submit config update not signed by majority should be rejected
+	// submit config update not signed by majority should be rejected
 	badEnv := configutil.CreateConfigTX(t, dir, parties[1:3], 1, configUpdatePbData)
 	badConfigReq := &protos.Request{
 		Payload:   badEnv.Payload,
@@ -98,55 +108,38 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	}
 	_, err = consensusNodes[0].SubmitConfig(ctx, badConfigReq)
 	require.Error(t, err)
-	// Submit a good config update
+	// submit a good config update
 	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
 	require.NoError(t, err)
 
 	// make sure the config block is committed and stop the consensus node
 	lastBlockNumber++
-	var lastConfigBlock *common.Block
-	for i, consensusNode := range consensusNodes {
-		var lastDecision *common.Block
-		require.Eventually(t, func() bool {
-			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == lastBlockNumber
-		}, 30*time.Second, 100*time.Millisecond)
+	lastConfigBlock := makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
-		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
-		require.NotNil(t, proposal)
-		require.NoError(t, err)
-		header := &state.Header{}
-		err = header.Deserialize(proposal.Header)
-		require.NoError(t, err)
-		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
-		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
-		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
-
-		consensusNode.Stop()
-	}
-
+	// restart consensus nodes
 	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
+	// send another simple request
 	lastBlockNumber++
 	configSeq++
 	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
-	// Submit to consensus a config request from router that changes a consenter certificate
+	// submit a config request that changes a consenter's certificate
 	newConfigBlockStoreDir := t.TempDir()
 	defer os.RemoveAll(newConfigBlockStoreDir)
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(newConfigBlockStoreDir, "config.block"))
 	require.NoError(t, err)
 	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
 	defer cleanUp()
-	cosenterToUpdate := types.PartyID(2)
-	caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", cosenterToUpdate), "tlsca", "tlsca-cert.pem")
-	caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", cosenterToUpdate), "tlsca", "priv_sk")
-	newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", cosenterToUpdate), "orderers", fmt.Sprintf("party%d", cosenterToUpdate), "consenter", "tls")
-	newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", cosenterToUpdate), "orderers", fmt.Sprintf("party%d", cosenterToUpdate), "consenter", "tls", "key.pem")
+	consenterToUpdate := types.PartyID(2)
+	caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
+	caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
+	newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
+	newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls", "key.pem")
 	newCert, err := armageddon.CreateNewCertificateFromCA(caCertPath, caPrivKeyPath, newCertPath, newKeyPath, nodesIPs)
 	require.NoError(t, err)
-	configUpdatePbData = configUpdateBuilder.UpdateConsensusTLSCert(t, cosenterToUpdate, newCert)
+	configUpdatePbData = configUpdateBuilder.UpdateConsensusTLSCert(t, consenterToUpdate, newCert)
 	env = configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 	configReq = &protos.Request{
 		Payload:   env.Payload,
@@ -157,36 +150,20 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	// make sure the config block is committed and stop the consensus node
 	lastBlockNumber++
-	for i, consensusNode := range consensusNodes {
-		var lastDecision *common.Block
-		require.Eventually(t, func() bool {
-			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == lastBlockNumber
-		}, 30*time.Second, 100*time.Millisecond)
+	lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
-		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
-		require.NotNil(t, proposal)
-		require.NoError(t, err)
-		header := &state.Header{}
-		err = header.Deserialize(proposal.Header)
-		require.NoError(t, err)
-		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
-		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
-		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
-
-		consensusNode.Stop()
-	}
-
+	// restart consensus nodes
 	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
+	// send another simple request
 	lastBlockNumber++
 	configSeq++
 	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
 	removedParty := types.PartyID(6)
 
-	// Submit to consensus a config request from router that removes a party
+	// submit a config request that removes the last party
 	configBlockStoreDir := t.TempDir()
 	defer os.RemoveAll(configBlockStoreDir)
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(configBlockStoreDir, "config.block"))
@@ -204,45 +181,28 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	// make sure the config block is committed and stop the consensus node
 	lastBlockNumber++
-	for i, consensusNode := range consensusNodes {
-		var lastDecision *common.Block
-		require.Eventually(t, func() bool {
-			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == lastBlockNumber
-		}, 30*time.Second, 100*time.Millisecond)
-
-		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
-		require.NotNil(t, proposal)
-		require.NoError(t, err)
-		header := &state.Header{}
-		err = header.Deserialize(proposal.Header)
-		require.NoError(t, err)
-		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
-		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
-		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
-
-		consensusNode.Stop()
-	}
+	lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
 	parties = []types.PartyID{1, 2, 3, 4, 5}
 
-	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-
-	// Try to get the removed party
+	// try to get the removed party
 	removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
 	removedNodeConfigContent, removedNodeLastConfigBlock, err := config.ReadConfig(removedNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 	require.NoError(t, err)
 	require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
 
+	// restart consensus nodes
+	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
+	// send another simple request
 	lastBlockNumber++
 	configSeq++
 	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
 	removedPartyLeader := types.PartyID(1)
 
-	// Submit to consensus a config request from router that removes a party (leader)
+	// submit a config request that removes the first party (leader)
 	anotherConfigBlockStoreDir := t.TempDir()
 	defer os.RemoveAll(anotherConfigBlockStoreDir)
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
@@ -260,37 +220,24 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	// make sure the config block is committed and stop the consensus node
 	lastBlockNumber++
-	for i, consensusNode := range consensusNodes {
-		var lastDecision *common.Block
-		require.Eventually(t, func() bool {
-			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == lastBlockNumber
-		}, 30*time.Second, 100*time.Millisecond)
-
-		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
-		require.NotNil(t, proposal)
-		require.NoError(t, err)
-		header := &state.Header{}
-		err = header.Deserialize(proposal.Header)
-		require.NoError(t, err)
-		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
-		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
-		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
-
-		consensusNode.Stop()
-	}
+	lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+	require.NotNil(t, lastConfigBlock)
 
 	parties = []types.PartyID{2, 3, 4, 5}
 
-	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-
-	// Try to get the removed party
+	// try to get the removed party
 	removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
 	removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 	require.NoError(t, err)
 	require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
 
+	// restart consensus nodes
+	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
 	startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+
+	for _, consensusNode := range consensusNodes {
+		consensusNode.Stop()
+	}
 }
 
 func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID) {
@@ -367,4 +314,27 @@ func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus,
 			return b.Header.Number == expectedHeaderNumber
 		}, 30*time.Second, 100*time.Millisecond)
 	}
+}
+
+func makeSureConfigBlockCommittedAndStopConsensusNodes(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, expectedBlockNumber uint64) (lastConfigBlock *common.Block) {
+	for i, consensusNode := range consensusNodes {
+		var lastDecision *common.Block
+		require.Eventually(t, func() bool {
+			lastDecision = <-ledgerListeners[i].c
+			return lastDecision.Header.Number == expectedBlockNumber
+		}, 30*time.Second, 100*time.Millisecond)
+
+		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
+		require.NotNil(t, proposal)
+		require.NoError(t, err)
+		header := &state.Header{}
+		err = header.Deserialize(proposal.Header)
+		require.NoError(t, err)
+		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
+		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
+
+		consensusNode.Stop()
+	}
+	return lastConfigBlock
 }
