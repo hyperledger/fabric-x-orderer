@@ -38,14 +38,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type NodeType string
+
 const (
-	Router    string = "router"
-	Batcher   string = "batcher"
-	Consensus string = "consensus"
-	Assembler string = "assembler"
+	Router    NodeType = "router"
+	Batcher   NodeType = "batcher"
+	Consensus NodeType = "consensus"
+	Assembler NodeType = "assembler"
 )
 
-// EditDirectoryInNodeConfigYAML fill the Directory field in all relevant config structures. This must be done before running Arma nodes
+func (n NodeType) String() string {
+	return string(n)
+}
+
+// EditDirectoryInNodeConfigYAML updates a node YAML config file at the given path.
+// It sets the FileStore.Path to storagePath, clears the monitoring listen port
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string) {
 	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
@@ -75,11 +82,9 @@ func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 }
 
 // CreateNetwork creates a config.yaml file with the network configuration. This file is the input for armageddon generate command.
-func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[string]*ArmaNodeInfo {
+func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[NodeName]*ArmaNodeInfo {
 	var parties []genconfig.Party
-	var maxPartyID types.PartyID
-	netInfo := make(map[string]*ArmaNodeInfo)
-	runOrderMap := map[string]int{Consensus: 1, Assembler: 2, Batcher: 3, Router: 4}
+	netInfo := make(map[NodeName]*ArmaNodeInfo)
 
 	for i := range numOfParties {
 		assemblerPort, lla := GetAvailablePort(t)
@@ -105,36 +110,38 @@ func CreateNetwork(t *testing.T, path string, numOfParties int, numOfBatcherShar
 
 		parties = append(parties, party)
 
-		if partyID > maxPartyID {
-			maxPartyID = partyID
-		}
-
-		nodeName := fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Router], Router)
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1), Endpoint: party.RouterEndpoint}
+		nodeName := NodeName{PartyID: types.PartyID(i + 1), NodeType: Router}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1), RunningOrder: 4}
 
 		for j, b := range llbs {
-			nodeName = fmt.Sprintf("Party%d%d%s%d", i+1, runOrderMap[Batcher], Batcher, j+1)
-			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1), Endpoint: party.BatchersEndpoints[j]}
+			nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Batcher, ShardID: types.ShardID(j + 1)}
+			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1), RunningOrder: 3}
 		}
 
-		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Consensus], Consensus)
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1), Endpoint: party.ConsenterEndpoint}
+		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Consensus}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1), RunningOrder: 1}
 
-		nodeName = fmt.Sprintf("Party%d%d%s", i+1, runOrderMap[Assembler], Assembler)
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1), Endpoint: party.AssemblerEndpoint}
+		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Assembler}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1), RunningOrder: 2}
 	}
 
 	network := genconfig.Network{
 		Parties:         parties,
 		UseTLSRouter:    useTLSRouter,
 		UseTLSAssembler: useTLSAssembler,
-		MaxPartyID:      types.PartyID(maxPartyID),
+		MaxPartyID:      types.PartyID(numOfParties),
 	}
 
-	err := utils.WriteToYAML(network, path)
+	err := utils.WriteToYAML(network, configPath)
 	require.NoError(t, err)
 
 	return netInfo
+}
+
+type NodeName struct {
+	PartyID  types.PartyID
+	NodeType NodeType
+	ShardID  types.ShardID
 }
 
 // PrepareSharedConfigBinary generates a shared configuration and writes the encoded configuration to a file.
@@ -191,8 +198,8 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 	return sess
 }
 
-func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan string, netInfo map[string]*ArmaNodeInfo) *ArmaNetwork {
-	nodes := map[string]string{
+func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan string, netInfo map[NodeName]*ArmaNodeInfo) *ArmaNetwork {
+	nodes := map[NodeType]string{
 		Router:    "local_config_router",
 		Batcher:   "local_config_batcher",
 		Consensus: "local_config_consenter",
@@ -203,7 +210,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 	numOfParties := 0
 	for n := range netInfo {
 		nodeInfos = append(nodeInfos, netInfo[n])
-		if strings.Contains(n, "consensus") {
+		if n.NodeType == Consensus {
 			numOfParties++
 		}
 	}
@@ -211,7 +218,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 	sort.Slice(nodeInfos, sortArmaNodeInfo(nodeInfos))
 
 	armaNetwork := ArmaNetwork{
-		armaNodes: map[string][][]*ArmaNodeInfo{
+		armaNodes: map[NodeType][][]*ArmaNodeInfo{
 			Router:    {},
 			Batcher:   {},
 			Consensus: {},
@@ -230,12 +237,12 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		partyDir := path.Join(dir, "config", partyId)
 		nodeConfigPath := path.Join(partyDir, nodes[netNode.NodeType]+shardId+".yaml")
 
-		storagePath := path.Join(dir, "storage", partyId, netNode.NodeType+shardId)
+		storagePath := path.Join(dir, "storage", partyId, fmt.Sprintf("%s%s", netNode.NodeType.String(), shardId))
 		err := os.MkdirAll(storagePath, 0o755)
 		require.NoError(t, err)
 
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath)
-		sess := runNode(t, netNode.NodeType, armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
+		sess := runNode(t, netNode.NodeType.String(), armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
 		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
@@ -281,7 +288,7 @@ func WaitPanic(t *testing.T, readyChan chan string, waitFor int, duration time.D
 	}
 }
 
-func WaitSoftStopped(t *testing.T, netInfo map[string]*ArmaNodeInfo) {
+func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 	stopChan := make(chan struct{})
 
 	go func() {
@@ -310,8 +317,6 @@ func WaitSoftStopped(t *testing.T, netInfo map[string]*ArmaNodeInfo) {
 
 func sortArmaNodeInfo(infos []*ArmaNodeInfo) func(i, j int) bool {
 	return func(i, j int) bool {
-		runOrderMap := map[string]int{Consensus: 1, Batcher: 2, Assembler: 3, Router: 4}
-
 		if infos[i].PartyId < infos[j].PartyId {
 			return true
 		}
@@ -319,7 +324,7 @@ func sortArmaNodeInfo(infos []*ArmaNodeInfo) func(i, j int) bool {
 			if infos[i].NodeType == infos[j].NodeType {
 				return infos[i].ShardId < infos[j].ShardId
 			}
-			return runOrderMap[infos[i].NodeType] < runOrderMap[infos[j].NodeType]
+			return infos[i].RunningOrder < infos[j].RunningOrder
 		}
 		return false
 	}
@@ -359,10 +364,10 @@ func CreateAssemblerBundleForTest(sequence uint64) channelconfig.Resources {
 	return bundle
 }
 
-func GetNodesIPsFromNetInfo(netInfo map[string]*ArmaNodeInfo) []string {
+func GetNodesIPsFromNetInfo(netInfo map[NodeName]*ArmaNodeInfo) []string {
 	var ips []string
 	for _, val := range netInfo {
-		ips = append(ips, utils.TrimPortFromEndpoint(val.Endpoint))
+		ips = append(ips, utils.TrimPortFromEndpoint(val.Listener.Addr().String()))
 	}
 	return ips
 }

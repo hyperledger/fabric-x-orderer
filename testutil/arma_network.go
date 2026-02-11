@@ -22,10 +22,10 @@ const (
 	TerminationGracePeriod = 10 * time.Second
 )
 
-// var NodeSortingTable = map[string]int{Router: 0, Batcher: 1, Consensus: 2, Assembler: 3}
+// var NodeSortingTable = map[NodeType]int{Router: 0, Batcher: 1, Consensus: 2, Assembler: 3}
 
 type ArmaNetwork struct {
-	armaNodes map[string][][]*ArmaNodeInfo
+	armaNodes map[NodeType][][]*ArmaNodeInfo
 }
 
 type ArmaNodeRunInfo struct {
@@ -35,24 +35,25 @@ type ArmaNodeRunInfo struct {
 }
 
 type ArmaNodeInfo struct {
-	RunInfo  *ArmaNodeRunInfo
-	NodeType string
-	Listener net.Listener
-	PartyId  types.PartyID
-	ShardId  types.ShardID
-	Endpoint string
+	RunInfo         *ArmaNodeRunInfo
+	NodeType        NodeType
+	Listener        net.Listener
+	PartyId         types.PartyID
+	ShardId         types.ShardID
+	ConfigBlockPath string
+	RunningOrder    int
 }
 
-func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType string, partyIdx int, nodeInfo *ArmaNodeInfo) {
-	if nodeType == "batcher" && len(armaNetwork.armaNodes["batcher"]) > partyIdx {
-		armaNetwork.armaNodes["batcher"][partyIdx] = append(armaNetwork.armaNodes["batcher"][partyIdx], nodeInfo)
+func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType NodeType, partyIdx int, nodeInfo *ArmaNodeInfo) {
+	if nodeType == Batcher && len(armaNetwork.armaNodes[Batcher]) > partyIdx {
+		armaNetwork.armaNodes[Batcher][partyIdx] = append(armaNetwork.armaNodes[Batcher][partyIdx], nodeInfo)
 	} else {
 		armaNetwork.armaNodes[nodeType] = append(armaNetwork.armaNodes[nodeType], []*ArmaNodeInfo{nodeInfo})
 	}
 }
 
 func (armaNetwork *ArmaNetwork) Stop() {
-	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+	for _, k := range []NodeType{Assembler, Consensus, Batcher, Router} {
 		for i := range armaNetwork.armaNodes[k] {
 			for j := range armaNetwork.armaNodes[k][i] {
 				armaNetwork.armaNodes[k][i][j].StopArmaNode()
@@ -62,7 +63,7 @@ func (armaNetwork *ArmaNetwork) Stop() {
 }
 
 func (armaNetwork *ArmaNetwork) Kill() {
-	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+	for _, k := range []NodeType{Assembler, Consensus, Batcher, Router} {
 		for i := range armaNetwork.armaNodes[k] {
 			for j := range armaNetwork.armaNodes[k][i] {
 				armaNetwork.armaNodes[k][i][j].KillArmaNode()
@@ -72,7 +73,7 @@ func (armaNetwork *ArmaNetwork) Kill() {
 }
 
 func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan string) {
-	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+	for _, k := range []NodeType{Assembler, Consensus, Batcher, Router} {
 		for i := range armaNetwork.armaNodes[k] {
 			for j := range armaNetwork.armaNodes[k][i] {
 				armaNetwork.armaNodes[k][i][j].RestartArmaNode(t, readyChan)
@@ -82,7 +83,7 @@ func (armaNetwork *ArmaNetwork) Restart(t *testing.T, readyChan chan string) {
 }
 
 func (armaNetwork *ArmaNetwork) StopParties(parties []types.PartyID) {
-	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+	for _, k := range []NodeType{Assembler, Consensus, Batcher, Router} {
 		for _, partyID := range parties {
 			for j := range armaNetwork.armaNodes[k][partyID-1] {
 				armaNetwork.armaNodes[k][partyID-1][j].StopArmaNode()
@@ -92,7 +93,7 @@ func (armaNetwork *ArmaNetwork) StopParties(parties []types.PartyID) {
 }
 
 func (armaNetwork *ArmaNetwork) RestartParties(t *testing.T, parties []types.PartyID, readyChan chan string) {
-	for _, k := range []string{Assembler, Consensus, Batcher, Router} {
+	for _, k := range []NodeType{Assembler, Consensus, Batcher, Router} {
 		for _, partyID := range parties {
 			for j := range armaNetwork.armaNodes[k][partyID-1] {
 				armaNetwork.armaNodes[k][partyID-1][j].RestartArmaNode(t, readyChan)
@@ -133,7 +134,7 @@ func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan s
 	storagePath := nodeConfig.FileStore.Path
 	require.DirExists(t, storagePath)
 
-	armaNodeInfo.RunInfo.Session = runNode(t, armaNodeInfo.NodeType, armaNodeInfo.RunInfo.ArmaBinaryPath,
+	armaNodeInfo.RunInfo.Session = runNode(t, armaNodeInfo.NodeType.String(), armaNodeInfo.RunInfo.ArmaBinaryPath,
 		armaNodeInfo.RunInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener)
 }
 
