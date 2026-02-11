@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package consensus_test
 
 import (
+	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -53,15 +54,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
-	// Update the file store path
-	for _, i := range parties {
-		fileStoreDir := t.TempDir()
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
-		require.NoError(t, err)
-		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
-		utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
-	}
+	updateFileStorePath(t, dir, parties)
 
 	consensusNodes, servers := createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners := startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
@@ -71,15 +64,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
 	require.NoError(t, err, "failed to create private key")
-	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 1, 0, 0)
-	require.NoError(t, err)
-	controlEvent := &state.ControlEvent{BAF: baf}
-	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
-	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		b := <-ledgerListeners[0].c
-		return b.Header.Number == uint64(1)
-	}, 30*time.Second, 100*time.Millisecond)
+	lastBlockNumber := uint64(1)
+	configSeq := types.ConfigSequence(0)
+	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
 	// Submit to consensus a config request from router
 	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
@@ -116,12 +103,13 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure the config block is committed and stop the consensus node
+	lastBlockNumber++
 	var lastConfigBlock *common.Block
 	for i, consensusNode := range consensusNodes {
 		var lastDecision *common.Block
 		require.Eventually(t, func() bool {
 			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == uint64(2)
+			return lastDecision.Header.Number == lastBlockNumber
 		}, 30*time.Second, 100*time.Millisecond)
 
 		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
@@ -140,25 +128,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
-	// Send another simple request
-	for _, consensusNode := range consensusNodes {
-		baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest124, 1, 0, 0)
-		require.NoError(t, err)
-		controlEvent = &state.ControlEvent{BAF: baf}
-		err = consensusNode.SubmitRequest(controlEvent.Bytes())
-		require.ErrorContains(t, err, "mismatch config sequence")
-	}
-	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest124, 1, 0, 1)
-	require.NoError(t, err)
-	controlEvent.BAF = baf
-	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
-	require.NoError(t, err)
-	for _, ledgerListener := range ledgerListeners {
-		require.Eventually(t, func() bool {
-			b := <-ledgerListener.c
-			return b.Header.Number == uint64(3)
-		}, 30*time.Second, 100*time.Millisecond)
-	}
+	lastBlockNumber++
+	configSeq++
+	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
 	// Submit to consensus a config request from router that changes a consenter certificate
 	newConfigBlockStoreDir := t.TempDir()
@@ -184,11 +156,12 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure the config block is committed and stop the consensus node
+	lastBlockNumber++
 	for i, consensusNode := range consensusNodes {
 		var lastDecision *common.Block
 		require.Eventually(t, func() bool {
 			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == uint64(4)
+			return lastDecision.Header.Number == lastBlockNumber
 		}, 30*time.Second, 100*time.Millisecond)
 
 		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
@@ -207,25 +180,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
 	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
-	// Send another simple request
-	for _, consensusNode := range consensusNodes {
-		baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest125, 2, 0, 1)
-		require.NoError(t, err)
-		controlEvent = &state.ControlEvent{BAF: baf}
-		err = consensusNode.SubmitRequest(controlEvent.Bytes())
-		require.ErrorContains(t, err, "mismatch config sequence")
-	}
-	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest125, 2, 0, 2)
-	require.NoError(t, err)
-	controlEvent.BAF = baf
-	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
-	require.NoError(t, err)
-	for _, ledgerListener := range ledgerListeners {
-		require.Eventually(t, func() bool {
-			b := <-ledgerListener.c
-			return b.Header.Number == uint64(5)
-		}, 30*time.Second, 100*time.Millisecond)
-	}
+	lastBlockNumber++
+	configSeq++
+	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
 	removedParty := types.PartyID(6)
 
@@ -246,11 +203,12 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure the config block is committed and stop the consensus node
+	lastBlockNumber++
 	for i, consensusNode := range consensusNodes {
 		var lastDecision *common.Block
 		require.Eventually(t, func() bool {
 			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == uint64(6)
+			return lastDecision.Header.Number == lastBlockNumber
 		}, 30*time.Second, 100*time.Millisecond)
 
 		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
@@ -278,25 +236,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
-	// Send another simple request
-	for _, consensusNode := range consensusNodes {
-		baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest125, 1, 0, 1)
-		require.NoError(t, err)
-		controlEvent = &state.ControlEvent{BAF: baf}
-		err = consensusNode.SubmitRequest(controlEvent.Bytes())
-		require.ErrorContains(t, err, "mismatch config sequence")
-	}
-	baf, err = batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest125, 1, 0, 3)
-	require.NoError(t, err)
-	controlEvent.BAF = baf
-	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
-	require.NoError(t, err)
-	for _, ledgerListener := range ledgerListeners {
-		require.Eventually(t, func() bool {
-			b := <-ledgerListener.c
-			return b.Header.Number == uint64(7)
-		}, 30*time.Second, 100*time.Millisecond)
-	}
+	lastBlockNumber++
+	configSeq++
+	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
 
 	removedPartyLeader := types.PartyID(1)
 
@@ -317,11 +259,12 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure the config block is committed and stop the consensus node
+	lastBlockNumber++
 	for i, consensusNode := range consensusNodes {
 		var lastDecision *common.Block
 		require.Eventually(t, func() bool {
 			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == uint64(8)
+			return lastDecision.Header.Number == lastBlockNumber
 		}, 30*time.Second, 100*time.Millisecond)
 
 		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
@@ -348,6 +291,17 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
 
 	startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+}
+
+func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID) {
+	for _, i := range parties {
+		fileStoreDir := t.TempDir()
+		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
+		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+		require.NoError(t, err)
+		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
+		utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
+	}
 }
 
 func createConsensusNodesAndGRPCServers(t *testing.T, dir string, parties []types.PartyID) ([]*consensus_node.Consensus, []*comm.GRPCServer) {
@@ -392,4 +346,25 @@ func startConsensusNodesAndRegisterGRPCServers(parties []types.PartyID, consensu
 	time.Sleep(5 * time.Second)
 
 	return ledgerListeners
+}
+
+func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, privateKey *ecdsa.PrivateKey, configSeq types.ConfigSequence, expectedHeaderNumber uint64) {
+	for _, consensusNode := range consensusNodes {
+		baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq+1)
+		require.NoError(t, err)
+		controlEvent := &state.ControlEvent{BAF: baf}
+		err = consensusNode.SubmitRequest(controlEvent.Bytes())
+		require.ErrorContains(t, err, "mismatch config sequence")
+	}
+	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq)
+	require.NoError(t, err)
+	controlEvent := &state.ControlEvent{BAF: baf}
+	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
+	require.NoError(t, err)
+	for _, ledgerListener := range ledgerListeners {
+		require.Eventually(t, func() bool {
+			b := <-ledgerListener.c
+			return b.Header.Number == expectedHeaderNumber
+		}, 30*time.Second, 100*time.Millisecond)
+	}
 }
