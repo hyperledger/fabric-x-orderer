@@ -26,7 +26,7 @@ func WriteToYAML(config interface{}, path string) error {
 	return nil
 }
 
-func ReadFromYAML(config interface{}, path string) error {
+func ReadFromYAML(config any, path string) error {
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return err

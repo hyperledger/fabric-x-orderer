@@ -131,7 +131,7 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 		signCA := listOfSignCAs[0]
 
 		// signing crypto to admin of the organization
-		err = createAdminSignCertAndPrivateKey(signCA, dir, party.ID, nil)
+		err = createAdminSignCertAndPrivateKey(signCA, dir, party.ID)
 		if err != nil {
 			return err
 		}
@@ -240,15 +240,14 @@ func createCAsPerParty(dir string, network *genconfig.Network) (map[types.PartyI
 	partiesTLSCAs := make(map[types.PartyID][]*ca.CA)
 	partiesSignCAs := make(map[types.PartyID][]*ca.CA)
 
-	for i, party := range network.Parties {
+	for _, party := range network.Parties {
 		// create a TLS CA for the party
-		pathToTLSCACert := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "tlsca")
+		pathToTLSCACert := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "tlsca")
 		tlsCA, err := ca.NewCA(pathToTLSCACert, "tlsCA", "tlsca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
 		if err != nil {
 			return nil, nil, fmt.Errorf("err: %s, failed creating a TLS CA for party %d", err, party.ID)
 		}
-		// copy tls cert to msp/tlscacerts
-		err = copyPEMFiles(pathToTLSCACert, filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "tlscacerts"))
+		err = copyPEMFiles(pathToTLSCACert, filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "msp", "tlscacerts"))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -256,12 +255,12 @@ func createCAsPerParty(dir string, network *genconfig.Network) (map[types.PartyI
 		partiesTLSCAs[party.ID] = []*ca.CA{tlsCA}
 
 		// create a Signing CA for the party
-		pathToSignCACert := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "ca")
+		pathToSignCACert := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "ca")
 		signCA, err := ca.NewCA(pathToSignCACert, "signCA", "ca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
 		if err != nil {
 			return nil, nil, fmt.Errorf("err: %s, failed creating a signing CA for party %d", err, party.ID)
 		}
-		err = copyPEMFiles(pathToSignCACert, filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp", "cacerts"))
+		err = copyPEMFiles(pathToSignCACert, filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID), "msp", "cacerts"))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -358,7 +357,7 @@ func createUserSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.PartyI
 // createAdminSignCertAndPrivateKey creates for admin a signed certificate with a corresponding private key.
 // This tool is designed to create an admin for each org and the corresponding certificate appears under org/msp/admincerts.
 // The admin certificate is replicated to each organization's path: <org>/orderers/<party>/<node>/msp/admincerts as well as to the <org>/users/admin
-func createAdminSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.PartyID, nodesIPs []string) error {
+func createAdminSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.PartyID) error {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("err: %s, failed creating private key for admin of org %d", err, partyID)
@@ -387,8 +386,8 @@ func generateNetworkCryptoConfigFolderStructure(dir string, network *genconfig.N
 	rootDir := filepath.Join(dir, "crypto", "ordererOrganizations")
 	folders = append(folders, rootDir)
 
-	for i := 1; i <= len(network.Parties); i++ {
-		folders = generateOrdererOrg(rootDir, folders, i, len(network.Parties[i-1].BatchersEndpoints))
+	for _, p := range network.Parties {
+		folders = generateOrdererOrg(rootDir, folders, int(p.ID), len(p.BatchersEndpoints))
 	}
 	for _, folder := range folders {
 		err := os.MkdirAll(folder, 0o755)
@@ -471,9 +470,9 @@ func getNodeIPs(network *genconfig.Network) []string {
 }
 
 func copyCACerts(networkConfig *genconfig.Network, outputDir string) error {
-	for i, party := range networkConfig.Parties {
-		orgDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1))
-		partyDir := filepath.Join(orgDir, "orderers", fmt.Sprintf("party%d", i+1))
+	for _, party := range networkConfig.Parties {
+		orgDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID))
+		partyDir := filepath.Join(orgDir, "orderers", fmt.Sprintf("party%d", party.ID))
 		caDir := filepath.Join(orgDir, "msp", "cacerts")
 		tlscaDir := filepath.Join(orgDir, "msp", "tlscacerts")
 
@@ -496,8 +495,8 @@ func copyCACerts(networkConfig *genconfig.Network, outputDir string) error {
 		}
 	}
 
-	for i := range networkConfig.Parties {
-		orgDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1))
+	for _, party := range networkConfig.Parties {
+		orgDir := filepath.Join(outputDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID))
 		cacertsDir := filepath.Join(orgDir, "msp", "cacerts")
 		cacertsDstDir := filepath.Join(orgDir, "users", "user", "msp", "cacerts")
 		err := copyPEMFiles(cacertsDir, cacertsDstDir)
@@ -520,7 +519,7 @@ func copyPEMFiles(srcDir, destDir string) error {
 
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
-		return fmt.Errorf("error reading dource directory: %w", err)
+		return fmt.Errorf("error reading source directory: %w", err)
 	}
 
 	for _, entry := range entries {

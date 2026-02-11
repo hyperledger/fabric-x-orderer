@@ -144,6 +144,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber + 1, // including config update tx
+		Timeout:      60,
 		BlockHandler: userBlockHandler,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUknown,
@@ -200,6 +201,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber*2 + 1, // including config update tx
+		Timeout:      60,
 		BlockHandler: userBlockHandler,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUknown,
