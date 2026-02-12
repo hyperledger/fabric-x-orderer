@@ -62,25 +62,25 @@ func TestConsensus(t *testing.T) {
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig123, 1, 1, 0)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig123, 1, 1, 0)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
-	baf123id3p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk3), 3, 1, dig123, 1, 1, 0)
+	baf123id3p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk3), 3, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
-	baf123id4p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk4), 4, 1, dig123, 1, 1, 0)
+	baf123id4p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk4), 4, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
 
 	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf124id1p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 2, dig124, 2, 1, 0)
+	baf124id1p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 2, dig124, 2, 1, 0, 0)
 	assert.NoError(t, err)
-	baf124id2p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 2, dig124, 2, 1, 0)
+	baf124id2p2s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 2, dig124, 2, 1, 0, 0)
 	assert.NoError(t, err)
 
 	dig125 := append([]byte{1, 2, 5}, dig...)
-	baf125id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig125, 1, 2, 0)
+	baf125id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig125, 1, 2, 0, 0)
 	assert.NoError(t, err)
-	baf125id2p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig125, 1, 2, 0)
+	baf125id2p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig125, 1, 2, 0, 0)
 	assert.NoError(t, err)
 
 	for _, tst := range []struct {
@@ -467,23 +467,23 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
-	baf123id1p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 1)
+	baf123id1p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 1, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 1)
+	baf123id2p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 1, 0)
 	assert.NoError(t, err)
 
 	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf124id3p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[2]), 3, 1, dig124, 1, 2, 0)
+	baf124id3p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[2]), 3, 1, dig124, 1, 2, 0, 0)
 	assert.NoError(t, err)
-	baf124id4p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[3]), 4, 1, dig124, 1, 2, 0)
+	baf124id4p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[3]), 4, 1, dig124, 1, 2, 0, 0)
 	assert.NoError(t, err)
 
 	dig125 := append([]byte{1, 2, 5}, dig...)
-	baf125id1p1s3, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig125, 1, 3, 0)
+	baf125id1p1s3, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig125, 1, 3, 0, 0)
 	assert.NoError(t, err)
 
 	for _, tst := range []struct {
@@ -797,9 +797,9 @@ func TestVerifyProposal(t *testing.T) {
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
 
 	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
@@ -1022,9 +1022,9 @@ func TestSignProposal(t *testing.T) {
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
 
 	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
@@ -1108,7 +1108,7 @@ func TestConsensusStartStop(t *testing.T) {
 	commitEvent.Add(1)
 	dig := make([]byte, 32-3)
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1, 0)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
 
 	ce1 := &state.ControlEvent{BAF: baf123id1p1s1}
@@ -1168,7 +1168,7 @@ func TestConsensusStartStop(t *testing.T) {
 
 	// 3. Valid request after recovery node
 	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf124id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2, 0)
+	baf124id1p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2, 0, 0)
 	assert.NoError(t, err)
 	ce2 := &state.ControlEvent{BAF: baf124id1p1s2}
 	commitEvent.Add(1)
@@ -1428,7 +1428,7 @@ func TestConsensusSoftStop(t *testing.T) {
 	commitEvent.Add(1)
 	dig := make([]byte, 32-3)
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1, 0)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1, 0, 0)
 	assert.NoError(t, err)
 
 	ce1 := &state.ControlEvent{BAF: baf123id1p1s1}
@@ -1452,7 +1452,7 @@ func TestConsensusSoftStop(t *testing.T) {
 
 	// submitting new requests should now fail
 	dig124 := append([]byte{1, 2, 4}, dig...)
-	baf124id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2, 0)
+	baf124id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig124, 1, 2, 0, 0)
 	assert.NoError(t, err)
 
 	ce2 := &state.ControlEvent{BAF: baf124id1p1s1}

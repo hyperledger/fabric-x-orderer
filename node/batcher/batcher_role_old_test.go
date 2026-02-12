@@ -207,8 +207,8 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) arma_types.BatchAttestationFragment {
-		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0)
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64) arma_types.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0, txCount)
 	})
 
 	batchersInfo := make([]config.BatcherInfo, len(batchers))
@@ -369,8 +369,8 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte) arma_types.BatchAttestationFragment {
-		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0)
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64) arma_types.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0, txCount)
 	})
 
 	batchersInfo := make([]config.BatcherInfo, len(batchers))

@@ -34,7 +34,7 @@ func TestConsenter(t *testing.T) {
 	db := &mocks.FakeBatchAttestationDB{}
 	consenter.DB = db
 
-	ba := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(2), 0)
+	ba := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(2), 0, 0)
 	ba.SetSignature([]uint8{1})
 	events := [][]byte{(&state.ControlEvent{BAF: ba}).Bytes()}
 
@@ -57,7 +57,7 @@ func TestConsenter(t *testing.T) {
 	assert.Zero(t, db.PutCallCount())
 
 	// Test valid events meeting the threshold
-	ba2 := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(3), 0)
+	ba2 := arma_types.NewSimpleBatchAttestationFragment(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), []byte{3}, arma_types.PartyID(3), 0, 0)
 	ba2.SetSignature([]byte{1})
 	events = append(events, (&state.ControlEvent{BAF: ba2}).Bytes())
 

@@ -286,7 +286,7 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 
 // helper function to create and submit a request with a certain config seq for testing
 func createAndSubmitRequestWithConfigSeq(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence, configSeq types.ConfigSequence) error {
-	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence, configSeq)
+	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence, configSeq, 0)
 	if err != nil {
 		return err
 	}

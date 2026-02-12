@@ -140,7 +140,7 @@ func TestConfigDisseminate(t *testing.T) {
 
 	// make sure consenter said it is stopping
 	require.Eventually(t, func() bool {
-		baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2}, types.PartyID(1), 0)
+		baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2}, types.PartyID(1), 0, 0)
 		ce := &state.ControlEvent{BAF: baf}
 		err := consenters[0].SubmitRequest(ce.Bytes())
 		return err != nil && strings.Contains(err.Error(), "consensus is soft-stopped")

@@ -61,6 +61,7 @@ type BatchAttestationFragment interface {
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error
+	TXCount() uint64
 	ConfigSequence() ConfigSequence
 	String() string
 }
