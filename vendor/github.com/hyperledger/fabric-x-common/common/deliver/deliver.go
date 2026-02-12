@@ -15,19 +15,19 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/cockroachdb/errors"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/hyperledger/fabric-x-common/common/crypto"
+	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
-	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
 
-var logger = flogging.MustGetLogger("common.deliver")
+var logger = util.MustGetLogger("common.deliver")
 
 //go:generate counterfeiter -o mock/chain_manager.go -fake-name ChainManager . ChainManager
 
@@ -197,8 +197,6 @@ func isFiltered(srv *Server) bool {
 	return false
 }
 
-// deliverBlocks handles delivering blocks to the client from the blockchain channel.
-// It processes a signed envelope from a client and responds with the requested blocks.
 func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.Envelope) (status cb.Status, err error) {
 	addr := util.ExtractRemoteAddress(ctx)
 	payload, chdr, shdr, err := h.parseEnvelope(ctx, envelope)
@@ -342,7 +340,7 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 			}
 		}
 
-		id, err := protoutil.UnmarshalIdentity(shdr.Creator)
+		id, err := protoutil.UnmarshalIdentity(shdr.GetCreator())
 		if err != nil {
 			return cb.Status_INTERNAL_SERVER_ERROR, err
 		}
@@ -416,4 +414,22 @@ func (h *Handler) validateChannelHeader(ctx context.Context, chdr *cb.ChannelHea
 
 func noExpiration(_ []byte) time.Time {
 	return time.Time{}
+}
+
+func (h *Handler) HandleAttestation(ctx context.Context, srv *Server, env *cb.Envelope) error {
+	status, err := h.deliverBlocks(ctx, srv, env)
+	if err != nil {
+		return err
+	}
+
+	err = srv.SendStatusResponse(status)
+	if status != cb.Status_SUCCESS {
+		return err
+	}
+	if err != nil {
+		addr := util.ExtractRemoteAddress(ctx)
+		logger.Warningf("Error sending to %s: %s", addr, err)
+		return err
+	}
+	return nil
 }

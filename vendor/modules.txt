@@ -257,8 +257,12 @@ github.com/hyperledger/fabric-x-common/common/capabilities
 github.com/hyperledger/fabric-x-common/common/cauthdsl
 github.com/hyperledger/fabric-x-common/common/channelconfig
 github.com/hyperledger/fabric-x-common/common/configtx
+github.com/hyperledger/fabric-x-common/common/crypto
 github.com/hyperledger/fabric-x-common/common/crypto/tlsgen
+github.com/hyperledger/fabric-x-common/common/deliver
+github.com/hyperledger/fabric-x-common/common/deliver/mock
 github.com/hyperledger/fabric-x-common/common/genesis
+github.com/hyperledger/fabric-x-common/common/ledger/blockledger
 github.com/hyperledger/fabric-x-common/common/metadata
 github.com/hyperledger/fabric-x-common/common/policies
 github.com/hyperledger/fabric-x-common/common/policydsl
@@ -277,11 +281,12 @@ github.com/hyperledger/fabric-x-common/protolator/protoext/peerext
 github.com/hyperledger/fabric-x-common/protoutil
 github.com/hyperledger/fabric-x-common/protoutil/identity
 github.com/hyperledger/fabric-x-common/protoutil/identity/mocks
-github.com/hyperledger/fabric-x-common/protoutil/mocks
 github.com/hyperledger/fabric-x-common/tools/configtxgen
 github.com/hyperledger/fabric-x-common/tools/configtxlator/rest
 github.com/hyperledger/fabric-x-common/tools/configtxlator/update
 github.com/hyperledger/fabric-x-common/tools/fileutil
+github.com/hyperledger/fabric-x-common/tools/pkg/comm
+github.com/hyperledger/fabric-x-common/tools/pkg/comm/testpb
 github.com/hyperledger/fabric-x-common/tools/pkg/txflags
 github.com/hyperledger/fabric-x-common/tools/test
 github.com/hyperledger/fabric-x-common/utils/certificate

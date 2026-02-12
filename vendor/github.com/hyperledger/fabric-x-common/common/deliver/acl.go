@@ -9,11 +9,10 @@ package deliver
 import (
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
+
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 // ExpiresAtFunc is used to extract the time at which an identity expires.
@@ -26,22 +25,23 @@ type ConfigSequencer interface {
 
 // NewSessionAC creates an instance of SessionAccessControl. This constructor will
 // return an error if a signature header cannot be extracted from the envelope.
-func NewSessionAC(chain ConfigSequencer, env *common.Envelope, policyChecker PolicyChecker, channelID string, expiresAt ExpiresAtFunc) (*SessionAccessControl, error) {
+func NewSessionAC(chain ConfigSequencer, env *common.Envelope, //nolint:revive // argument limit: max 4 but got 5
+	policyChecker PolicyChecker, channelID string, expiresAt ExpiresAtFunc,
+) (*SessionAccessControl, error) {
 	signedData, err := protoutil.EnvelopeAsSignedData(env)
 	if err != nil {
 		return nil, err
 	}
 
-	id, err := proto.Marshal(signedData[0].Identity)
-	if err != nil {
-		return nil, err
-	}
+	// TODO: When we support ACL, we need to ensure that the identity in
+	// the signed data to hold the raw certificate.
+
 	return &SessionAccessControl{
 		envelope:       env,
 		channelID:      channelID,
 		sequencer:      chain,
 		policyChecker:  policyChecker,
-		sessionEndTime: expiresAt(id),
+		sessionEndTime: expiresAt(signedData[0].Identity.GetCertificate()),
 	}, nil
 }
 

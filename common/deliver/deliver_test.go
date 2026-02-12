@@ -13,22 +13,23 @@ import (
 	"io"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/tools/test"
+
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/metricsfakes"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-common/common/crypto/tlsgen"
-	"github.com/hyperledger/fabric-x-common/common/util"
-	"github.com/hyperledger/fabric-x-common/protoutil"
-	. "github.com/hyperledger/fabric-x-common/tools/test"
-	"github.com/hyperledger/fabric-x-orderer/common/deliver"
-	"github.com/hyperledger/fabric-x-orderer/common/deliver/mock"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/hyperledger/fabric-x-common/common/crypto/tlsgen"
+	"github.com/hyperledger/fabric-x-common/common/deliver"
+	"github.com/hyperledger/fabric-x-common/common/deliver/mock"
+	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 var (
@@ -41,44 +42,41 @@ var (
 	}
 )
 
-var _ = Describe("Deliver", func() {
-	Describe("NewHandler", func() {
+var _ = ginkgo.Describe("Deliver", func() {
+	ginkgo.Describe("NewHandler", func() {
 		var fakeChainManager *mock.ChainManager
 		var cert *x509.Certificate
 		var certBytes []byte
-		var serializedIdentity []byte
-		BeforeEach(func() {
+		ginkgo.BeforeEach(func() {
 			fakeChainManager = &mock.ChainManager{}
 
 			ca, err := tlsgen.NewCA()
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			certBytes = ca.CertBytes()
 
 			der, _ := pem.Decode(ca.CertBytes())
 			cert, err = x509.ParseCertificate(der.Bytes)
-			Expect(err).NotTo(HaveOccurred())
-
-			serializedIdentity = protoutil.MarshalOrPanic(&msp.SerializedIdentity{IdBytes: certBytes})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
-		It("returns a new handler", func() {
+		ginkgo.It("returns a new handler", func() {
 			handler := deliver.NewHandler(
 				fakeChainManager,
 				time.Second,
 				false,
 				deliver.NewMetrics(&disabled.Provider{}),
 				false)
-			Expect(handler).NotTo(BeNil())
+			gomega.Expect(handler).NotTo(gomega.BeNil())
 
-			Expect(handler.ChainManager).To(Equal(fakeChainManager))
-			Expect(handler.TimeWindow).To(Equal(time.Second))
+			gomega.Expect(handler.ChainManager).To(gomega.Equal(fakeChainManager))
+			gomega.Expect(handler.TimeWindow).To(gomega.Equal(time.Second))
 			// binding inspector is func; unable to easily validate
-			Expect(handler.BindingInspector).NotTo(BeNil())
+			gomega.Expect(handler.BindingInspector).NotTo(gomega.BeNil())
 		})
 
-		Context("Handler is initialized with expiration checks", func() {
-			It("Returns exactly what is found in the certificate", func() {
+		ginkgo.Context("Handler is initialized with expiration checks", func() {
+			ginkgo.It("Returns exactly what is found in the certificate", func() {
 				handler := deliver.NewHandler(
 					fakeChainManager,
 					time.Second,
@@ -86,12 +84,12 @@ var _ = Describe("Deliver", func() {
 					deliver.NewMetrics(&disabled.Provider{}),
 					false)
 
-				Expect(handler.ExpirationCheckFunc(serializedIdentity)).To(Equal(cert.NotAfter))
+				gomega.Expect(handler.ExpirationCheckFunc(certBytes)).To(gomega.Equal(cert.NotAfter))
 			})
 		})
 
-		Context("Handler is initialized without expiration checks", func() {
-			It("Doesn't parse the NotAfter time of the certificate", func() {
+		ginkgo.Context("Handler is initialized without expiration checks", func() {
+			ginkgo.It("Doesn't parse the NotAfter time of the certificate", func() {
 				handler := deliver.NewHandler(
 					fakeChainManager,
 					time.Second,
@@ -99,36 +97,36 @@ var _ = Describe("Deliver", func() {
 					deliver.NewMetrics(&disabled.Provider{}),
 					true)
 
-				Expect(handler.ExpirationCheckFunc(serializedIdentity)).NotTo(Equal(cert.NotAfter))
+				gomega.Expect(handler.ExpirationCheckFunc(certBytes)).NotTo(gomega.Equal(cert.NotAfter))
 			})
 		})
 	})
 
-	Describe("ExtractChannelHeaderCertHash", func() {
-		It("extracts the TLS certificate hash from a channel header", func() {
+	ginkgo.Describe("ExtractChannelHeaderCertHash", func() {
+		ginkgo.It("extracts the TLS certificate hash from a channel header", func() {
 			chdr := &cb.ChannelHeader{TlsCertHash: []byte("tls-cert")}
 
 			result := deliver.ExtractChannelHeaderCertHash(chdr)
-			Expect(result).To(Equal([]byte("tls-cert")))
+			gomega.Expect(result).To(gomega.Equal([]byte("tls-cert")))
 		})
 
-		Context("when the message is not a channel header", func() {
-			It("returns nil", func() {
+		ginkgo.Context("when the message is not a channel header", func() {
+			ginkgo.It("returns nil", func() {
 				result := deliver.ExtractChannelHeaderCertHash(&cb.Envelope{})
-				Expect(result).To(BeNil())
+				gomega.Expect(result).To(gomega.BeNil())
 			})
 		})
 
-		Context("when the message is nil", func() {
-			It("returns nil", func() {
+		ginkgo.Context("when the message is nil", func() {
+			ginkgo.It("returns nil", func() {
 				var ch *cb.ChannelHeader
 				result := deliver.ExtractChannelHeaderCertHash(ch)
-				Expect(result).To(BeNil())
+				gomega.Expect(result).To(gomega.BeNil())
 			})
 		})
 	})
 
-	Describe("Handle", func() {
+	ginkgo.Describe("Handle", func() {
 		var (
 			errCh                 chan struct{}
 			fakeChain             *mock.Chain
@@ -157,7 +155,7 @@ var _ = Describe("Deliver", func() {
 			envelope             *cb.Envelope
 		)
 
-		BeforeEach(func() {
+		ginkgo.BeforeEach(func() {
 			errCh = make(chan struct{})
 			fakeChain = &mock.Chain{}
 			fakeChain.ErroredReturns(errCh)
@@ -243,7 +241,7 @@ var _ = Describe("Deliver", func() {
 			fakeReceiver.RecvReturnsOnCall(1, nil, io.EOF)
 		})
 
-		JustBeforeEach(func() {
+		ginkgo.JustBeforeEach(func() {
 			if channelHeaderPayload == nil {
 				channelHeaderPayload = protoutil.MarshalOrPanic(channelHeader)
 			}
@@ -262,94 +260,94 @@ var _ = Describe("Deliver", func() {
 			}
 		})
 
-		It("records streams opened before streams closed", func() {
+		ginkgo.It("records streams opened before streams closed", func() {
 			fakeStreamsOpened.AddStub = func(delta float64) {
-				defer GinkgoRecover()
-				Expect(fakeStreamsClosed.AddCallCount()).To(Equal(0))
+				defer ginkgo.GinkgoRecover()
+				gomega.Expect(fakeStreamsClosed.AddCallCount()).To(gomega.Equal(0))
 			}
 
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakeStreamsOpened.AddCallCount()).To(Equal(1))
-			Expect(fakeStreamsOpened.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
+			gomega.Expect(fakeStreamsOpened.AddCallCount()).To(gomega.Equal(1))
+			gomega.Expect(fakeStreamsOpened.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
 		})
 
-		It("records streams closed after streams opened", func() {
+		ginkgo.It("records streams closed after streams opened", func() {
 			fakeStreamsClosed.AddStub = func(delta float64) {
-				defer GinkgoRecover()
-				Expect(fakeStreamsOpened.AddCallCount()).To(Equal(1))
+				defer ginkgo.GinkgoRecover()
+				gomega.Expect(fakeStreamsOpened.AddCallCount()).To(gomega.Equal(1))
 			}
 
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakeStreamsClosed.AddCallCount()).To(Equal(1))
-			Expect(fakeStreamsClosed.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
+			gomega.Expect(fakeStreamsClosed.AddCallCount()).To(gomega.Equal(1))
+			gomega.Expect(fakeStreamsClosed.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
 		})
 
-		It("validates the channel header with the binding inspector", func() {
+		ginkgo.It("validates the channel header with the binding inspector", func() {
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakeInspector.InspectCallCount()).To(Equal(1))
+			gomega.Expect(fakeInspector.InspectCallCount()).To(gomega.Equal(1))
 			ctx, header := fakeInspector.InspectArgsForCall(0)
-			Expect(ctx).To(Equal(context.Background()))
-			Expect(header).To(ProtoEqual(channelHeader))
+			gomega.Expect(ctx).To(gomega.Equal(context.Background()))
+			gomega.Expect(header).To(test.ProtoEqual(channelHeader))
 		})
 
-		Context("when channel header validation fails", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when channel header validation fails", func() {
+			ginkgo.BeforeEach(func() {
 				fakeInspector.InspectReturns(errors.New("bad-header-thingy"))
 			})
 
-			It("sends a bad request message", func() {
+			ginkgo.It("sends a bad request message", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		It("gets the chain from the chain manager", func() {
+		ginkgo.It("gets the chain from the chain manager", func() {
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakeChainManager.GetChainCallCount()).To(Equal(1))
+			gomega.Expect(fakeChainManager.GetChainCallCount()).To(gomega.Equal(1))
 			chid := fakeChainManager.GetChainArgsForCall(0)
-			Expect(chid).To(Equal("chain-id"))
+			gomega.Expect(chid).To(gomega.Equal("chain-id"))
 		})
 
-		It("receives messages until io.EOF is returned", func() {
+		ginkgo.It("receives messages until io.EOF is returned", func() {
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakeReceiver.RecvCallCount()).To(Equal(2))
+			gomega.Expect(fakeReceiver.RecvCallCount()).To(gomega.Equal(2))
 		})
 
-		It("evaluates access control", func() {
+		ginkgo.It("evaluates access control", func() {
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakePolicyChecker.CheckPolicyCallCount()).To(BeNumerically(">=", 1))
+			gomega.Expect(fakePolicyChecker.CheckPolicyCallCount()).To(gomega.BeNumerically(">=", 1))
 			e, cid := fakePolicyChecker.CheckPolicyArgsForCall(0)
-			Expect(e).To(ProtoEqual(envelope))
-			Expect(cid).To(Equal("chain-id"))
+			gomega.Expect(e).To(test.ProtoEqual(envelope))
+			gomega.Expect(cid).To(gomega.Equal("chain-id"))
 		})
 
-		It("gets a block iterator from the starting block", func() {
+		ginkgo.It("gets a block iterator from the starting block", func() {
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakeBlockReader.IteratorCallCount()).To(Equal(1))
+			gomega.Expect(fakeBlockReader.IteratorCallCount()).To(gomega.Equal(1))
 			startPosition := fakeBlockReader.IteratorArgsForCall(0)
-			Expect(startPosition).To(ProtoEqual(seekInfo.Start))
+			gomega.Expect(startPosition).To(test.ProtoEqual(seekInfo.Start))
 		})
 
-		Context("when multiple blocks are requested", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when multiple blocks are requested", func() {
+			ginkgo.BeforeEach(func() {
 				fakeBlockIterator.NextStub = func() (*cb.Block, cb.Status) {
 					blk := &cb.Block{
 						Header: &cb.BlockHeader{Number: 994 + uint64(fakeBlockIterator.NextCallCount())},
@@ -364,50 +362,50 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			It("sends all requested blocks", func() {
+			ginkgo.It("sends all requested blocks", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(5))
+				gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(5))
 				for i := 0; i < 5; i++ {
 					b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(i)
-					Expect(b).To(Equal(&cb.Block{
+					gomega.Expect(b).To(gomega.Equal(&cb.Block{
 						Header: &cb.BlockHeader{Number: 995 + uint64(i)},
 					}))
 				}
 			})
 
-			It("records requests received, blocks sent, and requests completed", func() {
+			ginkgo.It("records requests received, blocks sent, and requests completed", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeRequestsReceived.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsReceived.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsReceived.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsReceived.WithCallCount()).To(gomega.Equal(1))
 				labelValues := fakeRequestsReceived.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "false",
 					"data_type", "block",
 				}))
 
-				Expect(fakeBlocksSent.AddCallCount()).To(Equal(5))
-				Expect(fakeBlocksSent.WithCallCount()).To(Equal(5))
+				gomega.Expect(fakeBlocksSent.AddCallCount()).To(gomega.Equal(5))
+				gomega.Expect(fakeBlocksSent.WithCallCount()).To(gomega.Equal(5))
 				for i := 0; i < 5; i++ {
-					Expect(fakeBlocksSent.AddArgsForCall(i)).To(BeNumerically("~", 1.0))
+					gomega.Expect(fakeBlocksSent.AddArgsForCall(i)).To(gomega.BeNumerically("~", 1.0))
 					labelValues := fakeBlocksSent.WithArgsForCall(i)
-					Expect(labelValues).To(Equal([]string{
+					gomega.Expect(labelValues).To(gomega.Equal([]string{
 						"channel", "chain-id",
 						"filtered", "false",
 						"data_type", "block",
 					}))
 				}
 
-				Expect(fakeRequestsCompleted.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsCompleted.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsCompleted.WithCallCount()).To(gomega.Equal(1))
 				labelValues = fakeRequestsCompleted.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "false",
 					"data_type", "block",
@@ -416,30 +414,30 @@ var _ = Describe("Deliver", func() {
 			})
 		})
 
-		Context("when seek info is configured to stop at the oldest block", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when seek info is configured to stop at the oldest block", func() {
+			ginkgo.BeforeEach(func() {
 				seekInfo = &ab.SeekInfo{Start: &ab.SeekPosition{}, Stop: seekOldest}
 			})
 
-			It("sends only the first block returned by the iterator", func() {
+			ginkgo.It("sends only the first block returned by the iterator", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeBlockReader.IteratorCallCount()).To(Equal(1))
+				gomega.Expect(fakeBlockReader.IteratorCallCount()).To(gomega.Equal(1))
 				start := fakeBlockReader.IteratorArgsForCall(0)
-				Expect(start).To(ProtoEqual(&ab.SeekPosition{}))
-				Expect(fakeBlockIterator.NextCallCount()).To(Equal(1))
+				gomega.Expect(start).To(test.ProtoEqual(&ab.SeekPosition{}))
+				gomega.Expect(fakeBlockIterator.NextCallCount()).To(gomega.Equal(1))
 
-				Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(1))
 				b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(0)
-				Expect(b).To(ProtoEqual(&cb.Block{
+				gomega.Expect(b).To(test.ProtoEqual(&cb.Block{
 					Header: &cb.BlockHeader{Number: 100},
 				}))
 			})
 		})
 
-		Context("when seek info is configured to stop at the newest block", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when seek info is configured to stop at the newest block", func() {
+			ginkgo.BeforeEach(func() {
 				seekInfo = &ab.SeekInfo{Start: &ab.SeekPosition{}, Stop: seekNewest}
 
 				fakeBlockReader.HeightReturns(3)
@@ -451,27 +449,28 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			It("sends blocks until the iterator reaches the reader height", func() {
+			ginkgo.It("sends blocks until the iterator reaches the reader height", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeBlockReader.IteratorCallCount()).To(Equal(1))
+				gomega.Expect(fakeBlockReader.IteratorCallCount()).To(gomega.Equal(1))
 				start := fakeBlockReader.IteratorArgsForCall(0)
-				Expect(start).To(ProtoEqual(&ab.SeekPosition{}))
+				gomega.Expect(start).To(test.ProtoEqual(&ab.SeekPosition{}))
 
-				Expect(fakeBlockIterator.NextCallCount()).To(Equal(2))
-				Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(2))
+				gomega.Expect(fakeBlockIterator.NextCallCount()).To(gomega.Equal(2))
+				gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(2))
 				for i := 0; i < fakeResponseSender.SendBlockResponseCallCount(); i++ {
 					b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(i)
-					Expect(b).To(ProtoEqual(&cb.Block{
+					gomega.Expect(b).To(test.ProtoEqual(&cb.Block{
 						Header: &cb.BlockHeader{Number: uint64(i + 1)},
 					}))
 				}
 			})
 		})
 
-		Context("when seek info is configured to send just the newest block and a new block is committed to the ledger after the iterator is acquired", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when seek info is configured to send just the newest block and a new block is"+
+			" committed to the ledger after the iterator is acquired", func() {
+			ginkgo.BeforeEach(func() {
 				seekInfo = &ab.SeekInfo{Start: seekNewest, Stop: seekNewest}
 
 				fakeBlockReader.IteratorReturns(fakeBlockIterator, 0)
@@ -485,25 +484,25 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			It("sends only the newest block at the time the iterator was acquired", func() {
+			ginkgo.It("sends only the newest block at the time the iterator was acquired", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeBlockReader.IteratorCallCount()).To(Equal(1))
-				Expect(fakeBlockIterator.NextCallCount()).To(Equal(1))
-				Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeBlockReader.IteratorCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeBlockIterator.NextCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(1))
 				for i := 0; i < fakeResponseSender.SendBlockResponseCallCount(); i++ {
 					b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(i)
-					Expect(b).To(ProtoEqual(&cb.Block{
+					gomega.Expect(b).To(test.ProtoEqual(&cb.Block{
 						Header: &cb.BlockHeader{Number: uint64(i)},
 					}))
 				}
 			})
 		})
 
-		Context("when seek info is configured to header with sig content type", func() {
+		ginkgo.Context("when seek info is configured to header with sig content type", func() {
 			var cachedBlocks []*cb.Block
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				seekInfo = &ab.SeekInfo{
 					Start:       &ab.SeekPosition{},
 					Stop:        seekNewest,
@@ -522,19 +521,19 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			It("sends blocks with nil Data, but does not mutate cached blocks", func() {
+			ginkgo.It("sends blocks with nil Data, but does not mutate cached blocks", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeBlockReader.IteratorCallCount()).To(Equal(1))
+				gomega.Expect(fakeBlockReader.IteratorCallCount()).To(gomega.Equal(1))
 				start := fakeBlockReader.IteratorArgsForCall(0)
-				Expect(start).To(ProtoEqual(&ab.SeekPosition{}))
+				gomega.Expect(start).To(test.ProtoEqual(&ab.SeekPosition{}))
 
-				Expect(fakeBlockIterator.NextCallCount()).To(Equal(2))
-				Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(2))
+				gomega.Expect(fakeBlockIterator.NextCallCount()).To(gomega.Equal(2))
+				gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(2))
 				for i := 0; i < fakeResponseSender.SendBlockResponseCallCount(); i++ {
 					b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(i)
-					Expect(b).To(ProtoEqual(&cb.Block{
+					gomega.Expect(b).To(test.ProtoEqual(&cb.Block{
 						Header:   &cb.BlockHeader{Number: uint64(i + 1)},
 						Data:     nil,
 						Metadata: &cb.BlockMetadata{Metadata: [][]byte{{3}, {4}}},
@@ -542,107 +541,128 @@ var _ = Describe("Deliver", func() {
 				}
 
 				for _, b := range cachedBlocks {
-					Expect(b.Data).ToNot(BeNil())
+					gomega.Expect(b.Data).ToNot(gomega.BeNil())
 				}
 			})
 		})
 
-		Context("when seek info is configured to header with sig content type and block can be a config block", func() {
-			BeforeEach(func() {
-				seekInfo = &ab.SeekInfo{
-					Start:       &ab.SeekPosition{},
-					Stop:        seekNewest,
-					ContentType: ab.SeekInfo_HEADER_WITH_SIG,
-				}
-				fakeBlockReader.HeightReturns(4)
-				fakeBlockIterator.NextStub = func() (*cb.Block, cb.Status) {
-					nxtCallCount := fakeBlockIterator.NextCallCount()
-					block := &cb.Block{
-						Header:   &cb.BlockHeader{Number: uint64(nxtCallCount)},
-						Metadata: &cb.BlockMetadata{Metadata: [][]byte{{3}, {4}}},
+		ginkgo.Context(
+			"when seek info is configured to header with sig content type and block can be a config block",
+			func() {
+				ginkgo.BeforeEach(func() {
+					seekInfo = &ab.SeekInfo{
+						Start:       &ab.SeekPosition{},
+						Stop:        seekNewest,
+						ContentType: ab.SeekInfo_HEADER_WITH_SIG,
 					}
-					if nxtCallCount == 1 || nxtCallCount == 3 {
-						block.Data = &cb.BlockData{Data: [][]byte{{1}, {2}}}
-					} else {
-						channelHeader = protoutil.MakeChannelHeader(cb.HeaderType_CONFIG, int32(1), "chain-1", 0)
-						payloadSignatureHeader := protoutil.MakeSignatureHeader(nil, make([]byte, 24))
-						protoutil.SetTxID(channelHeader, payloadSignatureHeader)
-						payloadHeader := protoutil.MakePayloadHeader(channelHeader, payloadSignatureHeader)
-						cg := protoutil.NewConfigGroup()
-						payload := &cb.Payload{Header: payloadHeader, Data: protoutil.MarshalOrPanic(&cb.ConfigEnvelope{Config: &cb.Config{ChannelGroup: cg}})}
-						envelope := &cb.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: nil}
-
-						block.Data = &cb.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(envelope)}}
-						block.Header.DataHash = nil
-					}
-					return block, cb.Status_SUCCESS
-				}
-			})
-
-			It("sends blocks with non nil Data", func() {
-				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(fakeBlockReader.IteratorCallCount()).To(Equal(1))
-				start := fakeBlockReader.IteratorArgsForCall(0)
-				Expect(start).To(ProtoEqual(&ab.SeekPosition{}))
-				Expect(fakeBlockIterator.NextCallCount()).To(Equal(3))
-				Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(3))
-				for i := 0; i < fakeResponseSender.SendBlockResponseCallCount(); i++ {
-					b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(i)
-					if i+1 == 1 || i+1 == 3 {
-						Expect(b).To(ProtoEqual(&cb.Block{
-							Header:   &cb.BlockHeader{Number: uint64(i + 1)},
-							Data:     nil,
-							Metadata: &cb.BlockMetadata{Metadata: [][]byte{{3}, {4}}},
-						}))
-					} else {
-						payloadSignatureHeader := protoutil.MakeSignatureHeader(nil, make([]byte, 24))
-						protoutil.SetTxID(channelHeader, payloadSignatureHeader)
-						payloadHeader := protoutil.MakePayloadHeader(channelHeader, payloadSignatureHeader)
-						cg := protoutil.NewConfigGroup()
-						payload := &cb.Payload{Header: payloadHeader, Data: protoutil.MarshalOrPanic(&cb.ConfigEnvelope{Config: &cb.Config{ChannelGroup: cg}})}
-						envelope := &cb.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: nil}
-						blk := &cb.Block{
-							Header:   &cb.BlockHeader{Number: uint64(i + 1)},
-							Data:     &cb.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(envelope)}},
+					fakeBlockReader.HeightReturns(4)
+					fakeBlockIterator.NextStub = func() (*cb.Block, cb.Status) {
+						nxtCallCount := fakeBlockIterator.NextCallCount()
+						block := &cb.Block{
+							Header:   &cb.BlockHeader{Number: uint64(nxtCallCount)},
 							Metadata: &cb.BlockMetadata{Metadata: [][]byte{{3}, {4}}},
 						}
-						Expect(b).To(ProtoEqual(blk))
-						Expect(b.Data.Data).NotTo(BeNil())
-					}
-				}
-			})
-		})
+						if nxtCallCount == 1 || nxtCallCount == 3 {
+							block.Data = &cb.BlockData{Data: [][]byte{{1}, {2}}}
+						} else {
+							channelHeader = protoutil.MakeChannelHeader(cb.HeaderType_CONFIG, int32(1), "chain-1", 0)
+							payloadSignatureHeader := protoutil.MakeSignatureHeader(nil, make([]byte, 24))
+							protoutil.SetTxID(channelHeader, payloadSignatureHeader)
+							payloadHeader := protoutil.MakePayloadHeader(channelHeader, payloadSignatureHeader)
+							cg := protoutil.NewConfigGroup()
+							payload := &cb.Payload{
+								Header: payloadHeader,
+								Data: protoutil.MarshalOrPanic(&cb.ConfigEnvelope{
+									Config: &cb.Config{ChannelGroup: cg},
+								}),
+							}
 
-		Context("when filtered blocks are requested", func() {
+							block.Data = &cb.BlockData{
+								Data: [][]byte{protoutil.MarshalOrPanic(&cb.Envelope{
+									Payload:   protoutil.MarshalOrPanic(payload),
+									Signature: nil,
+								})},
+							}
+							block.Header.DataHash = nil
+						}
+						return block, cb.Status_SUCCESS
+					}
+				})
+
+				ginkgo.It("sends blocks with non nil Data", func() {
+					err := handler.Handle(context.Background(), server)
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					gomega.Expect(fakeBlockReader.IteratorCallCount()).To(gomega.Equal(1))
+					start := fakeBlockReader.IteratorArgsForCall(0)
+					gomega.Expect(start).To(test.ProtoEqual(&ab.SeekPosition{}))
+					gomega.Expect(fakeBlockIterator.NextCallCount()).To(gomega.Equal(3))
+					gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(3))
+					for i := range fakeResponseSender.SendBlockResponseCallCount() {
+						b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(i)
+						if i+1 == 1 || i+1 == 3 {
+							gomega.Expect(b).To(test.ProtoEqual(&cb.Block{
+								Header:   &cb.BlockHeader{Number: uint64(i + 1)},
+								Data:     nil,
+								Metadata: &cb.BlockMetadata{Metadata: [][]byte{{3}, {4}}},
+							}))
+						} else {
+							payloadSignatureHeader := protoutil.MakeSignatureHeader(nil, make([]byte, 24))
+							protoutil.SetTxID(channelHeader, payloadSignatureHeader)
+							payloadHeader := protoutil.MakePayloadHeader(channelHeader, payloadSignatureHeader)
+							cg := protoutil.NewConfigGroup()
+							payload := &cb.Payload{
+								Header: payloadHeader,
+								Data: protoutil.MarshalOrPanic(&cb.ConfigEnvelope{
+									Config: &cb.Config{ChannelGroup: cg},
+								}),
+							}
+							blk := &cb.Block{
+								Header: &cb.BlockHeader{Number: uint64(i + 1)},
+								Data: &cb.BlockData{
+									Data: [][]byte{protoutil.MarshalOrPanic(&cb.Envelope{
+										Payload:   protoutil.MarshalOrPanic(payload),
+										Signature: nil,
+									})},
+								},
+								Metadata: &cb.BlockMetadata{Metadata: [][]byte{{3}, {4}}},
+							}
+							gomega.Expect(b).To(test.ProtoEqual(blk))
+							gomega.Expect(b.Data.Data).NotTo(gomega.BeNil())
+						}
+					}
+				})
+			},
+		)
+
+		ginkgo.Context("when filtered blocks are requested", func() {
 			var fakeResponseSender *mock.FilteredResponseSender
 
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				fakeResponseSender = &mock.FilteredResponseSender{}
 				fakeResponseSender.IsFilteredReturns(true)
 				fakeResponseSender.DataTypeReturns("filtered_block")
 				server.ResponseSender = fakeResponseSender
 			})
 
-			It("checks if the response sender is filtered", func() {
+			ginkgo.It("checks if the response sender is filtered", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.IsFilteredCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.IsFilteredCallCount()).To(gomega.Equal(1))
 			})
 
-			Context("when the response sender indicates it is not filtered", func() {
-				BeforeEach(func() {
+			ginkgo.Context("when the response sender indicates it is not filtered", func() {
+				ginkgo.BeforeEach(func() {
 					fakeResponseSender.IsFilteredReturns(false)
 				})
 
-				It("labels the metric with filtered=false", func() {
+				ginkgo.It("labels the metric with filtered=false", func() {
 					err := handler.Handle(context.Background(), server)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(fakeRequestsReceived.WithCallCount()).To(Equal(1))
+					gomega.Expect(fakeRequestsReceived.WithCallCount()).To(gomega.Equal(1))
 					labelValues := fakeRequestsReceived.WithArgsForCall(0)
-					Expect(labelValues).To(Equal([]string{
+					gomega.Expect(labelValues).To(gomega.Equal([]string{
 						"channel", "chain-id",
 						"filtered", "false",
 						"data_type", "filtered_block",
@@ -650,35 +670,37 @@ var _ = Describe("Deliver", func() {
 				})
 			})
 
-			It("records requests received, blocks sent, and requests completed with the filtered label set to true", func() {
+			//nolint:dupl // 655-690 lines are duplicate of 713-748.
+			ginkgo.It("records requests received, blocks sent, and requests completed with the filtered label "+
+				"set to true", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeRequestsReceived.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsReceived.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsReceived.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsReceived.WithCallCount()).To(gomega.Equal(1))
 				labelValues := fakeRequestsReceived.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "true",
 					"data_type", "filtered_block",
 				}))
 
-				Expect(fakeBlocksSent.AddCallCount()).To(Equal(1))
-				Expect(fakeBlocksSent.WithCallCount()).To(Equal(1))
-				Expect(fakeBlocksSent.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
+				gomega.Expect(fakeBlocksSent.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeBlocksSent.WithCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeBlocksSent.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
 				labelValues = fakeBlocksSent.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "true",
 					"data_type", "filtered_block",
 				}))
 
-				Expect(fakeRequestsCompleted.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsCompleted.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsCompleted.WithCallCount()).To(gomega.Equal(1))
 				labelValues = fakeRequestsCompleted.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "true",
 					"data_type", "filtered_block",
@@ -687,55 +709,57 @@ var _ = Describe("Deliver", func() {
 			})
 		})
 
-		Context("when blocks with private data are requested", func() {
+		ginkgo.Context("when blocks with private data are requested", func() {
 			var fakeResponseSender *mock.PrivateDataResponseSender
 
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				fakeResponseSender = &mock.PrivateDataResponseSender{}
 				fakeResponseSender.DataTypeReturns("block_and_pvtdata")
 				server.ResponseSender = fakeResponseSender
 			})
 
-			It("handles the request and returns private data for all collections", func() {
+			ginkgo.It("handles the request and returns private data for all collections", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(fakeResponseSender.DataTypeCallCount()).To(Equal(1))
-				Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(1))
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(fakeResponseSender.DataTypeCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(1))
 				b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(0)
-				Expect(b).To(ProtoEqual(&cb.Block{
+				gomega.Expect(b).To(test.ProtoEqual(&cb.Block{
 					Header: &cb.BlockHeader{Number: 100},
 				}))
 			})
 
-			It("records requests received, blocks sent, and requests completed with the privatedata label set to true", func() {
+			//nolint:dupl // 655-690 lines are duplicate of 713-748.
+			ginkgo.It("records requests received, blocks sent, and requests completed with the privatedata "+
+				"label set to true", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeRequestsReceived.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsReceived.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsReceived.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsReceived.WithCallCount()).To(gomega.Equal(1))
 				labelValues := fakeRequestsReceived.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "false",
 					"data_type", "block_and_pvtdata",
 				}))
 
-				Expect(fakeBlocksSent.AddCallCount()).To(Equal(1))
-				Expect(fakeBlocksSent.WithCallCount()).To(Equal(1))
-				Expect(fakeBlocksSent.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
+				gomega.Expect(fakeBlocksSent.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeBlocksSent.WithCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeBlocksSent.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
 				labelValues = fakeBlocksSent.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "false",
 					"data_type", "block_and_pvtdata",
 				}))
 
-				Expect(fakeRequestsCompleted.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsCompleted.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsCompleted.WithCallCount()).To(gomega.Equal(1))
 				labelValues = fakeRequestsCompleted.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "false",
 					"data_type", "block_and_pvtdata",
@@ -744,152 +768,176 @@ var _ = Describe("Deliver", func() {
 			})
 		})
 
-		Context("when sending the block fails", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when sending the block fails", func() {
+			ginkgo.BeforeEach(func() {
 				fakeResponseSender.SendBlockResponseReturns(errors.New("send-fails"))
 			})
 
-			It("returns the error", func() {
+			ginkgo.It("returns the error", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).To(MatchError("send-fails"))
+				gomega.Expect(err).To(gomega.MatchError("send-fails"))
 			})
 		})
 
-		It("sends a success response", func() {
+		ginkgo.It("sends a success response", func() {
 			err := handler.Handle(context.Background(), server)
-			Expect(err).NotTo(HaveOccurred())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+			gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 			resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-			Expect(resp).To(Equal(cb.Status_SUCCESS))
+			gomega.Expect(resp).To(gomega.Equal(cb.Status_SUCCESS))
 		})
 
-		Context("when sending the success status fails", func() {
-			BeforeEach(func() {
+		ginkgo.It("HandleAttestation sends requested block", func() {
+			err := handler.HandleAttestation(context.Background(), server, envelope)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(1))
+			b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(0)
+			gomega.Expect(b).To(test.ProtoEqual(&cb.Block{
+				Header: &cb.BlockHeader{Number: 100},
+			}))
+		})
+
+		ginkgo.Context("when sending the success status fails", func() {
+			ginkgo.BeforeEach(func() {
 				fakeResponseSender.SendStatusResponseReturns(errors.New("send-success-fails"))
 			})
 
-			It("returns the error", func() {
+			ginkgo.It("returns the error", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).To(MatchError("send-success-fails"))
+				gomega.Expect(err).To(gomega.MatchError("send-success-fails"))
+			})
+
+			ginkgo.It("HandleAttestation returns the error", func() {
+				err := handler.HandleAttestation(context.Background(), server, envelope)
+				gomega.Expect(err).To(gomega.MatchError("send-success-fails"))
 			})
 		})
 
-		Context("when receive fails", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when receive fails", func() {
+			ginkgo.BeforeEach(func() {
 				fakeReceiver.RecvReturns(nil, errors.New("oh bother"))
 			})
 
-			It("returns the error", func() {
+			ginkgo.It("returns the error", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).To(MatchError("oh bother"))
+				gomega.Expect(err).To(gomega.MatchError("oh bother"))
 			})
 		})
 
-		Context("when unmarshalling the payload fails", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when unmarshalling the payload fails", func() {
+			ginkgo.BeforeEach(func() {
 				envelope.Payload = []byte("completely-bogus-data")
 			})
 
-			It("sends a bad request message", func() {
+			ginkgo.It("sends a bad request message", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when the payload header is nil", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when the payload header is nil", func() {
+			ginkgo.BeforeEach(func() {
 				envelope.Payload = protoutil.MarshalOrPanic(&cb.Payload{
 					Header: nil,
 				})
 			})
 
-			It("sends a bad request message", func() {
+			ginkgo.It("sends a bad request message", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
+			})
+
+			ginkgo.It("sends a bad envelope to HandleAttestation", func() {
+				err := handler.HandleAttestation(context.Background(), server, envelope)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
+				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when unmarshalling the channel header fails", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when unmarshalling the channel header fails", func() {
+			ginkgo.BeforeEach(func() {
 				channelHeaderPayload = []byte("complete-nonsense")
 			})
 
-			It("sends a bad request message", func() {
+			ginkgo.It("sends a bad request message", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when the channel header timestamp is nil", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when the channel header timestamp is nil", func() {
+			ginkgo.BeforeEach(func() {
 				channelHeaderPayload = protoutil.MarshalOrPanic(&cb.ChannelHeader{
 					Timestamp: nil,
 				})
 			})
 
-			It("sends a bad request message", func() {
+			ginkgo.It("sends a bad request message", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when the channel header timestamp is out of the time window", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when the channel header timestamp is out of the time window", func() {
+			ginkgo.BeforeEach(func() {
 				channelHeaderPayload = protoutil.MarshalOrPanic(&cb.ChannelHeader{
 					Timestamp: &timestamppb.Timestamp{},
 				})
 			})
 
-			It("sends status bad request", func() {
+			ginkgo.It("sends status bad request", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when the channel is not found", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when the channel is not found", func() {
+			ginkgo.BeforeEach(func() {
 				fakeChainManager.GetChainReturns(nil)
 			})
 
-			It("sends status not found", func() {
+			ginkgo.It("sends status not found", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_NOT_FOUND))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_NOT_FOUND))
 			})
 		})
 
-		Context("when the client disconnects before reading from the chain", func() {
+		ginkgo.Context("when the client disconnects before reading from the chain", func() {
 			var (
 				ctx    context.Context
 				cancel func()
 				done   chan struct{}
 			)
 
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				done = make(chan struct{})
 				ctx, cancel = context.WithCancel(context.Background())
 				cancel()
@@ -899,52 +947,52 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			AfterEach(func() {
+			ginkgo.AfterEach(func() {
 				close(done)
 			})
 
-			It("aborts the deliver stream", func() {
+			ginkgo.It("aborts the deliver stream", func() {
 				err := handler.Handle(ctx, server)
-				Expect(err).To(MatchError("context finished before block retrieved: context canceled"))
+				gomega.Expect(err).To(gomega.MatchError("context finished before block retrieved: context canceled"))
 			})
 		})
 
-		Context("when the chain errors before reading from the chain", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when the chain errors before reading from the chain", func() {
+			ginkgo.BeforeEach(func() {
 				close(errCh)
 			})
 
-			It("sends status service unavailable", func() {
+			ginkgo.It("sends status service unavailable", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeChain.ReaderCallCount()).To(Equal(0))
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeChain.ReaderCallCount()).To(gomega.Equal(0))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_SERVICE_UNAVAILABLE))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_SERVICE_UNAVAILABLE))
 			})
 
-			Context("when the seek info requests a best effort error response", func() {
-				BeforeEach(func() {
+			ginkgo.Context("when the seek info requests a best effort error response", func() {
+				ginkgo.BeforeEach(func() {
 					seekInfo.ErrorResponse = ab.SeekInfo_BEST_EFFORT
 				})
 
-				It("replies with the desired blocks", func() {
+				ginkgo.It("replies with the desired blocks", func() {
 					err := handler.Handle(context.Background(), server)
-					Expect(err).NotTo(HaveOccurred())
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-					Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(1))
-					Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+					gomega.Expect(fakeResponseSender.SendBlockResponseCallCount()).To(gomega.Equal(1))
+					gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 					resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-					Expect(resp).To(Equal(cb.Status_SUCCESS))
+					gomega.Expect(resp).To(gomega.Equal(cb.Status_SUCCESS))
 				})
 			})
 		})
 
-		Context("when the chain errors while reading from the chain", func() {
+		ginkgo.Context("when the chain errors while reading from the chain", func() {
 			var doneCh chan struct{}
 
-			BeforeEach(func() {
+			ginkgo.BeforeEach(func() {
 				doneCh = make(chan struct{})
 				fakeBlockIterator.NextStub = func() (*cb.Block, cb.Status) {
 					<-doneCh
@@ -956,57 +1004,57 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			AfterEach(func() {
+			ginkgo.AfterEach(func() {
 				close(doneCh)
 			})
 
-			It("sends status service unavailable", func() {
+			ginkgo.It("sends status service unavailable", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeChain.ReaderCallCount()).To(Equal(1))
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeChain.ReaderCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_SERVICE_UNAVAILABLE))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_SERVICE_UNAVAILABLE))
 			})
 		})
 
-		Context("when the access evaluation fails", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when the access evaluation fails", func() {
+			ginkgo.BeforeEach(func() {
 				fakePolicyChecker.CheckPolicyReturns(errors.New("no-access-for-you"))
 			})
 
-			It("sends status not found", func() {
+			ginkgo.It("sends status not found", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_FORBIDDEN))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_FORBIDDEN))
 			})
 
-			It("records requests received, (unsuccessful) requests completed, and (zero) blocks sent", func() {
+			ginkgo.It("records requests received, (unsuccessful) requests completed, and (zero) blocks sent", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeRequestsReceived.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsReceived.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsReceived.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsReceived.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsReceived.WithCallCount()).To(gomega.Equal(1))
 				labelValues := fakeRequestsReceived.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "false",
 					"data_type", "block",
 				}))
 
-				Expect(fakeBlocksSent.AddCallCount()).To(Equal(0))
-				Expect(fakeBlocksSent.WithCallCount()).To(Equal(0))
+				gomega.Expect(fakeBlocksSent.AddCallCount()).To(gomega.Equal(0))
+				gomega.Expect(fakeBlocksSent.WithCallCount()).To(gomega.Equal(0))
 
-				Expect(fakeRequestsCompleted.AddCallCount()).To(Equal(1))
-				Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
-				Expect(fakeRequestsCompleted.WithCallCount()).To(Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddCallCount()).To(gomega.Equal(1))
+				gomega.Expect(fakeRequestsCompleted.AddArgsForCall(0)).To(gomega.BeNumerically("~", 1.0))
+				gomega.Expect(fakeRequestsCompleted.WithCallCount()).To(gomega.Equal(1))
 				labelValues = fakeRequestsCompleted.WithArgsForCall(0)
-				Expect(labelValues).To(Equal([]string{
+				gomega.Expect(labelValues).To(gomega.Equal([]string{
 					"channel", "chain-id",
 					"filtered", "false",
 					"data_type", "block",
@@ -1015,58 +1063,58 @@ var _ = Describe("Deliver", func() {
 			})
 		})
 
-		Context("when the access expires", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when the access expires", func() {
+			ginkgo.BeforeEach(func() {
 				fakeChain.SequenceStub = func() uint64 {
 					return uint64(fakeChain.SequenceCallCount())
 				}
 				fakePolicyChecker.CheckPolicyReturnsOnCall(1, errors.New("no-access-for-you"))
 			})
 
-			It("sends status not found", func() {
+			ginkgo.It("sends status not found", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_FORBIDDEN))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_FORBIDDEN))
 
-				Expect(fakePolicyChecker.CheckPolicyCallCount()).To(Equal(2))
+				gomega.Expect(fakePolicyChecker.CheckPolicyCallCount()).To(gomega.Equal(2))
 			})
 		})
 
-		Context("when unmarshalling seek info fails", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when unmarshalling seek info fails", func() {
+			ginkgo.BeforeEach(func() {
 				seekInfoPayload = []byte("complete-nonsense")
 			})
 
-			It("sends status bad request", func() {
+			ginkgo.It("sends status bad request", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when seek start and stop are nil", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when seek start and stop are nil", func() {
+			ginkgo.BeforeEach(func() {
 				seekInfo = &ab.SeekInfo{Start: nil, Stop: nil}
 			})
 
-			It("sends status bad request", func() {
+			ginkgo.It("sends status bad request", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when seek info start number is greater than stop number", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when seek info start number is greater than stop number", func() {
+			ginkgo.BeforeEach(func() {
 				seekInfo = &ab.SeekInfo{
 					Start: seekNewest,
 					Stop: &ab.SeekPosition{
@@ -1075,18 +1123,18 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			It("sends status bad request", func() {
+			ginkgo.It("sends status bad request", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_BAD_REQUEST))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_BAD_REQUEST))
 			})
 		})
 
-		Context("when fail if not ready is set and the next block is unavailable", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when fail if not ready is set and the next block is unavailable", func() {
+			ginkgo.BeforeEach(func() {
 				fakeBlockReader.HeightReturns(1000)
 				fakeBlockReader.IteratorReturns(fakeBlockIterator, 1000)
 
@@ -1101,29 +1149,29 @@ var _ = Describe("Deliver", func() {
 				}
 			})
 
-			It("sends status not found", func() {
+			ginkgo.It("sends status not found", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeBlockIterator.NextCallCount()).To(Equal(0))
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeBlockIterator.NextCallCount()).To(gomega.Equal(0))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_NOT_FOUND))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_NOT_FOUND))
 			})
 		})
 
-		Context("when next block status does not indicate success", func() {
-			BeforeEach(func() {
+		ginkgo.Context("when next block status does not indicate success", func() {
+			ginkgo.BeforeEach(func() {
 				fakeBlockIterator.NextReturns(nil, cb.Status_UNKNOWN)
 			})
 
-			It("forwards the status response", func() {
+			ginkgo.It("forwards the status response", func() {
 				err := handler.Handle(context.Background(), server)
-				Expect(err).NotTo(HaveOccurred())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				Expect(fakeResponseSender.SendStatusResponseCallCount()).To(Equal(1))
+				gomega.Expect(fakeResponseSender.SendStatusResponseCallCount()).To(gomega.Equal(1))
 				resp := fakeResponseSender.SendStatusResponseArgsForCall(0)
-				Expect(resp).To(Equal(cb.Status_UNKNOWN))
+				gomega.Expect(resp).To(gomega.Equal(cb.Status_UNKNOWN))
 			})
 		})
 	})
