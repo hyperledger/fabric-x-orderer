@@ -608,7 +608,7 @@ func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, path
 		return nil, err
 	}
 
-	newCertBytes, err := os.ReadFile(pathToNewTLSKey)
+	newCertBytes, err := os.ReadFile(filepath.Join(pathToNewTLSCert, "tls-cert.pem"))
 	if err != nil {
 		return nil, err
 	}
