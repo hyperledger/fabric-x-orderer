@@ -226,7 +226,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	parties = []types.PartyID{2, 3, 4, 5}
 
 	// try to get the removed party
-	removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
+	removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedPartyLeader), "local_config_consenter.yaml")
 	removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 	require.NoError(t, err)
 	require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
@@ -247,7 +247,8 @@ func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID) {
 		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
-		utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
+		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
+		require.NoError(t, err)
 	}
 }
 
@@ -260,7 +261,7 @@ func createConsensusNodesAndGRPCServers(t *testing.T, dir string, parties []type
 		require.NoError(t, err)
 		consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
 		require.NotNil(t, consenterConfig)
-		_, signer, _ := testutil.BuildTestLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID)
+		_, signer, err := testutil.BuildTestLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID)
 		require.NoError(t, err)
 		require.NotNil(t, signer)
 		consenterLogger := testutil.CreateLogger(t, int(i))
@@ -277,14 +278,19 @@ func startConsensusNodesAndRegisterGRPCServers(parties []types.PartyID, consensu
 		protos.RegisterConsensusServer(servers[i].Server(), consensusNode)
 		orderer.RegisterAtomicBroadcastServer(servers[i].Server(), consensusNode.DeliverService)
 		orderer.RegisterClusterNodeServiceServer(servers[i].Server(), consensusNode)
-		go func() {
-			servers[i].Start()
-		}()
+		srv := servers[i]
+		go func(s *comm.GRPCServer) {
+			if err := s.Start(); err != nil {
+				panic(fmt.Sprintf("failed to start gRPC server: %v", err))
+			}
+		}(srv)
 	}
 
 	ledgerListeners := make([]*storageListener, 0, len(parties))
 	for _, consensusNode := range consensusNodes {
-		consensusNode.Start()
+		if err := consensusNode.Start(); err != nil {
+			panic(fmt.Sprintf("failed to start consensus node: %v", err))
+		}
 		ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
 		consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
 		ledgerListeners = append(ledgerListeners, ledgerListener)
@@ -297,21 +303,25 @@ func startConsensusNodesAndRegisterGRPCServers(parties []types.PartyID, consensu
 
 func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, privateKey *ecdsa.PrivateKey, configSeq types.ConfigSequence, expectedHeaderNumber uint64) {
 	for _, consensusNode := range consensusNodes {
-		baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq+1)
+		baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq+1, 1)
 		require.NoError(t, err)
 		controlEvent := &state.ControlEvent{BAF: baf}
 		err = consensusNode.SubmitRequest(controlEvent.Bytes())
 		require.ErrorContains(t, err, "mismatch config sequence")
 	}
-	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq)
+	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq, 1)
 	require.NoError(t, err)
 	controlEvent := &state.ControlEvent{BAF: baf}
 	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
 	require.NoError(t, err)
 	for _, ledgerListener := range ledgerListeners {
 		require.Eventually(t, func() bool {
-			b := <-ledgerListener.c
-			return b.Header.Number == expectedHeaderNumber
+			select {
+			case b := <-ledgerListener.c:
+				return b.Header.Number == expectedHeaderNumber
+			default:
+				return false
+			}
 		}, 30*time.Second, 100*time.Millisecond)
 	}
 }
@@ -320,8 +330,12 @@ func makeSureConfigBlockCommittedAndStopConsensusNodes(t *testing.T, consensusNo
 	for i, consensusNode := range consensusNodes {
 		var lastDecision *common.Block
 		require.Eventually(t, func() bool {
-			lastDecision = <-ledgerListeners[i].c
-			return lastDecision.Header.Number == expectedBlockNumber
+			select {
+			case lastDecision = <-ledgerListeners[i].c:
+				return lastDecision.Header.Number == expectedBlockNumber
+			default:
+				return false
+			}
 		}, 30*time.Second, 100*time.Millisecond)
 
 		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
