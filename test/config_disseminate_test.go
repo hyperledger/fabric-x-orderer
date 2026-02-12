@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	cfgutil "github.com/hyperledger/fabric-x-orderer/testutil/configutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/onsi/gomega/gexec"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -277,6 +278,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 
 	startBlock := uint64(0)
 	endBlock := uint64(1)
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig: uc,
@@ -285,6 +287,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 		EndBlock:   endBlock,
 		Blocks:     2,
 		ErrString:  "cancelled pull from assembler: %d",
+		Signer:     pullRequestSigner,
 	})
 
 	// Check config store size of routers
@@ -361,6 +364,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 		EndBlock:   uint64(2),
 		Blocks:     3,
 		ErrString:  "cancelled pull from assembler: %d",
+		Signer:     pullRequestSigner,
 	})
 
 	// Check that router and batcher config store keep the same size

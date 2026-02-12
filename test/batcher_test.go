@@ -21,6 +21,7 @@ import (
 	config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
@@ -112,6 +113,8 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	totalTxSent += totalTxNumber
 
+	signer := signutil.CreateTestSigner(t, "org1", dir)
+
 	// Pull from Assemblers
 	infos := PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:       uc,
@@ -122,6 +125,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 
 	// Get the primary batcher
@@ -178,6 +182,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 
 	// check that the primary batcher has changed
@@ -199,6 +204,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 
 	// 7.
@@ -239,6 +245,7 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 }
 
@@ -325,6 +332,8 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	totalTxSent += totalTxNumber
 
+	signer := signutil.CreateTestSigner(t, "org1", dir)
+
 	// Pull from Assemblers
 	infos := PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:       uc,
@@ -335,6 +344,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 
 	primaryBatcherId := infos[types.PartyID(1)].Primary[types.ShardID(1)]
@@ -395,6 +405,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 
 	// make sure the primary batcher did not change
@@ -416,6 +427,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 
 	// 7.
@@ -452,6 +464,7 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signer,
 	})
 }
 
@@ -548,6 +561,7 @@ func TestVerifySignedTxsByBatcherSingleParty(t *testing.T) {
 		Timeout:          60,
 		NeedVerification: true,
 		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           signutil.CreateTestSigner(t, "org1", dir),
 	})
 
 	// 7. Verify that the batchers have received the transactions.

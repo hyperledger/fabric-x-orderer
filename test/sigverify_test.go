@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	cfgutil "github.com/hyperledger/fabric-x-orderer/testutil/configutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
@@ -118,6 +119,7 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 		EndBlock:   endBlock,
 		Status:     &statusSuccess,
 		Verifier:   verifier,
+		Signer:     signutil.CreateTestSigner(t, "org1", dir),
 	})
 }
 
@@ -196,5 +198,6 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 		Blocks:     totalBlocks,
 		ErrString:  "cancelled pull from assembler: %d",
 		LogString:  "configuration block 1 partyID %d verified with",
+		Signer:     signutil.CreateTestSigner(t, "org1", dir),
 	})
 }
