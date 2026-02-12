@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/gossip"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"google.golang.org/grpc"
 
@@ -33,20 +32,6 @@ type LedgerInfo interface {
 
 	// GetCurrentBlockHash returns the block header hash of the last block in the ledger.
 	GetCurrentBlockHash() ([]byte, error)
-}
-
-// TODO Remove this as in fabric-x we don't have gossip at the peers.
-
-// GossipServiceAdapter serves to provide basic functionality
-// required from gossip service by delivery service
-//
-//go:generate counterfeiter -o fake/gossip_service_adapter.go --fake-name GossipServiceAdapter . GossipServiceAdapter
-type GossipServiceAdapter interface {
-	// AddPayload adds payload to the local state sync buffer
-	AddPayload(chainID string, payload *gossip.Payload) error
-
-	// Gossip the message across the peers
-	Gossip(msg *gossip.GossipMessage)
 }
 
 //go:generate counterfeiter -o fake/orderer_connection_source_factory.go --fake-name OrdererConnectionSourceFactory . OrdererConnectionSourceFactory
@@ -68,8 +53,7 @@ type DeliverStreamer interface {
 // MaxRetryDurationExceededHandler is a function that decides what to do in case the total time the component spends in
 // reconnection attempts is exceeded. If it returns true, it means that the component should stop retrying.
 //
-// In the peer, with gossip and a dynamic leader, stopping causes the gossip leader to yield.
-// In the peer, with gossip and a static leader, we never stop.
+// In the orderer, we must limit the time spent reconnecting, as we must limit the time we do Synch().
 type MaxRetryDurationExceededHandler func() (stopRetries bool)
 
 const backoffExponentBase = 1.2
