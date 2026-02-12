@@ -8,30 +8,24 @@ package orderers
 
 import (
 	"bytes"
-	"crypto/md5"
 	"crypto/sha256"
 	"fmt"
 	"math/rand"
 	"sync"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/pkg/errors"
 )
 
-type ConnectionSource struct {
-	mutex              sync.RWMutex
-	allEndpoints       []*Endpoint       // All endpoints, excluding the self-endpoint.
-	orgToEndpointsHash map[string][]byte // Used to detect whether the endpoints or certificates has changed.
-	logger             *flogging.FabricLogger
-	selfEndpoint       string // Empty when used by a peer, or the self-endpoint when used by an orderer.
-}
-
+// Endpoint represents an orderer endpoint, which includes the endpoint address, TLS root certs, and a channel that is closed when the endpoint is refreshed.
 type Endpoint struct {
 	Address   string
 	RootCerts [][]byte
 	Refreshed chan struct{}
 }
 
+// String returns a string representation of the Endpoint, including the address and a hash of the TLS root certs. If the Endpoint is nil, it returns "<nil>".
 func (e *Endpoint) String() string {
 	if e == nil {
 		return "<nil>"
@@ -40,15 +34,21 @@ func (e *Endpoint) String() string {
 	certHashStr := "<nil>"
 
 	if e.RootCerts != nil {
-		hasher := md5.New()
-		for _, cert := range e.RootCerts {
-			hasher.Write(cert)
-		}
-		hash := hasher.Sum(nil)
+		hash := flattenRootCerts(e.RootCerts)
 		certHashStr = fmt.Sprintf("%X", hash)
 	}
 
-	return fmt.Sprintf("Address: %s, CertHash: %s", e.Address, certHashStr)
+	return fmt.Sprintf("Address: %s, RootCertHash: %s", e.Address, certHashStr)
+}
+
+type Party2Endpoint map[types.PartyID]*Endpoint
+
+type ConnectionSource struct {
+	mutex            sync.RWMutex
+	allEndpoints     []*Endpoint                 // All endpoints, excluding the self-endpoint.
+	partyToEndpoints map[types.PartyID]*Endpoint // All endpoints, including self party, used to detect changes.
+	logger           *flogging.FabricLogger
+	selfParty        types.PartyID // The party ID of the entity using this connection source. If PartyID is zero, it means the user of this connection source is not part of the oredering organizations.
 }
 
 type OrdererOrg struct {
@@ -56,11 +56,11 @@ type OrdererOrg struct {
 	RootCerts [][]byte
 }
 
-func NewConnectionSource(logger *flogging.FabricLogger, selfEndpoint string) *ConnectionSource {
+func NewConnectionSource(logger *flogging.FabricLogger, selfParty types.PartyID) *ConnectionSource {
 	return &ConnectionSource{
-		orgToEndpointsHash: map[string][]byte{},
-		logger:             logger,
-		selfEndpoint:       selfEndpoint,
+		partyToEndpoints: map[types.PartyID]*Endpoint{},
+		logger:           logger,
+		selfParty:        selfParty,
 	}
 }
 
@@ -95,53 +95,19 @@ func (cs *ConnectionSource) ShuffledEndpoints() []*Endpoint {
 	return returnedSlice
 }
 
-// Update calculates whether there was a change in the endpoints or certificates, and updates the endpoint if there was
+// Update2 calculates whether there was a change in the endpoints or certificates, and updates the endpoint if there was
 // a change. When endpoints are updated, all the 'refreshed' channels of the old endpoints are closed and a new set of
 // endpoints is prepared.
 //
 // Update skips the self-endpoint (if not empty) when preparing the endpoint array. However, changes to the
 // self-endpoint do trigger the refresh of all the endpoints.
-func (cs *ConnectionSource) Update(orgs map[string]OrdererOrg) {
+func (cs *ConnectionSource) Update2(party2Endpoints Party2Endpoint) {
 	cs.mutex.Lock()
 	defer cs.mutex.Unlock()
 
-	cs.logger.Infof("Processing updates for orderer endpoints: %+v", orgs)
+	cs.logger.Infof("Processing updates for orderer endpoints: %+v", party2Endpoints)
 
-	newOrgToEndpointsHash := map[string][]byte{}
-
-	anyChange := false
-	hasOrgEndpoints := false
-	for orgName, org := range orgs {
-		hasher := sha256.New()
-		for _, cert := range org.RootCerts {
-			hasher.Write(cert)
-		}
-		for _, address := range org.Addresses {
-			hasOrgEndpoints = true
-			hasher.Write([]byte(address))
-		}
-		hash := hasher.Sum(nil)
-
-		newOrgToEndpointsHash[orgName] = hash
-
-		lastHash, ok := cs.orgToEndpointsHash[orgName]
-		if ok && bytes.Equal(hash, lastHash) {
-			continue
-		}
-
-		cs.logger.Debugf("Found orderer org '%s' has updates", orgName)
-		anyChange = true
-	}
-
-	for orgName := range cs.orgToEndpointsHash {
-		if _, ok := orgs[orgName]; !ok {
-			// An org that used to exist has been removed
-			cs.logger.Debugf("Found orderer org '%s' has been removed", orgName)
-			anyChange = true
-		}
-	}
-
-	if !anyChange {
+	if anyChange := cs.detectChanges(party2Endpoints); !anyChange {
 		cs.logger.Debugf("No orderer endpoint addresses or TLS certs were changed")
 		// No TLS certs changed, no org specified endpoints changed,
 		// and if we are using global endpoints, they are the same
@@ -149,9 +115,7 @@ func (cs *ConnectionSource) Update(orgs map[string]OrdererOrg) {
 		return
 	}
 
-	cs.orgToEndpointsHash = newOrgToEndpointsHash
-
-	for _, endpoint := range cs.allEndpoints {
+	for _, endpoint := range cs.partyToEndpoints {
 		// Alert any existing consumers that have a reference to the old endpoints
 		// that their reference is now stale and they should get a new one.
 		// This is done even for endpoints which have the same TLS certs and address
@@ -163,29 +127,59 @@ func (cs *ConnectionSource) Update(orgs map[string]OrdererOrg) {
 	}
 
 	cs.allEndpoints = nil
+	clear(cs.partyToEndpoints)
 
-	for _, org := range orgs {
-		var rootCerts [][]byte
-		for _, rootCert := range org.RootCerts {
-			if hasOrgEndpoints {
-				rootCerts = append(rootCerts, rootCert)
-			}
+	for partyID, endpoint := range party2Endpoints {
+		freshEndpoint := &Endpoint{
+			Address:   endpoint.Address,
+			RootCerts: endpoint.RootCerts,
+			Refreshed: make(chan struct{}),
 		}
 
-		// Note, if !hasOrgEndpoints, this for loop is a no-op
-		for _, address := range org.Addresses {
-			if address == cs.selfEndpoint {
-				cs.logger.Debugf("Skipping self endpoint [%s] from org specific endpoints", address)
-				continue
-			}
+		cs.partyToEndpoints[partyID] = freshEndpoint
 
-			cs.allEndpoints = append(cs.allEndpoints, &Endpoint{
-				Address:   address,
-				RootCerts: rootCerts,
-				Refreshed: make(chan struct{}),
-			})
+		if partyID == cs.selfParty {
+			cs.logger.Debugf("Skipping self party [%d] with endpoint [%s] from allEndpoints", partyID, endpoint.Address)
+			continue
 		}
+
+		cs.allEndpoints = append(cs.allEndpoints, freshEndpoint)
 	}
 
 	cs.logger.Debugf("Returning an orderer connection pool source with org specific endpoints: %+v", cs.allEndpoints)
+}
+
+func (cs *ConnectionSource) detectChanges(party2Endpoints Party2Endpoint) bool {
+	if len(party2Endpoints) != len(cs.partyToEndpoints) {
+		cs.logger.Debugf("Number of orderer endpoints has changed. Previous: %d, new: %d", len(cs.partyToEndpoints), len(party2Endpoints))
+		return true
+	}
+
+	for partyID, endpoint := range party2Endpoints {
+		existingEndpoint, ok := cs.partyToEndpoints[partyID]
+		if !ok {
+			cs.logger.Debugf("Found new orderer party [%d] with endpoint [%s]", partyID, endpoint.Address)
+			return true
+		}
+
+		if endpoint.Address != existingEndpoint.Address {
+			cs.logger.Debugf("Orderer party [%d] has a different endpoint address. Previous: [%s], new: [%s]", partyID, existingEndpoint.Address, endpoint.Address)
+			return true
+		}
+
+		if !bytes.Equal(flattenRootCerts(endpoint.RootCerts), flattenRootCerts(existingEndpoint.RootCerts)) {
+			cs.logger.Debugf("Orderer party [%d] has different TLS root certs", partyID)
+			return true
+		}
+	}
+
+	return false
+}
+
+func flattenRootCerts(rootCerts [][]byte) []byte {
+	hasher := sha256.New()
+	for _, cert := range rootCerts {
+		hasher.Write(cert)
+	}
+	return hasher.Sum(nil)
 }

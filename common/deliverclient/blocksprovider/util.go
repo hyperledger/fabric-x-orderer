@@ -112,3 +112,26 @@ func extractAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.
 
 	return orgAddresses, nil
 }
+
+func extractPartyAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.BCCSP) (map[string]orderers.OrdererOrg, error) {
+	bundle, err := channelconfig.NewBundle(channelID, config, cryptoProvider)
+	if err != nil {
+		return nil, err
+	}
+
+	orgAddresses := map[string]orderers.OrdererOrg{}
+	if ordererConfig, ok := bundle.OrdererConfig(); ok {
+		for orgName, org := range ordererConfig.Organizations() {
+			var certs [][]byte
+			certs = append(certs, org.MSP().GetTLSRootCerts()...)
+			certs = append(certs, org.MSP().GetTLSIntermediateCerts()...)
+
+			orgAddresses[orgName] = orderers.OrdererOrg{
+				Addresses: org.Endpoints(),
+				RootCerts: certs,
+			}
+		}
+	}
+
+	return orgAddresses, nil
+}

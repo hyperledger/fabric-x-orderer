@@ -20,6 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 // LedgerInfo an adapter to provide the interface to query
@@ -104,7 +105,7 @@ func (d *Deliverer) Initialize(channelConfig *cb.Config) {
 	)
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
-	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, "")
+	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, types.PartyID(0)) //<< no self-party, as in the peer
 	orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
 		// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
