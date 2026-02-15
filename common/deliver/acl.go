@@ -9,8 +9,6 @@ package deliver
 import (
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
@@ -32,10 +30,8 @@ func NewSessionAC(chain ConfigSequencer, env *common.Envelope, policyChecker Pol
 		return nil, err
 	}
 
-	id, err := proto.Marshal(signedData[0].Identity)
-	if err != nil {
-		return nil, err
-	}
+	id := signedData[0].Identity.GetCertificate()
+
 	return &SessionAccessControl{
 		envelope:       env,
 		channelID:      channelID,
