@@ -34,6 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
@@ -104,6 +105,7 @@ type Consensus struct {
 	ConfigRulesVerifier          verify.OrdererRules
 	softStopCh                   chan struct{}
 	softStopOnce                 sync.Once
+	txCount                      uint64
 }
 
 func (c *Consensus) Start() error {
@@ -296,10 +298,11 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	lastBlockNumber := lastCommonBlockHeader.Number
 	prevHash := protoutil.BlockHeaderHash(lastCommonBlockHeader)
 
+	currentTXCount := c.txCount
 	for i, ba := range attestations {
 		lastBlockNumber++
-
-		if err := VerifyDataCommonBlock(hdr.AvailableCommonBlocks[i], lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum); err != nil {
+		currentTXCount += ba[0].TXCount()
+		if err := VerifyDataCommonBlock(hdr.AvailableCommonBlocks[i], lastBlockNumber, prevHash, ba[0], currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum); err != nil {
 			return nil, errors.Wrapf(err, "failed verifying proposed block num %d in index %d", lastBlockNumber, i)
 		}
 
@@ -316,8 +319,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		batchedConfigReq := arma_types.BatchedRequests([][]byte{configReq})
 		computedConfigBlockHeader.DataHash = batchedConfigReq.Digest()
 		computedCommonBlocksHeaders[numOfAvailableBlocks-1] = computedConfigBlockHeader
-
-		if err := VerifyConfigCommonBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], lastBlockNumber+1, prevHash, computedConfigBlockHeader.DataHash, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1); err != nil {
+		currentTXCount++
+		if err := VerifyConfigCommonBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], lastBlockNumber+1, prevHash, computedConfigBlockHeader.DataHash, currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1); err != nil {
 			return nil, errors.Wrapf(err, "failed verifying proposed config block num %d", lastBlockNumber+1)
 		}
 	}
@@ -540,10 +543,11 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	}
 	availableCommonBlocks := make([]*common.Block, numOfAvailableBlocks)
 
+	currentTXCount := c.txCount
 	for i, ba := range attestations {
 		lastBlockNumber++
-
-		block, err := CreateDataCommonBlock(lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum)
+		currentTXCount += ba[0].TXCount()
+		block, err := CreateDataCommonBlock(lastBlockNumber, prevHash, ba[0], currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum)
 		if err != nil {
 			c.Logger.Panicf("Failed to create data block: %s", err.Error())
 		}
@@ -560,8 +564,8 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		if err != nil {
 			c.Logger.Panicf("Failed marshaling config request")
 		}
-
-		configBlock, err := CreateConfigCommonBlock(lastBlockNumber+1, prevHash, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1, configReq)
+		currentTXCount++
+		configBlock, err := CreateConfigCommonBlock(lastBlockNumber+1, prevHash, currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1, configReq)
 		if err != nil {
 			c.Logger.Panicf("Failed to create config block: %s", err.Error())
 		}
@@ -624,6 +628,10 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)
 	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
+	txCount := c.getLastTxCountFromHeader(hdr)
+	if txCount > 0 {
+		c.txCount = txCount
+	}
 
 	// update state
 	c.stateLock.Lock()
@@ -658,6 +666,18 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		CurrentConfig:    currentBFTConfig,
 		InLatestDecision: inLatestDecision,
 	}
+}
+
+func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
+	if len(header.AvailableCommonBlocks) == 0 {
+		return 0
+	}
+	lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+	_, _, txCount, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(lastBlock)
+	if err != nil {
+		c.Logger.Panicf("Couldn't retrieve tx count from last block; err: %s", err)
+	}
+	return txCount
 }
 
 func (c *Consensus) pickEndpoint() string {

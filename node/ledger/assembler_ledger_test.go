@@ -466,7 +466,7 @@ func createAssemblerLedger(t *testing.T, tmpDir string, logger *flogging.FabricL
 func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.OrderingInformation) {
 	var batches []types.Batch
 	var ordInfos []*state.OrderingInformation
-	transactionCount := 0
+	transactionCount := 1 // start with 1 to account for the genesis block transaction
 
 	// this 2D matrix holds the last batch-sequence of every [shard][primary]
 	seqArray := make([][]uint64, 8)
@@ -508,7 +508,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		}
 		protoutil.InitBlockMetadata(ordInfo.CommonBlock)
 
-		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, ordInfo, uint64(transactionCount+len(fb.Requests())))
+		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, ordInfo, uint64(transactionCount))
 		require.NoError(t, err)
 		ordInfo.CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 

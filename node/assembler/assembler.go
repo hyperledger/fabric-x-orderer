@@ -125,6 +125,13 @@ func NewDefaultAssembler(
 		// append config block only if it is the genesis block
 		blockNumber := configBlock.GetHeader().Number
 		if blockNumber == 0 {
+			genesisDigest := protoutil.ComputeBlockDataHash(configBlock.GetData())
+			blockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatchGenesis(genesisDigest), &state.GenesisOrderingInformation, 1)
+			if err != nil {
+				panic("failed to invoke AssemblerBlockMetadataToBytes")
+			}
+			configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
+
 			ordInfo := &state.OrderingInformation{
 				CommonBlock: configBlock,
 				DecisionNum: 0,
