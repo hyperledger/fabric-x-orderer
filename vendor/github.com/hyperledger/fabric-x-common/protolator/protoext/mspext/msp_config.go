@@ -12,7 +12,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-common/api/protomsp"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 )
 
 type MSPConfig struct{ *msp.MSPConfig }
@@ -31,7 +31,7 @@ func (mc *MSPConfig) VariablyOpaqueFieldProto(name string) (proto.Message, error
 	}
 	switch mc.Type {
 	case 0:
-		return &protomsp.FabricMSPConfig{}, nil
+		return &msppb.FabricMSPConfig{}, nil
 	case 1:
 		return &msp.IdemixMSPConfig{}, nil
 	default:

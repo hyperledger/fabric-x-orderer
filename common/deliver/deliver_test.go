@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/metricsfakes"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/crypto/tlsgen"
 	"github.com/hyperledger/fabric-x-common/common/util"
@@ -46,7 +45,6 @@ var _ = Describe("Deliver", func() {
 		var fakeChainManager *mock.ChainManager
 		var cert *x509.Certificate
 		var certBytes []byte
-		var serializedIdentity []byte
 		BeforeEach(func() {
 			fakeChainManager = &mock.ChainManager{}
 
@@ -58,8 +56,6 @@ var _ = Describe("Deliver", func() {
 			der, _ := pem.Decode(ca.CertBytes())
 			cert, err = x509.ParseCertificate(der.Bytes)
 			Expect(err).NotTo(HaveOccurred())
-
-			serializedIdentity = protoutil.MarshalOrPanic(&msp.SerializedIdentity{IdBytes: certBytes})
 		})
 
 		It("returns a new handler", func() {
@@ -86,7 +82,7 @@ var _ = Describe("Deliver", func() {
 					deliver.NewMetrics(&disabled.Provider{}),
 					false)
 
-				Expect(handler.ExpirationCheckFunc(serializedIdentity)).To(Equal(cert.NotAfter))
+				Expect(handler.ExpirationCheckFunc(certBytes)).To(Equal(cert.NotAfter))
 			})
 		})
 
@@ -99,7 +95,7 @@ var _ = Describe("Deliver", func() {
 					deliver.NewMetrics(&disabled.Provider{}),
 					true)
 
-				Expect(handler.ExpirationCheckFunc(serializedIdentity)).NotTo(Equal(cert.NotAfter))
+				Expect(handler.ExpirationCheckFunc(certBytes)).NotTo(Equal(cert.NotAfter))
 			})
 		})
 	})

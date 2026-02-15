@@ -5,15 +5,16 @@ import (
 	"sync"
 
 	mspa "github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-orderer/common/msputils"
 )
 
 type MSP struct {
-	DeserializeIdentityStub        func([]byte) (msp.Identity, error)
+	DeserializeIdentityStub        func(*msppb.Identity) (msp.Identity, error)
 	deserializeIdentityMutex       sync.RWMutex
 	deserializeIdentityArgsForCall []struct {
-		arg1 []byte
+		arg1 *msppb.Identity
 	}
 	deserializeIdentityReturns struct {
 		result1 msp.Identity
@@ -98,10 +99,10 @@ type MSP struct {
 	getVersionReturnsOnCall map[int]struct {
 		result1 msp.MSPVersion
 	}
-	IsWellFormedStub        func(*mspa.SerializedIdentity) error
+	IsWellFormedStub        func(*msppb.Identity) error
 	isWellFormedMutex       sync.RWMutex
 	isWellFormedArgsForCall []struct {
-		arg1 *mspa.SerializedIdentity
+		arg1 *msppb.Identity
 	}
 	isWellFormedReturns struct {
 		result1 error
@@ -147,27 +148,21 @@ type MSP struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *MSP) DeserializeIdentity(arg1 []byte) (msp.Identity, error) {
-	var arg1Copy []byte
-	if arg1 != nil {
-		arg1Copy = make([]byte, len(arg1))
-		copy(arg1Copy, arg1)
-	}
+func (fake *MSP) DeserializeIdentity(arg1 *msppb.Identity) (msp.Identity, error) {
 	fake.deserializeIdentityMutex.Lock()
 	ret, specificReturn := fake.deserializeIdentityReturnsOnCall[len(fake.deserializeIdentityArgsForCall)]
 	fake.deserializeIdentityArgsForCall = append(fake.deserializeIdentityArgsForCall, struct {
-		arg1 []byte
-	}{arg1Copy})
-	stub := fake.DeserializeIdentityStub
-	fakeReturns := fake.deserializeIdentityReturns
-	fake.recordInvocation("DeserializeIdentity", []interface{}{arg1Copy})
+		arg1 *msppb.Identity
+	}{arg1})
+	fake.recordInvocation("DeserializeIdentity", []interface{}{arg1})
 	fake.deserializeIdentityMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.DeserializeIdentityStub != nil {
+		return fake.DeserializeIdentityStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
+	fakeReturns := fake.deserializeIdentityReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -177,13 +172,13 @@ func (fake *MSP) DeserializeIdentityCallCount() int {
 	return len(fake.deserializeIdentityArgsForCall)
 }
 
-func (fake *MSP) DeserializeIdentityCalls(stub func([]byte) (msp.Identity, error)) {
+func (fake *MSP) DeserializeIdentityCalls(stub func(*msppb.Identity) (msp.Identity, error)) {
 	fake.deserializeIdentityMutex.Lock()
 	defer fake.deserializeIdentityMutex.Unlock()
 	fake.DeserializeIdentityStub = stub
 }
 
-func (fake *MSP) DeserializeIdentityArgsForCall(i int) []byte {
+func (fake *MSP) DeserializeIdentityArgsForCall(i int) *msppb.Identity {
 	fake.deserializeIdentityMutex.RLock()
 	defer fake.deserializeIdentityMutex.RUnlock()
 	argsForCall := fake.deserializeIdentityArgsForCall[i]
@@ -221,16 +216,15 @@ func (fake *MSP) GetDefaultSigningIdentity() (msp.SigningIdentity, error) {
 	ret, specificReturn := fake.getDefaultSigningIdentityReturnsOnCall[len(fake.getDefaultSigningIdentityArgsForCall)]
 	fake.getDefaultSigningIdentityArgsForCall = append(fake.getDefaultSigningIdentityArgsForCall, struct {
 	}{})
-	stub := fake.GetDefaultSigningIdentityStub
-	fakeReturns := fake.getDefaultSigningIdentityReturns
 	fake.recordInvocation("GetDefaultSigningIdentity", []interface{}{})
 	fake.getDefaultSigningIdentityMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.GetDefaultSigningIdentityStub != nil {
+		return fake.GetDefaultSigningIdentityStub()
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
+	fakeReturns := fake.getDefaultSigningIdentityReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -277,16 +271,15 @@ func (fake *MSP) GetIdentifier() (string, error) {
 	ret, specificReturn := fake.getIdentifierReturnsOnCall[len(fake.getIdentifierArgsForCall)]
 	fake.getIdentifierArgsForCall = append(fake.getIdentifierArgsForCall, struct {
 	}{})
-	stub := fake.GetIdentifierStub
-	fakeReturns := fake.getIdentifierReturns
 	fake.recordInvocation("GetIdentifier", []interface{}{})
 	fake.getIdentifierMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.GetIdentifierStub != nil {
+		return fake.GetIdentifierStub()
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
+	fakeReturns := fake.getIdentifierReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -334,16 +327,15 @@ func (fake *MSP) GetKnownDeserializedIdentity(arg1 msp.IdentityIdentifier) msp.I
 	fake.getKnownDeserializedIdentityArgsForCall = append(fake.getKnownDeserializedIdentityArgsForCall, struct {
 		arg1 msp.IdentityIdentifier
 	}{arg1})
-	stub := fake.GetKnownDeserializedIdentityStub
-	fakeReturns := fake.getKnownDeserializedIdentityReturns
 	fake.recordInvocation("GetKnownDeserializedIdentity", []interface{}{arg1})
 	fake.getKnownDeserializedIdentityMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.GetKnownDeserializedIdentityStub != nil {
+		return fake.GetKnownDeserializedIdentityStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.getKnownDeserializedIdentityReturns
 	return fakeReturns.result1
 }
 
@@ -394,16 +386,15 @@ func (fake *MSP) GetTLSIntermediateCerts() [][]byte {
 	ret, specificReturn := fake.getTLSIntermediateCertsReturnsOnCall[len(fake.getTLSIntermediateCertsArgsForCall)]
 	fake.getTLSIntermediateCertsArgsForCall = append(fake.getTLSIntermediateCertsArgsForCall, struct {
 	}{})
-	stub := fake.GetTLSIntermediateCertsStub
-	fakeReturns := fake.getTLSIntermediateCertsReturns
 	fake.recordInvocation("GetTLSIntermediateCerts", []interface{}{})
 	fake.getTLSIntermediateCertsMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.GetTLSIntermediateCertsStub != nil {
+		return fake.GetTLSIntermediateCertsStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.getTLSIntermediateCertsReturns
 	return fakeReturns.result1
 }
 
@@ -447,16 +438,15 @@ func (fake *MSP) GetTLSRootCerts() [][]byte {
 	ret, specificReturn := fake.getTLSRootCertsReturnsOnCall[len(fake.getTLSRootCertsArgsForCall)]
 	fake.getTLSRootCertsArgsForCall = append(fake.getTLSRootCertsArgsForCall, struct {
 	}{})
-	stub := fake.GetTLSRootCertsStub
-	fakeReturns := fake.getTLSRootCertsReturns
 	fake.recordInvocation("GetTLSRootCerts", []interface{}{})
 	fake.getTLSRootCertsMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.GetTLSRootCertsStub != nil {
+		return fake.GetTLSRootCertsStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.getTLSRootCertsReturns
 	return fakeReturns.result1
 }
 
@@ -500,16 +490,15 @@ func (fake *MSP) GetType() msp.ProviderType {
 	ret, specificReturn := fake.getTypeReturnsOnCall[len(fake.getTypeArgsForCall)]
 	fake.getTypeArgsForCall = append(fake.getTypeArgsForCall, struct {
 	}{})
-	stub := fake.GetTypeStub
-	fakeReturns := fake.getTypeReturns
 	fake.recordInvocation("GetType", []interface{}{})
 	fake.getTypeMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.GetTypeStub != nil {
+		return fake.GetTypeStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.getTypeReturns
 	return fakeReturns.result1
 }
 
@@ -553,16 +542,15 @@ func (fake *MSP) GetVersion() msp.MSPVersion {
 	ret, specificReturn := fake.getVersionReturnsOnCall[len(fake.getVersionArgsForCall)]
 	fake.getVersionArgsForCall = append(fake.getVersionArgsForCall, struct {
 	}{})
-	stub := fake.GetVersionStub
-	fakeReturns := fake.getVersionReturns
 	fake.recordInvocation("GetVersion", []interface{}{})
 	fake.getVersionMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.GetVersionStub != nil {
+		return fake.GetVersionStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.getVersionReturns
 	return fakeReturns.result1
 }
 
@@ -601,22 +589,21 @@ func (fake *MSP) GetVersionReturnsOnCall(i int, result1 msp.MSPVersion) {
 	}{result1}
 }
 
-func (fake *MSP) IsWellFormed(arg1 *mspa.SerializedIdentity) error {
+func (fake *MSP) IsWellFormed(arg1 *msppb.Identity) error {
 	fake.isWellFormedMutex.Lock()
 	ret, specificReturn := fake.isWellFormedReturnsOnCall[len(fake.isWellFormedArgsForCall)]
 	fake.isWellFormedArgsForCall = append(fake.isWellFormedArgsForCall, struct {
-		arg1 *mspa.SerializedIdentity
+		arg1 *msppb.Identity
 	}{arg1})
-	stub := fake.IsWellFormedStub
-	fakeReturns := fake.isWellFormedReturns
 	fake.recordInvocation("IsWellFormed", []interface{}{arg1})
 	fake.isWellFormedMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.IsWellFormedStub != nil {
+		return fake.IsWellFormedStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.isWellFormedReturns
 	return fakeReturns.result1
 }
 
@@ -626,13 +613,13 @@ func (fake *MSP) IsWellFormedCallCount() int {
 	return len(fake.isWellFormedArgsForCall)
 }
 
-func (fake *MSP) IsWellFormedCalls(stub func(*mspa.SerializedIdentity) error) {
+func (fake *MSP) IsWellFormedCalls(stub func(*msppb.Identity) error) {
 	fake.isWellFormedMutex.Lock()
 	defer fake.isWellFormedMutex.Unlock()
 	fake.IsWellFormedStub = stub
 }
 
-func (fake *MSP) IsWellFormedArgsForCall(i int) *mspa.SerializedIdentity {
+func (fake *MSP) IsWellFormedArgsForCall(i int) *msppb.Identity {
 	fake.isWellFormedMutex.RLock()
 	defer fake.isWellFormedMutex.RUnlock()
 	argsForCall := fake.isWellFormedArgsForCall[i]
@@ -669,16 +656,15 @@ func (fake *MSP) SatisfiesPrincipal(arg1 msp.Identity, arg2 *mspa.MSPPrincipal) 
 		arg1 msp.Identity
 		arg2 *mspa.MSPPrincipal
 	}{arg1, arg2})
-	stub := fake.SatisfiesPrincipalStub
-	fakeReturns := fake.satisfiesPrincipalReturns
 	fake.recordInvocation("SatisfiesPrincipal", []interface{}{arg1, arg2})
 	fake.satisfiesPrincipalMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2)
+	if fake.SatisfiesPrincipalStub != nil {
+		return fake.SatisfiesPrincipalStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.satisfiesPrincipalReturns
 	return fakeReturns.result1
 }
 
@@ -730,16 +716,15 @@ func (fake *MSP) Setup(arg1 *mspa.MSPConfig) error {
 	fake.setupArgsForCall = append(fake.setupArgsForCall, struct {
 		arg1 *mspa.MSPConfig
 	}{arg1})
-	stub := fake.SetupStub
-	fakeReturns := fake.setupReturns
 	fake.recordInvocation("Setup", []interface{}{arg1})
 	fake.setupMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.SetupStub != nil {
+		return fake.SetupStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.setupReturns
 	return fakeReturns.result1
 }
 
@@ -791,16 +776,15 @@ func (fake *MSP) Validate(arg1 msp.Identity) error {
 	fake.validateArgsForCall = append(fake.validateArgsForCall, struct {
 		arg1 msp.Identity
 	}{arg1})
-	stub := fake.ValidateStub
-	fakeReturns := fake.validateReturns
 	fake.recordInvocation("Validate", []interface{}{arg1})
 	fake.validateMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.ValidateStub != nil {
+		return fake.ValidateStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.validateReturns
 	return fakeReturns.result1
 }
 

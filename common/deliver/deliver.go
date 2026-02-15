@@ -342,7 +342,11 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 			}
 		}
 
-		signedData := &protoutil.SignedData{Data: envelope.Payload, Identity: shdr.Creator, Signature: envelope.Signature}
+		id, err := protoutil.UnmarshalIdentity(shdr.Creator)
+		if err != nil {
+			return cb.Status_INTERNAL_SERVER_ERROR, err
+		}
+		signedData := &protoutil.SignedData{Data: envelope.Payload, Identity: id, Signature: envelope.Signature}
 		if err := srv.SendBlockResponse(block2send, chdr.ChannelId, chain, signedData); err != nil {
 			logger.Warningf("[channel: %s] Error sending to %s: %s", chdr.ChannelId, addr, err)
 			return cb.Status_INTERNAL_SERVER_ERROR, err

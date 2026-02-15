@@ -10,10 +10,11 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset"
 	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/rwset/kvrwset"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 )
 
 // the implicit contract of all these unmarshalers is that they
@@ -82,10 +83,11 @@ func UnmarshalIdentifierHeader(bytes []byte) (*common.IdentifierHeader, error) {
 	return ih, errors.Wrap(err, "error unmarshalling IdentifierHeader")
 }
 
-func UnmarshalSerializedIdentity(bytes []byte) (*msp.SerializedIdentity, error) {
-	sid := &msp.SerializedIdentity{}
-	err := proto.Unmarshal(bytes, sid)
-	return sid, errors.Wrap(err, "error unmarshalling SerializedIdentity")
+// UnmarshalIdentity unmarshals bytes to an Identity.
+func UnmarshalIdentity(bytes []byte) (*msppb.Identity, error) {
+	id := &msppb.Identity{}
+	err := proto.Unmarshal(bytes, id)
+	return id, errors.Wrap(err, "error unmarshalling Identity")
 }
 
 // UnmarshalHeader unmarshals bytes to a Header
