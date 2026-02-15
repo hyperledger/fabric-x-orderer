@@ -245,3 +245,76 @@ func TestStartAssemblerGetMetrics(t *testing.T) {
 
 	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
 }
+
+// scenario:
+// start an arma network with 4 parties and mTLS enabled for assembler
+// send some transactions to the network
+// pull blocks from one of the assemblers and count them, verify that all expected transactions are included in the pulled blocks
+func TestPullBlocksFromAssemblerWithMTLS(t *testing.T) {
+	totalTxNumber := 100
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+	var broadcastClient *client.BroadcastTxClient
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	listeners := testutil.CreateNetwork(t, configPath, 4, 2, "none", "mTLS")
+	require.NoError(t, err)
+	// 2.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 3.
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	// 4. Send To Routers
+	uc, err := testutil.GetUserConfig(dir, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, uc)
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+	require.NoError(t, err)
+	for i := 0; i < totalTxNumber; i++ {
+		txContent := tx.PrepareTxWithTimestamp(i, 100, []byte("sessionNumber"))
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+	// 5. Check If Transaction is sent
+	t.Log("Finished submit")
+
+	// Pull some block from the middle and count them
+	startBlock := uint64(0)
+	endBlock := uint64(math.MaxUint64)
+	totalTxs := 0
+	totalBlocks := 0
+
+	dc := client.NewDeliverClient(uc)
+	cnx, cancel := context.WithCancel(context.Background())
+	handler := func(block *common.Block) error {
+		totalTxs += len(block.Data.Data)
+		totalBlocks++
+		if totalTxs == totalTxNumber+1 {
+			cancel()
+			return context.Canceled
+		}
+		return nil
+	}
+	status, err := dc.PullBlocks(cnx, 1, startBlock, endBlock, handler, signutil.CreateTestSigner(t, "org1", dir))
+	assert.ErrorContains(t, err, "context canceled")
+	assert.Equal(t, common.Status(0), status)
+	assert.Equal(t, totalTxNumber+1, totalTxs)
+	assert.True(t, totalBlocks > 2)
+	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
+}

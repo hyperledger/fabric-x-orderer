@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/csv"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"math"
@@ -26,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -681,24 +683,9 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 		DialTimeout: time.Second * 5,
 	}
 
-	signer, err := signutil.CreateSignerForUser(userConfig.MSPDir)
+	requestEnvelope, err := createRequestEnvelopeForUser(userConfig)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create signer for user: %v", err)
-		os.Exit(3)
-	}
-
-	// prepare request envelope
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		"arma",
-		signer,
-		nextSeekInfo(0),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed create a request envelope")
+		fmt.Fprintf(os.Stderr, "failed to create a request envelope: %v", err)
 		os.Exit(3)
 	}
 
@@ -985,6 +972,34 @@ func writeStatisticsToCSV(file *os.File, statistic Statistics, timeIntervalToSam
 	}
 }
 
+func createRequestEnvelopeForUser(userConfig *UserConfig) (*common.Envelope, error) {
+	signer, err := signutil.CreateSignerForUser(userConfig.MSPDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signer for user: %v", err)
+	}
+
+	var tlsCertHash []byte
+	if userConfig.UseTLSAssembler == "mTLS" {
+		block, _ := pem.Decode(userConfig.TLSCertificate)
+		if block == nil || block.Type != "CERTIFICATE" {
+			return nil, fmt.Errorf("failed to decode PEM certificate")
+		}
+		tlsCertHash = util.ComputeSHA256(block.Bytes)
+	}
+
+	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		"arma",
+		signer,
+		nextSeekInfo(0),
+		int32(0),
+		uint64(0),
+		tlsCertHash,
+	)
+
+	return requestEnvelope, err
+}
+
 func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
 	// arbitrarily choose the first assembler to pull blocks from
 	pullFromPartyId := 1
@@ -1006,23 +1021,10 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 		},
 		DialTimeout: time.Second * 5,
 	}
-	signer, err := signutil.CreateSignerForUser(userConfig.MSPDir)
+
+	requestEnvelope, err := createRequestEnvelopeForUser(userConfig)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create signer: %v", err)
-		os.Exit(3)
-	}
-	// prepare request envelope
-	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
-		common.HeaderType_DELIVER_SEEK_INFO,
-		"arma",
-		signer,
-		nextSeekInfo(0),
-		int32(0),
-		uint64(0),
-		nil,
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed create a request envelope")
+		fmt.Fprintf(os.Stderr, "failed to create a request envelope: %v", err)
 		os.Exit(3)
 	}
 
