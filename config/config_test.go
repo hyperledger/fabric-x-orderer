@@ -82,7 +82,7 @@ func TestConfigurationCheckIfRouterNodeExistsInSharedConfig(t *testing.T) {
 
 	// choose local config for party1
 	localConfigPathRouter := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
-	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathRouter, filepath.Join(dir, "storage"))
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathRouter, filepath.Join(dir, "storage"), "")
 
 	fullConfig, genesisBlock, err := config.ReadConfig(localConfigPathRouter, testLogger)
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestConfigurationCheckIfBatcherNodeExistsInSharedConfig(t *testing.T) {
 
 	// choose local config for party1 shard1
 	localConfigPathBacther := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
-	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathBacther, filepath.Join(dir, "storage"))
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathBacther, filepath.Join(dir, "storage"), "")
 
 	fullConfig, genesisBlock, err := config.ReadConfig(localConfigPathBacther, testLogger)
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestConfigurationCheckIfConsenterNodeExistsInSharedConfig(t *testing.T) {
 
 	// choose local config for party1
 	localConfigPathConsenter := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
-	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathConsenter, filepath.Join(dir, "storage"))
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathConsenter, filepath.Join(dir, "storage"), "")
 
 	fullConfig, genesisBlock, err := config.ReadConfig(localConfigPathConsenter, testLogger)
 	require.NoError(t, err)
@@ -245,7 +245,7 @@ func TestConfigurationCheckIfAssemblerNodeExistsInSharedConfig(t *testing.T) {
 
 	// choose local config for party1
 	localConfigPathAssembler := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
-	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathAssembler, filepath.Join(dir, "storage"))
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathAssembler, filepath.Join(dir, "storage"), "")
 
 	fullConfig, genesisBlock, err := config.ReadConfig(localConfigPathAssembler, testLogger)
 	require.NoError(t, err)
