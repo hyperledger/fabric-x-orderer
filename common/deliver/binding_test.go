@@ -105,6 +105,7 @@ func TestBindingInspector(t *testing.T) {
 }
 
 type inspectingServer struct {
+	testpb.UnimplementedTestServiceServer
 	addr string
 	*comm.GRPCServer
 	lastContext atomic.Value

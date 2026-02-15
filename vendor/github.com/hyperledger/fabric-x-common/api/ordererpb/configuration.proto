@@ -1,0 +1,194 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+
+// The following rule disables snake names requirements for the entire file.
+// It should be removed once this issue is solved.
+// (-- api-linter: core::0140::lower-snake=disabled --)
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-common/api/ordererpb";
+
+package ordererpb;
+
+// SharedConfig holds the initial configuration that will be used to bootstrap new nodes.
+// This configuration is common to all Arma nodes.
+message SharedConfig {
+    repeated PartyConfig PartiesConfig = 1;
+    ConsensusConfig ConsensusConfig = 2;
+    BatchingConfig BatchingConfig = 3;
+}
+
+// PartyConfig carries the identity, certificates and nodes configuration of a party.
+message PartyConfig {
+    // the identity of the party, type unit16, id > 0
+    uint32 PartyID = 1;
+    // the certificates of the certificate authorities who generates the party's signing key-pairs
+    repeated bytes CACerts = 2;
+    // the certificates of the certificate authorities who generates the party's TLS key-pairs
+    repeated bytes TLSCACerts = 3;
+    // the shared configuration of the router
+    RouterNodeConfig RouterConfig = 4;
+    // the shared configuration of the batchers
+    repeated BatcherNodeConfig BatchersConfig = 5;
+    // the shared configuration of the consenter
+    ConsenterNodeConfig ConsenterConfig = 6;
+    // the shared configuration of the assembler
+    AssemblerNodeConfig AssemblerConfig = 7;
+}
+
+message RouterNodeConfig {
+    // the hostname or IP on which the gRPC server will listen
+    string host = 1;
+    // the port on which the gRPC server will listen
+    uint32 port = 2;
+    // the certificate used to authenticate with clients
+    bytes tls_cert = 3;
+}
+
+message BatcherNodeConfig {
+    // the ID of the shard to which the batcher is associated
+    uint32 shardID = 1;
+    // the hostname or IP on which the gRPC server will listen
+    string host = 2;
+    // the port on which the gRPC server will listen
+    uint32 port = 3;
+    // the signing certificate (that includes the public key) of the batcher used to authenticate signatures on BAS's
+    bytes sign_cert = 4;
+    // the certificate used to authenticate with clients
+    bytes tls_cert = 5;
+}
+
+message ConsenterNodeConfig {
+    // the hostname or IP on which the gRPC server will listen
+    string host = 1;
+    // the port on which the gRPC server will listen
+    uint32 port = 2;
+    // the signing certificate (that includes the public key) of the consensus used to authenticate signatures on blocks
+    bytes sign_cert = 3;
+    // the certificate used to authenticate with clients
+    bytes tls_cert = 4;
+}
+
+message AssemblerNodeConfig {
+    // the hostname or IP on which the gRPC server will listen
+    string host = 1;
+    // the port on which the gRPC server will listen
+    uint32 port = 2;
+    // the certificate used to authenticate with clients
+    bytes tls_cert = 3;
+}
+
+// BFT configuration
+message ConsensusConfig {
+    SmartBFTConfig SmartBFTConfig = 1;
+}
+
+message SmartBFTConfig {
+    // RequestBatchMaxCount is the maximal number of requests in a batch.
+    // A request batch that reaches this count is proposed immediately.
+    uint64 RequestBatchMaxCount = 1;
+    // RequestBatchMaxBytes is the maximal total size of requests in a batch, in bytes.
+    // This is also the maximal size of a request. A request batch that reaches this size is proposed immediately.
+    uint64 RequestBatchMaxBytes = 2;
+    // RequestBatchMaxInterval is the maximal time interval a request batch can wait before it is proposed.
+    // A request batch is accumulating requests until `RequestBatchMaxInterval` had elapsed from the time the batch was
+    // first created (i.e. the time the first request was added to it), or until it is of count `RequestBatchMaxCount`,
+    // or it reaches `RequestBatchMaxBytes`, whichever occurs first.
+    string RequestBatchMaxInterval = 3;
+    // IncomingMessageBufferSize is the size of the buffer holding incoming messages before they are processed (maximal number of messages).
+    uint64 IncomingMessageBufferSize = 4;
+    // RequestPoolSize is the number of pending requests retained by the node.
+    // The `RequestPoolSize` is recommended to be at least double (x2) the `RequestBatchMaxCount`.
+    // This cannot be changed dynamically and the node must be restarted to pick up the change.
+    uint64 RequestPoolSize = 5;
+    // RequestForwardTimeout is started from the moment a request is submitted, and defines the interval after which a
+    // request is forwarded to the leader.
+    string RequestForwardTimeout = 6;
+    // RequestComplainTimeout is started when `RequestForwardTimeout` expires, and defines the interval after which the
+    // node complains about the view leader.
+    string RequestComplainTimeout = 7;
+    // RequestAutoRemoveTimeout is started when `RequestComplainTimeout` expires, and defines the interval after which
+    // a request is removed (dropped) from the request pool.
+    string RequestAutoRemoveTimeout = 8;
+    // ViewChangeResendInterval defines the interval after which the ViewChange message is resent.
+    string ViewChangeResendInterval = 9;
+    // ViewChangeTimeout is started when a node first receives a quorum of `ViewChange` messages, and defines the
+    // interval after which the node will try to initiate a view change with a higher view number.
+    string ViewChangeTimeout = 10;
+    // LeaderHeartbeatTimeout is the interval after which, if nodes do not receive a "sign of life" from the leader,
+    // they complain about the current leader and try to initiate a view change. A sign of life is either a heartbeat
+    // or a message from the leader.
+    string LeaderHeartbeatTimeout = 11;
+    // LeaderHeartbeatCount is the number of heartbeats per `LeaderHeartbeatTimeout` that the leader should emit.
+    // The heartbeat-interval is equal to: `LeaderHeartbeatTimeout/LeaderHeartbeatCount`.
+    uint64 LeaderHeartbeatCount = 12;
+    // NumOfTicksBehindBeforeSyncing is the number of follower ticks where the follower is behind the leader
+    // by one sequence before starting a sync
+    uint64 NumOfTicksBehindBeforeSyncing = 13;
+    // CollectTimeout is the interval after which the node stops listening to `StateTransferResponse` messages,
+    // stops collecting information about view metadata from remote nodes.
+    string CollectTimeout = 14;
+    // SyncOnStart is a flag indicating whether a sync is required on startup.
+    bool SyncOnStart = 15;
+    // SpeedUpViewChange is a flag indicating whether a node waits for only f+1 view change messages to join
+    // the view change (hence speeds up the view change process), or it waits for a quorum before joining.
+    // Waiting only for f+1 is considered less safe.
+    bool SpeedUpViewChange = 16;
+    // LeaderRotation is a flag indicating whether leader rotation is active.
+    bool LeaderRotation = 17;
+    // DecisionsPerLeader is the number of decisions reached by a leader before there is a leader rotation.
+    uint64 DecisionsPerLeader = 18;
+    // RequestMaxBytes total allowed size of a single request.
+    uint64 RequestMaxBytes = 19;
+    // RequestPoolSubmitTimeout the total amount of time a client can wait for the submission of a single
+    // request into the request pool.
+    string RequestPoolSubmitTimeout = 20;
+
+}
+
+message BatchingConfig {
+    // BatchTimeouts controls the timeouts of a batch.
+    BatchTimeouts BatchTimeouts = 1;
+    // BatchSize controls the number of messages batched into a block and defines limits on a batch size.
+    BatchSize BatchSize = 2;
+    // RequestMaxBytes is the maximal request size in bytes.
+    uint64 RequestMaxBytes = 3;
+}
+
+message BatchSize {
+    // MaxMessageCount is the maximum number of messages to permit in a batch. No block will contain more than this number of messages.
+    uint32 MaxMessageCount = 1;
+    // AbsoluteMaxBytes is the absolute maximum number of bytes allowed for the serialized messages in a batch.
+    // The maximum block size is this value plus the size of the associated metadata (usually a few KB depending upon the size of the signing identities).
+    // Any transaction larger than this value will be rejected by ordering.
+    // It is recommended not to exceed 49 MB, given the default grpc max message size of 100 MB
+    uint32 AbsoluteMaxBytes = 2;
+    // PreferredMaxBytes is the preferred maximum number of bytes allowed for the serialized messages in a batch.
+    // Roughly, this field may be considered the best effort maximum size of a batch.
+    // A batch will fill with messages until this size is reached (or the max message count, or batch timeout is exceeded).
+    // If adding a new message to the batch would cause the batch to exceed the preferred max bytes, then the current batch is closed and written to a block, and a new batch containing the new message is created.
+    // If a message larger than the preferred max bytes is received, then its batch will contain only that message.
+    // Because messages may be larger than preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed the preferred max bytes, but will always contain exactly one transaction.
+    // *** NOTE: This field is not in use. ***
+    uint32 PreferredMaxBytes = 3;
+}
+
+message BatchTimeouts {
+    // BatchCreationTimeout is the time a batch can wait before it is created.
+    string BatchCreationTimeout = 1;
+    // FirstStrikeThreshold defines the maximum time a request can remain in the memory pool without being batched.
+    // After this duration, the request is forwarded to the primary batcher by the secondary batcher.
+    string FirstStrikeThreshold = 2;
+    // SecondStrikeThreshold defines the maximum duration that can pass following the FirstStrikeThreshold.
+    // If this timeout is reached, a complaint is sent to the consensus layer, suspecting primary censorship of the request.
+    string SecondStrikeThreshold = 3;
+    // AutoRemoveTimeout defines the maximum time a request can stay in the memory pool after the second threshold is reached.
+    // If this timeout is reached, the request is removed from the pool.
+    // NOTE: This timeout's intended purpose is not implemented and is used for GC by the memory pool.
+    string AutoRemoveTimeout = 4;
+}

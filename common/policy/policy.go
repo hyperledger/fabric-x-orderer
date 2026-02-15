@@ -15,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/pkg/errors"

@@ -28,7 +28,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -589,7 +590,7 @@ type BlockPullerOptions struct {
 	Status           *common.Status
 	Verifier         *crypto.ECDSAVerifier
 	BlockHandler     TestBlockHandler
-	Signer           protoutil.Signer
+	Signer           identity.SignerSerializer
 }
 
 func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.PartyID]*BlockPullerInfo {
@@ -660,7 +661,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 
 func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID types.PartyID,
 	startBlock uint64, endBlock uint64, fval, transactions, blocks, timeout int,
-	needVerification bool, sigVerifier *crypto.ECDSAVerifier, blockHandler TestBlockHandler, signer protoutil.Signer,
+	needVerification bool, sigVerifier *crypto.ECDSAVerifier, blockHandler TestBlockHandler, signer identity.SignerSerializer,
 ) (*BlockPullerInfo, error) {
 	dc := client.NewDeliverClient(userConfig)
 	toCtx, toCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
