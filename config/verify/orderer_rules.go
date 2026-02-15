@@ -9,7 +9,7 @@ package verify
 import (
 	"time"
 
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
@@ -19,15 +19,15 @@ import (
 
 //go:generate counterfeiter -o mocks/orderer_rules.go . OrdererRules
 type OrdererRules interface {
-	ValidateNewConfig(envelope *common.Envelope) error
-	ValidateTransition(current channelconfig.Resources, next *common.Envelope) error
+	ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP) error
+	ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error
 }
 
 type DefaultOrdererRules struct{}
 
 // ValidateNewConfig validates that the rules of the new config are valid before it is applied.
-func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope) error {
-	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP) error {
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bundle from new envelope config")
 	}
@@ -64,7 +64,7 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope) erro
 
 // ValidateTransition validates ordering service config transition rules
 // from the current config to the next config.
-func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope) error {
+func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
 	// extract current shared config
 	currOrdererCfg, ok := current.OrdererConfig()
 	if !ok {
@@ -77,7 +77,7 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	}
 
 	// extract next shared config
-	nextBundle, err := channelconfig.NewBundleFromEnvelope(next, factory.GetDefault())
+	nextBundle, err := channelconfig.NewBundleFromEnvelope(next, bccsp)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bundle from next envelope config")
 	}

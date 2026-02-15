@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -717,10 +718,11 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
-		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
+		bccsp := factory.GetDefault()
+		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, bccsp); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
-		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope); err != nil {
+		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope, bccsp); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate config transition rules")
 		}
 		// TODO: revisit this return
