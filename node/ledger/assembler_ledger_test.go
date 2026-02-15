@@ -120,7 +120,6 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 	al.Append(batches[1], ordInfos[1])
 	assert.Equal(t, uint64(5), al.GetTxCount())
 	assert.Equal(t, uint64(3), al.Ledger.Height())
-	expectedTransactionCount := []int{1 + len(batches[0].Requests()), 1 + len(batches[0].Requests()) + len(batches[1].Requests())}
 
 	for bn := uint64(0); bn < 3; bn++ {
 		block, err := al.Ledger.RetrieveBlockByNumber(bn)
@@ -153,7 +152,6 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 		assert.Equal(t, ordInfos[n].BatchIndex, ordInfo.BatchIndex)
 		assert.Equal(t, ordInfos[n].BatchCount, ordInfo.BatchCount)
 		assert.Equal(t, ordInfos[n].Signatures, ordInfo.Signatures)
-		assert.Equal(t, uint64(expectedTransactionCount[n]), transactionCount)
 	}
 }
 

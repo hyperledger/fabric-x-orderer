@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -299,9 +298,6 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) (*assembler.Assembler, string) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
-	genesisBlock.Metadata = &common.BlockMetadata{
-		Metadata: [][]byte{nil, nil, []byte("dummy"), []byte("dummy")},
-	}
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
