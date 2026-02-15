@@ -9,13 +9,14 @@ import (
 )
 
 type FakeBAFCreator struct {
-	CreateBAFStub        func(types.BatchSequence, types.PartyID, types.ShardID, []byte) types.BatchAttestationFragment
+	CreateBAFStub        func(types.BatchSequence, types.PartyID, types.ShardID, []byte, uint64) types.BatchAttestationFragment
 	createBAFMutex       sync.RWMutex
 	createBAFArgsForCall []struct {
 		arg1 types.BatchSequence
 		arg2 types.PartyID
 		arg3 types.ShardID
 		arg4 []byte
+		arg5 uint64
 	}
 	createBAFReturns struct {
 		result1 types.BatchAttestationFragment
@@ -27,7 +28,7 @@ type FakeBAFCreator struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBAFCreator) CreateBAF(arg1 types.BatchSequence, arg2 types.PartyID, arg3 types.ShardID, arg4 []byte) types.BatchAttestationFragment {
+func (fake *FakeBAFCreator) CreateBAF(arg1 types.BatchSequence, arg2 types.PartyID, arg3 types.ShardID, arg4 []byte, arg5 uint64) types.BatchAttestationFragment {
 	var arg4Copy []byte
 	if arg4 != nil {
 		arg4Copy = make([]byte, len(arg4))
@@ -40,13 +41,14 @@ func (fake *FakeBAFCreator) CreateBAF(arg1 types.BatchSequence, arg2 types.Party
 		arg2 types.PartyID
 		arg3 types.ShardID
 		arg4 []byte
-	}{arg1, arg2, arg3, arg4Copy})
+		arg5 uint64
+	}{arg1, arg2, arg3, arg4Copy, arg5})
 	stub := fake.CreateBAFStub
 	fakeReturns := fake.createBAFReturns
-	fake.recordInvocation("CreateBAF", []interface{}{arg1, arg2, arg3, arg4Copy})
+	fake.recordInvocation("CreateBAF", []interface{}{arg1, arg2, arg3, arg4Copy, arg5})
 	fake.createBAFMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4)
+		return stub(arg1, arg2, arg3, arg4, arg5)
 	}
 	if specificReturn {
 		return ret.result1
@@ -60,17 +62,17 @@ func (fake *FakeBAFCreator) CreateBAFCallCount() int {
 	return len(fake.createBAFArgsForCall)
 }
 
-func (fake *FakeBAFCreator) CreateBAFCalls(stub func(types.BatchSequence, types.PartyID, types.ShardID, []byte) types.BatchAttestationFragment) {
+func (fake *FakeBAFCreator) CreateBAFCalls(stub func(types.BatchSequence, types.PartyID, types.ShardID, []byte, uint64) types.BatchAttestationFragment) {
 	fake.createBAFMutex.Lock()
 	defer fake.createBAFMutex.Unlock()
 	fake.CreateBAFStub = stub
 }
 
-func (fake *FakeBAFCreator) CreateBAFArgsForCall(i int) (types.BatchSequence, types.PartyID, types.ShardID, []byte) {
+func (fake *FakeBAFCreator) CreateBAFArgsForCall(i int) (types.BatchSequence, types.PartyID, types.ShardID, []byte, uint64) {
 	fake.createBAFMutex.RLock()
 	defer fake.createBAFMutex.RUnlock()
 	argsForCall := fake.createBAFArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5
 }
 
 func (fake *FakeBAFCreator) CreateBAFReturns(result1 types.BatchAttestationFragment) {
