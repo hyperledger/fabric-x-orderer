@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
@@ -116,14 +117,15 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		return err
 	}
 
+	bccsp := factory.GetDefault()
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
-	if err = cs.configRulesVerifier.ValidateNewConfig(env); err != nil {
+	if err = cs.configRulesVerifier.ValidateNewConfig(env, bccsp); err != nil {
 		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
 		tr.responses <- feedback
 		return err
 	}
 
-	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env); err != nil {
+	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env, bccsp); err != nil {
 		feedback.err = fmt.Errorf("error in validating config transition rules: %w", err)
 		tr.responses <- feedback
 		return err
