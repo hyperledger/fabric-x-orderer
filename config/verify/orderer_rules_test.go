@@ -96,7 +96,7 @@ func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	nextBundle, err := channelconfig.NewBundleFromEnvelope(nextEnv, bccsp)
 	require.NoError(t, err)
 
-	err = or.ValidateTransition(nextBundle, currEnv, factory.GetDefault())
+	err = or.ValidateTransition(nextBundle, currEnv, bccsp)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "proposed party ID 3 must be greater than previous MaxPartyID 3")
 }
