@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package assembler
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -20,25 +19,26 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
-
-	"google.golang.org/protobuf/proto"
 )
 
 type AssemblerDeliverService struct {
 	blockledger blockledger.Reader
+	mutualTLS   bool
 	bundle      channelconfig.Resources
-	Logger      types.Logger
+	logger      types.Logger
 }
 
 func NewAssemblerDeliverService(ledger blockledger.Reader, logger types.Logger, config *config.AssemblerNodeConfig) *AssemblerDeliverService {
 	return &AssemblerDeliverService{
 		blockledger: ledger,
 		bundle:      config.Bundle,
-		Logger:      logger,
+		logger:      logger,
+		mutualTLS:   config.UseTLS && config.ClientAuthRequired,
 	}
 }
 
@@ -47,9 +47,11 @@ func (a AssemblerDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastSe
 }
 
 func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	a.logger.Infof("Received new deliver request from client %s", util.ExtractRemoteAddress(stream.Context()))
+
 	handler := &deliver.Handler{
 		ChainManager:     &assemblerChainManager{ledger: a.blockledger, bundle: a.bundle},
-		BindingInspector: &noopBindingInspector{},
+		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(a.mutualTLS, deliver.ExtractChannelHeaderCertHash)),
 		TimeWindow:       time.Hour,
 		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
@@ -62,11 +64,13 @@ func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverS
 		return asf.Apply(env)
 	}
 
-	return handler.Handle(context.Background(), &deliver.Server{
+	deliverServer := &deliver.Server{
 		PolicyChecker:  deliver.PolicyCheckerFunc(policyChecker),
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
-	})
+	}
+
+	return handler.Handle(stream.Context(), deliverServer)
 }
 
 type responseSender struct {
@@ -133,13 +137,6 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 		time.Sleep(time.Millisecond)
 	}
 	return d.Reader.Iterator(startType)
-}
-
-type noopBindingInspector struct{}
-
-func (nbi *noopBindingInspector) Inspect(context.Context, proto.Message) error {
-	// TODO check the TLS binding
-	return nil
 }
 
 type assemblerSigFilter struct {
