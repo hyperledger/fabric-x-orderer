@@ -36,7 +36,7 @@ func TestValidateNewConfig(t *testing.T) {
 	defer cleanup()
 
 	or := verify.DefaultOrdererRules{}
-	require.NoError(t, or.ValidateNewConfig(env))
+	require.NoError(t, or.ValidateNewConfig(env, factory.GetDefault()))
 }
 
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
@@ -59,7 +59,7 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	}
 
 	or := verify.DefaultOrdererRules{}
-	err = or.ValidateNewConfig(env)
+	err = or.ValidateNewConfig(env, factory.GetDefault())
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "batch creation timeout")
@@ -67,6 +67,7 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
 
 	// create a config with 3 parties
 	dir, currEnv, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
@@ -88,14 +89,14 @@ func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	}
 
 	// validate the transition after the removal
-	err = or.ValidateTransition(currBundle, nextEnv)
+	err = or.ValidateTransition(currBundle, nextEnv, bccsp)
 	require.NoError(t, err)
 
 	// try to add partyID=3 again, should fail
-	nextBundle, err := channelconfig.NewBundleFromEnvelope(nextEnv, factory.GetDefault())
+	nextBundle, err := channelconfig.NewBundleFromEnvelope(nextEnv, bccsp)
 	require.NoError(t, err)
 
-	err = or.ValidateTransition(nextBundle, currEnv)
+	err = or.ValidateTransition(nextBundle, currEnv, bccsp)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "proposed party ID 3 must be greater than previous MaxPartyID 3")
 }
@@ -121,7 +122,7 @@ func TestValidateTransition_FailedRemoveTwoParties(t *testing.T) {
 	nextEnv := &common.Envelope{Payload: nextCfgEnv.Payload, Signature: nextCfgEnv.Signature}
 
 	// should fail because more than one party is removed
-	err = or.ValidateTransition(bundle, nextEnv)
+	err = or.ValidateTransition(bundle, nextEnv, factory.GetDefault())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "more than one party removed in config tx")
 }
@@ -179,7 +180,7 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 
 	nextEnv := &common.Envelope{Payload: nextCfgEnv.Payload, Signature: nextCfgEnv.Signature}
 
-	err = or.ValidateTransition(bundle, nextEnv)
+	err = or.ValidateTransition(bundle, nextEnv, factory.GetDefault())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "more than one party added in config tx")
 }

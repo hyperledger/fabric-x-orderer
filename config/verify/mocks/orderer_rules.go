@@ -4,16 +4,18 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 )
 
 type FakeOrdererRules struct {
-	ValidateNewConfigStub        func(*common.Envelope) error
+	ValidateNewConfigStub        func(*common.Envelope, bccsp.BCCSP) error
 	validateNewConfigMutex       sync.RWMutex
 	validateNewConfigArgsForCall []struct {
 		arg1 *common.Envelope
+		arg2 bccsp.BCCSP
 	}
 	validateNewConfigReturns struct {
 		result1 error
@@ -21,11 +23,12 @@ type FakeOrdererRules struct {
 	validateNewConfigReturnsOnCall map[int]struct {
 		result1 error
 	}
-	ValidateTransitionStub        func(channelconfig.Resources, *common.Envelope) error
+	ValidateTransitionStub        func(channelconfig.Resources, *common.Envelope, bccsp.BCCSP) error
 	validateTransitionMutex       sync.RWMutex
 	validateTransitionArgsForCall []struct {
 		arg1 channelconfig.Resources
 		arg2 *common.Envelope
+		arg3 bccsp.BCCSP
 	}
 	validateTransitionReturns struct {
 		result1 error
@@ -37,18 +40,19 @@ type FakeOrdererRules struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeOrdererRules) ValidateNewConfig(arg1 *common.Envelope) error {
+func (fake *FakeOrdererRules) ValidateNewConfig(arg1 *common.Envelope, arg2 bccsp.BCCSP) error {
 	fake.validateNewConfigMutex.Lock()
 	ret, specificReturn := fake.validateNewConfigReturnsOnCall[len(fake.validateNewConfigArgsForCall)]
 	fake.validateNewConfigArgsForCall = append(fake.validateNewConfigArgsForCall, struct {
 		arg1 *common.Envelope
-	}{arg1})
+		arg2 bccsp.BCCSP
+	}{arg1, arg2})
 	stub := fake.ValidateNewConfigStub
 	fakeReturns := fake.validateNewConfigReturns
-	fake.recordInvocation("ValidateNewConfig", []interface{}{arg1})
+	fake.recordInvocation("ValidateNewConfig", []interface{}{arg1, arg2})
 	fake.validateNewConfigMutex.Unlock()
 	if stub != nil {
-		return stub(arg1)
+		return stub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
@@ -62,17 +66,17 @@ func (fake *FakeOrdererRules) ValidateNewConfigCallCount() int {
 	return len(fake.validateNewConfigArgsForCall)
 }
 
-func (fake *FakeOrdererRules) ValidateNewConfigCalls(stub func(*common.Envelope) error) {
+func (fake *FakeOrdererRules) ValidateNewConfigCalls(stub func(*common.Envelope, bccsp.BCCSP) error) {
 	fake.validateNewConfigMutex.Lock()
 	defer fake.validateNewConfigMutex.Unlock()
 	fake.ValidateNewConfigStub = stub
 }
 
-func (fake *FakeOrdererRules) ValidateNewConfigArgsForCall(i int) *common.Envelope {
+func (fake *FakeOrdererRules) ValidateNewConfigArgsForCall(i int) (*common.Envelope, bccsp.BCCSP) {
 	fake.validateNewConfigMutex.RLock()
 	defer fake.validateNewConfigMutex.RUnlock()
 	argsForCall := fake.validateNewConfigArgsForCall[i]
-	return argsForCall.arg1
+	return argsForCall.arg1, argsForCall.arg2
 }
 
 func (fake *FakeOrdererRules) ValidateNewConfigReturns(result1 error) {
@@ -98,19 +102,20 @@ func (fake *FakeOrdererRules) ValidateNewConfigReturnsOnCall(i int, result1 erro
 	}{result1}
 }
 
-func (fake *FakeOrdererRules) ValidateTransition(arg1 channelconfig.Resources, arg2 *common.Envelope) error {
+func (fake *FakeOrdererRules) ValidateTransition(arg1 channelconfig.Resources, arg2 *common.Envelope, arg3 bccsp.BCCSP) error {
 	fake.validateTransitionMutex.Lock()
 	ret, specificReturn := fake.validateTransitionReturnsOnCall[len(fake.validateTransitionArgsForCall)]
 	fake.validateTransitionArgsForCall = append(fake.validateTransitionArgsForCall, struct {
 		arg1 channelconfig.Resources
 		arg2 *common.Envelope
-	}{arg1, arg2})
+		arg3 bccsp.BCCSP
+	}{arg1, arg2, arg3})
 	stub := fake.ValidateTransitionStub
 	fakeReturns := fake.validateTransitionReturns
-	fake.recordInvocation("ValidateTransition", []interface{}{arg1, arg2})
+	fake.recordInvocation("ValidateTransition", []interface{}{arg1, arg2, arg3})
 	fake.validateTransitionMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2)
+		return stub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1
@@ -124,17 +129,17 @@ func (fake *FakeOrdererRules) ValidateTransitionCallCount() int {
 	return len(fake.validateTransitionArgsForCall)
 }
 
-func (fake *FakeOrdererRules) ValidateTransitionCalls(stub func(channelconfig.Resources, *common.Envelope) error) {
+func (fake *FakeOrdererRules) ValidateTransitionCalls(stub func(channelconfig.Resources, *common.Envelope, bccsp.BCCSP) error) {
 	fake.validateTransitionMutex.Lock()
 	defer fake.validateTransitionMutex.Unlock()
 	fake.ValidateTransitionStub = stub
 }
 
-func (fake *FakeOrdererRules) ValidateTransitionArgsForCall(i int) (channelconfig.Resources, *common.Envelope) {
+func (fake *FakeOrdererRules) ValidateTransitionArgsForCall(i int) (channelconfig.Resources, *common.Envelope, bccsp.BCCSP) {
 	fake.validateTransitionMutex.RLock()
 	defer fake.validateTransitionMutex.RUnlock()
 	argsForCall := fake.validateTransitionArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
 }
 
 func (fake *FakeOrdererRules) ValidateTransitionReturns(result1 error) {
