@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/pkg/errors"
 )
 
@@ -155,5 +156,5 @@ func (*bftDelivererCreator) CreateBFTDeliverer(
 type BFTBlockDeliverer interface {
 	Stop()
 	DeliverBlocks()
-	Initialize(channelConfig *cb.Config, selfEndpoint string)
+	Initialize(channelConfig *cb.Config, selfPartID types.PartyID)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric/protoutil"
@@ -89,7 +90,7 @@ func (s *BFTSynchronizer) Buffer() *SyncBuffer {
 
 func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
 	// === We probe all the endpoints and establish a target height, as well as detect the self endpoint.
-	targetHeight, myEndpoint, err := s.detectTargetHeight()
+	targetHeight, _, err := s.detectTargetHeight()
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get detect target height")
 	}
@@ -106,7 +107,7 @@ func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
 	s.mutex.Unlock()
 
 	// === Create the BFT block deliverer and start a go-routine that fetches block and inserts them into the syncBuffer.
-	bftDeliverer, err := s.createBFTDeliverer(startHeight, myEndpoint)
+	bftDeliverer, err := s.createBFTDeliverer(startHeight, arma_types.PartyID(s.selfID))
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot create BFT block deliverer")
 	}
@@ -181,7 +182,7 @@ func (s *BFTSynchronizer) computeTargetHeight(heights []uint64) uint64 {
 }
 
 // createBFTDeliverer creates and initializes the BFT block deliverer.
-func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myEndpoint string) (BFTBlockDeliverer, error) {
+func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_types.PartyID) (BFTBlockDeliverer, error) {
 	lastBlock := s.Support.Block(startHeight - 1)
 	lastConfigBlock, err := s.Support.LastConfigBlock(lastBlock)
 	if err != nil {
@@ -235,7 +236,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myEndpoint stri
 	)
 
 	s.Logger.Infof("Created a BFTDeliverer: %+v", bftDeliverer)
-	bftDeliverer.Initialize(lastConfigEnv.GetConfig(), myEndpoint)
+	bftDeliverer.Initialize(lastConfigEnv.GetConfig(), myParty)
 
 	return bftDeliverer, nil
 }

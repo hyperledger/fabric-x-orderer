@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	arma_testutil "github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 )
 
@@ -710,16 +711,14 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 		})
 
 		ginkgo.It("updates the orderer connection source", func() {
-			gomega.Eventually(fakeOrdererConnectionSource.UpdateCallCount, eventuallyTO).Should(gomega.Equal(1))
-			orgsAddresses := fakeOrdererConnectionSource.UpdateArgsForCall(0)
-			gomega.Expect(orgsAddresses).ToNot(gomega.BeNil())
-			gomega.Expect(orgsAddresses).To(gomega.HaveLen(1))
-			orgAddr, ok := orgsAddresses["SampleOrg"]
+			gomega.Eventually(fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(gomega.Equal(1))
+			consenterAddresses := fakeOrdererConnectionSource.Update2ArgsForCall(0)
+			gomega.Expect(consenterAddresses).ToNot(gomega.BeNil())
+			gomega.Expect(consenterAddresses).To(gomega.HaveLen(1))
+			partyAddr, ok := consenterAddresses[types.PartyID(1)]
 			gomega.Expect(ok).To(gomega.BeTrue())
-			gomega.Expect(orgAddr.Addresses).To(gomega.Equal([]string{
-				"127.0.0.1:7050", "127.0.0.1:7051", "127.0.0.1:7052",
-			}))
-			gomega.Expect(orgAddr.RootCerts).To(gomega.HaveLen(2))
+			gomega.Expect(partyAddr.Address).To(gomega.Equal("127.0.0.1:7050"))
+			gomega.Expect(partyAddr.RootCerts).To(gomega.HaveLen(2))
 		})
 	})
 

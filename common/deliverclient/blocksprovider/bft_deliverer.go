@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 //go:generate counterfeiter -o fake/censorship_detector.go --fake-name CensorshipDetector . CensorshipDetector
@@ -106,7 +107,7 @@ type BFTDeliverer struct {
 	censorshipMonitor CensorshipDetector
 }
 
-func (d *BFTDeliverer) Initialize(channelConfig *common.Config, selfEndpoint string) {
+func (d *BFTDeliverer) Initialize(channelConfig *common.Config, selfParty types.PartyID) {
 	d.requester = NewDeliveryRequester(
 		d.ChannelID,
 		d.Signer,
@@ -116,13 +117,12 @@ func (d *BFTDeliverer) Initialize(channelConfig *common.Config, selfEndpoint str
 	)
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
-	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, selfEndpoint)
-	orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, selfParty)
+	extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
-		// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
-		d.Logger.Panicf("Bundle creation should not have failed: %s", err)
+		d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
 	}
-	ordererSource.Update(orgAddresses)
+	ordererSource.Update2(extractedEndpoints)
 	d.orderers = ordererSource
 }
 
@@ -403,13 +403,12 @@ func (d *BFTDeliverer) onBlockProcessingSuccess(blockNum uint64, channelConfig *
 	d.lastBlockTime = time.Now()
 
 	if channelConfig != nil {
-		orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+		extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 		if err != nil {
-			// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
-			d.Logger.Panicf("Bundle creation should not have failed: %s", err)
+			d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
 		}
-		d.Logger.Debugf("Extracted orderer addresses: %+v", orgAddresses)
-		d.orderers.Update(orgAddresses)
+		d.Logger.Debugf("Extracted orderer addresses: %+v", extractedEndpoints)
+		d.orderers.Update2(extractedEndpoints)
 		d.Logger.Debugf("Updated OrdererConnectionSource")
 	}
 
