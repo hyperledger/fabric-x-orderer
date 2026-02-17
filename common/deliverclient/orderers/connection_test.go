@@ -62,7 +62,7 @@ var _ = Describe("Connection", func() {
 	)
 
 	BeforeEach(func() {
-		//TODO generate certs on the fly instead of reading from files, which will make the test more self-contained and easier to understand.
+		// TODO generate certs on the fly instead of reading from files, which will make the test more self-contained and easier to understand.
 
 		var err error
 		cert1, err = os.ReadFile("testdata/tlsca.example.com-cert.pem")
@@ -663,6 +663,5 @@ var _ = Describe("Connection", func() {
 				})
 			})
 		})
-
 	})
 })

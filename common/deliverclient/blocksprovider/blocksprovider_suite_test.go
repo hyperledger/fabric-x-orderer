@@ -29,7 +29,10 @@ type abDeliverClient interface {
 	orderer.AtomicBroadcast_DeliverClient
 }
 
+var suiteT *testing.T
+
 func TestBlocksProvider(t *testing.T) {
+	suiteT = t
 	RegisterFailHandler(Fail)
 
 	suiteConf, reporterConf := GinkgoConfiguration()

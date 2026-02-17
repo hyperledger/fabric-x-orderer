@@ -156,5 +156,5 @@ func (*bftDelivererCreator) CreateBFTDeliverer(
 type BFTBlockDeliverer interface {
 	Stop()
 	DeliverBlocks()
-	Initialize(channelConfig *cb.Config, selfPartID types.PartyID)
+	Initialize(channelConfig *cb.Config, selfPartyID types.PartyID)
 }

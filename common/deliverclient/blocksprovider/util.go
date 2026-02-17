@@ -10,10 +10,10 @@ import (
 	"math"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
@@ -92,29 +92,6 @@ func numRetries2Max(base float64, minDur, maxDur time.Duration) int {
 type timeNumber struct {
 	t time.Time
 	n uint64
-}
-
-func extractAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.BCCSP) (map[string]orderers.OrdererOrg, error) {
-	bundle, err := channelconfig.NewBundle(channelID, config, cryptoProvider)
-	if err != nil {
-		return nil, err
-	}
-
-	orgAddresses := map[string]orderers.OrdererOrg{}
-	if ordererConfig, ok := bundle.OrdererConfig(); ok {
-		for orgName, org := range ordererConfig.Organizations() {
-			var certs [][]byte
-			certs = append(certs, org.MSP().GetTLSRootCerts()...)
-			certs = append(certs, org.MSP().GetTLSIntermediateCerts()...)
-
-			orgAddresses[orgName] = orderers.OrdererOrg{
-				Addresses: org.Endpoints(),
-				RootCerts: certs,
-			}
-		}
-	}
-
-	return orgAddresses, nil
 }
 
 func extractConsenterAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.BCCSP) (orderers.Party2Endpoint, error) {

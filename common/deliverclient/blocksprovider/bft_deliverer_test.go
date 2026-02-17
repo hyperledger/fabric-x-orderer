@@ -208,7 +208,7 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 		})
 
 	var err error
-	s.channelConfig, s.fakeCryptoProvider, err = testSetup(tempDir, "BFT")
+	s.channelConfig, s.fakeCryptoProvider, err = testSetupBFT(t, tempDir)
 	require.NoError(t, err)
 
 	s.d = &blocksprovider.BFTDeliverer{
