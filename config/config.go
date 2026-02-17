@@ -78,7 +78,7 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 		}
 	case "block":
 		logger.Infof("reading shared config from block for %s node", nodeRole)
-		// If node is router or batcher, check if config store has blocks, and if yes bootstrap from the last block
+		// If node is router or batcher, check if config store has blocks, and if yes read the last block
 		if nodeRole == RouterStr || nodeRole == BatcherStr {
 			configStore, err = configstore.NewStore(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
 			if err != nil {
@@ -100,7 +100,7 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			}
 		}
 
-		// If node is assembler, check if its ledger has blocks, and if yes bootstrap from the last block
+		// If node is assembler, check if its ledger has blocks, and if yes read the last block
 		if nodeRole == AssemblerStr {
 			assemblerLedgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
 			assemblerLedger, err := assemblerLedgerFactory.Create(logger, conf.LocalConfig.NodeLocalConfig.FileStore.Path)
@@ -130,13 +130,22 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 			}
 		}
 
-		if lastConfigBlock == nil {
-			lastConfigBlock, err = readGenesisBlockFromBootstrapPath(conf.LocalConfig)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to read genesis block from bootstrap file, err: %v", err)
-			}
+		// read the block pointed by Bootstrap.Method
+		lastConfigBlockFromBootstrapFile, err := readBlockFromBootstrapPath(conf.LocalConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read genesis block from bootstrap file, err: %v", err)
+		}
 
-			// this is relevant only for batcher and router nodes
+		// if there is no block in the ledger or config store, initialize from genesis block
+		// if there is already a block in the ledger or config store, and the bootstrap block is newer, initialize from bootstrap block; for recover and re-join
+		useBootstrapBlock := false
+		if lastConfigBlock == nil || lastConfigBlock.Header.Number < lastConfigBlockFromBootstrapFile.Header.Number {
+			useBootstrapBlock = true
+		}
+
+		if useBootstrapBlock {
+			lastConfigBlock = lastConfigBlockFromBootstrapFile
+			// append the genesis block to the router and batcher config store
 			if configStore != nil {
 				err = configStore.Add(lastConfigBlock)
 				if err != nil {
@@ -158,7 +167,7 @@ func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *co
 	return conf, lastConfigBlock, nil
 }
 
-func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error) {
+func readBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error) {
 	if conf.NodeLocalConfig.GeneralConfig.Bootstrap.File == "" {
 		return nil, errors.Errorf("failed to read a config block, path is empty")
 	}
