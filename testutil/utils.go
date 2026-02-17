@@ -154,6 +154,13 @@ type NodeName struct {
 // This function is used in testing only.
 func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYaml, string) {
 	networkConfig := GenerateNetworkConfig(t, "none", "none")
+	return PrepareSharedConfigBinaryFromNetwork(t, networkConfig, dir)
+}
+
+// PrepareSharedConfigBinaryFromNetwork generates a shared configuration from a network definition and writes the encoded configuration to a file.
+// The function returns the path to the file and the shared config in the yaml format.
+// This function is used in testing only.
+func PrepareSharedConfigBinaryFromNetwork(t *testing.T, networkConfig genconfig.Network, dir string) (*config.SharedConfigYaml, string) {
 	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
 	require.NoError(t, err)
 
