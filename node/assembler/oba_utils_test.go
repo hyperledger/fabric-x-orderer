@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package assembler_test
 
 import (
-	"math"
-
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -28,7 +26,7 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
 
 	ba := &state.AvailableBatchOrdered{
-		AvailableBatch: state.NewAvailableBatch(0, math.MaxUint16, 0, genesisDigest),
+		AvailableBatch: state.NewAvailableBatchGenesis([]byte{}),
 		OrderingInformation: &state.OrderingInformation{
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: 0, PreviousHash: nil, DataHash: genesisDigest}},
 			DecisionNum: 0,

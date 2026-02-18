@@ -296,7 +296,7 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 }
 
 func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) {
-	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
+	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData()) // TODO fix compute digest
 
 	lastCommonBlockHeader := &common.BlockHeader{}
 	if err := proto.Unmarshal(initState.AppContext, lastCommonBlockHeader); err != nil {
@@ -309,12 +309,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 
 	availableCommonBlocks := []*common.Block{genesisBlock}
 
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatchGenesis(genesisDigest), &state.GenesisOrderingInformation, 1)
-	if err != nil {
-		panic("failed to invoke AssemblerBlockMetadataToBytes")
-	}
-
-	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
+	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ledger.AssemblerGenesisBlockMetadataToBytes()
 
 	genesisProposal := smartbft_types.Proposal{
 		Payload: protoutil.MarshalOrPanic(genesisBlock),

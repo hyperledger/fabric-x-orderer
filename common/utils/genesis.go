@@ -8,7 +8,6 @@ package utils
 
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -42,12 +41,7 @@ func EmptyGenesisBlock(channelID string) *common.Block {
 			LastConfig: &common.LastConfig{Index: 0},
 		}),
 	})
-	genesisDigest := protoutil.ComputeBlockDataHash(block.GetData())
-	ordererBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatchGenesis(genesisDigest), &state.GenesisOrderingInformation, 1)
-	if err != nil {
-		panic("failed to invoke AssemblerBlockMetadataToBytes")
-	}
-	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
+	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ledger.AssemblerGenesisBlockMetadataToBytes()
 	return block
 }
 
