@@ -9,6 +9,7 @@ package request
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,6 +62,7 @@ type PoolOptions struct {
 	BatchMaxSize          uint32
 	BatchMaxSizeBytes     uint32
 	RequestMaxBytes       uint64
+	BatchTimeout          time.Duration
 	SubmitTimeout         time.Duration
 	FirstStrikeThreshold  time.Duration
 	SecondStrikeThreshold time.Duration
@@ -69,6 +71,11 @@ type PoolOptions struct {
 
 // NewPool constructs a new requests pool
 func NewPool(logger types.Logger, inspector RequestInspector, options PoolOptions, striker Striker) *Pool {
+	if options.FirstStrikeThreshold < 2*options.BatchTimeout {
+		logger.Warnf("FirstStrikeThreshold should be at least 2*BatchTimeout")
+		return nil
+	}
+
 	rp := &Pool{
 		logger:    logger,
 		inspector: inspector,
@@ -90,21 +97,32 @@ func (rp *Pool) start() {
 	rp.pending.Start()
 }
 
+func (rp *Pool) addRandomnessToFirstStrike() time.Duration {
+	if rp.options.BatchTimeout.Milliseconds() == 0 {
+		return time.Duration(0) // no randomness
+	}
+	return time.Duration(randRange(int(2*rp.options.BatchTimeout.Milliseconds()), int(-2*rp.options.BatchTimeout.Milliseconds()))) * time.Millisecond
+}
+
+func randRange(max, min int) int {
+	return rand.Intn(max-min) + min
+}
+
 func (rp *Pool) createPendingStore() *PendingStore {
 	return &PendingStore{
 		Inspector:             rp.inspector,
 		ReqIDGCInterval:       rp.options.AutoRemoveTimeout / 4,
 		ReqIDLifetime:         rp.options.AutoRemoveTimeout,
-		Time:                  time.NewTicker(time.Second).C,
+		Time:                  time.NewTicker(rp.options.FirstStrikeThreshold / 10).C,
 		StartTime:             time.Now(),
 		Logger:                rp.logger,
 		SecondStrikeThreshold: rp.options.SecondStrikeThreshold,
-		FirstStrikeThreshold:  rp.options.FirstStrikeThreshold,
+		FirstStrikeThreshold:  rp.options.FirstStrikeThreshold + rp.addRandomnessToFirstStrike(),
 		OnDelete: func(key string) {
 			rp.semaphore.Release(1)
 			atomic.AddInt64(&rp.size, -1)
 		},
-		Epoch:                time.Second,
+		Epoch:                rp.options.FirstStrikeThreshold / 10,
 		FirstStrikeCallback:  rp.striker.OnFirstStrikeTimeout,
 		SecondStrikeCallback: rp.striker.OnSecondStrikeTimeout,
 	}
