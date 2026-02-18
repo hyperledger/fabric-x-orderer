@@ -125,6 +125,7 @@ func NewDefaultAssembler(
 		// append config block only if it is the genesis block
 		blockNumber := configBlock.GetHeader().Number
 		if blockNumber == 0 {
+			configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = node_ledger.AssemblerGenesisBlockMetadataToBytes()
 			ordInfo := &state.OrderingInformation{
 				CommonBlock: configBlock,
 				DecisionNum: 0,

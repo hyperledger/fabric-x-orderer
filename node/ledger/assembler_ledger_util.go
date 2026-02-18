@@ -25,6 +25,14 @@ import (
 // uint16 + uint16 + uint64 + uint64 + uint32 + uint32 + uint64
 const assemblerBlockMetadataSerializedSize = 2 + 2 + 8 + 8 + 4 + 4 + 8
 
+func AssemblerGenesisBlockMetadataToBytes() []byte {
+	bytes, err := AssemblerBlockMetadataToBytes(state.NewAvailableBatchGenesis([]byte{}), &state.GenesisOrderingInformation, 1)
+	if err != nil {
+		panic("failed to invoke AssemblerBlockMetadataToBytes")
+	}
+	return bytes
+}
+
 func AssemblerBlockMetadataToBytes(batchID types.BatchID, orderingInfo *state.OrderingInformation, transactionCount uint64) ([]byte, error) {
 	if batchID == nil {
 		return nil, errors.Errorf("nil batchID")

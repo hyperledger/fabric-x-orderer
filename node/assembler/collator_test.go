@@ -98,7 +98,8 @@ func TestCollator_Batches(t *testing.T) {
 			continue
 		}
 
-		batchID, ordInfo, _, _ := node_ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
+		batchID, ordInfo, _, err := node_ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
+		require.NoError(t, err)
 
 		expectedBatch := batches[batchID.Shard()][batchID.Seq()]
 		require.Equal(t, types.BatchIDToString(expectedBatch), types.BatchIDToString(batchID))
@@ -191,6 +192,12 @@ func simulateDecisions(
 				ab := state.NewAvailableBatch(batch.Primary(), batch.Shard(), batch.Seq(), batch.Digest())
 				block := protoutil.NewBlock(prevBlock.Header.Number+1, protoutil.BlockHeaderHash(prevBlock.Header))
 				block.Header.DataHash = ab.Digest()
+
+				ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(ab, &state.OrderingInformation{DecisionNum: decNum, BatchCount: 1, BatchIndex: 0}, 1)
+				if err != nil {
+					panic("failed to invoke AssemblerBlockMetadataToBytes")
+				}
+				block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 
 				abo := &state.AvailableBatchOrdered{
 					AvailableBatch: ab,

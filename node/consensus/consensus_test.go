@@ -797,9 +797,9 @@ func TestVerifyProposal(t *testing.T) {
 	dig := make([]byte, 32-3)
 
 	dig123 := append([]byte{1, 2, 3}, dig...)
-	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 0)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 1)
 	assert.NoError(t, err)
-	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0, 0)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0, 1)
 	assert.NoError(t, err)
 
 	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
@@ -822,7 +822,7 @@ func TestVerifyProposal(t *testing.T) {
 	header.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 
 	protoutil.InitBlockMetadata(header.AvailableCommonBlocks[0])
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ab, &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 0)
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ab, &state.GenesisOrderingInformation, 1)
 	require.Nil(t, err)
 	header.AvailableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 
@@ -1221,6 +1221,7 @@ func TestCreateAndVerifyDataCommonBlock(t *testing.T) {
 		decisionNum     arma_types.DecisionNum
 		batchCount      int
 		batchIndex      int
+		txCount         uint64
 		lastConfigBlock uint64
 	}{
 		{
@@ -1272,26 +1273,31 @@ func TestCreateAndVerifyDataCommonBlock(t *testing.T) {
 			batchIndex: 1,
 		},
 		{
+			name:    "wrong tx count",
+			err:     "proposed block metadata",
+			txCount: 1,
+		},
+		{
 			name:            "wrong last config block",
 			err:             "last config in block",
 			lastConfigBlock: 1,
 		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
-			block, err := node_consensus.CreateDataCommonBlock(0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			block, err := node_consensus.CreateDataCommonBlock(0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0, 0)
 			require.NoError(t, err)
 			require.NotNil(t, block)
-			err = node_consensus.VerifyDataCommonBlock(block, tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			err = node_consensus.VerifyDataCommonBlock(block, tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.txCount, tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
 				require.ErrorContains(t, err, tst.err)
 			}
 
-			block, err = node_consensus.CreateDataCommonBlock(tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
+			block, err = node_consensus.CreateDataCommonBlock(tst.blockNum, tst.prevHash, state.NewAvailableBatch(tst.primary, tst.shard, tst.seq, tst.digest), tst.txCount, tst.decisionNum, tst.batchCount, tst.batchIndex, tst.lastConfigBlock)
 			require.NoError(t, err)
 			require.NotNil(t, block)
-			err = node_consensus.VerifyDataCommonBlock(block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0)
+			err = node_consensus.VerifyDataCommonBlock(block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0, 0)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
@@ -1311,6 +1317,7 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 		decisionNum arma_types.DecisionNum
 		batchCount  int
 		batchIndex  int
+		txCount     uint64
 	}{
 		{
 			name: "no error",
@@ -1345,9 +1352,14 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 			err:        "proposed config block metadata",
 			batchIndex: 1,
 		},
+		{
+			name:    "wrong tx count",
+			err:     "proposed config block metadata",
+			txCount: 1,
+		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
-			configBlock, err := node_consensus.CreateConfigCommonBlock(0, nil, 0, 0, 0, nil)
+			configBlock, err := node_consensus.CreateConfigCommonBlock(0, nil, 0, 0, 0, 0, nil)
 			require.NoError(t, err)
 			require.NotNil(t, configBlock)
 
@@ -1357,7 +1369,7 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 				dataHash = tst.dataHash
 			}
 
-			err = node_consensus.VerifyConfigCommonBlock(configBlock, tst.blockNum, tst.prevHash, dataHash, tst.decisionNum, tst.batchCount, tst.batchIndex)
+			err = node_consensus.VerifyConfigCommonBlock(configBlock, tst.blockNum, tst.prevHash, dataHash, tst.txCount, tst.decisionNum, tst.batchCount, tst.batchIndex)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {
@@ -1369,11 +1381,11 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 				configReq = tst.dataHash
 			}
 
-			configBlock, err = node_consensus.CreateConfigCommonBlock(tst.blockNum, tst.prevHash, tst.decisionNum, tst.batchCount, tst.batchIndex, configReq)
+			configBlock, err = node_consensus.CreateConfigCommonBlock(tst.blockNum, tst.prevHash, tst.txCount, tst.decisionNum, tst.batchCount, tst.batchIndex, configReq)
 			require.NoError(t, err)
 			require.NotNil(t, configBlock)
 
-			err = node_consensus.VerifyConfigCommonBlock(configBlock, 0, nil, nilConfigReq.Digest(), 0, 0, 0)
+			err = node_consensus.VerifyConfigCommonBlock(configBlock, 0, nil, nilConfigReq.Digest(), 0, 0, 0, 0)
 			if tst.err == "" {
 				require.NoError(t, err)
 			} else {

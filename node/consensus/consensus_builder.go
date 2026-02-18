@@ -64,7 +64,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 	}
 
 	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
-
+	txCount := getTxCount(consLedger)
 	// indicate that sync is required on startup when new consensus node joins the cluster
 	if consLedger.Height() == 0 && lastConfigBlock.Header.Number > 0 {
 		conf.BFTConfig.SyncOnStart = true
@@ -106,6 +106,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 			Bundle:               conf.Bundle,
 		},
 		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
+		txCount:             txCount,
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
@@ -295,7 +296,7 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 }
 
 func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) {
-	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
+	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData()) // TODO fix compute digest
 
 	lastCommonBlockHeader := &common.BlockHeader{}
 	if err := proto.Unmarshal(initState.AppContext, lastCommonBlockHeader); err != nil {
@@ -308,14 +309,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 
 	availableCommonBlocks := []*common.Block{genesisBlock}
 
-	protoutil.InitBlockMetadata(availableCommonBlocks[0])
-
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest), &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 1)
-	if err != nil {
-		panic("failed to invoke AssemblerBlockMetadataToBytes")
-	}
-
-	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
+	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ledger.AssemblerGenesisBlockMetadataToBytes()
 
 	genesisProposal := smartbft_types.Proposal{
 		Payload: protoutil.MarshalOrPanic(genesisBlock),
@@ -328,6 +322,43 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 	}
 
 	consensusLedger.Append(state.DecisionToBytes(genesisProposal, nil))
+}
+
+func getTxCount(consensusLedger *ledger.ConsensusLedger) uint64 {
+	height := consensusLedger.Height()
+	if height == 0 {
+		return 0
+	}
+	if height == 1 {
+		return 1 // the genesis block has 1 tx
+	}
+	txCount := uint64(1)
+	for height > 0 {
+		block, err := consensusLedger.RetrieveBlockByNumber(height - 1)
+		if err != nil {
+			panic("couldn't retrieve last block from ledger")
+		}
+		proposal, _, err := state.BytesToDecision(block.Data.Data[0])
+		if err != nil {
+			panic("couldn't read decision from last block")
+		}
+		header := &state.Header{}
+		if err := header.Deserialize(proposal.Header); err != nil {
+			panic(err)
+		}
+		availableBlocksLen := len(header.AvailableCommonBlocks)
+		if availableBlocksLen == 0 {
+			height--
+			continue
+		}
+		lastAvailableBlock := header.AvailableCommonBlocks[availableBlocksLen-1]
+		_, _, txCount, err = ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(lastAvailableBlock)
+		if err != nil {
+			panic("couldn't retrieve tx count from last available block")
+		}
+		return txCount
+	}
+	return txCount
 }
 
 func (c *Consensus) clientConfig() comm.ClientConfig {

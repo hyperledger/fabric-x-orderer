@@ -150,15 +150,6 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 		Signatures: sigs,
 	})
 
-	// TODO update the tx count in the consensus.
-	numOfRequests := uint64(len(batch.Requests()))
-	newTXcount := numOfRequests + uint64(monitoring.GetMetricValue(l.metrics.TransactionCount.(prometheus.Counter), l.Logger))
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, newTXcount)
-	if err != nil {
-		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
-	}
-	blockToAppend.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
-
 	l.Logger.Debugf("Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
 		blockToAppend.Header,                        // Header
 		len(blockToAppend.GetData().GetData()),      // Data
@@ -171,7 +162,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 		panic(err)
 	}
 
-	l.metrics.TransactionCount.Add(float64(numOfRequests))
+	l.metrics.TransactionCount.Add(float64(len(batch.Requests())))
 	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(blockToAppend)))
 	l.metrics.BlocksCount.Add(1)
 }
@@ -204,20 +195,12 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 		})
 	}
 
-	// TODO update the tx count in the consensus.
 	l.metrics.TransactionCount.Add(1) // for the config TX
-	transactionCount := uint64(monitoring.GetMetricValue(l.metrics.TransactionCount.(prometheus.Counter), l.Logger))
-	batchID := types.NewSimpleBatch(types.ShardIDConsensus, 0, 0, nil, 0)
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batchID, orderingInfo, transactionCount)
-	if err != nil {
-		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
-	}
 
-	configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 	l.Logger.Debugf("Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
-		configBlock.Header,                                // Header
-		len(configBlock.GetData().GetData()),              // Data
-		batchID.Primary(), batchID.Shard(), batchID.Seq(), // Metadata batchID
+		configBlock.Header,                   // Header
+		len(configBlock.GetData().GetData()), // Data
+		0, types.ShardIDConsensus, 0,         // Metadata batchID
 		orderingInfo.DecisionNum, orderingInfo.BatchIndex, orderingInfo.BatchCount, // Metadata ordering
 		signers, // Metadata signers
 	)
