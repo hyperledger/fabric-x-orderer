@@ -9,12 +9,10 @@ package blocksprovider_test
 import (
 	"fmt"
 	"os"
-	"path"
 	"sync"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
-	"github.com/hyperledger/fabric-lib-go/bccsp/sw"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -24,14 +22,12 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/hyperledger/fabric-x-common/common/crypto/tlsgen"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/tools/test"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
-	arma_testutil "github.com/hyperledger/fabric-x-orderer/testutil/fabric"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 const eventuallyTO = 20 * time.Second
@@ -123,7 +119,7 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 		fakeDurationExceededHandler = &fake.DurationExceededHandler{}
 		fakeDurationExceededHandler.DurationExceededHandlerReturns(false)
 
-		channelConfig, fakeCryptoProvider, err = testSetup(tempDir, "CFT")
+		channelConfig, fakeCryptoProvider, err = testSetupBFT(suiteT, tempDir)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		d = &blocksprovider.Deliverer{
@@ -710,16 +706,15 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 		})
 
 		ginkgo.It("updates the orderer connection source", func() {
-			gomega.Eventually(fakeOrdererConnectionSource.UpdateCallCount, eventuallyTO).Should(gomega.Equal(1))
-			orgsAddresses := fakeOrdererConnectionSource.UpdateArgsForCall(0)
-			gomega.Expect(orgsAddresses).ToNot(gomega.BeNil())
-			gomega.Expect(orgsAddresses).To(gomega.HaveLen(1))
-			orgAddr, ok := orgsAddresses["SampleOrg"]
+			gomega.Eventually(fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(gomega.Equal(1))
+			consenterAddresses := fakeOrdererConnectionSource.Update2ArgsForCall(0)
+			fmt.Printf(">>>> addresses %+v \n\n", consenterAddresses)
+			gomega.Expect(consenterAddresses).ToNot(gomega.BeNil())
+			gomega.Expect(consenterAddresses).To(gomega.HaveLen(4))
+			partyAddr, ok := consenterAddresses[types.PartyID(1)]
 			gomega.Expect(ok).To(gomega.BeTrue())
-			gomega.Expect(orgAddr.Addresses).To(gomega.Equal([]string{
-				"127.0.0.1:7050", "127.0.0.1:7051", "127.0.0.1:7052",
-			}))
-			gomega.Expect(orgAddr.RootCerts).To(gomega.HaveLen(2))
+			gomega.Expect(partyAddr.Address).To(gomega.Equal("party1-consenter:1234"))
+			gomega.Expect(partyAddr.RootCerts).To(gomega.HaveLen(1))
 		})
 	})
 
@@ -766,101 +761,3 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 		})
 	})
 })
-
-func testSetup(certDir string, consensusClass string) (*common.Config, bccsp.BCCSP, error) {
-	var configProfile *configtxgen.Profile
-	tlsCA, err := tlsgen.NewCA()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	switch consensusClass {
-	case "CFT":
-		configProfile = configtxgen.Load(configtxgen.SampleAppChannelEtcdRaftProfile, arma_testutil.GetDevConfigDir())
-		err = generateCertificates(configProfile, tlsCA, certDir)
-	case "BFT":
-		configProfile = configtxgen.Load(configtxgen.SampleAppChannelSmartBftProfile, arma_testutil.GetDevConfigDir())
-		err = generateCertificatesSmartBFT(configProfile, tlsCA, certDir)
-	default:
-		err = fmt.Errorf("expected CFT or BFT")
-	}
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	bootstrapper, err := configtxgen.NewBootstrapper(configProfile)
-	if err != nil {
-		return nil, nil, err
-	}
-	channelConfigProto := &common.Config{ChannelGroup: bootstrapper.GenesisChannelGroup()}
-	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return channelConfigProto, cryptoProvider, nil
-}
-
-// TODO this pattern repeats itself in several places. Make it common in the 'genesisconfig' package to easily create
-// Raft genesis blocks
-func generateCertificates(confAppRaft *configtxgen.Profile, tlsCA tlsgen.CA, certDir string) error {
-	for i, c := range confAppRaft.Orderer.EtcdRaft.Consenters {
-		srvC, err := tlsCA.NewServerCertKeyPair(c.Host)
-		if err != nil {
-			return err
-		}
-		srvP := path.Join(certDir, fmt.Sprintf("server%d.crt", i))
-		err = os.WriteFile(srvP, srvC.Cert, 0o644)
-		if err != nil {
-			return err
-		}
-
-		clnC, err := tlsCA.NewClientCertKeyPair()
-		if err != nil {
-			return err
-		}
-		clnP := path.Join(certDir, fmt.Sprintf("client%d.crt", i))
-		err = os.WriteFile(clnP, clnC.Cert, 0o644)
-		if err != nil {
-			return err
-		}
-
-		c.ServerTlsCert = []byte(srvP)
-		c.ClientTlsCert = []byte(clnP)
-	}
-
-	return nil
-}
-
-func generateCertificatesSmartBFT(confAppSmartBFT *configtxgen.Profile, tlsCA tlsgen.CA, certDir string) error {
-	for i, c := range confAppSmartBFT.Orderer.ConsenterMapping {
-		srvC, err := tlsCA.NewServerCertKeyPair(c.Host)
-		if err != nil {
-			return err
-		}
-
-		srvP := path.Join(certDir, fmt.Sprintf("server%d.crt", i))
-		err = os.WriteFile(srvP, srvC.Cert, 0o644)
-		if err != nil {
-			return err
-		}
-
-		clnC, err := tlsCA.NewClientCertKeyPair()
-		if err != nil {
-			return err
-		}
-
-		clnP := path.Join(certDir, fmt.Sprintf("client%d.crt", i))
-		err = os.WriteFile(clnP, clnC.Cert, 0o644)
-		if err != nil {
-			return err
-		}
-
-		c.Identity = srvP
-		c.ServerTLSCert = srvP
-		c.ClientTLSCert = clnP
-	}
-
-	return nil
-}

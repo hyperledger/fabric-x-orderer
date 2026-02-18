@@ -20,6 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 // LedgerInfo an adapter to provide the interface to query
@@ -104,13 +105,12 @@ func (d *Deliverer) Initialize(channelConfig *cb.Config) {
 	)
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
-	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, "")
-	orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, types.PartyID(0)) //<< no self-party, as in the peer
+	extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
-		// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
-		d.Logger.Panicf("Bundle creation should not have failed: %s", err)
+		d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
 	}
-	ordererSource.Update(orgAddresses)
+	ordererSource.Update2(extractedEndpoints)
 	d.orderers = ordererSource
 }
 
@@ -197,12 +197,11 @@ func (d *Deliverer) DeliverBlocks() {
 			totalDuration = time.Duration(0)
 
 			if channelConfig != nil {
-				orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+				extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 				if err != nil {
-					// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
-					d.Logger.Panicf("Bundle creation should not have failed: %s", err)
+					d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
 				}
-				d.orderers.Update(orgAddresses)
+				d.orderers.Update2(extractedEndpoints)
 			}
 		}
 		if err := blockReceiver.ProcessIncoming(onSuccess); err != nil {
