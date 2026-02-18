@@ -54,8 +54,12 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		return errors.Errorf("batch size differs between shared and orderer config")
 	}
 
-	// 3. Validate that BFT RequestMaxBytes >= BatchingConfig RequestMaxBytes
+	// 3. Validate that BFT RequestMaxBytes is positive and >= BatchingConfig RequestMaxBytes,
+	// to ensure config requests accepted by the router are not rejected by SmartBFT.
 	bftConfig := sharedConfig.ConsensusConfig.SmartBFTConfig
+	if sharedConfig.BatchingConfig.RequestMaxBytes <= 0 {
+		return errors.Errorf("invalid BatchingConfig RequestMaxBytes must be greater than zero")
+	}
 	if bftConfig.RequestMaxBytes < sharedConfig.BatchingConfig.RequestMaxBytes {
 		return errors.Errorf("smartbft RequestMaxBytes must be equal or greater than BatchingConfig RequestMaxBytes")
 	}

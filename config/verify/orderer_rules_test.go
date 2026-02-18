@@ -97,6 +97,36 @@ func TestValidateNewConfig_BFTParams(t *testing.T) {
 	require.Contains(t, err.Error(), "smartbft config validation failed")
 }
 
+func TestValidateNewConfig_InvalidRequestMaxBytes(t *testing.T) {
+	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
+	defer cleanup()
+
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+
+	// set smartbft RequestMaxBytes to a value smaller than BatchingConfig RequestMaxBytes
+	updatePb := builder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.RequestMaxBytes, "1"))
+	require.NotEmpty(t, updatePb)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
+	req := &comm.Request{
+		Payload:   updateEnv.Payload,
+		Signature: updateEnv.Signature,
+	}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	require.NoError(t, err)
+
+	env := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
+
+	err = or.ValidateNewConfig(env, bccsp, types.PartyID(1))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "smartbft RequestMaxBytes must be equal or greater than BatchingConfig RequestMaxBytes")
+}
+
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
 	bccsp := factory.GetDefault()
