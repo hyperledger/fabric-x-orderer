@@ -9,9 +9,11 @@ package verify
 import (
 	"time"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
@@ -19,14 +21,14 @@ import (
 
 //go:generate counterfeiter -o mocks/orderer_rules.go . OrdererRules
 type OrdererRules interface {
-	ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP) error
+	ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID types.PartyID) error
 	ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error
 }
 
 type DefaultOrdererRules struct{}
 
 // ValidateNewConfig validates that the rules of the new config are valid before it is applied.
-func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP) error {
+func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bundle from new envelope config")
@@ -52,9 +54,17 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		return errors.Errorf("batch size differs between shared and orderer config")
 	}
 
-	// TODO: Validate BFT request max bytes.
+	// 3. Validate that BFT RequestMaxBytes >= BatchingConfig RequestMaxBytes
+	bftConfig := sharedConfig.ConsensusConfig.SmartBFTConfig
+	if bftConfig.RequestMaxBytes < sharedConfig.BatchingConfig.RequestMaxBytes {
+		return errors.Errorf("smartbft RequestMaxBytes must be equal or greater than BatchingConfig RequestMaxBytes")
+	}
+
+	// 4. Validate BFT parameters
+	if err := ValidateSmartBFTConfig(uint64(partyID), bftConfig); err != nil {
+		return errors.Wrap(err, "smartbft config validation failed")
+	}
 	// TODO: Validate endpoints in the Orderer Org definitions.
-	// TODO: Validate BFT parameters.
 	// TODO: Validate certificates.
 	// TODO: Validate consenter mapping.
 	// TODO: Validate block validation policy.
@@ -187,6 +197,60 @@ func validateBatchTimeout(bt *config_protos.BatchTimeouts) error {
 	}
 	if autoRemove <= 0 {
 		return errors.Errorf("attempted to set auto remove timeout to a non-positive value: %s", autoRemove)
+	}
+	return nil
+}
+
+func ValidateSmartBFTConfig(id uint64, cfg *config_protos.SmartBFTConfig) error {
+	if cfg == nil {
+		return errors.New("smartbft config is nil")
+	}
+
+	c := smartbft_types.DefaultConfig
+	c.SelfID = id
+	c.RequestBatchMaxCount = cfg.RequestBatchMaxCount
+	c.RequestBatchMaxBytes = cfg.RequestBatchMaxBytes
+	c.IncomingMessageBufferSize = cfg.IncomingMessageBufferSize
+	c.RequestPoolSize = cfg.RequestPoolSize
+	c.LeaderHeartbeatCount = cfg.LeaderHeartbeatCount
+	c.NumOfTicksBehindBeforeSyncing = cfg.NumOfTicksBehindBeforeSyncing
+	c.SyncOnStart = cfg.SyncOnStart
+	c.SpeedUpViewChange = cfg.SpeedUpViewChange
+
+	var err error
+	if c.RequestBatchMaxInterval, err = time.ParseDuration(cfg.RequestBatchMaxInterval); err != nil {
+		return errors.Wrap(err, "invalid smartbft config RequestBatchMaxInterval")
+	}
+	if c.RequestForwardTimeout, err = time.ParseDuration(cfg.RequestForwardTimeout); err != nil {
+		return errors.Wrap(err, "invalid smartbft config RequestForwardTimeout")
+	}
+	if c.RequestComplainTimeout, err = time.ParseDuration(cfg.RequestComplainTimeout); err != nil {
+		return errors.Wrap(err, "invalid smartbft config RequestComplainTimeout")
+	}
+	if c.RequestAutoRemoveTimeout, err = time.ParseDuration(cfg.RequestAutoRemoveTimeout); err != nil {
+		return errors.Wrap(err, "invalid smartbft config RequestAutoRemoveTimeout")
+	}
+	if c.ViewChangeResendInterval, err = time.ParseDuration(cfg.ViewChangeResendInterval); err != nil {
+		return errors.Wrap(err, "invalid smartbft config ViewChangeResendInterval")
+	}
+	if c.ViewChangeTimeout, err = time.ParseDuration(cfg.ViewChangeTimeout); err != nil {
+		return errors.Wrap(err, "invalid smartbft config ViewChangeTimeout")
+	}
+	if c.LeaderHeartbeatTimeout, err = time.ParseDuration(cfg.LeaderHeartbeatTimeout); err != nil {
+		return errors.Wrap(err, "invalid smartbft config LeaderHeartbeatTimeout")
+	}
+	if c.CollectTimeout, err = time.ParseDuration(cfg.CollectTimeout); err != nil {
+		return errors.Wrap(err, "invalid smartbft config CollectTimeout")
+	}
+	if c.RequestPoolSubmitTimeout, err = time.ParseDuration(cfg.RequestPoolSubmitTimeout); err != nil {
+		return errors.Wrap(err, "invalid smartbft config RequestPoolSubmitTimeout")
+	}
+	c.LeaderRotation = cfg.LeaderRotation
+	c.DecisionsPerLeader = cfg.DecisionsPerLeader
+	c.RequestMaxBytes = cfg.RequestMaxBytes
+
+	if err := c.Validate(); err != nil {
+		return err
 	}
 
 	return nil

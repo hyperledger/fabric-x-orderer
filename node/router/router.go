@@ -115,7 +115,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogge
 
 	verifier := createVerifier(config)
 	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
-		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer, configRulesVerifier)
+		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer, configRulesVerifier, config.PartyID)
 
 	metrics := NewRouterMetrics(config, logger)
 

@@ -36,7 +36,7 @@ func TestValidateNewConfig(t *testing.T) {
 	defer cleanup()
 
 	or := verify.DefaultOrdererRules{}
-	require.NoError(t, or.ValidateNewConfig(env, factory.GetDefault()))
+	require.NoError(t, or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1)))
 }
 
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
@@ -59,10 +59,42 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	}
 
 	or := verify.DefaultOrdererRules{}
-	err = or.ValidateNewConfig(env, factory.GetDefault())
+	err = or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "batch creation timeout")
+}
+
+func TestValidateNewConfig_BFTParams(t *testing.T) {
+	dir, env, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
+	defer cleanup()
+
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+	partyID := types.PartyID(1)
+
+	// validate the initial config
+	require.NoError(t, or.ValidateNewConfig(env, bccsp, partyID))
+
+	// set an invalid smartbft config value
+	updatePb := builder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.LeaderHeartbeatCount, "0"))
+	require.NotEmpty(t, updatePb)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	require.NoError(t, err)
+
+	env = &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
+
+	// validate the new config, expect error
+	err = or.ValidateNewConfig(env, bccsp, partyID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "smartbft config validation failed")
 }
 
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
