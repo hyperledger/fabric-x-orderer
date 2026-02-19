@@ -85,7 +85,12 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 		if err != nil {
 			panic(fmt.Sprintf("error launching assembler, err: %s", err))
 		}
+
 		conf := configContent.ExtractAssemblerConfig(lastConfigBlock)
+
+		if err := configContent.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
+			panic(err)
+		}
 
 		var assemblerLogger *flogging.FabricLogger
 		if testLogger != nil {
@@ -123,6 +128,15 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		if err != nil {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
+		}
+
+		localSignCert, err := signer.GetCertificatePEM()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get sign certificate from signing identity: %s", err))
+		}
+
+		if err := configContent.CheckIfConsenterNodeExistsInSharedConfig(localSignCert); err != nil {
+			panic(err)
 		}
 
 		var consenterLogger *flogging.FabricLogger
@@ -167,6 +181,15 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
 		}
 
+		localSignCert, err := signer.GetCertificatePEM()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get sign certificate from signing identity: %s", err))
+		}
+
+		if err := config.CheckIfBatcherNodeExistsInSharedConfig(localSignCert); err != nil {
+			panic(err)
+		}
+
 		var batcherLogger *flogging.FabricLogger
 		if testLogger != nil {
 			batcherLogger = testLogger
@@ -207,6 +230,10 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		if err != nil {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
+		}
+
+		if err := conf.CheckIfRouterNodeExistsInSharedConfig(); err != nil {
+			panic(err)
 		}
 
 		var routerLogger *flogging.FabricLogger

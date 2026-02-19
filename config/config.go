@@ -241,10 +241,6 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
-	if err := config.CheckIfRouterNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
@@ -283,10 +279,6 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 }
 
 func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *nodeconfig.BatcherNodeConfig {
-	if err := config.CheckIfBatcherNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
@@ -360,10 +352,6 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 }
 
 func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *nodeconfig.ConsenterNodeConfig {
-	if err := config.CheckIfConsenterNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
@@ -412,10 +400,6 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 }
 
 func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
-	if err := config.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -685,16 +669,11 @@ func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig() error {
 	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
 }
 
-func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig() error {
+func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCert []byte) error {
 	localConfig := config.LocalConfig.NodeLocalConfig
 	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
 	localShardID := uint32(localConfig.BatcherParams.ShardID)
 	localTLSCert := config.LocalConfig.TLSConfig.Certificate
-
-	localSignCert, err := os.ReadFile(filepath.Join(localConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-	if err != nil {
-		return err
-	}
 
 	var sharedPartyConfig *protos.PartyConfig
 	for _, party := range config.SharedConfig.PartiesConfig {
@@ -745,15 +724,9 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig() error {
 	return nil
 }
 
-func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig() error {
-	localConfig := config.LocalConfig.NodeLocalConfig.GeneralConfig
+func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig(localSignCert []byte) error {
 	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
 	localTLSCert := config.LocalConfig.TLSConfig.Certificate
-
-	localSignCert, err := os.ReadFile(filepath.Join(localConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-	if err != nil {
-		return err
-	}
 
 	for _, sharedPartyConfig := range config.SharedConfig.PartiesConfig {
 		if localPartyID != sharedPartyConfig.PartyID {
