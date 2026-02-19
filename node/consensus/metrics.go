@@ -48,6 +48,13 @@ var (
 		Help:       "Total number of complaints received by the consenter.",
 		LabelNames: []string{"party_id"},
 	}
+
+	txsCountOpts = metrics.CounterOpts{
+		Namespace:  "consensus",
+		Name:       "txs_count",
+		Help:       "Total number of transactions ordered by the consenter.",
+		LabelNames: []string{"party_id"},
+	}
 )
 
 type ConsensusMetrics struct {
@@ -64,9 +71,10 @@ type ConsensusMetrics struct {
 	blocksCount     metrics.Counter
 	bafsCount       metrics.Counter
 	complaintsCount metrics.Counter
+	txsCount        metrics.Counter
 }
 
-func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, logger arma_types.Logger) *ConsensusMetrics {
+func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, txCount uint64, logger arma_types.Logger) *ConsensusMetrics {
 	host, port, err := net.SplitHostPort(consenterNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
@@ -83,6 +91,9 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisi
 	decisionsCount := p.NewCounter(metrics.CounterOpts(decisionsCountOpts)).With([]string{partyID}...)
 	decisionsCount.Add(float64(decisions))
 
+	txsCount := p.NewCounter(metrics.CounterOpts(txsCountOpts)).With([]string{partyID}...)
+	txsCount.Add(float64(txCount))
+
 	return &ConsensusMetrics{
 		interval: consenterNodeConfig.MetricsLogInterval,
 		partyID:  consenterNodeConfig.PartyId,
@@ -94,6 +105,7 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisi
 		blocksCount:     p.NewCounter(metrics.CounterOpts(blocksCountOpts)).With([]string{partyID}...),
 		bafsCount:       p.NewCounter(metrics.CounterOpts(bafsCountOpts)).With([]string{partyID}...),
 		complaintsCount: p.NewCounter(metrics.CounterOpts(complaintsCountOpts)).With([]string{partyID}...),
+		txsCount:        txsCount,
 	}
 }
 
@@ -111,11 +123,12 @@ func (m *ConsensusMetrics) Stop() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
 		m.monitor.Stop()
-		m.logger.Infof("CONSENSUS_METRICS party_id=%d: decisions: total=%d, blocks: total=%d, bafs: total=%d, complaints: total=%d", m.partyID,
+		m.logger.Infof("CONSENSUS_METRICS party_id=%d: decisions: total=%d, blocks: total=%d, bafs: total=%d, complaints: total=%d, txs: total=%d", m.partyID,
 			uint64(monitoring.GetMetricValue(m.decisionsCount.(prometheus.Metric), m.logger)),
 			uint64(monitoring.GetMetricValue(m.blocksCount.(prometheus.Metric), m.logger)),
 			uint64(monitoring.GetMetricValue(m.bafsCount.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.complaintsCount.(prometheus.Metric), m.logger)))
+			uint64(monitoring.GetMetricValue(m.complaintsCount.(prometheus.Metric), m.logger)),
+			uint64(monitoring.GetMetricValue(m.txsCount.(prometheus.Metric), m.logger)))
 	})
 }
 

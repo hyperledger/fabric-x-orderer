@@ -630,6 +630,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
 	txCount := c.getLastTxCountFromHeader(hdr)
 	if txCount > 0 {
+		c.Metrics.txsCount.Add(float64(txCount - c.txCount))
 		c.txCount = txCount
 	}
 
