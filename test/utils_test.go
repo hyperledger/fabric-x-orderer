@@ -737,7 +737,19 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				if err != nil {
 					return fmt.Errorf("failed unmarshalling identifier header for block %d: %v", block.Header.GetNumber(), err)
 				}
-				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, protoutil.BlockHeaderBytes(bhdr), metadataSignature.GetSignature()); err != nil {
+				lastConfigBlockNum := uint64(0) // TODO set last config block num
+				if protoutil.IsConfigBlock(block) {
+					lastConfigBlockNum = block.Header.Number
+				}
+				msg := &state.MessageToSign{
+					IdentifierHeader: metadataSignature.IdentifierHeader,
+					BlockHeader:      protoutil.BlockHeaderBytes(bhdr),
+					OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+						LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+						ConsenterMetadata: block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
+					}),
+				}
+				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, msg.AsBytes(), metadataSignature.GetSignature()); err != nil {
 					t.Logf("failed verifying signature for block %d: %v", block.Header.GetNumber(), err)
 					continue
 				}

@@ -31,15 +31,23 @@ func (cSig CompoundSig) UnPack() ([]smartbft_types.Signature, error) {
 	if len(values) == 0 {
 		return nil, errors.New("zero signature values")
 	}
+	var msgs [][]byte
+	if _, err := asn1.Unmarshal(cSig.Msg, &msgs); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal msgs")
+	}
+	if len(msgs) == 0 {
+		return nil, errors.New("zero signature msgs")
+	}
+	if len(msgs) != len(values) {
+		return nil, errors.Errorf("number of msgs %d does not match number of values %d", len(msgs), len(values))
+	}
 
 	var sigs []smartbft_types.Signature
 	for i, v := range values {
 		sig := smartbft_types.Signature{
 			ID:    cSig.ID,
 			Value: v,
-		}
-		if i == 0 {
-			sig.Msg = cSig.Msg
+			Msg:   msgs[i],
 		}
 		sigs = append(sigs, sig)
 	}
