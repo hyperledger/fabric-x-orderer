@@ -22,6 +22,13 @@ type MapperCRC64 struct {
 	ShardCount uint16
 }
 
+func CreateMapperCRC64(logger types.Logger, shardCount uint16) *MapperCRC64 {
+	return &MapperCRC64{
+		Logger:     logger,
+		ShardCount: shardCount,
+	}
+}
+
 func (m MapperCRC64) Map(request []byte) (shard uint16, reqID []byte) {
 	reqID, shardID := CRC64RequestToShard(m.ShardCount)(request)
 	m.Logger.Debugf("Forwarding request %d to shard %d", reqID, shardID)
