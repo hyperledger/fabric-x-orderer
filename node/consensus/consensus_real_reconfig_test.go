@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package consensus_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -74,166 +75,201 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
 	require.NoError(t, err, "failed to create private key")
+	keyBytes2, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org2/orderers/party2/batcher1/msp/keystore/priv_sk"))
+	require.NoError(t, err)
+	privateKey2, err := tx.CreateECDSAPrivateKey(keyBytes2)
+	require.NoError(t, err, "failed to create private key")
 	lastBlockNumber := uint64(1)
 	configSeq := types.ConfigSequence(0)
-	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
+	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq+1, lastBlockNumber, "mismatch config sequence")
+	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "")
 
-	// submit to consensus a config request from router, with parameter update
-	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
-	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
-	env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
-	configReq := &protos.Request{
-		Payload:   env.Payload,
-		Signature: env.Signature,
-	}
-	// try to submit config with bad ctx and it should be rejected
-	_, err = consensusNodes[0].SubmitConfig(t.Context(), configReq)
-	require.Error(t, err)
-	// create context with the router's certificate
-	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
-	require.NoError(t, err)
-	block, _ := pem.Decode(routerCertBytes)
-	require.NotNil(t, block)
-	require.Equal(t, "CERTIFICATE", block.Type)
-	routerCert, err := x509.ParseCertificate(block.Bytes)
-	require.NoError(t, err)
-	ctx, err := createContextForSubmitConfig(routerCert)
-	require.NoError(t, err)
-	// submit config update not signed by majority should be rejected
-	badEnv := configutil.CreateConfigTX(t, dir, parties[1:3], 1, configUpdatePbData)
-	badConfigReq := &protos.Request{
-		Payload:   badEnv.Payload,
-		Signature: badEnv.Signature,
-	}
-	_, err = consensusNodes[0].SubmitConfig(ctx, badConfigReq)
-	require.Error(t, err)
-	// submit a good config update
-	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
-	require.NoError(t, err)
+	var routerCtx context.Context
+	t.Run("reject config update", func(t *testing.T) {
+		// submit to consensus a config request from router, with parameter update
+		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+		defer cleanUp()
+		configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
+		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+		}
+		// try to submit config with bad ctx (just any context without the router's certificate) and it should be rejected
+		_, err = consensusNodes[0].SubmitConfig(t.Context(), configReq)
+		require.Error(t, err)
+		// create context with the router's certificate
+		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
+		require.NoError(t, err)
+		block, _ := pem.Decode(routerCertBytes)
+		require.NotNil(t, block)
+		require.Equal(t, "CERTIFICATE", block.Type)
+		routerCert, err := x509.ParseCertificate(block.Bytes)
+		require.NoError(t, err)
+		routerCtx, err = createContextForSubmitConfig(routerCert)
+		require.NoError(t, err)
+		// submit config update not signed by majority should be rejected
+		badEnv := configutil.CreateConfigTX(t, dir, parties[1:3], 1, configUpdatePbData)
+		badConfigReq := &protos.Request{
+			Payload:   badEnv.Payload,
+			Signature: badEnv.Signature,
+		}
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, badConfigReq)
+		require.Error(t, err)
+	})
 
-	// make sure the config block is committed and stop the consensus node
-	lastBlockNumber++
-	lastConfigBlock := makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+	var lastConfigBlock *common.Block
+	t.Run("config update with parameter change", func(t *testing.T) {
+		// submit to consensus a config request from router, with parameter update
+		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+		defer cleanUp()
+		configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
+		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+		}
+		// submit a good config update
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
 
-	// restart consensus nodes
-	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// make sure the config block is committed and stop the consensus node
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
-	// send another simple request
-	lastBlockNumber++
-	configSeq++
-	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
+		// restart consensus nodes
+		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
-	// submit a config request that changes a consenter's certificate
-	newConfigBlockStoreDir := t.TempDir()
-	defer os.RemoveAll(newConfigBlockStoreDir)
-	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(newConfigBlockStoreDir, "config.block"))
-	require.NoError(t, err)
-	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
-	defer cleanUp()
-	consenterToUpdate := types.PartyID(2)
-	caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
-	caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
-	newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
-	newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls", "key.pem")
-	newCert, err := armageddon.CreateNewCertificateFromCA(caCertPath, caPrivKeyPath, newCertPath, newKeyPath, nodesIPs)
-	require.NoError(t, err)
-	configUpdatePbData = configUpdateBuilder.UpdateConsensusTLSCert(t, consenterToUpdate, newCert)
-	env = configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
-	configReq = &protos.Request{
-		Payload:   env.Payload,
-		Signature: env.Signature,
-	}
-	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
-	require.NoError(t, err)
+		// send another simple request
+		lastBlockNumber++
+		configSeq++
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq+1, lastBlockNumber, "mismatch config sequence")
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq-1, lastBlockNumber, "mismatch config sequence")
+	})
 
-	// make sure the config block is committed and stop the consensus node
-	lastBlockNumber++
-	lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+	t.Run("config update with consenter's certificate change", func(t *testing.T) {
+		// submit a config request that changes a consenter's certificate
+		newConfigBlockStoreDir := t.TempDir()
+		defer os.RemoveAll(newConfigBlockStoreDir)
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(newConfigBlockStoreDir, "config.block"))
+		require.NoError(t, err)
+		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
+		defer cleanUp()
+		consenterToUpdate := types.PartyID(2)
+		caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
+		caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
+		newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
+		newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls", "key.pem")
+		newCert, err := armageddon.CreateNewCertificateFromCA(caCertPath, caPrivKeyPath, newCertPath, newKeyPath, nodesIPs)
+		require.NoError(t, err)
+		configUpdatePbData := configUpdateBuilder.UpdateConsensusTLSCert(t, consenterToUpdate, newCert)
+		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+		}
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
 
-	// restart consensus nodes
-	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// make sure the config block is committed and stop the consensus node
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
-	// send another simple request
-	lastBlockNumber++
-	configSeq++
-	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
+		// restart consensus nodes
+		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
-	removedParty := types.PartyID(6)
+		// send another simple request
+		lastBlockNumber++
+		configSeq++
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "")
+	})
 
-	// submit a config request that removes the last party
-	configBlockStoreDir := t.TempDir()
-	defer os.RemoveAll(configBlockStoreDir)
-	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(configBlockStoreDir, "config.block"))
-	require.NoError(t, err)
-	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
-	defer cleanUp()
-	configUpdatePbData = configUpdateBuilder.RemoveParty(t, removedParty)
-	env = configutil.CreateConfigTX(t, dir, parties[0:5], 1, configUpdatePbData)
-	configReq = &protos.Request{
-		Payload:   env.Payload,
-		Signature: env.Signature,
-	}
-	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
-	require.NoError(t, err)
+	t.Run("config update with consenter removal", func(t *testing.T) {
+		removedParty := types.PartyID(6)
 
-	// make sure the config block is committed and stop the consensus node
-	lastBlockNumber++
-	lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		// submit a config request that removes the last party
+		configBlockStoreDir := t.TempDir()
+		defer os.RemoveAll(configBlockStoreDir)
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(configBlockStoreDir, "config.block"))
+		require.NoError(t, err)
+		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
+		defer cleanUp()
+		configUpdatePbData := configUpdateBuilder.RemoveParty(t, removedParty)
+		env := configutil.CreateConfigTX(t, dir, parties[0:5], 1, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+		}
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
 
-	parties = []types.PartyID{1, 2, 3, 4, 5}
+		// make sure the config block is committed and stop the consensus node
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
-	// try to get the removed party
-	removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
-	removedNodeConfigContent, removedNodeLastConfigBlock, err := config.ReadConfig(removedNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
-	require.NoError(t, err)
-	require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
+		parties = []types.PartyID{1, 2, 3, 4, 5}
 
-	// restart consensus nodes
-	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-	ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// try to get the removed party
+		removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
+		removedNodeConfigContent, removedNodeLastConfigBlock, err := config.ReadConfig(removedNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+		require.NoError(t, err)
+		require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
 
-	// send another simple request
-	lastBlockNumber++
-	configSeq++
-	sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, configSeq, lastBlockNumber)
+		// restart consensus nodes
+		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
 
-	removedPartyLeader := types.PartyID(1)
+		// send another simple request
+		lastBlockNumber++
+		configSeq++
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "")
+	})
 
-	// submit a config request that removes the first party (leader)
-	anotherConfigBlockStoreDir := t.TempDir()
-	defer os.RemoveAll(anotherConfigBlockStoreDir)
-	err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
-	require.NoError(t, err)
-	configUpdateBuilder, cleanUp = configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
-	defer cleanUp()
-	configUpdatePbData = configUpdateBuilder.RemoveParty(t, removedPartyLeader)
-	env = configutil.CreateConfigTX(t, dir, parties[1:5], 1, configUpdatePbData)
-	configReq = &protos.Request{
-		Payload:   env.Payload,
-		Signature: env.Signature,
-	}
-	_, err = consensusNodes[0].SubmitConfig(ctx, configReq)
-	require.NoError(t, err)
+	t.Run("config update with leader consenter removal", func(t *testing.T) {
+		removedPartyLeader := types.PartyID(1)
 
-	// make sure the config block is committed and stop the consensus node
-	lastBlockNumber++
-	lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
-	require.NotNil(t, lastConfigBlock)
+		// submit a config request that removes the first party (leader)
+		anotherConfigBlockStoreDir := t.TempDir()
+		defer os.RemoveAll(anotherConfigBlockStoreDir)
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
+		require.NoError(t, err)
+		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
+		defer cleanUp()
+		configUpdatePbData := configUpdateBuilder.RemoveParty(t, removedPartyLeader)
+		env := configutil.CreateConfigTX(t, dir, parties[1:5], 1, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+		}
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
 
-	parties = []types.PartyID{2, 3, 4, 5}
+		// make sure the config block is committed and stop the consensus node
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
 
-	// try to get the removed party
-	removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedPartyLeader), "local_config_consenter.yaml")
-	removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
-	require.NoError(t, err)
-	require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
+		parties = []types.PartyID{2, 3, 4, 5}
 
-	// restart consensus nodes
-	consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-	startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// try to get the removed party
+		removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedPartyLeader), "local_config_consenter.yaml")
+		removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
+		require.NoError(t, err)
+		require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
+
+		// restart consensus nodes
+		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+
+		// send another simple request
+		lastBlockNumber++
+		configSeq++
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "key does not exist")
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey2, 2, configSeq, lastBlockNumber, "")
+	})
 
 	for _, consensusNode := range consensusNodes {
 		consensusNode.Stop()
@@ -301,19 +337,18 @@ func startConsensusNodesAndRegisterGRPCServers(parties []types.PartyID, consensu
 	return ledgerListeners
 }
 
-func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, privateKey *ecdsa.PrivateKey, configSeq types.ConfigSequence, expectedHeaderNumber uint64) {
+func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, privateKey *ecdsa.PrivateKey, batcherID types.PartyID, configSeqToSend types.ConfigSequence, expectedHeaderNumber uint64, expectedError string) {
 	for _, consensusNode := range consensusNodes {
-		baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq+1, 1)
+		baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), batcherID, 1, digest123, 2, 0, configSeqToSend, 1)
 		require.NoError(t, err)
 		controlEvent := &state.ControlEvent{BAF: baf}
 		err = consensusNode.SubmitRequest(controlEvent.Bytes())
-		require.ErrorContains(t, err, "mismatch config sequence")
+		if expectedError != "" {
+			require.ErrorContains(t, err, expectedError)
+			return
+		}
+		require.NoError(t, err)
 	}
-	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), 1, 1, digest123, 2, 0, configSeq, 1)
-	require.NoError(t, err)
-	controlEvent := &state.ControlEvent{BAF: baf}
-	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
-	require.NoError(t, err)
 	for _, ledgerListener := range ledgerListeners {
 		require.Eventually(t, func() bool {
 			select {
