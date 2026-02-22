@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
@@ -59,7 +60,18 @@ func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 	mockConfigRulesVerifier.ValidateNewConfigReturns(nil)
 	mockConfigRulesVerifier.ValidateTransitionReturns(nil)
 
-	configSubmitter := NewConfigSubmitter(stubConsenter.GetConsenterEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, logger, bundle, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier, types.PartyID(1))
+	conf := &nodeconfig.RouterNodeConfig{
+		Consenter: nodeconfig.ConsenterInfo{
+			Endpoint:   stubConsenter.GetConsenterEndpoint(),
+			TLSCACerts: []nodeconfig.RawBytes{ca.CertBytes()},
+		},
+		TLSCertificateFile: ckp.Cert,
+		TLSPrivateKeyFile:  ckp.Key,
+		Bundle:             bundle,
+		PartyID:            types.PartyID(1),
+	}
+
+	configSubmitter := NewConfigSubmitter(conf, logger, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier)
 
 	return configSubmitTestSetup{configSubmitter: configSubmitter, stubConsenter: &stubConsenter}
 }
