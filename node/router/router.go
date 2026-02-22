@@ -64,9 +64,11 @@ type Router struct {
 	feedbackWG       sync.WaitGroup
 	configSeq        uint32
 	wal              *wal.WriteAheadLogFile
+	signer           identity.SignerSerializer
+	configuration    *config.Configuration
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -92,11 +94,6 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogge
 		return int(shardIDs[i]) < int(shardIDs[j])
 	})
 
-	var tlsCAsOfConsenter [][]byte
-	for _, rawTLSCA := range config.Consenter.TLSCACerts {
-		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
-	}
-
 	configStore, err := configstore.NewStore(config.FileStorePath)
 	if err != nil {
 		logger.Panicf("Failed creating router config store: %s", err)
@@ -114,12 +111,14 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogge
 	decisionPuller := CreateConsensusDecisionReplicator(config, seekInfo, logger)
 
 	verifier := createVerifier(config)
-	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
-		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer, configRulesVerifier, config.PartyID)
+
+	configSubmitter := NewConfigSubmitter(config, logger, verifier, signer, configUpdateProposer, configRulesVerifier)
 
 	metrics := NewRouterMetrics(config, logger)
 
 	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, decisionPuller, routerWAL)
+	r.signer = signer
+	r.configuration = configuration
 	r.init()
 	r.metrics.Start()
 	return r

@@ -155,7 +155,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		configRulesVerifier.ValidateNewConfigReturns(nil)
 		configRulesVerifier.ValidateTransitionReturns(nil)
 
-		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer, configRulesVerifier)
+		router := router.NewRouter(config, nil, l, fakeSigner, configUpdateProposer, configRulesVerifier)
 		routers = append(routers, router)
 	}
 
@@ -544,7 +544,7 @@ func recoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLo
 	configRulesVerifier.ValidateNewConfigReturns(nil)
 	configRulesVerifier.ValidateTransitionReturns(nil)
 
-	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
+	router := router.NewRouter(conf, nil, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
 	router.StartRouterService()
 
 	return router
