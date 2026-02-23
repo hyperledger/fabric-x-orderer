@@ -4,17 +4,18 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 type FakeConsensusDecisionReplicatorCreator struct {
-	CreateDecisionConsensusReplicatorStub        func(*config.BatcherNodeConfig, types.Logger, types.DecisionNum) batcher.DecisionReplicator
+	CreateDecisionConsensusReplicatorStub        func(*config.BatcherNodeConfig, *flogging.FabricLogger, types.DecisionNum) batcher.DecisionReplicator
 	createDecisionConsensusReplicatorMutex       sync.RWMutex
 	createDecisionConsensusReplicatorArgsForCall []struct {
 		arg1 *config.BatcherNodeConfig
-		arg2 types.Logger
+		arg2 *flogging.FabricLogger
 		arg3 types.DecisionNum
 	}
 	createDecisionConsensusReplicatorReturns struct {
@@ -27,12 +28,12 @@ type FakeConsensusDecisionReplicatorCreator struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusReplicator(arg1 *config.BatcherNodeConfig, arg2 types.Logger, arg3 types.DecisionNum) batcher.DecisionReplicator {
+func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusReplicator(arg1 *config.BatcherNodeConfig, arg2 *flogging.FabricLogger, arg3 types.DecisionNum) batcher.DecisionReplicator {
 	fake.createDecisionConsensusReplicatorMutex.Lock()
 	ret, specificReturn := fake.createDecisionConsensusReplicatorReturnsOnCall[len(fake.createDecisionConsensusReplicatorArgsForCall)]
 	fake.createDecisionConsensusReplicatorArgsForCall = append(fake.createDecisionConsensusReplicatorArgsForCall, struct {
 		arg1 *config.BatcherNodeConfig
-		arg2 types.Logger
+		arg2 *flogging.FabricLogger
 		arg3 types.DecisionNum
 	}{arg1, arg2, arg3})
 	stub := fake.CreateDecisionConsensusReplicatorStub
@@ -54,13 +55,13 @@ func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusRepli
 	return len(fake.createDecisionConsensusReplicatorArgsForCall)
 }
 
-func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusReplicatorCalls(stub func(*config.BatcherNodeConfig, types.Logger, types.DecisionNum) batcher.DecisionReplicator) {
+func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusReplicatorCalls(stub func(*config.BatcherNodeConfig, *flogging.FabricLogger, types.DecisionNum) batcher.DecisionReplicator) {
 	fake.createDecisionConsensusReplicatorMutex.Lock()
 	defer fake.createDecisionConsensusReplicatorMutex.Unlock()
 	fake.CreateDecisionConsensusReplicatorStub = stub
 }
 
-func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusReplicatorArgsForCall(i int) (*config.BatcherNodeConfig, types.Logger, types.DecisionNum) {
+func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusReplicatorArgsForCall(i int) (*config.BatcherNodeConfig, *flogging.FabricLogger, types.DecisionNum) {
 	fake.createDecisionConsensusReplicatorMutex.RLock()
 	defer fake.createDecisionConsensusReplicatorMutex.RUnlock()
 	argsForCall := fake.createDecisionConsensusReplicatorArgsForCall[i]

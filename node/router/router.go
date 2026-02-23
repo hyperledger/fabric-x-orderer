@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/policies"
@@ -48,7 +49,7 @@ type Router struct {
 	mapper           ShardMapper
 	net              Net
 	shardRouters     map[types.ShardID]*ShardRouter
-	logger           types.Logger
+	logger           *flogging.FabricLogger
 	shardIDs         []types.ShardID
 	routerNodeConfig *nodeconfig.RouterNodeConfig
 	verifier         *requestfilter.RulesVerifier
@@ -65,7 +66,7 @@ type Router struct {
 	wal              *wal.WriteAheadLogFile
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -125,7 +126,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger types.Logger, signer 
 }
 
 // getNextDecisionNumber return the number of the next decision to be pulled from consensus, based on the last config block stored in config store and the decision stored in WAL.
-func getNextDecisionNumber(configStore *configstore.Store, walInitState [][]byte, logger types.Logger) types.DecisionNum {
+func getNextDecisionNumber(configStore *configstore.Store, walInitState [][]byte, logger *flogging.FabricLogger) types.DecisionNum {
 	if len(walInitState) > 0 {
 		lastWalEntry := walInitState[len(walInitState)-1]
 		decision := &state.Header{}
@@ -313,7 +314,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger types.Logger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}

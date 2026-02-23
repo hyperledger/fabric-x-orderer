@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
@@ -30,7 +30,7 @@ import (
 
 type BatcherDeliverService struct {
 	LedgerArray *ledger.BatchLedgerArray
-	Logger      types.Logger
+	Logger      *flogging.FabricLogger
 }
 
 func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -83,7 +83,7 @@ func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string)
 
 type chainManager struct {
 	ledgerArray *ledger.BatchLedgerArray
-	logger      types.Logger
+	logger      *flogging.FabricLogger
 }
 
 func (c *chainManager) GetChain(chainID string) deliver.Chain {

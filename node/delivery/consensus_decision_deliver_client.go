@@ -9,7 +9,7 @@ package delivery
 import (
 	"context"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -28,13 +28,13 @@ type ConsensusDecisionReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
-	logger          types.Logger
+	logger          *flogging.FabricLogger
 	cancelCtx       context.Context
 	ctxCancelFunc   context.CancelFunc
 	seekInfo        *orderer.SeekInfo
 }
 
-func NewConsensusDecisionReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger types.Logger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
+func NewConsensusDecisionReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger *flogging.FabricLogger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	decisionReplicator := &ConsensusDecisionReplicator{
 		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -41,7 +42,7 @@ type OrderedBatchAttestationReplicator interface {
 type Collator struct {
 	ShardCount                        int
 	Ledger                            AssemblerLedgerWriter
-	Logger                            types.Logger
+	Logger                            *flogging.FabricLogger
 	OrderedBatchAttestationReplicator OrderedBatchAttestationReplicator
 	Index                             AssemblerIndex
 	Shards                            []types.ShardID

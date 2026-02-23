@@ -9,33 +9,34 @@ package testutil
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-func CreateLogger(t *testing.T, i int) *zap.SugaredLogger {
+func CreateLogger(t *testing.T, i int) *flogging.FabricLogger {
 	logConfig := zap.NewDevelopmentConfig()
 	logConfig.Level.SetLevel(zapcore.InfoLevel)
 	logger, _ := logConfig.Build()
 	logger = logger.With(zap.String("t", t.Name())).With(zap.Int64("id", int64(i)))
-	sugaredLogger := logger.Sugar()
-	return sugaredLogger
+	fabricLogger := flogging.NewFabricLogger(logger)
+	return fabricLogger
 }
 
-func CreateLoggerForModule(t *testing.T, name string, level zapcore.Level) *zap.SugaredLogger {
+func CreateLoggerForModule(t *testing.T, name string, level zapcore.Level) *flogging.FabricLogger {
 	logConfig := zap.NewDevelopmentConfig()
 	logConfig.Level.SetLevel(level)
 	logger, _ := logConfig.Build()
 	logger = logger.With(zap.String("t", t.Name())).With(zap.String("m", name))
-	sugaredLogger := logger.Sugar()
-	return sugaredLogger
+	fabricLogger := flogging.NewFabricLogger(logger)
+	return fabricLogger
 }
 
-func CreateBenchmarkLogger(b *testing.B, i int) *zap.SugaredLogger {
+func CreateBenchmarkLogger(b *testing.B, i int) *flogging.FabricLogger {
 	logConfig := zap.NewDevelopmentConfig()
 	logConfig.Level.SetLevel(zapcore.InfoLevel)
 	logger, _ := logConfig.Build()
 	logger = logger.With(zap.String("b", b.Name())).With(zap.Int64("id", int64(i)))
-	sugaredLogger := logger.Sugar()
-	return sugaredLogger
+	fabricLogger := flogging.NewFabricLogger(logger)
+	return fabricLogger
 }

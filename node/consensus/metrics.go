@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -59,7 +60,7 @@ var (
 
 type ConsensusMetrics struct {
 	partyID   arma_types.PartyID
-	logger    arma_types.Logger
+	logger    *flogging.FabricLogger
 	interval  time.Duration
 	stopChan  chan struct{}
 	stopOnce  sync.Once
@@ -74,7 +75,7 @@ type ConsensusMetrics struct {
 	txsCount        metrics.Counter
 }
 
-func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, txCount uint64, logger arma_types.Logger) *ConsensusMetrics {
+func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, txCount uint64, logger *flogging.FabricLogger) *ConsensusMetrics {
 	host, port, err := net.SplitHostPort(consenterNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)

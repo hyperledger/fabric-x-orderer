@@ -10,7 +10,7 @@ import (
 	"encoding/binary"
 	"hash/crc64"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 )
 
 type ShardMapper interface {
@@ -18,7 +18,7 @@ type ShardMapper interface {
 }
 
 type MapperCRC64 struct {
-	Logger     types.Logger
+	Logger     *flogging.FabricLogger
 	ShardCount uint16
 }
 

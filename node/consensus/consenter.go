@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
@@ -23,7 +24,7 @@ type BatchAttestationDB interface {
 }
 
 type Consenter struct {
-	Logger          types.Logger
+	Logger          *flogging.FabricLogger
 	DB              BatchAttestationDB
 	BAFDeserializer state.BAFDeserializer
 }

@@ -4,14 +4,14 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 )
 
 type FakeConsensusBringerFactory struct {
-	CreateStub        func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, types.Logger) delivery.ConsensusBringer
+	CreateStub        func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) delivery.ConsensusBringer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 []config.RawBytes
@@ -19,7 +19,7 @@ type FakeConsensusBringerFactory struct {
 		arg3 config.RawBytes
 		arg4 string
 		arg5 ledger.AssemblerLedgerReaderWriter
-		arg6 types.Logger
+		arg6 *flogging.FabricLogger
 	}
 	createReturns struct {
 		result1 delivery.ConsensusBringer
@@ -31,7 +31,7 @@ type FakeConsensusBringerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusBringerFactory) Create(arg1 []config.RawBytes, arg2 config.RawBytes, arg3 config.RawBytes, arg4 string, arg5 ledger.AssemblerLedgerReaderWriter, arg6 types.Logger) delivery.ConsensusBringer {
+func (fake *FakeConsensusBringerFactory) Create(arg1 []config.RawBytes, arg2 config.RawBytes, arg3 config.RawBytes, arg4 string, arg5 ledger.AssemblerLedgerReaderWriter, arg6 *flogging.FabricLogger) delivery.ConsensusBringer {
 	var arg1Copy []config.RawBytes
 	if arg1 != nil {
 		arg1Copy = make([]config.RawBytes, len(arg1))
@@ -45,7 +45,7 @@ func (fake *FakeConsensusBringerFactory) Create(arg1 []config.RawBytes, arg2 con
 		arg3 config.RawBytes
 		arg4 string
 		arg5 ledger.AssemblerLedgerReaderWriter
-		arg6 types.Logger
+		arg6 *flogging.FabricLogger
 	}{arg1Copy, arg2, arg3, arg4, arg5, arg6})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
@@ -66,13 +66,13 @@ func (fake *FakeConsensusBringerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeConsensusBringerFactory) CreateCalls(stub func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, types.Logger) delivery.ConsensusBringer) {
+func (fake *FakeConsensusBringerFactory) CreateCalls(stub func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) delivery.ConsensusBringer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeConsensusBringerFactory) CreateArgsForCall(i int) ([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, types.Logger) {
+func (fake *FakeConsensusBringerFactory) CreateArgsForCall(i int) ([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]

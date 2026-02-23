@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 )
 
 type PrefetchBenchEventType int
@@ -96,7 +96,7 @@ func (ts *testStats) Accumulate(other *testStats) {
 
 type statsMonitor struct {
 	wg               sync.WaitGroup
-	logger           types.Logger
+	logger           *flogging.FabricLogger
 	EventsChan       chan *PrefetchBenchEvent
 	accumulatedStats *testStats
 	currentTickStats *testStats
@@ -106,7 +106,7 @@ type statsMonitor struct {
 	doneChan         chan struct{}
 }
 
-func newStatsMonitor(logger types.Logger, eventChanSize int, statsInterval time.Duration) *statsMonitor {
+func newStatsMonitor(logger *flogging.FabricLogger, eventChanSize int, statsInterval time.Duration) *statsMonitor {
 	return &statsMonitor{
 		logger:           logger,
 		EventsChan:       make(chan *PrefetchBenchEvent, eventChanSize),

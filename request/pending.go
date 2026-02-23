@@ -12,14 +12,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/pkg/errors"
 )
 
 type PendingStore struct {
 	ReqIDGCInterval       time.Duration
 	ReqIDLifetime         time.Duration
-	Logger                types.Logger
+	Logger                *flogging.FabricLogger
 	Inspector             RequestInspector
 	FirstStrikeThreshold  time.Duration
 	SecondStrikeThreshold time.Duration

@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -14,12 +15,12 @@ import (
 
 //go:generate counterfeiter -o mocks/consensus_decision_replicator_creator.go . ConsensusDecisionReplicatorCreator
 type ConsensusDecisionReplicatorCreator interface {
-	CreateDecisionConsensusReplicator(conf *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) DecisionReplicator
+	CreateDecisionConsensusReplicator(conf *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, lastKnownDecisionNum types.DecisionNum) DecisionReplicator
 }
 
 type ConsensusDecisionReplicatorFactory struct{}
 
-func (c *ConsensusDecisionReplicatorFactory) CreateDecisionConsensusReplicator(config *node_config.BatcherNodeConfig, logger types.Logger, lastKnownDecisionNum types.DecisionNum) DecisionReplicator {
+func (c *ConsensusDecisionReplicatorFactory) CreateDecisionConsensusReplicator(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, lastKnownDecisionNum types.DecisionNum) DecisionReplicator {
 	var endpoint string
 	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(config.Consenters); i++ {

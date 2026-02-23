@@ -106,6 +106,10 @@ func (fake *FakeAssemblerRestarter) SoftStopCalls(stub func()) {
 func (fake *FakeAssemblerRestarter) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.configBlockNumberMutex.RLock()
+	defer fake.configBlockNumberMutex.RUnlock()
+	fake.softStopMutex.RLock()
+	defer fake.softStopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

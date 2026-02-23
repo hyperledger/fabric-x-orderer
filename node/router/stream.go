@@ -12,15 +12,15 @@ import (
 	"maps"
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
 type stream struct {
 	endpoint                          string
-	logger                            types.Logger
+	logger                            *flogging.FabricLogger
 	requestTransmitSubmitStreamClient protos.RequestTransmit_SubmitStreamClient
 	ctx                               context.Context
 	cancelOnce                        sync.Once
@@ -241,7 +241,7 @@ func (s *stream) registerReply(traceID []byte, responses chan Response) {
 }
 
 // renewStream creates a new stream that inherits the map and the requests channel
-func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger types.Logger, ctx context.Context, cancel context.CancelFunc) (*stream, error) {
+func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint string, logger *flogging.FabricLogger, ctx context.Context, cancel context.CancelFunc) (*stream, error) {
 	newGRPCStream, err := client.SubmitStream(ctx)
 	if err != nil {
 		s.logger.Errorf("Failed establishing a new stream")

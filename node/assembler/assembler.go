@@ -10,16 +10,14 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/hyperledger/fabric/protoutil"
-
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric/protoutil"
 )
 
 type NetStopper interface {
@@ -28,7 +26,7 @@ type NetStopper interface {
 
 type Assembler struct {
 	collator              Collator
-	logger                types.Logger
+	logger                *flogging.FabricLogger
 	ds                    *AssemblerDeliverService
 	prefetcher            PrefetcherController
 	baReplicator          delivery.ConsensusBringer
@@ -75,7 +73,7 @@ func (a *Assembler) ConfigBlockNumber() uint64 {
 }
 
 func NewDefaultAssembler(
-	logger types.Logger,
+	logger *flogging.FabricLogger,
 	net NetStopper,
 	config *config.AssemblerNodeConfig,
 	configBlock *common.Block,
@@ -183,7 +181,7 @@ func NewDefaultAssembler(
 	return assembler
 }
 
-func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, logger types.Logger) *Assembler {
+func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, logger *flogging.FabricLogger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
 		net,

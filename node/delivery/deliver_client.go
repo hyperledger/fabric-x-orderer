@@ -12,7 +12,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -61,7 +61,7 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 	return seekInfo
 }
 
-func Pull(context context.Context, channel string, logger types.Logger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
+func Pull(context context.Context, channel string, logger *flogging.FabricLogger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
 	logger.Infof("Started pulling from: %s", channel)
 
 	select {
@@ -153,7 +153,7 @@ func Pull(context context.Context, channel string, logger types.Logger, endpoint
 
 func pullBlocks(
 	channel string,
-	logger types.Logger,
+	logger *flogging.FabricLogger,
 	stream orderer.AtomicBroadcast_DeliverClient,
 	endpoint string,
 	conn *grpc.ClientConn,
@@ -191,7 +191,7 @@ func pullBlocks(
 }
 
 // PullOne will pull a single block, as specified in the request.
-func PullOne(ctx context.Context, channel string, logger types.Logger, endpointToPullFrom string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, successErr error) (*common.Block, error) {
+func PullOne(ctx context.Context, channel string, logger *flogging.FabricLogger, endpointToPullFrom string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, successErr error) (*common.Block, error) {
 	logger.Infof("Started pulling one batch, channel: %s, endpoint: %s", channel, endpointToPullFrom)
 
 	count := 0
@@ -260,7 +260,7 @@ func PullOne(ctx context.Context, channel string, logger types.Logger, endpointT
 }
 
 // readBlock reads a single block and closes the stream and the connection.
-func readBlock(ctx context.Context, successErr error, stream orderer.AtomicBroadcast_DeliverClient, conn *grpc.ClientConn, endpoint string, channel string, logger types.Logger) (*common.Block, error) {
+func readBlock(ctx context.Context, successErr error, stream orderer.AtomicBroadcast_DeliverClient, conn *grpc.ClientConn, endpoint string, channel string, logger *flogging.FabricLogger) (*common.Block, error) {
 	defer func() {
 		stream.CloseSend()
 		conn.Close()

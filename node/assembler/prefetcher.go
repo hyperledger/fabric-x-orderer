@@ -11,6 +11,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
@@ -22,17 +23,17 @@ type PrefetcherController interface {
 
 //go:generate counterfeiter -o ./mocks/prefetcher_factory.go . PrefetcherFactory
 type PrefetcherFactory interface {
-	Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger types.Logger) PrefetcherController
+	Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger *flogging.FabricLogger) PrefetcherController
 }
 
 type DefaultPrefetcherFactory struct{}
 
-func (f *DefaultPrefetcherFactory) Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger types.Logger) PrefetcherController {
+func (f *DefaultPrefetcherFactory) Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger *flogging.FabricLogger) PrefetcherController {
 	return NewPrefetcher(shards, parties, prefetchIndex, batchFetcher, logger)
 }
 
 type Prefetcher struct {
-	logger              types.Logger
+	logger              *flogging.FabricLogger
 	prefetchIndex       PrefetchIndexer
 	batchFetcher        BatchBringer
 	shards              []types.ShardID
@@ -48,7 +49,7 @@ func NewPrefetcher(
 	parties []types.PartyID,
 	prefetchIndex PrefetchIndexer,
 	batchFetcher BatchBringer,
-	logger types.Logger,
+	logger *flogging.FabricLogger,
 ) *Prefetcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &Prefetcher{

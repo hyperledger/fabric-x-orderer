@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -23,7 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(config *node_config.BatcherNodeConfig, logger types.Logger, net Net, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, net Net, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	var parties []types.PartyID
 	for shIdx, sh := range config.Shards {
 		if sh.ShardId != config.ShardId {
@@ -174,7 +175,7 @@ func computeZeroState(config *node_config.BatcherNodeConfig) state.State {
 	return s
 }
 
-func indexTLSCerts(batchers []node_config.BatcherInfo, logger types.Logger) map[string]types.PartyID {
+func indexTLSCerts(batchers []node_config.BatcherInfo, logger *flogging.FabricLogger) map[string]types.PartyID {
 	batcherCertToID := make(map[string]types.PartyID)
 	for _, batcher := range batchers {
 		rawTLSCert := batcher.TLSCert
@@ -189,7 +190,7 @@ func indexTLSCerts(batchers []node_config.BatcherInfo, logger types.Logger) map[
 	return batcherCertToID
 }
 
-func getLastKnownDecisionNum(walInitState [][]byte, configStore *configstore.Store, logger types.Logger) types.DecisionNum {
+func getLastKnownDecisionNum(walInitState [][]byte, configStore *configstore.Store, logger *flogging.FabricLogger) types.DecisionNum {
 	if len(walInitState) > 0 {
 		header := &state.Header{}
 		if err := header.Deserialize(walInitState[len(walInitState)-1]); err != nil {

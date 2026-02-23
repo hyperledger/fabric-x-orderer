@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -37,7 +37,7 @@ type configSubmitter struct {
 	consensusRootCAs      [][]byte
 	tlsCert               []byte
 	tlsKey                []byte
-	logger                types.Logger
+	logger                *flogging.FabricLogger
 	configRequestsChannel chan *TrackedRequest
 	ctx                   context.Context
 	cancelFunc            func()
@@ -48,7 +48,7 @@ type configSubmitter struct {
 	configRulesVerifier   verify.OrdererRules
 }
 
-func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tlsCert []byte, tlsKey []byte, logger types.Logger, bundle channelconfig.Resources, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
+func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tlsCert []byte, tlsKey []byte, logger *flogging.FabricLogger, bundle channelconfig.Resources, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
 	cs := &configSubmitter{
 		consensusEndpoint:     consensusEndpoint,
 		consensusRootCAs:      consensusRootCAs,

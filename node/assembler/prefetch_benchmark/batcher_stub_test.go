@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -27,7 +28,7 @@ type batchCacheWithLock struct {
 }
 
 type batcherStub struct {
-	logger              types.Logger
+	logger              *flogging.FabricLogger
 	shardId             types.ShardID
 	parties             []types.PartyID
 	batchGenerator      *batchGenerator

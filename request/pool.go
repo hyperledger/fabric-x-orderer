@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
 )
@@ -38,7 +38,7 @@ type Striker interface {
 type Pool struct {
 	lock            sync.RWMutex
 	pending         *PendingStore
-	logger          types.Logger
+	logger          *flogging.FabricLogger
 	inspector       RequestInspector
 	options         PoolOptions
 	striker         Striker
@@ -68,7 +68,7 @@ type PoolOptions struct {
 }
 
 // NewPool constructs a new requests pool
-func NewPool(logger types.Logger, inspector RequestInspector, options PoolOptions, striker Striker) *Pool {
+func NewPool(logger *flogging.FabricLogger, inspector RequestInspector, options PoolOptions, striker Striker) *Pool {
 	rp := &Pool{
 		logger:    logger,
 		inspector: inspector,

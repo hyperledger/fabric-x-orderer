@@ -9,6 +9,7 @@ package consensus_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
@@ -96,7 +97,7 @@ func TestConsenter(t *testing.T) {
 	assert.Equal(t, cr.Envelope.Signature, configRequests[0].Envelope.Signature)
 }
 
-func createConsenter(logger arma_types.Logger) *consensus.Consenter {
+func createConsenter(logger *flogging.FabricLogger) *consensus.Consenter {
 	consenter := &consensus.Consenter{
 		Logger:          logger,
 		DB:              &mocks.FakeBatchAttestationDB{},

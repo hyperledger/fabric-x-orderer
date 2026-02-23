@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
@@ -36,7 +37,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 )
@@ -67,7 +67,7 @@ type consensusTestSetup struct {
 	batcherNodes   []*node
 	batchersInfo   []nodeconfig.BatcherInfo
 	consensusNodes []*consensus.Consensus
-	loggers        []*zap.SugaredLogger
+	loggers        []*flogging.FabricLogger
 	configs        []*nodeconfig.ConsenterNodeConfig
 	listeners      []*storageListener
 }
@@ -156,7 +156,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
 
 	var consensusNodes []*consensus.Consensus
-	var loggers []*zap.SugaredLogger
+	var loggers []*flogging.FabricLogger
 	var configs []*nodeconfig.ConsenterNodeConfig
 	var listeners []*storageListener
 
@@ -325,7 +325,7 @@ func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, erro
 	return ctx, nil
 }
 
-func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger types.Logger) consensus.Signer {
+func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger *flogging.FabricLogger) consensus.Signer {
 	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
 	if privateKey == nil || privateKey.Bytes == nil {
 		logger.Panicf("Failed decoding private key PEM")

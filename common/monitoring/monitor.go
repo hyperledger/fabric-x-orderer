@@ -12,12 +12,11 @@ import (
 	"net"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type Monitor struct {
 	Provider *Provider
-	logger   types.Logger
+	logger   *flogging.FabricLogger
 	endpoint Endpoint
 	// stop is used to stop the monitoring service
 	stop     context.CancelFunc

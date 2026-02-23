@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +31,7 @@ func (e *Endpoint) Address() string {
 type ServerConfig struct {
 	endpoint             *Endpoint
 	preAllocatedListener net.Listener
-	logger               types.Logger
+	logger               *flogging.FabricLogger
 }
 
 // Listener instantiate a [net.Listener] and updates the config port with the effective port.

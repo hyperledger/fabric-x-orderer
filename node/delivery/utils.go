@@ -11,6 +11,7 @@ import (
 	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -19,7 +20,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func extractHeaderFromBlock(block *common.Block, logger types.Logger) *state.Header {
+func extractHeaderFromBlock(block *common.Block, logger *flogging.FabricLogger) *state.Header {
 	decisionAsBytes := block.Data.Data[0]
 
 	headerSize := decisionAsBytes[:4]

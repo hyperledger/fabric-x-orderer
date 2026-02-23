@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
@@ -102,7 +103,7 @@ type BatcherRole struct {
 	Shard                   types.ShardID
 	Threshold               int
 	N                       uint16
-	Logger                  types.Logger
+	Logger                  *flogging.FabricLogger
 	Ledger                  BatchLedger
 	BatchPuller             BatchesPuller
 	StateProvider           StateProvider
