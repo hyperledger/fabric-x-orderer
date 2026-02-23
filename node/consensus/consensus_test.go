@@ -289,7 +289,6 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
 	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{Bundle: bundle, PartyId: partyID, MonitoringListenAddress: "127.0.0.1:0", MetricsLogInterval: 3 * time.Second}
-
 	c := &node_consensus.Consensus{
 		Config:       &consenterNodeConfig,
 		BFTConfig:    smartbft_types.DefaultConfig,
@@ -303,7 +302,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		BADB:         db,
 		Net:          &consensus_mocks.FakeNetStopper{},
 		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
-		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), l),
+		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
 	}
 
 	c.BFTConfig.SelfID = uint64(partyID)
