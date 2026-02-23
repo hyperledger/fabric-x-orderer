@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +52,7 @@ import (
 // 6. submit a config update request that changes a consenter's TLS certificate and make sure it's committed and the new certificate is effective after restart
 // 7. submit a config update request that removes a non-leader consenter and make sure it's committed and the removed consenter cannot participate after restart
 // 8. submit a config update request that removes the leader consenter and make sure it's committed and the removed leader cannot participate after restart
+// 9. submit a config update request that changes a consenter's endpoint and make sure it's committed and the new endpoint is effective after restart
 // TODO: add more scenarios such as adding a new consenter, removing multiple consenters, etc.
 func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4, 5, 6}
@@ -268,6 +271,79 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		lastBlockNumber++
 		configSeq++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "key does not exist")
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey2, 2, configSeq, lastBlockNumber, "")
+	})
+
+	t.Run("config update with consenter's endpoint change", func(t *testing.T) {
+		consenterPartyToUpdate := types.PartyID(2)
+
+		// stop nodes before reading the current config
+		for _, consensusNode := range consensusNodes {
+			consensusNode.Stop()
+		}
+
+		// get the current endpoint
+		consenterNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", consenterPartyToUpdate), "local_config_consenter.yaml")
+		cfg, lcb, err := config.ReadConfig(consenterNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsenter", zap.DebugLevel))
+		require.NoError(t, err)
+		consenterConfig := cfg.ExtractConsenterConfig(lcb)
+		nodeIP := strings.Split(consenterConfig.Consenters[0].Endpoint, ":")[0]
+		availablePort, _ := testutil.GetAvailablePort(t)
+		newPort, err := strconv.Atoi(availablePort)
+		require.NoError(t, err)
+
+		// create the config update
+		oneMoreConfigBlockStoreDir := t.TempDir()
+		defer os.RemoveAll(oneMoreConfigBlockStoreDir)
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
+		require.NoError(t, err)
+		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
+		defer cleanUp()
+		configUpdatePbData := configUpdateBuilder.UpdateOrderingEndpoint(t, consenterPartyToUpdate, nodeIP, newPort)
+		env := configutil.CreateConfigTX(t, dir, parties[0:4], 1, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+		}
+
+		// restart consensus nodes
+		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+
+		// use a different router's certificate to submit config update (as the old router's party was removed in the previous test)
+		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org2/orderers/party2/router/tls/tls-cert.pem"))
+		require.NoError(t, err)
+		block, _ := pem.Decode(routerCertBytes)
+		require.NotNil(t, block)
+		require.Equal(t, "CERTIFICATE", block.Type)
+		routerCert, err := x509.ParseCertificate(block.Bytes)
+		require.NoError(t, err)
+		routerCtx, err = createContextForSubmitConfig(routerCert)
+		require.NoError(t, err)
+
+		// submit the config update
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
+
+		// make sure the config block is committed and stop the consensus node
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
+
+		// update the node local config
+		localConfig, _, err := config.LoadLocalConfig(consenterNodeConfigPath)
+		require.NoError(t, err)
+		localConfig.NodeLocalConfig.GeneralConfig.ListenAddress = nodeIP
+		localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)
+		utils.WriteToYAML(localConfig.NodeLocalConfig, consenterNodeConfigPath)
+
+		// restart consensus nodes
+		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
+		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+
+		// send another simple request
+		lastBlockNumber++
+		configSeq++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey2, 2, configSeq, lastBlockNumber, "")
 	})
 
