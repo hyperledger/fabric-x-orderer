@@ -101,10 +101,10 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 //
 //  1. At most one party can be added in a config tx.
 //  2. MaxPartyID transition rules:
-//    - If a party is added, its PartyID must equal current MaxPartyID + 1.
-//    - If a party is added, next MaxPartyID must equal that PartyID.
-//    - If no party is added, MaxPartyID must remain unchanged.
-//    This ensures PartyIDs are strictly increasing and never reused.
+//     - If a party is added, its PartyID must equal current MaxPartyID + 1.
+//     - If a party is added, next MaxPartyID must equal that PartyID.
+//     - If no party is added, MaxPartyID must remain unchanged.
+//     This ensures PartyIDs are strictly increasing and never reused.
 //  3. At most one party can be removed in a config tx.
 //  4. Only one membership change is allowed per config tx.
 //
