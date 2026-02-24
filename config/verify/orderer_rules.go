@@ -27,7 +27,21 @@ type OrdererRules interface {
 
 type DefaultOrdererRules struct{}
 
-// ValidateNewConfig validates that the rules of the new config are valid before it is applied.
+// ValidateNewConfig validates the new ordering service configuration before it is applied.
+// It performs internal validation of the proposed config, including consistency
+// checks for parameters defined in multiple places. The rules are as follows:
+//
+//  1. All batching timeouts must be valid durations and positive.
+//  2. BatchSize.AbsoluteMaxBytes must match between OrdererConfig and SharedConfig.
+//  3. SmartBFTConfig.RequestMaxBytes must be positive and >= SharedConfig.BatchingConfig.RequestMaxBytes.
+//     This ensures config requests accepted by the router are not rejected by SmartBFT.
+//  4. SmartBFTConfig must pass SmartBFT validation.
+//
+// TODO: Validate OrdererEndpoints in the organization definitions.
+// TODO: Validate that ca certificates in the sharedConfig are the same as in the ordererOrganization ca certificates.
+// TODO: Validate new certificates - chain of trust, expiration, etc.
+// TODO: Validate ConsenterMapping.
+// TODO: Validate BlockValidationPolicy.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -43,41 +57,59 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 	if err := proto.Unmarshal(ordererConfig.ConsensusMetadata(), sharedConfig); err != nil {
 		return errors.Wrap(err, "failed to unmarshal consensus metadata")
 	}
+	if sharedConfig.BatchingConfig == nil {
+		return errors.New("batching config is nil")
+	}
+	if sharedConfig.ConsensusConfig == nil {
+		return errors.New("consensus config is nil")
+	}
 
-	// 1. Validate batch timeouts
+	// 1.
 	if err := validateBatchTimeout(sharedConfig.BatchingConfig.BatchTimeouts); err != nil {
 		return err
 	}
 
-	// 2. Validate that BatchSize AbsoluteMaxBytes is consistent between shared and orderer config
+	// 2.
 	if sharedConfig.BatchingConfig.BatchSize.AbsoluteMaxBytes != ordererConfig.BatchSize().AbsoluteMaxBytes {
 		return errors.Errorf("batch size differs between shared and orderer config")
 	}
 
-	// 3. Validate that BFT RequestMaxBytes is positive and >= BatchingConfig RequestMaxBytes,
-	// to ensure config requests accepted by the router are not rejected by SmartBFT.
-	bftConfig := sharedConfig.ConsensusConfig.SmartBFTConfig
+	// 3.
 	if sharedConfig.BatchingConfig.RequestMaxBytes <= 0 {
-		return errors.Errorf("invalid BatchingConfig RequestMaxBytes must be greater than zero")
+		return errors.Errorf("BatchingConfig RequestMaxBytes must be greater than zero")
+	}
+
+	bftConfig := sharedConfig.ConsensusConfig.SmartBFTConfig
+	if bftConfig == nil {
+		return errors.New("smartbft config is nil")
 	}
 	if bftConfig.RequestMaxBytes < sharedConfig.BatchingConfig.RequestMaxBytes {
 		return errors.Errorf("smartbft RequestMaxBytes must be equal or greater than BatchingConfig RequestMaxBytes")
 	}
 
-	// 4. Validate BFT parameters
-	if err := ValidateSmartBFTConfig(uint64(partyID), bftConfig); err != nil {
+	// 4.
+	if err := validateSmartBFTConfig(uint64(partyID), bftConfig); err != nil {
 		return errors.Wrap(err, "smartbft config validation failed")
 	}
-	// TODO: Validate endpoints in the Orderer Org definitions.
-	// TODO: Validate certificates.
-	// TODO: Validate consenter mapping.
-	// TODO: Validate block validation policy.
 
 	return nil
 }
 
-// ValidateTransition validates ordering service config transition rules
-// from the current config to the next config.
+// ValidateTransition validates ordering service config transition rules from the
+// current configuration to the next proposed configuration, before
+// the new configuration is applied. The rules are as follows:
+//
+//  1. At most one party can be added in a config tx.
+//  2. MaxPartyID transition rules:
+//    - If a party is added, its PartyID must equal current MaxPartyID + 1.
+//    - If a party is added, next MaxPartyID must equal that PartyID.
+//    - If no party is added, MaxPartyID must remain unchanged.
+//    This ensures PartyIDs are strictly increasing and never reused.
+//  3. At most one party can be removed in a config tx.
+//  4. Only one membership change is allowed per config tx.
+//
+// TODO: Validate party modifications (only one certificate / endpoint change in a config tx).
+// TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
 	// extract current shared config
 	currOrdererCfg, ok := current.OrdererConfig()
@@ -116,7 +148,7 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		nextMap[p.PartyID] = p
 	}
 
-	// 1. Validate that at most one party is added
+	// 1.
 	added := 0
 	var newID uint32
 	for id := range nextMap {
@@ -129,9 +161,7 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		}
 	}
 
-	// 2. Validate MaxPartyID rules in the next config:
-	// when a party is added, next MaxPartyID equals the new PartyID, which equals current MaxPartyID+1.
-	// otherwise, next MaxPartyID equals current MaxPartyID.
+	// 2.
 	if added == 1 {
 		if newID <= currCfg.MaxPartyID {
 			return errors.Errorf("proposed party ID %d must be greater than previous MaxPartyID %d", newID, currCfg.MaxPartyID)
@@ -148,7 +178,7 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		}
 	}
 
-	// 3. Validate that at most one party is removed
+	// 3.
 	removed := 0
 	for id := range currMap {
 		if _, exists := nextMap[id]; !exists {
@@ -159,18 +189,18 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		}
 	}
 
-	// Ensure at most one membership change per config tx
+	// 4.
 	if added+removed > 1 {
 		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d)", added, removed)
 	}
-
-	// TODO: Validate party modifications (only one certificate / endpoint change in a config tx).
-	// TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 
 	return nil
 }
 
 func validateBatchTimeout(bt *config_protos.BatchTimeouts) error {
+	if bt == nil {
+		return errors.New("batch timeouts are nil")
+	}
 	batchCreation, err := time.ParseDuration(bt.BatchCreationTimeout)
 	if err != nil {
 		return err
@@ -205,7 +235,7 @@ func validateBatchTimeout(bt *config_protos.BatchTimeouts) error {
 	return nil
 }
 
-func ValidateSmartBFTConfig(id uint64, cfg *config_protos.SmartBFTConfig) error {
+func validateSmartBFTConfig(id uint64, cfg *config_protos.SmartBFTConfig) error {
 	if cfg == nil {
 		return errors.New("smartbft config is nil")
 	}
