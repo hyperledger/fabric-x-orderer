@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWorker(t *testing.T) {
@@ -54,4 +55,16 @@ func TestWorker(t *testing.T) {
 	wg.Wait()
 
 	assert.Len(t, workDone, 13)
+}
+
+func TestVerifierCreator(t *testing.T) {
+	t.Run("nil config", func(t *testing.T) {
+		vc := verifierCreator{}
+		require.NotNil(t, vc)
+		v, err := vc.CreateBlockVerifier(nil, nil, nil, nil)
+		require.EqualError(t, err, "config block is nil")
+		require.Nil(t, v)
+	})
+
+	// TODO add more tests once we start using the verifierCreator
 }

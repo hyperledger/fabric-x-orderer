@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -26,16 +26,16 @@ import (
 )
 
 type BFTSynchronizer struct {
-	lastReconfig        types.Reconfig
+	lastReconfig        smartbft_types.Reconfig
 	selfID              uint64
-	LatestConfig        func() (types.Configuration, []uint64)
-	BlockToDecision     func(*common.Block) *types.Decision
-	OnCommit            func(*common.Block) types.Reconfig
+	LatestConfig        func() (smartbft_types.Configuration, []uint64)
+	BlockToDecision     func(*common.Block) *smartbft_types.Decision
+	OnCommit            func(*common.Block) smartbft_types.Reconfig
 	Support             ConsenterSupport
 	CryptoProvider      bccsp.BCCSP
 	ClusterDialer       *comm.PredicateDialer
 	LocalConfigCluster  config.Cluster
-	BlockPullerFactory  BlockPullerFactory
+	BlockPullerFactory  HeightDetectorFactory
 	VerifierFactory     VerifierFactory
 	BFTDelivererFactory BFTDelivererFactory
 	Logger              *flogging.FabricLogger
@@ -44,7 +44,7 @@ type BFTSynchronizer struct {
 	syncBuff *SyncBuffer
 }
 
-func (s *BFTSynchronizer) Sync() types.SyncResponse {
+func (s *BFTSynchronizer) Sync() smartbft_types.SyncResponse {
 	s.Logger.Debugf("BFT Sync initiated, party: %d", s.selfID)
 	decision, err := s.synchronize()
 	if err != nil {
@@ -54,9 +54,9 @@ func (s *BFTSynchronizer) Sync() types.SyncResponse {
 		block := s.Support.Block(h - 1)
 		config, nodes := s.LatestConfig()
 		latestDec := s.BlockToDecision(block)
-		return types.SyncResponse{
+		return smartbft_types.SyncResponse{
 			Latest: *latestDec,
-			Reconfig: types.ReconfigSync{
+			Reconfig: smartbft_types.ReconfigSync{
 				InReplicatedDecisions: false, // If we read from ledger we do not need to reconfigure.
 				CurrentNodes:          nodes,
 				CurrentConfig:         config,
@@ -66,13 +66,13 @@ func (s *BFTSynchronizer) Sync() types.SyncResponse {
 
 	// After sync has ended, reset the state of the last reconfig.
 	defer func() {
-		s.lastReconfig = types.Reconfig{}
+		s.lastReconfig = smartbft_types.Reconfig{}
 	}()
 
 	s.Logger.Debugf("reconfig: %+v", s.lastReconfig)
-	return types.SyncResponse{
+	return smartbft_types.SyncResponse{
 		Latest: *decision,
-		Reconfig: types.ReconfigSync{
+		Reconfig: smartbft_types.ReconfigSync{
 			InReplicatedDecisions: s.lastReconfig.InLatestDecision,
 			CurrentConfig:         s.lastReconfig.CurrentConfig,
 			CurrentNodes:          s.lastReconfig.CurrentNodes,
@@ -88,7 +88,7 @@ func (s *BFTSynchronizer) Buffer() *SyncBuffer {
 	return s.syncBuff
 }
 
-func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
+func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	// === We probe all the endpoints and establish a target height, as well as detect the self endpoint.
 	targetHeight, _, err := s.detectTargetHeight()
 	if err != nil {
@@ -133,9 +133,9 @@ func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
 // channel/orderers/consenters (for cluster consensus), that is, every consenter should be represented by a
 // delivery endpoint. This important for Sync to work properly.
 func (s *BFTSynchronizer) detectTargetHeight() (uint64, string, error) {
-	blockPuller, err := s.BlockPullerFactory.CreateBlockPuller(s.Support, s.ClusterDialer, s.LocalConfigCluster, s.CryptoProvider)
+	blockPuller, err := s.BlockPullerFactory.CreateHeightDetector(arma_types.PartyID(s.selfID), s.Support, s.ClusterDialer, s.LocalConfigCluster, s.CryptoProvider, s.Logger)
 	if err != nil {
-		return 0, "", errors.Wrap(err, "cannot get create BlockPuller")
+		return 0, "", errors.Wrap(err, "cannot create HeightDetector")
 	}
 	defer blockPuller.Close()
 
@@ -165,6 +165,8 @@ func (s *BFTSynchronizer) detectTargetHeight() (uint64, string, error) {
 //
 // heights: a slice containing the heights of accessible peers, length must be >0.
 // clusterSize: the cluster size, must be >0.
+//
+// We should emit a height that is equal or smaller than a height given by a correct node.
 func (s *BFTSynchronizer) computeTargetHeight(heights []uint64) uint64 {
 	sort.Slice(heights, func(i, j int) bool { return heights[i] > heights[j] }) // Descending
 	clusterSize := len(s.Support.SharedConfig().Consenters())

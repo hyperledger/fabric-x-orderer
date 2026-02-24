@@ -105,7 +105,7 @@ func newSynchronizer(
 	clusterDialer *comm.PredicateDialer,
 ) api.Synchronizer {
 	switch localConfigCluster.ReplicationPolicy {
-	case "consensus":
+	case "consensus", "":
 		logger.Debug("Creating a BFTSynchronizer")
 		return &BFTSynchronizer{
 			selfID:          selfID,
@@ -119,13 +119,11 @@ func newSynchronizer(
 			CryptoProvider:      bccsp,
 			ClusterDialer:       clusterDialer,
 			LocalConfigCluster:  localConfigCluster,
-			BlockPullerFactory:  &BlockPullerCreator{},
-			VerifierFactory:     &verifierCreator{},
+			BlockPullerFactory:  &HeightDetectorCreator{},
+			VerifierFactory:     &noopVerifierCreator{}, // TODO rewrite &verifierCreator{} and replace
 			BFTDelivererFactory: &bftDelivererCreator{},
 			Logger:              logger,
 		}
-
-	// TODO consider adding the "simple" CFT ReplicationPolicy
 
 	default:
 		logger.Panicf("Unsupported Cluster.ReplicationPolicy: %s", localConfigCluster.ReplicationPolicy)

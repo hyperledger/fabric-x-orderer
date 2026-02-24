@@ -62,9 +62,9 @@ func TestBFTSynchronizer(t *testing.T) {
 	}
 
 	t.Run("no remote endpoints but myself", func(t *testing.T) {
-		bp := &mocks.FakeBlockPuller{}
-		bpf := &mocks.FakeBlockPullerFactory{}
-		bpf.CreateBlockPullerReturns(bp, nil)
+		bp := &mocks.FakeHeightDetector{}
+		bpf := &mocks.FakeHeightDetectorFactory{}
+		bpf.CreateHeightDetectorReturns(bp, nil)
 
 		bp.HeightsByEndpointsReturns(
 			map[string]uint64{
@@ -117,9 +117,9 @@ func TestBFTSynchronizer(t *testing.T) {
 	})
 
 	t.Run("no remote endpoints", func(t *testing.T) {
-		bp := &mocks.FakeBlockPuller{}
-		bpf := &mocks.FakeBlockPullerFactory{}
-		bpf.CreateBlockPullerReturns(bp, nil)
+		bp := &mocks.FakeHeightDetector{}
+		bpf := &mocks.FakeHeightDetectorFactory{}
+		bpf.CreateHeightDetectorReturns(bp, nil)
 
 		bp.HeightsByEndpointsReturns(map[string]uint64{}, "", nil)
 
@@ -166,8 +166,8 @@ func TestBFTSynchronizer(t *testing.T) {
 	})
 
 	t.Run("error creating block puller", func(t *testing.T) {
-		bpf := &mocks.FakeBlockPullerFactory{}
-		bpf.CreateBlockPullerReturns(nil, errors.New("oops"))
+		bpf := &mocks.FakeHeightDetectorFactory{}
+		bpf.CreateHeightDetectorReturns(nil, errors.New("oops"))
 
 		fakeCS := &mocks.FakeConsenterSupport{}
 		fakeCS.HeightReturns(100)
@@ -211,9 +211,9 @@ func TestBFTSynchronizer(t *testing.T) {
 	})
 
 	t.Run("no remote endpoints above my height", func(t *testing.T) {
-		bp := &mocks.FakeBlockPuller{}
-		bpf := &mocks.FakeBlockPullerFactory{}
-		bpf.CreateBlockPullerReturns(bp, nil)
+		bp := &mocks.FakeHeightDetector{}
+		bpf := &mocks.FakeHeightDetectorFactory{}
+		bpf.CreateHeightDetectorReturns(bp, nil)
 
 		bp.HeightsByEndpointsReturns(
 			map[string]uint64{
@@ -272,9 +272,9 @@ func TestBFTSynchronizer(t *testing.T) {
 	})
 
 	t.Run("remote endpoints above my height: 2 blocks", func(t *testing.T) {
-		bp := &mocks.FakeBlockPuller{}
-		bpf := &mocks.FakeBlockPullerFactory{}
-		bpf.CreateBlockPullerReturns(bp, nil)
+		bp := &mocks.FakeHeightDetector{}
+		bpf := &mocks.FakeHeightDetectorFactory{}
+		bpf.CreateHeightDetectorReturns(bp, nil)
 
 		bp.HeightsByEndpointsReturns(
 			map[string]uint64{
@@ -416,9 +416,9 @@ func TestBFTSynchronizer(t *testing.T) {
 	})
 
 	t.Run("remote endpoints above my height: 3 blocks", func(t *testing.T) {
-		bp := &mocks.FakeBlockPuller{}
-		bpf := &mocks.FakeBlockPullerFactory{}
-		bpf.CreateBlockPullerReturns(bp, nil)
+		bp := &mocks.FakeHeightDetector{}
+		bpf := &mocks.FakeHeightDetectorFactory{}
+		bpf.CreateHeightDetectorReturns(bp, nil)
 
 		bp.HeightsByEndpointsReturns(
 			map[string]uint64{
