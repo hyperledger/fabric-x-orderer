@@ -28,7 +28,7 @@ type RemoteContext struct {
 	Channel                          string
 	SendBuffSize                     int
 	shutdownSignal                   chan struct{}
-	Logger                           Logger
+	Logger                           *flogging.FabricLogger
 	endpoint                         string
 	GetStreamFunc                    func(context.Context) (StepClientStream, error) // interface{}
 	ProbeConn                        func(conn *grpc.ClientConn) error

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -49,7 +50,7 @@ type Batcher struct {
 	requestsInspectorVerifier *RequestsInspectorVerifier
 	batcherDeliverService     *BatcherDeliverService
 	decisionReplicator        DecisionReplicator
-	logger                    types.Logger
+	logger                    *flogging.FabricLogger
 	batcher                   *BatcherRole
 	batcherCerts2IDs          map[string]types.PartyID
 	controlEventSenders       []ConsenterControlEventSender

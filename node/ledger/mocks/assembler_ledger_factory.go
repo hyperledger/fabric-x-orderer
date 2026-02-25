@@ -4,15 +4,15 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 )
 
 type FakeAssemblerLedgerFactory struct {
-	CreateStub        func(types.Logger, string) (ledger.AssemblerLedgerReaderWriter, error)
+	CreateStub        func(*flogging.FabricLogger, string) (ledger.AssemblerLedgerReaderWriter, error)
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
-		arg1 types.Logger
+		arg1 *flogging.FabricLogger
 		arg2 string
 	}
 	createReturns struct {
@@ -27,11 +27,11 @@ type FakeAssemblerLedgerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeAssemblerLedgerFactory) Create(arg1 types.Logger, arg2 string) (ledger.AssemblerLedgerReaderWriter, error) {
+func (fake *FakeAssemblerLedgerFactory) Create(arg1 *flogging.FabricLogger, arg2 string) (ledger.AssemblerLedgerReaderWriter, error) {
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
-		arg1 types.Logger
+		arg1 *flogging.FabricLogger
 		arg2 string
 	}{arg1, arg2})
 	stub := fake.CreateStub
@@ -53,13 +53,13 @@ func (fake *FakeAssemblerLedgerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeAssemblerLedgerFactory) CreateCalls(stub func(types.Logger, string) (ledger.AssemblerLedgerReaderWriter, error)) {
+func (fake *FakeAssemblerLedgerFactory) CreateCalls(stub func(*flogging.FabricLogger, string) (ledger.AssemblerLedgerReaderWriter, error)) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeAssemblerLedgerFactory) CreateArgsForCall(i int) (types.Logger, string) {
+func (fake *FakeAssemblerLedgerFactory) CreateArgsForCall(i int) (*flogging.FabricLogger, string) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]

@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
@@ -54,7 +55,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -97,11 +97,11 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*zap.SugaredLogger) {
+func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*flogging.FabricLogger) {
 	var routers []*router.Router
 	var certs []node_config.RawBytes
 	var configs []*node_config.RouterNodeConfig
-	var loggers []*zap.SugaredLogger
+	var loggers []*flogging.FabricLogger
 	for i := 0; i < num; i++ {
 		l := testutil.CreateLogger(t, i)
 		loggers = append(loggers, l)
@@ -162,10 +162,10 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 	return routers, certs, configs, loggers
 }
 
-func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*zap.SugaredLogger, func()) {
+func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*flogging.FabricLogger, func()) {
 	var assemblerDirs []string
 	var assemblers []*assembler.Assembler
-	var loggers []*zap.SugaredLogger
+	var loggers []*flogging.FabricLogger
 	var configs []*node_config.AssemblerNodeConfig
 
 	for i := 0; i < num; i++ {
@@ -219,9 +219,9 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 	}
 }
 
-func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*zap.SugaredLogger, func()) {
+func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*flogging.FabricLogger, func()) {
 	var consensuses []*consensus.Consensus
-	var loggers []*zap.SugaredLogger
+	var loggers []*flogging.FabricLogger
 	var configs []*node_config.ConsenterNodeConfig
 
 	for i := 0; i < num; i++ {
@@ -301,9 +301,9 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 	}
 }
 
-func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*zap.SugaredLogger, func()) {
+func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*flogging.FabricLogger, func()) {
 	var batchers []*batcher.Batcher
-	var loggers []*zap.SugaredLogger
+	var loggers []*flogging.FabricLogger
 	var configs []*node_config.BatcherNodeConfig
 
 	for i := 0; i < num; i++ {
@@ -437,7 +437,7 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 	return result
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *zap.SugaredLogger) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *flogging.FabricLogger) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -471,7 +471,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 	return batcher
 }
 
-func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *zap.SugaredLogger, lastConfigBlock *common.Block) *consensus.Consensus {
+func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *consensus.Consensus {
 	newConsenterNode := &node{
 		TLSCert: consenterNode.TLSCert,
 		TLSKey:  consenterNode.TLSKey,
@@ -515,7 +515,7 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	return consenter
 }
 
-func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *zap.SugaredLogger, lastConfigBlock *common.Block) *assembler.Assembler {
+func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
 	assemblerGRPC := node2.CreateGRPCAssembler(conf)
 	assembler := assembler.NewAssembler(conf, assemblerGRPC, lastConfigBlock, logger)
 
@@ -529,7 +529,7 @@ func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logge
 	return assembler
 }
 
-func recoverRouter(conf *node_config.RouterNodeConfig, logger *zap.SugaredLogger) *router.Router {
+func recoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLogger) *router.Router {
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
@@ -810,7 +810,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 	return blockPullerInfo, err
 }
 
-func BuildVerifier(configDir string, partyID types.PartyID, logger types.Logger) *crypto.ECDSAVerifier {
+func BuildVerifier(configDir string, partyID types.PartyID, logger *flogging.FabricLogger) *crypto.ECDSAVerifier {
 	localConfig, _, err := config.LoadLocalConfig(filepath.Join(configDir, fmt.Sprintf("config/party%d/local_config_consenter.yaml", int(partyID))))
 	if err != nil {
 		logger.Panicf("Failed loading local config: %v", err)

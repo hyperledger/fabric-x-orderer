@@ -211,7 +211,7 @@ func (d *BFTDeliverer) initDeliverBlocks() (err error) {
 	d.nextBlockNumber, err = d.Ledger.LedgerHeight()
 	if err != nil {
 		d.Logger.Errorf("Did not return ledger height, something is critically wrong: %s", err)
-		return
+		return err
 	}
 
 	d.Logger.Infof("Starting to DeliverBlocks on channel `%s`, block height=%d", d.ChannelID, d.nextBlockNumber)

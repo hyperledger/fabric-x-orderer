@@ -9,18 +9,17 @@ package badb
 import (
 	"encoding/binary"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
-
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 type BatchAttestationDB struct {
 	db     *leveldb.DB
-	logger types.Logger
+	logger *flogging.FabricLogger
 }
 
-func NewBatchAttestationDB(path string, logger types.Logger) (*BatchAttestationDB, error) {
+func NewBatchAttestationDB(path string, logger *flogging.FabricLogger) (*BatchAttestationDB, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	return &BatchAttestationDB{db: db, logger: logger}, err
 }

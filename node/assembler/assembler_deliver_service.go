@@ -12,9 +12,9 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
@@ -30,10 +30,10 @@ type AssemblerDeliverService struct {
 	blockledger blockledger.Reader
 	mutualTLS   bool
 	bundle      channelconfig.Resources
-	logger      types.Logger
+	logger      *flogging.FabricLogger
 }
 
-func NewAssemblerDeliverService(ledger blockledger.Reader, logger types.Logger, config *config.AssemblerNodeConfig) *AssemblerDeliverService {
+func NewAssemblerDeliverService(ledger blockledger.Reader, logger *flogging.FabricLogger, config *config.AssemblerNodeConfig) *AssemblerDeliverService {
 	return &AssemblerDeliverService{
 		blockledger: ledger,
 		bundle:      config.Bundle,

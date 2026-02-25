@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -28,7 +29,7 @@ type synchronizer struct {
 	getHeight                func() uint64
 	CurrentNodes             []uint64
 	BFTConfig                smartbft_types.Configuration
-	logger                   arma_types.Logger
+	logger                   *flogging.FabricLogger
 	endpoint                 func() string
 	cc                       comm.ClientConfig
 	nextSeq                  func() uint64

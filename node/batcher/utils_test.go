@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
@@ -30,7 +31,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 type node struct {
@@ -97,13 +97,13 @@ func createConsenterInfo(partyID types.PartyID, n *node, ca tlsgen.CA) config.Co
 	}
 }
 
-func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo, stubConsenters []*stubConsenter) ([]*batcher.Batcher, []*zap.SugaredLogger, []*config.BatcherNodeConfig, func()) {
+func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo, stubConsenters []*stubConsenter) ([]*batcher.Batcher, []*flogging.FabricLogger, []*config.BatcherNodeConfig, func()) {
 	return createBatchersWithConfigNumber(t, num, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters, 0)
 }
 
-func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo, stubConsenters []*stubConsenter, configBlockNum uint64) ([]*batcher.Batcher, []*zap.SugaredLogger, []*config.BatcherNodeConfig, func()) {
+func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []config.BatcherInfo, consentersInfo []config.ConsenterInfo, stubConsenters []*stubConsenter, configBlockNum uint64) ([]*batcher.Batcher, []*flogging.FabricLogger, []*config.BatcherNodeConfig, func()) {
 	var batchers []*batcher.Batcher
-	var loggers []*zap.SugaredLogger
+	var loggers []*flogging.FabricLogger
 	var configs []*config.BatcherNodeConfig
 
 	var parties []types.PartyID
@@ -187,7 +187,7 @@ func createConsenterStubs(t *testing.T, consenterNodes []*node, num int) ([]*stu
 	}
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *zap.SugaredLogger, conf *config.BatcherNodeConfig, batcherNode *node, sc *stubConsenter) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, conf *config.BatcherNodeConfig, batcherNode *node, sc *stubConsenter) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,

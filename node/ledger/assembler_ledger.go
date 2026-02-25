@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
@@ -42,17 +43,17 @@ type AssemblerLedgerReaderWriter interface {
 
 //go:generate counterfeiter -o ./mocks/assembler_ledger_factory.go . AssemblerLedgerFactory
 type AssemblerLedgerFactory interface {
-	Create(logger types.Logger, ledgerPath string) (AssemblerLedgerReaderWriter, error)
+	Create(logger *flogging.FabricLogger, ledgerPath string) (AssemblerLedgerReaderWriter, error)
 }
 
 type DefaultAssemblerLedgerFactory struct{}
 
-func (f *DefaultAssemblerLedgerFactory) Create(logger types.Logger, ledgerPath string) (AssemblerLedgerReaderWriter, error) {
+func (f *DefaultAssemblerLedgerFactory) Create(logger *flogging.FabricLogger, ledgerPath string) (AssemblerLedgerReaderWriter, error) {
 	return NewAssemblerLedger(logger, ledgerPath)
 }
 
 type AssemblerLedger struct {
-	Logger               types.Logger
+	Logger               *flogging.FabricLogger
 	Ledger               blockledger.ReadWriter
 	blockStorageProvider *blkstorage.BlockStoreProvider
 	blockStore           *blkstorage.BlockStore
@@ -62,7 +63,7 @@ type AssemblerLedger struct {
 	blockHeaderSize      uint64
 }
 
-func NewAssemblerLedger(logger types.Logger, ledgerPath string) (*AssemblerLedger, error) {
+func NewAssemblerLedger(logger *flogging.FabricLogger, ledgerPath string) (*AssemblerLedger, error) {
 	// Create the ledger
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(ledgerPath, -1),

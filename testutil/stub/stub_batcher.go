@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -36,7 +37,7 @@ type StubBatcher struct {
 	txs          uint32           // Number of txs received from router
 	partyID      types.PartyID
 	shardID      types.ShardID
-	logger       types.Logger
+	logger       *flogging.FabricLogger
 	dropRequests bool
 }
 

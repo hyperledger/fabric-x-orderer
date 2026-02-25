@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -18,7 +19,7 @@ import (
 )
 
 type PrimaryReqConnector struct {
-	logger               types.Logger
+	logger               *flogging.FabricLogger
 	config               *node_config.BatcherNodeConfig
 	batchers             map[types.PartyID]*EndpointAndCerts
 	primaryID            types.PartyID
@@ -149,7 +150,7 @@ func (p *PrimaryReqConnector) Stop() {
 	p.ResetConnection()
 }
 
-func CreatePrimaryReqConnector(primaryID types.PartyID, logger types.Logger, config *node_config.BatcherNodeConfig, batchers map[types.PartyID]*EndpointAndCerts, ctx context.Context, timeout, minRetryInterval, maxRetryDelay time.Duration) *PrimaryReqConnector {
+func CreatePrimaryReqConnector(primaryID types.PartyID, logger *flogging.FabricLogger, config *node_config.BatcherNodeConfig, batchers map[types.PartyID]*EndpointAndCerts, ctx context.Context, timeout, minRetryInterval, maxRetryDelay time.Duration) *PrimaryReqConnector {
 	connector := &PrimaryReqConnector{
 		primaryID:        primaryID,
 		logger:           logger,

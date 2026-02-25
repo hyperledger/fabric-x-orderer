@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -22,7 +23,7 @@ import (
 
 type Metrics struct {
 	ledgerMetrics *node_ledger.AssemblerLedgerMetrics
-	logger        arma_types.Logger
+	logger        *flogging.FabricLogger
 	interval      time.Duration
 	stopChan      chan struct{}
 	stopOnce      sync.Once
@@ -31,7 +32,7 @@ type Metrics struct {
 	partyID       arma_types.PartyID
 }
 
-func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger.AssemblerLedgerMetrics, logger arma_types.Logger) *Metrics {
+func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
 	host, port, err := net.SplitHostPort(assemblerNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)

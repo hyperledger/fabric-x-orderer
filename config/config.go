@@ -18,6 +18,7 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/msp"
@@ -42,7 +43,7 @@ type Configuration struct {
 }
 
 // ReadConfig reads the configurations from the config file and returns it. The configuration includes both local and shared.
-func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *common.Block, error) {
+func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configuration, *common.Block, error) {
 	if configFilePath == "" {
 		return nil, nil, errors.New("path to the configuration file is empty")
 	}
@@ -602,7 +603,7 @@ func (config *Configuration) extractBundleFromConfigBlock(configBlock *common.Bl
 	return bundle
 }
 
-func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.ConsensusLedger, logger types.Logger) (*common.Block, error) {
+func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.ConsensusLedger, logger *flogging.FabricLogger) (*common.Block, error) {
 	h := consensusLedger.Height()
 	if h == 0 {
 		logger.Infof("Consensus ledger height is 0")

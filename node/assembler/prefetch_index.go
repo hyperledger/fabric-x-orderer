@@ -9,6 +9,7 @@ package assembler
 import (
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
@@ -26,7 +27,7 @@ type PrefetchIndexerFactory interface {
 	Create(
 		shards []types.ShardID,
 		parties []types.PartyID,
-		logger types.Logger,
+		logger *flogging.FabricLogger,
 		defaultTtl time.Duration,
 		maxPartitionSizeBytes int,
 		requestChannelSize int,
@@ -42,7 +43,7 @@ type DefaultPrefetchIndexerFactory struct{}
 func (f *DefaultPrefetchIndexerFactory) Create(
 	shards []types.ShardID,
 	parties []types.PartyID,
-	logger types.Logger,
+	logger *flogging.FabricLogger,
 	defaultTtl time.Duration,
 	maxPartitionSizeBytes int,
 	requestChannelSize int,
@@ -66,7 +67,7 @@ func (f *DefaultPrefetchIndexerFactory) Create(
 }
 
 type PrefetchIndex struct {
-	logger           types.Logger
+	logger           *flogging.FabricLogger
 	partitionToIndex map[ShardPrimary]PartitionPrefetchIndexer
 	batchRequestChan chan types.BatchID
 }
@@ -74,7 +75,7 @@ type PrefetchIndex struct {
 func NewPrefetchIndex(
 	shards []types.ShardID,
 	parties []types.PartyID,
-	logger types.Logger,
+	logger *flogging.FabricLogger,
 	defaultTtl time.Duration,
 	maxPartitionSizeBytes int,
 	requestChannelSize int,

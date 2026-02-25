@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -41,7 +42,7 @@ type RouterMetrics struct {
 	incomingTxs            metrics.Counter
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
-	logger                 arma_types.Logger
+	logger                 *flogging.FabricLogger
 	interval               time.Duration
 	stopChan               chan struct{}
 	stopOnce               sync.Once
@@ -51,7 +52,7 @@ type RouterMetrics struct {
 }
 
 // NewRouterMetrics creates the Metrics
-func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger arma_types.Logger) *RouterMetrics {
+func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *flogging.FabricLogger) *RouterMetrics {
 	host, port, err := net.SplitHostPort(routerNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)

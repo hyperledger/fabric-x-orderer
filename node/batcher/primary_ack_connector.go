@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -18,7 +19,7 @@ import (
 )
 
 type PrimaryAckConnector struct {
-	logger               types.Logger
+	logger               *flogging.FabricLogger
 	config               *node_config.BatcherNodeConfig
 	batchers             map[types.PartyID]*EndpointAndCerts
 	shardID              types.ShardID
@@ -154,7 +155,7 @@ func (p *PrimaryAckConnector) Stop() {
 	p.ResetConnection()
 }
 
-func CreatePrimaryAckConnector(primaryID types.PartyID, shardID types.ShardID, logger types.Logger, config *node_config.BatcherNodeConfig, batchers map[types.PartyID]*EndpointAndCerts, ctx context.Context, timeout, minRetryInterval, maxRetryDelay time.Duration) *PrimaryAckConnector {
+func CreatePrimaryAckConnector(primaryID types.PartyID, shardID types.ShardID, logger *flogging.FabricLogger, config *node_config.BatcherNodeConfig, batchers map[types.PartyID]*EndpointAndCerts, ctx context.Context, timeout, minRetryInterval, maxRetryDelay time.Duration) *PrimaryAckConnector {
 	connector := &PrimaryAckConnector{
 		primaryID:        primaryID,
 		shardID:          shardID,

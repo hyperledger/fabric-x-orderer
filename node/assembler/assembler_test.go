@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -30,7 +31,7 @@ import (
 )
 
 type assemblerTest struct {
-	logger                         types.Logger
+	logger                         *flogging.FabricLogger
 	shards                         []types.ShardID
 	party                          types.PartyID
 	ledgerDir                      string
@@ -142,12 +143,12 @@ func (at *assemblerTest) StartAssembler() {
 	prefetchIndexerFactory := &assembler.DefaultPrefetchIndexerFactory{}
 
 	prefetcherFactoryMock := &assembler_mocks.FakePrefetcherFactory{}
-	prefetcherFactoryMock.CreateCalls(func(si []types.ShardID, pi1 []types.PartyID, pi2 assembler.PrefetchIndexer, bb assembler.BatchBringer, l types.Logger) assembler.PrefetcherController {
+	prefetcherFactoryMock.CreateCalls(func(si []types.ShardID, pi1 []types.PartyID, pi2 assembler.PrefetchIndexer, bb assembler.BatchBringer, l *flogging.FabricLogger) assembler.PrefetcherController {
 		return at.prefetcherMock
 	})
 
 	batchBringerFactoryMock := &assembler_mocks.FakeBatchBringerFactory{}
-	batchBringerFactoryMock.CreateCalls(func(m map[types.ShardID]map[types.PartyID]types.BatchSequence, anc *config.AssemblerNodeConfig, l types.Logger) assembler.BatchBringer {
+	batchBringerFactoryMock.CreateCalls(func(m map[types.ShardID]map[types.PartyID]types.BatchSequence, anc *config.AssemblerNodeConfig, l *flogging.FabricLogger) assembler.BatchBringer {
 		return at.batchBringerMock
 	})
 	for _, shardId := range at.shards {
@@ -170,7 +171,7 @@ func (at *assemblerTest) StartAssembler() {
 	})
 
 	consensusBringerFactoryMock := &delivery_mocks.FakeConsensusBringerFactory{}
-	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l types.Logger) delivery.ConsensusBringer {
+	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l *flogging.FabricLogger) delivery.ConsensusBringer {
 		return at.consensusBringerMock
 	})
 	at.consensusBringerMock.ReplicateCalls(func() <-chan *state.AvailableBatchOrdered {

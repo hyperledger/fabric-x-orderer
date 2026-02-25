@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
@@ -51,7 +52,7 @@ type prefetcherBenchmarkSetup struct {
 	batcherToConsensusChan chan types.BatchID
 	decisionsChan          <-chan []types.BatchID
 	decisionsPerSecond     float64
-	logger                 types.Logger
+	logger                 *flogging.FabricLogger
 	logLevel               zapcore.Level
 	indexDefaultTtl        time.Duration
 	maxBatchesPerDecision  int

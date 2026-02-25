@@ -4,19 +4,20 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 )
 
 type FakePrefetcherFactory struct {
-	CreateStub        func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, types.Logger) assembler.PrefetcherController
+	CreateStub        func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *flogging.FabricLogger) assembler.PrefetcherController
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 []types.ShardID
 		arg2 []types.PartyID
 		arg3 assembler.PrefetchIndexer
 		arg4 assembler.BatchBringer
-		arg5 types.Logger
+		arg5 *flogging.FabricLogger
 	}
 	createReturns struct {
 		result1 assembler.PrefetcherController
@@ -28,7 +29,7 @@ type FakePrefetcherFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakePrefetcherFactory) Create(arg1 []types.ShardID, arg2 []types.PartyID, arg3 assembler.PrefetchIndexer, arg4 assembler.BatchBringer, arg5 types.Logger) assembler.PrefetcherController {
+func (fake *FakePrefetcherFactory) Create(arg1 []types.ShardID, arg2 []types.PartyID, arg3 assembler.PrefetchIndexer, arg4 assembler.BatchBringer, arg5 *flogging.FabricLogger) assembler.PrefetcherController {
 	var arg1Copy []types.ShardID
 	if arg1 != nil {
 		arg1Copy = make([]types.ShardID, len(arg1))
@@ -46,7 +47,7 @@ func (fake *FakePrefetcherFactory) Create(arg1 []types.ShardID, arg2 []types.Par
 		arg2 []types.PartyID
 		arg3 assembler.PrefetchIndexer
 		arg4 assembler.BatchBringer
-		arg5 types.Logger
+		arg5 *flogging.FabricLogger
 	}{arg1Copy, arg2Copy, arg3, arg4, arg5})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
@@ -67,13 +68,13 @@ func (fake *FakePrefetcherFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakePrefetcherFactory) CreateCalls(stub func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, types.Logger) assembler.PrefetcherController) {
+func (fake *FakePrefetcherFactory) CreateCalls(stub func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *flogging.FabricLogger) assembler.PrefetcherController) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakePrefetcherFactory) CreateArgsForCall(i int) ([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, types.Logger) {
+func (fake *FakePrefetcherFactory) CreateArgsForCall(i int) ([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *flogging.FabricLogger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
@@ -106,6 +107,8 @@ func (fake *FakePrefetcherFactory) CreateReturnsOnCall(i int, result1 assembler.
 func (fake *FakePrefetcherFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

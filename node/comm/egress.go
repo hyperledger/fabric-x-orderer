@@ -8,6 +8,7 @@ package comm
 
 import (
 	protos "github.com/hyperledger-labs/SmartBFT/smartbftprotos"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
@@ -15,19 +16,11 @@ import (
 
 //go:generate mockery -dir . -name RPC -case underscore -output mocks
 
-// Logger specifies the logger
-type Logger interface {
-	Debugf(template string, args ...interface{})
-	Warnf(template string, args ...interface{})
-	Infof(template string, args ...interface{})
-	Panicf(template string, args ...interface{})
-}
-
 // Egress implementation
 type Egress struct {
 	Channel  string
 	RPC      *RPC
-	Logger   Logger
+	Logger   *flogging.FabricLogger
 	NodeList []uint64
 }
 
