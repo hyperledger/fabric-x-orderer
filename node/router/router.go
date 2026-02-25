@@ -166,6 +166,7 @@ func getNextDecisionNumber(configStore *configstore.Store, walInitState [][]byte
 
 func (r *Router) StartRouterService() <-chan struct{} {
 	srv := node.CreateGRPCRouter(r.routerNodeConfig)
+	r.net = srv
 
 	protos.RegisterRequestTransmitServer(srv.Server(), r)
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), r)
@@ -179,8 +180,6 @@ func (r *Router) StartRouterService() <-chan struct{} {
 		}
 		close(stop)
 	}()
-
-	r.net = srv
 
 	r.configSubmitter.Start()
 

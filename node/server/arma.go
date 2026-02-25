@@ -9,13 +9,12 @@ package arma
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	msp "github.com/hyperledger/fabric-x-orderer/common/msputils"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node"
@@ -63,22 +62,6 @@ func (cli *CLI) configureNodesCommands() {
 	}
 }
 
-type NodeStopper interface {
-	Stop()
-}
-
-func stopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr string) {
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGTERM)
-
-	go func() {
-		<-signalChan
-
-		logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
-		node.Stop()
-	}()
-}
-
 func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
 		configContent, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigAssembler"))
@@ -109,7 +92,8 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		stopSignalListen(assembler, assemblerLogger, srv.Address())
+		// TODO: move StopSignalListen to Assembler Run
+		utils.StopSignalListen(nil, assembler, assemblerLogger, srv.Address())
 
 		assemblerLogger.Infof("Assembler listening on %s", srv.Address())
 	}
@@ -160,7 +144,8 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		stopSignalListen(consensus, consenterLogger, srv.Address())
+		// TODO: move StopSignalListen to Consensus.Start
+		utils.StopSignalListen(nil, consensus, consenterLogger, srv.Address())
 
 		consenterLogger.Infof("Consensus listening on %s", srv.Address())
 	}
@@ -197,23 +182,16 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", conf.PartyId, conf.ShardId))
 		}
 
-		srv := node.CreateGRPCBatcher(conf)
-
-		batcher := batcher.CreateBatcher(conf, batcherLogger, srv, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
-		defer batcher.Run()
-
-		protos.RegisterRequestTransmitServer(srv.Server(), batcher)
-		protos.RegisterBatcherControlServiceServer(srv.Server(), batcher)
-		orderer.RegisterAtomicBroadcastServer(srv.Server(), batcher)
+		batcher := batcher.CreateBatcher(conf, batcherLogger, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		ch := batcher.StartBatcherService()
+		batcher.Run()
 
 		go func() {
-			srv.Start()
+			<-ch
 			close(stop)
 		}()
 
-		stopSignalListen(batcher, batcherLogger, srv.Address())
-
-		batcherLogger.Infof("Batcher listening on %s", srv.Address())
+		batcherLogger.Infof("Batcher listening on %s", batcher.Address())
 	}
 }
 
@@ -250,7 +228,8 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		stopSignalListen(r, routerLogger, r.Address())
+		// TODO: move StopSignalListen to Router.Run
+		utils.StopSignalListen(nil, r, routerLogger, r.Address())
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)
 	}
 }
