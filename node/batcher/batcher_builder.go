@@ -25,6 +25,10 @@ import (
 )
 
 func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+	return CreateBatcherWithMemPool(config, logger, cdrc, senderCreator, signer, nil)
+}
+
+func CreateBatcherWithMemPool(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer, memPool MemPool) *Batcher {
 	var parties []types.PartyID
 	for shIdx, sh := range config.Shards {
 		if sh.ShardId != config.ShardId {
@@ -112,7 +116,6 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		N:                       initState.N,
 		BatchTimeout:            config.BatchCreationTimeout,
 		Ledger:                  ledgerArray,
-		MemPool:                 createMemPool(b, config),
 		ID:                      config.PartyId,
 		Shard:                   config.ShardId,
 		Logger:                  logger,
@@ -126,6 +129,12 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		BatchedRequestsVerifier: b.requestsInspectorVerifier,
 		BatchSequenceGap:        config.BatchSequenceGap,
 		Metrics:                 b.metrics,
+	}
+
+	if memPool == nil {
+		b.batcher.MemPool = createMemPool(b, config)
+	} else {
+		b.batcher.MemPool = memPool
 	}
 
 	return b
