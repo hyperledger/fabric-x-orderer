@@ -38,7 +38,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -99,7 +99,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -165,7 +165,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -231,7 +231,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -296,7 +296,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, fmt.Sprintf("TXs: %d", assembler.GetTxCount()))
 }
 
-func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) (*assembler.Assembler, string) {
+func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte) (*assembler.Assembler, string) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -317,8 +317,9 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Shards:                    shards,
 		Consenter:                 consenterInfo,
 		UseTLS:                    true,
-		ClientAuthRequired:        false,
+		ClientAuthRequired:        ClientAuthRequired,
 		MonitoringListenAddress:   "127.0.0.1:0",
+		ClientRootCAs:             clientRootCAs,
 		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 	}
 
