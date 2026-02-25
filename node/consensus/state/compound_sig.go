@@ -14,12 +14,11 @@ import (
 )
 
 // CompoundSig is a signature that includes 1+numBlocks signatures, by the same party.
-// The Value field can be unmarshalled to an array of 1+numBlocks []byte slices, one for each signature.
+// The Value and the Msg fields can be unmarshalled to an array of 1+numBlocks []byte slices, one for each signature.
 // The first signature is on the proposal, the rest are on the block headers.
 type CompoundSig smartbft_types.Signature
 
 // UnPack extracts the individual signatures from the compound sig.
-// The Msg field is applied only to the first signature.
 func (cSig CompoundSig) UnPack() ([]smartbft_types.Signature, error) {
 	if len(cSig.Value) == 0 {
 		return nil, errors.New("empty signature value")
@@ -39,7 +38,7 @@ func (cSig CompoundSig) UnPack() ([]smartbft_types.Signature, error) {
 		return nil, errors.New("zero signature msgs")
 	}
 	if len(msgs) != len(values) {
-		return nil, errors.Errorf("number of msgs %d does not match number of values %d", len(msgs), len(values))
+		return nil, errors.Errorf("number of msgs (%d) does not match number of values (%d)", len(msgs), len(values))
 	}
 
 	var sigs []smartbft_types.Signature

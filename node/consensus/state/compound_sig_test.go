@@ -39,7 +39,7 @@ func TestCompoundSig_UnPack(t *testing.T) {
 		assert.Nil(t, sigs)
 	})
 
-	t.Run("rubbish", func(t *testing.T) {
+	t.Run("rubbish value", func(t *testing.T) {
 		cValue := []byte("rubbish")
 		cSig := state.CompoundSig{
 			ID:    1,
@@ -48,7 +48,38 @@ func TestCompoundSig_UnPack(t *testing.T) {
 		}
 
 		sigs, err := cSig.UnPack()
-		assert.EqualError(t, err, "failed to unmarshal values: asn1: structure error: tags don't match (16 vs {class:1 tag:18 length:117 isCompound:true}) {optional:false explicit:false application:false private:false defaultValue:<nil> tag:<nil> stringType:0 timeType:0 set:false omitEmpty:false}  @2")
+		assert.ErrorContains(t, err, "failed to unmarshal values: asn1: structure error:")
+		assert.Nil(t, sigs)
+	})
+
+	t.Run("rubbish msg", func(t *testing.T) {
+		cValue, err := asn1.Marshal([][]byte{{1, 2, 3, 4}})
+		assert.NoError(t, err)
+		cMsg := []byte("rubbish")
+		cSig := state.CompoundSig{
+			ID:    1,
+			Value: cValue,
+			Msg:   cMsg,
+		}
+
+		sigs, err := cSig.UnPack()
+		assert.ErrorContains(t, err, "failed to unmarshal msgs: asn1: structure error:")
+		assert.Nil(t, sigs)
+	})
+
+	t.Run("mismatched msgs and values count", func(t *testing.T) {
+		cValue, err := asn1.Marshal([][]byte{{1, 2, 3, 4}, {5, 6, 7, 8}})
+		assert.NoError(t, err)
+		cMsg, err := asn1.Marshal([][]byte{[]byte("some message")})
+		assert.NoError(t, err)
+		cSig := state.CompoundSig{
+			ID:    1,
+			Value: cValue,
+			Msg:   cMsg,
+		}
+
+		sigs, err := cSig.UnPack()
+		assert.EqualError(t, err, "number of msgs (1) does not match number of values (2)")
 		assert.Nil(t, sigs)
 	})
 

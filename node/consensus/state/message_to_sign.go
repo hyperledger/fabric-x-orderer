@@ -14,6 +14,8 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
+// MessageToSign is used when signing a block
+// It is taken from fabric/orderer/consensus/smartbft/signature.go
 type MessageToSign struct {
 	IdentifierHeader     []byte
 	BlockHeader          []byte
