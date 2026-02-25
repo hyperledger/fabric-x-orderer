@@ -356,7 +356,8 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		loggers = append(loggers, logger)
 		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
-		batcher := batcher.CreateBatcher(batcherConf, logger, batcherNodes[i], &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher := batcher.CreateBatcher(batcherConf, logger, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher.Net = batcherNodes[i]
 		batchers = append(batchers, batcher)
 		batcher.Run()
 
@@ -455,7 +456,8 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 	require.NoError(t, err)
 	signer := crypto.ECDSASigner(*newBatcherNode.sk)
 
-	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher := batcher.CreateBatcher(conf, logger, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher.Net = newBatcherNode
 	batcher.Run()
 
 	gRPCServer := newBatcherNode.Server()
