@@ -369,31 +369,103 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
 		return nil, err
 	}
-
-	if err := c.VerifySignature(smartbft_types.Signature{
-		Value: values[0],
-		Msg:   []byte(prop.Digest()),
-		ID:    signature.ID,
-	}); err != nil {
-		return nil, errors.Wrap(err, "failed verifying signature over proposal")
+	var msgs [][]byte
+	if _, err := asn1.Unmarshal(signature.Msg, &msgs); err != nil {
+		return nil, err
 	}
+
+	lastConfigBlockNum := c.getLastConfigBlockNum()
 
 	var hdr state.Header
 	if err := hdr.Deserialize(prop.Header); err != nil {
 		return nil, errors.Wrap(err, "failed deserializing proposal header")
 	}
 
-	for i, bh := range hdr.AvailableCommonBlocks {
+	proposalMsg := &state.MessageToSign{}
+	if err := proposalMsg.Unmarshal(msgs[0]); err != nil {
+		return nil, err
+	}
+	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, lastConfigBlockNum); err != nil {
+		return nil, errors.Wrap(err, "failed verifying proposal msg")
+	}
+	if err := c.VerifySignature(smartbft_types.Signature{
+		Value: values[0],
+		Msg:   proposalMsg.AsBytes(),
+		ID:    signature.ID,
+	}); err != nil {
+		return nil, errors.Wrap(err, "failed verifying signature over proposal")
+	}
+
+	for i, ab := range hdr.AvailableCommonBlocks {
+		msg := &state.MessageToSign{}
+		if err := msg.Unmarshal(msgs[i+1]); err != nil {
+			return nil, err
+		}
+		if err := verifyBlockMessageToSign(msg, signature.ID, ab, lastConfigBlockNum); err != nil {
+			return nil, errors.Wrapf(err, "failed verifying msg over block in index %d", i)
+		}
 		if err := c.VerifySignature(smartbft_types.Signature{
 			Value: values[i+1],
-			Msg:   protoutil.BlockHeaderBytes(bh.Header),
+			Msg:   msg.AsBytes(),
 			ID:    signature.ID,
 		}); err != nil {
-			return nil, errors.Wrap(err, "failed verifying signature over block header")
+			return nil, errors.Wrapf(err, "failed verifying signature over block in index %d", i)
 		}
 	}
 
 	return nil, nil
+}
+
+func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, lastConfigBlockNum uint64) error {
+	idHeader, err := protoutil.UnmarshalIdentifierHeader(proposalMsg.IdentifierHeader)
+	if err != nil {
+		return errors.Wrap(err, "failed to unmarshal identifier header from proposal message")
+	}
+	if uint64(idHeader.GetIdentifier()) != signatureID {
+		return errors.Errorf("signature ID %d does not match identifier header ID %d in proposal message", signatureID, idHeader.GetIdentifier())
+	}
+
+	computedProposalMsg := &state.MessageToSign{
+		BlockHeader:      []byte(proposal.Digest()),
+		IdentifierHeader: proposalMsg.IdentifierHeader,
+		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+			LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+			ConsenterMetadata: proposal.Metadata,
+		}),
+	}
+
+	computedProposalMsgBytes := computedProposalMsg.AsBytes()
+	if !bytes.Equal(proposalMsg.AsBytes(), computedProposalMsgBytes) { // TODO validate msgs like fabric?
+		return errors.New("proposal message content is not as expected")
+	}
+
+	return nil
+}
+
+func verifyBlockMessageToSign(msg *state.MessageToSign, signatureID uint64, block *common.Block, lastConfigBlockNum uint64) error {
+	idHeader, err := protoutil.UnmarshalIdentifierHeader(msg.IdentifierHeader)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal identifier header from message")
+	}
+	if uint64(idHeader.GetIdentifier()) != signatureID {
+		return errors.Errorf("signature ID %d does not match identifier header ID %d in message", signatureID, idHeader.GetIdentifier())
+	}
+	if protoutil.IsConfigBlock(block) {
+		lastConfigBlockNum = block.Header.Number
+	}
+	computedMsg := &state.MessageToSign{
+		BlockHeader:      protoutil.BlockHeaderBytes(block.Header),
+		IdentifierHeader: msg.IdentifierHeader,
+		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+			LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+			ConsenterMetadata: block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
+		}),
+	}
+	computedMsgBytes := computedMsg.AsBytes()
+	if !bytes.Equal(msg.AsBytes(), computedMsgBytes) { // TODO validate msgs like fabric?
+		return errors.New("message content is not as expected")
+	}
+	return nil
 }
 
 // VerifySignature verifies the signature
@@ -479,31 +551,59 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	}
 
 	sigs := make([][]byte, 0)
+	msgs := make([][]byte, 0)
 
-	proposalSig, err := c.Signer.Sign([]byte(proposal.Digest()))
+	lastConfigBlockNum := c.getLastConfigBlockNum()
+
+	proposalMsg := &state.MessageToSign{
+		BlockHeader:      []byte(proposal.Digest()), // we use digest here since the proposal header is not a common block header, and the digest binds the header to the proposal
+		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.Config.PartyId)),
+		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+			LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+			ConsenterMetadata: proposal.Metadata,
+		}),
+	}
+
+	proposalSig, err := c.Signer.Sign(proposalMsg.AsBytes())
 	if err != nil {
-		c.Logger.Panicf("Failed signing proposal digest: %v", err)
+		c.Logger.Panicf("Failed signing proposal: %v", err)
 	}
 
 	sigs = append(sigs, proposalSig)
+	msgs = append(msgs, proposalMsg.Marshal())
 
-	for _, bh := range hdr.AvailableCommonBlocks {
-		msg := protoutil.BlockHeaderBytes(bh.Header)
-		sig, err := c.Signer.Sign(msg) // TODO sign like we do in Fabric
+	for _, ab := range hdr.AvailableCommonBlocks {
+		if protoutil.IsConfigBlock(ab) {
+			lastConfigBlockNum = ab.Header.Number
+		}
+		msg := &state.MessageToSign{
+			BlockHeader:      protoutil.BlockHeaderBytes(ab.Header),
+			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.Config.PartyId)),
+			OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+				LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+				ConsenterMetadata: ab.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
+			}),
+		}
+		sig, err := c.Signer.Sign(msg.AsBytes())
 		if err != nil {
 			c.Logger.Panicf("Failed signing block header: %v", err)
 		}
 
 		sigs = append(sigs, sig)
+		msgs = append(msgs, msg.Marshal())
 	}
 
 	sigsRaw, err := asn1.Marshal(sigs)
 	if err != nil {
 		c.Logger.Panicf("Failed marshaling signatures: %v", err)
 	}
+	msgsRaw, err := asn1.Marshal(msgs)
+	if err != nil {
+		c.Logger.Panicf("Failed marshaling messages: %v", err)
+	}
 
 	return &smartbft_types.Signature{
-		// the Msg is defined by VerifyConsenterSig
+		Msg:   msgsRaw,
 		Value: sigsRaw,
 		ID:    c.BFTConfig.SelfID,
 	}
@@ -680,6 +780,12 @@ func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
 		c.Logger.Panicf("Couldn't retrieve tx count from last block; err: %s", err)
 	}
 	return txCount
+}
+
+func (c *Consensus) getLastConfigBlockNum() uint64 {
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
+	return c.lastConfigBlockNum
 }
 
 func (c *Consensus) pickEndpoint() string {

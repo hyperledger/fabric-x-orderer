@@ -1010,6 +1010,7 @@ func TestSignProposal(t *testing.T) {
 		Logger:      logger,
 		SigVerifier: verifier,
 		Signer:      crypto.ECDSASigner(*sks[0]),
+		Config:      &nodeconfig.ConsenterNodeConfig{PartyId: 1},
 	}
 
 	proposal := smartbft_types.Proposal{}

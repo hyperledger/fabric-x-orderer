@@ -214,17 +214,20 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 	l.metrics.BlocksCount.Add(1)
 }
 
+// TODO this should be done by the consenter
 func arrangeSignatures(orderingInfo *state.OrderingInformation) ([]*common.MetadataSignature, []uint64) {
 	var sigs []*common.MetadataSignature
 	var signers []uint64
 
 	for _, s := range orderingInfo.Signatures {
+
+		msg := &state.MessageToSign{}
+		if err := msg.Unmarshal(s.Msg); err != nil {
+			panic(err)
+		}
 		sigs = append(sigs, &common.MetadataSignature{
-			Signature: s.Value,
-			IdentifierHeader: protoutil.MarshalOrPanic(&common.IdentifierHeader{
-				Identifier: uint32(s.ID),
-				Nonce:      []byte{},
-			}),
+			Signature:        s.Value,
+			IdentifierHeader: msg.IdentifierHeader,
 		})
 
 		signers = append(signers, s.ID)
