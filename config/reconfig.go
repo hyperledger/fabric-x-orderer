@@ -12,16 +12,21 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 )
 
+// NodeConfig represents the shared configuration of a node.
+// This interface is implemented by Router, Batcher, Consensus and Assembler, see config/protos/configuration.pb.go
 type NodeConfig interface {
 	GetHost() string
 	GetPort() uint32
 	GetTlsCert() []byte
 }
 
+// NodeConfigWithSign extends NodeConfig and exposes also a sign certificate.
+// This interface is implemented by Batcher and Consensus only, see config/protos/configuration.pb.go
 type NodeConfigWithSign interface {
 	NodeConfig
 	GetSignCert() []byte
@@ -60,7 +65,7 @@ func FindParty(partyID types.PartyID, config *Configuration) (*config_protos.Par
 //   - sign certificate (this is checked if both configs implement NodeConfigWithSign)
 //
 // Both arguments must represent the same node type and be non-nil.
-func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig) (bool, error) {
+func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig, logger *flogging.FabricLogger) (bool, error) {
 	if currentConfig == nil {
 		return false, errors.New("current config is nil")
 	}
@@ -78,11 +83,19 @@ func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig) (boo
 	currAddr := net.JoinHostPort(currentConfig.GetHost(), strconv.Itoa(int(currentConfig.GetPort())))
 	newAddr := net.JoinHostPort(newConfig.GetHost(), strconv.Itoa(int(newConfig.GetPort())))
 
-	if currAddr != newAddr || !bytes.Equal(currentConfig.GetTlsCert(), newConfig.GetTlsCert()) {
+	if currAddr != newAddr {
+		logger.Infof("Nodes address changed: current=%s, new=%s", currAddr, newAddr)
 		return true, nil
 	}
 
+	if !bytes.Equal(currentConfig.GetTlsCert(), newConfig.GetTlsCert()) {
+		logger.Infof("Nodes TLS certificate changed")
+		return true, nil
+	}
+
+	// TODO: enable dynamic reconfig without restart when private and public key dont change
 	if currOK && !bytes.Equal(extendedCurrConfig.GetSignCert(), extendedNewConfig.GetSignCert()) {
+		logger.Infof("Nodes sign certificate changed")
 		return true, nil
 	}
 
