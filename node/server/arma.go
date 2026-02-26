@@ -92,7 +92,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		// TODO: move StopSignalListen to Assembler Run
+		// TODO: move StopSignalListen to Assembler Run and pass stopChan
 		utils.StopSignalListen(nil, assembler, assemblerLogger, srv.Address())
 
 		assemblerLogger.Infof("Assembler listening on %s", srv.Address())
@@ -144,7 +144,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		// TODO: move StopSignalListen to Consensus.Start
+		// TODO: move StopSignalListen to Consensus.Start and pass stopChan
 		utils.StopSignalListen(nil, consensus, consenterLogger, srv.Address())
 
 		consenterLogger.Infof("Consensus listening on %s", srv.Address())
@@ -228,7 +228,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		// TODO: move StopSignalListen to Router.Run
+		// TODO: move StopSignalListen to Router.Run and pass stopChan
 		utils.StopSignalListen(nil, r, routerLogger, r.Address())
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)
 	}
