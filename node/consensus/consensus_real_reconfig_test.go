@@ -276,8 +276,15 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	t.Run("config update with consenter's endpoint change", func(t *testing.T) {
 		consenterPartyToUpdate := types.PartyID(2)
+		consenterPartyToUpdateIndex := 0
+		for i, consenter := range consensusNodes {
+			if consenter.Config.PartyId == consenterPartyToUpdate {
+				consenterPartyToUpdateIndex = i
+				break
+			}
+		}
 
-		// stop nodes before reading the current config
+		// stop nodes before reading the current config (ReadConfig func needs to read the consenter ledger and it is unavailable when a consenter is running)
 		for _, consensusNode := range consensusNodes {
 			consensusNode.Stop()
 		}
@@ -287,14 +294,13 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		cfg, lcb, err := config.ReadConfig(consenterNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsenter", zap.DebugLevel))
 		require.NoError(t, err)
 		consenterConfig := cfg.ExtractConsenterConfig(lcb)
-		nodeIP := strings.Split(consenterConfig.Consenters[0].Endpoint, ":")[0]
+		nodeIP := strings.Split(consenterConfig.Consenters[consenterPartyToUpdateIndex].Endpoint, ":")[0]
 		availablePort, _ := testutil.GetAvailablePort(t)
 		newPort, err := strconv.Atoi(availablePort)
 		require.NoError(t, err)
 
 		// create the config update
 		oneMoreConfigBlockStoreDir := t.TempDir()
-		defer os.RemoveAll(oneMoreConfigBlockStoreDir)
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
 		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
@@ -335,7 +341,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.GeneralConfig.ListenAddress = nodeIP
 		localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)
-		utils.WriteToYAML(localConfig.NodeLocalConfig, consenterNodeConfigPath)
+		err = utils.WriteToYAML(localConfig.NodeLocalConfig, consenterNodeConfigPath)
+		require.NoError(t, err)
 
 		// restart consensus nodes
 		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
