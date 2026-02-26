@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package utils
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"fmt"
@@ -62,6 +63,20 @@ func CertificateBytesToString(cert []byte) (string, error) {
 		return "", err
 	}
 	return CertificateToString(x509Cert), nil
+}
+
+func AreCertificatesEqual(cert1, cert2 []byte) (bool, error) {
+	x509Cert1, err := Parsex509Cert(cert1)
+	if err != nil {
+		return false, err
+	}
+	x509Cert2, err := Parsex509Cert(cert2)
+	if err != nil {
+		return false, err
+	}
+
+	// Compare RawTBSCertificate fields
+	return bytes.Equal(x509Cert1.RawTBSCertificate, x509Cert2.RawTBSCertificate), nil
 }
 
 func CertificateToString(cert *x509.Certificate) string {

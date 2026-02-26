@@ -165,7 +165,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
 		newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
 		newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls", "key.pem")
-		newCert, err := armageddon.CreateNewCertificateFromCA(caCertPath, caPrivKeyPath, newCertPath, newKeyPath, nodesIPs)
+		newCert, err := armageddon.CreateNewCertificateFromCA(caCertPath, caPrivKeyPath, "tls", newCertPath, newKeyPath, nodesIPs)
 		require.NoError(t, err)
 		configUpdatePbData := configUpdateBuilder.UpdateConsensusTLSCert(t, consenterToUpdate, newCert)
 		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
