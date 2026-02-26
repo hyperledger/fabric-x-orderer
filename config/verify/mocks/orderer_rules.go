@@ -7,15 +7,17 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 )
 
 type FakeOrdererRules struct {
-	ValidateNewConfigStub        func(*common.Envelope, bccsp.BCCSP) error
+	ValidateNewConfigStub        func(*common.Envelope, bccsp.BCCSP, types.PartyID) error
 	validateNewConfigMutex       sync.RWMutex
 	validateNewConfigArgsForCall []struct {
 		arg1 *common.Envelope
 		arg2 bccsp.BCCSP
+		arg3 types.PartyID
 	}
 	validateNewConfigReturns struct {
 		result1 error
@@ -40,19 +42,20 @@ type FakeOrdererRules struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeOrdererRules) ValidateNewConfig(arg1 *common.Envelope, arg2 bccsp.BCCSP) error {
+func (fake *FakeOrdererRules) ValidateNewConfig(arg1 *common.Envelope, arg2 bccsp.BCCSP, arg3 types.PartyID) error {
 	fake.validateNewConfigMutex.Lock()
 	ret, specificReturn := fake.validateNewConfigReturnsOnCall[len(fake.validateNewConfigArgsForCall)]
 	fake.validateNewConfigArgsForCall = append(fake.validateNewConfigArgsForCall, struct {
 		arg1 *common.Envelope
 		arg2 bccsp.BCCSP
-	}{arg1, arg2})
+		arg3 types.PartyID
+	}{arg1, arg2, arg3})
 	stub := fake.ValidateNewConfigStub
 	fakeReturns := fake.validateNewConfigReturns
-	fake.recordInvocation("ValidateNewConfig", []interface{}{arg1, arg2})
+	fake.recordInvocation("ValidateNewConfig", []interface{}{arg1, arg2, arg3})
 	fake.validateNewConfigMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2)
+		return stub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1
@@ -66,17 +69,17 @@ func (fake *FakeOrdererRules) ValidateNewConfigCallCount() int {
 	return len(fake.validateNewConfigArgsForCall)
 }
 
-func (fake *FakeOrdererRules) ValidateNewConfigCalls(stub func(*common.Envelope, bccsp.BCCSP) error) {
+func (fake *FakeOrdererRules) ValidateNewConfigCalls(stub func(*common.Envelope, bccsp.BCCSP, types.PartyID) error) {
 	fake.validateNewConfigMutex.Lock()
 	defer fake.validateNewConfigMutex.Unlock()
 	fake.ValidateNewConfigStub = stub
 }
 
-func (fake *FakeOrdererRules) ValidateNewConfigArgsForCall(i int) (*common.Envelope, bccsp.BCCSP) {
+func (fake *FakeOrdererRules) ValidateNewConfigArgsForCall(i int) (*common.Envelope, bccsp.BCCSP, types.PartyID) {
 	fake.validateNewConfigMutex.RLock()
 	defer fake.validateNewConfigMutex.RUnlock()
 	argsForCall := fake.validateNewConfigArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
 }
 
 func (fake *FakeOrdererRules) ValidateNewConfigReturns(result1 error) {

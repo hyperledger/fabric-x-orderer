@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -46,9 +47,10 @@ type configSubmitter struct {
 	signer                identity.SignerSerializer
 	configUpdateProposer  policy.ConfigUpdateProposer
 	configRulesVerifier   verify.OrdererRules
+	partyID               types.PartyID
 }
 
-func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tlsCert []byte, tlsKey []byte, logger *flogging.FabricLogger, bundle channelconfig.Resources, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
+func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tlsCert []byte, tlsKey []byte, logger *flogging.FabricLogger, bundle channelconfig.Resources, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules, partyID types.PartyID) *configSubmitter {
 	cs := &configSubmitter{
 		consensusEndpoint:     consensusEndpoint,
 		consensusRootCAs:      consensusRootCAs,
@@ -61,6 +63,7 @@ func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tls
 		signer:                signer,
 		configUpdateProposer:  configUpdateProposer,
 		configRulesVerifier:   configRulesVerifier,
+		partyID:               partyID,
 	}
 	return cs
 }
@@ -119,7 +122,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 
 	bccsp := factory.GetDefault()
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
-	if err = cs.configRulesVerifier.ValidateNewConfig(env, bccsp); err != nil {
+	if err = cs.configRulesVerifier.ValidateNewConfig(env, bccsp, cs.partyID); err != nil {
 		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
 		tr.responses <- feedback
 		return err

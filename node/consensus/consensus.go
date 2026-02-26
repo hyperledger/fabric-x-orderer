@@ -847,7 +847,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
 		bccsp := factory.GetDefault()
-		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, bccsp); err != nil {
+		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, bccsp, c.Config.PartyId); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
 		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope, bccsp); err != nil {
