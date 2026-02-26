@@ -390,7 +390,7 @@ func WaitReady(t *testing.T, readyChan chan string, waitFor int, duration time.D
 				return
 			}
 		case <-timeout:
-			require.Fail(t, fmt.Sprintf("expected %d arma nodes to start successfully, but got %d panics: %v", waitFor, len(listening), listening))
+			require.Fail(t, fmt.Sprintf("expected %d arma nodes to start successfully, but got %d listening logs: %v", waitFor, len(listening), listening))
 		}
 	}
 }
