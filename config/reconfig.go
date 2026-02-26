@@ -22,33 +22,42 @@ type NodeConfig interface {
 	GetTlsCert() []byte
 }
 
-type NodeConfigWthSign interface {
+type NodeConfigWithSign interface {
 	NodeConfig
 	GetSignCert() []byte
 }
 
-// IsPartyEvicted checks if a party exists in the configuration and returns true if it is evicted or not.
-func IsPartyEvicted(partyID types.PartyID, newConfig *Configuration) bool {
-	newSharedPartyConfig := FindParty(partyID, newConfig)
-	return newSharedPartyConfig == nil
+// IsPartyEvicted returns true if the given party does not appear in the provided configuration.
+func IsPartyEvicted(partyID types.PartyID, newConfig *Configuration) (bool, error) {
+	newSharedPartyConfig, err := FindParty(partyID, newConfig)
+	if err != nil {
+		return false, err
+	}
+	return newSharedPartyConfig == nil, nil
 }
 
 // FindParty returns the PartyConfig associated with the given partyID from the shared configuration.
-// It returns nil if the party is not found.
-func FindParty(partyID types.PartyID, config *Configuration) *config_protos.PartyConfig {
+// It returns nil if the party is not found and returns error if the provided configuration is nil or incomplete.
+func FindParty(partyID types.PartyID, config *Configuration) (*config_protos.PartyConfig, error) {
+	if config == nil {
+		return nil, errors.New("the provided configuration is nil")
+	}
+	if config.SharedConfig == nil {
+		return nil, errors.New("the provided configuration has nil shared config")
+	}
 	for _, party := range config.SharedConfig.PartiesConfig {
 		if types.PartyID(party.PartyID) == partyID {
-			return party
+			return party, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
-// IsNodeConfigChangeRestartRequired reports whether a restart is required due to changed between current configuration and new configuration.
-// A restart is required if any of the following fields differ:
+// IsNodeConfigChangeRestartRequired reports whether a restart is required due to configuration updates.
+// A restart is required if any of the following parts were updated:
 //   - host or port
 //   - TLS certificate
-//   - sign certificate (if both configs implement NodeConfigWithSignCert)
+//   - sign certificate (this is checked if both configs implement NodeConfigWithSign)
 //
 // Both arguments must represent the same node type and be non-nil.
 func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig) (bool, error) {
@@ -60,6 +69,12 @@ func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig) (boo
 		return false, errors.New("new config is nil")
 	}
 
+	extendedCurrConfig, currOK := currentConfig.(NodeConfigWithSign)
+	extendedNewConfig, newOK := newConfig.(NodeConfigWithSign)
+	if currOK != newOK {
+		return false, errors.New("type mismatch: current node config and new node config are not from the same type")
+	}
+
 	currAddr := net.JoinHostPort(currentConfig.GetHost(), strconv.Itoa(int(currentConfig.GetPort())))
 	newAddr := net.JoinHostPort(newConfig.GetHost(), strconv.Itoa(int(newConfig.GetPort())))
 
@@ -67,11 +82,6 @@ func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig) (boo
 		return true, nil
 	}
 
-	extendedCurrConfig, currOK := currentConfig.(NodeConfigWthSign)
-	extendedNewConfig, newOK := newConfig.(NodeConfigWthSign)
-	if currOK != newOK {
-		return false, errors.New("type mismatch: current node config and new node config are not from the same type")
-	}
 	if currOK && !bytes.Equal(extendedCurrConfig.GetSignCert(), extendedNewConfig.GetSignCert()) {
 		return true, nil
 	}

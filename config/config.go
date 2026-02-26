@@ -806,12 +806,12 @@ func (config *Configuration) BuildNewConfiguration(block *common.Block) (*Config
 
 	consensusMetadata, err := ReadConsensusMetadataFromConfigBlock(block)
 	if err != nil {
-		return nil, errors.Errorf("failed applying new config, failed to read consensusMetadata from last config block, block number is %d", block.Header.Number)
+		return nil, errors.Wrapf(err, "failed applying new config, failed to read consensusMetadata from last config block, block number is %d", block.Header.Number)
 	}
 
 	err = proto.Unmarshal(consensusMetadata, newConfig.SharedConfig)
 	if err != nil {
-		return nil, errors.Errorf("failed applying new config, failed to unmarshal consensusMetadata to a shared configuration")
+		return nil, errors.Wrapf(err, "failed applying new config, failed to unmarshal consensusMetadata to a shared configuration")
 	}
 	return newConfig, nil
 }

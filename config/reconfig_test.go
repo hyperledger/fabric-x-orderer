@@ -4,10 +4,12 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package config
+package config_test
 
 import (
 	"testing"
+
+	"github.com/hyperledger/fabric-x-orderer/config"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
@@ -19,16 +21,20 @@ func TestIsPartyEvicted(t *testing.T) {
 	partyConfig := &protos.PartyConfig{
 		PartyID: 2,
 	}
-	config := &Configuration{
+	conf := &config.Configuration{
 		SharedConfig: &protos.SharedConfig{
 			PartiesConfig: []*protos.PartyConfig{partyConfig},
 			MaxPartyID:    1,
 		},
 	}
 
-	require.True(t, IsPartyEvicted(partyID, config))
+	isPartyEvicted, err := config.IsPartyEvicted(partyID, conf)
+	require.NoError(t, err)
+	require.True(t, isPartyEvicted)
 	partyID = types.PartyID(2)
-	require.False(t, IsPartyEvicted(partyID, config))
+	isPartyEvicted, err = config.IsPartyEvicted(partyID, conf)
+	require.NoError(t, err)
+	require.False(t, isPartyEvicted)
 }
 
 func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
@@ -45,20 +51,20 @@ func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
 		TlsCert: []byte("cert"),
 	}
 
-	isRestartRequired, err := IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig)
+	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig)
 	require.NoError(t, err)
 	require.False(t, isRestartRequired)
 
 	newRouterConfig.Port = 5070
 
-	isRestartRequired, err = IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig)
+	isRestartRequired, err = config.IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig)
 	require.NoError(t, err)
 	require.True(t, isRestartRequired)
 
 	newRouterConfig.Port = 5060
 	newRouterConfig.TlsCert = []byte("TLSCert")
 
-	isRestartRequired, err = IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig)
+	isRestartRequired, err = config.IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig)
 	require.NoError(t, err)
 	require.True(t, isRestartRequired)
 
@@ -79,12 +85,12 @@ func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
 		TlsCert:  []byte("TLSCert"),
 	}
 
-	isRestartRequired, err = IsNodeConfigChangeRestartRequired(currBatcherConfig, newBatcherConfig)
+	isRestartRequired, err = config.IsNodeConfigChangeRestartRequired(currBatcherConfig, newBatcherConfig)
 	require.NoError(t, err)
 	require.False(t, isRestartRequired)
 
 	newBatcherConfig.SignCert = []byte("NewSignCert")
-	isRestartRequired, err = IsNodeConfigChangeRestartRequired(currBatcherConfig, newBatcherConfig)
+	isRestartRequired, err = config.IsNodeConfigChangeRestartRequired(currBatcherConfig, newBatcherConfig)
 	require.NoError(t, err)
 	require.True(t, isRestartRequired)
 }
