@@ -242,11 +242,16 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		} else {
 			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", routerConf.PartyID))
 		}
-		r := router.NewRouter(routerConf, routerLogger, signer, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
-		ch := r.StartRouterService()
+
+		// We create a channel that will be closed when the router is fully stopped, to notify arma process.
+		// This is relevant only on launch. When the router restarts, a new router instance is created with same channel.
+		armaStopChan := make(chan struct{})
+		r := router.NewRouter(routerConf, routerLogger, armaStopChan, signer, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
+		r.StartRouterService()
 
 		go func() {
-			<-ch
+			<-armaStopChan
+			routerLogger.Info("Router node was closed. closing arma process")
 			close(stop)
 		}()
 
