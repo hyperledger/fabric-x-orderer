@@ -24,11 +24,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
-	return CreateBatcherWithMemPool(config, logger, cdrc, senderCreator, signer, nil)
+func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, armaStopChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+	return CreateBatcherWithMemPool(config, logger, armaStopChan, cdrc, senderCreator, signer, nil)
 }
 
-func CreateBatcherWithMemPool(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer, memPool MemPool) *Batcher {
+func CreateBatcherWithMemPool(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, armaStopChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer, memPool MemPool) *Batcher {
 	var parties []types.PartyID
 	for shIdx, sh := range config.Shards {
 		if sh.ShardId != config.ShardId {
@@ -88,6 +88,7 @@ func CreateBatcherWithMemPool(config *node_config.BatcherNodeConfig, logger *flo
 		config:                    config,
 		metrics:                   NewBatcherMetrics(config, batchers, ledgerArray, logger),
 		wal:                       batcherWAL,
+		armaStopChan:              armaStopChan,
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
