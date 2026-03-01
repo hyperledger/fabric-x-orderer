@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -44,6 +45,7 @@ type Signer interface {
 
 type Net interface {
 	Stop()
+	Address() string
 }
 
 type Batcher struct {
@@ -67,9 +69,10 @@ type Batcher struct {
 
 	stateChan chan *state.State
 
-	running  sync.WaitGroup
-	stopOnce sync.Once
-	stopChan chan struct{}
+	running      sync.WaitGroup
+	stopOnce     sync.Once
+	stopChan     chan struct{}
+	armaStopChan chan struct{}
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -86,6 +89,31 @@ func (b *Batcher) ConfigSequence() types.ConfigSequence {
 	return types.ConfigSequence(b.config.Bundle.ConfigtxValidator().Sequence())
 }
 
+func (b *Batcher) Address() string {
+	if b.Net == nil {
+		return ""
+	}
+
+	return b.Net.Address()
+}
+
+func (b *Batcher) StartBatcherService() {
+	srv := node.CreateGRPCBatcher(b.config)
+	b.Net = srv
+
+	protos.RegisterRequestTransmitServer(srv.Server(), b)
+	protos.RegisterBatcherControlServiceServer(srv.Server(), b)
+	orderer.RegisterAtomicBroadcastServer(srv.Server(), b)
+
+	go func() {
+		err := srv.Start()
+		if err != nil {
+			panic(err)
+		}
+		b.logger.Infof("Batcher gRPC server stopped")
+	}()
+}
+
 func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 
@@ -97,6 +125,7 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
 	b.metrics.Start()
+	utils.StopSignalListen(b.stopChan, b, b.logger, b.Address())
 }
 
 func (b *Batcher) Stop() {
@@ -119,6 +148,7 @@ func (b *Batcher) SoftStop() {
 		b.running.Wait()
 		b.metrics.Stop()
 		b.wal.Close()
+		close(b.armaStopChan)
 	})
 }
 

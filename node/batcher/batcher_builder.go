@@ -24,7 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, net Net, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, armaStopChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	var parties []types.PartyID
 	for shIdx, sh := range config.Shards {
 		if sh.ShardId != config.ShardId {
@@ -77,7 +77,6 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		decisionReplicator:        dr,
 		signer:                    signer,
 		logger:                    logger,
-		Net:                       net,
 		batchers:                  batchers,
 		Ledger:                    ledgerArray,
 		ConfigStore:               configStore,
@@ -85,6 +84,7 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		config:                    config,
 		metrics:                   NewBatcherMetrics(config, batchers, ledgerArray, logger),
 		wal:                       batcherWAL,
+		armaStopChan:              armaStopChan,
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
