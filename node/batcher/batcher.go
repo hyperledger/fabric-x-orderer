@@ -69,9 +69,10 @@ type Batcher struct {
 
 	stateChan chan *state.State
 
-	running  sync.WaitGroup
-	stopOnce sync.Once
-	stopChan chan struct{}
+	running      sync.WaitGroup
+	stopOnce     sync.Once
+	stopChan     chan struct{}
+	armaStopChan chan struct{}
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -96,7 +97,7 @@ func (b *Batcher) Address() string {
 	return b.Net.Address()
 }
 
-func (b *Batcher) StartBatcherService() <-chan struct{} {
+func (b *Batcher) StartBatcherService() {
 	srv := node.CreateGRPCBatcher(b.config)
 	b.Net = srv
 
@@ -104,17 +105,13 @@ func (b *Batcher) StartBatcherService() <-chan struct{} {
 	protos.RegisterBatcherControlServiceServer(srv.Server(), b)
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), b)
 
-	stop := make(chan struct{})
-
 	go func() {
 		err := srv.Start()
 		if err != nil {
 			panic(err)
 		}
-		close(stop)
+		b.logger.Infof("Batcher gRPC server stopped")
 	}()
-
-	return stop
 }
 
 func (b *Batcher) Run() {
@@ -151,6 +148,7 @@ func (b *Batcher) SoftStop() {
 		b.running.Wait()
 		b.metrics.Stop()
 		b.wal.Close()
+		close(b.armaStopChan)
 	})
 }
 

@@ -182,14 +182,9 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", conf.PartyId, conf.ShardId))
 		}
 
-		batcher := batcher.CreateBatcher(conf, batcherLogger, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
-		ch := batcher.StartBatcherService()
+		batcher := batcher.CreateBatcher(conf, batcherLogger, stop, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher.StartBatcherService()
 		batcher.Run()
-
-		go func() {
-			<-ch
-			close(stop)
-		}()
 
 		batcherLogger.Infof("Batcher listening on %s", batcher.Address())
 	}
