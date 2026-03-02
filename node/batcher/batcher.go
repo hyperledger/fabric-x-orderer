@@ -133,7 +133,19 @@ func (b *Batcher) Run() {
 
 func (b *Batcher) Stop() {
 	b.logger.Infof("Stopping batcher node")
-	b.SoftStop()
+	b.stopOnce.Do(func() {
+		close(b.stopChan)
+		b.controlEventBroadcaster.Stop()
+		b.batcher.Stop()
+		for len(b.stateChan) > 0 {
+			<-b.stateChan // drain state channel
+		}
+		b.primaryAckConnector.Stop()
+		b.primaryReqConnector.Stop()
+		b.running.Wait()
+		b.metrics.Stop()
+		b.wal.Close()
+	})
 	b.Net.Stop()
 	b.Ledger.Close()
 }
@@ -142,7 +154,7 @@ func (b *Batcher) SoftStop() {
 	b.stopOnce.Do(func() {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
-		b.batcher.Stop()
+		b.batcher.SoftStop()
 		for len(b.stateChan) > 0 {
 			<-b.stateChan // drain state channel
 		}

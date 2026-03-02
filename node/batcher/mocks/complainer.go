@@ -22,10 +22,9 @@ func (fake *FakeComplainer) Complain(arg1 string) {
 	fake.complainArgsForCall = append(fake.complainArgsForCall, struct {
 		arg1 string
 	}{arg1})
-	stub := fake.ComplainStub
 	fake.recordInvocation("Complain", []interface{}{arg1})
 	fake.complainMutex.Unlock()
-	if stub != nil {
+	if fake.ComplainStub != nil {
 		fake.ComplainStub(arg1)
 	}
 }
