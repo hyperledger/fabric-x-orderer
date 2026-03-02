@@ -32,8 +32,9 @@ import (
 )
 
 var (
-	partiesConfigPath = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "PartiesConfig"}
-	sharedConfigPath  = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata"}
+	partiesConfigPath    = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "PartiesConfig"}
+	sharedConfigPath     = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata"}
+	consenterMappingPath = []string{"channel_group", "groups", "Orderer", "values", "Orderers", "value", "consenter_mapping"}
 )
 
 type (
@@ -303,6 +304,7 @@ func (c *ConfigUpdateBuilder) UpdateBatcherSignCert(t *testing.T, partyID types.
 }
 
 func (c *ConfigUpdateBuilder) UpdateConsenterSignCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	// Update parties config
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
 
@@ -316,8 +318,22 @@ func (c *ConfigUpdateBuilder) UpdateConsenterSignCert(t *testing.T, partyID type
 			break
 		}
 	}
-
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+
+	// Update consenter mapping
+	consenterMapping := getNestedJSONValue(t, c.configData, consenterMappingPath...)
+	mappingList := consenterMapping.([]any)
+
+	found = false
+	for _, mapping := range mappingList {
+		mappingMap := mapping.(map[string]any)
+		if uint32(partyID) == uint32(mappingMap["id"].(float64)) {
+			mappingMap["identity"] = cert
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "PartyID %d not found in ConsenterMapping", partyID)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -496,6 +512,7 @@ func (c *ConfigUpdateBuilder) UpdateBatcherTLSCert(t *testing.T, partyID types.P
 }
 
 func (c *ConfigUpdateBuilder) UpdateConsensusTLSCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	// Update parties config
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
 
@@ -509,8 +526,23 @@ func (c *ConfigUpdateBuilder) UpdateConsensusTLSCert(t *testing.T, partyID types
 			break
 		}
 	}
-
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+
+	// Update consenter mapping
+	consenterMapping := getNestedJSONValue(t, c.configData, consenterMappingPath...)
+	mappingList := consenterMapping.([]any)
+
+	found = false
+	for _, mapping := range mappingList {
+		mappingMap := mapping.(map[string]any)
+		if uint32(partyID) == uint32(mappingMap["id"].(float64)) {
+			mappingMap["client_tls_cert"] = cert
+			mappingMap["server_tls_cert"] = cert
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "PartyID %d not found in ConsenterMapping", partyID)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -552,7 +584,7 @@ func (c *ConfigUpdateBuilder) UpdateOrderingEndpoint(t *testing.T, partyID types
 
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
 
-	consenterMapping := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "values", "Orderers", "value", "consenter_mapping")
+	consenterMapping := getNestedJSONValue(t, c.configData, consenterMappingPath...)
 	mappingList := consenterMapping.([]any)
 
 	found = false
@@ -676,8 +708,8 @@ func (c *ConfigUpdateBuilder) UpdateOrgEndpoints(t *testing.T, partyID types.Par
 	// Update OrdererAddresses
 	org := fmt.Sprintf("org%d", partyID)
 	addresses := []string{
-		fmt.Sprintf("id=%d,msp-id=%s,api=broadcast,host=%s,port=%d", partyID, org, broadcastHost, broadcastPort),
-		fmt.Sprintf("id=%d,msp-id=%s,api=deliver,host=%s,port=%d", partyID, org, deliverHost, deliverPort),
+		fmt.Sprintf("id=%d,broadcast,%s:%d", partyID, broadcastHost, broadcastPort),
+		fmt.Sprintf("id=%d,deliver,%s:%d", partyID, deliverHost, deliverPort),
 	}
 
 	overwriteNestedJSONValue(t, c.configData, addresses, "channel_group", "groups", "Orderer", "groups", org, "values", "Endpoints", "value", "addresses")
@@ -691,6 +723,7 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyCo
 
 	maxPartyID++
 
+	// Update parties config
 	batchersConfig := []map[string]any{}
 	for _, bc := range newParty.BatchersConfig {
 		batchersConfig = append(batchersConfig,
@@ -730,11 +763,53 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *protos.PartyCo
 
 	sharedConfig.(map[string]any)["MaxPartyID"] = maxPartyID
 	sharedConfig.(map[string]any)["PartiesConfig"] = partiesConfig
+
+	// Update consenter mapping
+	consenterMapping := getNestedJSONValue(t, c.configData, consenterMappingPath...)
+	consenterMappingList := consenterMapping.([]any)
+
+	consenterMappingList = append(consenterMappingList, map[string]any{
+		"id":              maxPartyID,
+		"host":            newParty.ConsenterConfig.Host,
+		"port":            newParty.ConsenterConfig.Port,
+		"identity":        newParty.ConsenterConfig.SignCert,
+		"client_tls_cert": newParty.ConsenterConfig.TlsCert,
+		"server_tls_cert": newParty.ConsenterConfig.TlsCert,
+	})
+
+	// Update Organization
+	orgs := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups").(map[string]any)
+
+	// use an existing org as a template
+	var tmpl map[string]any
+	for _, v := range orgs {
+		tmpl = v.(map[string]any)
+		break
+	}
+	require.NotNil(t, tmpl, "orderer org not found")
+
+	data, err := json.Marshal(tmpl)
+	require.NoError(t, err)
+	var newOrg map[string]any
+	require.NoError(t, json.Unmarshal(data, &newOrg))
+
+	// Update endpoints
+	endpoints := newOrg["values"].(map[string]any)["Endpoints"].(map[string]any)
+	endpoints["value"].(map[string]any)["addresses"] = []string{
+		fmt.Sprintf("id=%d,broadcast,%s:%d", int(maxPartyID), newParty.RouterConfig.Host, newParty.RouterConfig.Port),
+		fmt.Sprintf("id=%d,deliver,%s:%d", int(maxPartyID), newParty.AssemblerConfig.Host, newParty.AssemblerConfig.Port),
+	}
+	orgName := fmt.Sprintf("org%d", uint32(maxPartyID))
+	orgs[orgName] = newOrg
+
 	overwriteNestedJSONValue(t, c.configData, sharedConfig, sharedConfigPath...)
+	overwriteNestedJSONValue(t, c.configData, consenterMappingList, consenterMappingPath...)
+	overwriteNestedJSONValue(t, c.configData, orgs, "channel_group", "groups", "Orderer", "groups")
 	return c.createConfigUpdate(t, c.configData)
 }
 
 func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) []byte {
+	// Remove the party from parties config
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
 
@@ -751,10 +826,32 @@ func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) [
 			break
 		}
 	}
-
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
 
+	// Remove the party from consenter mapping
+	found = false
+	consenterMapping := getNestedJSONValue(t, c.configData, consenterMappingPath...)
+	consenterMappingList := consenterMapping.([]any)
+	for i, party := range consenterMappingList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["id"].(float64)) {
+			found = true
+			consenterMappingList = append(consenterMappingList[:i], consenterMappingList[i+1:]...)
+			break
+		}
+	}
+	require.True(t, found, "PartyID %d not found in ConsenterMapping", partyID)
+
+	// Remove the party from organization
+	orgName := fmt.Sprintf("org%d", partyID)
+	orgs := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups").(map[string]any)
+	_, ok := orgs[orgName]
+	require.True(t, ok, "org %s not found", orgName)
+	delete(orgs, orgName)
+
 	overwriteNestedJSONValue(t, c.configData, partiesConfigList, partiesConfigPath...)
+	overwriteNestedJSONValue(t, c.configData, consenterMappingList, consenterMappingPath...)
+	overwriteNestedJSONValue(t, c.configData, orgs, "channel_group", "groups", "Orderer", "groups")
 	return c.createConfigUpdate(t, c.configData)
 }
 
