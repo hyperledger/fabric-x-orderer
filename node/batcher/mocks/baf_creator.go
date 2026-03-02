@@ -43,16 +43,15 @@ func (fake *FakeBAFCreator) CreateBAF(arg1 types.BatchSequence, arg2 types.Party
 		arg4 []byte
 		arg5 uint64
 	}{arg1, arg2, arg3, arg4Copy, arg5})
-	stub := fake.CreateBAFStub
-	fakeReturns := fake.createBAFReturns
 	fake.recordInvocation("CreateBAF", []interface{}{arg1, arg2, arg3, arg4Copy, arg5})
 	fake.createBAFMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5)
+	if fake.CreateBAFStub != nil {
+		return fake.CreateBAFStub(arg1, arg2, arg3, arg4, arg5)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createBAFReturns
 	return fakeReturns.result1
 }
 

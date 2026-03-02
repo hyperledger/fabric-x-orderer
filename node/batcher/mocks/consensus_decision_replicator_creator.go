@@ -36,16 +36,15 @@ func (fake *FakeConsensusDecisionReplicatorCreator) CreateDecisionConsensusRepli
 		arg2 *flogging.FabricLogger
 		arg3 types.DecisionNum
 	}{arg1, arg2, arg3})
-	stub := fake.CreateDecisionConsensusReplicatorStub
-	fakeReturns := fake.createDecisionConsensusReplicatorReturns
 	fake.recordInvocation("CreateDecisionConsensusReplicator", []interface{}{arg1, arg2, arg3})
 	fake.createDecisionConsensusReplicatorMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2, arg3)
+	if fake.CreateDecisionConsensusReplicatorStub != nil {
+		return fake.CreateDecisionConsensusReplicatorStub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.createDecisionConsensusReplicatorReturns
 	return fakeReturns.result1
 }
 

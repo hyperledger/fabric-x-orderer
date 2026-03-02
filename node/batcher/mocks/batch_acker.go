@@ -25,10 +25,9 @@ func (fake *FakeBatchAcker) Ack(arg1 types.BatchSequence, arg2 types.PartyID) {
 		arg1 types.BatchSequence
 		arg2 types.PartyID
 	}{arg1, arg2})
-	stub := fake.AckStub
 	fake.recordInvocation("Ack", []interface{}{arg1, arg2})
 	fake.ackMutex.Unlock()
-	if stub != nil {
+	if fake.AckStub != nil {
 		fake.AckStub(arg1, arg2)
 	}
 }
