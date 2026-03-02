@@ -57,11 +57,10 @@ type Router struct {
 	configSubmitter  ConfigurationSubmitter
 	decisionPuller   DecisionPuller
 	metrics          *RouterMetrics
-	stopChan         chan struct{}
 	stopOnce         sync.Once
+	stopChan         chan struct{}
 	drainChan        chan struct{}
-	drainOnce        sync.Once
-	armaStopChan     chan struct{}
+	mainExitChan     chan struct{}
 	feedbackWG       sync.WaitGroup
 	configSeq        uint32
 	wal              *wal.WriteAheadLogFile
@@ -170,6 +169,7 @@ func (r *Router) StartRouterService() {
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), r)
 
 	go func() {
+		r.logger.Infof("Router network service is starting on %s", srv.Address())
 		err := srv.Start()
 		if err != nil {
 			panic(err)
@@ -197,26 +197,26 @@ func (r *Router) Address() string {
 }
 
 func (r *Router) Stop() {
-	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
-
-	r.net.Stop()
-	r.metrics.Stop()
-
-	// stop config submitter goroutine
-	r.configSubmitter.Stop()
-
-	// stop decision puller goroutine
 	r.stopOnce.Do(func() {
+		r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
+
+		r.net.Stop()
+		r.metrics.Stop()
+
+		// stop config submitter goroutine
+		r.configSubmitter.Stop()
+
+		// stop decision puller goroutine
 		close(r.stopChan)
+
+		r.wal.Close()
+
+		for _, sr := range r.shardRouters {
+			sr.Stop()
+		}
+
+		close(r.mainExitChan)
 	})
-
-	r.wal.Close()
-
-	for _, sr := range r.shardRouters {
-		sr.Stop()
-	}
-
-	close(r.armaStopChan)
 }
 
 func (r *Router) SoftStop() error {
@@ -224,31 +224,27 @@ func (r *Router) SoftStop() error {
 	partyID := r.routerNodeConfig.PartyID
 
 	r.logger.Infof("Initiating soft stop of router listening on %s, PartyID: %d", routerAddress, partyID)
-
-	// stop accepting new requests in broadcast and submit handlers
-	// closing the stop chan will also stop the decision puller, if needed.
 	r.stopOnce.Do(func() {
+		// stop accepting new requests in broadcast and submit handlers
+		// closing the stop chan will also stop the decision puller, if needed.
 		close(r.stopChan)
-	})
 
-	r.wal.Close()
+		r.wal.Close()
 
-	// next, we stop the shard routers, which will be responsible for sending responses to pending requests
-	for _, sr := range r.shardRouters {
-		sr.SoftStop(fmt.Errorf("router is stopping, cannot process request"))
-	}
+		// next, we stop the shard routers, which will be responsible for sending responses to pending requests
+		for _, sr := range r.shardRouters {
+			sr.SoftStop(fmt.Errorf("router is stopping, cannot process request"))
+		}
 
-	// wait until all feedback channels are drained and all responses are sent
-	r.drainOnce.Do(func() {
+		// wait until all feedback channels are drained and all responses are sent
 		close(r.drainChan)
+		r.feedbackWG.Wait()
+
+		// then, we stop other components
+		r.configSubmitter.Stop()
+		r.net.Stop() // this will close all client connections, so some (immediate) responses may not be sent.
+		r.metrics.Stop()
 	})
-	r.feedbackWG.Wait()
-
-	// then, we stop other components
-	r.configSubmitter.Stop()
-	r.net.Stop() // this will close all client connections, so some (immediate) responses may not be sent.
-	r.metrics.Stop()
-
 	r.logger.Warnf("Router on %s, PartyID: %d, has been stopped. Pending restart", routerAddress, partyID)
 
 	return nil
@@ -337,7 +333,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		decisionPuller:   decisionPuller,
 		stopChan:         make(chan struct{}),
 		drainChan:        make(chan struct{}),
-		armaStopChan:     armaStopChan,
+		mainExitChan:     armaStopChan,
 		metrics:          metrics,
 		configSeq:        uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
 		wal:              routerWAL,
