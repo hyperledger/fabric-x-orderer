@@ -61,12 +61,13 @@ type Router struct {
 	stopOnce         sync.Once
 	drainChan        chan struct{}
 	drainOnce        sync.Once
+	armaStopChan     chan struct{}
 	feedbackWG       sync.WaitGroup
 	configSeq        uint32
 	wal              *wal.WriteAheadLogFile
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, armaStopChan chan struct{}, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -119,7 +120,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogge
 
 	metrics := NewRouterMetrics(config, logger)
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, verifier, configStore, configSubmitter, decisionPuller, routerWAL)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, armaStopChan, verifier, configStore, configSubmitter, decisionPuller, routerWAL)
 	r.init()
 	r.metrics.Start()
 	return r
@@ -164,20 +165,18 @@ func getNextDecisionNumber(configStore *configstore.Store, walInitState [][]byte
 	return lastConfigBlockDecisionNumber + 1
 }
 
-func (r *Router) StartRouterService() <-chan struct{} {
+func (r *Router) StartRouterService() {
 	srv := node.CreateGRPCRouter(r.routerNodeConfig)
 
 	protos.RegisterRequestTransmitServer(srv.Server(), r)
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), r)
-
-	stop := make(chan struct{})
 
 	go func() {
 		err := srv.Start()
 		if err != nil {
 			panic(err)
 		}
-		close(stop)
+		r.logger.Infof("Router network service was stopped")
 	}()
 
 	r.net = srv
@@ -185,8 +184,6 @@ func (r *Router) StartRouterService() <-chan struct{} {
 	r.configSubmitter.Start()
 
 	go r.pullAndProcessDecisions()
-
-	return stop
 }
 
 func (r *Router) MonitoringServiceAddress() string {
@@ -220,6 +217,8 @@ func (r *Router) Stop() {
 	for _, sr := range r.shardRouters {
 		sr.Stop()
 	}
+
+	close(r.armaStopChan)
 }
 
 func (r *Router) SoftStop() error {
@@ -314,7 +313,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, armaStopChan chan struct{}, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -338,6 +337,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		decisionPuller:   decisionPuller,
 		stopChan:         make(chan struct{}),
 		drainChan:        make(chan struct{}),
+		armaStopChan:     armaStopChan,
 		metrics:          metrics,
 		configSeq:        uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
 		wal:              routerWAL,
@@ -584,9 +584,15 @@ func (r *Router) pullAndProcessDecisions() {
 
 			// TODO apply the config block
 
-			// initiate router restart to apply new config
+			// initiate router restart and apply new config
 			r.logger.Warnf("Soft stop")
-			go r.SoftStop()
+			go func() {
+				err := r.SoftStop()
+				if err != nil {
+					r.logger.Warnf("The router was not restarted properly: %v. Closing arma process..", err)
+					close(r.armaStopChan)
+				}
+			}()
 
 			// do not pull additional decisions, until the router is restarted.
 			r.logger.Infof("Stopping decisions pulling from consensus")
