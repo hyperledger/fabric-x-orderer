@@ -14,15 +14,14 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	msp "github.com/hyperledger/fabric-x-orderer/common/msputils"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
-	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
+	"github.com/hyperledger/fabric-x-orderer/node/utils"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -82,7 +81,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
 		}
 
-		srv := node.CreateGRPCAssembler(conf)
+		srv := utils.CreateGRPCAssembler(conf)
 		assembler := assembler.NewAssembler(conf, srv, lastConfigBlock, assemblerLogger)
 
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
@@ -130,7 +129,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", conf.PartyId))
 		}
 
-		srv := node.CreateGRPCConsensus(conf)
+		srv := utils.CreateGRPCConsensus(conf)
 		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
 
 		defer consensus.Start()

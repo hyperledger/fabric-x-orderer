@@ -32,12 +32,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 )
 
 type Net interface {
@@ -165,7 +165,7 @@ func getNextDecisionNumber(configStore *configstore.Store, walInitState [][]byte
 }
 
 func (r *Router) StartRouterService() <-chan struct{} {
-	srv := node.CreateGRPCRouter(r.routerNodeConfig)
+	srv := node_utils.CreateGRPCRouter(r.routerNodeConfig)
 	r.net = srv
 
 	protos.RegisterRequestTransmitServer(srv.Server(), r)

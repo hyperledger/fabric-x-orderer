@@ -23,11 +23,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -97,7 +97,7 @@ func (b *Batcher) Address() string {
 }
 
 func (b *Batcher) StartBatcherService() <-chan struct{} {
-	srv := node.CreateGRPCBatcher(b.config)
+	srv := node_utils.CreateGRPCBatcher(b.config)
 	b.Net = srv
 
 	protos.RegisterRequestTransmitServer(srv.Server(), b)
@@ -128,7 +128,7 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
 	b.metrics.Start()
-	utils.StopSignalListen(b.stopChan, b, b.logger, b.Address())
+	node_utils.StopSignalListen(b.stopChan, b, b.logger, b.Address())
 }
 
 func (b *Batcher) Stop() {
