@@ -129,9 +129,17 @@ type BatcherRole struct {
 	ackerLock               sync.RWMutex
 	acker                   SeqAcker
 	Metrics                 *BatcherMetrics
+	lock                    sync.Mutex
+	isStopped               bool
+	isSoftStopped           bool
 }
 
 func (b *BatcherRole) Start() {
+	b.lock.Lock()
+	b.isStopped = false
+	b.isSoftStopped = false
+	b.lock.Unlock()
+
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.termChan = make(chan uint64, 1)
@@ -175,8 +183,21 @@ func (b *BatcherRole) getPrimaryIndex(term uint64) types.PartyID {
 }
 
 func (b *BatcherRole) Stop() {
+	b.lock.Lock()
+	if b.isStopped {
+		b.lock.Unlock()
+		return
+	}
+
+	softStopped := b.isSoftStopped
+	b.isStopped = true
+	b.isSoftStopped = true
+	b.lock.Unlock()
+
 	b.Logger.Infof("Stopping batcher role")
-	b.stopOnce.Do(func() { close(b.stopChan) })
+	if !softStopped {
+		close(b.stopChan)
+	}
 	b.cancelBatch()
 	b.MemPool.Close()
 	for len(b.termChan) > 0 {
@@ -188,7 +209,15 @@ func (b *BatcherRole) Stop() {
 // SoftStop stops the batcher role with mempool Halt
 func (b *BatcherRole) SoftStop() {
 	b.Logger.Infof("Soft Stopping batcher role")
-	b.stopOnce.Do(func() { close(b.stopChan) })
+	b.lock.Lock()
+	if b.isSoftStopped || b.isStopped {
+		b.lock.Unlock()
+		return
+	}
+
+	b.isSoftStopped = true
+	b.lock.Unlock()
+	close(b.stopChan)
 	b.cancelBatch()
 	b.MemPool.Halt()
 	for len(b.termChan) > 0 {

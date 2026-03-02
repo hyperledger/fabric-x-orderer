@@ -23,6 +23,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
+	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -52,6 +54,7 @@ type Batcher struct {
 	requestsInspectorVerifier *RequestsInspectorVerifier
 	batcherDeliverService     *BatcherDeliverService
 	decisionReplicator        DecisionReplicator
+	cdrc                      ConsensusDecisionReplicatorCreator
 	logger                    *flogging.FabricLogger
 	batcher                   *BatcherRole
 	batcherCerts2IDs          map[string]types.PartyID
@@ -63,16 +66,22 @@ type Batcher struct {
 	Ledger                    *node_ledger.BatchLedgerArray
 	ConfigStore               *configstore.Store
 	config                    *node_config.BatcherNodeConfig
+	fullConfig                *config.Configuration
 	batchers                  []node_config.BatcherInfo
 	signer                    Signer
 	wal                       *smartbft_wal.WriteAheadLogFile
 
 	stateChan chan *state.State
 
-	running      sync.WaitGroup
-	stopOnce     sync.Once
-	stopChan     chan struct{}
-	mainExitChan chan struct{}
+	running              sync.WaitGroup // maybe change the name, it is only for state replicator
+	stopOnce             sync.Once
+	stopChan             chan struct{}
+	stopSignalListenChan chan struct{}
+	mainExitChan         chan struct{}
+
+	lock          sync.Mutex
+	isStopped     bool
+	isSoftStopped bool
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -115,8 +124,13 @@ func (b *Batcher) StartBatcherService() {
 }
 
 func (b *Batcher) Run() {
-	b.stopChan = make(chan struct{})
+	b.lock.Lock()
+	b.isStopped = false
+	b.isSoftStopped = false
+	b.lock.Unlock()
 
+	b.stopChan = make(chan struct{})
+	b.stopSignalListenChan = make(chan struct{})
 	b.stateChan = make(chan *state.State, 1)
 
 	b.running.Add(1)
@@ -125,12 +139,36 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
 	b.metrics.Start()
-	node_utils.StopSignalListen(b.stopChan, b, b.logger, b.Address())
+
+	node_utils.StopSignalListen(b.stopSignalListenChan, b, b.logger, b.Address())
+}
+
+func (b *Batcher) GetStatus() string {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	if b.isSoftStopped && !b.isStopped {
+		return "Soft Stop"
+	}
+	if b.isSoftStopped && b.isStopped {
+		return "Stop"
+	}
+	return "Running"
 }
 
 func (b *Batcher) Stop() {
+	b.lock.Lock()
+	if b.isStopped {
+		b.lock.Unlock()
+		return
+	}
+
+	softStopped := b.isSoftStopped
+	b.isStopped = true
+	b.isSoftStopped = true
+	b.lock.Unlock()
+
 	b.logger.Infof("Stopping batcher node")
-	b.stopOnce.Do(func() {
+	if !softStopped {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
 		b.batcher.Stop()
@@ -142,26 +180,37 @@ func (b *Batcher) Stop() {
 		b.running.Wait()
 		b.metrics.Stop()
 		b.wal.Close()
-		close(b.mainExitChan)
-	})
+	}
+
 	b.Net.Stop()
 	b.Ledger.Close()
+
+	close(b.stopSignalListenChan)
+	close(b.mainExitChan)
 }
 
 func (b *Batcher) SoftStop() {
-	b.stopOnce.Do(func() {
-		close(b.stopChan)
-		b.controlEventBroadcaster.Stop()
-		b.batcher.SoftStop()
-		for len(b.stateChan) > 0 {
-			<-b.stateChan // drain state channel
-		}
-		b.primaryAckConnector.Stop()
-		b.primaryReqConnector.Stop()
-		b.running.Wait()
-		b.metrics.Stop()
-		b.wal.Close()
-	})
+	b.lock.Lock()
+	if b.isSoftStopped || b.isStopped {
+		b.lock.Unlock()
+		return
+	}
+
+	b.isSoftStopped = true
+	b.lock.Unlock()
+
+	b.logger.Infof("Soft stopping batcher node")
+	close(b.stopChan)
+	b.controlEventBroadcaster.Stop()
+	b.batcher.SoftStop()
+	for len(b.stateChan) > 0 {
+		<-b.stateChan // drain state channel
+	}
+	b.primaryAckConnector.Stop()
+	b.primaryReqConnector.Stop()
+	b.running.Wait()
+	b.metrics.Stop()
+	b.wal.Close()
 }
 
 // replicateDecision runs by a separate go routine
@@ -202,7 +251,17 @@ func (b *Batcher) replicateDecision() {
 							b.logger.Panicf("Failed adding config block to config store: %s", err)
 						}
 						b.logger.Infof("Soft stop")
-						go b.SoftStop()
+
+						go func() {
+							b.SoftStop()
+							b.logger.Infof("Apply config")
+							if err := b.ApplyConfig(lastBlock); err != nil {
+								if _, ok := err.(*PendingAdminRestartError); ok {
+									return
+								}
+								b.logger.Panicf("Failed applying config: %s", err)
+							}
+						}()
 						return
 					}
 				} else {
@@ -230,6 +289,100 @@ func (b *Batcher) replicateDecision() {
 			return
 		}
 	}
+}
+
+func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuration) (*config_protos.BatcherNodeConfig, error) {
+	partyID := conf.LocalConfig.NodeLocalConfig.PartyID
+	partyConfig, err := config.FindParty(partyID, conf)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to find party config in the shared configuration for batcher")
+	}
+	for _, batcher := range partyConfig.BatchersConfig {
+		if types.ShardID(batcher.ShardID) == shardID {
+			return batcher, nil
+		}
+	}
+	return nil, nil
+}
+
+func (b *Batcher) ApplyConfig(lastBlock *common.Block) error {
+	partyID := b.config.PartyId
+	shardID := b.config.ShardId
+
+	if b.fullConfig == nil {
+		return errors.New("failed applying new config, current configuration is nil")
+	}
+
+	newConfig, err := b.fullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	if err != nil {
+		return errors.Errorf("failed to build new configuration, err: %v\n", err)
+	}
+
+	// check if party is removed
+	isPartyEvicted, err := config.IsPartyEvicted(partyID, newConfig)
+	if err != nil {
+		return errors.Errorf("failed to detect if party is evicted, err: %v\n", err)
+	}
+	if isPartyEvicted {
+		b.logger.Infof("Pending admin restart: Party %d is evicted", partyID)
+		return &PendingAdminRestartError{}
+	}
+
+	// check if batcher identity (address or certificates) is changed
+	currBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, b.fullConfig)
+	if err != nil {
+		return errors.Errorf("failed to find current batcher config, err: %v\n", err)
+	}
+	newBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, newConfig)
+	if err != nil {
+		return errors.Errorf("failed to find new batcher config, err: %v\n", err)
+	}
+	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currBatcherIdentityConfig, newBatcherIdentityConfig, b.logger)
+	if err != nil {
+		return errors.Errorf("error apply config, could not decide if node restart is required, err: %v\n", err)
+	}
+
+	if isRestartRequired {
+		b.logger.Infof("Pending admin restart: identity was changed")
+		return &PendingAdminRestartError{}
+	}
+
+	// this is not an admin restart, close net and ledger
+	b.Net.Stop()
+	b.Ledger.Close()
+	close(b.stopSignalListenChan)
+
+	// create new batcher with the same mempool
+	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
+	// update batcher config
+	b.logger.Infof("Reconfiguring batcher")
+	b.config = newBatcherConfig
+	b.fullConfig = newConfig
+	b.configureBatcher(b.logger, b.mainExitChan, &ConsenterControlEventSenderFactory{}, b.signer, b.batcher.MemPool)
+
+	// prune mempool
+	b.logger.Infof("Pruning memory pull")
+	b.batcher.MemPool.Prune(func(req []byte) error {
+		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
+			b.logger.Debugf("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
+		}
+		return err
+	})
+
+	// init batcher again
+	b.logger.Infof("Initialize new batcher")
+	b.StartBatcherService()
+	b.Run()
+
+	b.logger.Infof("Batcher listening on %s", b.Address())
+	return nil
+}
+
+type PendingAdminRestartError struct{}
+
+func (e *PendingAdminRestartError) Error() string {
+	return fmt.Sprintf("Pending admin restart")
 }
 
 func (b *Batcher) GetLatestStateChan() <-chan *state.State {
@@ -564,4 +717,8 @@ func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []by
 	baf.SetSignature(sig)
 
 	return baf, nil
+}
+
+func (b *Batcher) GetConfig() *node_config.BatcherNodeConfig {
+	return b.config
 }

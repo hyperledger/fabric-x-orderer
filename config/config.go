@@ -821,10 +821,6 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 
 // NewUpdatedConfigurationFromBlock builds a new configuration based on current configuration and block
 func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, error) {
-	if config == nil {
-		return nil, errors.New("failed applying new config, current configuration is nil")
-	}
-
 	sharedConfig, err := sharedConfigFromBlock(block)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())

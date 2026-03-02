@@ -47,6 +47,7 @@ var caFolders = map[string]struct{}{
 	"tlscacerts": {},
 }
 
+// TODO: fix all integration tests once all nodes support dynamic reconfig
 func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -55,9 +56,10 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	numOfParties := 4
+	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
-	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
 	require.NotNil(t, netInfo)
 	require.NoError(t, err)
 
@@ -171,8 +173,12 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	require.True(t, userBlockHandler.RouterEndpointUpdated.Load(), "Router endpoint was not updated in the config update")
 
-	// Restart Arma nodes
-	armaNetwork.Stop()
+	// Stop all Arma nodes except for Batchers
+	for i := 1; i <= numOfParties; i++ {
+		armaNetwork.GetRouter(t, types.PartyID(i)).StopArmaNode()
+		armaNetwork.GetConsenter(t, types.PartyID(i)).StopArmaNode()
+		armaNetwork.GetAssembler(t, types.PartyID(i)).StopArmaNode()
+	}
 
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_router.yaml")
 
@@ -189,12 +195,21 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)
 	utils.WriteToYAML(localConfig.NodeLocalConfig, routerNodeConfigPath)
 
-	armaNetwork.Restart(t, readyChan)
+	// restart all arma  nodes, except for batcher
+	for i := 1; i <= numOfParties; i++ {
+		armaNetwork.GetRouter(t, types.PartyID(i)).RestartArmaNode(t, readyChan)
+		armaNetwork.GetConsenter(t, types.PartyID(i)).RestartArmaNode(t, readyChan)
+		armaNetwork.GetAssembler(t, types.PartyID(i)).RestartArmaNode(t, readyChan)
+	}
+
 	defer armaNetwork.Stop()
 
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	testutil.WaitReady(t, readyChan, numOfArmaNodes-8, 60)
 
 	// Send transactions again and verify they are processed
+
+	// wait for consensus nodes to start
+	time.Sleep(60 * time.Second)
 
 	// Update the user config with the new router endpoint
 	userConfig.RouterEndpoints[0] = fmt.Sprintf("%s:%d", routerIP, newPort)
