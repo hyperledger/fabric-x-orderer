@@ -177,6 +177,9 @@ func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error)
 }
 
 func sharedConfigFromBlock(block *common.Block) (*protos.SharedConfig, error) {
+	if block == nil {
+		return nil, errors.New("block is nil")
+	}
 	consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(block)
 	if err != nil {
 		return nil, err
@@ -791,4 +794,22 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 		}
 	}
 	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
+}
+
+// NewUpdatedConfigurationFromBlock builds a new configuration based on current configuration and block
+func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, error) {
+	if config == nil {
+		return nil, errors.New("failed applying new config, current configuration is nil")
+	}
+
+	sharedConfig, err := sharedConfigFromBlock(block)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
+	}
+	newConfig := &Configuration{
+		LocalConfig:  config.LocalConfig,
+		SharedConfig: sharedConfig,
+	}
+
+	return newConfig, nil
 }
