@@ -28,7 +28,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	arma_node "github.com/hyperledger/fabric-x-orderer/node"
 	batcher_node "github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	consensus_node "github.com/hyperledger/fabric-x-orderer/node/consensus"
@@ -36,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -384,7 +384,7 @@ func createConsensusNodesAndGRPCServers(t *testing.T, dir string, parties []type
 		require.NoError(t, err)
 		require.NotNil(t, signer)
 		consenterLogger := testutil.CreateLogger(t, int(i))
-		server := arma_node.CreateGRPCConsensus(consenterConfig)
+		server := node_utils.CreateGRPCConsensus(consenterConfig)
 		servers = append(servers, server)
 		consensus := consensus_node.CreateConsensus(consenterConfig, server, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
 		consensusNodes = append(consensusNodes, consensus)

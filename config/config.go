@@ -28,10 +28,10 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -251,7 +251,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -372,8 +372,8 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	shards := config.ExtractShards()
 	consenters := config.ExtractConsenters()
 
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
-	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node.TLSCAcertsFromConsenters(consenters)...)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node_utils.TLSCAcertsFromConsenters(consenters)...)
 
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -418,7 +418,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
