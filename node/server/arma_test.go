@@ -30,12 +30,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -331,7 +331,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		// Create the assembler and check genesis block was appended
 		conf := configContent.ExtractAssemblerConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
-		srv := node.CreateGRPCAssembler(conf)
+		srv := node_utils.CreateGRPCAssembler(conf)
 		assembler := assembler.NewAssembler(conf, srv, genesisBlock, testLogger)
 		require.NotNil(t, assembler)
 		assembler.Stop()
@@ -399,7 +399,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		// Create the consenter and check genesis block was appended
 		conf := configContent.ExtractConsenterConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
-		srv := node.CreateGRPCConsensus(conf)
+		srv := node_utils.CreateGRPCConsensus(conf)
 		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		require.NoError(t, err)

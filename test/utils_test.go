@@ -37,7 +37,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
-	node2 "github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -49,6 +48,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -155,7 +155,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		configRulesVerifier.ValidateNewConfigReturns(nil)
 		configRulesVerifier.ValidateTransitionReturns(nil)
 
-		router := router.NewRouter(config, l, fakeSigner, configUpdateProposer, configRulesVerifier)
+		router := router.NewRouter(config, nil, l, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 		routers = append(routers, router)
 	}
 
@@ -200,7 +200,7 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 		logger := testutil.CreateLogger(t, i+1)
 		loggers = append(loggers, logger)
 
-		assemblerGRPC := node2.CreateGRPCAssembler(assemblerConf)
+		assemblerGRPC := node_utils.CreateGRPCAssembler(assemblerConf)
 
 		assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, logger)
 		assemblers = append(assemblers, assembler)
@@ -356,7 +356,8 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		loggers = append(loggers, logger)
 		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
-		batcher := batcher.CreateBatcher(batcherConf, logger, batcherNodes[i], &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher := batcher.CreateBatcher(batcherConf, logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher.Net = batcherNodes[i]
 		batchers = append(batchers, batcher)
 		batcher.Run()
 
@@ -455,7 +456,8 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 	require.NoError(t, err)
 	signer := crypto.ECDSASigner(*newBatcherNode.sk)
 
-	batcher := batcher.CreateBatcher(conf, logger, newBatcherNode, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher := batcher.CreateBatcher(conf, logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher.Net = newBatcherNode
 	batcher.Run()
 
 	gRPCServer := newBatcherNode.Server()
@@ -516,7 +518,7 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 }
 
 func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
-	assemblerGRPC := node2.CreateGRPCAssembler(conf)
+	assemblerGRPC := node_utils.CreateGRPCAssembler(conf)
 	assembler := assembler.NewAssembler(conf, assemblerGRPC, lastConfigBlock, logger)
 
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
@@ -544,7 +546,7 @@ func recoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLo
 	configRulesVerifier.ValidateNewConfigReturns(nil)
 	configRulesVerifier.ValidateTransitionReturns(nil)
 
-	router := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
+	router := router.NewRouter(conf, nil, logger, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 	router.StartRouterService()
 
 	return router

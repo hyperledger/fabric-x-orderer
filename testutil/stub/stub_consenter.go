@@ -21,12 +21,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"go.uber.org/zap"
 
@@ -83,7 +83,7 @@ func NewStubConsenterFromConfig(t *testing.T, configStoreDir string, nodeConfigP
 	consenterConfig := configContent.ExtractConsenterConfig(lastConfigBlock)
 	require.NotNil(t, consenterConfig)
 
-	server := node.CreateGRPCConsensus(consenterConfig)
+	server := node_utils.CreateGRPCConsensus(consenterConfig)
 
 	stubConsenter := &StubConsenter{
 		partyID:     consenterConfig.PartyId,

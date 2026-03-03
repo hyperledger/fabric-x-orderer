@@ -29,13 +29,13 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	fabricx_config "github.com/hyperledger/fabric-x-orderer/config"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -934,7 +934,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		shards = append(shards, config.ShardInfo{ShardId: types.ShardID(j + 1), Batchers: []config.BatcherInfo{{PartyID: partyID, Endpoint: batchers[j].Server().Address(), TLSCACerts: []config.RawBytes{ca.CertBytes()}}}})
 	}
 
-	clientRootCAs := node.TLSCAcertsFromShards(shards)
+	clientRootCAs := node_utils.TLSCAcertsFromShards(shards)
 
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
@@ -989,7 +989,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	configRulesVerifier.ValidateNewConfigReturns(nil)
 	configRulesVerifier.ValidateTransitionReturns(nil)
 
-	r := router.NewRouter(conf, logger, fakeSigner, configUpdateProposer, configRulesVerifier)
+	r := router.NewRouter(conf, nil, logger, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 	r.StartRouterService()
 
 	return r, conf

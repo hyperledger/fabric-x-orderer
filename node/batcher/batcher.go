@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -44,6 +45,7 @@ type Signer interface {
 
 type Net interface {
 	Stop()
+	Address() string
 }
 
 type Batcher struct {
@@ -67,9 +69,10 @@ type Batcher struct {
 
 	stateChan chan *state.State
 
-	running  sync.WaitGroup
-	stopOnce sync.Once
-	stopChan chan struct{}
+	running      sync.WaitGroup
+	stopOnce     sync.Once
+	stopChan     chan struct{}
+	mainExitChan chan struct{}
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -86,6 +89,31 @@ func (b *Batcher) ConfigSequence() types.ConfigSequence {
 	return types.ConfigSequence(b.config.Bundle.ConfigtxValidator().Sequence())
 }
 
+func (b *Batcher) Address() string {
+	if b.Net == nil {
+		return ""
+	}
+
+	return b.Net.Address()
+}
+
+func (b *Batcher) StartBatcherService() {
+	srv := node_utils.CreateGRPCBatcher(b.config)
+	b.Net = srv
+
+	protos.RegisterRequestTransmitServer(srv.Server(), b)
+	protos.RegisterBatcherControlServiceServer(srv.Server(), b)
+	orderer.RegisterAtomicBroadcastServer(srv.Server(), b)
+
+	go func() {
+		err := srv.Start()
+		if err != nil {
+			panic(err)
+		}
+		b.logger.Infof("Batcher gRPC server stopped")
+	}()
+}
+
 func (b *Batcher) Run() {
 	b.stopChan = make(chan struct{})
 
@@ -97,11 +125,25 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
 	b.metrics.Start()
+	node_utils.StopSignalListen(b.stopChan, b, b.logger, b.Address())
 }
 
 func (b *Batcher) Stop() {
 	b.logger.Infof("Stopping batcher node")
-	b.SoftStop()
+	b.stopOnce.Do(func() {
+		close(b.stopChan)
+		b.controlEventBroadcaster.Stop()
+		b.batcher.Stop()
+		for len(b.stateChan) > 0 {
+			<-b.stateChan // drain state channel
+		}
+		b.primaryAckConnector.Stop()
+		b.primaryReqConnector.Stop()
+		b.running.Wait()
+		b.metrics.Stop()
+		b.wal.Close()
+		close(b.mainExitChan)
+	})
 	b.Net.Stop()
 	b.Ledger.Close()
 }
@@ -110,7 +152,7 @@ func (b *Batcher) SoftStop() {
 	b.stopOnce.Do(func() {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
-		b.batcher.Stop()
+		b.batcher.SoftStop()
 		for len(b.stateChan) > 0 {
 			<-b.stateChan // drain state channel
 		}

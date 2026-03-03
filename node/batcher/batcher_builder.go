@@ -24,7 +24,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, net Net, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+	return CreateBatcherWithMemPool(config, logger, mainExitChan, cdrc, senderCreator, signer, nil)
+}
+
+func CreateBatcherWithMemPool(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer, memPool MemPool) *Batcher {
 	var parties []types.PartyID
 	for shIdx, sh := range config.Shards {
 		if sh.ShardId != config.ShardId {
@@ -77,7 +81,6 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		decisionReplicator:        dr,
 		signer:                    signer,
 		logger:                    logger,
-		Net:                       net,
 		batchers:                  batchers,
 		Ledger:                    ledgerArray,
 		ConfigStore:               configStore,
@@ -85,6 +88,7 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		config:                    config,
 		metrics:                   NewBatcherMetrics(config, batchers, ledgerArray, logger),
 		wal:                       batcherWAL,
+		mainExitChan:              mainExitChan,
 	}
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
@@ -113,7 +117,6 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		N:                       initState.N,
 		BatchTimeout:            config.BatchCreationTimeout,
 		Ledger:                  ledgerArray,
-		MemPool:                 createMemPool(b, config),
 		ID:                      config.PartyId,
 		Shard:                   config.ShardId,
 		Logger:                  logger,
@@ -127,6 +130,12 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.Fabri
 		BatchedRequestsVerifier: b.requestsInspectorVerifier,
 		BatchSequenceGap:        config.BatchSequenceGap,
 		Metrics:                 b.metrics,
+	}
+
+	if memPool == nil {
+		b.batcher.MemPool = createMemPool(b, config)
+	} else {
+		b.batcher.MemPool = memPool
 	}
 
 	return b

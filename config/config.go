@@ -28,10 +28,10 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -177,6 +177,9 @@ func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error)
 }
 
 func sharedConfigFromBlock(block *common.Block) (*protos.SharedConfig, error) {
+	if block == nil {
+		return nil, errors.New("block is nil")
+	}
 	consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(block)
 	if err != nil {
 		return nil, err
@@ -248,7 +251,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -369,8 +372,8 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	shards := config.ExtractShards()
 	consenters := config.ExtractConsenters()
 
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
-	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node.TLSCAcertsFromConsenters(consenters)...)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node_utils.TLSCAcertsFromConsenters(consenters)...)
 
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -415,7 +418,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -791,4 +794,22 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 		}
 	}
 	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
+}
+
+// NewUpdatedConfigurationFromBlock builds a new configuration based on current configuration and block
+func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, error) {
+	if config == nil {
+		return nil, errors.New("failed applying new config, current configuration is nil")
+	}
+
+	sharedConfig, err := sharedConfigFromBlock(block)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
+	}
+	newConfig := &Configuration{
+		LocalConfig:  config.LocalConfig,
+		SharedConfig: sharedConfig,
+	}
+
+	return newConfig, nil
 }

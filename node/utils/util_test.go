@@ -4,13 +4,13 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package node_test
+package utils_test
 
 import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node"
+	"github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +22,7 @@ func TestTLSCAcertsFromShards(t *testing.T) {
 	shards, cleanup := stub.NewStubBatchersAndInfos(t, numParties, shardIDs)
 	require.NotNil(t, shards)
 	defer cleanup()
-	tlsCAsFromShards := node.TLSCAcertsFromShards(shards)
+	tlsCAsFromShards := utils.TLSCAcertsFromShards(shards)
 	require.Equal(t, len(tlsCAsFromShards), 4)
 
 	// 4 parties, 1 shards - each party has its own CA, expect for 4 CA's
@@ -30,7 +30,7 @@ func TestTLSCAcertsFromShards(t *testing.T) {
 	shards, cleanup = stub.NewStubBatchersAndInfos(t, numParties, shardIDs)
 	require.NotNil(t, shards)
 	defer cleanup()
-	tlsCAsFromShards = node.TLSCAcertsFromShards(shards)
+	tlsCAsFromShards = utils.TLSCAcertsFromShards(shards)
 	require.Equal(t, len(tlsCAsFromShards), 4)
 
 	// 3 parties, 1 shards - each party has its own CA, expect for 3 CA's
@@ -38,7 +38,7 @@ func TestTLSCAcertsFromShards(t *testing.T) {
 	shards, cleanup = stub.NewStubBatchersAndInfos(t, numParties, shardIDs)
 	require.NotNil(t, shards)
 	defer cleanup()
-	tlsCAsFromShards = node.TLSCAcertsFromShards(shards)
+	tlsCAsFromShards = utils.TLSCAcertsFromShards(shards)
 	require.Equal(t, len(tlsCAsFromShards), 3)
 }
 
@@ -50,6 +50,6 @@ func TestTLSCAcertsFromConsenters(t *testing.T) {
 	require.NotNil(t, consentersInfo)
 	defer cleanup()
 
-	tlsCAsFromShards := node.TLSCAcertsFromConsenters(consentersInfo)
+	tlsCAsFromShards := utils.TLSCAcertsFromConsenters(consentersInfo)
 	require.Equal(t, len(tlsCAsFromShards), 3)
 }

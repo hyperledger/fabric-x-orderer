@@ -19,10 +19,10 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"go.uber.org/zap"
 
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -83,7 +83,7 @@ func NewStubBatcherFromConfig(t *testing.T, configStoreDir string, nodeConfigPat
 	batcherConfig := config.ExtractBatcherConfig(lastConfigBlock)
 	require.NotNil(t, batcherConfig)
 
-	server := node.CreateGRPCBatcher(batcherConfig)
+	server := node_utils.CreateGRPCBatcher(batcherConfig)
 
 	// return a stub batcher that includes all server setup
 	stubBatcher := StubBatcher{
