@@ -121,9 +121,9 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 //     - If no party is added, MaxPartyID must remain unchanged.
 //     This ensures PartyIDs are strictly increasing and never reused.
 //  3. At most one party can be removed in a config tx.
-//  4. Only one membership change is allowed per config tx.
+//  4. At most one party can be modified in a config tx.
+//  5. Only one membership change is allowed per config tx (add, remove, or modify).
 //
-// TODO: Validate party modifications (only one certificate / endpoint change in a config tx).
 // TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
 	// extract current shared config
@@ -205,8 +205,21 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	}
 
 	// 4.
-	if added+removed > 1 {
-		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d)", added, removed)
+	modified := 0
+	for id, currParty := range currMap {
+		if _, exists := nextMap[id]; exists {
+			if !proto.Equal(currParty, nextMap[id]) {
+				modified++
+				if modified > 1 {
+					return errors.New("more than one party modified in config tx")
+				}
+			}
+		}
+	}
+
+	// 5.
+	if added+removed+modified > 1 {
+		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d, modified=%d)", added, removed, modified)
 	}
 
 	return nil

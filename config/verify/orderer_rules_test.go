@@ -338,6 +338,143 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 	require.ErrorContains(t, err, "more than one party added in config tx")
 }
 
+func TestValidateTransition_ModifyOneParty(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+
+	// create a config with 2 parties
+	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 2)
+	defer cleanup()
+
+	// modify party 1 TLS cert
+	cert := []byte("new-tls-cert")
+	updatePb := builder.UpdateConsensusTLSCert(t, types.PartyID(1), cert)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	require.NoError(t, err)
+
+	nextEnv := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
+
+	// should succeed, one party modified
+	err = or.ValidateTransition(currBundle, nextEnv, bccsp)
+	require.NoError(t, err)
+}
+
+func TestValidateTransition_FailedModifyTwoParties(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+
+	// create a config with 3 parties
+	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
+	defer cleanup()
+
+	// modify two parties TLS certs
+	builder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("new-tls-cert-1"))
+	builder.UpdateConsensusTLSCert(t, types.PartyID(2), []byte("new-tls-cert-2"))
+	updatePb := builder.ConfigUpdatePBData(t)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	require.NoError(t, err)
+
+	nextEnv := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
+
+	// should fail, more than one party modified
+	err = or.ValidateTransition(currBundle, nextEnv, bccsp)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "more than one party modified in config tx")
+}
+
+func TestValidateTransition_FailedAddAndModify(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+
+	// create a config with 2 parties
+	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 2)
+	defer cleanup()
+
+	// add a new party
+	builder.AddNewParty(t, &protos.PartyConfig{
+		CACerts:    [][]byte{[]byte("newCACert")},
+		TLSCACerts: [][]byte{[]byte("newTLSCACert")},
+		ConsenterConfig: &protos.ConsenterNodeConfig{
+			Host: "localhost", Port: 7050, TlsCert: []byte("consenterNewCert"),
+		},
+		RouterConfig: &protos.RouterNodeConfig{
+			Host: "localhost", Port: 8050, TlsCert: []byte("routerNewCert"),
+		},
+		AssemblerConfig: &protos.AssemblerNodeConfig{
+			Host: "localhost", Port: 9050, TlsCert: []byte("assemblerNewCert"),
+		},
+		BatchersConfig: []*protos.BatcherNodeConfig{
+			{ShardID: 1, Host: "localhost", Port: 10050, TlsCert: []byte("batcherNewCert")},
+		},
+	})
+
+	// also modify an existing party
+	builder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("modified-tls-cert"))
+	updatePb := builder.ConfigUpdatePBData(t)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	require.NoError(t, err)
+
+	nextEnv := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
+
+	// should fail, add and modify in same config tx
+	err = or.ValidateTransition(currBundle, nextEnv, bccsp)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "only one party can be changed in a config tx")
+}
+
+func TestValidateTransition_FailedRemoveAndModify(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+
+	// create a config with 3 parties
+	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 3)
+	defer cleanup()
+
+	// remove party 3
+	builder.RemoveParty(t, 3)
+
+	// also modify party 1
+	builder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("modified-tls-cert"))
+	updatePb := builder.ConfigUpdatePBData(t)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	require.NoError(t, err)
+
+	nextEnv := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
+
+	// should fail, remove and modify in same config tx
+	err = or.ValidateTransition(currBundle, nextEnv, bccsp)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "only one party can be changed in a config tx")
+}
+
 func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope, channelconfig.Resources, *configutil.ConfigUpdateBuilder, *policy.DefaultConfigUpdateProposer, identity.SignerSerializer, *requestfilter.RulesVerifier, func()) {
 	t.Helper()
 	dir := t.TempDir()
