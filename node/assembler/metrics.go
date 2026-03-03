@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -22,14 +23,15 @@ import (
 )
 
 type Metrics struct {
-	ledgerMetrics *node_ledger.AssemblerLedgerMetrics
-	logger        *flogging.FabricLogger
-	interval      time.Duration
-	stopChan      chan struct{}
-	stopOnce      sync.Once
-	startOnce     sync.Once
-	monitor       *monitoring.Monitor
-	partyID       arma_types.PartyID
+	ledgerMetrics  *node_ledger.AssemblerLedgerMetrics
+	deliverMetrics *deliver.Metrics
+	logger         *flogging.FabricLogger
+	interval       time.Duration
+	stopChan       chan struct{}
+	stopOnce       sync.Once
+	startOnce      sync.Once
+	monitor        *monitoring.Monitor
+	partyID        arma_types.PartyID
 }
 
 func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
@@ -48,12 +50,13 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger
 	al.NewAssemblerLedgerMetrics(p, partyID, logger)
 
 	return &Metrics{
-		ledgerMetrics: al,
-		interval:      assemblerNodeConfig.MetricsLogInterval,
-		logger:        logger,
-		stopChan:      make(chan struct{}),
-		monitor:       monitor,
-		partyID:       assemblerNodeConfig.PartyId,
+		ledgerMetrics:  al,
+		deliverMetrics: deliver.NewMetrics(p),
+		interval:       assemblerNodeConfig.MetricsLogInterval,
+		logger:         logger,
+		stopChan:       make(chan struct{}),
+		monitor:        monitor,
+		partyID:        assemblerNodeConfig.PartyId,
 	}
 }
 
