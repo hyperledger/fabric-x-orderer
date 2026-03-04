@@ -552,7 +552,19 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, pathToNewTLSCert string, pathToNewTLSKey string, nodesIPs []string) ([]byte, error) {
+func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, certType string, pathToNewCert string, pathToNewPrivateKey string, nodesIPs []string) ([]byte, error) {
+	var ku x509.KeyUsage
+	switch certType {
+	case "tls":
+		certType = "tls"
+		ku = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
+	case "sign":
+		certType = "sign"
+		ku = x509.KeyUsageDigitalSignature
+	default:
+		return nil, fmt.Errorf("unsupported cert type: %s", certType)
+	}
+
 	caCertBytes, err := utils.ReadPem(caCertPath)
 	if err != nil {
 		return nil, err
@@ -595,7 +607,7 @@ func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, path
 		return nil, fmt.Errorf("failed marshaling private key, err: %s", err)
 	}
 
-	_, err = ca.SignCertificate(pathToNewTLSCert, "tls", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
+	_, err = ca.SignCertificate(pathToNewCert, certType, nil, nodesIPs, GetPublicKey(privateKey), ku, []x509.ExtKeyUsage{
 		x509.ExtKeyUsageClientAuth,
 		x509.ExtKeyUsageServerAuth,
 	})
@@ -603,12 +615,12 @@ func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, path
 		return nil, err
 	}
 
-	err = utils.WritePEMToFile(pathToNewTLSKey, "PRIVATE KEY", privateKeyBytes)
+	err = utils.WritePEMToFile(pathToNewPrivateKey, "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return nil, err
 	}
 
-	newCertBytes, err := os.ReadFile(filepath.Join(pathToNewTLSCert, "tls-cert.pem"))
+	newCertBytes, err := os.ReadFile(filepath.Join(pathToNewCert, fmt.Sprintf("%s-cert.pem", certType)))
 	if err != nil {
 		return nil, err
 	}
