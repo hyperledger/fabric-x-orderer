@@ -624,11 +624,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	lock := sync.Mutex{}
 
 	for _, partyID := range options.Parties {
-		waitForPullDone.Add(1)
-
-		go func() {
-			defer waitForPullDone.Done()
-
+		waitForPullDone.Go(func() {
 			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, (len(options.Parties)-1)/3, options.Transactions,
 				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.BlockHandler, options.Signer)
 			lock.Lock()
@@ -654,7 +650,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 				logString := fmt.Sprintf(options.LogString, partyID)
 				require.Contains(t, logOutput, logString, "Expected log output to contain specified log string")
 			}
-		}()
+		})
 	}
 
 	waitForPullDone.Wait()
