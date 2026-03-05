@@ -219,7 +219,7 @@ func TestConsensus(t *testing.T) {
 					copy(tstExpectedDecisionNum, tst.expectedDecisionNum)
 
 					for {
-						b := <-listeners[node.BFTConfig.SelfID-1].c
+						b := <-listeners[node.BFTConfiguration.SelfID-1].c
 						decision, _, err := state.BytesToDecision(b.Data.Data[0])
 						assert.NoError(t, err)
 
@@ -290,23 +290,23 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{Bundle: bundle, PartyId: partyID, MonitoringListenAddress: "127.0.0.1:0", MetricsLogInterval: 3 * time.Second}
 	c := &node_consensus.Consensus{
-		Config:       &consenterNodeConfig,
-		BFTConfig:    smartbft_types.DefaultConfig,
-		Logger:       l,
-		Signer:       signer,
-		SigVerifier:  verifier,
-		State:        initialState,
-		CurrentNodes: nodes,
-		Storage:      ledger,
-		Arma:         consenter,
-		BADB:         db,
-		Net:          &consensus_mocks.FakeNetStopper{},
-		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
-		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
+		Config:           &consenterNodeConfig,
+		BFTConfiguration: smartbft_types.DefaultConfig,
+		Logger:           l,
+		Signer:           signer,
+		SigVerifier:      verifier,
+		State:            initialState,
+		CurrentNodes:     nodes,
+		Storage:          ledger,
+		Arma:             consenter,
+		BADB:             db,
+		Net:              &consensus_mocks.FakeNetStopper{},
+		Synchronizer:     &consensus_mocks.FakeSynchronizerStopper{},
+		Metrics:          node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
 	}
 
-	c.BFTConfig.SelfID = uint64(partyID)
-	c.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
+	c.BFTConfiguration.SelfID = uint64(partyID)
+	c.BFTConfiguration.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
 
 	bftWAL, walInitState, err := wal.InitializeAndReadAll(l, dir, wal.DefaultOptions())
 	assert.NoError(t, err)
@@ -322,7 +322,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 		WAL:               bftWAL,
 		WALInitialContent: walInitState,
-		Config:            c.BFTConfig,
+		Config:            c.BFTConfiguration,
 		Verifier:          c,
 		Comm: &mockComm{
 			nodes: nodes,
@@ -1004,13 +1004,13 @@ func TestSignProposal(t *testing.T) {
 	}
 
 	c := &node_consensus.Consensus{
-		BFTConfig:   smartbft_types.Configuration{SelfID: 1},
-		Arma:        consenter,
-		State:       &initialState,
-		Logger:      logger,
-		SigVerifier: verifier,
-		Signer:      crypto.ECDSASigner(*sks[0]),
-		Config:      &nodeconfig.ConsenterNodeConfig{PartyId: 1},
+		BFTConfiguration: smartbft_types.Configuration{SelfID: 1},
+		Arma:             consenter,
+		State:            &initialState,
+		Logger:           logger,
+		SigVerifier:      verifier,
+		Signer:           crypto.ECDSASigner(*sks[0]),
+		Config:           &nodeconfig.ConsenterNodeConfig{PartyId: 1},
 	}
 
 	proposal := smartbft_types.Proposal{}
