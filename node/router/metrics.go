@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -42,6 +43,7 @@ type RouterMetrics struct {
 	incomingTxs            metrics.Counter
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
+	incomingTxsLastValue   uint64
 	logger                 *flogging.FabricLogger
 	interval               time.Duration
 	stopChan               chan struct{}
@@ -61,10 +63,10 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 	if err != nil {
 		logger.Panicf("failed to convert port to int: %v", err)
 	}
-
-	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, "router")
-	p := monitor.Provider
 	partyID := fmt.Sprintf("%d", routerNodeConfig.PartyID)
+
+	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("router_%s", partyID))
+	p := monitor.Provider
 
 	rejectedTxs := p.NewCounter(rejectedTxs)
 
@@ -84,11 +86,8 @@ func (m *RouterMetrics) Stop() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
+		m.reportMetrics()
 		m.monitor.Stop()
-		txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
-		txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
-		txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
-		m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d", m.partyID, int(txCount), int(txRejected400), int(txRejected500))
 	})
 }
 
@@ -104,7 +103,6 @@ func (m *RouterMetrics) Start() {
 func (m *RouterMetrics) trackMetrics() {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
-	var incomingTxsLastValue float64
 	m.logger.Infof("Reporting routine is starting")
 
 	for {
@@ -112,14 +110,20 @@ func (m *RouterMetrics) trackMetrics() {
 		case <-m.stopChan:
 			return
 		case <-ticker.C:
-			txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
-			txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
-			txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
-			m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d",
-				m.partyID, int(txCount), float64(txCount-incomingTxsLastValue)/m.interval.Seconds(), int(txRejected400), int(txRejected500))
-			incomingTxsLastValue = txCount
+			m.reportMetrics()
 		}
 	}
+}
+
+func (m *RouterMetrics) reportMetrics() {
+	txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
+	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
+	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
+	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d",
+		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500))
+
+	atomic.StoreUint64(&m.incomingTxsLastValue, uint64(txCount))
 }
 
 func (m *RouterMetrics) increaseErrorCount(err error) {

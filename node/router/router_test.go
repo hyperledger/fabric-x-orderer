@@ -989,7 +989,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 	configRulesVerifier.ValidateNewConfigReturns(nil)
 	configRulesVerifier.ValidateTransitionReturns(nil)
 
-	r := router.NewRouter(conf, logger, make(chan struct{}), fakeSigner, configUpdateProposer, configRulesVerifier)
+	r := router.NewRouter(conf, nil, logger, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 	r.StartRouterService()
 
 	return r, conf

@@ -65,9 +65,11 @@ type Router struct {
 	feedbackWG       sync.WaitGroup
 	configSeq        uint32
 	wal              *wal.WriteAheadLogFile
+	signer           identity.SignerSerializer
+	configuration    *config.Configuration
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, armaStopChan chan struct{}, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, armaStopChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -93,11 +95,6 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogge
 		return int(shardIDs[i]) < int(shardIDs[j])
 	})
 
-	var tlsCAsOfConsenter [][]byte
-	for _, rawTLSCA := range config.Consenter.TLSCACerts {
-		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
-	}
-
 	configStore, err := configstore.NewStore(config.FileStorePath)
 	if err != nil {
 		logger.Panicf("Failed creating router config store: %s", err)
@@ -115,12 +112,12 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogge
 	decisionPuller := CreateConsensusDecisionReplicator(config, seekInfo, logger)
 
 	verifier := createVerifier(config)
-	configSubmitter := NewConfigSubmitter(config.Consenter.Endpoint, tlsCAsOfConsenter,
-		config.TLSCertificateFile, config.TLSPrivateKeyFile, logger, config.Bundle, verifier, signer, configUpdateProposer, configRulesVerifier, config.PartyID)
+
+	configSubmitter := NewConfigSubmitter(config, logger, verifier, signer, configUpdateProposer, configRulesVerifier)
 
 	metrics := NewRouterMetrics(config, logger)
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, logger, armaStopChan, verifier, configStore, configSubmitter, decisionPuller, routerWAL)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, configuration, logger, armaStopChan, verifier, signer, configStore, configSubmitter, decisionPuller, routerWAL)
 	r.init()
 	r.metrics.Start()
 	return r
@@ -314,7 +311,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, armaStopChan chan struct{}, verifier *requestfilter.RulesVerifier, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, armaStopChan chan struct{}, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -332,7 +329,9 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		logger:           logger,
 		shardIDs:         shardIDs,
 		routerNodeConfig: rconfig,
+		configuration:    configuration,
 		verifier:         verifier,
+		signer:           signer,
 		configStore:      configStore,
 		configSubmitter:  configSubmitter,
 		decisionPuller:   decisionPuller,
