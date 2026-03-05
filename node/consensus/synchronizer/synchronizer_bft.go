@@ -80,6 +80,11 @@ func (s *BFTSynchronizer) Sync() smartbft_types.SyncResponse {
 	}
 }
 
+func (s *BFTSynchronizer) Stop() {
+	s.Logger.Debugf("Stopping BFT Synchronizer, party: %d", s.selfID)
+	// TODO stop the BFT deliverer and any go-routines we started in Sync()
+}
+
 // Buffer return the internal SyncBuffer for testability.
 func (s *BFTSynchronizer) Buffer() *SyncBuffer {
 	s.mutex.Lock()

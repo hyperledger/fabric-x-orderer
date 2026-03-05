@@ -34,6 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	bft_synch "github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -87,7 +88,7 @@ type Consensus struct {
 	SigVerifier                  SigVerifier
 	Signer                       Signer
 	CurrentNodes                 []uint64
-	BFTConfig                    smartbft_types.Configuration
+	BFTConfiguration             smartbft_types.Configuration // It's a copy of what is in the Config field, why?
 	BFT                          *consensus.Consensus
 	Storage                      Storage
 	BADB                         *badb.BatchAttestationDB
@@ -97,16 +98,21 @@ type Consensus struct {
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
 	Logger                       *flogging.FabricLogger
-	Synchronizer                 SynchronizerStopper
-	Metrics                      *ConsensusMetrics
-	RequestVerifier              *requestfilter.RulesVerifier
-	ConfigUpdateProposer         policy.ConfigUpdateProposer
-	ConfigApplier                ConfigApplier
-	ConfigRequestValidator       configrequest.ConfigRequestValidator
-	ConfigRulesVerifier          verify.OrdererRules
-	softStopCh                   chan struct{}
-	softStopOnce                 sync.Once
-	txCount                      uint64
+
+	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
+	bftSynchronizer     bft_synch.SynchronizerWithStop // The BFT synchronizer built by the factory
+
+	Synchronizer SynchronizerStopper // TODO remove after we change to the BFT synchronizer, and use bftSynchronizer instead
+
+	Metrics                *ConsensusMetrics
+	RequestVerifier        *requestfilter.RulesVerifier
+	ConfigUpdateProposer   policy.ConfigUpdateProposer
+	ConfigApplier          ConfigApplier
+	ConfigRequestValidator configrequest.ConfigRequestValidator
+	ConfigRulesVerifier    verify.OrdererRules
+	softStopCh             chan struct{}
+	softStopOnce           sync.Once
+	txCount                uint64
 }
 
 func (c *Consensus) Start() error {
@@ -119,6 +125,10 @@ func (c *Consensus) Stop() {
 	c.SoftStop()
 	c.Storage.Close()
 	c.Net.Stop()
+}
+
+func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
+	return c.Config.BFTConfig, c.CurrentNodes
 }
 
 func (c *Consensus) SoftStop() {
@@ -605,7 +615,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	return &smartbft_types.Signature{
 		Msg:   msgsRaw,
 		Value: sigsRaw,
-		ID:    c.BFTConfig.SelfID,
+		ID:    c.BFTConfiguration.SelfID,
 	}
 }
 
@@ -739,7 +749,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	c.stateLock.Lock()
 	c.State = hdr.State
 	currentNodes := c.CurrentNodes
-	currentBFTConfig := c.BFTConfig
+	currentBFTConfig := c.BFTConfiguration
 	inLatestDecision := false
 	// check if this decision includes a config block
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
