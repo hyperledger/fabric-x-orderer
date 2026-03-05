@@ -54,6 +54,7 @@ type NetStopper interface {
 
 //go:generate counterfeiter -o mocks/synchronizer_stopper.go . SynchronizerStopper
 type SynchronizerStopper interface {
+	// Stop stops the synchronizer and any go-routines it started in Sync().
 	Stop()
 }
 
@@ -87,7 +88,6 @@ type Consensus struct {
 	SigVerifier                  SigVerifier
 	Signer                       Signer
 	CurrentNodes                 []uint64
-	BFTConfig                    smartbft_types.Configuration
 	BFT                          *consensus.Consensus
 	Storage                      Storage
 	BADB                         *badb.BatchAttestationDB
@@ -119,6 +119,11 @@ func (c *Consensus) Stop() {
 	c.SoftStop()
 	c.Storage.Close()
 	c.Net.Stop()
+}
+
+// BFTConfig returns the current BFT configuration and the current nodes in the cluster (from SmartBFT API)
+func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
+	return c.Config.BFTConfig, c.CurrentNodes
 }
 
 func (c *Consensus) SoftStop() {
@@ -605,7 +610,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	return &smartbft_types.Signature{
 		Msg:   msgsRaw,
 		Value: sigsRaw,
-		ID:    c.BFTConfig.SelfID,
+		ID:    c.Config.BFTConfig.SelfID,
 	}
 }
 
@@ -739,7 +744,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	c.stateLock.Lock()
 	c.State = hdr.State
 	currentNodes := c.CurrentNodes
-	currentBFTConfig := c.BFTConfig
+	currentBFTConfig := c.Config.BFTConfig
 	inLatestDecision := false
 	// check if this decision includes a config block
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
