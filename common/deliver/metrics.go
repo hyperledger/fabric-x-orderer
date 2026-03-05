@@ -8,6 +8,7 @@ package deliver
 
 import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 )
 
 var (
@@ -54,10 +55,10 @@ type Metrics struct {
 	BlocksSent        metrics.Counter
 }
 
-func NewMetrics(p metrics.Provider) *Metrics {
+func NewMetrics(p *monitoring.Provider) *Metrics {
 	return &Metrics{
-		StreamsOpened:     p.NewCounter(streamsOpened),
-		StreamsClosed:     p.NewCounter(streamsClosed),
+		StreamsOpened:     p.NewCounter(streamsOpened).With(),
+		StreamsClosed:     p.NewCounter(streamsClosed).With(),
 		RequestsReceived:  p.NewCounter(requestsReceived),
 		RequestsCompleted: p.NewCounter(requestsCompleted),
 		BlocksSent:        p.NewCounter(blocksSent),

@@ -15,8 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
@@ -27,18 +25,20 @@ import (
 )
 
 type AssemblerDeliverService struct {
-	blockledger blockledger.Reader
-	mutualTLS   bool
-	bundle      channelconfig.Resources
-	logger      *flogging.FabricLogger
+	blockledger    blockledger.Reader
+	mutualTLS      bool
+	bundle         channelconfig.Resources
+	logger         *flogging.FabricLogger
+	deliverMetrics *deliver.Metrics
 }
 
-func NewAssemblerDeliverService(ledger blockledger.Reader, logger *flogging.FabricLogger, config *config.AssemblerNodeConfig) *AssemblerDeliverService {
+func NewAssemblerDeliverService(ledger blockledger.Reader, logger *flogging.FabricLogger, config *config.AssemblerNodeConfig, deliverMetrics *deliver.Metrics) *AssemblerDeliverService {
 	return &AssemblerDeliverService{
-		blockledger: ledger,
-		bundle:      config.Bundle,
-		logger:      logger,
-		mutualTLS:   config.UseTLS && config.ClientAuthRequired,
+		blockledger:    ledger,
+		bundle:         config.Bundle,
+		logger:         logger,
+		mutualTLS:      config.UseTLS && config.ClientAuthRequired,
+		deliverMetrics: deliverMetrics,
 	}
 }
 
@@ -53,7 +53,7 @@ func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverS
 		ChainManager:     &assemblerChainManager{ledger: a.blockledger, bundle: a.bundle},
 		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(a.mutualTLS, deliver.ExtractChannelHeaderCertHash)),
 		TimeWindow:       time.Hour,
-		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
+		Metrics:          a.deliverMetrics,
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
 			return time.Now().Add(time.Hour * 365 * 24)
 		},
