@@ -72,7 +72,7 @@ type Batcher struct {
 	running      sync.WaitGroup
 	stopOnce     sync.Once
 	stopChan     chan struct{}
-	armaStopChan chan struct{}
+	mainExitChan chan struct{}
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -142,7 +142,7 @@ func (b *Batcher) Stop() {
 		b.running.Wait()
 		b.metrics.Stop()
 		b.wal.Close()
-		close(b.armaStopChan)
+		close(b.mainExitChan)
 	})
 	b.Net.Stop()
 	b.Ledger.Close()

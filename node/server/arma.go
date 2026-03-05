@@ -214,10 +214,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		} else {
 			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", routerConf.PartyID))
 		}
-
-		// TODO - When the router restarts, a new router instance is created with same stop channel,
-		// since closing stop channel will kill the whole arma process.
-		r := router.NewRouter(routerConf, routerLogger, stop, signer, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
+		r := router.NewRouter(routerConf, conf, routerLogger, signer, stop, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
 		r.StartRouterService()
 
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)

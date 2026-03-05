@@ -155,7 +155,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		configRulesVerifier.ValidateNewConfigReturns(nil)
 		configRulesVerifier.ValidateTransitionReturns(nil)
 
-		router := router.NewRouter(config, l, make(chan struct{}), fakeSigner, configUpdateProposer, configRulesVerifier)
+		router := router.NewRouter(config, nil, l, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 		routers = append(routers, router)
 	}
 
@@ -546,7 +546,7 @@ func recoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLo
 	configRulesVerifier.ValidateNewConfigReturns(nil)
 	configRulesVerifier.ValidateTransitionReturns(nil)
 
-	router := router.NewRouter(conf, logger, make(chan struct{}), fakeSigner, configUpdateProposer, configRulesVerifier)
+	router := router.NewRouter(conf, nil, logger, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 	router.StartRouterService()
 
 	return router
@@ -624,11 +624,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 	lock := sync.Mutex{}
 
 	for _, partyID := range options.Parties {
-		waitForPullDone.Add(1)
-
-		go func() {
-			defer waitForPullDone.Done()
-
+		waitForPullDone.Go(func() {
 			pullInfo, err := pullFromAssembler(t, options.UserConfig, partyID, options.StartBlock, options.EndBlock, (len(options.Parties)-1)/3, options.Transactions,
 				options.Blocks, options.Timeout, options.NeedVerification, options.Verifier, options.BlockHandler, options.Signer)
 			lock.Lock()
@@ -654,7 +650,7 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 				logString := fmt.Sprintf(options.LogString, partyID)
 				require.Contains(t, logOutput, logString, "Expected log output to contain specified log string")
 			}
-		}()
+		})
 	}
 
 	waitForPullDone.Wait()
