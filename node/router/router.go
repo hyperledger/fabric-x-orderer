@@ -61,7 +61,7 @@ type Router struct {
 	stopOnce         sync.Once
 	drainChan        chan struct{}
 	drainOnce        sync.Once
-	armaStopChan     chan struct{}
+	mainExitChan     chan struct{}
 	feedbackWG       sync.WaitGroup
 	configSeq        uint32
 	wal              *wal.WriteAheadLogFile
@@ -69,7 +69,7 @@ type Router struct {
 	configuration    *config.Configuration
 }
 
-func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, armaStopChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
+func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
 	// shardIDs is an array of all shard ids
 	var shardIDs []types.ShardID
 	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
@@ -117,7 +117,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Config
 
 	metrics := NewRouterMetrics(config, logger)
 
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, configuration, logger, armaStopChan, verifier, signer, configStore, configSubmitter, decisionPuller, routerWAL)
+	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, configuration, logger, mainExitChan, verifier, signer, configStore, configSubmitter, decisionPuller, routerWAL)
 	r.init()
 	r.metrics.Start()
 	return r
@@ -170,6 +170,7 @@ func (r *Router) StartRouterService() {
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), r)
 
 	go func() {
+		r.logger.Infof("Router network service is starting on %s", srv.Address())
 		err := srv.Start()
 		if err != nil {
 			panic(err)
@@ -216,7 +217,7 @@ func (r *Router) Stop() {
 		sr.Stop()
 	}
 
-	close(r.armaStopChan)
+	close(r.mainExitChan)
 }
 
 func (r *Router) SoftStop() error {
@@ -311,7 +312,7 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, armaStopChan chan struct{}, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
+func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
 	}
@@ -337,7 +338,7 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		decisionPuller:   decisionPuller,
 		stopChan:         make(chan struct{}),
 		drainChan:        make(chan struct{}),
-		armaStopChan:     armaStopChan,
+		mainExitChan:     mainExitChan,
 		metrics:          metrics,
 		configSeq:        uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
 		wal:              routerWAL,
