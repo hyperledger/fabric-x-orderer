@@ -219,7 +219,7 @@ func TestConsensus(t *testing.T) {
 					copy(tstExpectedDecisionNum, tst.expectedDecisionNum)
 
 					for {
-						b := <-listeners[node.BFTConfig.SelfID-1].c
+						b := <-listeners[node.Config.BFTConfig.SelfID-1].c
 						decision, _, err := state.BytesToDecision(b.Data.Data[0])
 						assert.NoError(t, err)
 
@@ -288,10 +288,18 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	configtxValidator.SequenceReturns(0)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
-	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{Bundle: bundle, PartyId: partyID, MonitoringListenAddress: "127.0.0.1:0", MetricsLogInterval: 3 * time.Second}
+	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{
+		Bundle:                  bundle,
+		PartyId:                 partyID,
+		MonitoringListenAddress: "127.0.0.1:0",
+		MetricsLogInterval:      3 * time.Second,
+		BFTConfig:               smartbft_types.DefaultConfig,
+	}
+	consenterNodeConfig.BFTConfig.SelfID = uint64(partyID)
+	consenterNodeConfig.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
+
 	c := &node_consensus.Consensus{
 		Config:       &consenterNodeConfig,
-		BFTConfig:    smartbft_types.DefaultConfig,
 		Logger:       l,
 		Signer:       signer,
 		SigVerifier:  verifier,
@@ -304,9 +312,6 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
 		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
 	}
-
-	c.BFTConfig.SelfID = uint64(partyID)
-	c.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
 
 	bftWAL, walInitState, err := wal.InitializeAndReadAll(l, dir, wal.DefaultOptions())
 	assert.NoError(t, err)
@@ -322,7 +327,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		ViewChangerTicker: time.NewTicker(time.Second).C,
 		WAL:               bftWAL,
 		WALInitialContent: walInitState,
-		Config:            c.BFTConfig,
+		Config:            c.Config.BFTConfig,
 		Verifier:          c,
 		Comm: &mockComm{
 			nodes: nodes,
@@ -1004,13 +1009,15 @@ func TestSignProposal(t *testing.T) {
 	}
 
 	c := &node_consensus.Consensus{
-		BFTConfig:   smartbft_types.Configuration{SelfID: 1},
 		Arma:        consenter,
 		State:       &initialState,
 		Logger:      logger,
 		SigVerifier: verifier,
 		Signer:      crypto.ECDSASigner(*sks[0]),
-		Config:      &nodeconfig.ConsenterNodeConfig{PartyId: 1},
+		Config: &nodeconfig.ConsenterNodeConfig{
+			PartyId:   1,
+			BFTConfig: smartbft_types.Configuration{SelfID: 1},
+		},
 	}
 
 	proposal := smartbft_types.Proposal{}

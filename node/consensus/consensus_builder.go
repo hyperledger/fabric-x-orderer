@@ -83,7 +83,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
 		Net:            net,
 		Config:         conf,
-		BFTConfig:      conf.BFTConfig,
 		Arma: &Consenter{
 			DB:              badb,
 			Logger:          logger,
@@ -131,7 +130,7 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 	}
 
 	bft := &consensus.Consensus{
-		Config:            c.BFTConfig,
+		Config:            c.Config.BFTConfig,
 		Application:       c,
 		Assembler:         c,
 		WAL:               bftWAL,
@@ -181,7 +180,7 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 			return ledger.Height()
 		},
 		latestCommittedBlock: latestCommittedBlock,
-		BFTConfig:            c.BFTConfig,
+		BFTConfig:            c.Config.BFTConfig,
 		CurrentNodes:         c.CurrentNodes,
 	}
 
