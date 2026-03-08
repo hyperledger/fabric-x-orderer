@@ -58,6 +58,11 @@ type BFTConfigGetter interface {
 	BFTConfig() (types.Configuration, []uint64)
 }
 
+type SynchronizerWithStop interface {
+	api.Synchronizer
+	Stop()
+}
+
 type SynchronizerFactory interface {
 	// CreateSynchronizer creates a new Synchronizer.
 	CreateSynchronizer(
@@ -71,7 +76,7 @@ type SynchronizerFactory interface {
 		support ConsenterSupport,
 		bccsp bccsp.BCCSP,
 		clusterDialer *comm.PredicateDialer,
-	) api.Synchronizer
+	) SynchronizerWithStop
 }
 
 type SynchronizerCreator struct{}
@@ -87,7 +92,7 @@ func (*SynchronizerCreator) CreateSynchronizer(
 	support ConsenterSupport,
 	bccsp bccsp.BCCSP,
 	clusterDialer *comm.PredicateDialer,
-) api.Synchronizer {
+) SynchronizerWithStop {
 	return newSynchronizer(logger, selfID, localConfigCluster, rtc, blockToDecision, pruneCommittedRequests, updateRuntimeConfig, support, bccsp, clusterDialer)
 }
 
@@ -103,7 +108,7 @@ func newSynchronizer(
 	support ConsenterSupport,
 	bccsp bccsp.BCCSP,
 	clusterDialer *comm.PredicateDialer,
-) api.Synchronizer {
+) SynchronizerWithStop {
 	switch localConfigCluster.ReplicationPolicy {
 	case "consensus", "":
 		logger.Debug("Creating a BFTSynchronizer")

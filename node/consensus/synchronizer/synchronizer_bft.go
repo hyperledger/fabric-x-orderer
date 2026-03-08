@@ -80,6 +80,14 @@ func (s *BFTSynchronizer) Sync() smartbft_types.SyncResponse {
 	}
 }
 
+func (s *BFTSynchronizer) Stop() {
+	s.Logger.Infof("Stopping BFT Synchronizer, party: %d", s.selfID)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.syncBuff.Stop() // This will stop the BFT deliverer and any go-routines we started in Sync()
+}
+
 // Buffer return the internal SyncBuffer for testability.
 func (s *BFTSynchronizer) Buffer() *SyncBuffer {
 	s.mutex.Lock()
@@ -90,6 +98,7 @@ func (s *BFTSynchronizer) Buffer() *SyncBuffer {
 
 func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	// === We probe all the endpoints and establish a target height, as well as detect the self endpoint.
+	// TODO make the target height detection stoppable
 	targetHeight, _, err := s.detectTargetHeight()
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get detect target height")
@@ -118,7 +127,7 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	// === Loop on sync-buffer and pull blocks, writing them to the ledger, returning the last block pulled.
 	lastPulledBlock, err := s.getBlocksFromSyncBuffer(startHeight, targetHeight)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get any blocks from SyncBuffer")
+		return nil, errors.Wrap(err, "failed to get any blocks from SyncBuffer")
 	}
 
 	decision := s.BlockToDecision(lastPulledBlock)
@@ -126,12 +135,8 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	return decision, nil
 }
 
-// detectTargetHeight probes remote endpoints and detects what is the target height this node needs to reach. It also
-// detects the self-endpoint.
-//
-// In BFT it is highly recommended that the channel/orderer-endpoints (for delivery & broadcast) map 1:1 to the
-// channel/orderers/consenters (for cluster consensus), that is, every consenter should be represented by a
-// delivery endpoint. This important for Sync to work properly.
+// detectTargetHeight probes remote endpoints and detects what is the target height this node needs to reach.
+// TODO make this method stoppable, currently it can take a long time if remote endpoints are not responsive, and we have no way to interrupt it.
 func (s *BFTSynchronizer) detectTargetHeight() (uint64, string, error) {
 	blockPuller, err := s.BlockPullerFactory.CreateHeightDetector(arma_types.PartyID(s.selfID), s.Support, s.ClusterDialer, s.LocalConfigCluster, s.CryptoProvider, s.Logger)
 	if err != nil {
@@ -190,6 +195,8 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config block")
 	}
+
+	// TODO adapt this to the block structure used in the consenter decision, which is different from a fabric block
 	lastConfigEnv, err := deliverclient.ConfigFromBlock(lastConfigBlock)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config envelope")
