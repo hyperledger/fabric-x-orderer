@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -171,4 +172,27 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 	}
 
 	return nil
+}
+
+// BlockToDecision converts a block to a BFT decision. It returns nil if the block is not valid or if the conversion fails.
+//
+// TODO should we return the error instead of nil to distinguish between an invalid block and a conversion failure?
+func BlockToDecision(block *common.Block) *smartbft_types.Decision {
+	if block == nil {
+		return nil
+	}
+	if block.Data == nil || len(block.Data.Data) == 0 {
+		return nil
+	}
+	proposal, compoundSigs, err := state.BytesToDecision(block.GetData().GetData()[0])
+	if err != nil {
+		return nil
+	}
+
+	decision := &smartbft_types.Decision{
+		Proposal:   proposal,
+		Signatures: compoundSigs,
+	}
+
+	return decision
 }

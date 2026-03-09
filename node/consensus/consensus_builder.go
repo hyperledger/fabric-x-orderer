@@ -120,12 +120,17 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 	bftSynch := c.synchronizerFactory.CreateSynchronizer(
 		logger,
 		uint64(conf.PartyId),
-		ord_config.Cluster{},
-		c,   // implements synchronizer.BFTConfigGetter,
-		nil, // func(block *cb.Block) *types.Decision // TODO look at the assembler
-		nil, // pruneCommittedRequests func(block *cb.Block),
-		nil, // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
-		nil, // support ConsenterSupport,
+		ord_config.Cluster{
+			SendBufferSize:    100, // TODO get this from local config
+			ClientCertificate: conf.TLSCertificateFile,
+			ClientPrivateKey:  conf.TLSPrivateKeyFile,
+			ReplicationPolicy: "",
+		},
+		c,               // implements synchronizer.BFTConfigGetter,
+		BlockToDecision, // func(block *cb.Block) *types.Decision // TODO look at the assembler
+		nil,             // pruneCommittedRequests func(block *cb.Block),
+		nil,             // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
+		nil,             // support ConsenterSupport,
 		factory.GetDefault(),
 		nil, // c.ClusterService.Dialer)
 	)
