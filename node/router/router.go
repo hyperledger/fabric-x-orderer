@@ -67,6 +67,9 @@ type Router struct {
 	wal              *wal.WriteAheadLogFile
 	signer           identity.SignerSerializer
 	configuration    *config.Configuration
+
+	lock   sync.RWMutex
+	status node_utils.NodeStatus
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
@@ -183,6 +186,9 @@ func (r *Router) StartRouterService() {
 	node_utils.StopSignalListen(r.stopChan, r, r.logger, r.Address())
 
 	go r.pullAndProcessDecisions()
+
+	// update the router state.
+	r.SetState(node_utils.StateRunning)
 }
 
 func (r *Router) MonitoringServiceAddress() string {
@@ -199,6 +205,17 @@ func (r *Router) Address() string {
 
 func (r *Router) Stop() {
 	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
+
+	r.lock.Lock()
+	if r.status.GetState() == node_utils.StateSoftStopped {
+		// close the whole process.
+		close(r.mainExitChan)
+		r.lock.Unlock()
+		return
+	} else {
+		r.status.SetState(node_utils.StateStopping)
+		r.lock.Unlock()
+	}
 
 	r.net.Stop()
 	r.metrics.Stop()
@@ -217,10 +234,14 @@ func (r *Router) Stop() {
 		sr.Stop()
 	}
 
+	r.SetState(node_utils.StateStopped)
+	// close the whole process.
 	close(r.mainExitChan)
 }
 
 func (r *Router) SoftStop() error {
+	r.SetState(node_utils.StateStopping)
+
 	routerAddress := r.net.Address()
 	partyID := r.routerNodeConfig.PartyID
 
@@ -250,7 +271,9 @@ func (r *Router) SoftStop() error {
 	r.net.Stop() // this will close all client connections, so some (immediate) responses may not be sent.
 	r.metrics.Stop()
 
-	r.logger.Warnf("Router on %s, PartyID: %d, has been stopped. Pending restart", routerAddress, partyID)
+	r.SetState(node_utils.StateSoftStopped)
+
+	r.logger.Warnf("Router on %s, PartyID: %d, has been soft stopped", routerAddress, partyID)
 
 	return nil
 }
@@ -342,7 +365,12 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 		metrics:          metrics,
 		configSeq:        uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
 		wal:              routerWAL,
+		status:           node_utils.NodeStatus{},
 	}
+
+	r.lock.Lock()
+	r.status.Set(node_utils.StateInitializing, rconfig.Bundle.ConfigtxValidator().Sequence())
+	r.lock.Unlock()
 
 	for _, shardId := range shardIDs {
 		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier, configSubmitter)
@@ -635,4 +663,22 @@ func (r *Router) GetConfigStoreSize() int {
 		r.logger.Panicf("Failed listing config store block numbers: %s", err)
 	}
 	return len(list)
+}
+
+func (r *Router) SetState(state node_utils.NodeState) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.status.SetState(state)
+}
+
+func (r *Router) GetStatus() node_utils.NodeStatus {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.status
+}
+
+func (r *Router) IsRunning() bool {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.status.GetState() == node_utils.StateRunning
 }
