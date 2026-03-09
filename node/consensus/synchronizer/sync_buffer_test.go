@@ -9,6 +9,7 @@ package synchronizer_test
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
@@ -182,6 +183,24 @@ func TestSyncBuffer_HandleBlock(t *testing.T) {
 
 		buff.Stop()
 		wg.Wait()
+	})
+
+	t.Run("after buffer is stopped", func(t *testing.T) {
+		buff := synchronizer.NewSyncBuffer(100)
+		require.NotNil(t, buff)
+
+		buff.Stop()
+
+		blockIn := &common.Block{
+			Header: &common.BlockHeader{Number: 1, PreviousHash: []byte{1, 2, 3, 4}, DataHash: []byte{5, 6, 7, 8}},
+		}
+
+		require.Eventually(t, func() bool {
+			err := buff.HandleBlock("mychannel", blockIn)
+			return err != nil && err.Error() == "SyncBuffer stopping, channel: mychannel"
+		}, time.Second, time.Millisecond)
+
+		buff.Stop()
 	})
 
 	t.Run("bad blocks", func(t *testing.T) {
