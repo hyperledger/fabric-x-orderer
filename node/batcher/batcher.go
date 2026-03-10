@@ -74,7 +74,6 @@ type Batcher struct {
 	stateChan chan *state.State
 
 	running              sync.WaitGroup // maybe change the name, it is only for state replicator
-	stopOnce             sync.Once
 	stopChan             chan struct{}
 	stopSignalListenChan chan struct{}
 	mainExitChan         chan struct{}
@@ -382,7 +381,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) error {
 type PendingAdminRestartError struct{}
 
 func (e *PendingAdminRestartError) Error() string {
-	return fmt.Sprintf("Pending admin restart")
+	return "Pending admin restart"
 }
 
 func (b *Batcher) GetLatestStateChan() <-chan *state.State {

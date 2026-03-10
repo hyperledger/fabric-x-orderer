@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -92,7 +91,8 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 	require.NotNil(t, configUpdatePbData)
 	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 	configEnvelope, err := bundle.ConfigtxValidator().ProposeConfigUpdate(configUpdateEnvelope)
-	env, err := protoutil.CreateSignedEnvelope(cb.HeaderType_CONFIG, bundle.ConfigtxValidator().ChannelID(), nil, configEnvelope, int32(0), 0)
+	require.NoError(t, err)
+	env, err := protoutil.CreateSignedEnvelope(common.HeaderType_CONFIG, bundle.ConfigtxValidator().ChannelID(), nil, configEnvelope, int32(0), 0)
 	require.NoError(t, err)
 	require.NotNil(t, env)
 	configReq, err := protoutil.Marshal(env)
@@ -217,7 +217,7 @@ func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID, numO
 
 	for _, i := range parties {
 		fileStoreDir := t.TempDir()
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), fmt.Sprintf("local_config_consenter.yaml"))
+		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
 		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir

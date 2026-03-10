@@ -119,7 +119,6 @@ type BatcherRole struct {
 	BatchSequenceGap        types.BatchSequence
 	running                 sync.WaitGroup
 	stopChan                chan struct{}
-	stopOnce                sync.Once
 	stopCtx                 context.Context
 	cancelBatch             func()
 	primary                 types.PartyID
