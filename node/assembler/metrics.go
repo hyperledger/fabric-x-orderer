@@ -34,7 +34,7 @@ type Metrics struct {
 	partyID        arma_types.PartyID
 }
 
-func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
+func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
 	host, port, err := net.SplitHostPort(assemblerNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
@@ -47,14 +47,11 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger
 
 	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("assembler_%s", partyID))
 	p := monitor.Provider
-	al.NewAssemblerLedgerMetrics(p, partyID, logger)
-
+	ledgerMetrics.NewAssemblerLedgerMetrics(p, partyID, logger)
 	deliverMetrics := deliver.NewMetrics(p)
-	deliverMetrics.StreamsOpened = deliverMetrics.StreamsOpened.With()
-	deliverMetrics.StreamsClosed = deliverMetrics.StreamsClosed.With()
 
 	return &Metrics{
-		ledgerMetrics:  al,
+		ledgerMetrics:  ledgerMetrics,
 		deliverMetrics: deliverMetrics,
 		interval:       assemblerNodeConfig.MetricsLogInterval,
 		logger:         logger,
