@@ -167,7 +167,7 @@ func TestValidateNewConfig_InvalidOrdererEndpoint(t *testing.T) {
 	require.Contains(t, err.Error(), "missing broadcast endpoint")
 }
 
-func TestValidateNewConfig_ConenterConsistency(t *testing.T) {
+func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
 	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
 	defer cleanup()
 

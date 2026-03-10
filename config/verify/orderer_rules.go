@@ -350,6 +350,9 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 		if !exists {
 			return errors.Errorf("party ID %d missing from shared config", consenter.Id)
 		}
+		if party.ConsenterConfig == nil {
+			return errors.Errorf("consenter config missing for party %d", consenter.Id)
+		}
 
 		nodeCfg := party.ConsenterConfig
 		if consenter.Host != nodeCfg.Host {

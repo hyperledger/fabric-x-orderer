@@ -167,7 +167,7 @@ func generatePublicKey(path string) ([]byte, error) {
 
 func buildOrdererEndpoints(id uint32, routerHost string, routerPort int, assemblerHost string, assemblerPort int) []*types.OrdererEndpoint {
 	return []*types.OrdererEndpoint{
-		{Host: routerHost, Port: routerPort, ID: id, API: []string{"broadcast"}},
-		{Host: assemblerHost, Port: assemblerPort, ID: id, API: []string{"deliver"}},
+		{Host: routerHost, Port: routerPort, ID: id, API: []string{types.Broadcast}},
+		{Host: assemblerHost, Port: assemblerPort, ID: id, API: []string{types.Deliver}},
 	}
 }
