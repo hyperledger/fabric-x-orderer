@@ -127,9 +127,14 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 		latestBlock = retrievedBlock
 		nextSeqToCommit++
 
-		proposal, signatures, err := state.BytesToDecision(latestBlock.Data.Data[0])
+		proposal, _, err := state.BytesToDecision(latestBlock.Data.Data[0])
 		if err != nil {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
+		}
+
+		signatures, err := state.BytesToDecisionSignatures(latestBlock.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
+		if err != nil {
+			s.logger.Panicf("Failed parsing signatures on the block we pulled: %v", err)
 		}
 
 		// No need to prune the genesis block, as it doesn't contain any requests. Moreover, the genesis block payload is not of type `BatchedRequests`.

@@ -41,7 +41,7 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 
 	// An optimization would be to unmarshal just the header and sigs, skipping the proposal payload and metadata which we don't need here.
 	// An even better optimization would be to ask for content type that does not include the proposal payload and metadata.
-	proposal, compoundSigs, err := state.BytesToDecision(block.GetData().GetData()[0])
+	proposal, _, err := state.BytesToDecision(block.GetData().GetData()[0])
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to extract decision from block: %d", block.GetHeader().GetNumber())
 	}
@@ -54,6 +54,11 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 	if stateHeader.Num == 0 { // this is the genesis block
 		sigs := make([][]smartbft_types.Signature, 1) // no signatures
 		return stateHeader, sigs, nil
+	}
+
+	compoundSigs, err := state.BytesToDecisionSignatures(block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to extract signatures from block: %d", block.GetHeader().GetNumber())
 	}
 
 	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableCommonBlocks))

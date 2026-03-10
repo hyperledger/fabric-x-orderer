@@ -456,8 +456,8 @@ func TestLaunchArmaNode(t *testing.T) {
 			Metadata: nil,
 		}
 
-		consensusLedger.Append(state.DecisionToBytes(newConfigProposal, nil))
-		consensusLedger.Append(state.DecisionToBytes(newProposal, nil))
+		consensusLedger.Append(newConfigProposal, nil, 1)
+		consensusLedger.Append(newProposal, nil, 1)
 		consensusLedger.Close()
 
 		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)
