@@ -527,7 +527,7 @@ func copyPEMFiles(srcDir, destDir string) error {
 		srcPath := filepath.Join(srcDir, entry.Name())
 		destPath := filepath.Join(destDir, entry.Name())
 
-		if err := copyFile(srcPath, destPath); err != nil {
+		if err := CopyFile(srcPath, destPath); err != nil {
 			return fmt.Errorf("error copying %s: %w", entry.Name(), err)
 		}
 	}
@@ -535,7 +535,7 @@ func copyPEMFiles(srcDir, destDir string) error {
 	return nil
 }
 
-func copyFile(src, dst string) error {
+func CopyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
