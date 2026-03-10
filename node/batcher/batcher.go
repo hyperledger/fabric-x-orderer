@@ -87,6 +87,8 @@ type Batcher struct {
 	primaryID   types.PartyID
 
 	metrics *BatcherMetrics
+
+	mu sync.RWMutex
 }
 
 func (b *Batcher) MonitoringServiceAddress() string {
@@ -356,9 +358,11 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) error {
 
 	// update batcher config
 	b.logger.Infof("Reconfiguring batcher")
+	b.mu.Lock()
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
 	b.configureBatcher(b.logger, b.mainExitChan, &ConsenterControlEventSenderFactory{}, b.signer, b.batcher.MemPool)
+	b.mu.Unlock()
 
 	// prune mempool
 	b.logger.Infof("Pruning memory pull")
@@ -393,7 +397,10 @@ func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 }
 
 func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	return b.batcherDeliverService.Deliver(stream)
+	b.mu.RLock()
+	bds := b.batcherDeliverService
+	b.mu.RUnlock()
+	return bds.Deliver(stream)
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
@@ -719,5 +726,7 @@ func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []by
 }
 
 func (b *Batcher) GetConfig() *node_config.BatcherNodeConfig {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return b.config
 }
