@@ -7,17 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
-
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-
-	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
@@ -75,28 +72,33 @@ func (l *ConsensusLedger) RegisterAppendListener(listener AppendListener) {
 	l.appendListener = listener
 }
 
-func (c *ConsensusLedger) Append(bytes []byte) {
-	headerSizeBuff := bytes[:4]
-	headerSize := binary.BigEndian.Uint32(headerSizeBuff)
-	headerBytes := bytes[12 : 12+headerSize]
-	header := &state.Header{}
-	if err := header.Deserialize(headerBytes); err != nil {
+func (c *ConsensusLedger) Append(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64) {
+	proposalHeader := &state.Header{}
+	if err := proposalHeader.Deserialize(proposal.Header); err != nil {
 		panic(err)
 	}
 
-	digest := sha256.Sum256(bytes)
+	proposalBytes := state.DecisionToBytes(proposal, nil) // TODO maybe use asn1 marshal proposal instead
+
+	data := &common.BlockData{
+		Data: [][]byte{proposalBytes},
+	}
 
 	block := &common.Block{
-		Header: &common.BlockHeader{
-			Number:       uint64(header.Num),
-			DataHash:     digest[:],
+		Header: &common.BlockHeader{ // TODO change sig over proposal to be over this header
+			Number:       uint64(proposalHeader.Num),
+			DataHash:     protoutil.ComputeBlockDataHash(data),
 			PreviousHash: c.prevHash,
 		},
-		Data: &common.BlockData{
-			Data: [][]byte{bytes},
-		},
-		Metadata: &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}}},
+		Data: data,
 	}
+
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
+	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+		LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
+		ConsenterMetadata: proposal.Metadata,
+	}) // TODO also sign this
 
 	err := c.ledger.Append(block)
 	if err != nil {

@@ -25,4 +25,11 @@ func TestDecisionSerialization(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, proposal, proposal2)
 	assert.Equal(t, signatures, signatures2)
+
+	// Test with no signatures (zero sigs)
+	bytesNoSigs := DecisionToBytes(proposal, nil)
+	proposal3, signatures3, err := BytesToDecision(bytesNoSigs)
+	assert.NoError(t, err)
+	assert.Equal(t, proposal, proposal3)
+	assert.Empty(t, signatures3)
 }

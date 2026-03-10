@@ -352,7 +352,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 		Metadata: nil,
 	}
 
-	consensusLedger.Append(state.DecisionToBytes(genesisProposal, nil))
+	consensusLedger.Append(genesisProposal, nil, 0)
 }
 
 func getTxCount(consensusLedger *ledger.ConsensusLedger) uint64 {
