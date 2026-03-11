@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -49,30 +50,36 @@ type Net interface {
 }
 
 type Batcher struct {
-	requestsInspectorVerifier *RequestsInspectorVerifier
-	batcherDeliverService     *BatcherDeliverService
-	decisionReplicator        DecisionReplicator
-	logger                    *flogging.FabricLogger
-	batcher                   *BatcherRole
-	batcherCerts2IDs          map[string]types.PartyID
-	controlEventSenders       []ConsenterControlEventSender
-	controlEventBroadcaster   *ControlEventBroadcaster
-	primaryAckConnector       *PrimaryAckConnector
-	primaryReqConnector       *PrimaryReqConnector
-	Net                       Net
-	Ledger                    *node_ledger.BatchLedgerArray
-	ConfigStore               *configstore.Store
-	config                    *node_config.BatcherNodeConfig
-	batchers                  []node_config.BatcherInfo
-	signer                    Signer
-	wal                       *smartbft_wal.WriteAheadLogFile
+	requestsInspectorVerifier          *RequestsInspectorVerifier
+	batcherDeliverService              *BatcherDeliverService
+	decisionReplicator                 DecisionReplicator
+	consensusDecisionReplicatorCreator ConsensusDecisionReplicatorCreator
+	logger                             *flogging.FabricLogger
+	batcher                            *BatcherRole
+	batcherCerts2IDs                   map[string]types.PartyID
+	controlEventSenders                []ConsenterControlEventSender
+	controlEventBroadcaster            *ControlEventBroadcaster
+	primaryAckConnector                *PrimaryAckConnector
+	primaryReqConnector                *PrimaryReqConnector
+	Net                                Net
+	Ledger                             *node_ledger.BatchLedgerArray
+	ConfigStore                        *configstore.Store
+	config                             *node_config.BatcherNodeConfig
+	fullConfig                         *config.Configuration
+	batchers                           []node_config.BatcherInfo
+	signer                             Signer
+	wal                                *smartbft_wal.WriteAheadLogFile
 
 	stateChan chan *state.State
 
-	running      sync.WaitGroup
-	stopOnce     sync.Once
-	stopChan     chan struct{}
-	mainExitChan chan struct{}
+	running              sync.WaitGroup // maybe change the name, it is only for state replicator
+	stopChan             chan struct{}
+	stopSignalListenChan chan struct{}
+	mainExitChan         chan struct{}
+
+	stopLock      sync.Mutex
+	isStopped     bool
+	isSoftStopped bool
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -115,8 +122,13 @@ func (b *Batcher) StartBatcherService() {
 }
 
 func (b *Batcher) Run() {
-	b.stopChan = make(chan struct{})
+	b.stopLock.Lock()
+	b.isStopped = false
+	b.isSoftStopped = false
+	b.stopLock.Unlock()
 
+	b.stopChan = make(chan struct{})
+	b.stopSignalListenChan = make(chan struct{})
 	b.stateChan = make(chan *state.State, 1)
 
 	b.running.Add(1)
@@ -125,12 +137,36 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
 	b.metrics.Start()
-	node_utils.StopSignalListen(b.stopChan, b, b.logger, b.Address())
+
+	node_utils.StopSignalListen(b.stopSignalListenChan, b, b.logger, b.Address())
+}
+
+func (b *Batcher) GetStatus() string {
+	b.stopLock.Lock()
+	defer b.stopLock.Unlock()
+	if b.isSoftStopped && !b.isStopped {
+		return "Soft Stop"
+	}
+	if b.isSoftStopped && b.isStopped {
+		return "Stop"
+	}
+	return "Running"
 }
 
 func (b *Batcher) Stop() {
+	b.stopLock.Lock()
+	if b.isStopped {
+		b.stopLock.Unlock()
+		return
+	}
+
+	softStopped := b.isSoftStopped
+	b.isStopped = true
+	b.isSoftStopped = true
+	b.stopLock.Unlock()
+
 	b.logger.Infof("Stopping batcher node")
-	b.stopOnce.Do(func() {
+	if !softStopped {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
 		b.batcher.Stop()
@@ -142,26 +178,37 @@ func (b *Batcher) Stop() {
 		b.running.Wait()
 		b.metrics.Stop()
 		b.wal.Close()
-		close(b.mainExitChan)
-	})
+	}
+
 	b.Net.Stop()
 	b.Ledger.Close()
+
+	close(b.stopSignalListenChan)
+	close(b.mainExitChan)
 }
 
 func (b *Batcher) SoftStop() {
-	b.stopOnce.Do(func() {
-		close(b.stopChan)
-		b.controlEventBroadcaster.Stop()
-		b.batcher.SoftStop()
-		for len(b.stateChan) > 0 {
-			<-b.stateChan // drain state channel
-		}
-		b.primaryAckConnector.Stop()
-		b.primaryReqConnector.Stop()
-		b.running.Wait()
-		b.metrics.Stop()
-		b.wal.Close()
-	})
+	b.stopLock.Lock()
+	if b.isSoftStopped || b.isStopped {
+		b.stopLock.Unlock()
+		return
+	}
+
+	b.isSoftStopped = true
+	b.stopLock.Unlock()
+
+	b.logger.Infof("Soft stopping batcher node")
+	close(b.stopChan)
+	b.controlEventBroadcaster.Stop()
+	b.batcher.SoftStop()
+	for len(b.stateChan) > 0 {
+		<-b.stateChan // drain state channel
+	}
+	b.primaryAckConnector.Stop()
+	b.primaryReqConnector.Stop()
+	b.running.Wait()
+	b.metrics.Stop()
+	b.wal.Close()
 }
 
 // replicateDecision runs by a separate go routine
