@@ -349,6 +349,9 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 	}
 
 	for _, consenter := range consenters {
+		if consenter == nil {
+			return errors.New("consenter config is nil in shared config")
+		}
 		party, exists := partiesMap[consenter.Id]
 		if !exists {
 			return errors.Errorf("party ID %d missing from shared config", consenter.Id)
