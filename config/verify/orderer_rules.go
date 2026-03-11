@@ -7,13 +7,15 @@ SPDX-License-Identifier: Apache-2.0
 package verify
 
 import (
+	"slices"
 	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
@@ -21,7 +23,7 @@ import (
 
 //go:generate counterfeiter -o mocks/orderer_rules.go . OrdererRules
 type OrdererRules interface {
-	ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID types.PartyID) error
+	ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error
 	ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error
 }
 
@@ -36,13 +38,14 @@ type DefaultOrdererRules struct{}
 //  3. SmartBFTConfig.RequestMaxBytes must be positive and >= SharedConfig.BatchingConfig.RequestMaxBytes.
 //     This ensures config requests accepted by the router are not rejected by SmartBFT.
 //  4. SmartBFTConfig must pass SmartBFT validation.
+//  5. OrdererEndpoints for each organization must be defined, non-empty,
+//     and include both "broadcast" and "deliver" roles.
+//  6. ConsenterMapping must be consistent with the consenters defined in the shared config.
 //
-// TODO: Validate OrdererEndpoints in the organization definitions.
 // TODO: Validate that ca certificates in the sharedConfig are the same as in the ordererOrganization ca certificates.
 // TODO: Validate new certificates - chain of trust, expiration, etc.
-// TODO: Validate ConsenterMapping.
 // TODO: Validate BlockValidationPolicy.
-func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID types.PartyID) error {
+func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bundle from new envelope config")
@@ -90,6 +93,18 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 	// 4.
 	if err := validateSmartBFTConfig(uint64(partyID), bftConfig); err != nil {
 		return errors.Wrap(err, "smartbft config validation failed")
+	}
+
+	// 5.
+	for _, org := range ordererConfig.Organizations() {
+		if err := validateOrdererOrgEndpoints(org.Endpoints()); err != nil {
+			return errors.Wrapf(err, "invalid endpoints for orderer organization %s", org.Name())
+		}
+	}
+
+	// 6.
+	if err := validateConsenterConsistency(ordererConfig.Consenters(), sharedConfig.PartiesConfig); err != nil {
+		return errors.Wrap(err, "consenter mapping is inconsistent with shared config parties")
 	}
 
 	return nil
@@ -285,6 +300,85 @@ func validateSmartBFTConfig(id uint64, cfg *config_protos.SmartBFTConfig) error 
 
 	if err := c.Validate(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func validateOrdererOrgEndpoints(endpoints []string) error {
+	if len(endpoints) == 0 {
+		return errors.New("endpoints are empty")
+	}
+
+	hasBroadcast := false
+	hasDeliver := false
+	for _, raw := range endpoints {
+		ep, err := types.ParseOrdererEndpoint(raw)
+		if err != nil {
+			return err
+		}
+		if slices.Contains(ep.API, types.Broadcast) {
+			hasBroadcast = true
+		}
+		if slices.Contains(ep.API, types.Deliver) {
+			hasDeliver = true
+		}
+	}
+
+	if !hasBroadcast {
+		return errors.New("missing broadcast endpoint")
+	}
+	if !hasDeliver {
+		return errors.New("missing deliver endpoint")
+	}
+
+	return nil
+}
+
+func validateConsenterConsistency(consenters []*common.Consenter, parties []*config_protos.PartyConfig) error {
+	if len(consenters) != len(parties) {
+		return errors.Errorf("number of parties in Orderer consenters mapping (%d) does not match number of parties in Shared config (%d)", len(consenters), len(parties))
+	}
+
+	partiesMap := make(map[uint32]*config_protos.PartyConfig)
+	for _, p := range parties {
+		if p == nil {
+			return errors.New("party config is nil in shared config")
+		}
+		partiesMap[p.PartyID] = p
+	}
+
+	for _, consenter := range consenters {
+		if consenter == nil {
+			return errors.New("consenter config is nil in shared config")
+		}
+		party, exists := partiesMap[consenter.Id]
+		if !exists {
+			return errors.Errorf("party ID %d missing from shared config", consenter.Id)
+		}
+		if party.ConsenterConfig == nil {
+			return errors.Errorf("consenter config missing in shared config for party %d", consenter.Id)
+		}
+		nodeCfg := party.ConsenterConfig
+		if consenter.Host != nodeCfg.Host {
+			return errors.Errorf("host mismatch for party %d: %s != %s", consenter.Id, consenter.Host, nodeCfg.Host)
+		}
+
+		if consenter.Port != nodeCfg.Port {
+			return errors.Errorf("port mismatch for party %d: %d != %d", consenter.Id, consenter.Port, nodeCfg.Port)
+		}
+
+		if !slices.Equal(consenter.Identity, nodeCfg.SignCert) {
+			return errors.Errorf("identity/sign_cert mismatch for party %d", consenter.Id)
+		}
+
+		if len(consenter.ServerTlsCert) > 0 && !slices.Equal(consenter.ServerTlsCert, nodeCfg.TlsCert) {
+			return errors.Errorf("server TLS certificate mismatch for party %d", consenter.Id)
+		}
+
+		if len(consenter.ClientTlsCert) > 0 && !slices.Equal(consenter.ClientTlsCert, nodeCfg.TlsCert) {
+			return errors.Errorf("client TLS certificate mismatch for party %d", consenter.Id)
+		}
 	}
 
 	return nil

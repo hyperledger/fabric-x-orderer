@@ -9,6 +9,7 @@ package verify_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
@@ -28,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestValidateNewConfig(t *testing.T) {
@@ -125,6 +127,95 @@ func TestValidateNewConfig_InvalidRequestMaxBytes(t *testing.T) {
 	err = or.ValidateNewConfig(env, bccsp, types.PartyID(1))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "smartbft RequestMaxBytes must be equal or greater than BatchingConfig RequestMaxBytes")
+}
+
+func TestValidateNewConfig_InvalidOrdererEndpoint(t *testing.T) {
+	_, env, _, _, _, _, _, cleanup := setupOrdererRulesTest(t, 1)
+	defer cleanup()
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	endpointsVal := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Groups["org1"].Values["Endpoints"]
+
+	oa := &common.OrdererAddresses{}
+	require.NoError(t, proto.Unmarshal(endpointsVal.Value, oa))
+
+	// remove broadcast
+	var addresses []string
+	for _, a := range oa.Addresses {
+		if !strings.Contains(a, ",broadcast,") {
+			addresses = append(addresses, a)
+		}
+	}
+	oa.Addresses = addresses
+	endpointsVal.Value, err = proto.Marshal(oa)
+	require.NoError(t, err)
+
+	payload.Data, err = proto.Marshal(cfgEnv)
+	require.NoError(t, err)
+
+	env.Payload, err = proto.Marshal(payload)
+	require.NoError(t, err)
+
+	or := verify.DefaultOrdererRules{}
+	err = or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing broadcast endpoint")
+}
+
+func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
+	dir, _, currBundle, builder, proposer, signer, verifier, cleanup := setupOrdererRulesTest(t, 1)
+	defer cleanup()
+
+	// create a valid config update first
+	cert := []byte("fake1-tls-cert")
+	updatePb := builder.UpdateConsensusTLSCert(t, types.PartyID(1), cert)
+
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	require.NoError(t, err)
+
+	env := &common.Envelope{
+		Payload:   nextCfgEnv.Payload,
+		Signature: nextCfgEnv.Signature,
+	}
+
+	// change TLSCert in consenter_mapping to a different value
+	payload := &common.Payload{}
+	err = proto.Unmarshal(env.Payload, payload)
+	require.NoError(t, err)
+
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	orderersVal := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["Orderers"]
+	orderers := &common.Orderers{}
+	require.NoError(t, proto.Unmarshal(orderersVal.Value, orderers))
+
+	// change the TLS cert in consenter_mapping to create mismatch
+	orderers.ConsenterMapping[0].ServerTlsCert = []byte("fake2-tls-cert")
+	orderers.ConsenterMapping[0].ClientTlsCert = []byte("fake2-tls-cert")
+
+	orderersVal.Value, err = proto.Marshal(orderers)
+	require.NoError(t, err)
+
+	payload.Data, err = proto.Marshal(cfgEnv)
+	require.NoError(t, err)
+
+	env.Payload, err = proto.Marshal(payload)
+	require.NoError(t, err)
+
+	or := verify.DefaultOrdererRules{}
+	err = or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "TLS certificate mismatch for party 1")
 }
 
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
