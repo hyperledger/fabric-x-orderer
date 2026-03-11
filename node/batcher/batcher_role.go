@@ -135,9 +135,10 @@ type BatcherRole struct {
 
 func (b *BatcherRole) Start() {
 	b.lock.Lock()
+	defer b.lock.Unlock()
+
 	b.isStopped = false
 	b.isSoftStopped = false
-	b.lock.Unlock()
 
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
@@ -183,15 +184,15 @@ func (b *BatcherRole) getPrimaryIndex(term uint64) types.PartyID {
 
 func (b *BatcherRole) Stop() {
 	b.lock.Lock()
+	defer b.lock.Unlock()
+
 	if b.isStopped {
-		b.lock.Unlock()
 		return
 	}
 
 	softStopped := b.isSoftStopped
 	b.isStopped = true
 	b.isSoftStopped = true
-	b.lock.Unlock()
 
 	b.Logger.Infof("Stopping batcher role")
 	if !softStopped {
@@ -209,13 +210,14 @@ func (b *BatcherRole) Stop() {
 func (b *BatcherRole) SoftStop() {
 	b.Logger.Infof("Soft Stopping batcher role")
 	b.lock.Lock()
+	defer b.lock.Unlock()
+
 	if b.isSoftStopped || b.isStopped {
-		b.lock.Unlock()
 		return
 	}
 
 	b.isSoftStopped = true
-	b.lock.Unlock()
+
 	close(b.stopChan)
 	b.cancelBatch()
 	b.MemPool.Halt()
