@@ -126,9 +126,10 @@ func (b *Batcher) StartBatcherService() {
 
 func (b *Batcher) Run() {
 	b.stopLock.Lock()
+	defer b.stopLock.Unlock()
+
 	b.isStopped = false
 	b.isSoftStopped = false
-	b.stopLock.Unlock()
 
 	b.stopChan = make(chan struct{})
 	b.stopSignalListenChan = make(chan struct{})
@@ -158,15 +159,15 @@ func (b *Batcher) GetStatus() string {
 
 func (b *Batcher) Stop() {
 	b.stopLock.Lock()
+	defer b.stopLock.Unlock()
+
 	if b.isStopped {
-		b.stopLock.Unlock()
 		return
 	}
 
 	softStopped := b.isSoftStopped
 	b.isStopped = true
 	b.isSoftStopped = true
-	b.stopLock.Unlock()
 
 	b.logger.Infof("Stopping batcher node")
 	if !softStopped {
@@ -192,13 +193,13 @@ func (b *Batcher) Stop() {
 
 func (b *Batcher) SoftStop() {
 	b.stopLock.Lock()
+	defer b.stopLock.Unlock()
+
 	if b.isSoftStopped || b.isStopped {
-		b.stopLock.Unlock()
 		return
 	}
 
 	b.isSoftStopped = true
-	b.stopLock.Unlock()
 
 	b.logger.Infof("Soft stopping batcher node")
 	close(b.stopChan)
