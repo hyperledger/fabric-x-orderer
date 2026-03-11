@@ -70,6 +70,7 @@ type Batcher struct {
 	batchers                           []node_config.BatcherInfo
 	signer                             Signer
 	wal                                *smartbft_wal.WriteAheadLogFile
+	mu                                 sync.RWMutex
 
 	stateChan chan *state.State
 
@@ -87,8 +88,6 @@ type Batcher struct {
 	primaryID   types.PartyID
 
 	metrics *BatcherMetrics
-
-	mu sync.RWMutex
 }
 
 func (b *Batcher) MonitoringServiceAddress() string {
@@ -326,7 +325,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) error {
 		return errors.Errorf("failed to detect if party is evicted, err: %v\n", err)
 	}
 	if isPartyEvicted {
-		b.logger.Infof("Pending admin restart: Party %d is evicted", partyID)
+		b.logger.Infof("Pending admin operation: Party %d is evicted", partyID)
 		return &PendingAdminRestartError{}
 	}
 
