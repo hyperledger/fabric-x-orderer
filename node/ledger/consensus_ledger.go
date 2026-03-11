@@ -70,6 +70,7 @@ func NewConsensusLedger(ledgerDir string) (*ConsensusLedger, error) {
 	return consensusLedger, nil
 }
 
+// TODO BFTSynch remove will not be used once we change to the BFT synchronizer
 func (l *ConsensusLedger) RegisterAppendListener(listener AppendListener) {
 	l.appendListener = listener
 }
