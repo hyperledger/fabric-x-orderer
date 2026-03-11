@@ -851,6 +851,20 @@ func ReadConfigEnvelopeFromConfigBlock(configBlock *common.Block) (*common.Confi
 }
 
 func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID types.PartyID) *protos.PartyConfig {
+	sharedConfig := GetSharedConfig(t, configEnvelope)
+	partiesConfig := sharedConfig.GetPartiesConfig()
+	require.NotNil(t, partiesConfig)
+
+	for _, partyConfig := range partiesConfig {
+		if partyConfig.PartyID == uint32(partyID) {
+			return partyConfig
+		}
+	}
+
+	return nil
+}
+
+func GetSharedConfig(t *testing.T, configEnvelope *common.ConfigEnvelope) *protos.SharedConfig {
 	require.NotNil(t, configEnvelope)
 
 	require.NotNil(t, configEnvelope.Config.GetChannelGroup().Groups["Orderer"].Values["ConsensusType"].GetValue())
@@ -863,16 +877,7 @@ func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID
 	err = proto.Unmarshal(consensusType.GetMetadata(), &sharedConfig)
 	require.NoError(t, err)
 
-	partiesConfig := sharedConfig.GetPartiesConfig()
-	require.NotNil(t, partiesConfig)
-
-	for _, partyConfig := range partiesConfig {
-		if partyConfig.PartyID == uint32(partyID) {
-			return partyConfig
-		}
-	}
-
-	return nil
+	return &sharedConfig
 }
 
 func getNestedJSONValue(t *testing.T, data map[string]any, path ...string) any {
