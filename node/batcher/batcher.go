@@ -51,25 +51,25 @@ type Net interface {
 }
 
 type Batcher struct {
-	requestsInspectorVerifier *RequestsInspectorVerifier
-	batcherDeliverService     *BatcherDeliverService
-	decisionReplicator        DecisionReplicator
-	cdrc                      ConsensusDecisionReplicatorCreator
-	logger                    *flogging.FabricLogger
-	batcher                   *BatcherRole
-	batcherCerts2IDs          map[string]types.PartyID
-	controlEventSenders       []ConsenterControlEventSender
-	controlEventBroadcaster   *ControlEventBroadcaster
-	primaryAckConnector       *PrimaryAckConnector
-	primaryReqConnector       *PrimaryReqConnector
-	Net                       Net
-	Ledger                    *node_ledger.BatchLedgerArray
-	ConfigStore               *configstore.Store
-	config                    *node_config.BatcherNodeConfig
-	fullConfig                *config.Configuration
-	batchers                  []node_config.BatcherInfo
-	signer                    Signer
-	wal                       *smartbft_wal.WriteAheadLogFile
+	requestsInspectorVerifier          *RequestsInspectorVerifier
+	batcherDeliverService              *BatcherDeliverService
+	decisionReplicator                 DecisionReplicator
+	consensusDecisionReplicatorCreator ConsensusDecisionReplicatorCreator
+	logger                             *flogging.FabricLogger
+	batcher                            *BatcherRole
+	batcherCerts2IDs                   map[string]types.PartyID
+	controlEventSenders                []ConsenterControlEventSender
+	controlEventBroadcaster            *ControlEventBroadcaster
+	primaryAckConnector                *PrimaryAckConnector
+	primaryReqConnector                *PrimaryReqConnector
+	Net                                Net
+	Ledger                             *node_ledger.BatchLedgerArray
+	ConfigStore                        *configstore.Store
+	config                             *node_config.BatcherNodeConfig
+	fullConfig                         *config.Configuration
+	batchers                           []node_config.BatcherInfo
+	signer                             Signer
+	wal                                *smartbft_wal.WriteAheadLogFile
 
 	stateChan chan *state.State
 
@@ -78,7 +78,7 @@ type Batcher struct {
 	stopSignalListenChan chan struct{}
 	mainExitChan         chan struct{}
 
-	lock          sync.Mutex
+	stopLock      sync.Mutex
 	isStopped     bool
 	isSoftStopped bool
 
@@ -125,10 +125,10 @@ func (b *Batcher) StartBatcherService() {
 }
 
 func (b *Batcher) Run() {
-	b.lock.Lock()
+	b.stopLock.Lock()
 	b.isStopped = false
 	b.isSoftStopped = false
-	b.lock.Unlock()
+	b.stopLock.Unlock()
 
 	b.stopChan = make(chan struct{})
 	b.stopSignalListenChan = make(chan struct{})
@@ -145,8 +145,8 @@ func (b *Batcher) Run() {
 }
 
 func (b *Batcher) GetStatus() string {
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	b.stopLock.Lock()
+	defer b.stopLock.Unlock()
 	if b.isSoftStopped && !b.isStopped {
 		return "Soft Stop"
 	}
@@ -157,16 +157,16 @@ func (b *Batcher) GetStatus() string {
 }
 
 func (b *Batcher) Stop() {
-	b.lock.Lock()
+	b.stopLock.Lock()
 	if b.isStopped {
-		b.lock.Unlock()
+		b.stopLock.Unlock()
 		return
 	}
 
 	softStopped := b.isSoftStopped
 	b.isStopped = true
 	b.isSoftStopped = true
-	b.lock.Unlock()
+	b.stopLock.Unlock()
 
 	b.logger.Infof("Stopping batcher node")
 	if !softStopped {
@@ -191,14 +191,14 @@ func (b *Batcher) Stop() {
 }
 
 func (b *Batcher) SoftStop() {
-	b.lock.Lock()
+	b.stopLock.Lock()
 	if b.isSoftStopped || b.isStopped {
-		b.lock.Unlock()
+		b.stopLock.Unlock()
 		return
 	}
 
 	b.isSoftStopped = true
-	b.lock.Unlock()
+	b.stopLock.Unlock()
 
 	b.logger.Infof("Soft stopping batcher node")
 	close(b.stopChan)

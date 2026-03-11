@@ -28,10 +28,10 @@ import (
 
 func CreateBatcher(config *node_config.BatcherNodeConfig, fullConfig *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	b := &Batcher{
-		config:     config,
-		fullConfig: fullConfig,
-		batcher:    &BatcherRole{},
-		cdrc:       cdrc,
+		config:                             config,
+		fullConfig:                         fullConfig,
+		batcher:                            &BatcherRole{},
+		consensusDecisionReplicatorCreator: cdrc,
 	}
 
 	b.configureBatcher(logger, mainExitChan, senderCreator, signer, nil)
@@ -76,7 +76,7 @@ func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan c
 
 	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
 
-	dr := b.cdrc.CreateDecisionConsensusReplicator(b.config, logger, lastKnownDecisionNum)
+	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, logger, lastKnownDecisionNum)
 
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, b.config, nil)
 
