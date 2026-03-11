@@ -342,6 +342,9 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 
 	partiesMap := make(map[uint32]*config_protos.PartyConfig)
 	for _, p := range parties {
+		if p == nil {
+			return errors.New("party config is nil in shared config")
+		}
 		partiesMap[p.PartyID] = p
 	}
 
@@ -351,9 +354,8 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 			return errors.Errorf("party ID %d missing from shared config", consenter.Id)
 		}
 		if party.ConsenterConfig == nil {
-			return errors.Errorf("consenter config missing for party %d", consenter.Id)
+			return errors.Errorf("consenter config missing in shared config for party %d", consenter.Id)
 		}
-
 		nodeCfg := party.ConsenterConfig
 		if consenter.Host != nodeCfg.Host {
 			return errors.Errorf("host mismatch for party %d: %s != %s", consenter.Id, consenter.Host, nodeCfg.Host)
@@ -367,8 +369,12 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 			return errors.Errorf("identity/sign_cert mismatch for party %d", consenter.Id)
 		}
 
-		if !slices.Equal(consenter.ServerTlsCert, nodeCfg.TlsCert) || !slices.Equal(consenter.ClientTlsCert, nodeCfg.TlsCert) {
-			return errors.Errorf("TLS certificate mismatch for party %d", consenter.Id)
+		if len(consenter.ServerTlsCert) > 0 && !slices.Equal(consenter.ServerTlsCert, nodeCfg.TlsCert) {
+			return errors.Errorf("server TLS certificate mismatch for party %d", consenter.Id)
+		}
+
+		if len(consenter.ClientTlsCert) > 0 && !slices.Equal(consenter.ClientTlsCert, nodeCfg.TlsCert) {
+			return errors.Errorf("client TLS certificate mismatch for party %d", consenter.Id)
 		}
 	}
 

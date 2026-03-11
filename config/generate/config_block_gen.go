@@ -77,17 +77,16 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	templateAppOrg := profile.Application.Organizations[0]
 	profile.Application.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
 
-	for i, p := range sharedConfigYaml.PartiesConfig {
+	for i := range sharedConfigYaml.PartiesConfig {
 		org := &configtxgen.Organization{
-			Name:             fmt.Sprintf("org%d", i+1),
-			ID:               fmt.Sprintf("org%d", i+1),
-			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
-			MSPType:          templateAppOrg.MSPType,
-			Policies:         make(map[string]*configtxgen.Policy),
-			AnchorPeers:      templateAppOrg.AnchorPeers,
-			OrdererEndpoints: buildOrdererEndpoints(uint32(p.PartyID), p.RouterConfig.Host, int(p.RouterConfig.Port), p.AssemblerConfig.Host, int(p.AssemblerConfig.Port)),
-			AdminPrincipal:   templateAppOrg.AdminPrincipal,
-			SkipAsForeign:    templateAppOrg.SkipAsForeign,
+			Name:           fmt.Sprintf("org%d", i+1),
+			ID:             fmt.Sprintf("org%d", i+1),
+			MSPDir:         filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
+			MSPType:        templateAppOrg.MSPType,
+			Policies:       make(map[string]*configtxgen.Policy),
+			AnchorPeers:    templateAppOrg.AnchorPeers,
+			AdminPrincipal: templateAppOrg.AdminPrincipal,
+			SkipAsForeign:  templateAppOrg.SkipAsForeign,
 		}
 
 		// Update policy rules to use correct org names
@@ -112,7 +111,6 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
 			MSPType:          templateOrdererOrg.MSPType,
 			Policies:         make(map[string]*configtxgen.Policy),
-			AnchorPeers:      templateOrdererOrg.AnchorPeers,
 			OrdererEndpoints: buildOrdererEndpoints(uint32(p.PartyID), p.RouterConfig.Host, int(p.RouterConfig.Port), p.AssemblerConfig.Host, int(p.AssemblerConfig.Port)),
 			AdminPrincipal:   templateOrdererOrg.AdminPrincipal,
 			SkipAsForeign:    templateOrdererOrg.SkipAsForeign,
