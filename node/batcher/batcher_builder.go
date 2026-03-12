@@ -29,7 +29,6 @@ func CreateBatcher(config *node_config.BatcherNodeConfig, fullConfig *config.Con
 	b := &Batcher{
 		config:                             config,
 		fullConfig:                         fullConfig,
-		batcher:                            &BatcherRole{},
 		consensusDecisionReplicatorCreator: cdrc,
 	}
 
@@ -116,25 +115,27 @@ func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan c
 	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, b.config.ShardId, logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
-	b.batcher.Batchers = GetBatchersIDs(b.batchers)
-	b.batcher.BatchPuller = batchPuller
-	b.batcher.Threshold = int(f + 1)
-	b.batcher.N = initState.N
-	b.batcher.BatchTimeout = b.config.BatchCreationTimeout
-	b.batcher.Ledger = ledgerArray
-	b.batcher.ID = b.config.PartyId
-	b.batcher.Shard = b.config.ShardId
-	b.batcher.Logger = logger
-	b.batcher.StateProvider = b
-	b.batcher.ConfigSequenceGetter = b
-	b.batcher.RequestInspector = b.requestsInspectorVerifier
-	b.batcher.BAFCreator = b
-	b.batcher.BAFSender = b
-	b.batcher.BatchAcker = b
-	b.batcher.Complainer = b
-	b.batcher.BatchedRequestsVerifier = b.requestsInspectorVerifier
-	b.batcher.BatchSequenceGap = b.config.BatchSequenceGap
-	b.batcher.Metrics = b.metrics
+	b.batcher = &BatcherRole{
+		Batchers:                GetBatchersIDs(b.batchers),
+		BatchPuller:             batchPuller,
+		Threshold:               int(f + 1),
+		N:                       initState.N,
+		BatchTimeout:            b.config.BatchCreationTimeout,
+		Ledger:                  ledgerArray,
+		ID:                      b.config.PartyId,
+		Shard:                   b.config.ShardId,
+		Logger:                  logger,
+		StateProvider:           b,
+		ConfigSequenceGetter:    b,
+		RequestInspector:        b.requestsInspectorVerifier,
+		BAFCreator:              b,
+		BAFSender:               b,
+		BatchAcker:              b,
+		Complainer:              b,
+		BatchedRequestsVerifier: b.requestsInspectorVerifier,
+		BatchSequenceGap:        b.config.BatchSequenceGap,
+		Metrics:                 b.metrics,
+	}
 
 	if memPool == nil {
 		b.batcher.MemPool = createMemPool(b, b.config)

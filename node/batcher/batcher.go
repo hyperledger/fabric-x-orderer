@@ -146,10 +146,10 @@ func (b *Batcher) GetStatus() string {
 	b.stopLock.Lock()
 	defer b.stopLock.Unlock()
 	if b.isSoftStopped && !b.isStopped {
-		return "Soft Stop"
+		return "Soft Stopped"
 	}
 	if b.isSoftStopped && b.isStopped {
-		return "Stop"
+		return "Stopped"
 	}
 	return "Running"
 }
@@ -162,12 +162,8 @@ func (b *Batcher) Stop() {
 		return
 	}
 
-	softStopped := b.isSoftStopped
-	b.isStopped = true
-	b.isSoftStopped = true
-
 	b.logger.Infof("Stopping batcher node")
-	if !softStopped {
+	if !b.isSoftStopped {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
 		b.batcher.Stop()
@@ -186,6 +182,9 @@ func (b *Batcher) Stop() {
 
 	close(b.stopSignalListenChan)
 	close(b.mainExitChan)
+
+	b.isStopped = true
+	b.isSoftStopped = true
 }
 
 func (b *Batcher) SoftStop() {

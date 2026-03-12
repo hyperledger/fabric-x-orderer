@@ -128,9 +128,10 @@ type BatcherRole struct {
 	ackerLock               sync.RWMutex
 	acker                   SeqAcker
 	Metrics                 *BatcherMetrics
-	lock                    sync.Mutex
-	isStopped               bool
-	isSoftStopped           bool
+
+	lock          sync.Mutex
+	isStopped     bool
+	isSoftStopped bool
 }
 
 func (b *BatcherRole) Start() {
@@ -190,12 +191,8 @@ func (b *BatcherRole) Stop() {
 		return
 	}
 
-	softStopped := b.isSoftStopped
-	b.isStopped = true
-	b.isSoftStopped = true
-
 	b.Logger.Infof("Stopping batcher role")
-	if !softStopped {
+	if !b.isSoftStopped {
 		close(b.stopChan)
 	}
 	b.cancelBatch()
@@ -204,6 +201,9 @@ func (b *BatcherRole) Stop() {
 		<-b.termChan // drain term channel
 	}
 	b.running.Wait()
+
+	b.isStopped = true
+	b.isSoftStopped = true
 }
 
 // SoftStop stops the batcher role with mempool Halt
