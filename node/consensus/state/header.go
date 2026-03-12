@@ -12,14 +12,12 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"google.golang.org/protobuf/proto"
-
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
 type Header struct {
 	Num                          types.DecisionNum
-	AvailableBlocks              []AvailableBlock
 	AvailableCommonBlocks        []*common.Block
 	State                        *State
 	DecisionNumOfLastConfigBlock types.DecisionNum
@@ -29,30 +27,13 @@ func (h *Header) Deserialize(bytes []byte) error {
 	if bytes == nil {
 		return errors.Errorf("nil bytes")
 	}
-	if len(bytes) < 8+8+4+4 { // at least header number (uint64) and config num (uint64) and number of available blocks (uint32) and number of available common blocks (uint32)
-		return errors.Errorf("len of bytes is just %d; expected at least 24", len(bytes))
+	if len(bytes) < 8+8+4 { // at least header number (uint64) and config num (uint64) and number of available common blocks (uint32)
+		return errors.Errorf("len of bytes is just %d; expected at least 20", len(bytes))
 	}
 	h.Num = types.DecisionNum(binary.BigEndian.Uint64(bytes[0:8]))
 	h.DecisionNumOfLastConfigBlock = types.DecisionNum(binary.BigEndian.Uint64(bytes[8:16]))
-	availableBlockCount := int(binary.BigEndian.Uint32(bytes[16:20]))
+	availableCommonBlockCount := int(binary.BigEndian.Uint32(bytes[16:20]))
 	pos := 20
-	h.AvailableBlocks = nil
-	if availableBlockCount > 0 {
-		h.AvailableBlocks = make([]AvailableBlock, availableBlockCount)
-	}
-	if len(bytes) < pos+availableBlockSerializedSize*availableBlockCount {
-		return errors.Errorf("len of bytes is just %d which is not enough to read the available blocks; expected at least %d", len(bytes), pos+availableBlockSerializedSize*availableBlockCount)
-	}
-	for i := 0; i < availableBlockCount; i++ {
-		var ab AvailableBlock
-		if err := ab.Deserialize(bytes[pos : pos+availableBlockSerializedSize]); err != nil {
-			return errors.Errorf("failed deserializing available block; index: %d", i)
-		}
-		pos += availableBlockSerializedSize
-		h.AvailableBlocks[i] = ab
-	}
-	availableCommonBlockCount := int(binary.BigEndian.Uint32(bytes[pos : pos+4]))
-	pos += 4
 	h.AvailableCommonBlocks = nil
 	if availableCommonBlockCount > 0 {
 		h.AvailableCommonBlocks = make([]*common.Block, availableCommonBlockCount)
@@ -80,33 +61,19 @@ func (h *Header) Deserialize(bytes []byte) error {
 }
 
 func (h *Header) Serialize() []byte {
-	availableBlocksBytes := availableBlocksToBytes(h.AvailableBlocks)
 	availableCommonBlocksBytes := availableCommonBlocksToBytes(h.AvailableCommonBlocks)
 	rawState := []byte{}
 	if h.State != nil {
 		rawState = h.State.Serialize()
 	}
 
-	buff := make([]byte, 8+8+len(availableBlocksBytes)+len(availableCommonBlocksBytes)+len(rawState))
+	buff := make([]byte, 8+8+len(availableCommonBlocksBytes)+len(rawState))
 
 	binary.BigEndian.PutUint64(buff, uint64(h.Num))
 	binary.BigEndian.PutUint64(buff[8:16], uint64(h.DecisionNumOfLastConfigBlock))
-	copy(buff[16:], availableBlocksBytes)
-	copy(buff[16+len(availableBlocksBytes):], availableCommonBlocksBytes)
-	copy(buff[16+len(availableBlocksBytes)+len(availableCommonBlocksBytes):], rawState)
+	copy(buff[16:], availableCommonBlocksBytes)
+	copy(buff[16+len(availableCommonBlocksBytes):], rawState)
 
-	return buff
-}
-
-func availableBlocksToBytes(availableBlocks []AvailableBlock) []byte {
-	buff := make([]byte, 4+len(availableBlocks)*availableBlockSerializedSize)
-	binary.BigEndian.PutUint32(buff[0:4], uint32(len(availableBlocks)))
-	pos := 4
-	for _, ab := range availableBlocks {
-		bytes := ab.Serialize()
-		copy(buff[pos:], bytes)
-		pos += len(bytes)
-	}
 	return buff
 }
 
