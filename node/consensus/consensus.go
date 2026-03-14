@@ -44,7 +44,7 @@ import (
 )
 
 type Storage interface {
-	Append(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64)
+	Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64)
 	Close()
 }
 
@@ -733,7 +733,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// This is true because a Index(digests) with the same digests is idempotent.
 
 	c.Arma.Index(digests)
-	c.Storage.Append(proposal, signatures, uint64(c.decisionNumOfLastConfigBlock))
+	c.Storage.Append(uint64(hdr.Num), proposal, signatures, uint64(c.decisionNumOfLastConfigBlock))
 
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)

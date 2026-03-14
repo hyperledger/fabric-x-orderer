@@ -279,7 +279,7 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 		panic("couldn't retrieve last block from ledger")
 	}
 
-	proposal, sigs, err := state.BytesToDecision(block.Data.Data[0])
+	proposal, _, err := state.BytesToDecision(block.Data.Data[0])
 	if err != nil {
 		panic("couldn't read decision from last block")
 	}
@@ -292,6 +292,11 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 	header := &state.Header{}
 	if err := header.Deserialize(proposal.Header); err != nil {
 		panic(err)
+	}
+
+	sigs, err := state.BytesToDecisionSignatures(block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
+	if err != nil {
+		panic("couldn't read signatures from last block")
 	}
 
 	return header.State, md, &proposal, sigs, header.DecisionNumOfLastConfigBlock
@@ -352,7 +357,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 		Metadata: nil,
 	}
 
-	consensusLedger.Append(genesisProposal, nil, 0)
+	consensusLedger.Append(0, genesisProposal, nil, 0)
 }
 
 func getTxCount(consensusLedger *ledger.ConsensusLedger) uint64 {

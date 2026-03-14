@@ -35,7 +35,7 @@ func DecisionToBytes(proposal smartbft_types.Proposal, signatures []smartbft_typ
 	return buff
 }
 
-func BytesToDecision(rawBytes []byte) (smartbft_types.Proposal, []smartbft_types.Signature, error) {
+func BytesToDecision(rawBytes []byte) (smartbft_types.Proposal, []smartbft_types.Signature, error) { // TODO consider renaming
 	buff := bytes.NewBuffer(rawBytes)
 	headerSize := make([]byte, 4)
 	if _, err := buff.Read(headerSize); err != nil {
@@ -88,36 +88,35 @@ func BytesToDecision(rawBytes []byte) (smartbft_types.Proposal, []smartbft_types
 }
 
 func DecisionSignaturesToBytes(signatures []smartbft_types.Signature) []byte { // TODO unit test
-	sigBuff := bytes.Buffer{}
-
+	rawSigs := make([][]byte, 0, len(signatures))
 	for _, sig := range signatures {
 		rawSig, err := asn1.Marshal(asn1Signature{Msg: sig.Msg, Value: sig.Value, ID: int64(sig.ID)})
 		if err != nil {
 			panic(err)
 		}
-		rawSigSize := make([]byte, 2)
-		binary.BigEndian.PutUint16(rawSigSize, uint16(len(rawSig))) // TODO the sig Msg is not limited in size... so uint16 might not be enough
-		sigBuff.Write(rawSigSize)
-		sigBuff.Write(rawSig)
+		rawSigs = append(rawSigs, rawSig)
 	}
 
-	buff := make([]byte, sigBuff.Len()) // TODO maybe we can just return sigBuff.Bytes()
-	copy(buff, sigBuff.Bytes())
-	return buff
+	bytes, err := asn1.Marshal(rawSigs)
+	if err != nil {
+		panic(err)
+	}
+
+	return bytes
 }
 
 func BytesToDecisionSignatures(rawBytes []byte) ([]smartbft_types.Signature, error) {
-	var sigs []smartbft_types.Signature
+	rawSigs := [][]byte{}
+	if _, err := asn1.Unmarshal(rawBytes, &rawSigs); err != nil {
+		return nil, err
+	}
 
-	var pos int
-	for pos < len(rawBytes) {
-		sigSize := int(binary.BigEndian.Uint16([]byte{rawBytes[pos], rawBytes[pos+1]}))
-		pos += 2
+	var sigs []smartbft_types.Signature
+	for _, rawSig := range rawSigs {
 		sig := asn1Signature{}
-		if _, err := asn1.Unmarshal(rawBytes[pos:pos+sigSize], &sig); err != nil {
+		if _, err := asn1.Unmarshal(rawSig, &sig); err != nil {
 			return nil, err
 		}
-		pos += sigSize
 		sigs = append(sigs, smartbft_types.Signature{
 			Msg:   sig.Msg,
 			Value: sig.Value,

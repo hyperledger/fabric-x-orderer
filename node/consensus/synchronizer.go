@@ -11,15 +11,14 @@ import (
 	"sync"
 	"time"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
-
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/protoutil"
 )
 
 type synchronizer struct {
@@ -155,9 +154,14 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 		s.deliver(proposal, signatures)
 	}
 
-	proposal, signatures, err := state.BytesToDecision(latestBlock.Data.Data[0])
+	proposal, _, err := state.BytesToDecision(latestBlock.Data.Data[0])
 	if err != nil {
 		s.logger.Panicf("Failed parsing block we pulled: %v", err)
+	}
+
+	signatures, err := state.BytesToDecisionSignatures(latestBlock.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
+	if err != nil {
+		s.logger.Panicf("Failed parsing signatures of the block we pulled: %v", err)
 	}
 
 	return smartbft_types.SyncResponse{
