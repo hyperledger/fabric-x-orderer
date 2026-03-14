@@ -56,7 +56,22 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 		return stateHeader, sigs, nil
 	}
 
-	compoundSigs, err := state.BytesToDecisionSignatures(block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
+	// Check if block metadata is nil
+	if block.GetMetadata() == nil {
+		return nil, nil, errors.Errorf("block metadata is nil for block: %d", block.GetHeader().GetNumber())
+	}
+
+	// Check if metadata array is nil or index is out of range
+	metadata := block.GetMetadata().GetMetadata()
+	if metadata == nil {
+		return nil, nil, errors.Errorf("block metadata array is nil for block: %d", block.GetHeader().GetNumber())
+	}
+	if int(common.BlockMetadataIndex_SIGNATURES) >= len(metadata) {
+		return nil, nil, errors.Errorf("block metadata index %d is out of range (length: %d) for block: %d",
+			common.BlockMetadataIndex_SIGNATURES, len(metadata), block.GetHeader().GetNumber())
+	}
+
+	compoundSigs, err := state.BytesToDecisionSignatures(metadata[common.BlockMetadataIndex_SIGNATURES])
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to extract signatures from block: %d", block.GetHeader().GetNumber())
 	}

@@ -11,11 +11,11 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 )
 
@@ -72,12 +72,7 @@ func (l *ConsensusLedger) RegisterAppendListener(listener AppendListener) {
 	l.appendListener = listener
 }
 
-func (c *ConsensusLedger) Append(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64) {
-	proposalHeader := &state.Header{}
-	if err := proposalHeader.Deserialize(proposal.Header); err != nil {
-		panic(err)
-	}
-
+func (c *ConsensusLedger) Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64) {
 	proposalBytes := state.DecisionToBytes(proposal, nil) // TODO maybe use asn1 marshal proposal instead
 
 	data := &common.BlockData{
@@ -86,7 +81,7 @@ func (c *ConsensusLedger) Append(proposal smartbft_types.Proposal, signatures []
 
 	block := &common.Block{
 		Header: &common.BlockHeader{ // TODO change sig over proposal to be over this header
-			Number:       uint64(proposalHeader.Num),
+			Number:       number,
 			DataHash:     protoutil.ComputeBlockDataHash(data),
 			PreviousHash: c.prevHash,
 		},
