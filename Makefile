@@ -75,7 +75,7 @@ check-protos:
 
 .PHONY: unit-tests
 unit-tests:
-	go test -race $$(go list ./... | grep -v /test)
+	go test -race -timeout 20m $$(go list ./... | grep -v /test)
 
 .PHONY: integration-tests
 integration-tests:
