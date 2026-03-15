@@ -925,3 +925,28 @@ func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.R
 
 	return configRequest, nil
 }
+
+// PruneRequestsFromMemPool removes from the mempool the requests included in the given block.
+// It is called by the BFT synchronizer.
+func (c *Consensus) PruneRequestsFromMemPool(consenterBlock *common.Block) {
+	if consenterBlock.GetHeader().GetNumber() == 0 {
+		return // genesis block doesn't include any request
+	}
+
+	// TODO it make sense to have ConsenterBlockToDecision return the error
+	decision := ConsenterBlockToDecision(consenterBlock)
+	if decision == nil {
+		c.Logger.Panicf("Failed parsing block we pulled with BFT Synchronizer")
+	}
+
+	// Every request, including config requests, is included in the proposal's payload as a batch of requests,
+	// so we can just deserialize the payload to get all the included requests and remove them from the mempool.
+	var batch arma_types.BatchedRequests
+	if err := batch.Deserialize(decision.Proposal.Payload); err != nil {
+		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
+	}
+
+	for _, req := range batch {
+		c.BFT.Pool.RemoveRequest(c.RequestID(req))
+	}
+}
