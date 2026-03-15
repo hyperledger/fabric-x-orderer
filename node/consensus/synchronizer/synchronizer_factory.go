@@ -31,8 +31,9 @@ type ConsenterSupport interface {
 	// or nil if such a block doesn't exist.
 	Block(number uint64) *cb.Block
 
-	// LastConfigBlock returns the config block before or at the given block,
+	// LastConfigBlock returns the latest config block before or at the given block,
 	// or error if such a block cannot be retrieved.
+	// For the consenter, the input block is the DECISION block, whereas the output block is a FABRIC block, which contains the config envelope in its data.
 	LastConfigBlock(block *cb.Block) (*cb.Block, error)
 
 	// Height returns the number of blocks in the chain this channel is associated with.
@@ -48,9 +49,11 @@ type ConsenterSupport interface {
 	SharedConfig() channelconfig.Orderer
 
 	// WriteBlockSync commits a block to the ledger.
+	// TODO remove the encodedMetadataValue argument
 	WriteBlockSync(block *cb.Block, encodedMetadataValue []byte)
 
 	// WriteConfigBlock commits a block to the ledger, and applies the config update inside.
+	// TODO remove the encodedMetadataValue argument
 	WriteConfigBlock(block *cb.Block, encodedMetadataValue []byte)
 }
 

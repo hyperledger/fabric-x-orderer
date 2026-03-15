@@ -17,7 +17,7 @@ import (
 	"math/rand"
 	"sync"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
+	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
@@ -45,6 +45,9 @@ import (
 
 type Storage interface {
 	Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64)
+	Height() uint64
+	RetrieveBlockByNumber(blockNumber uint64) (*common.Block, error)
+	WriteBlock(block *common.Block)
 	Close()
 }
 
@@ -89,7 +92,7 @@ type Consensus struct {
 	SigVerifier                  SigVerifier
 	Signer                       Signer
 	CurrentNodes                 []uint64
-	BFT                          *consensus.Consensus
+	BFT                          *smartbft_consensus.Consensus
 	Storage                      Storage
 	BADB                         *badb.BatchAttestationDB
 	Arma                         Arma
