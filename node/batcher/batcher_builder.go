@@ -13,6 +13,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/config"
+
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -24,24 +26,32 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
-	return CreateBatcherWithMemPool(config, logger, mainExitChan, cdrc, senderCreator, signer, nil)
+func CreateBatcher(config *node_config.BatcherNodeConfig, fullConfig *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+	b := &Batcher{
+		config:                             config,
+		fullConfig:                         fullConfig,
+		batcher:                            &BatcherRole{},
+		consensusDecisionReplicatorCreator: cdrc,
+	}
+
+	b.configureBatcher(logger, mainExitChan, senderCreator, signer, nil)
+	return b
 }
 
-func CreateBatcherWithMemPool(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer, memPool MemPool) *Batcher {
+func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan chan struct{}, senderCreator ConsenterControlEventSenderCreator, signer Signer, memPool MemPool) {
 	var parties []types.PartyID
-	for shIdx, sh := range config.Shards {
-		if sh.ShardId != config.ShardId {
+	for shIdx, sh := range b.config.Shards {
+		if sh.ShardId != b.config.ShardId {
 			continue
 		}
 
-		for _, b := range config.Shards[shIdx].Batchers {
+		for _, b := range b.config.Shards[shIdx].Batchers {
 			parties = append(parties, b.PartyID)
 		}
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(config.ShardId, config.PartyId, parties, config.Directory, logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(b.config.ShardId, b.config.PartyId, parties, b.config.Directory, logger)
 	if err != nil {
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
@@ -51,94 +61,87 @@ func CreateBatcherWithMemPool(config *node_config.BatcherNodeConfig, logger *flo
 		Logger:      logger,
 	}
 
-	batchPuller := NewBatchPuller(config, ledgerArray, logger)
+	batchPuller := NewBatchPuller(b.config, ledgerArray, logger)
 
-	walDir := filepath.Join(config.Directory, "wal")
+	walDir := filepath.Join(b.config.Directory, "wal")
 	batcherWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
 	if err != nil {
 		logger.Panicf("Failed creating WAL: %s", err.Error())
 	}
 
-	configStore, err := configstore.NewStore(config.ConfigStorePath)
+	configStore, err := configstore.NewStore(b.config.ConfigStorePath)
 	if err != nil {
 		logger.Panicf("Failed creating batcher config store: %s", err.Error())
 	}
 
 	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
 
-	dr := cdrc.CreateDecisionConsensusReplicator(config, logger, lastKnownDecisionNum)
+	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, logger, lastKnownDecisionNum)
 
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, config, nil)
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, b.config, nil)
 
-	batchers := batchersFromConfig(config)
+	batchers := batchersFromConfig(b.config)
 	if len(batchers) == 0 {
-		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", config.ShardId, config.Shards)
+		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", b.config.ShardId, b.config.Shards)
 	}
 
-	b := &Batcher{
-		requestsInspectorVerifier: requestsIDAndVerifier,
-		batcherDeliverService:     deliverService,
-		decisionReplicator:        dr,
-		signer:                    signer,
-		logger:                    logger,
-		batchers:                  batchers,
-		Ledger:                    ledgerArray,
-		ConfigStore:               configStore,
-		batcherCerts2IDs:          make(map[string]types.PartyID),
-		config:                    config,
-		metrics:                   NewBatcherMetrics(config, batchers, ledgerArray, logger),
-		wal:                       batcherWAL,
-		mainExitChan:              mainExitChan,
+	b.requestsInspectorVerifier = requestsIDAndVerifier
+	b.batcherDeliverService = deliverService
+	b.decisionReplicator = dr
+	b.signer = signer
+	b.logger = logger
+	b.batchers = batchers
+	b.Ledger = ledgerArray
+	b.ConfigStore = configStore
+	b.batcherCerts2IDs = make(map[string]types.PartyID)
+	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerArray, logger)
+	b.wal = batcherWAL
+	b.mainExitChan = mainExitChan
+
+	b.controlEventSenders = make([]ConsenterControlEventSender, len(b.config.Consenters))
+	for i, consenterInfo := range b.config.Consenters {
+		b.controlEventSenders[i] = senderCreator.CreateConsenterControlEventSender(b.config.TLSPrivateKeyFile, b.config.TLSCertificateFile, consenterInfo)
 	}
 
-	b.controlEventSenders = make([]ConsenterControlEventSender, len(config.Consenters))
-	for i, consenterInfo := range config.Consenters {
-		b.controlEventSenders[i] = senderCreator.CreateConsenterControlEventSender(config.TLSPrivateKeyFile, config.TLSCertificateFile, consenterInfo)
-	}
-
-	initState := computeZeroState(config)
+	initState := computeZeroState(b.config)
 
 	b.primaryID, b.term = b.getPrimaryIDAndTerm(&initState)
 
-	b.batcherCerts2IDs = indexTLSCerts(b.batchers, b.logger)
+	b.batcherCerts2IDs = indexTLSCerts(b.batchers, logger)
 
 	f := (initState.N - 1) / 3
 
 	ctxBroadcast, cancelBroadcast := context.WithCancel(context.Background())
 	b.controlEventBroadcaster = NewControlEventBroadcaster(b.controlEventSenders, int(initState.N), int(f), 100*time.Millisecond, 10*time.Second, b.logger, ctxBroadcast, cancelBroadcast)
 
-	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, config.ShardId, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
-	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
+	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, b.config.ShardId, logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
+	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
-	b.batcher = &BatcherRole{
-		Batchers:                GetBatchersIDs(b.batchers),
-		BatchPuller:             batchPuller,
-		Threshold:               int(f + 1),
-		N:                       initState.N,
-		BatchTimeout:            config.BatchCreationTimeout,
-		Ledger:                  ledgerArray,
-		ID:                      config.PartyId,
-		Shard:                   config.ShardId,
-		Logger:                  logger,
-		StateProvider:           b,
-		ConfigSequenceGetter:    b,
-		RequestInspector:        b.requestsInspectorVerifier,
-		BAFCreator:              b,
-		BAFSender:               b,
-		BatchAcker:              b,
-		Complainer:              b,
-		BatchedRequestsVerifier: b.requestsInspectorVerifier,
-		BatchSequenceGap:        config.BatchSequenceGap,
-		Metrics:                 b.metrics,
-	}
+	b.batcher.Batchers = GetBatchersIDs(b.batchers)
+	b.batcher.BatchPuller = batchPuller
+	b.batcher.Threshold = int(f + 1)
+	b.batcher.N = initState.N
+	b.batcher.BatchTimeout = b.config.BatchCreationTimeout
+	b.batcher.Ledger = ledgerArray
+	b.batcher.ID = b.config.PartyId
+	b.batcher.Shard = b.config.ShardId
+	b.batcher.Logger = logger
+	b.batcher.StateProvider = b
+	b.batcher.ConfigSequenceGetter = b
+	b.batcher.RequestInspector = b.requestsInspectorVerifier
+	b.batcher.BAFCreator = b
+	b.batcher.BAFSender = b
+	b.batcher.BatchAcker = b
+	b.batcher.Complainer = b
+	b.batcher.BatchedRequestsVerifier = b.requestsInspectorVerifier
+	b.batcher.BatchSequenceGap = b.config.BatchSequenceGap
+	b.batcher.Metrics = b.metrics
 
 	if memPool == nil {
-		b.batcher.MemPool = createMemPool(b, config)
+		b.batcher.MemPool = createMemPool(b, b.config)
 	} else {
 		b.batcher.MemPool = memPool
 	}
-
-	return b
 }
 
 func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) MemPool {
