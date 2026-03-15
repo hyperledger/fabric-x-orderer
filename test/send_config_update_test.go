@@ -1423,6 +1423,11 @@ func TestChangePartyCACertificates(t *testing.T) {
 	// 6.
 	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
+	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
+	require.NoError(t, err)
+	oldSigner, oldCertBytes, err := testutil.LoadCryptoMaterialsFromDir(t, oldUC.MSPDir)
+	require.NoError(t, err)
+
 	// Override the party's crypto materials with the new ones regenerated
 	dstDir := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg)
 	err = os.RemoveAll(dstDir)
@@ -1474,8 +1479,6 @@ func TestChangePartyCACertificates(t *testing.T) {
 		totalTxNumber++
 	}
 
-	broadcastClient.Stop()
-
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
@@ -1488,6 +1491,14 @@ func TestChangePartyCACertificates(t *testing.T) {
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})
+
+	// Try sending a transaction with the old certificate which should fail as the old cert is no longer trusted by the network
+	txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+	env = tx.CreateSignedStructuredEnvelope(txContent, oldSigner, oldCertBytes, fmt.Sprintf("org%d", partyToUpdate))
+	err = broadcastClient.SendTx(env)
+	require.ErrorContains(t, err, "signature did not satisfy policy", "expected error when sending transaction with old certificate after CA rotation, but got no error")
+
+	broadcastClient.Stop()
 }
 
 type copyPredicate func(path string, d os.DirEntry) bool
