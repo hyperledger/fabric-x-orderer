@@ -46,27 +46,28 @@ type Net interface {
 }
 
 type Router struct {
-	mapper           ShardMapper
-	net              Net
-	shardRouters     map[types.ShardID]*ShardRouter
-	logger           *flogging.FabricLogger
-	shardIDs         []types.ShardID
-	routerNodeConfig *nodeconfig.RouterNodeConfig
-	verifier         *requestfilter.RulesVerifier
-	configStore      *configstore.Store
-	configSubmitter  ConfigurationSubmitter
-	decisionPuller   DecisionPuller
-	metrics          *RouterMetrics
-	stopChan         chan struct{}
-	stopOnce         sync.Once
-	drainChan        chan struct{}
-	drainOnce        sync.Once
-	mainExitChan     chan struct{}
-	feedbackWG       sync.WaitGroup
-	configSeq        uint32
-	wal              *wal.WriteAheadLogFile
-	signer           identity.SignerSerializer
-	configuration    *config.Configuration
+	mapper               ShardMapper
+	net                  Net
+	shardRouters         map[types.ShardID]*ShardRouter
+	logger               *flogging.FabricLogger
+	shardIDs             []types.ShardID
+	routerNodeConfig     *nodeconfig.RouterNodeConfig
+	verifier             *requestfilter.RulesVerifier
+	configStore          *configstore.Store
+	configSubmitter      ConfigurationSubmitter
+	decisionPuller       DecisionPuller
+	metrics              *RouterMetrics
+	stopChan             chan struct{}
+	stopOnce             sync.Once
+	drainChan            chan struct{}
+	drainOnce            sync.Once
+	mainExitChan         chan struct{}
+	stopSignalListenChan chan struct{}
+	feedbackWG           sync.WaitGroup
+	configSeq            uint32
+	wal                  *wal.WriteAheadLogFile
+	signer               identity.SignerSerializer
+	configuration        *config.Configuration
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
@@ -180,7 +181,7 @@ func (r *Router) StartRouterService() {
 
 	r.configSubmitter.Start()
 
-	node_utils.StopSignalListen(r.stopChan, r, r.logger, r.Address())
+	node_utils.StopSignalListen(r.stopSignalListenChan, r, r.logger, r.Address())
 
 	go r.pullAndProcessDecisions()
 }
@@ -216,6 +217,8 @@ func (r *Router) Stop() {
 	for _, sr := range r.shardRouters {
 		sr.Stop()
 	}
+
+	close(r.stopSignalListenChan)
 
 	close(r.mainExitChan)
 }
@@ -326,22 +329,23 @@ func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]s
 			Logger:     logger,
 			ShardCount: uint16(len(shardIDs)),
 		},
-		shardRouters:     make(map[types.ShardID]*ShardRouter),
-		logger:           logger,
-		shardIDs:         shardIDs,
-		routerNodeConfig: rconfig,
-		configuration:    configuration,
-		verifier:         verifier,
-		signer:           signer,
-		configStore:      configStore,
-		configSubmitter:  configSubmitter,
-		decisionPuller:   decisionPuller,
-		stopChan:         make(chan struct{}),
-		drainChan:        make(chan struct{}),
-		mainExitChan:     mainExitChan,
-		metrics:          metrics,
-		configSeq:        uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
-		wal:              routerWAL,
+		shardRouters:         make(map[types.ShardID]*ShardRouter),
+		logger:               logger,
+		shardIDs:             shardIDs,
+		routerNodeConfig:     rconfig,
+		configuration:        configuration,
+		verifier:             verifier,
+		signer:               signer,
+		configStore:          configStore,
+		configSubmitter:      configSubmitter,
+		decisionPuller:       decisionPuller,
+		stopChan:             make(chan struct{}),
+		drainChan:            make(chan struct{}),
+		stopSignalListenChan: make(chan struct{}),
+		mainExitChan:         mainExitChan,
+		metrics:              metrics,
+		configSeq:            uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
+		wal:                  routerWAL,
 	}
 
 	for _, shardId := range shardIDs {
