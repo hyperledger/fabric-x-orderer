@@ -70,16 +70,14 @@ type Batcher struct {
 	signer                             Signer
 	wal                                *smartbft_wal.WriteAheadLogFile
 
-	stateChan chan *state.State
-
+	stopLock             sync.Mutex
+	stateChan            chan *state.State
 	running              sync.WaitGroup // maybe change the name, it is only for state replicator
 	stopChan             chan struct{}
 	stopSignalListenChan chan struct{}
 	mainExitChan         chan struct{}
-
-	stopLock      sync.Mutex
-	isStopped     bool
-	isSoftStopped bool
+	isStopped            bool
+	isSoftStopped        bool
 
 	primaryLock sync.RWMutex
 	term        uint64

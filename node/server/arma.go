@@ -157,7 +157,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("error launching batcher, err: %s", err))
 		}
 
-		conf := config.ExtractBatcherConfig(lastConfigBlock)
+		nodeConfig := config.ExtractBatcherConfig(lastConfigBlock)
 
 		localmsp := msp.BuildLocalMSP(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
@@ -178,10 +178,10 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 		if testLogger != nil {
 			batcherLogger = testLogger
 		} else {
-			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", conf.PartyId, conf.ShardId))
+			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", nodeConfig.PartyId, nodeConfig.ShardId))
 		}
 
-		batcher := batcher.CreateBatcher(conf, config, batcherLogger, stop, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher := batcher.CreateBatcher(nodeConfig, config, batcherLogger, stop, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 		batcher.StartBatcherService()
 		batcher.Run()
 

@@ -25,9 +25,9 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(config *node_config.BatcherNodeConfig, fullConfig *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
 	b := &Batcher{
-		config:                             config,
+		config:                             nodeConfig,
 		fullConfig:                         fullConfig,
 		consensusDecisionReplicatorCreator: cdrc,
 	}
