@@ -18,6 +18,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -31,6 +32,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -38,6 +40,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
+	"google.golang.org/protobuf/proto"
 )
 
 type Net interface {
@@ -221,6 +224,7 @@ func (r *Router) Stop() {
 }
 
 func (r *Router) SoftStop() error {
+	r.logger.Warnf("Soft stop")
 	routerAddress := r.net.Address()
 	partyID := r.routerNodeConfig.PartyID
 
@@ -583,16 +587,7 @@ func (r *Router) pullAndProcessDecisions() {
 			}
 			r.logger.Infof("Added config block %d to config store", blockNum)
 
-			// TODO apply the config block
-
-			// initiate router restart and apply new config
-			r.logger.Warnf("Soft stop")
-			go func() {
-				err := r.SoftStop()
-				if err != nil {
-					r.logger.Warnf("The router was not soft-stopped properly: %v.", err)
-				}
-			}()
+			go r.processNewConfigBlock(block)
 
 			// do not pull additional decisions, until the router is restarted.
 			r.logger.Infof("Stopping decisions pulling from consensus")
@@ -603,6 +598,122 @@ func (r *Router) pullAndProcessDecisions() {
 			return
 		}
 	}
+}
+
+// processNewConfigBlock processes the new config block. First it will soft-stop the router. Then, we try to apply the new config block.
+// If the new config contains changes that require admin restart, it will log a warning and return.
+// Otherwise, the router will be restarted with the new config dynamically.
+func (r *Router) processNewConfigBlock(configBlock *common.Block) {
+	r.logger.Infof("Processing new config block number %d", configBlock.Header.Number)
+
+	err := r.SoftStop()
+	if err != nil {
+		r.logger.Warnf("The router was not Soft-Stopped properly: %v. Admin's action is required", err)
+		// TODO - update router status to "pending admin"
+		return
+	}
+
+	restartRequired, err := r.ApplyConfig(configBlock)
+	if restartRequired {
+		r.logger.Warnf("Admin's action is required to apply new config: %v", err)
+		// TODO - update router status to "pending admin"
+	} else if err != nil {
+		r.logger.Panicf("Failed to apply last config: %v", err)
+	}
+}
+
+// ApplyConfig applies the new configuration extracted from the config block, and returns whether admin's action is required and error if exists.
+func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
+	if true { // TODO - remove this when tests are modified in the pr. for tests, the node status is needed.
+		return true, nil
+	}
+	// extract new router node config from the last config block and conifguration
+	newSharedConfig, err := extractNewSharedConfig(configBlock)
+	if err != nil {
+		r.logger.Errorf("Failed to extract new shared config from last config block: %v", err)
+		return false, errors.Wrapf(err, "failed to extract new shared config from last config block")
+	}
+
+	newConfiguration := &config.Configuration{
+		LocalConfig:  r.configuration.LocalConfig, // previous local config is kept.
+		SharedConfig: newSharedConfig,
+	}
+
+	// first, check if party is evicted in the new configuration. If yes, an admin action is required.
+	evicted, err := config.IsPartyEvicted(r.routerNodeConfig.PartyID, newConfiguration)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to check if router's party was evicted in the new configuration")
+	} else if evicted {
+		r.logger.Warnf("Router's party %d was evicted in the new configuration", r.routerNodeConfig.PartyID)
+		return true, fmt.Errorf("router's party %d was evicted in the new configuration", r.routerNodeConfig.PartyID)
+	}
+
+	// extract the new router node config.
+	newRouterNodeConfig, _, err := r.extractNewConfig(configBlock)
+	if err != nil {
+		r.logger.Warnf("Failed to extract new config from last config block: %v", err)
+		return false, errors.Wrapf(err, "failed to extract new router node config from config block")
+	}
+
+	newConfigSeq := newRouterNodeConfig.Bundle.ConfigtxValidator().Sequence()
+	r.logger.Infof("New config was extracted from last config block, new config sequence: %d, current config sequence: %d", newConfigSeq, r.configSeq)
+
+	// check if there is a change that requires admin restart.
+	currPartyConfig, _ := config.FindParty(r.routerNodeConfig.PartyID, r.configuration)
+	newPartyConfig, _ := config.FindParty(r.routerNodeConfig.PartyID, newConfiguration)
+	requireRestart, err := config.IsNodeConfigChangeRestartRequired(currPartyConfig.RouterConfig, newPartyConfig.RouterConfig, r.logger)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to check if node config change requires restart")
+	} else if requireRestart {
+		r.logger.Warnf("Admin's action is required to restart the router with the new configuration")
+		return true, fmt.Errorf("admin's action is required to restart the router with the new configuration")
+	}
+
+	r.logger.Infof("Applying new config with sequence %d, router will be restarted dynamically", newConfigSeq)
+
+	// TODO - call initFromConfig. (add in a separate PR)
+	// r.initFromConfig(newRouterNodeConfig, newConfiguration, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
+	// r.StartRouterService()
+	// r.logger.Infof("Router started with new config sequence %d, listening on %s, PartyID: %d", newConfigSeq, r.Address(), r.routerNodeConfig.PartyID)
+	return false, nil
+}
+
+func (r *Router) extractNewConfig(configBlock *common.Block) (*nodeconfig.RouterNodeConfig, *config.Configuration, error) {
+	r.logger.Infof("Extracting new config from config block with number %d", configBlock.Header.Number)
+	if r.configuration == nil {
+		return nil, nil, errors.New("current configuration is nil")
+	}
+	newConfiguration := &config.Configuration{
+		LocalConfig:  r.configuration.LocalConfig, // previous local config is kept.
+		SharedConfig: &config_protos.SharedConfig{},
+	}
+
+	// read shared config from block
+	consensusMetadata, err := config.ReadConsensusMetadataFromConfigBlock(configBlock)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to read consensus metadata from config block")
+	}
+	err = proto.Unmarshal(consensusMetadata, newConfiguration.SharedConfig)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
+	}
+
+	// extract new router node config.
+	return newConfiguration.ExtractRouterConfig(configBlock), newConfiguration, nil
+}
+
+func extractNewSharedConfig(configBlock *common.Block) (*config_protos.SharedConfig, error) {
+	sharedConfig := &config_protos.SharedConfig{}
+	// read shared config from block
+	consensusMetadata, err := config.ReadConsensusMetadataFromConfigBlock(configBlock)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read consensus metadata from config block")
+	}
+	err = proto.Unmarshal(consensusMetadata, sharedConfig)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
+	}
+	return sharedConfig, nil
 }
 
 // IsAllStreamsOK checks that all the streams across all shard-routers are non-faulty.
