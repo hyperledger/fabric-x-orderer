@@ -71,15 +71,64 @@ type Router struct {
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
-	// shardIDs is an array of all shard ids
+	logger.Infof("Creating new router with PartyID: %d", config.PartyID)
+
+	// Initialize the router components that remain unchanged after reconfig.
+
 	var shardIDs []types.ShardID
-	// batcherEndpoints are the endpoints of all batchers from the router's party by shard id
-	batcherEndpoints := make(map[types.ShardID]string)
-	tlsCAsOfBatchers := make(map[types.ShardID][][]byte)
 	for _, shard := range config.Shards {
 		shardIDs = append(shardIDs, shard.ShardId)
+	}
+
+	sort.Slice(shardIDs, func(i, j int) bool {
+		return int(shardIDs[i]) < int(shardIDs[j])
+	})
+
+	r := &Router{
+		logger:               logger,
+		signer:               signer,
+		mainExitChan:         mainExitChan,
+		shardIDs:             shardIDs,
+		mapper:               CreateMapperCRC64(logger, uint16(len(shardIDs))),
+		stopSignalListenChan: make(chan struct{}),
+	}
+
+	configStore, err := configstore.NewStore(config.FileStorePath)
+	if err != nil {
+		r.logger.Panicf("Failed creating router config store: %s", err)
+	}
+	r.configStore = configStore
+
+	r.initFromConfig(config, configuration, configUpdateProposer, configRulesVerifier)
+
+	return r
+}
+
+func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) {
+	r.logger.Infof("Initializing router with PartyID: %d from config with sequence: %d", rconfig.PartyID, rconfig.Bundle.ConfigtxValidator().Sequence())
+
+	if rconfig.NumOfConnectionsForBatcher == 0 {
+		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
+	}
+
+	if rconfig.NumOfgRPCStreamsPerConnection == 0 {
+		rconfig.NumOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
+	}
+
+	r.configuration = configuration
+	r.routerNodeConfig = rconfig
+	r.configSeq = uint32(r.routerNodeConfig.Bundle.ConfigtxValidator().Sequence())
+
+	r.verifier = createVerifier(rconfig)
+
+	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier)
+
+	// create shard routers
+	batcherEndpoints := make(map[types.ShardID]string)
+	tlsCAsOfBatchers := make(map[types.ShardID][][]byte)
+	for _, shard := range rconfig.Shards {
 		for _, batcher := range shard.Batchers {
-			if config.PartyID != batcher.PartyID {
+			if rconfig.PartyID != batcher.PartyID {
 				continue
 			}
 			batcherEndpoints[shard.ShardId] = batcher.Endpoint
@@ -91,37 +140,36 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Config
 			tlsCAsOfBatchers[shard.ShardId] = tlsCAsOfBatcher
 		}
 	}
-
-	sort.Slice(shardIDs, func(i, j int) bool {
-		return int(shardIDs[i]) < int(shardIDs[j])
-	})
-
-	configStore, err := configstore.NewStore(config.FileStorePath)
-	if err != nil {
-		logger.Panicf("Failed creating router config store: %s", err)
+	r.shardRouters = make(map[types.ShardID]*ShardRouter)
+	for _, shardId := range r.shardIDs {
+		r.shardRouters[shardId] = NewShardRouter(r.logger, batcherEndpoints[shardId], tlsCAsOfBatchers[shardId], r.routerNodeConfig.TLSCertificateFile, r.routerNodeConfig.TLSPrivateKeyFile, r.routerNodeConfig.NumOfConnectionsForBatcher, r.routerNodeConfig.NumOfgRPCStreamsPerConnection, r.verifier, r.configSubmitter)
 	}
 
-	walDir := filepath.Join(config.FileStorePath, "wal")
-	routerWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
+	walDir := filepath.Join(rconfig.FileStorePath, "wal")
+	routerWAL, walInitState, err := wal.InitializeAndReadAll(r.logger, walDir, wal.DefaultOptions())
 	if err != nil {
-		logger.Panicf("Failed initializing router WAL: %s", err)
+		r.logger.Panicf("Failed initializing router WAL: %s", err)
 	}
+	r.wal = routerWAL
 
-	seekInfo := delivery.NextSeekInfo(uint64(getNextDecisionNumber(configStore, walInitState, logger)))
+	seekInfo := delivery.NextSeekInfo(uint64(getNextDecisionNumber(r.configStore, walInitState, r.logger)))
 
 	// TODO - pull decisions from all consenter nodes, not only the one in party
-	decisionPuller := CreateConsensusDecisionReplicator(config, seekInfo, logger)
+	r.decisionPuller = CreateConsensusDecisionReplicator(rconfig, seekInfo, r.logger)
 
-	verifier := createVerifier(config)
+	r.metrics = NewRouterMetrics(rconfig, r.logger)
 
-	configSubmitter := NewConfigSubmitter(config, logger, verifier, signer, configUpdateProposer, configRulesVerifier)
+	// initialize channels and once
+	r.stopChan = make(chan struct{})
+	r.drainChan = make(chan struct{})
+	r.stopOnce = sync.Once{}
+	r.drainOnce = sync.Once{}
 
-	metrics := NewRouterMetrics(config, logger)
-
-	r := createRouter(shardIDs, batcherEndpoints, tlsCAsOfBatchers, metrics, config, configuration, logger, mainExitChan, verifier, signer, configStore, configSubmitter, decisionPuller, routerWAL)
 	r.init()
+
 	r.metrics.Start()
-	return r
+
+	r.logger.Infof("Router with PartyID: %d has been initialized from config with sequence: %d", rconfig.PartyID, r.configSeq)
 }
 
 // getNextDecisionNumber return the number of the next decision to be pulled from consensus, based on the last config block stored in config store and the decision stored in WAL.
@@ -313,46 +361,6 @@ func (r *Router) init() {
 
 func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 	return fmt.Errorf("not implemented")
-}
-
-func createRouter(shardIDs []types.ShardID, batcherEndpoints map[types.ShardID]string, batcherRootCAs map[types.ShardID][][]byte, metrics *RouterMetrics, rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configStore *configstore.Store, configSubmitter ConfigurationSubmitter, decisionPuller DecisionPuller, routerWAL *wal.WriteAheadLogFile) *Router {
-	if rconfig.NumOfConnectionsForBatcher == 0 {
-		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
-	}
-
-	if rconfig.NumOfgRPCStreamsPerConnection == 0 {
-		rconfig.NumOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
-	}
-
-	r := &Router{
-		mapper: MapperCRC64{
-			Logger:     logger,
-			ShardCount: uint16(len(shardIDs)),
-		},
-		shardRouters:         make(map[types.ShardID]*ShardRouter),
-		logger:               logger,
-		shardIDs:             shardIDs,
-		routerNodeConfig:     rconfig,
-		configuration:        configuration,
-		verifier:             verifier,
-		signer:               signer,
-		configStore:          configStore,
-		configSubmitter:      configSubmitter,
-		decisionPuller:       decisionPuller,
-		stopChan:             make(chan struct{}),
-		drainChan:            make(chan struct{}),
-		stopSignalListenChan: make(chan struct{}),
-		mainExitChan:         mainExitChan,
-		metrics:              metrics,
-		configSeq:            uint32(rconfig.Bundle.ConfigtxValidator().Sequence()),
-		wal:                  routerWAL,
-	}
-
-	for _, shardId := range shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(logger, batcherEndpoints[shardId], batcherRootCAs[shardId], rconfig.TLSCertificateFile, rconfig.TLSPrivateKeyFile, rconfig.NumOfConnectionsForBatcher, rconfig.NumOfgRPCStreamsPerConnection, verifier, configSubmitter)
-	}
-
-	return r
 }
 
 func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
