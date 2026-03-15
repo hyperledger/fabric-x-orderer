@@ -80,7 +80,7 @@ func (c *ConsensusLedger) Append(number uint64, proposal smartbft_types.Proposal
 	}
 
 	block := &common.Block{
-		Header: &common.BlockHeader{ // TODO change sig over proposal to be over this header
+		Header: &common.BlockHeader{
 			Number:       number,
 			DataHash:     protoutil.ComputeBlockDataHash(data),
 			PreviousHash: c.prevHash,
@@ -93,7 +93,7 @@ func (c *ConsensusLedger) Append(number uint64, proposal smartbft_types.Proposal
 	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
 		LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
 		ConsenterMetadata: proposal.Metadata,
-	}) // TODO also sign this
+	})
 
 	err := c.ledger.Append(block)
 	if err != nil {
@@ -105,6 +105,18 @@ func (c *ConsensusLedger) Append(number uint64, proposal smartbft_types.Proposal
 	if c.appendListener != nil {
 		c.appendListener.OnAppend(block)
 	}
+}
+
+func (c *ConsensusLedger) GetPrevHash() []byte {
+	return c.prevHash
+}
+
+func (c *ConsensusLedger) GetPrevHashByNumber(number uint64) ([]byte, error) {
+	block, err := c.RetrieveBlockByNumber(number - 1)
+	if err != nil {
+		return nil, err
+	}
+	return protoutil.BlockHeaderHash(block.Header), nil
 }
 
 func (c *ConsensusLedger) Iterator(startType *ab.SeekPosition) (blockledger.Iterator, uint64) {
