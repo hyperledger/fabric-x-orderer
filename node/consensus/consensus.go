@@ -44,7 +44,7 @@ import (
 )
 
 type Storage interface {
-	Append([]byte)
+	Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64)
 	Close()
 }
 
@@ -711,8 +711,6 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 // It returns whether this proposal was a reconfiguration and the current config.
 // (from SmartBFT API)
 func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) smartbft_types.Reconfig {
-	rawDecision := state.DecisionToBytes(proposal, signatures)
-
 	hdr := &state.Header{}
 	if err := hdr.Deserialize(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing header: %v", err)
@@ -735,7 +733,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// This is true because a Index(digests) with the same digests is idempotent.
 
 	c.Arma.Index(digests)
-	c.Storage.Append(rawDecision)
+	c.Storage.Append(uint64(hdr.Num), proposal, signatures, uint64(c.decisionNumOfLastConfigBlock))
 
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)

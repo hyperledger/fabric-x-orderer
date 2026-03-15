@@ -355,7 +355,7 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 			}).Serialize(),
 			Metadata: nil,
 		}
-		ledger.Append(state.DecisionToBytes(genesisProposal, nil))
+		ledger.Append(0, genesisProposal, nil, 0)
 		return initState, &smartbftprotos.ViewMetadata{}
 	}
 
