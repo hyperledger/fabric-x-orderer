@@ -132,17 +132,16 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
 		}
 
-		hdr := &state.Header{}
-		if err := hdr.Deserialize(proposal.Header); err != nil {
-			s.logger.Panicf("Failed deserializing header: %v", err)
-		}
-
-		if hdr.DecisionNumOfLastConfigBlock != hdr.Num { // not a config block
+		// No need to prune the genesis block, as it doesn't contain any requests. Moreover, the genesis block payload is not of type `BatchedRequests`.
+		if latestBlock.GetHeader().GetNumber() > 0 {
 			var batch arma_types.BatchedRequests
 			if err := batch.Deserialize(proposal.Payload); err != nil {
 				s.logger.Panicf("Failed deserializing proposal payload: %v", err)
 			}
 
+			// Prune every request in the batch from the mempool, as they are now committed.
+			// This is needed to prevent the mempool from growing indefinitely with requests that are already committed.
+			// All requests are pruned, including config requests.
 			for _, req := range batch {
 				s.pruneRequestsFromMemPool(req)
 			}

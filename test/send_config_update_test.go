@@ -746,79 +746,11 @@ func TestAddNewParty(t *testing.T) {
 		Signer:       pullRequestSigner,
 	})
 
-	addedNetInfo, addedPartyConfig := testutil.ExtendNetwork(t, configPath)
-	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true)
+	// Create config update to add a party
+	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	addedPartyId, addedNetInfo := prepareAddPartyConfigUpdate(t, dir, configUpdateBuilder)
 
-	// Create config update
-	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
-
-	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
-	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)
-	addedOrg := fmt.Sprintf("org%d", addedPartyId)
-
-	consenterConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_consenter.yaml"))
-	require.NoError(t, err)
-	consenterTlsCert, err := os.ReadFile(consenterConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-	require.NoError(t, err)
-	routerLocalConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_router.yaml"))
-	require.NoError(t, err)
-	routerTlsCert, err := os.ReadFile(routerLocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-	require.NoError(t, err)
-	assemblerConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_assembler.yaml"))
-	require.NoError(t, err)
-	assemblerTlsCert, err := os.ReadFile(assemblerConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-	require.NoError(t, err)
-
-	batchersConfig := make([]*protos.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
-
-	for i := range addedPartyConfig.Parties[0].BatchersEndpoints {
-		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)))
-		require.NoError(t, err)
-		batcherTlsCert, err := os.ReadFile(batcherNodeConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-		require.NoError(t, err)
-		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-		require.NoError(t, err)
-
-		batchersConfig[i] = &protos.BatcherNodeConfig{
-			ShardID:  uint32(i + 1),
-			Host:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			TlsCert:  batcherTlsCert,
-			SignCert: batcherSignCert,
-		}
-	}
-
-	caCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "cacerts", "ca-cert.pem"))
-	require.NoError(t, err)
-	tlsCACerts, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
-	require.NoError(t, err)
-	consenterSignCert, err := os.ReadFile(filepath.Join(consenterConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-	require.NoError(t, err)
-
-	configUpdatePbData := configUpdateBuilder.AddNewParty(t, &protos.PartyConfig{
-		CACerts:    [][]byte{caCerts},
-		TLSCACerts: [][]byte{tlsCACerts},
-		ConsenterConfig: &protos.ConsenterNodeConfig{
-			Host:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			SignCert: consenterSignCert,
-			TlsCert:  consenterTlsCert,
-		},
-		RouterConfig: &protos.RouterNodeConfig{
-			Host:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			TlsCert: routerTlsCert,
-		},
-		AssemblerConfig: &protos.AssemblerNodeConfig{
-			Host:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			TlsCert: assemblerTlsCert,
-		},
-		BatchersConfig: batchersConfig,
-	})
-
-	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -1491,6 +1423,11 @@ func TestChangePartyCACertificates(t *testing.T) {
 	// 6.
 	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
+	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
+	require.NoError(t, err)
+	oldSigner, oldCertBytes, err := testutil.LoadCryptoMaterialsFromDir(t, oldUC.MSPDir)
+	require.NoError(t, err)
+
 	// Override the party's crypto materials with the new ones regenerated
 	dstDir := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg)
 	err = os.RemoveAll(dstDir)
@@ -1542,8 +1479,6 @@ func TestChangePartyCACertificates(t *testing.T) {
 		totalTxNumber++
 	}
 
-	broadcastClient.Stop()
-
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
@@ -1556,6 +1491,14 @@ func TestChangePartyCACertificates(t *testing.T) {
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})
+
+	// Try sending a transaction with the old certificate which should fail as the old cert is no longer trusted by the network
+	txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+	env = tx.CreateSignedStructuredEnvelope(txContent, oldSigner, oldCertBytes, fmt.Sprintf("org%d", partyToUpdate))
+	err = broadcastClient.SendTx(env)
+	require.ErrorContains(t, err, "signature did not satisfy policy", "expected error when sending transaction with old certificate after CA rotation, but got no error")
+
+	broadcastClient.Stop()
 }
 
 type copyPredicate func(path string, d os.DirEntry) bool
@@ -1628,4 +1571,78 @@ func uniqueFileName(path string) string {
 		}
 		base = name + "-bak" + strconv.Itoa(i) + ext
 	}
+}
+
+// prepareAddPartyConfigUpdate prepares a config update to add a new party to the network and returns the new party ID,
+// the updated network info with the new party's nodes, and the config update protobuf data.
+func prepareAddPartyConfigUpdate(t *testing.T, dir string, configUpdateBuilder *configutil.ConfigUpdateBuilder) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
+	addedNetInfo, addedPartyConfig := testutil.ExtendNetwork(t, filepath.Join(dir, "config.yaml"))
+	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true)
+
+	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
+	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)
+	addedOrg := fmt.Sprintf("org%d", addedPartyId)
+
+	consenterConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_consenter.yaml"))
+	require.NoError(t, err)
+	consenterTlsCert, err := os.ReadFile(consenterConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+	require.NoError(t, err)
+	routerLocalConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_router.yaml"))
+	require.NoError(t, err)
+	routerTlsCert, err := os.ReadFile(routerLocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+	require.NoError(t, err)
+	assemblerConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_assembler.yaml"))
+	require.NoError(t, err)
+	assemblerTlsCert, err := os.ReadFile(assemblerConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+	require.NoError(t, err)
+
+	batchersConfig := make([]*protos.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
+
+	for i := range addedPartyConfig.Parties[0].BatchersEndpoints {
+		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)))
+		require.NoError(t, err)
+		batcherTlsCert, err := os.ReadFile(batcherNodeConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
+		require.NoError(t, err)
+		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+		require.NoError(t, err)
+
+		batchersConfig[i] = &protos.BatcherNodeConfig{
+			ShardID:  uint32(i + 1),
+			Host:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+			Port:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+			TlsCert:  batcherTlsCert,
+			SignCert: batcherSignCert,
+		}
+	}
+
+	caCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "cacerts", "ca-cert.pem"))
+	require.NoError(t, err)
+	tlsCACerts, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
+	require.NoError(t, err)
+	consenterSignCert, err := os.ReadFile(filepath.Join(consenterConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
+	require.NoError(t, err)
+
+	configUpdateBuilder.AddNewParty(t, &protos.PartyConfig{
+		CACerts:    [][]byte{caCerts},
+		TLSCACerts: [][]byte{tlsCACerts},
+		ConsenterConfig: &protos.ConsenterNodeConfig{
+			Host:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+			Port:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+			SignCert: consenterSignCert,
+			TlsCert:  consenterTlsCert,
+		},
+		RouterConfig: &protos.RouterNodeConfig{
+			Host:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+			Port:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+			TlsCert: routerTlsCert,
+		},
+		AssemblerConfig: &protos.AssemblerNodeConfig{
+			Host:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+			Port:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+			TlsCert: assemblerTlsCert,
+		},
+		BatchersConfig: batchersConfig,
+	})
+
+	return addedPartyId, addedNetInfo
 }
