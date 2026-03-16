@@ -154,10 +154,12 @@ func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 		panic("failed to marshal fake signature msgs: " + err.Error())
 	}
 	signatures := []smartbft_types.Signature{{Value: sigBytes, Msg: msgsBytes}}
-	bytes := state.DecisionToBytes(proposal, signatures)
-
-	sc.decisions <- &common.Block{
+	bytes := state.DecisionToBytes(proposal, nil)
+	block := &common.Block{
 		Header: ba.OrderingInformation.CommonBlock.Header,
 		Data:   &common.BlockData{Data: [][]byte{bytes}},
 	}
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
+	sc.decisions <- block
 }

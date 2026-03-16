@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -38,13 +39,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
 type Storage interface {
-	Append([]byte)
+	Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64)
 	Close()
 }
 
@@ -385,7 +385,7 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 		return nil, err
 	}
 
-	lastConfigBlockNum := c.getLastConfigBlockNum()
+	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
 
 	var hdr state.Header
 	if err := hdr.Deserialize(prop.Header); err != nil {
@@ -396,7 +396,8 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	if err := proposalMsg.Unmarshal(msgs[0]); err != nil {
 		return nil, err
 	}
-	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, lastConfigBlockNum); err != nil {
+
+	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, uint64(hdr.Num), decisionNumOfLastConfigBlock); err != nil {
 		return nil, errors.Wrap(err, "failed verifying proposal msg")
 	}
 	if err := c.VerifySignature(smartbft_types.Signature{
@@ -427,7 +428,7 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	return nil, nil
 }
 
-func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, lastConfigBlockNum uint64) error {
+func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, num uint64, decisionNumOfLastConfigBlock uint64) error {
 	idHeader, err := protoutil.UnmarshalIdentifierHeader(proposalMsg.IdentifierHeader)
 	if err != nil {
 		return errors.Wrap(err, "failed to unmarshal identifier header from proposal message")
@@ -436,11 +437,22 @@ func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID u
 		return errors.Errorf("signature ID %d does not match identifier header ID %d in proposal message", signatureID, idHeader.GetIdentifier())
 	}
 
+	proposalBytes := state.DecisionToBytes(proposal, nil)
+
+	proposalData := &common.BlockData{
+		Data: [][]byte{proposalBytes},
+	}
+
+	proposalMsgBlockHeader := &common.BlockHeader{
+		Number:   num,
+		DataHash: protoutil.ComputeBlockDataHash(proposalData),
+	}
+
 	computedProposalMsg := &state.MessageToSign{
-		BlockHeader:      []byte(proposal.Digest()),
+		BlockHeader:      protoutil.BlockHeaderBytes(proposalMsgBlockHeader),
 		IdentifierHeader: proposalMsg.IdentifierHeader,
 		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
-			LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+			LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
 			ConsenterMetadata: proposal.Metadata,
 		}),
 	}
@@ -564,13 +576,25 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	sigs := make([][]byte, 0)
 	msgs := make([][]byte, 0)
 
-	lastConfigBlockNum := c.getLastConfigBlockNum()
+	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
+
+	proposalBytes := state.DecisionToBytes(proposal, nil) // TODO maybe use asn1 marshal proposal instead
+
+	proposalData := &common.BlockData{
+		Data: [][]byte{proposalBytes},
+	}
+
+	proposalMsgBlockHeader := &common.BlockHeader{
+		Number:   uint64(hdr.Num),
+		DataHash: protoutil.ComputeBlockDataHash(proposalData),
+		// TODO add prev hash
+	}
 
 	proposalMsg := &state.MessageToSign{
-		BlockHeader:      []byte(proposal.Digest()), // we use digest here since the proposal header is not a common block header, and the digest binds the header to the proposal
+		BlockHeader:      protoutil.BlockHeaderBytes(proposalMsgBlockHeader),
 		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.Config.PartyId)),
 		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
-			LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+			LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
 			ConsenterMetadata: proposal.Metadata,
 		}),
 	}
@@ -711,8 +735,6 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 // It returns whether this proposal was a reconfiguration and the current config.
 // (from SmartBFT API)
 func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) smartbft_types.Reconfig {
-	rawDecision := state.DecisionToBytes(proposal, signatures)
-
 	hdr := &state.Header{}
 	if err := hdr.Deserialize(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing header: %v", err)
@@ -735,7 +757,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// This is true because a Index(digests) with the same digests is idempotent.
 
 	c.Arma.Index(digests)
-	c.Storage.Append(rawDecision)
+	c.Storage.Append(uint64(hdr.Num), proposal, signatures, c.getDecisionNumOfLastConfigBlock())
 
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)
@@ -793,10 +815,16 @@ func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
 	return txCount
 }
 
-func (c *Consensus) getLastConfigBlockNum() uint64 {
+func (c *Consensus) getDecisionNumOfLastConfigBlock() uint64 {
 	c.stateLock.Lock()
 	defer c.stateLock.Unlock()
-	return c.lastConfigBlockNum
+	return uint64(c.decisionNumOfLastConfigBlock)
+}
+
+func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
+	return uint64(c.decisionNumOfLastConfigBlock), c.lastConfigBlockNum
 }
 
 func (c *Consensus) pickEndpoint() string {
