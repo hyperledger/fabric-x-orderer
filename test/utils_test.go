@@ -688,7 +688,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 
 		if blockHandler != nil {
 			if err := blockHandler.HandleBlock(t, block); err != nil {
-				toCancel()
+				return errors.Wrapf(err, "error handling block %d", block.Header.Number)
 			}
 		}
 

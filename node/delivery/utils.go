@@ -41,7 +41,7 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 
 	// An optimization would be to unmarshal just the header and sigs, skipping the proposal payload and metadata which we don't need here.
 	// An even better optimization would be to ask for content type that does not include the proposal payload and metadata.
-	proposal, compoundSigs, err := state.BytesToDecision(block.GetData().GetData()[0])
+	proposal, _, err := state.BytesToDecision(block.GetData().GetData()[0])
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to extract decision from block: %d", block.GetHeader().GetNumber())
 	}
@@ -54,6 +54,26 @@ func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smar
 	if stateHeader.Num == 0 { // this is the genesis block
 		sigs := make([][]smartbft_types.Signature, 1) // no signatures
 		return stateHeader, sigs, nil
+	}
+
+	// Check if block metadata is nil
+	if block.GetMetadata() == nil {
+		return nil, nil, errors.Errorf("block metadata is nil for block: %d", block.GetHeader().GetNumber())
+	}
+
+	// Check if metadata array is nil or index is out of range
+	metadata := block.GetMetadata().GetMetadata()
+	if metadata == nil {
+		return nil, nil, errors.Errorf("block metadata array is nil for block: %d", block.GetHeader().GetNumber())
+	}
+	if int(common.BlockMetadataIndex_SIGNATURES) >= len(metadata) {
+		return nil, nil, errors.Errorf("block metadata index %d is out of range (length: %d) for block: %d",
+			common.BlockMetadataIndex_SIGNATURES, len(metadata), block.GetHeader().GetNumber())
+	}
+
+	compoundSigs, err := state.BytesToDecisionSignatures(metadata[common.BlockMetadataIndex_SIGNATURES])
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to extract signatures from block: %d", block.GetHeader().GetNumber())
 	}
 
 	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableCommonBlocks))

@@ -355,7 +355,7 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 			}).Serialize(),
 			Metadata: nil,
 		}
-		ledger.Append(state.DecisionToBytes(genesisProposal, nil))
+		ledger.Append(0, genesisProposal, nil, 0)
 		return initState, &smartbftprotos.ViewMetadata{}
 	}
 
@@ -1008,6 +1008,20 @@ func TestSignProposal(t *testing.T) {
 		BAFDeserializer: &state.BAFDeserialize{},
 	}
 
+	ledger, err := ledger.NewConsensusLedger(dir)
+	assert.NoError(t, err)
+
+	genesisCommonBlock := &common.Block{Header: &common.BlockHeader{Number: 0}}
+	genesisProposal := smartbft_types.Proposal{
+		Header: (&state.Header{
+			AvailableCommonBlocks: []*common.Block{genesisCommonBlock},
+			State:                 &initialState,
+			Num:                   0,
+		}).Serialize(),
+		Metadata: nil,
+	}
+	ledger.Append(0, genesisProposal, nil, 0)
+
 	c := &node_consensus.Consensus{
 		Arma:        consenter,
 		State:       &initialState,
@@ -1018,6 +1032,7 @@ func TestSignProposal(t *testing.T) {
 			PartyId:   1,
 			BFTConfig: smartbft_types.Configuration{SelfID: 1},
 		},
+		Storage: ledger,
 	}
 
 	proposal := smartbft_types.Proposal{}
