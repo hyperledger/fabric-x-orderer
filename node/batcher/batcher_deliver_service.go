@@ -48,7 +48,7 @@ func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverSe
 		},
 	}
 
-	return handler.Handle(context.Background(), &deliver.Server{
+	return handler.Handle(stream.Context(), &deliver.Server{
 		PolicyChecker:  &policyChecker{},
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
