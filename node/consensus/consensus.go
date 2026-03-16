@@ -45,8 +45,6 @@ import (
 
 type Storage interface {
 	Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64)
-	GetPrevHash() []byte
-	GetPrevHashByNumber(number uint64) ([]byte, error)
 	Close()
 }
 
@@ -399,11 +397,7 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 		return nil, err
 	}
 
-	prevHash, err := c.Storage.GetPrevHashByNumber(uint64(hdr.Num))
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed getting prev hash for proposal with num %d", hdr.Num)
-	}
-	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, uint64(hdr.Num), decisionNumOfLastConfigBlock, prevHash); err != nil {
+	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, uint64(hdr.Num), decisionNumOfLastConfigBlock); err != nil {
 		return nil, errors.Wrap(err, "failed verifying proposal msg")
 	}
 	if err := c.VerifySignature(smartbft_types.Signature{
@@ -434,7 +428,7 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	return nil, nil
 }
 
-func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, num uint64, decisionNumOfLastConfigBlock uint64, prevHash []byte) error {
+func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, num uint64, decisionNumOfLastConfigBlock uint64) error {
 	idHeader, err := protoutil.UnmarshalIdentifierHeader(proposalMsg.IdentifierHeader)
 	if err != nil {
 		return errors.Wrap(err, "failed to unmarshal identifier header from proposal message")
@@ -450,9 +444,8 @@ func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID u
 	}
 
 	proposalMsgBlockHeader := &common.BlockHeader{
-		Number:       num,
-		DataHash:     protoutil.ComputeBlockDataHash(proposalData),
-		PreviousHash: prevHash,
+		Number:   num,
+		DataHash: protoutil.ComputeBlockDataHash(proposalData),
 	}
 
 	computedProposalMsg := &state.MessageToSign{
@@ -592,9 +585,9 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	}
 
 	proposalMsgBlockHeader := &common.BlockHeader{
-		Number:       uint64(hdr.Num),
-		DataHash:     protoutil.ComputeBlockDataHash(proposalData),
-		PreviousHash: c.Storage.GetPrevHash(),
+		Number:   uint64(hdr.Num),
+		DataHash: protoutil.ComputeBlockDataHash(proposalData),
+		// TODO add prev hash
 	}
 
 	proposalMsg := &state.MessageToSign{

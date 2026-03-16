@@ -107,18 +107,6 @@ func (c *ConsensusLedger) Append(number uint64, proposal smartbft_types.Proposal
 	}
 }
 
-func (c *ConsensusLedger) GetPrevHash() []byte {
-	return c.prevHash
-}
-
-func (c *ConsensusLedger) GetPrevHashByNumber(number uint64) ([]byte, error) {
-	block, err := c.RetrieveBlockByNumber(number - 1)
-	if err != nil {
-		return nil, err
-	}
-	return protoutil.BlockHeaderHash(block.Header), nil
-}
-
 func (c *ConsensusLedger) Iterator(startType *ab.SeekPosition) (blockledger.Iterator, uint64) {
 	return c.ledger.Iterator(startType)
 }
