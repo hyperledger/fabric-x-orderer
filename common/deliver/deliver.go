@@ -216,13 +216,13 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 	}
 
 	labels := []string{
-		"channel", chdr.ChannelId,
-		"filtered", strconv.FormatBool(isFiltered(srv)),
-		"data_type", srv.DataType(),
+		chdr.ChannelId,
+		strconv.FormatBool(isFiltered(srv)),
+		srv.DataType(),
 	}
 	h.Metrics.RequestsReceived.With(labels...).Add(1)
 	defer func() {
-		labels := append(labels, "success", strconv.FormatBool(status == cb.Status_SUCCESS))
+		labels := append(labels, strconv.FormatBool(status == cb.Status_SUCCESS))
 		h.Metrics.RequestsCompleted.With(labels...).Add(1)
 	}()
 

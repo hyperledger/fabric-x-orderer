@@ -156,7 +156,7 @@ func NewDefaultAssembler(
 	prefetcher.Start()
 
 	assembler := &Assembler{
-		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, config),
+		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, config, metrics.deliverMetrics),
 		collator: Collator{
 			Shards:                            shardIds,
 			OrderedBatchAttestationReplicator: baReplicator,
