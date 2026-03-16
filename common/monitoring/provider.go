@@ -123,6 +123,10 @@ func (p *Provider) NewCounter(o metrics.CounterOpts) metrics.Counter {
 	}
 
 	p.registry.MustRegister(c.cv)
+
+	if len(o.LabelNames) == 0 {
+		c.Counter = c.cv.WithLabelValues()
+	}
 	return c
 }
 
