@@ -185,8 +185,27 @@ func ConsenterBlockToDecision(block *common.Block) *smartbft_types.Decision {
 	if block.Data == nil || len(block.Data.Data) == 0 {
 		return nil
 	}
-	// TODO this is going to change following the work on issue 639.
-	proposal, compoundSigs, err := state.BytesToDecision(block.GetData().GetData()[0])
+
+	proposal, err := state.BytesToProposal(block.GetData().GetData()[0])
+	if err != nil {
+		return nil
+	}
+
+	// Check if block metadata is nil
+	if block.GetMetadata() == nil {
+		return nil
+	}
+
+	// Check if metadata array is nil or index is out of range
+	metadata := block.GetMetadata().GetMetadata()
+	if metadata == nil {
+		return nil
+	}
+	if int(common.BlockMetadataIndex_SIGNATURES) >= len(metadata) {
+		return nil
+	}
+
+	compoundSigs, err := state.BytesToDecisionSignatures(metadata[common.BlockMetadataIndex_SIGNATURES])
 	if err != nil {
 		return nil
 	}

@@ -456,7 +456,7 @@ func makeSureConfigBlockCommittedAndStopConsensusNodes(t *testing.T, consensusNo
 			}
 		}, 30*time.Second, 100*time.Millisecond)
 
-		proposal, _, err := state.BytesToDecision(lastDecision.Data.Data[0])
+		proposal, err := state.BytesToProposal(lastDecision.Data.Data[0])
 		require.NotNil(t, proposal)
 		require.NoError(t, err)
 		header := &state.Header{}

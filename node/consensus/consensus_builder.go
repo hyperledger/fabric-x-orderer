@@ -279,9 +279,9 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 		panic("couldn't retrieve last block from ledger")
 	}
 
-	proposal, _, err := state.BytesToDecision(block.Data.Data[0])
+	proposal, err := state.BytesToProposal(block.Data.Data[0])
 	if err != nil {
-		panic("couldn't read decision from last block")
+		panic("couldn't read proposal from last block")
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
@@ -374,9 +374,9 @@ func getTxCount(consensusLedger *ledger.ConsensusLedger) uint64 {
 		if err != nil {
 			panic("couldn't retrieve last block from ledger")
 		}
-		proposal, _, err := state.BytesToDecision(block.Data.Data[0])
+		proposal, err := state.BytesToProposal(block.Data.Data[0])
 		if err != nil {
-			panic("couldn't read decision from last block")
+			panic("couldn't read proposal from last block")
 		}
 		header := &state.Header{}
 		if err := header.Deserialize(proposal.Header); err != nil {
