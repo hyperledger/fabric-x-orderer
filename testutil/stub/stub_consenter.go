@@ -8,10 +8,8 @@ package stub
 
 import (
 	"context"
-	"encoding/asn1"
 	"fmt"
 	"net"
-	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -216,18 +214,7 @@ func (sc *StubConsenter) DeliverDecisionFromHeader(header *state.Header) error {
 		Header: header.Serialize(),
 	}
 
-	// Dummy compound signatures
-	sigs := [][]byte{}
-	for i := 0; i <= len(header.AvailableCommonBlocks); i++ {
-		sigs = append(sigs, []byte(strconv.Itoa(i)))
-	}
-	sigBytes, err := asn1.Marshal(sigs)
-	if err != nil {
-		return fmt.Errorf("failed to marshal fake signature: %s", err.Error())
-	}
-
-	signatures := []smartbft_types.Signature{{Value: sigBytes}}
-	bytes := state.DecisionToBytes(proposal, signatures)
+	bytes := state.ProposalToBytes(proposal)
 
 	sc.decisions <- &common.Block{
 		Header: &common.BlockHeader{}, // dummy header - maybe fill if needed

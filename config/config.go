@@ -617,9 +617,9 @@ func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.Consensu
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve last block %d from consensus ledger: %s", lastBlockIdx, err)
 	}
-	proposal, _, err := state.BytesToDecision(lastBlock.Data.Data[0])
+	proposal, err := state.BytesToProposal(lastBlock.Data.Data[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to read decision from last block in consensus ledger: %s", err)
+		return nil, fmt.Errorf("failed to read proposal from last block in consensus ledger: %s", err)
 	}
 
 	header := &state.Header{}
@@ -633,9 +633,9 @@ func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.Consensu
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve decision of the last config block from consensus ledger: %s", err)
 	}
-	proposal, _, err = state.BytesToDecision(decisionOfLastConfigBlock.Data.Data[0])
+	proposal, err = state.BytesToProposal(decisionOfLastConfigBlock.Data.Data[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to read decision from last config block in consensus ledger: %s", err)
+		return nil, fmt.Errorf("failed to read proposal from last config block in consensus ledger: %s", err)
 	}
 	header = &state.Header{}
 	if err := header.Deserialize(proposal.Header); err != nil {

@@ -126,7 +126,7 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 		latestBlock = retrievedBlock
 		nextSeqToCommit++
 
-		proposal, _, err := state.BytesToDecision(latestBlock.Data.Data[0])
+		proposal, err := state.BytesToProposal(latestBlock.Data.Data[0])
 		if err != nil {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
 		}
@@ -154,7 +154,7 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 		s.deliver(proposal, signatures)
 	}
 
-	proposal, _, err := state.BytesToDecision(latestBlock.Data.Data[0])
+	proposal, err := state.BytesToProposal(latestBlock.Data.Data[0])
 	if err != nil {
 		s.logger.Panicf("Failed parsing block we pulled: %v", err)
 	}
