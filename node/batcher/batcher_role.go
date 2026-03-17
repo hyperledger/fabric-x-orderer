@@ -210,11 +210,11 @@ func (b *BatcherRole) SoftStop() {
 
 	close(b.stopChan)
 	b.cancelBatch()
+	b.running.Wait()
 	b.MemPool.Halt()
 	for len(b.termChan) > 0 {
 		<-b.termChan // drain term channel
 	}
-	b.running.Wait()
 }
 
 func (b *BatcherRole) getTerm(state *state.State) uint64 {
