@@ -107,8 +107,8 @@ func TestConfigDisseminate(t *testing.T) {
 	}
 
 	// create a config request and submit
-	configReq := tx.CreateStructuredConfigUpdateRequest(payloadBytes)
 	for i := range routers {
+		configReq := tx.CreateStructuredConfigUpdateRequest(payloadBytes)
 		routers[i].Submit(context.Background(), configReq)
 	}
 
