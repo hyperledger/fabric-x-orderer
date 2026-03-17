@@ -68,6 +68,9 @@ type Router struct {
 	wal                  *wal.WriteAheadLogFile
 	signer               identity.SignerSerializer
 	configuration        *config.Configuration
+
+	lock   sync.RWMutex
+	status node_utils.NodeStatus
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
@@ -91,6 +94,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Config
 		shardIDs:             shardIDs,
 		mapper:               CreateMapperCRC64(logger, uint16(len(shardIDs))),
 		stopSignalListenChan: make(chan struct{}),
+		status:               node_utils.NodeStatus{},
 	}
 
 	configStore, err := configstore.NewStore(config.FileStorePath)
@@ -107,6 +111,10 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Config
 func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) {
 	configSeq := rconfig.Bundle.ConfigtxValidator().Sequence()
 	r.logger.Infof("Initializing router with PartyID: %d from config with sequence: %d", rconfig.PartyID, configSeq)
+
+	r.lock.Lock()
+	r.status.Set(node_utils.StateInitializing, configSeq)
+	r.lock.Unlock()
 
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
@@ -233,6 +241,11 @@ func (r *Router) StartRouterService() {
 	node_utils.StopSignalListen(r.stopSignalListenChan, r, r.logger, r.Address())
 
 	go r.pullAndProcessDecisions()
+
+	// update the router state.
+	r.lock.Lock()
+	r.status.SetState(node_utils.StateRunning)
+	r.lock.Unlock()
 }
 
 func (r *Router) MonitoringServiceAddress() string {
@@ -248,31 +261,53 @@ func (r *Router) Address() string {
 }
 
 func (r *Router) Stop() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	state := r.status.GetState()
+	if state == node_utils.StateStopped {
+		return
+	}
+
 	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
 
-	r.net.Stop()
-	r.metrics.Stop()
+	if state != node_utils.StateSoftStopped {
+		r.net.Stop()
+		r.metrics.Stop()
 
-	// stop config submitter goroutine
-	r.configSubmitter.Stop()
+		// stop config submitter goroutine
+		r.configSubmitter.Stop()
 
-	// stop decision puller goroutine
-	r.stopOnce.Do(func() {
-		close(r.stopChan)
-	})
+		// stop decision puller goroutine
+		r.stopOnce.Do(func() {
+			close(r.stopChan)
+		})
 
-	r.wal.Close()
+		r.wal.Close()
 
-	for _, sr := range r.shardRouters {
-		sr.Stop()
+		for _, sr := range r.shardRouters {
+			sr.Stop()
+		}
 	}
 
 	close(r.stopSignalListenChan)
 
+	r.status.SetState(node_utils.StateStopped)
+
+	r.logger.Infof("Router on %s, PartyID: %d, has been stopped", r.net.Address(), r.routerNodeConfig.PartyID)
+	// close the whole process.
 	close(r.mainExitChan)
 }
 
 func (r *Router) SoftStop() error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	state := r.status.GetState()
+	if state == node_utils.StateStopped || state == node_utils.StateSoftStopped {
+		return fmt.Errorf("soft stop failed: router is already in state: %s", state.String())
+	}
+
 	routerAddress := r.net.Address()
 	partyID := r.routerNodeConfig.PartyID
 
@@ -302,7 +337,9 @@ func (r *Router) SoftStop() error {
 	r.net.Stop() // this will close all client connections, so some (immediate) responses may not be sent.
 	r.metrics.Stop()
 
-	r.logger.Warnf("Router on %s, PartyID: %d, has been stopped. Pending restart", routerAddress, partyID)
+	r.status.SetState(node_utils.StateSoftStopped)
+
+	r.logger.Warnf("Router on %s, PartyID: %d, has been soft stopped", routerAddress, partyID)
 
 	return nil
 }
@@ -648,4 +685,16 @@ func (r *Router) GetConfigStoreSize() int {
 		r.logger.Panicf("Failed listing config store block numbers: %s", err)
 	}
 	return len(list)
+}
+
+func (r *Router) GetStatus() node_utils.NodeStatus {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.status
+}
+
+func (r *Router) IsRunning() bool {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.status.GetState() == node_utils.StateRunning
 }
