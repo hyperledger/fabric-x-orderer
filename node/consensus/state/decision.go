@@ -8,8 +8,11 @@ package state
 
 import (
 	"encoding/asn1"
+	"fmt"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/pkg/errors"
 )
 
 type asn1Signature struct {
@@ -25,7 +28,47 @@ type asn1Proposal struct {
 	VerificationSequence int64 // int64 for asn1 marshaling
 }
 
-// TODO add a func to serialize and deserialize a consenter block into a proposal and signatures including basic checks
+// ConsenterBlockToDecision deserializes a consenter block (common.Block) into a decision (proposal and signatures).
+// The proposal is extracted from the block's Data field, and signatures are extracted from the Metadata field.
+// It performs basic validation checks to ensure the block structure is valid.
+func ConsenterBlockToDecision(block *common.Block) (*smartbft_types.Decision, error) {
+	if block == nil {
+		return nil, errors.Errorf("block is nil")
+	}
+
+	if block.Header == nil {
+		return nil, errors.Errorf("block header is nil")
+	}
+
+	if block.Data == nil || len(block.Data.Data) == 0 {
+		return nil, errors.Errorf("data is empty for block: %d", block.Header.Number)
+	}
+
+	if block.Metadata == nil || len(block.Metadata.Metadata) == 0 {
+		return nil, errors.Errorf("metadata is empty for block: %d", block.Header.Number)
+	}
+
+	if int(common.BlockMetadataIndex_SIGNATURES) >= len(block.Metadata.Metadata) {
+		return nil, errors.Errorf("block metadata index %d is out of range (length: %d) for block: %d",
+			common.BlockMetadataIndex_SIGNATURES, len(block.Metadata.Metadata), block.Header.Number)
+	}
+
+	// Extract proposal from block data
+	proposalBytes := block.Data.Data[0]
+	proposal, err := BytesToProposal(proposalBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize proposal for block: %d; err: %s", block.Header.Number, err)
+	}
+
+	// Extract signatures from block metadata
+	signaturesBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
+	signatures, err := BytesToDecisionSignatures(signaturesBytes)
+	if err != nil {
+		return nil, errors.Errorf("failed to deserialize signatures for block: %d; err: %s", block.Header.Number, err)
+	}
+
+	return &smartbft_types.Decision{Proposal: proposal, Signatures: signatures}, nil
+}
 
 func ProposalToBytes(proposal smartbft_types.Proposal) []byte {
 	rawBytes, err := asn1.Marshal(asn1Proposal{
