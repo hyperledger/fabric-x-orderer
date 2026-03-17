@@ -266,6 +266,13 @@ func (rp *Pool) isClosed() bool {
 
 // Halt stops the callbacks of the first and second strikes.
 func (rp *Pool) Halt() {
+	rp.lock.Lock()
+	defer rp.lock.Unlock()
+
+	rp.halt()
+}
+
+func (rp *Pool) halt() {
 	atomic.StoreUint32(&rp.stopped, 1)
 	if !rp.isBatchingEnabled() {
 		rp.pending.Stop()
@@ -288,7 +295,7 @@ func (rp *Pool) Restart(batching bool) {
 		return
 	}
 
-	rp.Halt()
+	rp.halt()
 
 	batchingWasEnabled := rp.isBatchingEnabled()
 
