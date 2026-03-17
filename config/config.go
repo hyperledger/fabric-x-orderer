@@ -605,7 +605,14 @@ func (config *Configuration) extractBundleFromConfigBlock(configBlock *common.Bl
 	return bundle
 }
 
-func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.ConsensusLedger, logger *flogging.FabricLogger) (*common.Block, error) {
+type ConsensusLedgerReader interface {
+	RetrieveBlockByNumber(blockNum uint64) (*common.Block, error)
+	Height() uint64
+}
+
+// GetLastConfigBlockFromConsensusLedger retrieves the last (fabric) config block from the consensus ledger.
+// It returns the last config block by first finding the decision number of the last (decision) config block, retrieves that decision block, and then extracts the fabric config block from it.
+func GetLastConfigBlockFromConsensusLedger(consensusLedger ConsensusLedgerReader, logger *flogging.FabricLogger) (*common.Block, error) {
 	h := consensusLedger.Height()
 	if h == 0 {
 		logger.Infof("Consensus ledger height is 0")
@@ -617,18 +624,35 @@ func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.Consensu
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve last block %d from consensus ledger: %s", lastBlockIdx, err)
 	}
-	proposal, err := state.BytesToProposal(lastBlock.Data.Data[0])
+
+	return GetLastConfigBlockUsingBlockFromConsensusLedger(lastBlock, consensusLedger, logger)
+}
+
+// GetLastConfigBlockUsingBlockFromConsensusLedger retrieves the last (fabric) config block from the consensus ledger, at or before the given (decision) block.
+// It returns the last config block by first finding the decision number of the last (decision) config block, retrieves that decision block, and then extracts the fabric config block from it.
+func GetLastConfigBlockUsingBlockFromConsensusLedger(block *common.Block, consensusLedger ConsensusLedgerReader, logger *flogging.FabricLogger) (*common.Block, error) {
+	if block == nil {
+		return nil, errors.New("block is nil")
+	}
+	if block.Header == nil {
+		return nil, errors.New("block header is missing")
+	}
+	if block.Data == nil || len(block.Data.Data) == 0 {
+		return nil, errors.New("block data is missing")
+	}
+
+	proposal, err := state.BytesToProposal(block.Data.Data[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to read proposal from last block in consensus ledger: %s", err)
+		return nil, fmt.Errorf("failed to read decision from block in consensus ledger: %s", err)
 	}
 
 	header := &state.Header{}
 	if err := header.Deserialize(proposal.Header); err != nil {
-		return nil, fmt.Errorf("failed to deserialize decision header from last block: %s", err)
+		return nil, fmt.Errorf("failed to deserialize decision header from block: %s", err)
 	}
-
+	// TODO get decisionNumOfLastConfigBlock from the metadata of the block instead of the header of the decision
 	decisionNumOfLastConfigBlock := header.DecisionNumOfLastConfigBlock
-	logger.Infof("Decision number of last config block: %d", decisionNumOfLastConfigBlock)
+	logger.Infof("Decision number of last config block: %d, in block: %d", decisionNumOfLastConfigBlock, block.Header.Number)
 	decisionOfLastConfigBlock, err := consensusLedger.RetrieveBlockByNumber(uint64(decisionNumOfLastConfigBlock))
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve decision of the last config block from consensus ledger: %s", err)

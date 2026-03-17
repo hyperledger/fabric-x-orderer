@@ -16,7 +16,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
+	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
@@ -126,11 +126,11 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 			ClientPrivateKey:  conf.TLSPrivateKeyFile,
 			ReplicationPolicy: "",
 		},
-		c,                          // implements synchronizer.BFTConfigGetter,
-		ConsenterBlockToDecision,   // func(block *cb.Block) *types.Decision // TODO look at the assembler
-		c.PruneRequestsFromMemPool, // pruneCommittedRequests func(block *cb.Block),
-		nil,                        // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
-		nil,                        // support ConsenterSupport,
+		c,                                      // implements synchronizer.BFTConfigGetter,
+		ConsenterBlockToDecision,               // func(block *cb.Block) *types.Decision // TODO look at the assembler
+		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),
+		nil,                                    // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
+		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,
 		factory.GetDefault(),
 		nil, // c.ClusterService.Dialer)
 	)
@@ -147,7 +147,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 	return c
 }
 
-func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *consensus.Consensus {
+func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *smartbft_consensus.Consensus {
 	walDir := walPath
 	if walDir == "" {
 		walDir = filepath.Join(c.Config.Directory, "wal")
@@ -158,7 +158,7 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 		c.Logger.Panicf("Failed creating BFT WAL: %v", err)
 	}
 
-	bft := &consensus.Consensus{
+	bft := &smartbft_consensus.Consensus{
 		Config:            c.Config.BFTConfig,
 		Application:       c,
 		Assembler:         c,

@@ -110,6 +110,16 @@ func (c *ConsensusLedger) Iterator(startType *ab.SeekPosition) (blockledger.Iter
 	return c.ledger.Iterator(startType)
 }
 
+// WriteBlock commits a block to the ledger.
+// ConsenterSupport API for BFT synchronizer, will be called by the synchronizer when it needs to commit a block to the ledger.
+func (c *ConsensusLedger) WriteBlock(block *common.Block) {
+	err := c.ledger.Append(block)
+	if err != nil {
+		panic(err)
+	}
+	c.prevHash = protoutil.BlockHeaderHash(block.GetHeader())
+}
+
 func (c *ConsensusLedger) Height() uint64 {
 	return c.ledger.Height()
 }
