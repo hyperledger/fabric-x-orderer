@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package delivery
 
 import (
-	"encoding/binary"
 	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -21,29 +20,44 @@ import (
 )
 
 func extractHeaderFromBlock(block *common.Block, logger *flogging.FabricLogger) *state.Header {
-	decisionAsBytes := block.Data.Data[0]
+	if block == nil {
+		logger.Panic("Block is nil")
+	}
+	if block.GetData() == nil {
+		logger.Panicf("Block data is nil for block: %d", block.GetHeader().GetNumber())
+	}
+	if len(block.GetData().GetData()) == 0 {
+		logger.Panicf("Block data is empty for block: %d", block.GetHeader().GetNumber())
+	}
 
-	headerSize := decisionAsBytes[:4]
-
-	rawHeader := decisionAsBytes[12 : 12+binary.BigEndian.Uint32(headerSize)]
+	proposal, err := state.BytesToProposal(block.GetData().GetData()[0])
+	if err != nil {
+		logger.Panicf("Failed deserializing consenter block: %s", err)
+	}
 
 	header := &state.Header{}
-	if err := header.Deserialize(rawHeader); err != nil {
-		logger.Panicf("Failed parsing rawHeader")
+	if err := header.Deserialize(proposal.Header); err != nil {
+		logger.Panicf("Failed deserializing proposal header: %s", err)
 	}
 	return header
 }
 
 func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smartbft_types.Signature, error) {
+	if block == nil {
+		return nil, nil, errors.New("Block is nil")
+	}
+	if block.GetData() == nil {
+		return nil, nil, errors.Errorf("Block data is nil for block: %d", block.GetHeader().GetNumber())
+	}
 	if len(block.GetData().GetData()) == 0 {
-		return nil, nil, errors.New("missing data in block")
+		return nil, nil, errors.Errorf("Block data is empty for block: %d", block.GetHeader().GetNumber())
 	}
 
 	// An optimization would be to unmarshal just the header and sigs, skipping the proposal payload and metadata which we don't need here.
 	// An even better optimization would be to ask for content type that does not include the proposal payload and metadata.
-	proposal, _, err := state.BytesToDecision(block.GetData().GetData()[0])
+	proposal, err := state.BytesToProposal(block.GetData().GetData()[0])
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to extract decision from block: %d", block.GetHeader().GetNumber())
+		return nil, nil, errors.Wrapf(err, "failed to extract proposal from block: %d", block.GetHeader().GetNumber())
 	}
 
 	stateHeader := &state.Header{}

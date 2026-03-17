@@ -11,6 +11,7 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/stretchr/testify/assert"
@@ -25,10 +26,12 @@ func TestBlockToDecision(t *testing.T) {
 		}
 		signatures := []smartbft_types.Signature{{ID: 10, Value: []byte{11}, Msg: []byte{12}}, {ID: 13, Value: []byte{14}, Msg: []byte{15}}}
 
-		blockDataBytes := state.DecisionToBytes(proposal, signatures)
+		blockDataBytes := state.ProposalToBytes(proposal)
 		block := &common.Block{
 			Data: &common.BlockData{Data: [][]byte{blockDataBytes}},
 		}
+		protoutil.InitBlockMetadata(block)
+		block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
 
 		decision := consensus.ConsenterBlockToDecision(block)
 		assert.NotNil(t, decision)

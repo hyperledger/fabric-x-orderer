@@ -220,7 +220,7 @@ func TestConsensus(t *testing.T) {
 
 					for {
 						b := <-listeners[node.Config.BFTConfig.SelfID-1].c
-						decision, _, err := state.BytesToDecision(b.Data.Data[0])
+						decision, err := state.BytesToProposal(b.Data.Data[0])
 						assert.NoError(t, err)
 
 						hdr := &state.Header{}
@@ -362,7 +362,7 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 	lastBlock, err := ledger.RetrieveBlockByNumber(height - 1)
 	assert.NoError(t, err)
 
-	proposal, _, err := state.BytesToDecision(lastBlock.Data.Data[0])
+	proposal, err := state.BytesToProposal(lastBlock.Data.Data[0])
 	assert.NoError(t, err)
 
 	md := &smartbftprotos.ViewMetadata{}
@@ -1141,7 +1141,7 @@ func TestConsensusStartStop(t *testing.T) {
 	b := <-listener.c
 	assert.Equal(t, uint64(1), b.Header.Number)
 
-	decision, _, err := state.BytesToDecision(b.Data.Data[0])
+	decision, err := state.BytesToProposal(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	hdr := &state.Header{}
@@ -1167,7 +1167,7 @@ func TestConsensusStartStop(t *testing.T) {
 	b = <-listener.c
 	assert.Equal(t, uint64(2), b.Header.Number)
 
-	decision, _, err = state.BytesToDecision(b.Data.Data[0])
+	decision, err = state.BytesToProposal(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	err = hdr.Deserialize(decision.Header)
@@ -1201,7 +1201,7 @@ func TestConsensusStartStop(t *testing.T) {
 	b = <-listener.c
 	assert.Equal(t, uint64(3), b.Header.Number)
 
-	decision, _, err = state.BytesToDecision(b.Data.Data[0])
+	decision, err = state.BytesToProposal(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	err = hdr.Deserialize(decision.Header)
@@ -1222,7 +1222,7 @@ func TestConsensusStartStop(t *testing.T) {
 	b = <-listener.c
 	assert.Equal(t, uint64(4), b.Header.Number)
 
-	decision, _, err = state.BytesToDecision(b.Data.Data[0])
+	decision, err = state.BytesToProposal(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	err = hdr.Deserialize(decision.Header)
@@ -1473,7 +1473,7 @@ func TestConsensusSoftStop(t *testing.T) {
 	b := <-listener.c
 	assert.Equal(t, uint64(1), b.Header.Number)
 
-	decision, _, err := state.BytesToDecision(b.Data.Data[0])
+	decision, err := state.BytesToProposal(b.Data.Data[0])
 	assert.NoError(t, err)
 
 	hdr := &state.Header{}

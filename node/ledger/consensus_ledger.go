@@ -73,8 +73,7 @@ func (l *ConsensusLedger) RegisterAppendListener(listener AppendListener) {
 }
 
 func (c *ConsensusLedger) Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64) {
-	proposalBytes := state.DecisionToBytes(proposal, nil) // TODO maybe use asn1 marshal proposal instead
-
+	proposalBytes := state.ProposalToBytes(proposal)
 	data := &common.BlockData{
 		Data: [][]byte{proposalBytes},
 	}

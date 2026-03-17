@@ -154,7 +154,7 @@ func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 		panic("failed to marshal fake signature msgs: " + err.Error())
 	}
 	signatures := []smartbft_types.Signature{{Value: sigBytes, Msg: msgsBytes}}
-	bytes := state.DecisionToBytes(proposal, nil)
+	bytes := state.ProposalToBytes(proposal)
 	block := &common.Block{
 		Header: ba.OrderingInformation.CommonBlock.Header,
 		Data:   &common.BlockData{Data: [][]byte{bytes}},

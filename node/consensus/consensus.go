@@ -437,7 +437,7 @@ func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID u
 		return errors.Errorf("signature ID %d does not match identifier header ID %d in proposal message", signatureID, idHeader.GetIdentifier())
 	}
 
-	proposalBytes := state.DecisionToBytes(proposal, nil)
+	proposalBytes := state.ProposalToBytes(proposal)
 
 	proposalData := &common.BlockData{
 		Data: [][]byte{proposalBytes},
@@ -578,8 +578,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 
 	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
 
-	proposalBytes := state.DecisionToBytes(proposal, nil) // TODO maybe use asn1 marshal proposal instead
-
+	proposalBytes := state.ProposalToBytes(proposal)
 	proposalData := &common.BlockData{
 		Data: [][]byte{proposalBytes},
 	}
