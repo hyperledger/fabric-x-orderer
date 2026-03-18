@@ -737,17 +737,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 // It returns whether this proposal was a reconfiguration and the current config.
 // (from SmartBFT API)
 func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) smartbft_types.Reconfig {
-	hdr := &state.Header{}
-	if err := hdr.Deserialize(proposal.Header); err != nil {
-		c.Logger.Panicf("Failed deserializing header: %v", err)
-	}
-
-	digests := make([][]byte, 0, len(hdr.AvailableCommonBlocks))
-	for _, ab := range hdr.AvailableCommonBlocks {
-		if !protoutil.IsConfigBlock(ab) {
-			digests = append(digests, ab.GetHeader().GetDataHash())
-		}
-	}
+	hdr, digests := c.headerAndDigestsFromProposal(proposal)
 
 	// Why do we first give Arma the batchAttestations (digests) and then append the decision to storage?
 	// Upon commit, Arma indexes the batch attestations (digests) which passed the threshold in its index,
@@ -761,19 +751,9 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	c.Arma.Index(digests)
 	c.Storage.Append(uint64(hdr.Num), proposal, signatures, c.getDecisionNumOfLastConfigBlock())
 
-	// update metrics
-	c.Metrics.decisionsCount.Add(1)
-	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
-
 	// update state
 	c.stateLock.Lock()
 	c.State = hdr.State
-
-	txCount := c.getLastTxCountFromHeader(hdr)
-	if txCount > 0 {
-		c.Metrics.txsCount.Add(float64(txCount - c.txCount))
-		c.txCount = txCount
-	}
 
 	currentNodes := c.CurrentNodes
 	currentBFTConfig := c.Config.BFTConfig
@@ -798,6 +778,9 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 			// TODO apply reconfig after deliver
 		}
 	}
+
+	c.updateMetricsOnDeliver(hdr)
+
 	c.stateLock.Unlock()
 
 	return smartbft_types.Reconfig{
@@ -805,6 +788,31 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		CurrentConfig:    currentBFTConfig,
 		InLatestDecision: inLatestDecision,
 	}
+}
+
+func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header) {
+	c.Metrics.decisionsCount.Add(1)
+	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
+	txCount := c.getLastTxCountFromHeader(hdr)
+	if txCount > 0 {
+		c.Metrics.txsCount.Add(float64(txCount - c.txCount))
+		c.txCount = txCount
+	}
+}
+
+func (c *Consensus) headerAndDigestsFromProposal(proposal smartbft_types.Proposal) (*state.Header, [][]byte) {
+	hdr := &state.Header{}
+	if err := hdr.Deserialize(proposal.Header); err != nil {
+		c.Logger.Panicf("Failed deserializing header: %v", err)
+	}
+
+	digests := make([][]byte, 0, len(hdr.AvailableCommonBlocks))
+	for _, ab := range hdr.AvailableCommonBlocks {
+		if !protoutil.IsConfigBlock(ab) {
+			digests = append(digests, ab.GetHeader().GetDataHash())
+		}
+	}
+	return hdr, digests
 }
 
 func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
@@ -981,4 +989,9 @@ func (c *Consensus) PruneRequestsFromMemPool(consenterBlock *common.Block) {
 	for _, req := range batch {
 		c.BFT.Pool.RemoveRequest(c.RequestID(req))
 	}
+}
+
+func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_types.Reconfig {
+	// TODO implement update the state and the config bundle according to the given block, and return the new smartbft reconfig struct. For now we just return an empty reconfig struct.
+	return smartbft_types.Reconfig{}
 }

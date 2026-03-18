@@ -11,6 +11,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
 )
 
@@ -104,14 +105,38 @@ func (c *ConsenterSupportAdapter) SharedConfig() channelconfig.Orderer {
 // with its encoded metadata value, blocking until the write is complete.
 // Implements synchronizer.ConsenterSupport.
 func (c *ConsenterSupportAdapter) WriteBlockSync(block *common.Block, encodedMetadataValue []byte) {
-	c.consensus.Storage.WriteBlock(block)
+	// Index the batches before writing the block to the ledger, like we do in Consensus.Deliver.
+	hdr := c.indexAndWrite(block)
+
+	c.consensus.Logger.Infof("BFT Synchronizer wrote consenter block number: %d", hdr.Num)
+	// The state is updated with the call to OnCommit from the BFT synchronizer.
 }
 
 // WriteConfigBlock commits a config block to the ledger and applies the
 // configuration update contained within it.
 // Implements synchronizer.ConsenterSupport.
 func (c *ConsenterSupportAdapter) WriteConfigBlock(block *common.Block, encodedMetadataValue []byte) {
+	// Index the batches before writing the block to the ledger, like we do in Consensus.Deliver.
+	hdr := c.indexAndWrite(block)
+
+	if len(hdr.AvailableCommonBlocks) == 0 {
+		c.consensus.Logger.Panicf("Block %d does not contain a config block", hdr.Num)
+	}
+	configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
+
+	c.consensus.Logger.Infof("BFT Synchronizer wrote consenter block number: %d, which includes a config block number: %d", hdr.Num, configBlock.GetHeader().Number)
+	// The state is updated and the config update is applied with the call to OnCommit from the BFT synchronizer.
+}
+
+func (c *ConsenterSupportAdapter) indexAndWrite(block *common.Block) *state.Header {
+	proposal, err := state.ConsenterBlockToProposal(block)
+	if err != nil {
+		c.consensus.Logger.Panicf("Failed to create proposal from block: %v", err)
+	}
+	hdr, digests := c.consensus.headerAndDigestsFromProposal(*proposal)
+	c.consensus.Arma.Index(digests)
+
 	c.consensus.Storage.WriteBlock(block)
 
-	// TODO apply the config update contained in the block to the consensus struct (Bundle), so that the new config will be returned by the SharedConfig() method.
+	return hdr
 }
