@@ -121,9 +121,9 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 //     - If no party is added, MaxPartyID must remain unchanged.
 //     This ensures PartyIDs are strictly increasing and never reused.
 //  3. At most one party can be removed in a config tx.
-//  4. Only one membership change is allowed per config tx.
+//  4. At most one party can be modified in a config tx.
+//  5. Only one membership change is allowed per config tx (add, remove, or modify).
 //
-// TODO: Validate party modifications (only one certificate / endpoint change in a config tx).
 // TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
 	// extract current shared config
@@ -157,9 +157,15 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	nextMap := make(map[uint32]*config_protos.PartyConfig)
 
 	for _, p := range currCfg.PartiesConfig {
+		if p == nil {
+			return errors.New("party config is nil in current shared config")
+		}
 		currMap[p.PartyID] = p
 	}
 	for _, p := range nextCfg.PartiesConfig {
+		if p == nil {
+			return errors.New("party config is nil in next shared config")
+		}
 		nextMap[p.PartyID] = p
 	}
 
@@ -205,8 +211,27 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	}
 
 	// 4.
-	if added+removed > 1 {
-		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d)", added, removed)
+	modified := 0
+	for id, currParty := range currMap {
+		nextParty, exists := nextMap[id]
+		if !exists {
+			continue
+		}
+		changed, err := validatePartyModification(currParty, nextParty)
+		if err != nil {
+			return errors.Errorf("invalid modification for party ID %d: %v", id, err)
+		}
+		if changed {
+			modified++
+			if modified > 1 {
+				return errors.New("more than one party modified in config tx")
+			}
+		}
+	}
+
+	// 5.
+	if added+removed+modified > 1 {
+		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d, modified=%d)", added, removed, modified)
 	}
 
 	return nil
@@ -382,4 +407,36 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 	}
 
 	return nil
+}
+
+// validatePartyModification checks whether a party was modified.
+// Certificates and endpoints may change, but batcher shard IDs must not.
+func validatePartyModification(curr, next *config_protos.PartyConfig) (bool, error) {
+	// no change
+	if proto.Equal(curr, next) {
+		return false, nil
+	}
+
+	if len(curr.BatchersConfig) != len(next.BatchersConfig) {
+		return false, errors.Errorf("batcher shards cannot change for party %d", curr.PartyID)
+	}
+
+	nextShardIDs := make(map[uint32]struct{}, len(next.BatchersConfig))
+	for _, b := range next.BatchersConfig {
+		if b == nil {
+			return false, errors.Errorf("batcher config is nil for party %d in next config", curr.PartyID)
+		}
+		nextShardIDs[b.ShardID] = struct{}{}
+	}
+
+	for _, b := range curr.BatchersConfig {
+		if b == nil {
+			return false, errors.Errorf("batcher config is nil for party %d in current config", curr.PartyID)
+		}
+		if _, ok := nextShardIDs[b.ShardID]; !ok {
+			return false, errors.Errorf("batcher shard IDs cannot change for party %d", curr.PartyID)
+		}
+	}
+
+	return true, nil
 }
