@@ -8,7 +8,6 @@ package state
 
 import (
 	"encoding/asn1"
-	"fmt"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -57,14 +56,17 @@ func ConsenterBlockToDecision(block *common.Block) (*smartbft_types.Decision, er
 	proposalBytes := block.Data.Data[0]
 	proposal, err := BytesToProposal(proposalBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to deserialize proposal for block: %d; err: %s", block.Header.Number, err)
+		return nil, errors.Wrapf(err, "failed to deserialize proposal for block: %d", block.Header.Number)
 	}
 
 	// Extract signatures from block metadata
 	signaturesBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
+	if len(signaturesBytes) == 0 {
+		return nil, errors.Errorf("signatures metadata is empty for block: %d", block.Header.Number)
+	}
 	signatures, err := BytesToDecisionSignatures(signaturesBytes)
 	if err != nil {
-		return nil, errors.Errorf("failed to deserialize signatures for block: %d; err: %s", block.Header.Number, err)
+		return nil, errors.Wrapf(err, "failed to deserialize signatures for block: %d", block.Header.Number)
 	}
 
 	return &smartbft_types.Decision{Proposal: proposal, Signatures: signatures}, nil

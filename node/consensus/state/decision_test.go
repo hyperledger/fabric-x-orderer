@@ -157,7 +157,7 @@ func TestBytesToDecisionSignatures(t *testing.T) {
 	})
 }
 
-// Helper functions for TestConsenterBlockToProposalAndSignatures
+// Helper functions for TestConsenterBlockToDecision
 
 func createValidTestProposal() smartbft_types.Proposal {
 	return smartbft_types.Proposal{
@@ -268,7 +268,7 @@ func createTestBlockWithNilMetadata(t *testing.T, proposalBytes []byte) *common.
 	return block
 }
 
-func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
+func TestConsenterBlockToDecision(t *testing.T) {
 	tests := []struct {
 		name               string
 		setupBlock         func(t *testing.T) *common.Block
@@ -277,7 +277,7 @@ func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
 		expectedSignatures []smartbft_types.Signature
 	}{
 		{
-			// Validates that ConsenterBlockToProposalAndSignatures correctly extracts
+			// Validates that ConsenterBlockToDecision correctly extracts
 			// proposal and signatures from a properly formatted block
 			name: "valid block with proposal and signatures",
 			setupBlock: func(t *testing.T) *common.Block {
@@ -288,7 +288,7 @@ func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
 			expectedSignatures: createValidTestSignatures(),
 		},
 		{
-			// Validates that ConsenterBlockToProposalAndSignatures properly handles
+			// Validates that ConsenterBlockToDecision properly handles
 			// blocks where the Data field is nil (should return error)
 			name: "block with nil data",
 			setupBlock: func(t *testing.T) *common.Block {
@@ -297,7 +297,7 @@ func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
 			expectError: true,
 		},
 		{
-			// Validates that ConsenterBlockToProposalAndSignatures properly handles
+			// Validates that ConsenterBlockToDecision properly handles
 			// blocks where the Data field contains an empty slice (should return error)
 			name: "block with empty data",
 			setupBlock: func(t *testing.T) *common.Block {
@@ -306,7 +306,7 @@ func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
 			expectError: true,
 		},
 		{
-			// Validates that ConsenterBlockToProposalAndSignatures properly handles
+			// Validates that ConsenterBlockToDecision properly handles
 			// blocks where the Metadata field is nil (should return error)
 			name: "block with nil metadata",
 			setupBlock: func(t *testing.T) *common.Block {
@@ -317,7 +317,7 @@ func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
 			expectError: true,
 		},
 		{
-			// Validates that ConsenterBlockToProposalAndSignatures properly handles
+			// Validates that ConsenterBlockToDecision properly handles
 			// blocks with insufficient metadata entries (should return error)
 			name: "block with insufficient metadata entries",
 			setupBlock: func(t *testing.T) *common.Block {
@@ -329,7 +329,7 @@ func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
 			expectError: true,
 		},
 		{
-			// Validates that ConsenterBlockToProposalAndSignatures properly handles
+			// Validates that ConsenterBlockToDecision properly handles
 			// blocks with malformed proposal bytes (should return error)
 			name: "block with invalid proposal bytes",
 			setupBlock: func(t *testing.T) *common.Block {
@@ -342,7 +342,7 @@ func TestConsenterBlockToProposalAndSignatures(t *testing.T) {
 			expectError: true,
 		},
 		{
-			// Validates that ConsenterBlockToProposalAndSignatures properly handles
+			// Validates that ConsenterBlockToDecision properly handles
 			// blocks with malformed signatures bytes (should return error)
 			name: "block with invalid signatures bytes",
 			setupBlock: func(t *testing.T) *common.Block {

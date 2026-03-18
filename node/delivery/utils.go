@@ -46,9 +46,15 @@ func extractHeaderFromBlock(block *common.Block, logger *flogging.FabricLogger) 
 }
 
 func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smartbft_types.Signature, error) {
+	if block == nil {
+		return nil, nil, errors.New("block is nil")
+	}
+	if block.GetHeader() == nil {
+		return nil, nil, errors.New("block header is nil")
+	}
 	decision, err := state.ConsenterBlockToDecision(block)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to extract decision from consenter block")
+		return nil, nil, errors.Wrapf(err, "failed to extract decision from consenter block: %d", block.GetHeader().GetNumber())
 	}
 
 	header := &state.Header{}

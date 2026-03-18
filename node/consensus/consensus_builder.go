@@ -276,12 +276,12 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 
 	block, err := ledger.RetrieveBlockByNumber(height - 1)
 	if err != nil {
-		panic("couldn't retrieve last block from ledger")
+		panic(fmt.Sprintf("couldn't retrieve last block from ledger: %v", err))
 	}
 
 	decision, err := state.ConsenterBlockToDecision(block)
 	if err != nil {
-		panic("couldn't read decision from last block")
+		panic(fmt.Sprintf("couldn't read decision from last block: %v", err))
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
