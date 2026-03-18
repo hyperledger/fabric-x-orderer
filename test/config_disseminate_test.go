@@ -41,7 +41,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO: remove this test since its written in a unit-test style with dummy config block and mocked verification path
+// TestConfigTXDisseminationWithVerification is implemented instead.
 func TestConfigDisseminate(t *testing.T) {
+	t.Skip()
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 	numParties := 4
