@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-// CreateConsensusConfigBlock created a config block received from consensus.
+// CreateConsensusConfigBlock creates a config block received from consensus.
 func CreateConsensusConfigBlock(bundle channelconfig.Resources, configUpdateEnvelope *common.Envelope, prevBlockHeader *common.BlockHeader, txCount uint64, decisionNum types.DecisionNum, batchCount int, batchIndex int) (*common.Block, error) {
 	configEnvelope, err := bundle.ConfigtxValidator().ProposeConfigUpdate(configUpdateEnvelope)
 	if err != nil {
