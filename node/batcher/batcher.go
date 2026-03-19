@@ -51,6 +51,8 @@ type Net interface {
 }
 
 type Batcher struct {
+	Net Net
+
 	mu                                 sync.RWMutex
 	requestsInspectorVerifier          *RequestsInspectorVerifier
 	batcherDeliverService              *BatcherDeliverService
@@ -63,7 +65,6 @@ type Batcher struct {
 	controlEventBroadcaster            *ControlEventBroadcaster
 	primaryAckConnector                *PrimaryAckConnector
 	primaryReqConnector                *PrimaryReqConnector
-	Net                                Net
 	Ledger                             *node_ledger.BatchLedgerArray
 	ConfigStore                        *configstore.Store
 	config                             *node_config.BatcherNodeConfig
@@ -249,17 +250,7 @@ func (b *Batcher) replicateDecision() {
 							b.logger.Panicf("Failed adding config block to config store: %s", err)
 						}
 						b.logger.Infof("Soft stop")
-						go func() {
-							b.SoftStop()
-							b.logger.Infof("Apply config")
-							err, isAdminOperationRequired := b.ApplyConfig(lastBlock)
-							if err != nil {
-								b.logger.Panicf("Failed applying new config: %s", err)
-							} else if isAdminOperationRequired {
-								b.logger.Infof("Pending admin operation")
-								return
-							}
-						}()
+						go b.processNewConfigBlock(lastBlock)
 						return
 					}
 				} else {
@@ -286,6 +277,18 @@ func (b *Batcher) replicateDecision() {
 		case <-b.stopChan:
 			return
 		}
+	}
+}
+
+func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
+	b.SoftStop()
+	b.logger.Infof("Apply config")
+	err, isAdminOperationRequired := b.ApplyConfig(configBlock)
+	if err != nil {
+		b.logger.Panicf("Failed applying new config: %s", err)
+	} else if isAdminOperationRequired {
+		b.logger.Infof("Pending admin operation")
+		return
 	}
 }
 
@@ -364,7 +367,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (error, bool) {
 	b.logger.Infof("Pruning memory pull")
 	b.batcher.MemPool.Prune(func(req []byte) error {
 		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
-			b.logger.Debugf("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
+			b.logger.Infof("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
 		}
 		return err
 	})

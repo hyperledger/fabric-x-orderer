@@ -117,29 +117,22 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 
 	// find the primary
 	var primaryBatcher *batcher.Batcher
-	var secondaryBatchers []*batcher.Batcher
 	primaryID := batchers[0].GetPrimaryID()
 	for _, b := range batchers {
 		if b.GetPrimaryID() == primaryID {
 			primaryBatcher = b
 			break
 		}
-		secondaryBatchers = append(secondaryBatchers, b)
 	}
 
-	// submit another request
-	req := tx.CreateStructuredRequest([]byte{2})
-	req.ConfigSeq = 1
+	// submit request
+	req := tx.CreateStructuredRequestWithConfigSeq([]byte{2}, 1)
 	primaryBatcher.Submit(context.Background(), req)
 
 	// make sure request was batched
-	require.Eventually(t, func() bool {
-		return primaryBatcher.Ledger.Height(primaryID) == uint64(1)
-	}, 30*time.Second, 10*time.Millisecond)
-
-	for _, secondaryBatcher := range secondaryBatchers {
+	for _, b := range batchers {
 		require.Eventually(t, func() bool {
-			return secondaryBatcher.Ledger.Height(primaryID) == uint64(1)
+			return b.Ledger.Height(primaryID) == uint64(1)
 		}, 30*time.Second, 10*time.Millisecond)
 	}
 
@@ -151,6 +144,11 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 	}
 }
 
+// Scenario:
+// 1. Create config and crypto material
+// 2. Create Batcher and stub Consenter
+// 3. Prepare config block to be received by batcher from stub consenter. The config removes the party of the batcher.
+// 4. Verify that batcher correctly handle the config tx, detects that it has been removed and admin operation is required as a result.
 func TestBatcherPartyEvicted(t *testing.T) {
 	parties := []types.PartyID{1}
 	numOfShards := 1
