@@ -23,6 +23,9 @@ func extractHeaderFromBlock(block *common.Block, logger *flogging.FabricLogger) 
 	if block == nil {
 		logger.Panic("Block is nil")
 	}
+	if block.GetHeader() == nil {
+		logger.Panic("Block header is nil")
+	}
 	if block.GetData() == nil {
 		logger.Panicf("Block data is nil for block: %d", block.GetHeader().GetNumber())
 	}
@@ -44,58 +47,32 @@ func extractHeaderFromBlock(block *common.Block, logger *flogging.FabricLogger) 
 
 func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smartbft_types.Signature, error) {
 	if block == nil {
-		return nil, nil, errors.New("Block is nil")
+		return nil, nil, errors.New("block is nil")
 	}
-	if block.GetData() == nil {
-		return nil, nil, errors.Errorf("Block data is nil for block: %d", block.GetHeader().GetNumber())
+	if block.GetHeader() == nil {
+		return nil, nil, errors.New("block header is nil")
 	}
-	if len(block.GetData().GetData()) == 0 {
-		return nil, nil, errors.Errorf("Block data is empty for block: %d", block.GetHeader().GetNumber())
-	}
-
-	// An optimization would be to unmarshal just the header and sigs, skipping the proposal payload and metadata which we don't need here.
-	// An even better optimization would be to ask for content type that does not include the proposal payload and metadata.
-	proposal, err := state.BytesToProposal(block.GetData().GetData()[0])
+	decision, err := state.ConsenterBlockToDecision(block)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to extract proposal from block: %d", block.GetHeader().GetNumber())
+		return nil, nil, errors.Wrapf(err, "failed to extract decision from consenter block: %d", block.GetHeader().GetNumber())
 	}
 
-	stateHeader := &state.Header{}
-	if err := stateHeader.Deserialize(proposal.Header); err != nil {
-		return nil, nil, errors.Wrapf(err, "failed parsing consensus/state.Header from block: %d", block.GetHeader().GetNumber())
+	header := &state.Header{}
+	if err := header.Deserialize(decision.Proposal.Header); err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to deserialize proposal header from block: %d", block.GetHeader().GetNumber())
 	}
 
-	if stateHeader.Num == 0 { // this is the genesis block
+	if block.Header.Number == 0 { // this is the genesis block
 		sigs := make([][]smartbft_types.Signature, 1) // no signatures
-		return stateHeader, sigs, nil
+		return header, sigs, nil
 	}
 
-	// Check if block metadata is nil
-	if block.GetMetadata() == nil {
-		return nil, nil, errors.Errorf("block metadata is nil for block: %d", block.GetHeader().GetNumber())
-	}
-
-	// Check if metadata array is nil or index is out of range
-	metadata := block.GetMetadata().GetMetadata()
-	if metadata == nil {
-		return nil, nil, errors.Errorf("block metadata array is nil for block: %d", block.GetHeader().GetNumber())
-	}
-	if int(common.BlockMetadataIndex_SIGNATURES) >= len(metadata) {
-		return nil, nil, errors.Errorf("block metadata index %d is out of range (length: %d) for block: %d",
-			common.BlockMetadataIndex_SIGNATURES, len(metadata), block.GetHeader().GetNumber())
-	}
-
-	compoundSigs, err := state.BytesToDecisionSignatures(metadata[common.BlockMetadataIndex_SIGNATURES])
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to extract signatures from block: %d", block.GetHeader().GetNumber())
-	}
-
-	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableCommonBlocks))
+	sigs, err := state.UnpackBlockHeaderSigs(decision.Signatures, len(header.AvailableCommonBlocks))
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to extract header signatures from compound signature, block %d", block.GetHeader().GetNumber())
 	}
 
-	return stateHeader, sigs, nil
+	return header, sigs, nil
 }
 
 func signersFromSigs(sigs []smartbft_types.Signature) []uint64 {

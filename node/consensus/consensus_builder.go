@@ -276,30 +276,25 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 
 	block, err := ledger.RetrieveBlockByNumber(height - 1)
 	if err != nil {
-		panic("couldn't retrieve last block from ledger")
+		panic(fmt.Sprintf("couldn't retrieve last block from ledger: %v", err))
 	}
 
-	proposal, err := state.BytesToProposal(block.Data.Data[0])
+	decision, err := state.ConsenterBlockToDecision(block)
 	if err != nil {
-		panic("couldn't read proposal from last block")
+		panic(fmt.Sprintf("couldn't read decision from last block: %v", err))
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
-	if err := proto.Unmarshal(proposal.Metadata, md); err != nil {
+	if err := proto.Unmarshal(decision.Proposal.Metadata, md); err != nil {
 		panic(err)
 	}
 
 	header := &state.Header{}
-	if err := header.Deserialize(proposal.Header); err != nil {
+	if err := header.Deserialize(decision.Proposal.Header); err != nil {
 		panic(err)
 	}
 
-	sigs, err := state.BytesToDecisionSignatures(block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
-	if err != nil {
-		panic("couldn't read signatures from last block")
-	}
-
-	return header.State, md, &proposal, sigs, header.DecisionNumOfLastConfigBlock
+	return header.State, md, &decision.Proposal, decision.Signatures, header.DecisionNumOfLastConfigBlock
 }
 
 func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.State {

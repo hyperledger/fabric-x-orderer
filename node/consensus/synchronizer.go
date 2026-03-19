@@ -126,20 +126,15 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 		latestBlock = retrievedBlock
 		nextSeqToCommit++
 
-		proposal, err := state.BytesToProposal(latestBlock.Data.Data[0])
+		decision, err := state.ConsenterBlockToDecision(latestBlock)
 		if err != nil {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
-		}
-
-		signatures, err := state.BytesToDecisionSignatures(latestBlock.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
-		if err != nil {
-			s.logger.Panicf("Failed parsing signatures on the block we pulled: %v", err)
 		}
 
 		// No need to prune the genesis block, as it doesn't contain any requests. Moreover, the genesis block payload is not of type `BatchedRequests`.
 		if latestBlock.GetHeader().GetNumber() > 0 {
 			var batch arma_types.BatchedRequests
-			if err := batch.Deserialize(proposal.Payload); err != nil {
+			if err := batch.Deserialize(decision.Proposal.Payload); err != nil {
 				s.logger.Panicf("Failed deserializing proposal payload: %v", err)
 			}
 
@@ -151,17 +146,12 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 			}
 		}
 
-		s.deliver(proposal, signatures)
+		s.deliver(decision.Proposal, decision.Signatures)
 	}
 
-	proposal, err := state.BytesToProposal(latestBlock.Data.Data[0])
+	decision, err := state.ConsenterBlockToDecision(latestBlock)
 	if err != nil {
 		s.logger.Panicf("Failed parsing block we pulled: %v", err)
-	}
-
-	signatures, err := state.BytesToDecisionSignatures(latestBlock.GetMetadata().GetMetadata()[common.BlockMetadataIndex_SIGNATURES])
-	if err != nil {
-		s.logger.Panicf("Failed parsing signatures of the block we pulled: %v", err)
 	}
 
 	return smartbft_types.SyncResponse{
@@ -169,6 +159,6 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 			CurrentConfig: s.BFTConfig,
 			CurrentNodes:  s.CurrentNodes,
 		},
-		Latest: smartbft_types.Decision{Proposal: proposal, Signatures: signatures},
+		Latest: *decision,
 	}
 }
