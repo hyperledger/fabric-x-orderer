@@ -37,6 +37,7 @@ type ServerConfig struct {
 // Listener instantiate a [net.Listener] and updates the config port with the effective port.
 func (s *ServerConfig) Listener() (net.Listener, error) {
 	if s.preAllocatedListener != nil {
+		s.logger.Infof("Pre-allocated listener on: %s", s.preAllocatedListener.Addr().String())
 		return s.preAllocatedListener, nil
 	}
 	listener, err := net.Listen(protocol, s.endpoint.Address())

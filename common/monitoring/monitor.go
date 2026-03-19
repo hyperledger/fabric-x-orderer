@@ -34,9 +34,15 @@ func (m *Monitor) Start() {
 
 	var err error
 	serverConfig := ServerConfig{endpoint: &m.endpoint, logger: m.logger}
+	m.logger.Infof("Creating monitoring service: %s", m.endpoint.Address())
+
 	m.listener, err = serverConfig.Listener()
 	if err != nil {
 		m.logger.Panicf("%v", err)
+	}
+
+	if m.endpoint.Port != serverConfig.endpoint.Port {
+		m.logger.Infof("Allocated different port for monitoring service: %d", serverConfig.endpoint.Port)
 	}
 	m.endpoint.Port = serverConfig.endpoint.Port
 
@@ -46,6 +52,8 @@ func (m *Monitor) Start() {
 }
 
 func (m *Monitor) Stop() {
+	m.logger.Infof("Stopping monitoring service: %s", m.Address())
+
 	if m.stop != nil {
 		m.stop()
 	}

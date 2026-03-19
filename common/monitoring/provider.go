@@ -70,7 +70,7 @@ func (p *Provider) StartPrometheusServer(
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		p.logger.Infof("Prometheus serving on URL: %s", p.url)
-		defer p.logger.Infof("Prometheus stopped serving")
+		defer p.logger.Infof("Prometheus stopped serving on URL: %s", p.url)
 		return server.Serve(listener)
 	})
 
