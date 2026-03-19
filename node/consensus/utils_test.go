@@ -28,7 +28,8 @@ func TestBlockToDecision(t *testing.T) {
 
 		blockDataBytes := state.ProposalToBytes(proposal)
 		block := &common.Block{
-			Data: &common.BlockData{Data: [][]byte{blockDataBytes}},
+			Header: &common.BlockHeader{Number: 1},
+			Data:   &common.BlockData{Data: [][]byte{blockDataBytes}},
 		}
 		protoutil.InitBlockMetadata(block)
 		block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
