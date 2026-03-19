@@ -377,6 +377,103 @@ func TestReconnectRequest(t *testing.T) {
 	require.Equal(t, streamNumber, reconnectRequest.streamInConn)
 }
 
+func TestBatcherIsStoppedReconnectWithBackoff(t *testing.T) {
+	connectionNumber := 2
+	streamNumber := 3
+
+	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
+	fakeSubmitStreamClient.RecvReturns(nil, fmt.Errorf("batcher is stopped"))
+	logger := testutil.CreateLogger(t, 3)
+	_, verifier := createTestBundleAndVerifier()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s := &stream{
+		endpoint:                          "127.0.0.1:5017",
+		logger:                            logger,
+		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
+		ctx:                               ctx,
+		cancelFunc:                        cancel,
+		requestsChannel:                   make(chan *TrackedRequest, 10),
+		doneChannel:                       make(chan bool),
+		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
+		connNum:                           connectionNumber,
+		streamNum:                         streamNumber,
+		reconnectBackoffInterval:          minRetryInterval,
+	}
+	wg := sync.WaitGroup{}
+	// first recv returns "batcher is stopped" - backoff interval should increase and reconnect routine should be notified
+	wg.Add(1)
+	go func() {
+		s.readResponses()
+		wg.Done()
+	}()
+
+	require.Eventually(t, func() bool {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		return fakeSubmitStreamClient.RecvCallCount() == 1 && s.faulty() && s.reconnectBackoffInterval == 2*minRetryInterval
+	}, 2*time.Second, 100*time.Millisecond)
+	reconnectRequest := <-s.srReconnectChan
+	require.Equal(t, connectionNumber, reconnectRequest.connNumber)
+	require.Equal(t, streamNumber, reconnectRequest.streamInConn)
+	wg.Wait()
+	require.True(t, s.notifiedReconnect)
+
+	// recv returns "batcher is stopped" again - backoff interval should increase again and reconnect routine should be notified again
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	s.ctx = ctx2
+	s.cancelFunc = cancel2
+	s.cancelOnce = sync.Once{}
+	s.notifiedReconnect = false
+	wg.Add(1)
+	go func() {
+		s.readResponses()
+		wg.Done()
+	}()
+
+	require.Eventually(t, func() bool {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		return fakeSubmitStreamClient.RecvCallCount() == 2 && s.faulty() && s.reconnectBackoffInterval == 4*minRetryInterval
+	}, 2*time.Second, 100*time.Millisecond)
+
+	reconnectRequest2 := <-s.srReconnectChan
+	require.Equal(t, connectionNumber, reconnectRequest2.connNumber)
+	require.Equal(t, streamNumber, reconnectRequest2.streamInConn)
+	wg.Wait()
+	require.True(t, s.notifiedReconnect)
+
+	// recv returns some other error - backoff interval should reset to min and reconnect routine should be notified again
+	ctx3, cancel3 := context.WithCancel(context.Background())
+	s.ctx = ctx3
+	s.cancelFunc = cancel3
+	s.cancelOnce = sync.Once{}
+	s.notifiedReconnect = false
+
+	fakeSubmitStreamClient.RecvReturns(nil, fmt.Errorf("some other error"))
+	wg.Add(1)
+	go func() {
+		s.readResponses()
+		wg.Done()
+	}()
+
+	require.Eventually(t, func() bool {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		return fakeSubmitStreamClient.RecvCallCount() == 3 && s.faulty() && s.reconnectBackoffInterval == minRetryInterval
+	}, 2*time.Second, 100*time.Millisecond)
+
+	reconnectRequest3 := <-s.srReconnectChan
+
+	require.Equal(t, connectionNumber, reconnectRequest3.connNumber)
+	require.Equal(t, streamNumber, reconnectRequest3.streamInConn)
+	wg.Wait()
+	require.True(t, s.notifiedReconnect)
+}
+
 type safeReqPool struct {
 	mu      sync.Mutex
 	reqPool []*protos.Request
