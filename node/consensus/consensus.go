@@ -100,6 +100,7 @@ type Consensus struct {
 	State                        *state.State
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
+	txCount                      uint64
 	Logger                       *flogging.FabricLogger
 
 	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
@@ -115,7 +116,6 @@ type Consensus struct {
 	ConfigRulesVerifier    verify.OrdererRules
 	softStopCh             chan struct{}
 	softStopOnce           sync.Once
-	txCount                uint64
 }
 
 func (c *Consensus) Start() error {
@@ -285,6 +285,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
+	currentTXCount := c.txCount
 	c.stateLock.Unlock()
 
 	numOfAvailableBlocks := len(attestations)
@@ -313,7 +314,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	lastBlockNumber := lastCommonBlockHeader.Number
 	prevHash := protoutil.BlockHeaderHash(lastCommonBlockHeader)
 
-	currentTXCount := c.txCount
 	for i, ba := range attestations {
 		lastBlockNumber++
 		currentTXCount += ba[0].TXCount()
@@ -659,6 +659,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
+	currentTXCount := c.txCount
 	c.stateLock.Unlock()
 
 	lastCommonBlockHeader := &common.BlockHeader{}
@@ -681,7 +682,6 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	}
 	availableCommonBlocks := make([]*common.Block, numOfAvailableBlocks)
 
-	currentTXCount := c.txCount
 	for i, ba := range attestations {
 		lastBlockNumber++
 		currentTXCount += ba[0].TXCount()
@@ -764,15 +764,17 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// update metrics
 	c.Metrics.decisionsCount.Add(1)
 	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
+
+	// update state
+	c.stateLock.Lock()
+	c.State = hdr.State
+
 	txCount := c.getLastTxCountFromHeader(hdr)
 	if txCount > 0 {
 		c.Metrics.txsCount.Add(float64(txCount - c.txCount))
 		c.txCount = txCount
 	}
 
-	// update state
-	c.stateLock.Lock()
-	c.State = hdr.State
 	currentNodes := c.CurrentNodes
 	currentBFTConfig := c.Config.BFTConfig
 	inLatestDecision := false
