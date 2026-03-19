@@ -557,6 +557,58 @@ func TestConcurrentRestartAndHalt(t *testing.T) {
 	require.Equal(t, expectedHalts, haltCount.Load(), "Expected exact number of Halt calls")
 }
 
+func TestHaltRestartBatching(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+
+	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          5,
+		BatchMaxSizeBytes:     2048,
+		MaxSize:               20,
+		RequestMaxBytes:       100 * 1024,
+		AutoRemoveTimeout:     time.Second * 10,
+		SubmitTimeout:         time.Second * 10,
+	}, &striker{})
+
+	// Start with batching disabled
+	pool.Restart(false)
+
+	// Submit requests
+	byteReq1 := makeTestRequest("1", "request-one")
+	byteReq2 := makeTestRequest("2", "request-two")
+	byteReq3 := makeTestRequest("3", "request-three")
+
+	require.NoError(t, pool.Submit(byteReq1))
+	require.NoError(t, pool.Submit(byteReq2))
+	require.NoError(t, pool.Submit(byteReq3))
+
+	// Halt the pool
+	pool.Halt()
+
+	// Restart with batching enabled
+	pool.Restart(true)
+
+	// Verify we can batch requests after restart
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	batch := pool.NextRequests(ctx)
+	require.Len(t, batch, 3, "Should get 3 requests after Halt and Restart")
+
+	// Verify the requests are correct
+	ids := make(map[string]bool)
+	for _, req := range batch {
+		id, _ := parseTestRequest(req)
+		ids[id] = true
+	}
+	require.True(t, ids["1"], "Should contain request 1")
+	require.True(t, ids["2"], "Should contain request 2")
+	require.True(t, ids["3"], "Should contain request 3")
+
+	pool.Close()
+}
+
 type testRequestInspector struct{}
 
 func (ins *testRequestInspector) RequestID(req []byte) string {
