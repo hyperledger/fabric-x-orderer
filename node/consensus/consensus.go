@@ -44,7 +44,7 @@ import (
 )
 
 type Storage interface {
-	Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64)
+	Append(block *common.Block)
 	Height() uint64
 	RetrieveBlockByNumber(blockNumber uint64) (*common.Block, error)
 	WriteBlock(block *common.Block)
@@ -87,21 +87,23 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	Net                          NetStopper
-	Config                       *config.ConsenterNodeConfig
-	SigVerifier                  SigVerifier
-	Signer                       Signer
-	CurrentNodes                 []uint64
-	BFT                          *smartbft_consensus.Consensus
-	Storage                      Storage
-	BADB                         *badb.BatchAttestationDB
-	Arma                         Arma
+	Logger       *flogging.FabricLogger
+	Net          NetStopper
+	Config       *config.ConsenterNodeConfig
+	SigVerifier  SigVerifier
+	Signer       Signer
+	CurrentNodes []uint64
+	BFT          *smartbft_consensus.Consensus
+	Storage      Storage
+	BADB         *badb.BatchAttestationDB
+	Arma         Arma
+
 	stateLock                    sync.Mutex
 	State                        *state.State
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
 	txCount                      uint64
-	Logger                       *flogging.FabricLogger
+	PrevHash                     []byte
 
 	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
 	bftSynchronizer     bft_synch.SynchronizerWithStop // The BFT synchronizer built by the factory
@@ -400,7 +402,7 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 		return nil, err
 	}
 
-	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, uint64(hdr.Num), decisionNumOfLastConfigBlock); err != nil {
+	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, uint64(hdr.Num), decisionNumOfLastConfigBlock, hdr.PrevHash); err != nil {
 		return nil, errors.Wrap(err, "failed verifying proposal msg")
 	}
 	if err := c.VerifySignature(smartbft_types.Signature{
@@ -431,7 +433,7 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	return nil, nil
 }
 
-func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, num uint64, decisionNumOfLastConfigBlock uint64) error {
+func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, num uint64, decisionNumOfLastConfigBlock uint64, prevHash []byte) error {
 	idHeader, err := protoutil.UnmarshalIdentifierHeader(proposalMsg.IdentifierHeader)
 	if err != nil {
 		return errors.Wrap(err, "failed to unmarshal identifier header from proposal message")
@@ -447,8 +449,9 @@ func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID u
 	}
 
 	proposalMsgBlockHeader := &common.BlockHeader{
-		Number:   num,
-		DataHash: protoutil.ComputeBlockDataHash(proposalData),
+		Number:       num,
+		DataHash:     protoutil.ComputeBlockDataHash(proposalData),
+		PreviousHash: prevHash,
 	}
 
 	computedProposalMsg := &state.MessageToSign{
@@ -587,9 +590,9 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	}
 
 	proposalMsgBlockHeader := &common.BlockHeader{
-		Number:   uint64(hdr.Num),
-		DataHash: protoutil.ComputeBlockDataHash(proposalData),
-		// TODO add prev hash
+		Number:       uint64(hdr.Num),
+		DataHash:     protoutil.ComputeBlockDataHash(proposalData),
+		PreviousHash: hdr.PrevHash,
 	}
 
 	proposalMsg := &state.MessageToSign{
@@ -660,6 +663,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	currentTXCount := c.txCount
+	proposalPrevHash := c.PrevHash
 	c.stateLock.Unlock()
 
 	lastCommonBlockHeader := &common.BlockHeader{}
@@ -725,6 +729,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 			State:                        newState,
 			Num:                          arma_types.DecisionNum(md.LatestSequence),
 			DecisionNumOfLastConfigBlock: decisionNumOfLastConfigBlock,
+			PrevHash:                     proposalPrevHash,
 		}).Serialize(),
 		Metadata:             metadata,
 		Payload:              reqs.Serialize(),
@@ -749,11 +754,14 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// This is true because a Index(digests) with the same digests is idempotent.
 
 	c.Arma.Index(digests)
-	c.Storage.Append(uint64(hdr.Num), proposal, signatures, c.getDecisionNumOfLastConfigBlock())
+	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.getPrevHash(), c.getDecisionNumOfLastConfigBlock())
+	c.Storage.Append(block)
 
 	// update state
 	c.stateLock.Lock()
 	c.State = hdr.State
+
+	c.PrevHash = protoutil.BlockHeaderHash(block.Header)
 
 	currentNodes := c.CurrentNodes
 	currentBFTConfig := c.Config.BFTConfig
@@ -837,6 +845,12 @@ func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
 	c.stateLock.Lock()
 	defer c.stateLock.Unlock()
 	return uint64(c.decisionNumOfLastConfigBlock), c.lastConfigBlockNum
+}
+
+func (c *Consensus) getPrevHash() []byte {
+	c.stateLock.Lock() // TODO use read lock?
+	defer c.stateLock.Unlock()
+	return c.PrevHash
 }
 
 func (c *Consensus) pickEndpoint() string {

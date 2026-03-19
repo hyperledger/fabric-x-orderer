@@ -67,7 +67,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
+	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock, prevHash := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
 	txCount := getTxCount(consLedger)
 	// indicate that sync is required on startup when new consensus node joins the cluster
 	if consLedger.Height() == 0 && lastConfigBlock.Header.Number > 0 {
@@ -111,6 +111,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 		},
 		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
 		txCount:             txCount,
+		PrevHash:            prevHash,
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
@@ -263,15 +264,16 @@ func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_
 	return verifier
 }
 
-func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum) {
+func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum, []byte) {
 	height := ledger.Height()
 	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
 		initState := initialStateFromConfig(config)
+		var prevHash []byte
 		if lastConfigBlock.Header.Number == 0 {
-			appendGenesisBlock(lastConfigBlock, initState, ledger)
+			prevHash = appendGenesisBlock(lastConfigBlock, initState, ledger)
 		}
-		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0
+		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0, prevHash
 	}
 
 	block, err := ledger.RetrieveBlockByNumber(height - 1)
@@ -294,7 +296,7 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 		panic(err)
 	}
 
-	return header.State, md, &decision.Proposal, decision.Signatures, header.DecisionNumOfLastConfigBlock
+	return header.State, md, &decision.Proposal, decision.Signatures, header.DecisionNumOfLastConfigBlock, protoutil.BlockHeaderHash(block.Header)
 }
 
 func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.State {
@@ -326,7 +328,7 @@ func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.Stat
 	return &initState
 }
 
-func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) {
+func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) []byte {
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData()) // TODO fix compute digest
 
 	lastCommonBlockHeader := &common.BlockHeader{}
@@ -352,7 +354,11 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 		Metadata: nil,
 	}
 
-	consensusLedger.Append(0, genesisProposal, nil, 0)
+	block := state.CreateBlockToAppendFromDecision(0, genesisProposal, nil, nil, 0)
+
+	consensusLedger.Append(block)
+
+	return protoutil.BlockHeaderHash(block.Header)
 }
 
 func getTxCount(consensusLedger *ledger.ConsensusLedger) uint64 {
