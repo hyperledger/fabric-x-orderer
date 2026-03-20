@@ -35,12 +35,13 @@ type ArmaNodeRunInfo struct {
 }
 
 type ArmaNodeInfo struct {
-	RunInfo         *ArmaNodeRunInfo
-	NodeType        NodeType
-	Listener        net.Listener
-	PartyId         types.PartyID
-	ShardId         types.ShardID
-	ConfigBlockPath string
+	RunInfo            *ArmaNodeRunInfo
+	NodeType           NodeType
+	Listener           net.Listener
+	PartyId            types.PartyID
+	ShardId            types.ShardID
+	ConfigBlockPath    string
+	MonitoringListener net.Listener
 }
 
 func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType NodeType, partyIdx int, nodeInfo *ArmaNodeInfo) {

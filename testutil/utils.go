@@ -54,10 +54,10 @@ func (n NodeType) String() string {
 // EditDirectoryInNodeConfigYAML updates a node YAML config file at the given path.
 // It sets the FileStore.Path to storagePath, clears the monitoring listen port,
 // and updates the bootstrap file location.
-func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string, bootstrapFilePath string) {
+func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string, bootstrapFilePath string, monitoringListenPort uint32) {
 	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
-	nodeConfig.GeneralConfig.MonitoringListenPort = 0
+	nodeConfig.GeneralConfig.MonitoringListenPort = monitoringListenPort
 	if bootstrapFilePath != "" {
 		nodeConfig.GeneralConfig.Bootstrap.File = bootstrapFilePath
 	}
@@ -93,14 +93,19 @@ func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatch
 
 	for i := range numOfParties {
 		assemblerPort, lla := GetAvailablePort(t)
+		_, llam := GetAvailablePort(t)
 		consenterPort, llc := GetAvailablePort(t)
+		_, llcm := GetAvailablePort(t)
 		routerPort, llr := GetAvailablePort(t)
+		_, llrm := GetAvailablePort(t)
 		var llbs []net.Listener
+		var llbms []net.Listener
 		var batchersEndpoints []string
-
 		for range numOfBatcherShards {
 			batcherPort, llb := GetAvailablePort(t)
+			_, llbm := GetAvailablePort(t)
 			llbs = append(llbs, llb)
+			llbms = append(llbms, llbm)
 			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
 		}
 
@@ -120,18 +125,18 @@ func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatch
 		}
 
 		nodeName := NodeName{PartyID: types.PartyID(i + 1), NodeType: Router}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1)}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1), MonitoringListener: llrm}
 
 		for j, b := range llbs {
 			nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Batcher, ShardID: types.ShardID(j + 1)}
-			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1)}
+			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1), MonitoringListener: llbms[j]}
 		}
 
 		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Consensus}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1)}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1), MonitoringListener: llcm}
 
 		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Assembler}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1)}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1), MonitoringListener: llam}
 	}
 
 	network := genconfig.Network{
@@ -167,14 +172,20 @@ func ExtendNetwork(t *testing.T, configPath string) (map[NodeName]*ArmaNodeInfo,
 	numOfBatcherShards := len(networkConfig.Parties[0].BatchersEndpoints)
 
 	assemblerPort, lla := GetAvailablePort(t)
+	_, llam := GetAvailablePort(t)
 	consenterPort, llc := GetAvailablePort(t)
+	_, llcm := GetAvailablePort(t)
 	routerPort, llr := GetAvailablePort(t)
+	_, llrm := GetAvailablePort(t)
 	var llbs []net.Listener
+	var llbms []net.Listener
 	var batchersEndpoints []string
 
 	for range numOfBatcherShards {
 		batcherPort, llb := GetAvailablePort(t)
+		_, llbm := GetAvailablePort(t)
 		llbs = append(llbs, llb)
+		llbms = append(llbms, llbm)
 		batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
 	}
 
@@ -189,17 +200,17 @@ func ExtendNetwork(t *testing.T, configPath string) (map[NodeName]*ArmaNodeInfo,
 	networkConfig.Parties = append(networkConfig.Parties, newPartyConfig)
 
 	nodeName := NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Router}
-	netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(networkConfig.MaxPartyID)}
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: llrm}
 
 	for j, b := range llbs {
 		nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Batcher, ShardID: types.ShardID(j + 1)}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(networkConfig.MaxPartyID), ShardId: types.ShardID(j + 1)}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(networkConfig.MaxPartyID), ShardId: types.ShardID(j + 1), MonitoringListener: llbms[j]}
 	}
 
 	nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Consensus}
-	netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(networkConfig.MaxPartyID)}
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: llcm}
 	nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Assembler}
-	netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(networkConfig.MaxPartyID)}
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: llam}
 
 	err = utils.WriteToYAML(networkConfig, configPath)
 	require.NoError(t, err)
@@ -367,7 +378,8 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		err := os.MkdirAll(storagePath, 0o755)
 		require.NoError(t, err)
 
-		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, netNode.ConfigBlockPath)
+		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, netNode.ConfigBlockPath, uint32(netNode.MonitoringListener.Addr().(*net.TCPAddr).Port))
+		netNode.MonitoringListener.Close()
 		sess := runNode(t, netNode.NodeType.String(), armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
 		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
 		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
