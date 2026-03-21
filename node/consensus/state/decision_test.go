@@ -268,6 +268,105 @@ func createTestBlockWithNilMetadata(t *testing.T, proposalBytes []byte) *common.
 	return block
 }
 
+func TestConsenterBlockToProposal(t *testing.T) {
+	tests := []struct {
+		name             string
+		setupBlock       func(t *testing.T) *common.Block
+		expectError      bool
+		expectedProposal smartbft_types.Proposal
+	}{
+		{
+			// Validates that ConsenterBlockToProposal correctly extracts
+			// proposal from a properly formatted block
+			name: "valid block with proposal",
+			setupBlock: func(t *testing.T) *common.Block {
+				return createValidTestBlock(t, 42)
+			},
+			expectError:      false,
+			expectedProposal: createValidTestProposal(),
+		},
+		{
+			// Validates that ConsenterBlockToProposal properly handles
+			// nil blocks (should return error)
+			name: "nil block",
+			setupBlock: func(t *testing.T) *common.Block {
+				return nil
+			},
+			expectError: true,
+		},
+		{
+			// Validates that ConsenterBlockToProposal properly handles
+			// blocks with nil header (should return error)
+			name: "block with nil header",
+			setupBlock: func(t *testing.T) *common.Block {
+				block := createValidTestBlock(t, 1)
+				block.Header = nil
+				return block
+			},
+			expectError: true,
+		},
+		{
+			// Validates that ConsenterBlockToProposal properly handles
+			// blocks where the Data field is nil (should return error)
+			name: "block with nil data",
+			setupBlock: func(t *testing.T) *common.Block {
+				return createTestBlockWithNilData(t)
+			},
+			expectError: true,
+		},
+		{
+			// Validates that ConsenterBlockToProposal properly handles
+			// blocks where the Data field contains an empty slice (should return error)
+			name: "block with empty data",
+			setupBlock: func(t *testing.T) *common.Block {
+				return createTestBlockWithEmptyData(t)
+			},
+			expectError: true,
+		},
+		{
+			// Validates that ConsenterBlockToProposal properly handles
+			// blocks where the Metadata field is nil (should return error)
+			name: "block with nil metadata passes as metadata is not accessed",
+			setupBlock: func(t *testing.T) *common.Block {
+				proposal := createValidTestProposal()
+				proposalBytes := ProposalToBytes(proposal)
+				return createTestBlockWithNilMetadata(t, proposalBytes)
+			},
+			expectError:      false,
+			expectedProposal: createValidTestProposal(),
+		},
+		{
+			// Validates that ConsenterBlockToProposal properly handles
+			// blocks with empty metadata (should return error)
+			name: "block with empty metadata passes as metadata is not accessed",
+			setupBlock: func(t *testing.T) *common.Block {
+				proposal := createValidTestProposal()
+				proposalBytes := ProposalToBytes(proposal)
+				return createTestBlock(t, 1, proposalBytes, [][]byte{})
+			},
+			expectError:      false,
+			expectedProposal: createValidTestProposal(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			block := tt.setupBlock(t)
+
+			proposal, err := ConsenterBlockToProposal(block)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, proposal)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, proposal)
+				assert.Equal(t, tt.expectedProposal, *proposal)
+			}
+		})
+	}
+}
+
 func TestConsenterBlockToDecision(t *testing.T) {
 	tests := []struct {
 		name               string

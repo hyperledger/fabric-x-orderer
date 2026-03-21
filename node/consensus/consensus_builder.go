@@ -129,7 +129,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 		c,                                      // implements synchronizer.BFTConfigGetter,
 		ConsenterBlockToDecision,               // func(block *cb.Block) *types.Decision // TODO look at the assembler
 		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),
-		nil,                                    // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
+		c.UpdateStateAndRuntimeConfig,          // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
 		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,
 		factory.GetDefault(),
 		nil, // c.ClusterService.Dialer)
