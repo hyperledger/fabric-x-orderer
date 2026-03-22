@@ -283,7 +283,7 @@ func (b *Batcher) replicateDecision() {
 func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	b.SoftStop()
 	b.logger.Infof("Apply config")
-	err, isAdminOperationRequired := b.ApplyConfig(configBlock)
+	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
 	if err != nil {
 		b.logger.Panicf("Failed applying new config: %s", err)
 	} else if isAdminOperationRequired {
@@ -306,46 +306,46 @@ func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuratio
 	return nil, errors.Errorf("batcher in shard %v does not exist in the party config", shardID)
 }
 
-func (b *Batcher) ApplyConfig(lastBlock *common.Block) (error, bool) {
+func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	partyID := b.config.PartyId
 	shardID := b.config.ShardId
 
 	if b.fullConfig == nil {
-		return errors.New("current configuration is nil"), true
+		return true, errors.New("current configuration is nil")
 	}
 
 	newConfig, err := b.fullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
-		return errors.Wrapf(err, "failed to build new configuration"), true
+		return true, errors.Wrapf(err, "failed to build new configuration")
 	}
 
 	// check if party is removed
 	isPartyEvicted, err := config.IsPartyEvicted(partyID, newConfig)
 	if err != nil {
-		return errors.Wrapf(err, "failed to detect if party is evicted"), true
+		return true, errors.Wrapf(err, "failed to detect if party is evicted")
 	}
 	if isPartyEvicted {
 		b.logger.Infof("Admin action is required, party %d is evicted", partyID)
-		return nil, true
+		return true, nil
 	}
 
 	// check if batcher identity (address or certificates) is changed
 	currBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, b.fullConfig)
 	if err != nil {
-		return errors.Errorf("failed to find current batcher config, err: %v\n", err), true
+		return true, errors.Errorf("failed to find current batcher config, err: %v\n", err)
 	}
 	newBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, newConfig)
 	if err != nil {
-		return errors.Errorf("failed to find new batcher config, err: %v\n", err), true
+		return true, errors.Errorf("failed to find new batcher config, err: %v\n", err)
 	}
 	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currBatcherIdentityConfig, newBatcherIdentityConfig, b.logger)
 	if err != nil {
-		return errors.Errorf("could not decide if node restart is required, err: %v\n", err), true
+		return true, errors.Errorf("could not decide if node restart is required, err: %v\n", err)
 	}
 
 	if isRestartRequired {
 		b.logger.Infof("Admin action is required, identity was changed")
-		return nil, true
+		return true, nil
 	}
 
 	// this is not an admin restart.
@@ -380,7 +380,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (error, bool) {
 	b.Run()
 
 	b.logger.Infof("Batcher listening on %s", b.Address())
-	return nil, false
+	return false, nil
 }
 
 func (b *Batcher) GetLatestStateChan() <-chan *state.State {

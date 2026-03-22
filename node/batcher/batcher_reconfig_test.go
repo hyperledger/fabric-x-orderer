@@ -202,7 +202,7 @@ func TestBatcherPartyEvicted(t *testing.T) {
 	batchers[0].SoftStop()
 
 	// apply config
-	err, isAdminOperationRequired := batchers[0].ApplyConfig(configBlock)
+	isAdminOperationRequired, err := batchers[0].ApplyConfig(configBlock)
 	require.NoError(t, err)
 	require.True(t, isAdminOperationRequired)
 }
