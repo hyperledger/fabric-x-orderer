@@ -1,0 +1,33 @@
+Parties:
+  - ID: 1
+    AssemblerEndpoint: "assembler.p1:6023"
+    ConsenterEndpoint: "consensus.p1:6025"
+    RouterEndpoint: "router.p1:6022"
+    BatchersEndpoints:
+      - "batcher1.p1:6024"
+
+  - ID: 2
+    AssemblerEndpoint: "assembler.p2:6123"
+    ConsenterEndpoint: "consensus.p2:6125"
+    RouterEndpoint: "router.p2:6122"
+    BatchersEndpoints:
+      - "batcher1.p2:6124"
+
+  - ID: 3
+    AssemblerEndpoint: "assembler.p3:6223"
+    ConsenterEndpoint: "consensus.p3:6225"
+    RouterEndpoint: "router.p3:6222"
+    BatchersEndpoints:
+      - "batcher1.p3:6224"
+
+  - ID: 4
+    AssemblerEndpoint: "assembler.p4:6323"
+    ConsenterEndpoint: "consensus.p4:6325"
+    RouterEndpoint: "router.p4:6322"
+    BatchersEndpoints:
+      - "batcher1.p4:6324"
+
+UseTLSRouter: "none"
+UseTLSAssembler: "none"
+UseTLSBatcher: "none"
+UseTLSConsenter: "none"
