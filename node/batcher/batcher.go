@@ -286,7 +286,8 @@ func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
 	if err != nil {
 		b.logger.Panicf("Failed applying new config: %s", err)
-	} else if isAdminOperationRequired {
+	}
+	if isAdminOperationRequired {
 		b.logger.Infof("Pending admin operation")
 		return
 	}
