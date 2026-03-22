@@ -127,7 +127,9 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 
 	// submit request
 	req := tx.CreateStructuredRequestWithConfigSeq([]byte{2}, 1)
-	primaryBatcher.Submit(context.Background(), req)
+	resp, err := primaryBatcher.Submit(context.Background(), req)
+	require.NoError(t, err)
+	require.Empty(t, resp.Error)
 
 	// make sure request was batched
 	for _, b := range batchers {
@@ -171,6 +173,15 @@ func TestBatcherPartyEvicted(t *testing.T) {
 	stubConsenters := createStubConsenters(t, dir, parties)
 	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
 	startBatcherNodes(batchers)
+
+	defer func() {
+		for _, sc := range stubConsenters {
+			sc.Stop()
+		}
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}()
 
 	// create config block that removes the batcher
 	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))

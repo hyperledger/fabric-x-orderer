@@ -303,7 +303,7 @@ func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuratio
 			return batcher, nil
 		}
 	}
-	return nil, nil
+	return nil, errors.Errorf("batcher in shard %v does not exist in the party config", shardID)
 }
 
 func (b *Batcher) ApplyConfig(lastBlock *common.Block) (error, bool) {
@@ -316,13 +316,13 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (error, bool) {
 
 	newConfig, err := b.fullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
-		return errors.Errorf("failed to build new configuration, err: %v\n", err), true
+		return errors.Wrapf(err, "failed to build new configuration"), true
 	}
 
 	// check if party is removed
 	isPartyEvicted, err := config.IsPartyEvicted(partyID, newConfig)
 	if err != nil {
-		return errors.Errorf("failed to detect if party is evicted, err: %v\n", err), true
+		return errors.Wrapf(err, "failed to detect if party is evicted"), true
 	}
 	if isPartyEvicted {
 		b.logger.Infof("Admin action is required, party %d is evicted", partyID)
@@ -350,9 +350,11 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (error, bool) {
 
 	// this is not an admin restart.
 	// close net, ledger and SIGTERM channel
+	b.stopLock.Lock()
 	b.Net.Stop()
 	b.Ledger.Close()
 	close(b.stopSignalListenChan)
+	b.stopLock.Unlock()
 
 	// update batcher config and re-configure the batcher with the same mempool
 	b.logger.Infof("Reconfiguring batcher")
@@ -364,7 +366,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (error, bool) {
 	b.mu.Unlock()
 
 	// prune mempool
-	b.logger.Infof("Pruning memory pull")
+	b.logger.Infof("Pruning memory pool")
 	b.batcher.MemPool.Prune(func(req []byte) error {
 		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
 			b.logger.Infof("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
