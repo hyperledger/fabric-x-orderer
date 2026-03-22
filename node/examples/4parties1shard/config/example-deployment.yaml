@@ -29,5 +29,3 @@ Parties:
 
 UseTLSRouter: "none"
 UseTLSAssembler: "none"
-UseTLSBatcher: "none"
-UseTLSConsenter: "none"

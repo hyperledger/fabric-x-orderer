@@ -18,7 +18,7 @@ docker build -t arma-4p1s -f node/examples/4parties1shard/Dockerfile .
 
 cd node/examples/4parties1shard/scripts
 
-docker run --rm \
+docker run -it \
   -p 6022:6022 -p 6023:6023 \
   -p 6122:6122 -p 6123:6123 \
   -p 6222:6222 -p 6223:6223 \
