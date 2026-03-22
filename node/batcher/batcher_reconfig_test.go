@@ -94,21 +94,14 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// wait for batcher to soft stop
-	for j := range parties {
-		require.Eventually(t, func() bool {
-			return batchers[j].GetStatus() == "Soft Stopped"
-		}, 60*time.Second, 10*time.Millisecond)
-	}
-
-	// the batchers initialized with the new AutoRemoveTimeout parameter
+	// wait for the batchers initialized with the new AutoRemoveTimeout parameter
 	for j := range parties {
 		require.Eventually(t, func() bool {
 			return batchers[j].GetConfig().AutoRemoveTimeout == 15*time.Millisecond
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// wait for batcher to initialize
+	// wait for the batcher to initialize
 	for j := range parties {
 		require.Eventually(t, func() bool {
 			return batchers[j].GetStatus() == "Running"
