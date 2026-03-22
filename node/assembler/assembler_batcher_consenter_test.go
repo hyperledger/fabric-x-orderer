@@ -325,7 +325,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 
 	assemblerGRPC := node_utils.CreateGRPCAssembler(nodeConfig)
 
-	assembler := assembler.NewAssembler(nodeConfig, assemblerGRPC, genesisBlock, testutil.CreateLogger(t, int(partyID)))
+	assembler := assembler.NewAssembler(nodeConfig, assemblerGRPC, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)))
 
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 	go func() {
