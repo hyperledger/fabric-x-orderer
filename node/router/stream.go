@@ -10,7 +10,9 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -36,6 +38,7 @@ type stream struct {
 	notifiedReconnect                 bool
 	verifier                          *requestfilter.RulesVerifier
 	configSubmitter                   ConfigurationSubmitter
+	reconnectBackoffInterval          time.Duration
 }
 
 // readResponses listens for responses from the batcher.
@@ -50,8 +53,9 @@ func (s *stream) readResponses() {
 		default:
 			resp, err := s.requestTransmitSubmitStreamClient.Recv()
 			if err != nil {
-				s.logger.Debugf("failed receiving response from batcher %s", s.endpoint)
-				s.cancelOnServerError()
+				s.logger.Infof("failed receiving response from batcher %s, error: %v", s.endpoint, err)
+				withBackoff := strings.Contains(err.Error(), "batcher is stopped")
+				s.cancelOnServerError(withBackoff)
 				return
 			}
 			s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
@@ -73,7 +77,8 @@ func (s *stream) sendRequests() {
 		case tr, ok := <-s.requestsChannel:
 			if !ok {
 				s.logger.Debugf("request channel to batcher %s have been closed", s.endpoint)
-				s.cancelOnServerError()
+				// withBackoff is set to false because it is not the case of a stopped batcher.
+				s.cancelOnServerError(false)
 				return
 			}
 
@@ -96,7 +101,8 @@ func (s *stream) sendRequests() {
 						// send error to client, in case request is not traced.
 						tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
 					}
-					s.cancelOnServerError()
+					// withBackoff is set to false because it is not the case of a stopped batcher.
+					s.cancelOnServerError(false)
 					return
 				}
 
@@ -140,6 +146,7 @@ func (s *stream) forwardResponseToClient(response *protos.SubmitResponse) error 
 	s.lock.Lock()
 	ch, exists := s.requestTraceIdToResponseChannel[string(traceID)]
 	delete(s.requestTraceIdToResponseChannel, string(traceID))
+	s.reconnectBackoffInterval = minRetryInterval
 	s.lock.Unlock()
 	if exists {
 		s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", traceID)
@@ -174,10 +181,13 @@ func (s *stream) responseToClientWithError(rr *TrackedRequest, err error) {
 	}
 }
 
-func (s *stream) cancelOnServerError() {
+// cancelOnServerError is called when send or receive from the batcher returns an error.
+// withBackoff parameter is set to true when the error is due to batcher being stopped,
+// which requires a backoff before trying to reconnect.
+func (s *stream) cancelOnServerError(withBackoff bool) {
 	s.cancel()
 	s.sendResponseToAllClientsOnError(fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint))
-	s.notifyReconnectRoutine()
+	s.notifyReconnectRoutine(withBackoff)
 }
 
 func (s *stream) cancel() {
@@ -211,15 +221,35 @@ DrainChannelLoop:
 
 // Here we notify the reconnect goroutine in the shard router that this stream need to be reconnected. However, we do it
 // only when its context is marked done, to avoid a race in the reconnection routine where s.faulty() check could be faule.
-func (s *stream) notifyReconnectRoutine() {
+func (s *stream) notifyReconnectRoutine(withBackoff bool) {
 	<-s.ctx.Done()
+	if withBackoff {
+		s.lock.Lock()
+		timeToWait := s.reconnectBackoffInterval
+		s.reconnectBackoffInterval = min(maxRetryInterval, timeToWait*2)
+		s.lock.Unlock()
+		s.logger.Debugf("waiting for %s before notifying the reconnection routine about stream with index %d, sIndex: %d", timeToWait, s.connNum, s.streamNum)
+		select {
+		case <-time.After(timeToWait):
+		case <-s.doneChannel:
+			s.logger.Debugf("the stream has been closed, reconnection notification is cancelled")
+			return
+		}
+	}
+
 	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	// if a we got an error that does not require backoff, we reset the backoff interval to the minimum
+	if !withBackoff {
+		s.reconnectBackoffInterval = minRetryInterval
+	}
 	if !s.notifiedReconnect {
 		s.logger.Debugf("Reporting stream cIndex: %d, sIndex: %d to reconnection goroutine in shard-router", s.connNum, s.streamNum)
+		// report the stream to the reconnect routine.
 		s.srReconnectChan <- reconnectReq{s.connNum, s.streamNum}
 		s.notifiedReconnect = true
 	}
-	s.lock.Unlock()
 }
 
 // faulty returns true if the stream is faulty, else return false.
@@ -286,6 +316,7 @@ CopyChannelLoop:
 		notifiedReconnect:                 false,
 		verifier:                          s.verifier,
 		configSubmitter:                   s.configSubmitter,
+		reconnectBackoffInterval:          s.reconnectBackoffInterval,
 	}
 	s.lock.Unlock()
 

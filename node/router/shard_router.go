@@ -297,6 +297,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			notifiedReconnect:                 false,
 			verifier:                          sr.verifier,
 			configSubmitter:                   sr.configSubmitter,
+			reconnectBackoffInterval:          minRetryInterval,
 		}
 		go s.sendRequests()
 		go s.readResponses()
@@ -332,8 +333,9 @@ func (sr *ShardRouter) startReconnectionRoutine() {
 func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream) {
 	// if stream is not nil, notify the reconnect routine
 	// otherwise, the stream is nil and it must have been reported before.
+	// withBackoff is set to false because it is not the case of a stopped batcher.
 	if stream != nil {
-		stream.notifyReconnectRoutine()
+		stream.notifyReconnectRoutine(false)
 	}
 }
 
