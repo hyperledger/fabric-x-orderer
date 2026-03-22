@@ -52,8 +52,9 @@ type Net interface {
 
 type Batcher struct {
 	Net         Net
-	ConfigStore *configstore.Store
 	logger      *flogging.FabricLogger
+	signer      Signer
+	ConfigStore *configstore.Store
 
 	stopLock                           sync.Mutex
 	requestsInspectorVerifier          *RequestsInspectorVerifier
@@ -70,7 +71,6 @@ type Batcher struct {
 	config                             *node_config.BatcherNodeConfig
 	fullConfig                         *config.Configuration
 	batchers                           []node_config.BatcherInfo
-	signer                             Signer
 	wal                                *smartbft_wal.WriteAheadLogFile
 	stateChan                          chan *state.State
 	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
@@ -373,7 +373,7 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock 
 	b.logger.Infof("Reconfiguring batcher")
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
-	b.configureBatcher(b.logger, b.mainExitChan, &ConsenterControlEventSenderFactory{}, b.signer, b.batcher.MemPool)
+	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool)
 	b.stopLock.Unlock()
 
 	// prune mempool

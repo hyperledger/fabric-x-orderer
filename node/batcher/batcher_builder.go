@@ -26,23 +26,26 @@ import (
 )
 
 func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+	configStore, err := configstore.NewStore(nodeConfig.ConfigStorePath)
+	if err != nil {
+		logger.Panicf("Failed creating batcher config store: %s", err.Error())
+	}
+
 	b := &Batcher{
 		config:                             nodeConfig,
 		fullConfig:                         fullConfig,
 		consensusDecisionReplicatorCreator: cdrc,
+		logger:                             logger,
+		signer:                             signer,
+		ConfigStore:                        configStore,
+		mainExitChan:                       mainExitChan,
 	}
 
-	configStore, err := configstore.NewStore(b.config.ConfigStorePath)
-	if err != nil {
-		logger.Panicf("Failed creating batcher config store: %s", err.Error())
-	}
-	b.ConfigStore = configStore
-
-	b.configureBatcher(logger, mainExitChan, senderCreator, signer, nil)
+	b.configureBatcher(senderCreator, nil)
 	return b
 }
 
-func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan chan struct{}, senderCreator ConsenterControlEventSenderCreator, signer Signer, memPool MemPool) {
+func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCreator, memPool MemPool) {
 	var parties []types.PartyID
 	for shIdx, sh := range b.config.Shards {
 		if sh.ShardId != b.config.ShardId {
@@ -55,46 +58,43 @@ func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan c
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(b.config.ShardId, b.config.PartyId, parties, b.config.Directory, logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(b.config.ShardId, b.config.PartyId, parties, b.config.Directory, b.logger)
 	if err != nil {
-		logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
+		b.logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
 
 	deliverService := &BatcherDeliverService{
 		LedgerArray: ledgerArray,
-		Logger:      logger,
+		Logger:      b.logger,
 	}
 
-	batchPuller := NewBatchPuller(b.config, ledgerArray, logger)
+	batchPuller := NewBatchPuller(b.config, ledgerArray, b.logger)
 
 	walDir := filepath.Join(b.config.Directory, "wal")
-	batcherWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
+	batcherWAL, walInitState, err := wal.InitializeAndReadAll(b.logger, walDir, wal.DefaultOptions())
 	if err != nil {
-		logger.Panicf("Failed creating WAL: %s", err.Error())
+		b.logger.Panicf("Failed creating WAL: %s", err.Error())
 	}
 
-	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, b.ConfigStore, logger)
+	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, b.ConfigStore, b.logger)
 
-	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, logger, lastKnownDecisionNum)
+	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.logger, lastKnownDecisionNum)
 
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(logger, b.config, nil)
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(b.logger, b.config, nil)
 
 	batchers := batchersFromConfig(b.config)
 	if len(batchers) == 0 {
-		logger.Panicf("Failed locating the configuration of our shard (%d) among %v", b.config.ShardId, b.config.Shards)
+		b.logger.Panicf("Failed locating the configuration of our shard (%d) among %v", b.config.ShardId, b.config.Shards)
 	}
 
 	b.requestsInspectorVerifier = requestsIDAndVerifier
 	b.batcherDeliverService = deliverService
 	b.decisionReplicator = dr
-	b.signer = signer
-	b.logger = logger
 	b.batchers = batchers
 	b.Ledger = ledgerArray
 	b.batcherCerts2IDs = make(map[string]types.PartyID)
-	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerArray, logger)
+	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerArray, b.logger)
 	b.wal = batcherWAL
-	b.mainExitChan = mainExitChan
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(b.config.Consenters))
 	for i, consenterInfo := range b.config.Consenters {
@@ -105,15 +105,15 @@ func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan c
 
 	b.primaryID, b.term = b.getPrimaryIDAndTerm(&initState)
 
-	b.batcherCerts2IDs = indexTLSCerts(b.batchers, logger)
+	b.batcherCerts2IDs = indexTLSCerts(b.batchers, b.logger)
 
 	f := (initState.N - 1) / 3
 
 	ctxBroadcast, cancelBroadcast := context.WithCancel(context.Background())
 	b.controlEventBroadcaster = NewControlEventBroadcaster(b.controlEventSenders, int(initState.N), int(f), 100*time.Millisecond, 10*time.Second, b.logger, ctxBroadcast, cancelBroadcast)
 
-	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, b.config.ShardId, logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
-	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
+	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, b.config.ShardId, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
+	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),
@@ -124,7 +124,7 @@ func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan c
 		Ledger:                  ledgerArray,
 		ID:                      b.config.PartyId,
 		Shard:                   b.config.ShardId,
-		Logger:                  logger,
+		Logger:                  b.logger,
 		StateProvider:           b,
 		ConfigSequenceGetter:    b,
 		RequestInspector:        b.requestsInspectorVerifier,
