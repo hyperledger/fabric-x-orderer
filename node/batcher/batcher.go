@@ -306,6 +306,10 @@ func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuratio
 	return nil, errors.Errorf("batcher in shard %v does not exist in the party config", shardID)
 }
 
+// ApplyConfig applies the new configuration to the batcher.
+// It receives the new config block and checks if an admin operation is required (party evicted or identity change), if so returns true.
+// If not, it reconfigures the batcher with the new config, retains the current memory pool, prunes the memory pool, and starts the batcher.
+// If an error occurs at any point, the function returns and the batcher will remain in soft stop.
 func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	partyID := b.config.PartyId
 	shardID := b.config.ShardId
@@ -348,6 +352,11 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, nil
 	}
 
+	b.stopAndReconfigure(newConfig, lastBlock)
+	return false, nil
+}
+
+func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
 	// this is not an admin restart.
 	// close net, ledger and SIGTERM channel
 	b.stopLock.Lock()
@@ -370,8 +379,9 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	b.batcher.MemPool.Prune(func(req []byte) error {
 		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
 			b.logger.Infof("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
+			return err
 		}
-		return err
+		return nil
 	})
 
 	// init batcher again
@@ -380,7 +390,6 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	b.Run()
 
 	b.logger.Infof("Batcher listening on %s", b.Address())
-	return false, nil
 }
 
 func (b *Batcher) GetLatestStateChan() <-chan *state.State {
