@@ -51,14 +51,15 @@ type Net interface {
 }
 
 type Batcher struct {
-	Net Net
+	Net         Net
+	ConfigStore *configstore.Store
+	logger      *flogging.FabricLogger
 
-	mu                                 sync.RWMutex
+	stopLock                           sync.Mutex
 	requestsInspectorVerifier          *RequestsInspectorVerifier
 	batcherDeliverService              *BatcherDeliverService
 	decisionReplicator                 DecisionReplicator
 	consensusDecisionReplicatorCreator ConsensusDecisionReplicatorCreator
-	logger                             *flogging.FabricLogger
 	batcher                            *BatcherRole
 	batcherCerts2IDs                   map[string]types.PartyID
 	controlEventSenders                []ConsenterControlEventSender
@@ -66,21 +67,18 @@ type Batcher struct {
 	primaryAckConnector                *PrimaryAckConnector
 	primaryReqConnector                *PrimaryReqConnector
 	Ledger                             *node_ledger.BatchLedgerArray
-	ConfigStore                        *configstore.Store
 	config                             *node_config.BatcherNodeConfig
 	fullConfig                         *config.Configuration
 	batchers                           []node_config.BatcherInfo
 	signer                             Signer
 	wal                                *smartbft_wal.WriteAheadLogFile
-
-	stopLock             sync.Mutex
-	stateChan            chan *state.State
-	running              sync.WaitGroup // maybe change the name, it is only for state replicator
-	stopChan             chan struct{}
-	stopSignalListenChan chan struct{}
-	mainExitChan         chan struct{}
-	isStopped            bool
-	isSoftStopped        bool
+	stateChan                          chan *state.State
+	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
+	stopChan                           chan struct{}
+	stopSignalListenChan               chan struct{}
+	mainExitChan                       chan struct{}
+	isStopped                          bool
+	isSoftStopped                      bool
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -315,11 +313,15 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	partyID := b.config.PartyId
 	shardID := b.config.ShardId
 
-	if b.fullConfig == nil {
+	b.stopLock.Lock()
+	currentFullConfig := b.fullConfig
+	b.stopLock.Unlock()
+
+	if currentFullConfig == nil {
 		return true, errors.New("current configuration is nil")
 	}
 
-	newConfig, err := b.fullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to build new configuration")
 	}
@@ -335,7 +337,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	}
 
 	// check if batcher identity (address or certificates) is changed
-	currBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, b.fullConfig)
+	currBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, currentFullConfig)
 	if err != nil {
 		return true, errors.Errorf("failed to find current batcher config, err: %v\n", err)
 	}
@@ -358,22 +360,21 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 }
 
 func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
+	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
 	// this is not an admin restart.
 	// close net, ledger and SIGTERM channel
 	b.stopLock.Lock()
 	b.Net.Stop()
 	b.Ledger.Close()
 	close(b.stopSignalListenChan)
-	b.stopLock.Unlock()
 
 	// update batcher config and re-configure the batcher with the same mempool
 	b.logger.Infof("Reconfiguring batcher")
-	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
-	b.mu.Lock()
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
 	b.configureBatcher(b.logger, b.mainExitChan, &ConsenterControlEventSenderFactory{}, b.signer, b.batcher.MemPool)
-	b.mu.Unlock()
+	b.stopLock.Unlock()
 
 	// prune mempool
 	b.logger.Infof("Pruning memory pool")
@@ -402,9 +403,9 @@ func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 }
 
 func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	b.mu.RLock()
+	b.stopLock.Lock()
 	bds := b.batcherDeliverService
-	b.mu.RUnlock()
+	b.stopLock.Unlock()
 	return bds.Deliver(stream)
 }
 
@@ -731,7 +732,7 @@ func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []by
 }
 
 func (b *Batcher) GetConfig() *node_config.BatcherNodeConfig {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.stopLock.Lock()
+	defer b.stopLock.Unlock()
 	return b.config
 }

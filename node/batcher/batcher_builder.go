@@ -32,6 +32,12 @@ func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config
 		consensusDecisionReplicatorCreator: cdrc,
 	}
 
+	configStore, err := configstore.NewStore(b.config.ConfigStorePath)
+	if err != nil {
+		logger.Panicf("Failed creating batcher config store: %s", err.Error())
+	}
+	b.ConfigStore = configStore
+
 	b.configureBatcher(logger, mainExitChan, senderCreator, signer, nil)
 	return b
 }
@@ -67,12 +73,7 @@ func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan c
 		logger.Panicf("Failed creating WAL: %s", err.Error())
 	}
 
-	configStore, err := configstore.NewStore(b.config.ConfigStorePath)
-	if err != nil {
-		logger.Panicf("Failed creating batcher config store: %s", err.Error())
-	}
-
-	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
+	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, b.ConfigStore, logger)
 
 	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, logger, lastKnownDecisionNum)
 
@@ -90,7 +91,6 @@ func (b *Batcher) configureBatcher(logger *flogging.FabricLogger, mainExitChan c
 	b.logger = logger
 	b.batchers = batchers
 	b.Ledger = ledgerArray
-	b.ConfigStore = configStore
 	b.batcherCerts2IDs = make(map[string]types.PartyID)
 	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerArray, logger)
 	b.wal = batcherWAL
