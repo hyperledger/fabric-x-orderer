@@ -81,19 +81,10 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
 		}
 
-		srv := utils.CreateGRPCAssembler(conf)
-		assembler := assembler.NewAssembler(conf, srv, lastConfigBlock, stop, assemblerLogger)
+		assembler := assembler.NewAssembler(conf, lastConfigBlock, stop, assemblerLogger)
+		assembler.StartAssemblerService()
 
-		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
-
-		go func() {
-			_ = srv.Start()
-		}()
-
-		// TODO: move StopSignalListen to Assembler Run and pass stopChan
-		utils.StopSignalListen(nil, assembler, assemblerLogger, srv.Address())
-
-		assemblerLogger.Infof("Assembler listening on %s", srv.Address())
+		assemblerLogger.Infof("Assembler listening on %s", assembler.Address())
 	}
 }
 

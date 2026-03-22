@@ -48,7 +48,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
-	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -200,16 +199,10 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 		logger := testutil.CreateLogger(t, i+1)
 		loggers = append(loggers, logger)
 
-		assemblerGRPC := node_utils.CreateGRPCAssembler(assemblerConf)
-
-		assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, make(chan struct{}), logger)
+		assembler := assembler.NewAssembler(assemblerConf, genesisBlock, make(chan struct{}), logger)
+		assembler.StartAssemblerService()
 		assemblers = append(assemblers, assembler)
 
-		orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
-
-		go func() {
-			assemblerGRPC.Start()
-		}()
 	}
 
 	return assemblers, assemblerDirs, configs, loggers, func() {
@@ -518,16 +511,8 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 }
 
 func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
-	assemblerGRPC := node_utils.CreateGRPCAssembler(conf)
-	assembler := assembler.NewAssembler(conf, assemblerGRPC, lastConfigBlock, make(chan struct{}), logger)
-
-	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
-
-	go func() {
-		err := assemblerGRPC.Start()
-		require.NoError(t, err)
-	}()
-
+	assembler := assembler.NewAssembler(conf, lastConfigBlock, make(chan struct{}), logger)
+	assembler.StartAssemblerService()
 	return assembler
 }
 
