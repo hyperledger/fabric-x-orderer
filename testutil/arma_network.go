@@ -22,8 +22,6 @@ const (
 	TerminationGracePeriod = 10 * time.Second
 )
 
-// var NodeSortingTable = map[NodeType]int{Router: 0, Batcher: 1, Consensus: 2, Assembler: 3}
-
 type ArmaNetwork struct {
 	armaNodes map[NodeType][][]*ArmaNodeInfo
 }
@@ -34,6 +32,19 @@ type ArmaNodeRunInfo struct {
 	Session        *gexec.Session
 }
 
+type ArmaNodesInfoMap map[NodeName]*ArmaNodeInfo
+
+func NewArmaNodesInfoMap() *ArmaNodesInfoMap {
+	m := make(ArmaNodesInfoMap)
+	return &m
+}
+
+func (armaNodesInfoMap *ArmaNodesInfoMap) CleanUp() {
+	for _, node := range *armaNodesInfoMap {
+		node.Close()
+	}
+}
+
 type ArmaNodeInfo struct {
 	RunInfo            *ArmaNodeRunInfo
 	NodeType           NodeType
@@ -42,6 +53,15 @@ type ArmaNodeInfo struct {
 	ShardId            types.ShardID
 	ConfigBlockPath    string
 	MonitoringListener net.Listener
+}
+
+func (armaNodeInfo *ArmaNodeInfo) Close() {
+	if armaNodeInfo.Listener != nil {
+		_ = armaNodeInfo.Listener.Close()
+	}
+	if armaNodeInfo.MonitoringListener != nil {
+		_ = armaNodeInfo.MonitoringListener.Close()
+	}
 }
 
 func (armaNetwork *ArmaNetwork) AddArmaNode(nodeType NodeType, partyIdx int, nodeInfo *ArmaNodeInfo) {
@@ -134,8 +154,7 @@ func (armaNodeInfo *ArmaNodeInfo) RestartArmaNode(t *testing.T, readyChan chan s
 	storagePath := nodeConfig.FileStore.Path
 	require.DirExists(t, storagePath)
 
-	armaNodeInfo.RunInfo.Session = runNode(t, armaNodeInfo.NodeType.String(), armaNodeInfo.RunInfo.ArmaBinaryPath,
-		armaNodeInfo.RunInfo.NodeConfigPath, readyChan, armaNodeInfo.Listener)
+	armaNodeInfo.RunInfo.Session = runNode(t, armaNodeInfo, readyChan)
 }
 
 func (armaNodeInfo *ArmaNodeInfo) StopArmaNode() {

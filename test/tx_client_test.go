@@ -33,8 +33,9 @@ func TestTxClientSend(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
-	require.NoError(t, err)
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	// 2.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -47,7 +48,7 @@ func TestTxClientSend(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan string, 20)
-	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, 20, 10)

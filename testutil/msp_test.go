@@ -27,7 +27,8 @@ func TestBuildTestLocalMSP_Create(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	_ = CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	netInfo := CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()

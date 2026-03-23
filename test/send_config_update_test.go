@@ -58,8 +58,8 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -138,8 +138,8 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	availablePort, newListener := testutil.GetAvailablePort(t)
 	newPort, err := strconv.Atoi(availablePort)
 	require.NoError(t, err)
-	routerToMonitor := armaNetwork.GetRouter(t, submittingParty)
-	routerToMonitor.Listener = newListener
+	routerToUpdate := armaNetwork.GetRouter(t, submittingParty)
+	routerToUpdate.Listener = newListener
 
 	configUpdatePbData := configUpdateBuilder.UpdateRouterEndpoint(t, partyToUpdate, routerIP, newPort)
 
@@ -274,8 +274,8 @@ func TestRemovePartyRunAll(t *testing.T) {
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -374,8 +374,8 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	numOfShards := 1
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -530,8 +530,8 @@ func TestRemoveParty(t *testing.T) {
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -677,8 +677,8 @@ func TestAddNewParty(t *testing.T) {
 	numOfShards := 1
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
 
@@ -748,7 +748,7 @@ func TestAddNewParty(t *testing.T) {
 
 	// Create config update to add a party
 	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	addedPartyId, addedNetInfo := prepareAddPartyConfigUpdate(t, dir, configUpdateBuilder)
+	addedPartyId, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
 
 	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
@@ -877,8 +877,8 @@ func TestChangePartyCertificates(t *testing.T) {
 	updateOrg := fmt.Sprintf("org%d", partyToUpdate)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -1122,8 +1122,8 @@ func TestChangePartyCACertificates(t *testing.T) {
 	submittingParty := types.PartyID(2)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -1586,8 +1586,8 @@ func TestUpdateTimeoutParameters(t *testing.T) {
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -1760,6 +1760,7 @@ func TestUpdateSmartBFTParameters(t *testing.T) {
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
@@ -1920,80 +1921,6 @@ func (vt *verifySmartBFTParam) HandleBlock(t *testing.T, block *common.Block) er
 	return nil
 }
 
-// prepareAddPartyConfigUpdate prepares a config update to add a new party to the network and returns the new party ID,
-// the updated network info with the new party's nodes, and the config update protobuf data.
-func prepareAddPartyConfigUpdate(t *testing.T, dir string, configUpdateBuilder *configutil.ConfigUpdateBuilder) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
-	addedNetInfo, addedPartyConfig := testutil.ExtendNetwork(t, filepath.Join(dir, "config.yaml"))
-	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true)
-
-	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
-	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)
-	addedOrg := fmt.Sprintf("org%d", addedPartyId)
-
-	consenterConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_consenter.yaml"))
-	require.NoError(t, err)
-	consenterTlsCert, err := os.ReadFile(consenterConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-	require.NoError(t, err)
-	routerLocalConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_router.yaml"))
-	require.NoError(t, err)
-	routerTlsCert, err := os.ReadFile(routerLocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-	require.NoError(t, err)
-	assemblerConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_assembler.yaml"))
-	require.NoError(t, err)
-	assemblerTlsCert, err := os.ReadFile(assemblerConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-	require.NoError(t, err)
-
-	batchersConfig := make([]*protos.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
-
-	for i := range addedPartyConfig.Parties[0].BatchersEndpoints {
-		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)))
-		require.NoError(t, err)
-		batcherTlsCert, err := os.ReadFile(batcherNodeConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
-		require.NoError(t, err)
-		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-		require.NoError(t, err)
-
-		batchersConfig[i] = &protos.BatcherNodeConfig{
-			ShardID:  uint32(i + 1),
-			Host:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			TlsCert:  batcherTlsCert,
-			SignCert: batcherSignCert,
-		}
-	}
-
-	caCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "cacerts", "ca-cert.pem"))
-	require.NoError(t, err)
-	tlsCACerts, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
-	require.NoError(t, err)
-	consenterSignCert, err := os.ReadFile(filepath.Join(consenterConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-	require.NoError(t, err)
-
-	configUpdateBuilder.AddNewParty(t, &protos.PartyConfig{
-		CACerts:    [][]byte{caCerts},
-		TLSCACerts: [][]byte{tlsCACerts},
-		ConsenterConfig: &protos.ConsenterNodeConfig{
-			Host:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			SignCert: consenterSignCert,
-			TlsCert:  consenterTlsCert,
-		},
-		RouterConfig: &protos.RouterNodeConfig{
-			Host:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			TlsCert: routerTlsCert,
-		},
-		AssemblerConfig: &protos.AssemblerNodeConfig{
-			Host:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			TlsCert: assemblerTlsCert,
-		},
-		BatchersConfig: batchersConfig,
-	})
-
-	return addedPartyId, addedNetInfo
-}
-
 // TestUpdateBatchingParameters verifies that updating a party's batching parameters via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new batching parameters.
 func TestUpdateBatchingParameters(t *testing.T) {
@@ -2007,8 +1934,8 @@ func TestUpdateBatchingParameters(t *testing.T) {
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 

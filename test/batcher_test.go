@@ -60,7 +60,8 @@ func TestPrimaryBatcherRestartRecover(t *testing.T) {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
@@ -277,7 +278,8 @@ func TestSecondaryBatcherRestartRecover(t *testing.T) {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
@@ -489,7 +491,8 @@ func TestVerifySignedTxsByBatcherSingleParty(t *testing.T) {
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, shardsNumber, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
@@ -602,7 +605,8 @@ func TestVerifySignedTxsByBatcherForwardRequest(t *testing.T) {
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numShards, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.

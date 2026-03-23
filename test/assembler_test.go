@@ -50,6 +50,8 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -162,6 +164,7 @@ func TestStartAssemblerGetMetrics(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddonCLI := armageddon.NewCLI()
@@ -259,7 +262,8 @@ func TestPullBlocksFromAssemblerWithMTLS(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	listeners := testutil.CreateNetwork(t, configPath, 4, 2, "none", "mTLS")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "mTLS")
+	defer netInfo.CleanUp()
 	require.NoError(t, err)
 	// 2.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
@@ -273,7 +277,7 @@ func TestPullBlocksFromAssemblerWithMTLS(t *testing.T) {
 	// run arma nodes
 	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
 	readyChan := make(chan string, 20)
-	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, listeners)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, 20, 10)

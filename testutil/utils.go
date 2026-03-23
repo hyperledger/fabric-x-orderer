@@ -51,9 +51,16 @@ func (n NodeType) String() string {
 	return string(n)
 }
 
-// EditDirectoryInNodeConfigYAML updates a node YAML config file at the given path.
-// It sets the FileStore.Path to storagePath, clears the monitoring listen port,
-// and updates the bootstrap file location.
+// EditDirectoryInNodeConfigYAML modifies the node configuration YAML file with updated directory paths and monitoring settings.
+// It reads the existing node configuration from the specified path, updates the file storage path,
+// monitoring listen port, and optionally sets the bootstrap file path if provided.
+// The modified configuration is then written back to the YAML file.
+// Parameters:
+//   - t: *testing.T for test assertions and error handling
+//   - path: string representing the file path to the node configuration YAML file
+//   - storagePath: string representing the new file storage directory path
+//   - bootstrapFilePath: string representing the bootstrap file path (optional, only set if non-empty)
+//   - monitoringListenPort: uint32 representing the monitoring server listen port
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string, bootstrapFilePath string, monitoringListenPort uint32) {
 	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
@@ -86,9 +93,9 @@ func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 }
 
 // CreateNetwork creates a config.yaml file with the network configuration. This file is the input for armageddon generate command.
-func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) map[NodeName]*ArmaNodeInfo {
+func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) ArmaNodesInfoMap {
 	var parties []genconfig.Party
-	netInfo := make(map[NodeName]*ArmaNodeInfo)
+	netInfo := *NewArmaNodesInfoMap()
 	var maxPartyID types.PartyID
 
 	for i := range numOfParties {
@@ -160,8 +167,8 @@ type NodeName struct {
 
 // ExtendNetwork extends an existing network configuration by adding a party to it.
 // It updates the config file with the new party and returns the new party's information and config only
-func ExtendNetwork(t *testing.T, configPath string) (map[NodeName]*ArmaNodeInfo, *genconfig.Network) {
-	netInfo := make(map[NodeName]*ArmaNodeInfo)
+func ExtendNetwork(t *testing.T, configPath string) (ArmaNodesInfoMap, *genconfig.Network) {
+	netInfo := *NewArmaNodesInfoMap()
 
 	networkConfig := genconfig.Network{}
 	err := utils.ReadFromYAML(&networkConfig, configPath)
@@ -315,9 +322,9 @@ func PrepareSharedConfigBinaryFromNetwork(t *testing.T, networkConfig genconfig.
 	return networkSharedConfig, sharedConfigPath
 }
 
-func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath string, readyChan chan string, listener net.Listener) *gexec.Session {
-	listener.Close()
-	cmd := exec.Command(armaBinaryPath, name, "--config", nodeConfigPath)
+func runNode(t *testing.T, node *ArmaNodeInfo, readyChan chan string) *gexec.Session {
+	node.Close()
+	cmd := exec.Command(node.RunInfo.ArmaBinaryPath, node.NodeType.String(), "--config", node.RunInfo.NodeConfigPath)
 	require.NotNil(t, cmd)
 
 	sess, err := gexec.Start(cmd, os.Stdout, os.Stderr)
@@ -325,11 +332,11 @@ func runNode(t *testing.T, name string, armaBinaryPath string, nodeConfigPath st
 
 	select {
 	case <-time.After(60 * time.Second):
-		require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to start", name))
+		require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s_%d_%d to start", node.NodeType.String(), node.PartyId, node.ShardId))
 	case <-sess.Err.Detect("panic"):
-		readyChan <- fmt.Sprintf("%s_panic", name)
+		readyChan <- fmt.Sprintf("%s_%d_%d_panic", node.NodeType.String(), node.PartyId, node.ShardId)
 	case <-sess.Err.Detect("listening on"):
-		readyChan <- fmt.Sprintf("%s_listening", name)
+		readyChan <- fmt.Sprintf("%s_%d_%d_listening", node.NodeType.String(), node.PartyId, node.ShardId)
 	}
 
 	return sess
@@ -379,9 +386,9 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		require.NoError(t, err)
 
 		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, netNode.ConfigBlockPath, uint32(netNode.MonitoringListener.Addr().(*net.TCPAddr).Port))
-		netNode.MonitoringListener.Close()
-		sess := runNode(t, netNode.NodeType.String(), armaBinaryPath, nodeConfigPath, readyChan, netNode.Listener)
-		netNode.RunInfo = &ArmaNodeRunInfo{Session: sess, ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
+		netNode.RunInfo = &ArmaNodeRunInfo{ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
+		netNode.RunInfo.Session = runNode(t, netNode, readyChan)
+		require.NotNil(t, netNode.RunInfo.Session, fmt.Sprintf("failed to start Arma node %s", netNode.NodeType.String()))
 		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
 
@@ -439,7 +446,7 @@ func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 				case <-n.RunInfo.Session.Err.Detect("Soft stop"):
 				case <-n.RunInfo.Session.Err.Detect("soft stop"):
 				case <-time.After(45 * time.Second):
-					require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s to stop", n.NodeType))
+					require.Fail(t, fmt.Sprintf("Timed out waiting for Arma node %s_%d_%d to stop", n.NodeType.String(), n.PartyId, n.ShardId))
 				}
 			})
 		}

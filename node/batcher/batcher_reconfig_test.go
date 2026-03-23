@@ -44,16 +44,11 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
 	require.NotNil(t, netInfo)
 
-	for _, n := range netInfo {
-		if n.Listener != nil {
-			_ = n.Listener.Close()
-		}
-	}
-
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	updateFileStorePath(t, dir, parties, numOfShards)
 
+	netInfo.CleanUp()
 	stubConsenters := createStubConsenters(t, dir, parties)
 	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
 	startBatcherNodes(batchers)
