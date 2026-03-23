@@ -152,6 +152,12 @@ func CreateStructuredRequest(data []byte) *protos.Request {
 	}
 }
 
+func CreateStructuredRequestWithConfigSeq(data []byte, configSeq uint32) *protos.Request {
+	req := CreateStructuredRequest(data)
+	req.ConfigSeq = configSeq
+	return req
+}
+
 func GetDataFromEnvelope(env *common.Envelope) ([]byte, error) {
 	if env == nil {
 		return nil, fmt.Errorf("bad envelope")

@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -50,34 +51,34 @@ type Net interface {
 }
 
 type Batcher struct {
+	Net         Net
+	logger      *flogging.FabricLogger
+	signer      Signer
+	ConfigStore *configstore.Store
+
+	stopLock                           sync.Mutex
 	requestsInspectorVerifier          *RequestsInspectorVerifier
 	batcherDeliverService              *BatcherDeliverService
 	decisionReplicator                 DecisionReplicator
 	consensusDecisionReplicatorCreator ConsensusDecisionReplicatorCreator
-	logger                             *flogging.FabricLogger
 	batcher                            *BatcherRole
 	batcherCerts2IDs                   map[string]types.PartyID
 	controlEventSenders                []ConsenterControlEventSender
 	controlEventBroadcaster            *ControlEventBroadcaster
 	primaryAckConnector                *PrimaryAckConnector
 	primaryReqConnector                *PrimaryReqConnector
-	Net                                Net
 	Ledger                             *node_ledger.BatchLedgerArray
-	ConfigStore                        *configstore.Store
 	config                             *node_config.BatcherNodeConfig
 	fullConfig                         *config.Configuration
 	batchers                           []node_config.BatcherInfo
-	signer                             Signer
 	wal                                *smartbft_wal.WriteAheadLogFile
-
-	stopLock             sync.Mutex
-	stateChan            chan *state.State
-	running              sync.WaitGroup // maybe change the name, it is only for state replicator
-	stopChan             chan struct{}
-	stopSignalListenChan chan struct{}
-	mainExitChan         chan struct{}
-	isStopped            bool
-	isSoftStopped        bool
+	stateChan                          chan *state.State
+	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
+	stopChan                           chan struct{}
+	stopSignalListenChan               chan struct{}
+	mainExitChan                       chan struct{}
+	isStopped                          bool
+	isSoftStopped                      bool
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -247,7 +248,7 @@ func (b *Batcher) replicateDecision() {
 							b.logger.Panicf("Failed adding config block to config store: %s", err)
 						}
 						b.logger.Infof("Soft stop")
-						go b.SoftStop()
+						go b.processNewConfigBlock(lastBlock)
 						return
 					}
 				} else {
@@ -277,6 +278,122 @@ func (b *Batcher) replicateDecision() {
 	}
 }
 
+func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
+	b.SoftStop()
+	b.logger.Infof("Apply config")
+	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
+	if err != nil {
+		b.logger.Panicf("Failed applying new config: %s", err)
+	}
+	if isAdminOperationRequired {
+		b.logger.Infof("Pending admin operation")
+		return
+	}
+}
+
+func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuration) (*config_protos.BatcherNodeConfig, error) {
+	partyID := conf.LocalConfig.NodeLocalConfig.PartyID
+	partyConfig, err := config.FindParty(partyID, conf)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to find party config in the shared configuration for batcher")
+	}
+	for _, batcher := range partyConfig.BatchersConfig {
+		if types.ShardID(batcher.ShardID) == shardID {
+			return batcher, nil
+		}
+	}
+	return nil, errors.Errorf("batcher in shard %v does not exist in the party config", shardID)
+}
+
+// ApplyConfig applies the new configuration to the batcher.
+// It receives the new config block and checks if an admin operation is required (party evicted or identity change), if so returns true.
+// If not, it reconfigures the batcher with the new config, retains the current memory pool, prunes the memory pool, and starts the batcher.
+// If an error occurs at any point, the function returns and the batcher will remain in soft stop.
+func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
+	partyID := b.config.PartyId
+	shardID := b.config.ShardId
+
+	b.stopLock.Lock()
+	currentFullConfig := b.fullConfig
+	b.stopLock.Unlock()
+
+	if currentFullConfig == nil {
+		return true, errors.New("current configuration is nil")
+	}
+
+	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to build new configuration")
+	}
+
+	// check if party is removed
+	isPartyEvicted, err := config.IsPartyEvicted(partyID, newConfig)
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to detect if party is evicted")
+	}
+	if isPartyEvicted {
+		b.logger.Infof("Admin action is required, party %d is evicted", partyID)
+		return true, nil
+	}
+
+	// check if batcher identity (address or certificates) is changed
+	currBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, currentFullConfig)
+	if err != nil {
+		return true, errors.Errorf("failed to find current batcher config, err: %v\n", err)
+	}
+	newBatcherIdentityConfig, err := findBatcherInConfigByShard(shardID, newConfig)
+	if err != nil {
+		return true, errors.Errorf("failed to find new batcher config, err: %v\n", err)
+	}
+	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currBatcherIdentityConfig, newBatcherIdentityConfig, b.logger)
+	if err != nil {
+		return true, errors.Errorf("could not decide if node restart is required, err: %v\n", err)
+	}
+
+	if isRestartRequired {
+		b.logger.Infof("Admin action is required, identity was changed")
+		return true, nil
+	}
+
+	b.stopAndReconfigure(newConfig, lastBlock)
+	return false, nil
+}
+
+func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
+	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
+	// this is not an admin restart.
+	// close net, ledger and SIGTERM channel
+	b.stopLock.Lock()
+	b.Net.Stop()
+	b.Ledger.Close()
+	close(b.stopSignalListenChan)
+
+	// update batcher config and re-configure the batcher with the same mempool
+	b.logger.Infof("Reconfiguring batcher")
+	b.config = newBatcherConfig
+	b.fullConfig = newConfig
+	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool)
+	b.stopLock.Unlock()
+
+	// prune mempool
+	b.logger.Infof("Pruning memory pool")
+	b.batcher.MemPool.Prune(func(req []byte) error {
+		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
+			b.logger.Infof("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
+			return err
+		}
+		return nil
+	})
+
+	// init batcher again
+	b.logger.Infof("Initialize new batcher")
+	b.StartBatcherService()
+	b.Run()
+
+	b.logger.Infof("Batcher listening on %s", b.Address())
+}
+
 func (b *Batcher) GetLatestStateChan() <-chan *state.State {
 	return b.stateChan
 }
@@ -286,7 +403,10 @@ func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 }
 
 func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	return b.batcherDeliverService.Deliver(stream)
+	b.stopLock.Lock()
+	bds := b.batcherDeliverService
+	b.stopLock.Unlock()
+	return bds.Deliver(stream)
 }
 
 func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.SubmitResponse, error) {
@@ -609,4 +729,10 @@ func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []by
 	baf.SetSignature(sig)
 
 	return baf, nil
+}
+
+func (b *Batcher) GetConfig() *node_config.BatcherNodeConfig {
+	b.stopLock.Lock()
+	defer b.stopLock.Unlock()
+	return b.config
 }

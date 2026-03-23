@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -93,14 +94,110 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// wait for batcher to soft stop
+	// wait for the batchers initialized with the new AutoRemoveTimeout parameter
 	for j := range parties {
 		require.Eventually(t, func() bool {
-			return batchers[j].GetStatus() == "Soft Stopped"
+			return batchers[j].GetConfig().AutoRemoveTimeout == 15*time.Millisecond
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// TODO: complete test by checking AutoRemoveTimeout has changed and the status of the batcher is Running again.
+	// wait for the batcher to initialize
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			return batchers[j].GetStatus() == "Running"
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// find the primary
+	var primaryBatcher *batcher.Batcher
+	primaryID := batchers[0].GetPrimaryID()
+	for _, b := range batchers {
+		if b.GetPrimaryID() == primaryID {
+			primaryBatcher = b
+			break
+		}
+	}
+
+	// submit request
+	req := tx.CreateStructuredRequestWithConfigSeq([]byte{2}, 1)
+	resp, err := primaryBatcher.Submit(context.Background(), req)
+	require.NoError(t, err)
+	require.Empty(t, resp.Error)
+
+	// make sure request was batched
+	for _, b := range batchers {
+		require.Eventually(t, func() bool {
+			return b.Ledger.Height(primaryID) == uint64(1)
+		}, 30*time.Second, 10*time.Millisecond)
+	}
+
+	// make sure consenters received the required BAF
+	for _, sc := range stubConsenters {
+		require.Eventually(t, func() bool {
+			return sc.BAFCount() == len(parties)
+		}, 30*time.Second, 10*time.Millisecond)
+	}
+}
+
+// Scenario:
+// 1. Create config and crypto material
+// 2. Create Batcher and stub Consenter
+// 3. Prepare config block to be received by batcher from stub consenter. The config removes the party of the batcher.
+// 4. Verify that batcher correctly handle the config tx, detects that it has been removed and admin operation is required as a result.
+func TestBatcherPartyEvicted(t *testing.T) {
+	parties := []types.PartyID{1}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	require.NotNil(t, netInfo)
+
+	for _, n := range netInfo {
+		if n.Listener != nil {
+			_ = n.Listener.Close()
+		}
+	}
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStorePath(t, dir, parties, numOfShards)
+
+	stubConsenters := createStubConsenters(t, dir, parties)
+	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
+	startBatcherNodes(batchers)
+
+	defer func() {
+		for _, sc := range stubConsenters {
+			sc.Stop()
+		}
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}()
+
+	// create config block that removes the batcher
+	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	defer cleanUp()
+	partyToRemove := types.PartyID(1)
+	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
+	require.NotNil(t, configUpdatePbData)
+	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
+	require.NoError(t, err)
+
+	// TODO: instead of Add, SoftStop and ApplyConfig do the full path, and use State to discover PendingAdmin
+	// append block to the config store
+	err = batchers[0].ConfigStore.Add(configBlock)
+	require.NoError(t, err)
+
+	// soft stop batcher
+	batchers[0].SoftStop()
+
+	// apply config
+	isAdminOperationRequired, err := batchers[0].ApplyConfig(configBlock)
+	require.NoError(t, err)
+	require.True(t, isAdminOperationRequired)
 }
 
 func createBatcherNodes(t *testing.T, dir string, parties []types.PartyID, numOfShards int, consenters []*stubConsenter) ([]*batcher.Batcher, *common.Block, channelconfig.Resources) {

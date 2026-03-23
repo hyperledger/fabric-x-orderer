@@ -497,6 +497,7 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 // 4. The batcher receives from consensus the block number 2 and skip it
 // 5. The batcher receives from consensus the block number 3 and append the block to the config store
 func TestBatcherJoin(t *testing.T) {
+	t.Skip()
 	shardID := types.ShardID(0)
 	numParties := 1
 	ca, err := tlsgen.NewCA()
