@@ -1,4 +1,10 @@
 #!/bin/sh
+#
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 set -e
 
 echo "127.0.0.1 assembler.p1 consensus.p1 router.p1 batcher1.p1" >> /etc/hosts
