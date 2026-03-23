@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eux
 
-BASE=/tmp/arma-4parties1shard
+BASE=/tmp/arma-all-in-one
 
 rm -rf ${BASE}
 mkdir -p ${BASE}/storage
@@ -14,9 +14,9 @@ done
 REPO_ROOT=$(cd "$(dirname "$0")/../../../.." && pwd)
 cd ${REPO_ROOT}
 
-docker build -t arma-4p1s -f node/examples/4parties1shard/Dockerfile .
+docker build -t arma-4p1s -f node/examples/all-in-one/Dockerfile .
 
-cd node/examples/4parties1shard/scripts
+cd node/examples/all-in-one/scripts
 
 docker run -it \
   -p 6022:6022 -p 6023:6023 \

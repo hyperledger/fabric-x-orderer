@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-BASE_DIR=/tmp/arma-4parties1shard
+BASE_DIR=/tmp/arma-all-in-one
 
 for i in 1 2 3 4; do
   arma consensus --config=${BASE_DIR}/config/party${i}/local_config_consenter.yaml &

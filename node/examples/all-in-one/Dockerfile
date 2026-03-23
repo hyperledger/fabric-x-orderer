@@ -20,8 +20,8 @@ RUN cp /src/bin/arma /usr/local/bin/arma && \
     cp /src/bin/armageddon /usr/local/bin/armageddon
 
 # scripts
-COPY node/examples/4parties1shard/entrypoint.sh /entrypoint.sh
-COPY node/examples/4parties1shard/run_all.sh /run_all.sh
+COPY node/examples/all-in-one/entrypoint.sh /entrypoint.sh
+COPY node/examples/all-in-one/run_all.sh /run_all.sh
 
 RUN chmod +x /entrypoint.sh /run_all.sh
 

@@ -6,7 +6,7 @@ echo "127.0.0.1 assembler.p2 consensus.p2 router.p2 batcher1.p2" >> /etc/hosts
 echo "127.0.0.1 assembler.p3 consensus.p3 router.p3 batcher1.p3" >> /etc/hosts
 echo "127.0.0.1 assembler.p4 consensus.p4 router.p4 batcher1.p4" >> /etc/hosts
 
-BASE_DIR=/tmp/arma-4parties1shard
+BASE_DIR=/tmp/arma-all-in-one
 STORAGE_DIR=/storage
 
 echo "Generating config..."
@@ -90,14 +90,14 @@ for i in 1 2 3 4; do
   armageddon receive \
     --config ${BASE_DIR}/config/party${i}/user_config.yaml \
     --pullFromPartyId=${i} \
-    --expectedTxs=23000 \
+    --expectedTxs=1000 \
     --output="/tmp/output${i}" &
 done
 
 # LOADER
 armageddon load \
   --config ${BASE_DIR}/config/party1/user_config.yaml \
-  --transactions=24000 \
+  --transactions=1000 \
   --rate=200 \
   --txSize=300
 
