@@ -29,6 +29,7 @@ docker run -it \
   -p 6122:6122 -p 6123:6123 \
   -p 6222:6222 -p 6223:6223 \
   -p 6322:6322 -p 6323:6323 \
+  -v ${BASE}:/tmp/arma-all-in-one \
   -v ${BASE}/storage:/storage \
   -v $(pwd)/../config:/config \
   arma-4p1s
