@@ -163,9 +163,9 @@ func CreateBlockToAppendFromDecision(number uint64, proposal smartbft_types.Prop
 
 	protoutil.InitBlockMetadata(block)
 	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = DecisionSignaturesToBytes(signatures)
-	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
-		LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
-		ConsenterMetadata: proposal.Metadata,
+	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = proposal.Metadata
+	block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: decisionNumOfLastConfigBlock}),
 	})
 
 	return block
