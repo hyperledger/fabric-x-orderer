@@ -274,7 +274,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	ledger, err := ledger.NewConsensusLedger(dir)
 	assert.NoError(t, err)
 
-	initialState, md := initializeStateAndMetadata(t, initialState, ledger)
+	initialState, md, prevHash := initializeStateAndMetadata(t, initialState, ledger)
 
 	consenter := &node_consensus.Consenter{ // TODO should this be initialized as part of consensus node start?
 		DB:              db,
@@ -300,6 +300,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	c := &node_consensus.Consensus{
 		Config:       &consenterNodeConfig,
+		PrevHash:     prevHash,
 		Logger:       l,
 		Signer:       signer,
 		SigVerifier:  verifier,
@@ -342,7 +343,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	}
 }
 
-func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata) {
+func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, []byte) {
 	height := ledger.Height()
 
 	if height == 0 {
@@ -355,8 +356,10 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 			}).Serialize(),
 			Metadata: nil,
 		}
-		ledger.Append(0, genesisProposal, nil, 0)
-		return initState, &smartbftprotos.ViewMetadata{}
+
+		block := state.CreateBlockToAppendFromDecision(0, genesisProposal, nil, nil, 0)
+		ledger.Append(block)
+		return initState, &smartbftprotos.ViewMetadata{}, protoutil.BlockHeaderHash(block.Header)
 	}
 
 	lastBlock, err := ledger.RetrieveBlockByNumber(height - 1)
@@ -373,7 +376,7 @@ func initializeStateAndMetadata(t *testing.T, initState *state.State, ledger *le
 	err = header.Deserialize(proposal.Header)
 	assert.NoError(t, err)
 
-	return header.State, md
+	return header.State, md, protoutil.BlockHeaderHash(lastBlock.Header)
 }
 
 type mockComm struct {
@@ -1020,7 +1023,7 @@ func TestSignProposal(t *testing.T) {
 		}).Serialize(),
 		Metadata: nil,
 	}
-	ledger.Append(0, genesisProposal, nil, 0)
+	ledger.Append(state.CreateBlockToAppendFromDecision(0, genesisProposal, nil, nil, 0))
 
 	c := &node_consensus.Consensus{
 		Arma:        consenter,

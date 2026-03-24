@@ -87,9 +87,12 @@ func TestConsensusLedger(t *testing.T) {
 			{blockNum: 2, expectedHeight: 3},
 		}
 
+		var prevHash []byte
 		for _, tt := range appendTests {
 			proposal := createProposal(tt.blockNum)
-			l.Append(tt.blockNum, proposal, nil, tt.blockNum)
+			block := state.CreateBlockToAppendFromDecision(tt.blockNum, proposal, nil, prevHash, tt.blockNum)
+			prevHash = protoutil.BlockHeaderHash(block.Header)
+			l.Append(block)
 			require.Equal(t, tt.expectedHeight, l.Height())
 
 			_, err = l.RetrieveBlockByNumber(tt.blockNum)
@@ -107,7 +110,8 @@ func TestConsensusLedger(t *testing.T) {
 
 		// Append first block without listener
 		proposal := createProposal(0)
-		l.Append(0, proposal, nil, 0)
+		block := state.CreateBlockToAppendFromDecision(0, proposal, nil, nil, 0)
+		l.Append(block)
 		require.Equal(t, uint64(1), l.Height())
 
 		// Register listener and append second block
@@ -115,7 +119,9 @@ func TestConsensusLedger(t *testing.T) {
 		l.RegisterAppendListener(listener)
 
 		proposal = createProposal(1)
-		l.Append(1, proposal, nil, 1)
+		prevHash := protoutil.BlockHeaderHash(block.Header)
+		block1 := state.CreateBlockToAppendFromDecision(1, proposal, nil, prevHash, 1)
+		l.Append(block1)
 		require.Equal(t, uint64(2), l.Height())
 		require.Equal(t, 1, listener.OnAppendCallCount(), "listener should be notified once")
 	})
@@ -131,9 +137,12 @@ func TestConsensusLedger(t *testing.T) {
 		l.RegisterAppendListener(listener)
 
 		proposal := createProposal(0)
-		l.Append(0, proposal, nil, 0)
+		block := state.CreateBlockToAppendFromDecision(0, proposal, nil, nil, 0)
+		l.Append(block)
 		proposal = createProposal(1)
-		l.Append(1, proposal, nil, 1)
+		prevHash := protoutil.BlockHeaderHash(block.Header)
+		block1 := state.CreateBlockToAppendFromDecision(1, proposal, nil, prevHash, 1)
+		l.Append(block1)
 
 		require.Equal(t, uint64(2), l.Height())
 		require.Equal(t, 2, listener.OnAppendCallCount())
@@ -157,7 +166,9 @@ func TestConsensusLedger(t *testing.T) {
 		l.RegisterAppendListener(newListener)
 
 		proposal = createProposal(2)
-		l.Append(2, proposal, nil, 2)
+		prevHash = protoutil.BlockHeaderHash(block1.Header)
+		block2 := state.CreateBlockToAppendFromDecision(2, proposal, nil, prevHash, 2)
+		l.Append(block2)
 		require.Equal(t, uint64(3), l.Height())
 		require.Equal(t, 1, newListener.OnAppendCallCount(), "new listener should be notified")
 
@@ -179,17 +190,21 @@ func TestConsensusLedger(t *testing.T) {
 		l, err := ledger.NewConsensusLedger(dir)
 		require.NoError(t, err)
 
+		var prevHash []byte
 		// Append blocks 0, 1, 2
 		for i := uint64(0); i < 3; i++ {
 			proposal := createProposal(i)
-			l.Append(i, proposal, nil, i)
+			block := state.CreateBlockToAppendFromDecision(i, proposal, nil, prevHash, i)
+			prevHash = protoutil.BlockHeaderHash(block.Header)
+			l.Append(block)
 		}
 		require.Equal(t, uint64(3), l.Height())
 
 		// Attempt to append block 2 again (should panic)
 		duplicateProposal := createProposal(2)
+		block := state.CreateBlockToAppendFromDecision(2, duplicateProposal, nil, prevHash, 2)
 		require.PanicsWithError(t, "block number should have been 3 but was 2", func() {
-			l.Append(2, duplicateProposal, nil, 2)
+			l.Append(block)
 		})
 
 		// Verify ledger state is unchanged after panic
@@ -210,11 +225,12 @@ func TestConsensusLedger(t *testing.T) {
 		signatures := createSignatures(signerIDs)
 
 		// Append block with signatures
-		l.Append(0, proposal, signatures, 0)
+		block := state.CreateBlockToAppendFromDecision(0, proposal, signatures, nil, 0)
+		l.Append(block)
 		require.Equal(t, uint64(1), l.Height())
 
 		// Retrieve and verify the block
-		block, err := l.RetrieveBlockByNumber(0)
+		block, err = l.RetrieveBlockByNumber(0)
 		require.NoError(t, err)
 		require.NotNil(t, block)
 		require.Equal(t, uint64(0), block.Header.Number)
@@ -227,11 +243,11 @@ func TestConsensusLedger(t *testing.T) {
 		// Append another block with different number of signatures
 		proposal2 := createProposal(1)
 		signatures2 := createSignatures([]uint64{1, 2, 3, 4})
-
-		l.Append(1, proposal2, signatures2, 1)
+		block2 := state.CreateBlockToAppendFromDecision(1, proposal2, signatures2, protoutil.BlockHeaderHash(block.Header), 1)
+		l.Append(block2)
 		require.Equal(t, uint64(2), l.Height())
 
-		block2, err := l.RetrieveBlockByNumber(1)
+		block2, err = l.RetrieveBlockByNumber(1)
 		require.NoError(t, err)
 		require.NotEmpty(t, block2.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES],
 			"second block should also have signature metadata")

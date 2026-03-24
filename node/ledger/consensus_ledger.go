@@ -7,15 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
 )
 
@@ -27,7 +24,6 @@ type AppendListener interface {
 type ConsensusLedger struct {
 	blockStore     *blkstorage.BlockStore
 	provider       *blkstorage.BlockStoreProvider
-	prevHash       []byte
 	ledger         blockledger.ReadWriter
 	appendListener AppendListener
 }
@@ -55,15 +51,6 @@ func NewConsensusLedger(ledgerDir string) (*ConsensusLedger, error) {
 		ledger:     fl,
 	}
 
-	height := fl.Height()
-	if height > 0 {
-		block, err := fl.RetrieveBlockByNumber(height - 1)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed retrieving last block")
-		}
-		consensusLedger.prevHash = protoutil.BlockHeaderHash(block.Header)
-	}
-
 	return consensusLedger, nil
 }
 
@@ -72,34 +59,11 @@ func (l *ConsensusLedger) RegisterAppendListener(listener AppendListener) {
 	l.appendListener = listener
 }
 
-func (c *ConsensusLedger) Append(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, decisionNumOfLastConfigBlock uint64) {
-	proposalBytes := state.ProposalToBytes(proposal)
-	data := &common.BlockData{
-		Data: [][]byte{proposalBytes},
-	}
-
-	block := &common.Block{
-		Header: &common.BlockHeader{
-			Number:       number,
-			DataHash:     protoutil.ComputeBlockDataHash(data),
-			PreviousHash: c.prevHash,
-		},
-		Data: data,
-	}
-
-	protoutil.InitBlockMetadata(block)
-	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
-	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
-		LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
-		ConsenterMetadata: proposal.Metadata,
-	})
-
+func (c *ConsensusLedger) Append(block *common.Block) {
 	err := c.ledger.Append(block)
 	if err != nil {
 		panic(err)
 	}
-
-	c.prevHash = protoutil.BlockHeaderHash(block.Header)
 
 	if c.appendListener != nil {
 		c.appendListener.OnAppend(block)
@@ -117,7 +81,6 @@ func (c *ConsensusLedger) WriteBlock(block *common.Block) {
 	if err != nil {
 		panic(err)
 	}
-	c.prevHash = protoutil.BlockHeaderHash(block.GetHeader())
 }
 
 func (c *ConsensusLedger) Height() uint64 {

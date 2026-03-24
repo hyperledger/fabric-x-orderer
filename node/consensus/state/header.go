@@ -18,6 +18,7 @@ import (
 
 type Header struct {
 	Num                          types.DecisionNum
+	PrevHash                     []byte
 	AvailableCommonBlocks        []*common.Block
 	State                        *State
 	DecisionNumOfLastConfigBlock types.DecisionNum
@@ -27,13 +28,14 @@ func (h *Header) Deserialize(bytes []byte) error {
 	if bytes == nil {
 		return errors.Errorf("nil bytes")
 	}
-	if len(bytes) < 8+8+4 { // at least header number (uint64) and config num (uint64) and number of available common blocks (uint32)
-		return errors.Errorf("len of bytes is just %d; expected at least 20", len(bytes))
+	if len(bytes) < 8+8+4+4 { // at least header number (uint64) and config num (uint64) and raw state size (uint32) and number of available common blocks (uint32)
+		return errors.Errorf("len of bytes is just %d; expected at least 24", len(bytes))
 	}
 	h.Num = types.DecisionNum(binary.BigEndian.Uint64(bytes[0:8]))
 	h.DecisionNumOfLastConfigBlock = types.DecisionNum(binary.BigEndian.Uint64(bytes[8:16]))
-	availableCommonBlockCount := int(binary.BigEndian.Uint32(bytes[16:20]))
-	pos := 20
+	rawStateSize := binary.BigEndian.Uint32(bytes[16:20])
+	availableCommonBlockCount := int(binary.BigEndian.Uint32(bytes[20:24]))
+	pos := 24
 	h.AvailableCommonBlocks = nil
 	if availableCommonBlockCount > 0 {
 		h.AvailableCommonBlocks = make([]*common.Block, availableCommonBlockCount)
@@ -49,13 +51,17 @@ func (h *Header) Deserialize(bytes []byte) error {
 		pos += rawBlockSize
 		h.AvailableCommonBlocks[i] = block
 	}
-	rawState := bytes[pos:]
+	rawState := bytes[pos : pos+int(rawStateSize)]
 	if len(rawState) == 0 {
 		h.State = nil
-		return nil
+	} else {
+		h.State = &State{}
+		h.State.Deserialize(rawState, &BAFDeserialize{})
 	}
-	h.State = &State{}
-	h.State.Deserialize(rawState, &BAFDeserialize{})
+	h.PrevHash = bytes[pos+int(rawStateSize):]
+	if len(h.PrevHash) == 0 {
+		h.PrevHash = nil
+	}
 
 	return nil
 }
@@ -67,12 +73,14 @@ func (h *Header) Serialize() []byte {
 		rawState = h.State.Serialize()
 	}
 
-	buff := make([]byte, 8+8+len(availableCommonBlocksBytes)+len(rawState))
+	buff := make([]byte, 8+8+4+len(availableCommonBlocksBytes)+len(rawState)+len(h.PrevHash))
 
 	binary.BigEndian.PutUint64(buff, uint64(h.Num))
 	binary.BigEndian.PutUint64(buff[8:16], uint64(h.DecisionNumOfLastConfigBlock))
-	copy(buff[16:], availableCommonBlocksBytes)
-	copy(buff[16+len(availableCommonBlocksBytes):], rawState)
+	binary.BigEndian.PutUint32(buff[16:20], uint32(len(rawState)))
+	copy(buff[20:], availableCommonBlocksBytes)
+	copy(buff[20+len(availableCommonBlocksBytes):], rawState)
+	copy(buff[20+len(availableCommonBlocksBytes)+len(rawState):], h.PrevHash)
 
 	return buff
 }

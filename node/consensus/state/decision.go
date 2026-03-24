@@ -11,6 +11,7 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
 )
 
@@ -143,4 +144,29 @@ func BytesToDecisionSignatures(rawBytes []byte) ([]smartbft_types.Signature, err
 	}
 
 	return sigs, nil
+}
+
+func CreateBlockToAppendFromDecision(number uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, decisionNumOfLastConfigBlock uint64) *common.Block {
+	proposalBytes := ProposalToBytes(proposal)
+	data := &common.BlockData{
+		Data: [][]byte{proposalBytes},
+	}
+
+	block := &common.Block{
+		Header: &common.BlockHeader{
+			Number:       number,
+			DataHash:     protoutil.ComputeBlockDataHash(data),
+			PreviousHash: prevHash,
+		},
+		Data: data,
+	}
+
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = DecisionSignaturesToBytes(signatures)
+	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+		LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
+		ConsenterMetadata: proposal.Metadata,
+	})
+
+	return block
 }
