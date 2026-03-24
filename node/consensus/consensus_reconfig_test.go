@@ -86,7 +86,7 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	require.Equal(t, uint64(2), b.Header.Number)
 
 	// check decision appended to the consensus ledger is a config decision, i.e. it has a config block as last block in AvailableCommonBlocks
-	proposal, _, err := state.BytesToDecision(b.Data.Data[0])
+	proposal, err := state.BytesToProposal(b.Data.Data[0])
 	require.NotNil(t, proposal)
 	require.NoError(t, err)
 
@@ -188,7 +188,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 		require.Equal(t, uint64(2), b.Header.Number)
 
 		// check decision appended to the consensus ledger is a config decision, i.e. it has a config block as last block in AvailableCommonBlocks
-		proposal, _, err := state.BytesToDecision(b.Data.Data[0])
+		proposal, err := state.BytesToProposal(b.Data.Data[0])
 		require.NotNil(t, proposal)
 		require.NoError(t, err)
 

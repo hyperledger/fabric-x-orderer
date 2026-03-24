@@ -4,18 +4,19 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 type FakeBatchBringerFactory struct {
-	CreateStub        func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, types.Logger) assembler.BatchBringer
+	CreateStub        func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, *flogging.FabricLogger) assembler.BatchBringer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence
 		arg2 *config.AssemblerNodeConfig
-		arg3 types.Logger
+		arg3 *flogging.FabricLogger
 	}
 	createReturns struct {
 		result1 assembler.BatchBringer
@@ -27,13 +28,13 @@ type FakeBatchBringerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchBringerFactory) Create(arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence, arg2 *config.AssemblerNodeConfig, arg3 types.Logger) assembler.BatchBringer {
+func (fake *FakeBatchBringerFactory) Create(arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence, arg2 *config.AssemblerNodeConfig, arg3 *flogging.FabricLogger) assembler.BatchBringer {
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
 		arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence
 		arg2 *config.AssemblerNodeConfig
-		arg3 types.Logger
+		arg3 *flogging.FabricLogger
 	}{arg1, arg2, arg3})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
@@ -54,13 +55,13 @@ func (fake *FakeBatchBringerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeBatchBringerFactory) CreateCalls(stub func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, types.Logger) assembler.BatchBringer) {
+func (fake *FakeBatchBringerFactory) CreateCalls(stub func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, *flogging.FabricLogger) assembler.BatchBringer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeBatchBringerFactory) CreateArgsForCall(i int) (map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, types.Logger) {
+func (fake *FakeBatchBringerFactory) CreateArgsForCall(i int) (map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, *flogging.FabricLogger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
@@ -93,6 +94,8 @@ func (fake *FakeBatchBringerFactory) CreateReturnsOnCall(i int, result1 assemble
 func (fake *FakeBatchBringerFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 )
 
 type BatchStore struct {
@@ -20,13 +20,13 @@ type BatchStore struct {
 	onDelete          func(key string)
 	batchMaxSize      uint32
 	batchMaxSizeBytes uint32
-	logger            types.Logger
+	logger            *flogging.FabricLogger
 	keys2Batches      sync.Map
 	lock              sync.RWMutex
 	signal            sync.Cond
 }
 
-func NewBatchStore(batchMaxSize uint32, batchMaxSizeBytes uint32, onDelete func(string), logger types.Logger) *BatchStore {
+func NewBatchStore(batchMaxSize uint32, batchMaxSizeBytes uint32, onDelete func(string), logger *flogging.FabricLogger) *BatchStore {
 	bs := &BatchStore{
 		currentBatch:      &batch{},
 		onDelete:          onDelete,

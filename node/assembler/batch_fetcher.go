@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -31,12 +32,12 @@ type BatchBringer interface {
 
 //go:generate counterfeiter -o ./mocks/batch_fetcher_factory.go . BatchBringerFactory
 type BatchBringerFactory interface {
-	Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger types.Logger) BatchBringer
+	Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger *flogging.FabricLogger) BatchBringer
 }
 
 type DefaultBatchBringerFactory struct{}
 
-func (f *DefaultBatchBringerFactory) Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger types.Logger) BatchBringer {
+func (f *DefaultBatchBringerFactory) Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger *flogging.FabricLogger) BatchBringer {
 	return NewBatchFetcher(initialBatchFrontier, config, logger)
 }
 
@@ -44,7 +45,7 @@ type BatchFetcher struct {
 	initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence
 	config               *config.AssemblerNodeConfig
 	clientConfig         comm.ClientConfig
-	logger               types.Logger
+	logger               *flogging.FabricLogger
 	cancelCtx            context.Context
 	cancelCtxFunc        context.CancelFunc
 }
@@ -77,7 +78,7 @@ func fetcherClientConfig(config *config.AssemblerNodeConfig) comm.ClientConfig {
 	return cc
 }
 
-func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger types.Logger) *BatchFetcher {
+func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger *flogging.FabricLogger) *BatchFetcher {
 	logger.Infof("Creating new Batch Fetcher using batch frontier with assembler: endpoint %s partyID %d ", config.ListenAddress, config.PartyId)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	return &BatchFetcher{

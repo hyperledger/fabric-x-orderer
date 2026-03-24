@@ -14,14 +14,15 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"go.uber.org/zap"
 
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -36,7 +37,7 @@ type StubBatcher struct {
 	txs          uint32           // Number of txs received from router
 	partyID      types.PartyID
 	shardID      types.ShardID
-	logger       types.Logger
+	logger       *flogging.FabricLogger
 	dropRequests bool
 }
 
@@ -82,7 +83,7 @@ func NewStubBatcherFromConfig(t *testing.T, configStoreDir string, nodeConfigPat
 	batcherConfig := config.ExtractBatcherConfig(lastConfigBlock)
 	require.NotNil(t, batcherConfig)
 
-	server := node.CreateGRPCBatcher(batcherConfig)
+	server := node_utils.CreateGRPCBatcher(batcherConfig)
 
 	// return a stub batcher that includes all server setup
 	stubBatcher := StubBatcher{

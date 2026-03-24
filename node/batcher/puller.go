@@ -11,6 +11,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -32,14 +33,14 @@ type BatchesPuller interface {
 
 type BatchPuller struct {
 	ledger     BatchLedger
-	logger     types.Logger
+	logger     *flogging.FabricLogger
 	config     *config.BatcherNodeConfig
 	tlsKey     []byte
 	tlsCert    []byte
 	stopPuller context.CancelFunc
 }
 
-func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, logger types.Logger) *BatchPuller {
+func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, logger *flogging.FabricLogger) *BatchPuller {
 	puller := &BatchPuller{
 		ledger:  ledger,
 		logger:  logger,

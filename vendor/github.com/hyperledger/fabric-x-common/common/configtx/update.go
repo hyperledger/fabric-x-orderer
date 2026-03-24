@@ -95,7 +95,8 @@ func (vi *ValidatorImpl) verifyDeltaSet(deltaSet map[string]comparable, signedDa
 
 		// Ensure the policy is satisfied
 		if err := policy.EvaluateSignedData(signedData); err != nil {
-			logger.Warnw("policy not satisfied for channel configuration update", "key", key, "policy", policy, "signingIdenties", protoutil.LogMessageForSerializedIdentities(signedData))
+			logger.Warnw("policy not satisfied for channel configuration update", "key", key, "policy", policy,
+				"signingIdenties", protoutil.LogMessageForIdentities(signedData))
 			return errors.Wrapf(err, "policy for %s not satisfied", key)
 		}
 	}

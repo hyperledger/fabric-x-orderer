@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
-
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/protoutil"
 )
 
 type synchronizer struct {
@@ -28,7 +28,7 @@ type synchronizer struct {
 	getHeight                func() uint64
 	CurrentNodes             []uint64
 	BFTConfig                smartbft_types.Configuration
-	logger                   arma_types.Logger
+	logger                   *flogging.FabricLogger
 	endpoint                 func() string
 	cc                       comm.ClientConfig
 	nextSeq                  func() uint64
@@ -126,31 +126,30 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 		latestBlock = retrievedBlock
 		nextSeqToCommit++
 
-		proposal, signatures, err := state.BytesToDecision(latestBlock.Data.Data[0])
+		decision, err := state.ConsenterBlockToDecision(latestBlock)
 		if err != nil {
 			s.logger.Panicf("Failed parsing block we pulled: %v", err)
 		}
 
-		hdr := &state.Header{}
-		if err := hdr.Deserialize(proposal.Header); err != nil {
-			s.logger.Panicf("Failed deserializing header: %v", err)
-		}
-
-		if hdr.DecisionNumOfLastConfigBlock != hdr.Num { // not a config block
+		// No need to prune the genesis block, as it doesn't contain any requests. Moreover, the genesis block payload is not of type `BatchedRequests`.
+		if latestBlock.GetHeader().GetNumber() > 0 {
 			var batch arma_types.BatchedRequests
-			if err := batch.Deserialize(proposal.Payload); err != nil {
+			if err := batch.Deserialize(decision.Proposal.Payload); err != nil {
 				s.logger.Panicf("Failed deserializing proposal payload: %v", err)
 			}
 
+			// Prune every request in the batch from the mempool, as they are now committed.
+			// This is needed to prevent the mempool from growing indefinitely with requests that are already committed.
+			// All requests are pruned, including config requests.
 			for _, req := range batch {
 				s.pruneRequestsFromMemPool(req)
 			}
 		}
 
-		s.deliver(proposal, signatures)
+		s.deliver(decision.Proposal, decision.Signatures)
 	}
 
-	proposal, signatures, err := state.BytesToDecision(latestBlock.Data.Data[0])
+	decision, err := state.ConsenterBlockToDecision(latestBlock)
 	if err != nil {
 		s.logger.Panicf("Failed parsing block we pulled: %v", err)
 	}
@@ -160,6 +159,6 @@ func (s *synchronizer) Sync() smartbft_types.SyncResponse {
 			CurrentConfig: s.BFTConfig,
 			CurrentNodes:  s.CurrentNodes,
 		},
-		Latest: smartbft_types.Decision{Proposal: proposal, Signatures: signatures},
+		Latest: *decision,
 	}
 }

@@ -13,8 +13,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -29,13 +29,13 @@ const (
 
 // Provider is a prometheus metrics provider.
 type Provider struct {
-	logger   types.Logger
+	logger   *flogging.FabricLogger
 	registry *prometheus.Registry
 	url      string
 }
 
 // NewProvider creates a new prometheus metrics provider.
-func NewProvider(logger types.Logger) *Provider {
+func NewProvider(logger *flogging.FabricLogger) *Provider {
 	return &Provider{logger: logger, registry: prometheus.NewRegistry()}
 }
 
@@ -70,7 +70,7 @@ func (p *Provider) StartPrometheusServer(
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		p.logger.Infof("Prometheus serving on URL: %s", p.url)
-		defer p.logger.Infof("Prometheus stopped serving")
+		defer p.logger.Infof("Prometheus stopped serving on URL: %s", p.url)
 		return server.Serve(listener)
 	})
 
@@ -123,6 +123,10 @@ func (p *Provider) NewCounter(o metrics.CounterOpts) metrics.Counter {
 	}
 
 	p.registry.MustRegister(c.cv)
+
+	if len(o.LabelNames) == 0 {
+		c.Counter = c.cv.WithLabelValues()
+	}
 	return c
 }
 
@@ -193,7 +197,7 @@ func (p *Provider) Registry() *prometheus.Registry {
 	return p.registry
 }
 
-func GetMetricValue(m prometheus.Metric, logger types.Logger) float64 {
+func GetMetricValue(m prometheus.Metric, logger *flogging.FabricLogger) float64 {
 	gm := promgo.Metric{}
 	err := m.Write(&gm)
 	if err != nil {

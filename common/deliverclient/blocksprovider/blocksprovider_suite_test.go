@@ -14,7 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 )
 
 //go:generate counterfeiter -o fake/signer.go --fake-name Signer . signer
@@ -29,7 +29,10 @@ type abDeliverClient interface {
 	orderer.AtomicBroadcast_DeliverClient
 }
 
+var suiteT *testing.T
+
 func TestBlocksProvider(t *testing.T) {
+	suiteT = t
 	RegisterFailHandler(Fail)
 
 	suiteConf, reporterConf := GinkgoConfiguration()

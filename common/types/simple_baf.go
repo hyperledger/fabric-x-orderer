@@ -22,10 +22,11 @@ type SimpleBatchAttestationFragment struct {
 	signature []byte
 
 	configSequence ConfigSequence
+	txCount        uint64
 }
 
 // NewSimpleBatchAttestationFragment creates a new, unsigned, SimpleBatchAttestationFragment.
-func NewSimpleBatchAttestationFragment(shard ShardID, primary PartyID, seq BatchSequence, digest []byte, signer PartyID, configSqn ConfigSequence) *SimpleBatchAttestationFragment {
+func NewSimpleBatchAttestationFragment(shard ShardID, primary PartyID, seq BatchSequence, digest []byte, signer PartyID, configSqn ConfigSequence, txCount uint64) *SimpleBatchAttestationFragment {
 	return &SimpleBatchAttestationFragment{
 		seq:            seq,
 		primary:        primary,
@@ -33,6 +34,7 @@ func NewSimpleBatchAttestationFragment(shard ShardID, primary PartyID, seq Batch
 		shard:          shard,
 		digest:         digest,
 		configSequence: configSqn,
+		txCount:        txCount,
 	}
 }
 
@@ -60,6 +62,10 @@ func (s *SimpleBatchAttestationFragment) ConfigSequence() ConfigSequence {
 	return s.configSequence
 }
 
+func (s *SimpleBatchAttestationFragment) TXCount() uint64 {
+	return s.txCount
+}
+
 func (s *SimpleBatchAttestationFragment) Signature() []byte {
 	return s.signature
 }
@@ -69,7 +75,7 @@ func (s *SimpleBatchAttestationFragment) SetSignature(sig []byte) {
 }
 
 func (s *SimpleBatchAttestationFragment) String() string {
-	return fmt.Sprintf("BAF: Signer: %d; %s; Config Seq: %d", s.signer, BatchIDToString(s), s.configSequence)
+	return fmt.Sprintf("BAF: Signer: %d; %s; Config Seq: %d; TX Count: %d", s.signer, BatchIDToString(s), s.configSequence, s.txCount)
 }
 
 type asn1BAF struct {
@@ -78,6 +84,7 @@ type asn1BAF struct {
 	Seq            *big.Int
 	Digest         []byte
 	ConfigSequence *big.Int
+	TXCount        *big.Int
 	Signer         int
 	Sig            []byte
 }
@@ -90,6 +97,7 @@ func (s *SimpleBatchAttestationFragment) Serialize() []byte {
 		Seq:            new(big.Int).SetUint64(uint64(s.seq)),
 		Digest:         s.digest,
 		ConfigSequence: new(big.Int).SetUint64(uint64(s.configSequence)),
+		TXCount:        new(big.Int).SetUint64(uint64(s.txCount)),
 		Signer:         int(s.signer),
 		Sig:            s.signature,
 	}
@@ -108,6 +116,7 @@ func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
 		Seq:            new(big.Int).SetUint64(uint64(s.seq)),
 		Digest:         s.digest,
 		ConfigSequence: new(big.Int).SetUint64(uint64(s.configSequence)),
+		TXCount:        new(big.Int).SetUint64(uint64(s.txCount)),
 		Signer:         int(s.signer),
 		Sig:            nil, // everything but the signature
 	}
@@ -131,6 +140,7 @@ func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
 	s.seq = BatchSequence(a.Seq.Uint64())
 	s.digest = a.Digest
 	s.configSequence = ConfigSequence(a.ConfigSequence.Uint64())
+	s.txCount = uint64(a.TXCount.Uint64())
 	s.signer = PartyID(a.Signer)
 	s.signature = a.Sig
 

@@ -9,6 +9,7 @@ package delivery
 import (
 	"context"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -31,12 +32,12 @@ type ConsensusBringer interface {
 
 //go:generate counterfeiter -o ./mocks/consensus_bringer_factory.go . ConsensusBringerFactory
 type ConsensusBringerFactory interface {
-	Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) ConsensusBringer
+	Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer
 }
 
 type DefaultConsensusBringerFactory struct{}
 
-func (f *DefaultConsensusBringerFactory) Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) ConsensusBringer {
+func (f *DefaultConsensusBringerFactory) Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer {
 	return NewConsensusBAReplicator(tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, logger)
 }
 
@@ -46,12 +47,12 @@ type ConsensusBAReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
-	logger          types.Logger
+	logger          *flogging.FabricLogger
 	cancelCtx       context.Context
 	ctxCancelFunc   context.CancelFunc
 }
 
-func NewConsensusBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger types.Logger) *ConsensusBAReplicator {
+func NewConsensusBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) *ConsensusBAReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	baReplicator := &ConsensusBAReplicator{
 		assemblerLedger: assemblerLedger,

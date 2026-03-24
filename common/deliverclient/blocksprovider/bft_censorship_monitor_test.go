@@ -255,7 +255,7 @@ func TestBFTCensorshipMonitor_CensorshipDetected(t *testing.T) {
 		5*time.Second, 1*time.Millisecond, "suspicion should be raised on block number 8")
 
 	wg.Wait()
-	require.EqualError(t, err, "block censorship detected, endpoint: Address: orderer-address-0, CertHash: 08D6C05A21512A79A1DFEB9D2A8F262F")
+	require.EqualError(t, err, "block censorship detected, endpoint: Address: orderer-address-0, RootCertHash: 9F64A747E1B97F131FABB6B447296C9B6F0201E79FB3C5356E6C77E89B6A806A")
 }
 
 // Scenario:
@@ -363,7 +363,7 @@ func TestBFTCensorshipMonitor_SuspicionsRemovedCensorshipDetected(t *testing.T) 
 		5*time.Second, 1*time.Millisecond, "suspicion should be raised on block number 10")
 
 	wg.Wait()
-	require.EqualError(t, err, "block censorship detected, endpoint: Address: orderer-address-0, CertHash: 08D6C05A21512A79A1DFEB9D2A8F262F")
+	require.EqualError(t, err, "block censorship detected, endpoint: Address: orderer-address-0, RootCertHash: 9F64A747E1B97F131FABB6B447296C9B6F0201E79FB3C5356E6C77E89B6A806A")
 }
 
 // Scenario:

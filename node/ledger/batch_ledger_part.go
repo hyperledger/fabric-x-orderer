@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
@@ -26,7 +27,7 @@ type BatchLedgerPart struct {
 	primaryPartyID types.PartyID          // The primary party that generated the batches in this object.
 	ledger         blockledger.ReadWriter // The fabric block ledger that holds batches.
 	prevHash       []byte                 // The header hash of the last block; we need this because the Fabric ledger enforces a hash chain.
-	logger         types.Logger
+	logger         *flogging.FabricLogger
 }
 
 // newBatchLedgerPart creates a new BatchLedgerPart.
@@ -34,7 +35,7 @@ func newBatchLedgerPart(
 	provider *blkstorage.BlockStoreProvider,
 	shardID types.ShardID,
 	partyID, primaryPartyID types.PartyID,
-	logger types.Logger,
+	logger *flogging.FabricLogger,
 ) (*BatchLedgerPart, error) {
 	name := ShardPartyToChannelName(shardID, primaryPartyID)
 	ledger, err := provider.Open(name)

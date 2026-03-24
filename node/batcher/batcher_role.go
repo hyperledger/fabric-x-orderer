@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
@@ -31,9 +32,11 @@ type MemPool interface {
 	NextRequests(ctx context.Context) [][]byte
 	RemoveRequests(requests ...string)
 	Submit(request []byte) error
+	Halt()
 	Restart(bool)
 	RequestCount() int64
 	Close()
+	Prune(predicate func([]byte) error)
 }
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider
@@ -76,7 +79,7 @@ type BAFSender interface {
 
 // BAFCreator creates a baf
 type BAFCreator interface {
-	CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte) types.BatchAttestationFragment
+	CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte, txCount uint64) types.BatchAttestationFragment
 }
 
 type BatchLedgerWriter interface {
@@ -102,7 +105,7 @@ type BatcherRole struct {
 	Shard                   types.ShardID
 	Threshold               int
 	N                       uint16
-	Logger                  types.Logger
+	Logger                  *flogging.FabricLogger
 	Ledger                  BatchLedger
 	BatchPuller             BatchesPuller
 	StateProvider           StateProvider
@@ -116,7 +119,6 @@ type BatcherRole struct {
 	BatchSequenceGap        types.BatchSequence
 	running                 sync.WaitGroup
 	stopChan                chan struct{}
-	stopOnce                sync.Once
 	stopCtx                 context.Context
 	cancelBatch             func()
 	primary                 types.PartyID
@@ -126,9 +128,14 @@ type BatcherRole struct {
 	ackerLock               sync.RWMutex
 	acker                   SeqAcker
 	Metrics                 *BatcherMetrics
+	isStopped               bool
+	isSoftStopped           bool
 }
 
 func (b *BatcherRole) Start() {
+	b.isStopped = false
+	b.isSoftStopped = false
+
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
 	b.termChan = make(chan uint64, 1)
@@ -172,14 +179,42 @@ func (b *BatcherRole) getPrimaryIndex(term uint64) types.PartyID {
 }
 
 func (b *BatcherRole) Stop() {
-	b.Logger.Infof("Stopping batcher rol")
-	b.stopOnce.Do(func() { close(b.stopChan) })
+	if b.isStopped {
+		return
+	}
+
+	b.Logger.Infof("Stopping batcher role")
+	if !b.isSoftStopped {
+		close(b.stopChan)
+	}
 	b.cancelBatch()
 	b.MemPool.Close()
 	for len(b.termChan) > 0 {
 		<-b.termChan // drain term channel
 	}
 	b.running.Wait()
+
+	b.isStopped = true
+	b.isSoftStopped = true
+}
+
+// SoftStop stops the batcher role with mempool Halt
+func (b *BatcherRole) SoftStop() {
+	b.Logger.Infof("Soft Stopping batcher role")
+
+	if b.isSoftStopped || b.isStopped {
+		return
+	}
+
+	b.isSoftStopped = true
+
+	close(b.stopChan)
+	b.cancelBatch()
+	b.running.Wait()
+	b.MemPool.Halt()
+	for len(b.termChan) > 0 {
+		<-b.termChan // drain term channel
+	}
 }
 
 func (b *BatcherRole) getTerm(state *state.State) uint64 {
@@ -306,7 +341,7 @@ func (b *BatcherRole) runPrimary() {
 			break
 		}
 
-		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest)
+		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest, uint64(len(currentBatch)))
 
 		// After the batch is appended to the ledger the batcher sends the BAF to the consenters
 		// (this BAF is a declaration that the batch is stored in the ledger)
@@ -389,7 +424,7 @@ func (b *BatcherRole) runSecondary() {
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests)
-			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest())
+			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)))
 
 			sendBAFDone := make(chan struct{})
 			ctx, sendBafCancel := context.WithCancel(b.stopCtx)

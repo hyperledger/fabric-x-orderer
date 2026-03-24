@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
 )
@@ -23,7 +23,7 @@ type ControlEventBroadcaster struct {
 	f                int
 	minRetryInterval time.Duration
 	maxRetryDelay    time.Duration
-	logger           types.Logger
+	logger           *flogging.FabricLogger
 	ctx              context.Context
 	cancelFunc       context.CancelFunc
 }
@@ -95,7 +95,7 @@ func (b *ControlEventBroadcaster) sendControlEvent(ce state.ControlEvent, sender
 	return nil
 }
 
-func NewControlEventBroadcaster(senders []ConsenterControlEventSender, n int, f int, minRetryInterval time.Duration, maxRetryDelay time.Duration, logger types.Logger, ctx context.Context, cancelFunc context.CancelFunc) *ControlEventBroadcaster {
+func NewControlEventBroadcaster(senders []ConsenterControlEventSender, n int, f int, minRetryInterval time.Duration, maxRetryDelay time.Duration, logger *flogging.FabricLogger, ctx context.Context, cancelFunc context.CancelFunc) *ControlEventBroadcaster {
 	return &ControlEventBroadcaster{
 		senders:          senders,
 		n:                n,

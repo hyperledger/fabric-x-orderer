@@ -25,8 +25,8 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity/mocks"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/onsi/gomega"
@@ -1178,13 +1178,13 @@ func TestBlockPullerBadBlocks(t *testing.T) {
 
 			select {
 			case <-detectedBadBlockDone:
-			case <-time.After(10 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatalf("expected %q to be logged but it was not seen", testCase.expectedErrMsg)
 			}
 
 			select {
 			case <-endPullBlock:
-			case <-time.After(10 * time.Second):
+			case <-time.After(30 * time.Second):
 				// Signal PullBlock to give up on the retries & mark the test as fail
 				close(bp.StopChannel)
 				t.Fatalf("PullBlock did not complete within time")

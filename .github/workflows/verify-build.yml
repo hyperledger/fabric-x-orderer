@@ -22,11 +22,11 @@ jobs:
     name: Basic Checks
     runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         name: Checkout Fabric-X Code
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         name: Install Go
         with:
           go-version-file: go.mod
@@ -45,26 +45,41 @@ jobs:
     needs: basic-checks
     runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
         name: Checkout Fabric-X Code
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         name: Install Go
         with:
           go-version-file: go.mod
       - run: make unit-tests
         name: Run Unit Tests
+  integration-tests:
+    name: Integration Tests
+    needs: basic-checks
+    runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+        name: Checkout Fabric-X Code
+      - uses: actions/setup-go@v6
+        name: Install Go
+        with:
+          go-version-file: go.mod
+      - run: make integration-tests
+        name: Run Integration Tests
   sample-tests:
     name: Sample Tests
     needs: basic-checks
     runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
         name: Checkout Fabric-X Code
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         name: Install Go
         with:
           go-version-file: go.mod

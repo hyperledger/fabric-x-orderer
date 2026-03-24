@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 func TestCreateConnectionSource(t *testing.T) {
@@ -20,11 +21,11 @@ func TestCreateConnectionSource(t *testing.T) {
 	require.NotNil(t, factory)
 
 	lg := flogging.MustGetLogger("test")
-	connSource := factory.CreateConnectionSource(lg, "")
+	connSource := factory.CreateConnectionSource(lg, types.PartyID(0))
 	require.NotNil(t, connSource)
 
 	factory = &orderers.ConnectionSourceFactory{}
 	require.NotNil(t, factory)
-	connSource = factory.CreateConnectionSource(lg, "self-endpoint")
+	connSource = factory.CreateConnectionSource(lg, types.PartyID(1))
 	require.NotNil(t, connSource)
 }

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -21,17 +23,18 @@ import (
 )
 
 type Metrics struct {
-	ledgerMetrics *node_ledger.AssemblerLedgerMetrics
-	logger        arma_types.Logger
-	interval      time.Duration
-	stopChan      chan struct{}
-	stopOnce      sync.Once
-	startOnce     sync.Once
-	monitor       *monitoring.Monitor
-	partyID       arma_types.PartyID
+	ledgerMetrics  *node_ledger.AssemblerLedgerMetrics
+	deliverMetrics *deliver.Metrics
+	logger         *flogging.FabricLogger
+	interval       time.Duration
+	stopChan       chan struct{}
+	stopOnce       sync.Once
+	startOnce      sync.Once
+	monitor        *monitoring.Monitor
+	partyID        arma_types.PartyID
 }
 
-func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger.AssemblerLedgerMetrics, logger arma_types.Logger) *Metrics {
+func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
 	host, port, err := net.SplitHostPort(assemblerNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
@@ -44,15 +47,17 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, al *node_ledger
 
 	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("assembler_%s", partyID))
 	p := monitor.Provider
-	al.NewAssemblerLedgerMetrics(p, partyID, logger)
+	ledgerMetrics.NewAssemblerLedgerMetrics(p, partyID, logger)
+	deliverMetrics := deliver.NewMetrics(p)
 
 	return &Metrics{
-		ledgerMetrics: al,
-		interval:      assemblerNodeConfig.MetricsLogInterval,
-		logger:        logger,
-		stopChan:      make(chan struct{}),
-		monitor:       monitor,
-		partyID:       assemblerNodeConfig.PartyId,
+		ledgerMetrics:  ledgerMetrics,
+		deliverMetrics: deliverMetrics,
+		interval:       assemblerNodeConfig.MetricsLogInterval,
+		logger:         logger,
+		stopChan:       make(chan struct{}),
+		monitor:        monitor,
+		partyID:        assemblerNodeConfig.PartyId,
 	}
 }
 

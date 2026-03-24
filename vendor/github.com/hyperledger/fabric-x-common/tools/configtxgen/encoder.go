@@ -26,8 +26,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-common/tools/configtxlator/update"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
 )
 
 const (
@@ -723,7 +723,8 @@ func MakeChannelCreationTransactionFromTemplate(
 
 	}
 
-	return protoutil.CreateSignedEnvelope(cb.HeaderType_CONFIG_UPDATE, channelID, signer, newConfigUpdateEnv, msgVersion, epoch)
+	return protoutil.CreateSignedEnvelope(
+		cb.HeaderType_CONFIG_UPDATE, channelID, signer, newConfigUpdateEnv, msgVersion, epoch)
 }
 
 // HasSkippedForeignOrgs is used to detect whether a configuration includes

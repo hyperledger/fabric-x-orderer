@@ -12,20 +12,13 @@ import (
 	"encoding/pem"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
 
 // ExpiresAt returns when the given identity expires, or a zero time.Time
 // in case we cannot determine that
-func ExpiresAt(identityBytes []byte) time.Time {
-	sId := &msp.SerializedIdentity{}
-	// If protobuf parsing failed, we make no decisions about the expiration time
-	if err := proto.Unmarshal(identityBytes, sId); err != nil {
-		return time.Time{}
-	}
-	return certExpirationTime(sId.IdBytes)
+func ExpiresAt(certBytes []byte) time.Time {
+	return certExpirationTime(certBytes)
 }
 
 func certExpirationTime(pemBytes []byte) time.Time {
@@ -48,13 +41,12 @@ type MessageFunc func(format string, args ...interface{})
 type Scheduler func(d time.Duration, f func()) *time.Timer
 
 // TrackExpiration warns a week before one of the certificates expires
-func TrackExpiration(tls bool, serverCert []byte, clientCertChain [][]byte, sIDBytes []byte, info MessageFunc, warn MessageFunc, now time.Time, s Scheduler) {
-	sID := &msp.SerializedIdentity{}
-	if err := proto.Unmarshal(sIDBytes, sID); err != nil {
-		return
-	}
-
-	trackCertExpiration(sID.IdBytes, "enrollment", info, warn, now, s)
+//
+//nolint:revive // tls is a control flag but requires refactoring to get rid of this.
+func TrackExpiration(tls bool, serverCert []byte, clientCertChain [][]byte,
+	identity []byte, info, warn MessageFunc, now time.Time, s Scheduler,
+) {
+	trackCertExpiration(identity, "enrollment", info, warn, now, s)
 
 	if !tls {
 		return

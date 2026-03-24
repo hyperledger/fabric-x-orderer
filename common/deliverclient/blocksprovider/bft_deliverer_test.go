@@ -32,6 +32,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type bftDelivererTestSetup struct {
@@ -207,7 +208,7 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 		})
 
 	var err error
-	s.channelConfig, s.fakeCryptoProvider, err = testSetup(tempDir, "BFT")
+	s.channelConfig, s.fakeCryptoProvider, err = testSetupBFT(t, tempDir)
 	require.NoError(t, err)
 
 	s.d = &blocksprovider.BFTDeliverer{
@@ -230,9 +231,9 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 		MaxRetryDuration:                600 * time.Second,
 		MaxRetryDurationExceededHandler: s.fakeDurationExceededHandler.DurationExceededHandler,
 	}
-	s.d.Initialize(s.channelConfig, "bogus-self-endpoint")
-	_, selfEP := s.fakeOrdererConnectionSourceFactory.CreateConnectionSourceArgsForCall(0)
-	require.Equal(t, "bogus-self-endpoint", selfEP)
+	s.d.Initialize(s.channelConfig, types.PartyID(1)) //<< self-party, as in the orderer
+	_, selfParty := s.fakeOrdererConnectionSourceFactory.CreateConnectionSourceArgsForCall(0)
+	require.Equal(t, types.PartyID(1), selfParty)
 
 	s.fakeSleeper = &fake.Sleeper{}
 
@@ -943,7 +944,7 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 	t.Run("Config block is valid, updates verifier, updates connection-source", func(t *testing.T) {
 		setup := newBFTDelivererTestSetup(t)
 		setup.initialize(t)
-		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.UpdateCallCount, eventuallyTO).Should(Equal(1))
+		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(Equal(1))
 		startTime := time.Now()
 
 		t.Log("block progress is reported correctly before start")
@@ -1023,7 +1024,7 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		}, eventuallyTO, 100*time.Millisecond)
 
 		t.Log("updated orderer source")
-		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.UpdateCallCount, eventuallyTO).Should(Equal(2))
+		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(Equal(2))
 
 		setup.stop()
 	})

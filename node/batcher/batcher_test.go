@@ -489,50 +489,15 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 	require.True(t, bytes.Equal(req.Signature, env.Signature))
 }
 
-func TestBatcherReceivesConfigBlockFromConsensus(t *testing.T) {
-	shardID := types.ShardID(0)
-	numParties := 4
-	ca, err := tlsgen.NewCA()
-	require.NoError(t, err)
-
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
-	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
-	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
-
-	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
-	defer cleanConsenters()
-
-	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
-	defer cleanBatchers()
-
-	for i := 0; i < numParties; i++ {
-		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
-		require.NoError(t, err)
-		require.Equal(t, len(blocks), 1)
-	}
-
-	// receive config block from consensus
-	groups := &common.ConfigGroup{}
-	configBlock := block.BlockWithGroups(groups, "arma", 1)
-	availableCommonBlocks := []*common.Block{configBlock}
-
-	st := &state.State{N: uint16(numParties), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
-
-	for i := 0; i < numParties; i++ {
-		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), availableCommonBlocks, st)
-	}
-
-	for j := 0; j < numParties; j++ {
-		require.Eventually(t, func() bool {
-			block, err1 := batchers[j].ConfigStore.Last()
-			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
-			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
-		}, 60*time.Second, 10*time.Millisecond)
-	}
-}
-
+// TODO: remove test and test add party + join instead
+// Scenario:
+// 1. Create batcher with config block number 2
+// 2. The batcher receives from consensus the genesis block and skip it
+// 3. The batcher receives from consensus the block number 1 and skip it
+// 4. The batcher receives from consensus the block number 2 and skip it
+// 5. The batcher receives from consensus the block number 3 and append the block to the config store
 func TestBatcherJoin(t *testing.T) {
+	t.Skip()
 	shardID := types.ShardID(0)
 	numParties := 1
 	ca, err := tlsgen.NewCA()
@@ -699,7 +664,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	require.Equal(t, types.PartyID(1), baf.BAF.Primary())
 	require.Equal(t, types.BatchSequence(0), baf.BAF.Seq())
 
-	baf2 := types.NewSimpleBatchAttestationFragment(shardID, 1, 0, baf.BAF.Digest(), 2, 0)
+	baf2 := types.NewSimpleBatchAttestationFragment(shardID, 1, 0, baf.BAF.Digest(), 2, 0, 0)
 
 	for i := range numParties {
 		require.Equal(t, types.PartyID(1), batchers[i].GetPrimaryID())

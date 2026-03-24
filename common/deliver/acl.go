@@ -30,12 +30,14 @@ func NewSessionAC(chain ConfigSequencer, env *common.Envelope, policyChecker Pol
 		return nil, err
 	}
 
+	id := signedData[0].Identity.GetCertificate()
+
 	return &SessionAccessControl{
 		envelope:       env,
 		channelID:      channelID,
 		sequencer:      chain,
 		policyChecker:  policyChecker,
-		sessionEndTime: expiresAt(signedData[0].Identity),
+		sessionEndTime: expiresAt(id),
 	}, nil
 }
 

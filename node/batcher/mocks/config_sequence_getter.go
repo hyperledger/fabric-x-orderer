@@ -28,16 +28,15 @@ func (fake *FakeConfigSequenceGetter) ConfigSequence() types.ConfigSequence {
 	ret, specificReturn := fake.configSequenceReturnsOnCall[len(fake.configSequenceArgsForCall)]
 	fake.configSequenceArgsForCall = append(fake.configSequenceArgsForCall, struct {
 	}{})
-	stub := fake.ConfigSequenceStub
-	fakeReturns := fake.configSequenceReturns
 	fake.recordInvocation("ConfigSequence", []interface{}{})
 	fake.configSequenceMutex.Unlock()
-	if stub != nil {
-		return stub()
+	if fake.ConfigSequenceStub != nil {
+		return fake.ConfigSequenceStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.configSequenceReturns
 	return fakeReturns.result1
 }
 

@@ -9,6 +9,7 @@ package ledger
 import (
 	"slices"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -21,10 +22,10 @@ type BatchLedgerArray struct {
 	partyID     types.PartyID                      // The party that operates this object.
 	ledgerParts map[types.PartyID]*BatchLedgerPart // A BatchLedgerPart for each party in the system.
 	provider    *blkstorage.BlockStoreProvider
-	logger      types.Logger
+	logger      *flogging.FabricLogger
 }
 
-func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, batchLedgerDir string, logger types.Logger) (*BatchLedgerArray, error) {
+func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, batchLedgerDir string, logger *flogging.FabricLogger) (*BatchLedgerArray, error) {
 	if !slices.Contains(parties, partyID) {
 		return nil, errors.Errorf("partyID %d not in parties %v", partyID, parties)
 	}

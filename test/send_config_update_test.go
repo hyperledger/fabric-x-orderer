@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"bytes"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -17,12 +19,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
@@ -31,7 +37,15 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
+
+var caFolders = map[string]struct{}{
+	"ca":         {},
+	"tlsca":      {},
+	"cacerts":    {},
+	"tlscacerts": {},
+}
 
 func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
@@ -40,12 +54,12 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 2
+	numOfParties := 4
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -124,13 +138,13 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	availablePort, newListener := testutil.GetAvailablePort(t)
 	newPort, err := strconv.Atoi(availablePort)
 	require.NoError(t, err)
-	routerToMonitor := armaNetwork.GetRouter(t, submittingParty)
-	routerToMonitor.Listener = newListener
+	routerToUpdate := armaNetwork.GetRouter(t, submittingParty)
+	routerToUpdate.Listener = newListener
 
 	configUpdatePbData := configUpdateBuilder.UpdateRouterEndpoint(t, partyToUpdate, routerIP, newPort)
 
 	// Submit config update
-	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, int(submittingParty), configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -255,13 +269,13 @@ func TestRemovePartyRunAll(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 2
+	numOfParties := 4
 	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -292,8 +306,13 @@ func TestRemovePartyRunAll(t *testing.T) {
 	partyToRemove := types.PartyID(2)
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
 	// Submit config update
-	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, int(submittingParty), configUpdatePbData)
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
 
 	// Send the config tx
@@ -330,7 +349,13 @@ func TestRemovePartyRunAll(t *testing.T) {
 	numOfArmaNodes = (numOfParties - 1) * numOfNodesPerParty
 	readyChan = make(chan string, numOfArmaNodes)
 	// Restart the remaining parties' nodes
-	armaNetwork.RestartParties(t, []types.PartyID{1}, readyChan)
+	remainingParties := []types.PartyID{}
+	for i := 1; i <= numOfParties; i++ {
+		if types.PartyID(i) != partyToRemove {
+			remainingParties = append(remainingParties, types.PartyID(i))
+		}
+	}
+	armaNetwork.RestartParties(t, remainingParties, readyChan)
 	// Expect the rest of the nodes to start successfully
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 }
@@ -349,8 +374,8 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	numOfShards := 1
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -500,13 +525,13 @@ func TestRemoveParty(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 2
+	numOfParties := 4
 	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -613,7 +638,6 @@ func TestRemoveParty(t *testing.T) {
 	// Send transactions to remaining parties to verify they are processed
 
 	uc.RouterEndpoints = append(uc.RouterEndpoints[:partyToRemove-1], uc.RouterEndpoints[partyToRemove:]...)
-	uc.AssemblerEndpoints = append(uc.AssemblerEndpoints[:partyToRemove-1], uc.AssemblerEndpoints[partyToRemove:]...)
 
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
@@ -637,4 +661,1410 @@ func TestRemoveParty(t *testing.T) {
 		Status:       &statusUnknown,
 		Signer:       signutil.CreateTestSigner(t, "org1", dir),
 	})
+}
+
+// TestAddNewParty verifies that adding a party via a config update succeeds,
+// that the new party's config is included in the updated shared config,
+// and that the new party can join (start) and process transactions after the config update.
+func TestAddNewParty(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 1
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	submittingParty := types.PartyID(1)
+
+	userConfig, err := testutil.GetUserConfig(dir, types.PartyID(submittingParty))
+	require.NoError(t, err)
+
+	broadcastClient := client.NewBroadcastTxClient(userConfig, 10*time.Second)
+	totalTxNumber := 100
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, userConfig.MSPDir)
+	require.NoError(t, err)
+	org := fmt.Sprintf("org%d", submittingParty)
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	for i := range totalTxNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	var parties []types.PartyID
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
+	statusUnknown := common.Status_UNKNOWN
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		Timeout:      120,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	// Create config update to add a party
+	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	addedPartyId, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+
+	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	armaNetwork.Stop()
+
+	// Get the config block from an assembler ledger and write it to a temp location
+	configBlockStoreDir := t.TempDir()
+	defer os.RemoveAll(configBlockStoreDir)
+
+	newConfigBlockPath := filepath.Join(configBlockStoreDir, "config.block")
+	_, lastConfigBlock, err := config.ReadConfig(filepath.Join(dir, "config", fmt.Sprintf("party%d", submittingParty), "local_config_assembler.yaml"), flogging.MustGetLogger("TestAddNewParty"))
+	require.NoError(t, err)
+	configBlock := &common.Block{Header: lastConfigBlock.GetHeader(), Data: lastConfigBlock.GetData(), Metadata: lastConfigBlock.GetMetadata()}
+	err = configtxgen.WriteOutputBlock(configBlock, newConfigBlockPath)
+	require.NoError(t, err)
+
+	// Update the config block path in the net info of the added party to point to the new config block path
+	// This is needed for the added party to be able to join the network using the new config block
+	for _, netNode := range addedNetInfo {
+		netNode.ConfigBlockPath = newConfigBlockPath
+	}
+
+	addedPartyUserConfig, err := testutil.GetUserConfig(dir, addedPartyId)
+	require.NoError(t, err)
+
+	var routerEndpoints, assemblerEndpoints []string
+	var tlsCACertsBytesPartiesCollection [][]byte
+
+	routerEndpoints = append(routerEndpoints, userConfig.RouterEndpoints...)
+	routerEndpoints = append(routerEndpoints, addedPartyUserConfig.RouterEndpoints...)
+	assemblerEndpoints = append(assemblerEndpoints, userConfig.AssemblerEndpoints...)
+	assemblerEndpoints = append(assemblerEndpoints, addedPartyUserConfig.AssemblerEndpoints...)
+	// the added party TLS CA certs already has all the existing parties TLS CA certs
+	tlsCACertsBytesPartiesCollection = append(tlsCACertsBytesPartiesCollection, addedPartyUserConfig.TLSCACerts...)
+
+	numOfParties++
+
+	for i := range numOfParties {
+		uc, err := testutil.GetUserConfig(dir, types.PartyID(i+1))
+		require.NoError(t, err)
+
+		uc.RouterEndpoints = routerEndpoints
+		uc.AssemblerEndpoints = assemblerEndpoints
+		uc.TLSCACerts = tlsCACertsBytesPartiesCollection
+
+		err = utils.WriteToYAML(uc, filepath.Join(dir, "config", fmt.Sprintf("party%d", i+1), "user_config.yaml"))
+		require.NoError(t, err)
+	}
+
+	maps.Copy(netInfo, addedNetInfo)
+	numOfArmaNodes = len(netInfo)
+	readyChan = make(chan string, numOfArmaNodes)
+
+	armaNetwork = testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	userConfig, err = testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+
+	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	txContent := tx.PrepareTxWithTimestamp(0, 64, []byte("sessionNumber"))
+	env = tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+	err = broadcastClient.SendTxTo(env, addedPartyId)
+	require.NoError(t, err)
+
+	totalTxNumber = 100
+
+	for i := range totalTxNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	parties = []types.PartyID{}
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	pullRequestSigner = signutil.CreateTestSigner(t, "org1", dir)
+	statusUnknown = common.Status_UNKNOWN
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber * 2, // including the first tx sent to the new party
+		Timeout:      120,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+}
+
+// TestChangePartyCertificates verifies that updating a party's certificates via a config update succeeds,
+// and that the party can continue processing transactions after the config update with the new certificates.
+func TestChangePartyCertificates(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 2
+	submittingParty := types.PartyID(2)
+	submittingOrg := fmt.Sprintf("org%d", submittingParty)
+	partyToUpdate := types.PartyID(1)
+	updateOrg := fmt.Sprintf("org%d", partyToUpdate)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", types.PartyID(submittingParty)))
+	conf, _, err := config.LoadLocalConfig(configFilePath)
+	require.NoError(t, err)
+
+	// Modify the router configuration to require client signature verification.
+	conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+	utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	uc, err := testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+
+	totalTxNumber := 10
+	// Send transactions to all parties to ensure network is operational before config update
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	for i := range totalTxNumber {
+		txContent := tx.PrepareTxWithTimestamp(i+totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown := common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Timeout:      60,
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	// Create config update to change a party's certificates
+	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+
+	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
+	require.NotNil(t, nodesIPs)
+
+	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "tlsca", "tlsca-cert.pem")
+	tlsCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "tlsca", "priv_sk")
+
+	signCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "ca", "ca-cert.pem")
+	signCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "ca", "priv_sk")
+
+	// Update the router TLS certs in the config
+	newRouterTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls")
+	newRouterTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "key.pem")
+	newRouterTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newRouterTlsCertPath, newRouterTlsKeyPath, nodesIPs)
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateRouterTLSCert(t, partyToUpdate, newRouterTlsCertBytes)
+
+	// Update the batchers TLS certs and signing certs in the config
+	for shardToUpdate := types.ShardID(1); int(shardToUpdate) <= numOfShards; shardToUpdate++ {
+		newBatcherTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls")
+		newBatcherTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls", "key.pem")
+		newBatcherTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newBatcherTlsCertPath, newBatcherTlsKeyPath, nodesIPs)
+		require.NoError(t, err)
+		configUpdateBuilder.UpdateBatcherTLSCert(t, partyToUpdate, shardToUpdate, newBatcherTlsCertBytes)
+
+		newBatcherSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "signcerts")
+		newBatcherSignKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "keystore", "priv_sk")
+		newBatcherSignCertBytes, err := armageddon.CreateNewCertificateFromCA(signCACertPath, signCAPrivKeyPath, "sign", newBatcherSignCertPath, newBatcherSignKeyPath, nodesIPs)
+		require.NoError(t, err)
+		configUpdateBuilder.UpdateBatcherSignCert(t, partyToUpdate, shardToUpdate, newBatcherSignCertBytes)
+	}
+
+	// Update the assembler TLS certs in the config
+	newAssemblerTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls")
+	newAssemblerTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "key.pem")
+	newAssemblerTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newAssemblerTlsCertPath, newAssemblerTlsKeyPath, nodesIPs)
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateAssemblerTLSCert(t, partyToUpdate, newAssemblerTlsCertBytes)
+
+	// Update the consenter TLS certs in the config
+	newConsenterTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls")
+	newConsenterTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "key.pem")
+	newConsenterTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newConsenterTlsCertPath, newConsenterTlsKeyPath, nodesIPs)
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateConsensusTLSCert(t, partyToUpdate, newConsenterTlsCertBytes)
+
+	// Update the consenter signing certs in the config
+	newConsenterSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts")
+	newConsenterSignKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "keystore", "priv_sk")
+	newConsenterSignCertBytes, err := armageddon.CreateNewCertificateFromCA(signCACertPath, signCAPrivKeyPath, "sign", newConsenterSignCertPath, newConsenterSignKeyPath, nodesIPs)
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateConsenterSignCert(t, partyToUpdate, newConsenterSignCertBytes)
+
+	// Submit config update
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Stop Arma nodes
+	armaNetwork.Stop()
+
+	// Verify that the party's certificates are updated by checking the router's shared config
+	assemblerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_assembler.yaml")
+	assemblerConfig, _, err := config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+	require.NoError(t, err)
+
+	var updatedPartyConfig *protos.PartyConfig
+	for _, partyConfig := range assemblerConfig.SharedConfig.GetPartiesConfig() {
+		if partyConfig.PartyID == uint32(partyToUpdate) {
+			updatedPartyConfig = partyConfig
+			break
+		}
+	}
+	require.NotNil(t, updatedPartyConfig, "Updated party config not found in the config")
+
+	newTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "tls-cert.pem"))
+	require.NoError(t, err)
+	// Verify that the router TLS cert path is updated in the config
+	require.Equal(t, newTlsCertBytes, updatedPartyConfig.RouterConfig.GetTlsCert(), "Certificate path was not updated in the config")
+
+	// Verify that the batcher TLS certs path are updated in the config
+	for _, shardConfig := range updatedPartyConfig.BatchersConfig {
+		newBatcherTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardID), "tls")
+		newTlsCertBytes, err = os.ReadFile(filepath.Join(newBatcherTlsCertPath, "tls-cert.pem"))
+		require.NoError(t, err)
+		newBatcherSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardID), "msp", "signcerts")
+		newSignCertBytes, err := os.ReadFile(filepath.Join(newBatcherSignCertPath, "sign-cert.pem"))
+		require.NoError(t, err)
+		require.Equal(t, newTlsCertBytes, shardConfig.GetTlsCert(), "Batcher certificate path was not updated in the config")
+		require.Equal(t, newSignCertBytes, shardConfig.GetSignCert(), "Batcher signing certificate path was not updated in the config")
+	}
+
+	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "tls-cert.pem"))
+	require.NoError(t, err)
+	// Verify that the assembler TLS cert path is updated in the config
+	require.Equal(t, newTlsCertBytes, updatedPartyConfig.AssemblerConfig.GetTlsCert(), "Certificate path was not updated in the config")
+
+	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "tls-cert.pem"))
+	require.NoError(t, err)
+	newSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "sign-cert.pem"))
+	require.NoError(t, err)
+	// Verify that the consenter TLS and signing cert paths are updated in the config
+	require.Equal(t, newTlsCertBytes, updatedPartyConfig.ConsenterConfig.GetTlsCert(), "Consenter certificate path was not updated in the config")
+	require.Equal(t, newSignCertBytes, updatedPartyConfig.ConsenterConfig.GetSignCert(), "Consenter signing certificate path was not updated in the config")
+
+	// Restart Arma nodes
+	armaNetwork.Restart(t, readyChan)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	updatedRouterInfo := armaNetwork.GetRouter(t, partyToUpdate)
+	// Verify that the updated router TLS connection to a consenter node is successful by checking for successful pulls,
+	// if the TLS cert was not updated correctly, the router would fail to establish connections to the batchers and the pull would fail with TLS errors
+	updatedRouterInfo.RunInfo.Session.Err.Detect("pullAndProcessDecisions -> Pulled config block number")
+
+	for shardToUpdate := types.ShardID(1); int(shardToUpdate) <= numOfShards; shardToUpdate++ {
+		updatedBatcherInfo := armaNetwork.GetBatcher(t, partyToUpdate, shardToUpdate)
+		// Verify that the updated batcher TLS connection to a consenter is successful by checking for successful pulls,
+		// if the TLS cert was not updated correctly, the batcher would fail to establish connections to the consenter and the pull would fail with TLS errors
+		updatedBatcherInfo.RunInfo.Session.Err.Detect("replicateDecision -> Got config block number")
+
+		assemblerInfo := armaNetwork.GetAssembler(t, partyToUpdate)
+		// Verify that the assembler can pull blocks successfully with the updated certificates
+		assemblerInfo.RunInfo.Session.Err.Detect("pullBlocks -> Started pulling blocks from: shard%dparty%d", shardToUpdate, partyToUpdate)
+	}
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	signer, certBytes, err = testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+
+	for i := range totalTxNumber {
+		txContent := tx.PrepareTxWithTimestamp(i+totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown = common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber*2 + 1, // including config update tx
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+}
+
+// TestChangePartyCACertificates verifies end-to-end certificate rotation for a party in a running Arma network.
+//
+// The test bootstraps a multi-party, multi-shard network, sends baseline transactions to confirm liveness,
+// and then performs a staged configuration update workflow for one target party:
+//
+//  1. Append new TLS CA and signing CA certificates to channel config and verify they are present in shared metadata.
+//  2. Restart nodes and confirm transaction flow still succeeds with trust overlap.
+//  3. Update node-level TLS/signing certificates (router, batchers, assembler, consenter) via config update.
+//  4. Restart again, extend client trust with the new TLS CA, and verify continued transaction submission and block pulling.
+//  5. Replace party crypto material on disk, update config to use only the new CA certs, and submit final config update.
+//  6. Restart once more and confirm the network remains operational by sending and pulling additional transactions.
+func TestChangePartyCACertificates(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 1
+	submittingParty := types.PartyID(2)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", types.PartyID(submittingParty)))
+	conf, _, err := config.LoadLocalConfig(configFilePath)
+	require.NoError(t, err)
+
+	// Modify the router configuration to require client signature verification.
+	conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+	utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	uc, err := testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+
+	txNumber := 10
+	totalTxNumber := 0
+	// Send transactions to all parties to ensure network is operational before config update
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	submittingOrg := fmt.Sprintf("org%d", submittingParty)
+
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown := common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Timeout:      60,
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	// 1.
+	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+
+	partyToUpdate := types.PartyID(1)
+	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
+	require.NotNil(t, nodesIPs)
+
+	var batchersEndpoints []string
+	for shardID := types.ShardID(1); int(shardID) <= numOfShards; shardID++ {
+		batchersEndpoints = append(batchersEndpoints, netInfo[testutil.NodeName{PartyID: partyToUpdate, NodeType: testutil.Batcher, ShardID: shardID}].Listener.Addr().String())
+	}
+
+	networkConfig := &generate.Network{
+		Parties: []generate.Party{
+			{
+				ID:                partyToUpdate,
+				RouterEndpoint:    netInfo[testutil.NodeName{PartyID: partyToUpdate, NodeType: testutil.Router}].Listener.Addr().String(),
+				ConsenterEndpoint: netInfo[testutil.NodeName{PartyID: partyToUpdate, NodeType: testutil.Consensus}].Listener.Addr().String(),
+				BatchersEndpoints: batchersEndpoints,
+				AssemblerEndpoint: netInfo[testutil.NodeName{PartyID: partyToUpdate, NodeType: testutil.Assembler}].Listener.Addr().String(),
+			},
+		},
+	}
+
+	updateOrg := fmt.Sprintf("org%d", partyToUpdate)
+	configUpdateDir := filepath.Join(dir, "config_update")
+	err = os.MkdirAll(configUpdateDir, 0o755)
+	require.NoError(t, err, "failed to create config update directory")
+	defer os.RemoveAll(configUpdateDir)
+
+	err = armageddon.GenerateCryptoConfig(networkConfig, configUpdateDir)
+	require.NoError(t, err, "failed to regenerate crypto config with Armageddon")
+
+	// merge the new crypto config for the updated party to the existing crypto config directory so that the config update builder can pick up the new certs
+	copyDir(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg),
+		filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg),
+		copyCAFilesPredicate,
+		true,
+	)
+
+	// Append the new TLS CA cert and Sign CA cert to the config update builder
+	newTlsCACertPath := filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", "tlsca-cert.pem")
+	newTlsCACertBytes, err := os.ReadFile(newTlsCACertPath)
+	require.NoError(t, err)
+	configUpdateBuilder.AppendPartyTLSCACerts(t, partyToUpdate, [][]byte{newTlsCACertBytes})
+
+	newSignCACertPath := filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", "ca-cert.pem")
+	newSignCACertBytes, err := os.ReadFile(newSignCACertPath)
+	require.NoError(t, err)
+	configUpdateBuilder.AppendPartyCACerts(t, partyToUpdate, [][]byte{newSignCACertBytes})
+
+	// Submit config update
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	totalTxNumber++
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Stop Arma nodes
+	armaNetwork.Stop()
+
+	// Verify that the party's certificates are updated by checking the assembler's shared config
+	assemblerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_assembler.yaml")
+	assemblerConfig, lastConfigBlock, err := config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+	require.NoError(t, err)
+
+	assemblerNodeConfig := assemblerConfig.ExtractAssemblerConfig(lastConfigBlock)
+	ordererConfig, ok := assemblerNodeConfig.Bundle.OrdererConfig()
+	require.True(t, ok, "failed to extract orderer config from the last config block")
+
+	assemblerSharedConfig := protos.SharedConfig{}
+	err = proto.Unmarshal(ordererConfig.ConsensusMetadata(), &assemblerSharedConfig)
+	require.NoError(t, err)
+
+	var updatedPartyConfig *protos.PartyConfig
+	for _, partyConfig := range assemblerSharedConfig.GetPartiesConfig() {
+		if partyConfig.PartyID == uint32(partyToUpdate) {
+			updatedPartyConfig = partyConfig
+			break
+		}
+	}
+	require.NotNil(t, updatedPartyConfig, "Updated party config not found in the config")
+
+	require.True(t, func() bool {
+		for _, cert := range updatedPartyConfig.GetCACerts() {
+			if bytes.Equal(cert, newSignCACertBytes) {
+				return true
+			}
+		}
+		return false
+	}(), "Signing CA certs were not updated in the config")
+
+	require.True(t, func() bool {
+		for _, cert := range updatedPartyConfig.TLSCACerts {
+			if bytes.Equal(cert, newTlsCACertBytes) {
+				return true
+			}
+		}
+		return false
+	}(), "TLS CA certs were not updated in the config")
+
+	// 2. Restart Arma nodes
+	armaNetwork.Restart(t, readyChan)
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+
+	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown = common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	copyDir(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg), filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg),
+		copyNonCAFilesPredicate, false,
+	)
+
+	newConfigBlockPath := filepath.Join(dir, "config1.block")
+	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
+	require.NoError(t, err)
+	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
+
+	// 3.
+	// Update the router TLS certs in the config
+	newRouterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "tls-cert.pem"))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateRouterTLSCert(t, partyToUpdate, newRouterTlsCertBytes)
+
+	// Update the batchers TLS certs and signing certs in the config
+	for shardToUpdate := types.ShardID(1); int(shardToUpdate) <= numOfShards; shardToUpdate++ {
+		newBatcherTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls", "tls-cert.pem"))
+		require.NoError(t, err)
+		configUpdateBuilder.UpdateBatcherTLSCert(t, partyToUpdate, shardToUpdate, newBatcherTlsCertBytes)
+
+		newBatcherSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "signcerts", "sign-cert.pem"))
+		require.NoError(t, err)
+		configUpdateBuilder.UpdateBatcherSignCert(t, partyToUpdate, shardToUpdate, newBatcherSignCertBytes)
+	}
+
+	// Update the assembler TLS certs in the config
+	newAssemblerTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "tls-cert.pem"))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateAssemblerTLSCert(t, partyToUpdate, newAssemblerTlsCertBytes)
+
+	// Update the consenter TLS certs in the config
+	newConsenterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "tls-cert.pem"))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateConsensusTLSCert(t, partyToUpdate, newConsenterTlsCertBytes)
+
+	// Update the consenter signing certs in the config
+	newConsenterSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "sign-cert.pem"))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateConsenterSignCert(t, partyToUpdate, newConsenterSignCertBytes)
+
+	// Submit config update
+	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	totalTxNumber++
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Stop Arma nodes
+	armaNetwork.Stop()
+
+	// Get the config block from an assembler ledger and write it to a temp location
+	_, lastConfigBlock, err = config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+	require.NoError(t, err)
+	newConfigBlockPath = filepath.Join(dir, "config2.block")
+	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
+	require.NoError(t, err)
+
+	// 4.
+	// Restart Arma nodes
+	armaNetwork.Restart(t, readyChan)
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// 5.
+	// Update the TLS CA certs
+	uc.TLSCACerts = append(uc.TLSCACerts, newTlsCACertBytes)
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	signer, certBytes, err = testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+
+	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown = common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	// 6.
+	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
+
+	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
+	require.NoError(t, err)
+	oldSigner, oldCertBytes, err := testutil.LoadCryptoMaterialsFromDir(t, oldUC.MSPDir)
+	require.NoError(t, err)
+
+	// Override the party's crypto materials with the new ones regenerated
+	dstDir := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg)
+	err = os.RemoveAll(dstDir)
+	require.NoError(t, err, "failed to remove directory %s", dstDir)
+	copyDir(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg), dstDir, copyAllPredicate, false)
+
+	// Set the new TLS CA cert and Sign CA cert to the config update builder
+	tlsCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdatePartyTLSCACerts(t, partyToUpdate, [][]byte{tlsCACertBytes})
+
+	signCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", "ca-cert.pem"))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdatePartyCACerts(t, partyToUpdate, [][]byte{signCACertBytes})
+
+	// Submit a new config update
+	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	totalTxNumber++
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Stop Arma nodes
+	armaNetwork.Stop()
+
+	// Restart Arma nodes
+	armaNetwork.Restart(t, readyChan)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+	signer, certBytes, err = testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+
+	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown = common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	// Try sending a transaction with the old certificate which should fail as the old cert is no longer trusted by the network
+	txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+	env = tx.CreateSignedStructuredEnvelope(txContent, oldSigner, oldCertBytes, fmt.Sprintf("org%d", partyToUpdate))
+	err = broadcastClient.SendTx(env)
+	require.ErrorContains(t, err, "signature did not satisfy policy", "expected error when sending transaction with old certificate after CA rotation, but got no error")
+
+	broadcastClient.Stop()
+}
+
+type copyPredicate func(path string, d os.DirEntry) bool
+
+func copyNonCAFilesPredicate(path string, d os.DirEntry) bool {
+	if d.IsDir() {
+		return false
+	}
+
+	dir := filepath.Dir(path)
+
+	if _, ok := caFolders[filepath.Base(dir)]; ok {
+		return false
+	}
+	return true
+}
+
+func copyCAFilesPredicate(path string, d os.DirEntry) bool {
+	if d.IsDir() {
+		return false
+	}
+
+	dir := filepath.Dir(path)
+
+	if _, ok := caFolders[filepath.Base(dir)]; ok {
+		return true
+	}
+	return false
+}
+
+func copyAllPredicate(_ string, d os.DirEntry) bool {
+	return true
+}
+
+func copyDir(src, dst string, pred copyPredicate, backUpOriginal bool) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if pred != nil && !pred(path, d) {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Join(dst, relPath)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if backUpOriginal {
+			target = uniqueFileName(target)
+		}
+
+		err = armageddon.CopyFile(path, target)
+		return err
+	})
+}
+
+func uniqueFileName(path string) string {
+	base := path
+	ext := filepath.Ext(base)
+	name := base[:len(base)-len(ext)]
+	for i := 1; ; i++ {
+		if _, err := os.Stat(base); os.IsNotExist(err) {
+			return base
+		}
+		base = name + "-bak" + strconv.Itoa(i) + ext
+	}
+}
+
+// TestUpdateTimeoutParameters verifies that updating a party's timeout parameters via a config update succeeds,
+// and that the party can continue processing transactions after the config update with the new timeout parameters.
+func TestUpdateTimeoutParameters(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	submittingParty := types.PartyID(1)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	userConfig, err := testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+	require.NotNil(t, userConfig)
+
+	txNumber := 100
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(userConfig, 10*time.Second)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, userConfig.MSPDir)
+	require.NoError(t, err)
+
+	org := fmt.Sprintf("org%d", submittingParty)
+
+	for i := range txNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	totalTxNumber := txNumber
+
+	var parties []types.PartyID
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
+
+	statusUnknown := common.Status_UNKNOWN
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	// Create config update
+	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+
+	autoRemoveTimeout := "100ms"
+	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, configutil.NewBatchTimeoutsConfig(configutil.BatchTimeoutsConfigName.AutoRemoveTimeout, autoRemoveTimeout))
+
+	// Submit config update
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Restart Arma nodes
+	armaNetwork.Stop()
+
+	armaNetwork.Restart(t, readyChan)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// Send transactions again and verify they are processed
+	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
+
+	for i := range txNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i+txNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	totalTxNumber += txNumber
+
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber + 1, // including config update tx
+		BlockHandler: &verifyTimeoutParam{
+			AutoRemoveTimeout: autoRemoveTimeout,
+		},
+		Timeout:   60,
+		ErrString: "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:    &statusUnknown,
+		Signer:    pullRequestSigner,
+	})
+}
+
+type verifyTimeoutParam struct {
+	AutoRemoveTimeout string
+}
+
+func (vt *verifyTimeoutParam) HandleBlock(t *testing.T, block *common.Block) error {
+	isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
+	if isGenesisBlock {
+		return nil
+	}
+
+	if protoutil.IsConfigBlock(block) {
+		envelope, err := configutil.ReadConfigEnvelopeFromConfigBlock(block)
+		if err != nil || envelope == nil {
+			return fmt.Errorf("failed to read config envelope from config block: %w", err)
+		}
+
+		sharedConfig := configutil.GetSharedConfig(t, envelope)
+		require.NotNil(t, sharedConfig)
+
+		if vt.AutoRemoveTimeout != sharedConfig.BatchingConfig.BatchTimeouts.AutoRemoveTimeout {
+			return fmt.Errorf("AutoRemoveTimeout in the config block does not match the expected value. Expected: %s, Got: %s", vt.AutoRemoveTimeout, sharedConfig.BatchingConfig.BatchTimeouts.AutoRemoveTimeout)
+		}
+		return nil
+	}
+
+	return nil
+}
+
+// TestUpdateSmartBFTParameters verifies that updating SmartBFT parameters via a config update succeeds,
+// and that the network can continue processing transactions after the config update with the new parameters.
+func TestUpdateSmartBFTParameters(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	submittingParty := types.PartyID(1)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	userConfig, err := testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+	require.NotNil(t, userConfig)
+
+	txNumber := 100
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(userConfig, 10*time.Second)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, userConfig.MSPDir)
+	require.NoError(t, err)
+
+	org := fmt.Sprintf("org%d", submittingParty)
+
+	for i := range txNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	totalTxNumber := txNumber
+
+	var parties []types.PartyID
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
+
+	statusUnknown := common.Status_UNKNOWN
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	// Create config update
+	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+
+	requestBatchMaxBytes := uint64(1048576)
+	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.RequestBatchMaxBytes, strconv.FormatUint(requestBatchMaxBytes, 10)))
+
+	// Submit config update
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Restart Arma nodes
+	armaNetwork.Stop()
+
+	armaNetwork.Restart(t, readyChan)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// Send transactions again and verify they are processed
+	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
+
+	for i := range txNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i+txNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	totalTxNumber += txNumber
+
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber + 1, // including config update tx
+		BlockHandler: &verifySmartBFTParam{
+			RequestBatchMaxBytes: requestBatchMaxBytes,
+		},
+		Timeout:   60,
+		ErrString: "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:    &statusUnknown,
+		Signer:    pullRequestSigner,
+	})
+}
+
+type verifySmartBFTParam struct {
+	RequestBatchMaxBytes uint64
+}
+
+func (vt *verifySmartBFTParam) HandleBlock(t *testing.T, block *common.Block) error {
+	isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
+	if isGenesisBlock {
+		return nil
+	}
+
+	if protoutil.IsConfigBlock(block) {
+		envelope, err := configutil.ReadConfigEnvelopeFromConfigBlock(block)
+		if err != nil || envelope == nil {
+			return fmt.Errorf("failed to read config envelope from config block: %w", err)
+		}
+
+		sharedConfig := configutil.GetSharedConfig(t, envelope)
+		require.NotNil(t, sharedConfig)
+
+		if vt.RequestBatchMaxBytes != sharedConfig.ConsensusConfig.SmartBFTConfig.RequestBatchMaxBytes {
+			return fmt.Errorf("RequestBatchMaxBytes in the config block does not match the expected value. Expected: %d, Got: %d", vt.RequestBatchMaxBytes, sharedConfig.ConsensusConfig.SmartBFTConfig.RequestBatchMaxBytes)
+		}
+		return nil
+	}
+
+	return nil
+}
+
+// TestUpdateBatchingParameters verifies that updating a party's batching parameters via a config update succeeds,
+// and that the party can continue processing transactions after the config update with the new batching parameters.
+func TestUpdateBatchingParameters(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	submittingParty := types.PartyID(1)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 2, "none", "none")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	userConfig, err := testutil.GetUserConfig(dir, submittingParty)
+	require.NoError(t, err)
+	require.NotNil(t, userConfig)
+
+	txNumber := 100
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
+		os.Exit(3)
+	}
+
+	broadcastClient := client.NewBroadcastTxClient(userConfig, 10*time.Second)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, userConfig.MSPDir)
+	require.NoError(t, err)
+
+	// Create config update
+	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+
+	maxMessageCount := 2
+	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, configutil.NewBatchSizeConfig(configutil.BatchSizeConfigName.MaxMessageCount, maxMessageCount))
+
+	var parties []types.PartyID
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	// Submit config update
+	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, submittingParty)
+	require.NoError(t, err)
+
+	broadcastClient.Stop()
+
+	// Wait for Arma nodes to stop
+	testutil.WaitSoftStopped(t, netInfo)
+
+	// Restart Arma nodes
+	armaNetwork.Stop()
+
+	armaNetwork.Restart(t, readyChan)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// Send transactions again and verify they are processed
+	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
+
+	for i := range txNumber {
+		status := rl.GetToken()
+		if !status {
+			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+			os.Exit(3)
+		}
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, fmt.Sprintf("org%d", submittingParty))
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	broadcastClient.Stop()
+
+	totalTxNumber := txNumber
+
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
+	statusUnknown := common.Status_UNKNOWN
+
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber + 1, // including config update tx
+		BlockHandler: &verifyMaxMessageCount{MaxMessageCount: maxMessageCount},
+		Timeout:      60,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+}
+
+type verifyMaxMessageCount struct {
+	MaxMessageCount int
+}
+
+func (vm *verifyMaxMessageCount) HandleBlock(t *testing.T, block *common.Block) error {
+	isGenesisBlock := block.Header.Number == 0 || block.Header.GetDataHash() == nil
+	if isGenesisBlock {
+		return nil
+	}
+
+	if protoutil.IsConfigBlock(block) {
+		envelope, err := configutil.ReadConfigEnvelopeFromConfigBlock(block)
+		if err != nil || envelope == nil {
+			return fmt.Errorf("failed to read config envelope from config block: %w", err)
+		}
+
+		sharedConfig := configutil.GetSharedConfig(t, envelope)
+		require.NotNil(t, sharedConfig)
+
+		require.Equal(t, vm.MaxMessageCount, int(sharedConfig.BatchingConfig.BatchSize.MaxMessageCount), "MaxMessageCount in the config block does not match the expected value")
+		return nil
+	}
+
+	if len(block.GetData().GetData()) > vm.MaxMessageCount {
+		return fmt.Errorf("block contains %d transactions, which exceeds the max message count per block of %d", len(block.GetData().GetData()), vm.MaxMessageCount)
+	}
+
+	return nil
 }

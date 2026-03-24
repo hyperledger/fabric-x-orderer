@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -88,7 +89,7 @@ var (
 type BatcherMetrics struct {
 	partyID   arma_types.PartyID
 	shardID   arma_types.ShardID
-	logger    arma_types.Logger
+	logger    *flogging.FabricLogger
 	interval  time.Duration
 	stopChan  chan struct{}
 	stopOnce  sync.Once
@@ -109,7 +110,7 @@ type BatcherMetrics struct {
 	monitor *monitoring.Monitor
 }
 
-func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo []config.BatcherInfo, ledger BatchLedger, logger arma_types.Logger) *BatcherMetrics {
+func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo []config.BatcherInfo, ledger BatchLedger, logger *flogging.FabricLogger) *BatcherMetrics {
 	host, port, err := net.SplitHostPort(batcherNodeConfig.MonitoringListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)

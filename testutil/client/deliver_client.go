@@ -8,16 +8,19 @@ package client
 
 import (
 	"context"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -40,7 +43,7 @@ type response struct {
 }
 
 // PullBlocks is blocking untill all blocks are delivered: startBlock to endBlock, inclusive; or an error is returned.
-func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyID, startBlock uint64, endBlock uint64, handler BlockHandler, signer protoutil.Signer) (common.Status, error) {
+func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyID, startBlock uint64, endBlock uint64, handler BlockHandler, signer identity.SignerSerializer) (common.Status, error) {
 	client, gRPCAssemblerClientConn, err := c.createClientAndSendRequest(startBlock, endBlock, assemblerId, signer)
 	if err != nil {
 		return common.Status(0), errors.Wrapf(err, "failed to create client to assembler: %d", assemblerId)
@@ -103,7 +106,7 @@ func (c *DeliverClient) PullBlocks(ctx context.Context, assemblerId types.PartyI
 	}
 }
 
-func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock uint64, assemblerId types.PartyID, signer protoutil.Signer) (ab.AtomicBroadcast_DeliverClient, *grpc.ClientConn, error) {
+func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock uint64, assemblerId types.PartyID, signer identity.SignerSerializer) (ab.AtomicBroadcast_DeliverClient, *grpc.ClientConn, error) {
 	serverRootCAs := append([][]byte{}, c.userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -122,6 +125,15 @@ func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock u
 		DialTimeout: time.Second * 5,
 	}
 
+	var tlsCertHash []byte
+	if c.userConfig.UseTLSAssembler == "mTLS" {
+		block, _ := pem.Decode(c.userConfig.TLSCertificate)
+		if block == nil || block.Type != "CERTIFICATE" {
+			return nil, nil, errors.Errorf("failed to decode PEM certificate")
+		}
+		tlsCertHash = util.ComputeSHA256(block.Bytes)
+	}
+
 	// prepare request envelope
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
@@ -130,7 +142,7 @@ func (c *DeliverClient) createClientAndSendRequest(startBlock uint64, endBlock u
 		nextSeekInfo(startBlock, endBlock),
 		int32(0),
 		uint64(0),
-		nil,
+		tlsCertHash,
 	)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed create a request envelope")

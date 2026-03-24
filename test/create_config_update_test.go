@@ -32,8 +32,8 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 3, 2, "none", "none")
+	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
-	require.NoError(t, err)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -53,32 +53,35 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "10ms"))
 	configUpdateBuilder.UpdateSmartBFTConfig(t, cfgutil.NewSmartBFTConfig(cfgutil.SmartBFTConfigName.RequestMaxBytes, "1048576"))
 	configUpdateBuilder.RemoveParty(t, types.PartyID(2))
-	configUpdateBuilder.AddNewParty(t, &protos.PartyConfig{
-		CACerts:    newCACerts,
-		TLSCACerts: newTLSCACerts,
-		ConsenterConfig: &protos.ConsenterNodeConfig{
-			Host:    "localhost",
-			Port:    7050,
-			TlsCert: []byte("consenterNewCert"),
-		},
-		RouterConfig: &protos.RouterNodeConfig{
-			Host:    "localhost",
-			Port:    8050,
-			TlsCert: []byte("routerNewCert"),
-		},
-		AssemblerConfig: &protos.AssemblerNodeConfig{
-			Host:    "localhost",
-			Port:    9050,
-			TlsCert: []byte("assemblerNewCert"),
-		},
-		BatchersConfig: []*protos.BatcherNodeConfig{
-			{
-				ShardID: 1,
+	configUpdateBuilder.AddNewParty(t, &cfgutil.PartyConfig{
+		PartyConfig: protos.PartyConfig{
+			CACerts:    newCACerts,
+			TLSCACerts: newTLSCACerts,
+			ConsenterConfig: &protos.ConsenterNodeConfig{
 				Host:    "localhost",
-				Port:    10050,
-				TlsCert: []byte("batcherNewCert"),
+				Port:    7050,
+				TlsCert: []byte("consenterNewCert"),
+			},
+			RouterConfig: &protos.RouterNodeConfig{
+				Host:    "localhost",
+				Port:    8050,
+				TlsCert: []byte("routerNewCert"),
+			},
+			AssemblerConfig: &protos.AssemblerNodeConfig{
+				Host:    "localhost",
+				Port:    9050,
+				TlsCert: []byte("assemblerNewCert"),
+			},
+			BatchersConfig: []*protos.BatcherNodeConfig{
+				{
+					ShardID: 1,
+					Host:    "localhost",
+					Port:    10050,
+					TlsCert: []byte("batcherNewCert"),
+				},
 			},
 		},
+		AdminCerts: [][]byte{[]byte("newAdminCert")},
 	})
 
 	configUpdateBuilder.UpdateBatcherSignCert(t, types.PartyID(1), types.ShardID(1), []byte("newSignCert"))

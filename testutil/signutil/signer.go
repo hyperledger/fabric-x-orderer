@@ -15,6 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
@@ -66,7 +67,7 @@ func CreateTestSigner(t *testing.T, mspID, dir string) *TestSigner {
 	return Signer
 }
 
-func CreateSignerForUser(userMspDir string) (protoutil.Signer, error) {
+func CreateSignerForUser(userMspDir string) (identity.SignerSerializer, error) {
 	mspID, err := getMspIDfromDir(userMspDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mspID from user msp dir: %s, err: %v", userMspDir, err)

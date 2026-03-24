@@ -45,6 +45,7 @@ func TestArmageddonWithTLS(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -86,6 +87,7 @@ func TestArmageddonWithTLSWithNoSampleConfigPathFlag(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -127,6 +129,7 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -180,6 +183,7 @@ func TestLoadStepsFails(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -230,6 +234,7 @@ func TestLoadAndReceive(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -286,7 +291,7 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
-	fmt.Printf("path is: %v\n", configPath)
+	defer netInfo.CleanUp()
 
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
@@ -354,6 +359,7 @@ func TestArmageddonNonTLS(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -396,6 +402,7 @@ func TestArmageddonMutualTLS_SendFromClientSpecifiedInLocalConfig(t *testing.T) 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddonCLI := armageddon.NewCLI()
@@ -410,7 +417,7 @@ func TestArmageddonMutualTLS_SendFromClientSpecifiedInLocalConfig(t *testing.T) 
 	require.NotNil(t, tlsCA)
 
 	var paths []string
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		paths = append(paths, filepath.Join(dir, "config", fmt.Sprintf("party%d", i+1), "local_config_router.yaml"))
 		paths = append(paths, filepath.Join(dir, "config", fmt.Sprintf("party%d", i+1), "local_config_assembler.yaml"))
 	}
@@ -424,7 +431,7 @@ func TestArmageddonMutualTLS_SendFromClientSpecifiedInLocalConfig(t *testing.T) 
 
 	// Issue a TLS certificate and key from the CA and update user credentials
 	var userPaths []string
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		userPaths = append(userPaths, filepath.Join(dir, "config", fmt.Sprintf("party%d", i+1), "user_config.yaml"))
 	}
 
@@ -493,7 +500,8 @@ func TestArmageddonSharedConfigProtoFromSharedConfigYAML(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -530,7 +538,8 @@ func TestArmageddonCreateBlockFromSharedConfigYAML(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()
@@ -554,7 +563,8 @@ func TestArmageddonGenerateNewConfig(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	// 2.
 	armageddon := armageddon.NewCLI()

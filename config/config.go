@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package config
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -18,6 +17,7 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/msp"
@@ -27,10 +27,10 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -42,7 +42,7 @@ type Configuration struct {
 }
 
 // ReadConfig reads the configurations from the config file and returns it. The configuration includes both local and shared.
-func ReadConfig(configFilePath string, logger types.Logger) (*Configuration, *common.Block, error) {
+func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configuration, *common.Block, error) {
 	if configFilePath == "" {
 		return nil, nil, errors.New("path to the configuration file is empty")
 	}
@@ -176,6 +176,9 @@ func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error)
 }
 
 func sharedConfigFromBlock(block *common.Block) (*protos.SharedConfig, error) {
+	if block == nil {
+		return nil, errors.New("block is nil")
+	}
 	consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(block)
 	if err != nil {
 		return nil, err
@@ -241,17 +244,13 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
-	if err := config.CheckIfRouterNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
 
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -283,10 +282,6 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 }
 
 func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *nodeconfig.BatcherNodeConfig {
-	if err := config.CheckIfBatcherNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
@@ -360,10 +355,6 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 }
 
 func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *nodeconfig.ConsenterNodeConfig {
-	if err := config.CheckIfConsenterNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
@@ -380,8 +371,8 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	shards := config.ExtractShards()
 	consenters := config.ExtractConsenters()
 
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
-	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node.TLSCAcertsFromConsenters(consenters)...)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs = append(orderingServiceTrustedRootCAs, node_utils.TLSCAcertsFromConsenters(consenters)...)
 
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -412,10 +403,6 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 }
 
 func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
-	if err := config.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
-		panic(err)
-	}
-
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -430,7 +417,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
-	orderingServiceTrustedRootCAs := node.TLSCAcertsFromShards(shards)
+	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
 	bundle := config.extractBundleFromConfigBlock(configBlock)
 	appTrustedRoots := ExtractAppTrustedRootsFromConfigBlock(bundle)
 	localConfigClientsTrustedRoots := config.LocalConfig.TLSConfig.ClientRootCAs
@@ -618,7 +605,14 @@ func (config *Configuration) extractBundleFromConfigBlock(configBlock *common.Bl
 	return bundle
 }
 
-func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.ConsensusLedger, logger types.Logger) (*common.Block, error) {
+type ConsensusLedgerReader interface {
+	RetrieveBlockByNumber(blockNum uint64) (*common.Block, error)
+	Height() uint64
+}
+
+// GetLastConfigBlockFromConsensusLedger retrieves the last (fabric) config block from the consensus ledger.
+// It returns the last config block by first finding the decision number of the last (decision) config block, retrieves that decision block, and then extracts the fabric config block from it.
+func GetLastConfigBlockFromConsensusLedger(consensusLedger ConsensusLedgerReader, logger *flogging.FabricLogger) (*common.Block, error) {
 	h := consensusLedger.Height()
 	if h == 0 {
 		logger.Infof("Consensus ledger height is 0")
@@ -630,25 +624,42 @@ func GetLastConfigBlockFromConsensusLedger(consensusLedger *node_ledger.Consensu
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve last block %d from consensus ledger: %s", lastBlockIdx, err)
 	}
-	proposal, _, err := state.BytesToDecision(lastBlock.Data.Data[0])
+
+	return GetLastConfigBlockUsingBlockFromConsensusLedger(lastBlock, consensusLedger, logger)
+}
+
+// GetLastConfigBlockUsingBlockFromConsensusLedger retrieves the last (fabric) config block from the consensus ledger, at or before the given (decision) block.
+// It returns the last config block by first finding the decision number of the last (decision) config block, retrieves that decision block, and then extracts the fabric config block from it.
+func GetLastConfigBlockUsingBlockFromConsensusLedger(block *common.Block, consensusLedger ConsensusLedgerReader, logger *flogging.FabricLogger) (*common.Block, error) {
+	if block == nil {
+		return nil, errors.New("block is nil")
+	}
+	if block.Header == nil {
+		return nil, errors.New("block header is missing")
+	}
+	if block.Data == nil || len(block.Data.Data) == 0 {
+		return nil, errors.New("block data is missing")
+	}
+
+	proposal, err := state.BytesToProposal(block.Data.Data[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to read decision from last block in consensus ledger: %s", err)
+		return nil, fmt.Errorf("failed to read decision from block in consensus ledger: %s", err)
 	}
 
 	header := &state.Header{}
 	if err := header.Deserialize(proposal.Header); err != nil {
-		return nil, fmt.Errorf("failed to deserialize decision header from last block: %s", err)
+		return nil, fmt.Errorf("failed to deserialize decision header from block: %s", err)
 	}
-
+	// TODO get decisionNumOfLastConfigBlock from the metadata of the block instead of the header of the decision
 	decisionNumOfLastConfigBlock := header.DecisionNumOfLastConfigBlock
-	logger.Infof("Decision number of last config block: %d", decisionNumOfLastConfigBlock)
+	logger.Infof("Decision number of last config block: %d, in block: %d", decisionNumOfLastConfigBlock, block.Header.Number)
 	decisionOfLastConfigBlock, err := consensusLedger.RetrieveBlockByNumber(uint64(decisionNumOfLastConfigBlock))
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve decision of the last config block from consensus ledger: %s", err)
 	}
-	proposal, _, err = state.BytesToDecision(decisionOfLastConfigBlock.Data.Data[0])
+	proposal, err = state.BytesToProposal(decisionOfLastConfigBlock.Data.Data[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to read decision from last config block in consensus ledger: %s", err)
+		return nil, fmt.Errorf("failed to read proposal from last config block in consensus ledger: %s", err)
 	}
 	header = &state.Header{}
 	if err := header.Deserialize(proposal.Header); err != nil {
@@ -667,14 +678,18 @@ func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig() error {
 			if sharedPartyConfig.RouterConfig == nil {
 				return fmt.Errorf("router configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 			}
-			if !bytes.Equal(localTLSCert, sharedPartyConfig.RouterConfig.TlsCert) {
+			equal, err := utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.RouterConfig.TlsCert)
+			if err != nil {
+				return fmt.Errorf("error comparing TLS cert of router of party%d to the shared configuration: %s", localPartyID, err)
+			}
+			if !equal {
 				localTLSCertString, err := utils.CertificateBytesToString(localTLSCert)
 				if err != nil {
-					return err
+					return fmt.Errorf("error converting local TLS cert of router of party%d to string: %s", localPartyID, err)
 				}
 				sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.RouterConfig.TlsCert)
 				if err != nil {
-					return err
+					return fmt.Errorf("error converting shared TLS cert of router of party%d to string: %s", localPartyID, err)
 				}
 				return fmt.Errorf("certificate mismatch: the router of party %d is attempting to load with TLS certificate: %v that differs from the shared configuration TLS certificate: %v", localPartyID, localTLSCertString, sharedTLSCertString)
 			}
@@ -685,16 +700,11 @@ func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig() error {
 	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
 }
 
-func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig() error {
+func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCert []byte) error {
 	localConfig := config.LocalConfig.NodeLocalConfig
 	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
 	localShardID := uint32(localConfig.BatcherParams.ShardID)
 	localTLSCert := config.LocalConfig.TLSConfig.Certificate
-
-	localSignCert, err := os.ReadFile(filepath.Join(localConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-	if err != nil {
-		return err
-	}
 
 	var sharedPartyConfig *protos.PartyConfig
 	for _, party := range config.SharedConfig.PartiesConfig {
@@ -718,22 +728,30 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig() error {
 		return fmt.Errorf("batcher in shard%d does not exist for party%d in the shared config", localShardID, localPartyID)
 	}
 
-	if !bytes.Equal(localTLSCert, sharedBatcherConfig.TlsCert) {
+	equal, err := utils.AreCertificatesEqual(localTLSCert, sharedBatcherConfig.TlsCert)
+	if err != nil {
+		return fmt.Errorf("error comparing TLS cert of batcher in shard%d of party%d to the shared configuration: %s", localShardID, localPartyID, err)
+	}
+	if !equal {
 		localTLSCertString, err := utils.CertificateBytesToString(localTLSCert)
 		if err != nil {
-			return err
+			return fmt.Errorf("error converting local TLS cert of batcher in shard%d of party%d to string: %s", localShardID, localPartyID, err)
 		}
 		sharedTLSCertString, err := utils.CertificateBytesToString(sharedBatcherConfig.TlsCert)
 		if err != nil {
-			return err
+			return fmt.Errorf("error converting shared TLS cert of batcher in shard%d of party%d to string: %s", localShardID, localPartyID, err)
 		}
 		return fmt.Errorf("certificate mismatch: the batcher of party %d shard %d is attempting to load with TLS certificate: %v that differs from the shared configuration TLS certificate: %v", localPartyID, localShardID, localTLSCertString, sharedTLSCertString)
 	}
 
-	if !bytes.Equal(localSignCert, sharedBatcherConfig.SignCert) {
+	equal, err = utils.AreCertificatesEqual(localSignCert, sharedBatcherConfig.SignCert)
+	if err != nil {
+		return fmt.Errorf("error comparing sign cert of batcher in shard%d of party%d to the shared configuration: %s", localShardID, localPartyID, err)
+	}
+	if !equal {
 		localSignCertString, err := utils.CertificateBytesToString(localSignCert)
 		if err != nil {
-			return err
+			return fmt.Errorf("error converting local sign cert of batcher in shard%d of party%d to string: %s", localShardID, localPartyID, err)
 		}
 		sharedSignCertString, err := utils.CertificateBytesToString(sharedBatcherConfig.SignCert)
 		if err != nil {
@@ -745,15 +763,9 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig() error {
 	return nil
 }
 
-func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig() error {
-	localConfig := config.LocalConfig.NodeLocalConfig.GeneralConfig
+func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig(localSignCert []byte) error {
 	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
 	localTLSCert := config.LocalConfig.TLSConfig.Certificate
-
-	localSignCert, err := os.ReadFile(filepath.Join(localConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
-	if err != nil {
-		return err
-	}
 
 	for _, sharedPartyConfig := range config.SharedConfig.PartiesConfig {
 		if localPartyID != sharedPartyConfig.PartyID {
@@ -764,26 +776,34 @@ func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig() error {
 			return fmt.Errorf("consenter configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 		}
 
-		if !bytes.Equal(localSignCert, sharedPartyConfig.ConsenterConfig.SignCert) {
+		equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.ConsenterConfig.SignCert)
+		if err != nil {
+			return fmt.Errorf("error comparing sign cert of consenter of party%d to the shared configuration: %s", localPartyID, err)
+		}
+		if !equal {
 			localSignCertString, err := utils.CertificateBytesToString(localSignCert)
 			if err != nil {
-				return err
+				return fmt.Errorf("error converting local sign cert of consenter of party%d to string: %s", localPartyID, err)
 			}
 			sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.ConsenterConfig.SignCert)
 			if err != nil {
-				return err
+				return fmt.Errorf("error converting shared sign cert of consenter of party%d to string: %s", localPartyID, err)
 			}
 			return fmt.Errorf("sign certificate mismatch: Consenter%d is attempting to load with sign certificate: %v that differs from the shared configuration sign certificate: %v", localPartyID, localSignCertString, sharedSignCertString)
 		}
 
-		if !bytes.Equal(localTLSCert, sharedPartyConfig.ConsenterConfig.TlsCert) {
+		equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.ConsenterConfig.TlsCert)
+		if err != nil {
+			return fmt.Errorf("error comparing TLS cert of consenter of party%d to the shared configuration: %s", localPartyID, err)
+		}
+		if !equal {
 			localTLSCertString, err := utils.CertificateBytesToString(localTLSCert)
 			if err != nil {
-				return err
+				return fmt.Errorf("error converting local TLS cert of consenter of party%d to string: %s", localPartyID, err)
 			}
 			sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.ConsenterConfig.TlsCert)
 			if err != nil {
-				return err
+				return fmt.Errorf("error converting shared TLS cert of consenter of party%d to string: %s", localPartyID, err)
 			}
 			return fmt.Errorf("certificate mismatch: the consenter of party %d is attempting to load with TLS certificate: %v that differs from the shared configuration TLS certificate: %v", localPartyID, localTLSCertString, sharedTLSCertString)
 		}
@@ -802,14 +822,18 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 			if sharedPartyConfig.AssemblerConfig == nil {
 				return fmt.Errorf("assembler configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 			}
-			if !bytes.Equal(localTLSCert, sharedPartyConfig.AssemblerConfig.TlsCert) {
+			equal, err := utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.AssemblerConfig.TlsCert)
+			if err != nil {
+				return fmt.Errorf("error comparing TLS cert of assembler of party%d to the shared configuration: %s", localPartyID, err)
+			}
+			if !equal {
 				localTLSCertString, err := utils.CertificateBytesToString(localTLSCert)
 				if err != nil {
-					return err
+					return fmt.Errorf("error converting local TLS cert of assembler of party%d to string: %s", localPartyID, err)
 				}
 				sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.AssemblerConfig.TlsCert)
 				if err != nil {
-					return err
+					return fmt.Errorf("error converting shared TLS cert of assembler of party%d to string: %s", localPartyID, err)
 				}
 				return fmt.Errorf("certificate mismatch: the assembler of party %d is attempting to load with TLS certificate: %v that differs from the shared configuration TLS certificate: %v", localPartyID, localTLSCertString, sharedTLSCertString)
 			}
@@ -817,4 +841,22 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 		}
 	}
 	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
+}
+
+// NewUpdatedConfigurationFromBlock builds a new configuration based on current configuration and block
+func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, error) {
+	if config == nil {
+		return nil, errors.New("failed applying new config, current configuration is nil")
+	}
+
+	sharedConfig, err := sharedConfigFromBlock(block)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
+	}
+	newConfig := &Configuration{
+		LocalConfig:  config.LocalConfig,
+		SharedConfig: sharedConfig,
+	}
+
+	return newConfig, nil
 }

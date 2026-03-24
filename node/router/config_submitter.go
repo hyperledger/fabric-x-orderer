@@ -12,14 +12,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"google.golang.org/grpc"
 )
@@ -36,7 +39,7 @@ type configSubmitter struct {
 	consensusRootCAs      [][]byte
 	tlsCert               []byte
 	tlsKey                []byte
-	logger                types.Logger
+	logger                *flogging.FabricLogger
 	configRequestsChannel chan *TrackedRequest
 	ctx                   context.Context
 	cancelFunc            func()
@@ -45,21 +48,28 @@ type configSubmitter struct {
 	signer                identity.SignerSerializer
 	configUpdateProposer  policy.ConfigUpdateProposer
 	configRulesVerifier   verify.OrdererRules
+	partyID               types.PartyID
 }
 
-func NewConfigSubmitter(consensusEndpoint string, consensusRootCAs [][]byte, tlsCert []byte, tlsKey []byte, logger types.Logger, bundle channelconfig.Resources, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
+func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCA := range conf.Consenter.TLSCACerts {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
+	}
+
 	cs := &configSubmitter{
-		consensusEndpoint:     consensusEndpoint,
-		consensusRootCAs:      consensusRootCAs,
-		tlsCert:               tlsCert,
-		tlsKey:                tlsKey,
+		consensusEndpoint:     conf.Consenter.Endpoint,
+		consensusRootCAs:      tlsCAsOfConsenter,
+		tlsCert:               conf.TLSCertificateFile,
+		tlsKey:                conf.TLSPrivateKeyFile,
 		logger:                logger,
 		configRequestsChannel: make(chan *TrackedRequest, 100),
-		bundle:                bundle,
+		bundle:                conf.Bundle,
 		verifier:              verifier,
 		signer:                signer,
 		configUpdateProposer:  configUpdateProposer,
 		configRulesVerifier:   configRulesVerifier,
+		partyID:               conf.PartyID,
 	}
 	return cs
 }
@@ -116,14 +126,15 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		return err
 	}
 
+	bccsp := factory.GetDefault()
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
-	if err = cs.configRulesVerifier.ValidateNewConfig(env); err != nil {
+	if err = cs.configRulesVerifier.ValidateNewConfig(env, bccsp, cs.partyID); err != nil {
 		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
 		tr.responses <- feedback
 		return err
 	}
 
-	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env); err != nil {
+	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env, bccsp); err != nil {
 		feedback.err = fmt.Errorf("error in validating config transition rules: %w", err)
 		tr.responses <- feedback
 		return err

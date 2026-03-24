@@ -41,7 +41,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO: remove this test since its written in a unit-test style with dummy config block and mocked verification path
+// TestConfigTXDisseminationWithVerification is implemented instead.
 func TestConfigDisseminate(t *testing.T) {
+	t.Skip()
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 	numParties := 4
@@ -107,8 +110,8 @@ func TestConfigDisseminate(t *testing.T) {
 	}
 
 	// create a config request and submit
-	configReq := tx.CreateStructuredConfigUpdateRequest(payloadBytes)
 	for i := range routers {
+		configReq := tx.CreateStructuredConfigUpdateRequest(payloadBytes)
 		routers[i].Submit(context.Background(), configReq)
 	}
 
@@ -140,7 +143,7 @@ func TestConfigDisseminate(t *testing.T) {
 
 	// make sure consenter said it is stopping
 	require.Eventually(t, func() bool {
-		baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2}, types.PartyID(1), 0)
+		baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{2}, types.PartyID(1), 0, 0)
 		ce := &state.ControlEvent{BAF: baf}
 		err := consenters[0].SubmitRequest(ce.Bytes())
 		return err != nil && strings.Contains(err.Error(), "consensus is soft-stopped")
@@ -228,7 +231,8 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
@@ -451,7 +455,8 @@ func TestConfigTXDisseminationVerificationFailure(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})

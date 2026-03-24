@@ -15,8 +15,8 @@ import (
 
 	"google.golang.org/grpc/connectivity"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
-	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
@@ -56,7 +56,7 @@ type reconnectReq struct {
 type ShardRouter struct {
 	router2batcherConnPoolSize   int
 	router2batcherStreamsPerConn int
-	logger                       types.Logger
+	logger                       *flogging.FabricLogger
 	batcherEndpoint              string
 	batcherRootCAs               [][]byte
 	lock                         sync.RWMutex
@@ -73,7 +73,7 @@ type ShardRouter struct {
 	configSubmitter              ConfigurationSubmitter
 }
 
-func NewShardRouter(l types.Logger,
+func NewShardRouter(l *flogging.FabricLogger,
 	batcherEndpoint string,
 	batcherRootCAs [][]byte,
 	tlsCert []byte,
@@ -297,6 +297,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			notifiedReconnect:                 false,
 			verifier:                          sr.verifier,
 			configSubmitter:                   sr.configSubmitter,
+			reconnectBackoffInterval:          minRetryInterval,
 		}
 		go s.sendRequests()
 		go s.readResponses()
@@ -332,8 +333,9 @@ func (sr *ShardRouter) startReconnectionRoutine() {
 func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream) {
 	// if stream is not nil, notify the reconnect routine
 	// otherwise, the stream is nil and it must have been reported before.
+	// withBackoff is set to false because it is not the case of a stopped batcher.
 	if stream != nil {
-		stream.notifyReconnectRoutine()
+		stream.notifyReconnectRoutine(false)
 	}
 }
 

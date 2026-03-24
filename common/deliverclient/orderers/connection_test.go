@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -45,11 +46,15 @@ var _ = Describe("Connection", func() {
 		cert2 []byte
 		cert3 []byte
 
-		org1 orderers.OrdererOrg
-		org2 orderers.OrdererOrg
+		party1Certs [][]byte
+		party2Certs [][]byte
+		party3Certs [][]byte
+		party4Certs [][]byte
 
-		org1Certs [][]byte
-		org2Certs [][]byte
+		partyEndpoint1 *orderers.Endpoint
+		partyEndpoint2 *orderers.Endpoint
+		partyEndpoint3 *orderers.Endpoint
+		partyEndpoint4 *orderers.Endpoint
 
 		cs *orderers.ConnectionSource
 
@@ -57,6 +62,8 @@ var _ = Describe("Connection", func() {
 	)
 
 	BeforeEach(func() {
+		// TODO generate certs on the fly instead of reading from files, which will make the test more self-contained and easier to understand.
+
 		var err error
 		cert1, err = os.ReadFile("testdata/tlsca.example.com-cert.pem")
 		Expect(err).NotTo(HaveOccurred())
@@ -67,23 +74,39 @@ var _ = Describe("Connection", func() {
 		cert3, err = os.ReadFile("testdata/tlsca.org2.example.com-cert.pem")
 		Expect(err).NotTo(HaveOccurred())
 
-		org1 = orderers.OrdererOrg{
-			Addresses: []string{"org1-address1", "org1-address2"},
-			RootCerts: [][]byte{cert1, cert2},
+		party1Certs = [][]byte{cert1}
+		party2Certs = [][]byte{cert2}
+		party3Certs = [][]byte{cert3}
+		party4Certs = [][]byte{cert1, cert2}
+
+		partyEndpoint1 = &orderers.Endpoint{
+			Address:   "party1-endpoint",
+			RootCerts: party1Certs,
+		}
+		partyEndpoint2 = &orderers.Endpoint{
+			Address:   "party2-endpoint",
+			RootCerts: party2Certs,
+		}
+		partyEndpoint3 = &orderers.Endpoint{
+			Address:   "party3-endpoint",
+			RootCerts: party3Certs,
+		}
+		partyEndpoint4 = &orderers.Endpoint{
+			Address:   "party4-endpoint",
+			RootCerts: party4Certs,
 		}
 
-		org2 = orderers.OrdererOrg{
-			Addresses: []string{"org2-address1", "org2-address2"},
-			RootCerts: [][]byte{cert3},
-		}
+		Expect(partyEndpoint1.String()).To(Equal("Address: party1-endpoint, RootCertHash: 410E5D5D97CD67AD489B2A8B8A181348CA3AA14AFE36B160D69C81274B5BA15E"))
+		Expect(partyEndpoint2.String()).To(Equal("Address: party2-endpoint, RootCertHash: 1518B4AA6592CAC80EEFD2CAFBA534B77AC2B5460DB0E89606D0188AF7A1ACB4"))
+		Expect(partyEndpoint3.String()).To(Equal("Address: party3-endpoint, RootCertHash: 16536C05487CBF530E923E5A986CDA4A99B48C625DEF0776E3FEB2F3429ED387"))
+		Expect(partyEndpoint4.String()).To(Equal("Address: party4-endpoint, RootCertHash: 72163911AA82A098F5F9116949733746BCD4E21944D80E746C289D9CDE3B0FA0"))
 
-		org1Certs = [][]byte{cert1, cert2}
-		org2Certs = [][]byte{cert3}
-
-		cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"), "") // << no self endpoint, as in the peer
-		cs.Update(map[string]orderers.OrdererOrg{
-			"org1": org1,
-			"org2": org2,
+		cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"), types.PartyID(0)) // << no self endpoint, as in the peer
+		cs.Update2(orderers.Party2Endpoint{
+			types.PartyID(1): partyEndpoint1,
+			types.PartyID(2): partyEndpoint2,
+			types.PartyID(3): partyEndpoint3,
+			types.PartyID(4): partyEndpoint4,
 		})
 
 		endpoints = cs.Endpoints()
@@ -93,20 +116,20 @@ var _ = Describe("Connection", func() {
 		Expect(stripEndpoints(endpoints)).To(ConsistOf(
 			stripEndpoints([]*orderers.Endpoint{
 				{
-					Address:   "org1-address1",
-					RootCerts: org1Certs,
+					Address:   "party1-endpoint",
+					RootCerts: party1Certs,
 				},
 				{
-					Address:   "org1-address2",
-					RootCerts: org1Certs,
+					Address:   "party2-endpoint",
+					RootCerts: party2Certs,
 				},
 				{
-					Address:   "org2-address1",
-					RootCerts: org2Certs,
+					Address:   "party3-endpoint",
+					RootCerts: party3Certs,
 				},
 				{
-					Address:   "org2-address2",
-					RootCerts: org2Certs,
+					Address:   "party4-endpoint",
+					RootCerts: party4Certs,
 				},
 			}),
 		))
@@ -120,11 +143,11 @@ var _ = Describe("Connection", func() {
 
 	It("endpoint stringer works", func() {
 		for _, endpoint := range endpoints {
-			Expect(endpoint.String()).To(MatchRegexp("Address: org[12]-address[12]"))
-			Expect(endpoint.String()).To(MatchRegexp("CertHash: [A-F0-9]+"))
+			Expect(endpoint.String()).To(MatchRegexp("Address: party[1-4]-endpoint"))
+			Expect(endpoint.String()).To(MatchRegexp("RootCertHash: [A-F0-9]+"))
 		}
 		e := &orderers.Endpoint{Address: "localhost"}
-		Expect(e.String()).To(Equal("Address: localhost, CertHash: <nil>"))
+		Expect(e.String()).To(Equal("Address: localhost, RootCertHash: <nil>"))
 		e = nil
 		Expect(e.String()).To(Equal("<nil>"))
 	})
@@ -164,9 +187,23 @@ var _ = Describe("Connection", func() {
 
 	When("an update does not modify the endpoint set", func() {
 		BeforeEach(func() {
-			cs.Update(map[string]orderers.OrdererOrg{
-				"org1": org1,
-				"org2": org2,
+			cs.Update2(orderers.Party2Endpoint{
+				types.PartyID(1): &orderers.Endpoint{
+					Address:   "party1-endpoint",
+					RootCerts: party1Certs,
+				},
+				types.PartyID(2): &orderers.Endpoint{
+					Address:   "party2-endpoint",
+					RootCerts: party2Certs,
+				},
+				types.PartyID(3): &orderers.Endpoint{
+					Address:   "party3-endpoint",
+					RootCerts: party3Certs,
+				},
+				types.PartyID(4): &orderers.Endpoint{
+					Address:   "party4-endpoint",
+					RootCerts: party4Certs,
+				},
 			})
 		})
 
@@ -182,37 +219,42 @@ var _ = Describe("Connection", func() {
 		})
 	})
 
-	When("an update change's an org's TLS CA", func() {
+	When("an update change's an party's TLS CA", func() {
 		BeforeEach(func() {
-			org1.RootCerts = [][]byte{cert1}
+			party3Certs = [][]byte{cert3, cert1}
 
-			cs.Update(map[string]orderers.OrdererOrg{
-				"org1": org1,
-				"org2": org2,
+			cs.Update2(orderers.Party2Endpoint{
+				types.PartyID(1): partyEndpoint1,
+				types.PartyID(2): partyEndpoint2,
+				types.PartyID(3): &orderers.Endpoint{
+					Address:   "party3-endpoint",
+					RootCerts: party3Certs,
+				},
+				types.PartyID(4): partyEndpoint4,
 			})
 		})
 
 		It("creates a new set of orderer endpoints", func() {
-			newOrg1Certs := [][]byte{cert1}
+			newParty3Certs := [][]byte{cert3, cert1}
 
 			newEndpoints := cs.Endpoints()
 			Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 				stripEndpoints([]*orderers.Endpoint{
 					{
-						Address:   "org1-address1",
-						RootCerts: newOrg1Certs,
+						Address:   "party1-endpoint",
+						RootCerts: party1Certs,
 					},
 					{
-						Address:   "org1-address2",
-						RootCerts: newOrg1Certs,
+						Address:   "party2-endpoint",
+						RootCerts: party2Certs,
 					},
 					{
-						Address:   "org2-address1",
-						RootCerts: org2Certs,
+						Address:   "party3-endpoint",
+						RootCerts: newParty3Certs,
 					},
 					{
-						Address:   "org2-address2",
-						RootCerts: org2Certs,
+						Address:   "party4-endpoint",
+						RootCerts: party4Certs,
 					},
 				}),
 			))
@@ -226,11 +268,27 @@ var _ = Describe("Connection", func() {
 	})
 
 	When("an update change's an org's endpoint addresses", func() {
+		var party1endpointAlt *orderers.Endpoint
 		BeforeEach(func() {
-			org1.Addresses = []string{"org1-address1", "org1-address3"}
-			cs.Update(map[string]orderers.OrdererOrg{
-				"org1": org1,
-				"org2": org2,
+			party1endpointAlt = &orderers.Endpoint{
+				Address:   "party1-endpoint-alt",
+				RootCerts: party1Certs,
+			}
+
+			cs.Update2(orderers.Party2Endpoint{
+				types.PartyID(1): party1endpointAlt,
+				types.PartyID(2): &orderers.Endpoint{
+					Address:   "party2-endpoint",
+					RootCerts: party2Certs,
+				},
+				types.PartyID(3): &orderers.Endpoint{
+					Address:   "party3-endpoint",
+					RootCerts: party3Certs,
+				},
+				types.PartyID(4): &orderers.Endpoint{
+					Address:   "party4-endpoint",
+					RootCerts: party4Certs,
+				},
 			})
 		})
 
@@ -239,20 +297,20 @@ var _ = Describe("Connection", func() {
 			Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 				stripEndpoints([]*orderers.Endpoint{
 					{
-						Address:   "org1-address1",
-						RootCerts: org1Certs,
+						Address:   "party1-endpoint-alt",
+						RootCerts: party1Certs,
 					},
 					{
-						Address:   "org1-address3",
-						RootCerts: org1Certs,
+						Address:   "party2-endpoint",
+						RootCerts: party2Certs,
 					},
 					{
-						Address:   "org2-address1",
-						RootCerts: org2Certs,
+						Address:   "party3-endpoint",
+						RootCerts: party3Certs,
 					},
 					{
-						Address:   "org2-address2",
-						RootCerts: org2Certs,
+						Address:   "party4-endpoint",
+						RootCerts: party4Certs,
 					},
 				}),
 			))
@@ -265,10 +323,22 @@ var _ = Describe("Connection", func() {
 		})
 	})
 
-	When("an update removes an ordering organization", func() {
+	When("an update removes an ordering party", func() {
 		BeforeEach(func() {
-			cs.Update(map[string]orderers.OrdererOrg{
-				"org2": org2,
+			cs.Update2(orderers.Party2Endpoint{
+				types.PartyID(2): &orderers.Endpoint{
+					Address:   "party2-endpoint",
+					RootCerts: party2Certs,
+				},
+				types.PartyID(3): &orderers.Endpoint{
+					Address:   "party3-endpoint",
+					RootCerts: party3Certs,
+				},
+				types.PartyID(4): &orderers.Endpoint{
+					Address:   "party4-endpoint",
+					RootCerts: party4Certs,
+				},
+				// party 1 is removed
 			})
 		})
 
@@ -277,12 +347,16 @@ var _ = Describe("Connection", func() {
 			Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 				stripEndpoints([]*orderers.Endpoint{
 					{
-						Address:   "org2-address1",
-						RootCerts: org2Certs,
+						Address:   "party2-endpoint",
+						RootCerts: party2Certs,
 					},
 					{
-						Address:   "org2-address2",
-						RootCerts: org2Certs,
+						Address:   "party3-endpoint",
+						RootCerts: party3Certs,
+					},
+					{
+						Address:   "party4-endpoint",
+						RootCerts: party4Certs,
 					},
 				}),
 			))
@@ -294,11 +368,25 @@ var _ = Describe("Connection", func() {
 			}
 		})
 
-		When("the org is added back", func() {
+		When("a new party is added", func() {
 			BeforeEach(func() {
-				cs.Update(map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
+				cs.Update2(orderers.Party2Endpoint{
+					types.PartyID(2): &orderers.Endpoint{
+						Address:   "party2-endpoint",
+						RootCerts: party2Certs,
+					},
+					types.PartyID(3): &orderers.Endpoint{
+						Address:   "party3-endpoint",
+						RootCerts: party3Certs,
+					},
+					types.PartyID(4): &orderers.Endpoint{
+						Address:   "party4-endpoint",
+						RootCerts: party4Certs,
+					},
+					types.PartyID(5): &orderers.Endpoint{
+						Address:   "party5-endpoint",
+						RootCerts: party1Certs,
+					},
 				})
 			})
 
@@ -307,20 +395,20 @@ var _ = Describe("Connection", func() {
 				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 					stripEndpoints([]*orderers.Endpoint{
 						{
-							Address:   "org1-address1",
-							RootCerts: org1Certs,
+							Address:   "party2-endpoint",
+							RootCerts: party2Certs,
 						},
 						{
-							Address:   "org1-address2",
-							RootCerts: org1Certs,
+							Address:   "party3-endpoint",
+							RootCerts: party3Certs,
 						},
 						{
-							Address:   "org2-address1",
-							RootCerts: org2Certs,
+							Address:   "party4-endpoint",
+							RootCerts: party4Certs,
 						},
 						{
-							Address:   "org2-address2",
-							RootCerts: org2Certs,
+							Address:   "party5-endpoint",
+							RootCerts: party1Certs,
 						},
 					}),
 				))
@@ -328,32 +416,14 @@ var _ = Describe("Connection", func() {
 		})
 	})
 
-	When("an update modifies the global endpoints but does not affect the org endpoints", func() {
-		BeforeEach(func() {
-			cs.Update(map[string]orderers.OrdererOrg{
-				"org1": org1,
-				"org2": org2,
-			})
-		})
-
-		It("does not update the endpoints", func() {
-			newEndpoints := cs.Endpoints()
-			Expect(newEndpoints).To(Equal(endpoints))
-		})
-
-		It("does not close any of the refresh channels", func() {
-			for _, endpoint := range endpoints {
-				Expect(endpoint.Refreshed).NotTo(BeClosed())
-			}
-		})
-	})
-
 	When("a self-endpoint exists as in the orderer", func() {
 		BeforeEach(func() {
-			cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"), "org1-address1") //<< self-endpoint
-			cs.Update(map[string]orderers.OrdererOrg{
-				"org1": org1,
-				"org2": org2,
+			cs = orderers.NewConnectionSource(flogging.MustGetLogger("peer.orderers"), types.PartyID(1)) //<< self-party
+			cs.Update2(orderers.Party2Endpoint{
+				types.PartyID(1): partyEndpoint1, // self-endpoint
+				types.PartyID(2): partyEndpoint2,
+				types.PartyID(3): partyEndpoint3,
+				types.PartyID(4): partyEndpoint4,
 			})
 
 			endpoints = cs.Endpoints()
@@ -364,16 +434,16 @@ var _ = Describe("Connection", func() {
 			Expect(stripEndpoints(endpoints)).To(ConsistOf(
 				stripEndpoints([]*orderers.Endpoint{
 					{
-						Address:   "org1-address2",
-						RootCerts: org1Certs,
+						Address:   "party2-endpoint",
+						RootCerts: party2Certs,
 					},
 					{
-						Address:   "org2-address1",
-						RootCerts: org2Certs,
+						Address:   "party3-endpoint",
+						RootCerts: party3Certs,
 					},
 					{
-						Address:   "org2-address2",
-						RootCerts: org2Certs,
+						Address:   "party4-endpoint",
+						RootCerts: party4Certs,
 					},
 				}),
 			))
@@ -385,16 +455,16 @@ var _ = Describe("Connection", func() {
 			Expect(stripEndpoints(endpoints)).To(ConsistOf(
 				stripEndpoints([]*orderers.Endpoint{
 					{
-						Address:   "org1-address2",
-						RootCerts: org1Certs,
+						Address:   "party2-endpoint",
+						RootCerts: party2Certs,
 					},
 					{
-						Address:   "org2-address1",
-						RootCerts: org2Certs,
+						Address:   "party3-endpoint",
+						RootCerts: party3Certs,
 					},
 					{
-						Address:   "org2-address2",
-						RootCerts: org2Certs,
+						Address:   "party4-endpoint",
+						RootCerts: party4Certs,
 					},
 				}),
 			))
@@ -423,9 +493,11 @@ var _ = Describe("Connection", func() {
 
 		When("an update does not modify the endpoint set", func() {
 			BeforeEach(func() {
-				cs.Update(map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
+				cs.Update2(orderers.Party2Endpoint{
+					types.PartyID(1): partyEndpoint1, // self-endpoint
+					types.PartyID(2): partyEndpoint2,
+					types.PartyID(3): partyEndpoint3,
+					types.PartyID(4): partyEndpoint4,
 				})
 			})
 
@@ -443,31 +515,34 @@ var _ = Describe("Connection", func() {
 
 		When("an update changes an org's TLS CA", func() {
 			BeforeEach(func() {
-				org1.RootCerts = [][]byte{cert1}
+				party3Certs = [][]byte{cert3, cert1}
 
-				cs.Update(map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
+				cs.Update2(orderers.Party2Endpoint{
+					types.PartyID(1): partyEndpoint1,
+					types.PartyID(2): partyEndpoint2,
+					types.PartyID(3): &orderers.Endpoint{
+						Address:   "party3-endpoint",
+						RootCerts: party3Certs,
+					},
+					types.PartyID(4): partyEndpoint4,
 				})
 			})
 
 			It("creates a new set of orderer endpoints yet skips the self-endpoint", func() {
-				newOrg1Certs := [][]byte{cert1}
-
 				newEndpoints := cs.Endpoints()
 				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 					stripEndpoints([]*orderers.Endpoint{
 						{
-							Address:   "org1-address2",
-							RootCerts: newOrg1Certs,
+							Address:   "party2-endpoint",
+							RootCerts: party2Certs,
 						},
 						{
-							Address:   "org2-address1",
-							RootCerts: org2Certs,
+							Address:   "party3-endpoint",
+							RootCerts: party3Certs,
 						},
 						{
-							Address:   "org2-address2",
-							RootCerts: org2Certs,
+							Address:   "party4-endpoint",
+							RootCerts: party4Certs,
 						},
 					}),
 				))
@@ -481,29 +556,36 @@ var _ = Describe("Connection", func() {
 		})
 
 		When("an update changes an org's endpoint addresses", func() {
+			var party2endpointAlt *orderers.Endpoint
 			BeforeEach(func() {
-				org1.Addresses = []string{"org1-address1", "org1-address3"}
-				cs.Update(map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
+				party2endpointAlt = &orderers.Endpoint{
+					Address:   "party2-endpoint-alt",
+					RootCerts: party2Certs,
+				}
+
+				cs.Update2(orderers.Party2Endpoint{
+					types.PartyID(1): partyEndpoint1, // self-endpoint
+					types.PartyID(2): party2endpointAlt,
+					types.PartyID(3): partyEndpoint3,
+					types.PartyID(4): partyEndpoint4,
 				})
 			})
 
-			It("creates a new set of orderer endpoints, yet skips the self-endpoint", func() {
+			It("creates a new set of orderer endpoints, without self-endpoint", func() {
 				newEndpoints := cs.Endpoints()
 				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 					stripEndpoints([]*orderers.Endpoint{
 						{
-							Address:   "org1-address3",
-							RootCerts: org1Certs,
+							Address:   "party2-endpoint-alt",
+							RootCerts: party2Certs,
 						},
 						{
-							Address:   "org2-address1",
-							RootCerts: org2Certs,
+							Address:   "party3-endpoint",
+							RootCerts: party3Certs,
 						},
 						{
-							Address:   "org2-address2",
-							RootCerts: org2Certs,
+							Address:   "party4-endpoint",
+							RootCerts: party4Certs,
 						},
 					}),
 				))
@@ -518,8 +600,10 @@ var _ = Describe("Connection", func() {
 
 		When("an update removes an ordering organization", func() {
 			BeforeEach(func() {
-				cs.Update(map[string]orderers.OrdererOrg{
-					"org2": org2,
+				cs.Update2(orderers.Party2Endpoint{
+					types.PartyID(1): partyEndpoint1, // self-endpoint
+					types.PartyID(3): partyEndpoint3,
+					types.PartyID(4): partyEndpoint4,
 				})
 			})
 
@@ -528,12 +612,12 @@ var _ = Describe("Connection", func() {
 				Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 					stripEndpoints([]*orderers.Endpoint{
 						{
-							Address:   "org2-address1",
-							RootCerts: org2Certs,
+							Address:   "party3-endpoint",
+							RootCerts: party3Certs,
 						},
 						{
-							Address:   "org2-address2",
-							RootCerts: org2Certs,
+							Address:   "party4-endpoint",
+							RootCerts: party4Certs,
 						},
 					}),
 				))
@@ -545,11 +629,16 @@ var _ = Describe("Connection", func() {
 				}
 			})
 
-			When("the org is added back", func() {
+			When("a party is added", func() {
 				BeforeEach(func() {
-					cs.Update(map[string]orderers.OrdererOrg{
-						"org1": org1,
-						"org2": org2,
+					cs.Update2(orderers.Party2Endpoint{
+						types.PartyID(1): partyEndpoint1, // self-endpoint
+						types.PartyID(3): partyEndpoint3,
+						types.PartyID(4): partyEndpoint4,
+						types.PartyID(5): &orderers.Endpoint{
+							Address:   "party5-endpoint",
+							RootCerts: party1Certs,
+						},
 					})
 				})
 
@@ -558,40 +647,20 @@ var _ = Describe("Connection", func() {
 					Expect(stripEndpoints(newEndpoints)).To(ConsistOf(
 						stripEndpoints([]*orderers.Endpoint{
 							{
-								Address:   "org1-address2",
-								RootCerts: org1Certs,
+								Address:   "party3-endpoint",
+								RootCerts: party3Certs,
 							},
 							{
-								Address:   "org2-address1",
-								RootCerts: org2Certs,
+								Address:   "party4-endpoint",
+								RootCerts: party4Certs,
 							},
 							{
-								Address:   "org2-address2",
-								RootCerts: org2Certs,
+								Address:   "party5-endpoint",
+								RootCerts: party1Certs,
 							},
 						}),
 					))
 				})
-			})
-		})
-
-		When("an update modifies the global endpoints but does not affect the org endpoints", func() {
-			BeforeEach(func() {
-				cs.Update(map[string]orderers.OrdererOrg{
-					"org1": org1,
-					"org2": org2,
-				})
-			})
-
-			It("does not update the endpoints", func() {
-				newEndpoints := cs.Endpoints()
-				Expect(newEndpoints).To(Equal(endpoints))
-			})
-
-			It("does not close any of the refresh channels", func() {
-				for _, endpoint := range endpoints {
-					Expect(endpoint.Refreshed).NotTo(BeClosed())
-				}
 			})
 		})
 	})

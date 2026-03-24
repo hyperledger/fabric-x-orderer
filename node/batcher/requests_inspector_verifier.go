@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"runtime"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
@@ -38,13 +39,13 @@ type RequestsInspectorVerifier struct {
 	batchMaxSize    uint32
 	shards          []types.ShardID
 	shardID         types.ShardID
-	logger          types.Logger
+	logger          *flogging.FabricLogger
 	mapper          router.ShardMapper
 	requestVerifier RequestVerifier
 	configSeq       uint32
 }
 
-func NewRequestsInspectorVerifier(logger types.Logger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
+func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
 	riv := &RequestsInspectorVerifier{
 		logger:          logger,
 		shardID:         config.ShardId,

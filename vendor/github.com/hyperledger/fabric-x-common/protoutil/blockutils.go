@@ -14,11 +14,11 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/cockroachdb/errors"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
@@ -256,7 +256,7 @@ func BlockSignatureVerifier(bftEnabled bool, consenters []*cb.Consenter, policy 
 
 		var signatureSet []*SignedData
 		for _, metadataSignature := range md.Signatures {
-			var signerIdentity []byte
+			var signerIdentity *msppb.Identity
 			var signedPayload []byte
 			// if the SignatureHeader is empty and the IdentifierHeader is present, then  the consenter expects us to fetch its identity by its numeric identifier
 			if bftEnabled && len(metadataSignature.GetSignatureHeader()) == 0 && len(metadataSignature.GetIdentifierHeader()) > 0 {
@@ -266,7 +266,7 @@ func BlockSignatureVerifier(bftEnabled bool, consenters []*cb.Consenter, policy 
 				}
 				identifier := identifierHeader.GetIdentifier()
 				signerIdentity = searchConsenterIdentityByID(consenters, identifier)
-				if len(signerIdentity) == 0 {
+				if signerIdentity == nil {
 					// The identifier is not within the consenter set
 					continue
 				}
@@ -279,7 +279,10 @@ func BlockSignatureVerifier(bftEnabled bool, consenters []*cb.Consenter, policy 
 
 				signedPayload = util.ConcatenateBytes(md.Value, metadataSignature.SignatureHeader, BlockHeaderBytes(header))
 
-				signerIdentity = signatureHeader.Creator
+				signerIdentity, err = UnmarshalIdentity(signatureHeader.GetCreator())
+				if err != nil {
+					return err
+				}
 			}
 
 			signatureSet = append(
@@ -296,13 +299,10 @@ func BlockSignatureVerifier(bftEnabled bool, consenters []*cb.Consenter, policy 
 	}
 }
 
-func searchConsenterIdentityByID(consenters []*cb.Consenter, identifier uint32) []byte {
+func searchConsenterIdentityByID(consenters []*cb.Consenter, identifier uint32) *msppb.Identity {
 	for _, consenter := range consenters {
 		if consenter.Id == identifier {
-			return MarshalOrPanic(&msp.SerializedIdentity{
-				Mspid:   consenter.MspId,
-				IdBytes: consenter.Identity,
-			})
+			return msppb.NewIdentity(consenter.MspId, consenter.Identity)
 		}
 	}
 	return nil

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -141,11 +142,24 @@ func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 	if err != nil {
 		panic("failed to marshal fake signature: " + err.Error())
 	}
-	signatures := []smartbft_types.Signature{{Value: sigBytes}}
-	bytes := state.DecisionToBytes(proposal, signatures)
-
-	sc.decisions <- &common.Block{
+	proposalMsg := &state.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+	}
+	msg := &state.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+	}
+	msgs := [][]byte{proposalMsg.Marshal(), msg.Marshal()}
+	msgsBytes, err := asn1.Marshal(msgs)
+	if err != nil {
+		panic("failed to marshal fake signature msgs: " + err.Error())
+	}
+	signatures := []smartbft_types.Signature{{Value: sigBytes, Msg: msgsBytes}}
+	bytes := state.ProposalToBytes(proposal)
+	block := &common.Block{
 		Header: ba.OrderingInformation.CommonBlock.Header,
 		Data:   &common.BlockData{Data: [][]byte{bytes}},
 	}
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
+	sc.decisions <- block
 }

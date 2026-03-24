@@ -11,14 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +38,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -100,7 +99,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -166,7 +165,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -232,7 +231,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond)
+	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -297,11 +296,8 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, fmt.Sprintf("TXs: %d", assembler.GetTxCount()))
 }
 
-func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration) (*assembler.Assembler, string) {
+func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte) (*assembler.Assembler, string) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
-	genesisBlock.Metadata = &common.BlockMetadata{
-		Metadata: [][]byte{nil, nil, []byte("dummy"), []byte("dummy")},
-	}
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
@@ -321,14 +317,15 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Shards:                    shards,
 		Consenter:                 consenterInfo,
 		UseTLS:                    true,
-		ClientAuthRequired:        false,
+		ClientAuthRequired:        ClientAuthRequired,
 		MonitoringListenAddress:   "127.0.0.1:0",
+		ClientRootCAs:             clientRootCAs,
 		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 	}
 
-	assemblerGRPC := node.CreateGRPCAssembler(nodeConfig)
+	assemblerGRPC := node_utils.CreateGRPCAssembler(nodeConfig)
 
-	assembler := assembler.NewAssembler(nodeConfig, assemblerGRPC, genesisBlock, testutil.CreateLogger(t, int(partyID)))
+	assembler := assembler.NewAssembler(nodeConfig, assemblerGRPC, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)))
 
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 	go func() {

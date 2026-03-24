@@ -16,7 +16,7 @@ import (
 
 func TestSimpleBAF(t *testing.T) {
 	t.Run("constructor setters and getters", func(t *testing.T) {
-		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18)
+		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18, 10)
 
 		require.Equal(t, types.ShardID(1), baf.Shard())
 		require.Equal(t, types.PartyID(2), baf.Primary())
@@ -27,15 +27,16 @@ func TestSimpleBAF(t *testing.T) {
 		baf.SetSignature([]byte{9, 10, 11, 12})
 		require.True(t, bytes.Equal([]byte{9, 10, 11, 12}, baf.Signature()))
 		require.Equal(t, types.ConfigSequence(18), baf.ConfigSequence())
+		require.Equal(t, uint64(10), baf.TXCount())
 
-		require.Equal(t, "BAF: Signer: 8; Sh,Pr,Sq,Dg: <1,2,3,04050607>; Config Seq: 18", baf.String())
+		require.Equal(t, "BAF: Signer: 8; Sh,Pr,Sq,Dg: <1,2,3,04050607>; Config Seq: 18; TX Count: 10", baf.String())
 
 		baf.SetSignature([]byte{19, 20, 21, 22})
 		require.True(t, bytes.Equal([]byte{19, 20, 21, 22}, baf.Signature()))
 	})
 
 	t.Run("ToBeSigned does not include sig", func(t *testing.T) {
-		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18)
+		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18, 0)
 		baf.SetSignature([]byte{9, 10, 11, 12})
 
 		var bafBytes []byte
@@ -57,7 +58,7 @@ func TestSimpleBAF(t *testing.T) {
 	})
 
 	t.Run("serialize and deserialize", func(t *testing.T) {
-		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18)
+		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18, 12)
 		baf.SetSignature([]byte{9, 10, 11, 12})
 
 		var bafBytes []byte

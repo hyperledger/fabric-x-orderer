@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
@@ -42,17 +43,17 @@ type AssemblerLedgerReaderWriter interface {
 
 //go:generate counterfeiter -o ./mocks/assembler_ledger_factory.go . AssemblerLedgerFactory
 type AssemblerLedgerFactory interface {
-	Create(logger types.Logger, ledgerPath string) (AssemblerLedgerReaderWriter, error)
+	Create(logger *flogging.FabricLogger, ledgerPath string) (AssemblerLedgerReaderWriter, error)
 }
 
 type DefaultAssemblerLedgerFactory struct{}
 
-func (f *DefaultAssemblerLedgerFactory) Create(logger types.Logger, ledgerPath string) (AssemblerLedgerReaderWriter, error) {
+func (f *DefaultAssemblerLedgerFactory) Create(logger *flogging.FabricLogger, ledgerPath string) (AssemblerLedgerReaderWriter, error) {
 	return NewAssemblerLedger(logger, ledgerPath)
 }
 
 type AssemblerLedger struct {
-	Logger               types.Logger
+	Logger               *flogging.FabricLogger
 	Ledger               blockledger.ReadWriter
 	blockStorageProvider *blkstorage.BlockStoreProvider
 	blockStore           *blkstorage.BlockStore
@@ -62,7 +63,7 @@ type AssemblerLedger struct {
 	blockHeaderSize      uint64
 }
 
-func NewAssemblerLedger(logger types.Logger, ledgerPath string) (*AssemblerLedger, error) {
+func NewAssemblerLedger(logger *flogging.FabricLogger, ledgerPath string) (*AssemblerLedger, error) {
 	// Create the ledger
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(ledgerPath, -1),
@@ -150,15 +151,6 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 		Signatures: sigs,
 	})
 
-	// TODO update the tx count in the consensus.
-	numOfRequests := uint64(len(batch.Requests()))
-	newTXcount := numOfRequests + uint64(monitoring.GetMetricValue(l.metrics.TransactionCount.(prometheus.Counter), l.Logger))
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batch, ordInfo, newTXcount)
-	if err != nil {
-		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
-	}
-	blockToAppend.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
-
 	l.Logger.Debugf("Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
 		blockToAppend.Header,                        // Header
 		len(blockToAppend.GetData().GetData()),      // Data
@@ -171,7 +163,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 		panic(err)
 	}
 
-	l.metrics.TransactionCount.Add(float64(numOfRequests))
+	l.metrics.TransactionCount.Add(float64(len(batch.Requests())))
 	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(blockToAppend)))
 	l.metrics.BlocksCount.Add(1)
 }
@@ -204,20 +196,12 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 		})
 	}
 
-	// TODO update the tx count in the consensus.
 	l.metrics.TransactionCount.Add(1) // for the config TX
-	transactionCount := uint64(monitoring.GetMetricValue(l.metrics.TransactionCount.(prometheus.Counter), l.Logger))
-	batchID := types.NewSimpleBatch(types.ShardIDConsensus, 0, 0, nil, 0)
-	ordererBlockMetadata, err := AssemblerBlockMetadataToBytes(batchID, orderingInfo, transactionCount)
-	if err != nil {
-		l.Logger.Panicf("failed to invoke AssemblerBlockMetadataToBytes: %s", err)
-	}
 
-	configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 	l.Logger.Debugf("Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
-		configBlock.Header,                                // Header
-		len(configBlock.GetData().GetData()),              // Data
-		batchID.Primary(), batchID.Shard(), batchID.Seq(), // Metadata batchID
+		configBlock.Header,                   // Header
+		len(configBlock.GetData().GetData()), // Data
+		0, types.ShardIDConsensus, 0,         // Metadata batchID
 		orderingInfo.DecisionNum, orderingInfo.BatchIndex, orderingInfo.BatchCount, // Metadata ordering
 		signers, // Metadata signers
 	)
@@ -230,17 +214,20 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 	l.metrics.BlocksCount.Add(1)
 }
 
+// TODO this should be done by the consenter
 func arrangeSignatures(orderingInfo *state.OrderingInformation) ([]*common.MetadataSignature, []uint64) {
 	var sigs []*common.MetadataSignature
 	var signers []uint64
 
 	for _, s := range orderingInfo.Signatures {
+
+		msg := &state.MessageToSign{}
+		if err := msg.Unmarshal(s.Msg); err != nil {
+			panic(err)
+		}
 		sigs = append(sigs, &common.MetadataSignature{
-			Signature: s.Value,
-			IdentifierHeader: protoutil.MarshalOrPanic(&common.IdentifierHeader{
-				Identifier: uint32(s.ID),
-				Nonce:      []byte{},
-			}),
+			Signature:        s.Value,
+			IdentifierHeader: msg.IdentifierHeader,
 		})
 
 		signers = append(signers, s.ID)

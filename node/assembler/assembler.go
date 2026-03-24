@@ -10,16 +10,14 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/hyperledger/fabric/protoutil"
-
-	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric/protoutil"
 )
 
 type NetStopper interface {
@@ -28,13 +26,14 @@ type NetStopper interface {
 
 type Assembler struct {
 	collator              Collator
-	logger                types.Logger
+	logger                *flogging.FabricLogger
 	ds                    *AssemblerDeliverService
 	prefetcher            PrefetcherController
 	baReplicator          delivery.ConsensusBringer
 	netStopper            NetStopper
 	metrics               *Metrics
 	lastConfigBlockNumber uint64
+	mainExitChan          chan struct{}
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -52,6 +51,8 @@ func (a *Assembler) GetTxCount() uint64 {
 
 // Stop stops the assembler and all its components.
 func (a *Assembler) Stop() {
+	a.logger.Infof("Stopping assembler")
+
 	a.metrics.Stop()
 	a.netStopper.Stop()
 	a.prefetcher.Stop()
@@ -59,6 +60,10 @@ func (a *Assembler) Stop() {
 	a.baReplicator.Stop()
 	a.collator.Stop()
 	a.collator.Ledger.Close()
+
+	a.logger.Info("Assembler has been stopped")
+	// close the whole process.
+	close(a.mainExitChan)
 }
 
 func (a *Assembler) SoftStop() {
@@ -75,10 +80,11 @@ func (a *Assembler) ConfigBlockNumber() uint64 {
 }
 
 func NewDefaultAssembler(
-	logger types.Logger,
+	logger *flogging.FabricLogger,
 	net NetStopper,
 	config *config.AssemblerNodeConfig,
 	configBlock *common.Block,
+	mainExitChan chan struct{},
 	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
 	prefetchIndexFactory PrefetchIndexerFactory,
 	prefetcherFactory PrefetcherFactory,
@@ -125,6 +131,7 @@ func NewDefaultAssembler(
 		// append config block only if it is the genesis block
 		blockNumber := configBlock.GetHeader().Number
 		if blockNumber == 0 {
+			configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = node_ledger.AssemblerGenesisBlockMetadataToBytes()
 			ordInfo := &state.OrderingInformation{
 				CommonBlock: configBlock,
 				DecisionNum: 0,
@@ -157,7 +164,7 @@ func NewDefaultAssembler(
 	prefetcher.Start()
 
 	assembler := &Assembler{
-		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, config),
+		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, config, metrics.deliverMetrics),
 		collator: Collator{
 			Shards:                            shardIds,
 			OrderedBatchAttestationReplicator: baReplicator,
@@ -172,6 +179,7 @@ func NewDefaultAssembler(
 		baReplicator:          baReplicator,
 		metrics:               metrics,
 		lastConfigBlockNumber: configBlock.GetHeader().GetNumber(),
+		mainExitChan:          mainExitChan,
 	}
 
 	assembler.collator.AssemblerRestarter = assembler
@@ -182,12 +190,13 @@ func NewDefaultAssembler(
 	return assembler
 }
 
-func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, logger types.Logger) *Assembler {
+func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
 		net,
 		config,
 		configBlock,
+		mainExitChan,
 		&node_ledger.DefaultAssemblerLedgerFactory{},
 		&DefaultPrefetchIndexerFactory{},
 		&DefaultPrefetcherFactory{},

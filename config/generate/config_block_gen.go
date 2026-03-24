@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/pkg/errors"
@@ -60,7 +61,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 			Host:          party.ConsenterConfig.Host,
 			Port:          party.ConsenterConfig.Port,
 			MSPID:         "",
-			Identity:      party.ConsenterConfig.TLSCert,
+			Identity:      party.ConsenterConfig.SignCert,
 			ClientTLSCert: party.ConsenterConfig.TLSCert,
 			ServerTLSCert: party.ConsenterConfig.TLSCert,
 		}
@@ -76,17 +77,16 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	templateAppOrg := profile.Application.Organizations[0]
 	profile.Application.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
 
-	for i := 0; i < len(sharedConfigYaml.PartiesConfig); i++ {
+	for i := range sharedConfigYaml.PartiesConfig {
 		org := &configtxgen.Organization{
-			Name:             fmt.Sprintf("org%d", i+1),
-			ID:               fmt.Sprintf("org%d", i+1),
-			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
-			MSPType:          templateAppOrg.MSPType,
-			Policies:         make(map[string]*configtxgen.Policy),
-			AnchorPeers:      templateAppOrg.AnchorPeers,
-			OrdererEndpoints: templateAppOrg.OrdererEndpoints, // TODO: org.OrdererEndpoints in the new format
-			AdminPrincipal:   templateAppOrg.AdminPrincipal,
-			SkipAsForeign:    templateAppOrg.SkipAsForeign,
+			Name:           fmt.Sprintf("org%d", i+1),
+			ID:             fmt.Sprintf("org%d", i+1),
+			MSPDir:         filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
+			MSPType:        templateAppOrg.MSPType,
+			Policies:       make(map[string]*configtxgen.Policy),
+			AnchorPeers:    templateAppOrg.AnchorPeers,
+			AdminPrincipal: templateAppOrg.AdminPrincipal,
+			SkipAsForeign:  templateAppOrg.SkipAsForeign,
 		}
 
 		// Update policy rules to use correct org names
@@ -104,15 +104,14 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	templateOrdererOrg := profile.Orderer.Organizations[0]
 	profile.Orderer.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
 
-	for i := 0; i < len(sharedConfigYaml.PartiesConfig); i++ {
+	for i, p := range sharedConfigYaml.PartiesConfig {
 		org := &configtxgen.Organization{
 			Name:             fmt.Sprintf("org%d", i+1),
 			ID:               fmt.Sprintf("org%d", i+1),
 			MSPDir:           filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
 			MSPType:          templateOrdererOrg.MSPType,
 			Policies:         make(map[string]*configtxgen.Policy),
-			AnchorPeers:      templateOrdererOrg.AnchorPeers,
-			OrdererEndpoints: templateOrdererOrg.OrdererEndpoints, // TODO: org.OrdererEndpoints in the new format
+			OrdererEndpoints: buildOrdererEndpoints(uint32(p.PartyID), p.RouterConfig.Host, int(p.RouterConfig.Port), p.AssemblerConfig.Host, int(p.AssemblerConfig.Port)),
 			AdminPrincipal:   templateOrdererOrg.AdminPrincipal,
 			SkipAsForeign:    templateOrdererOrg.SkipAsForeign,
 		}
@@ -162,4 +161,11 @@ func generatePublicKey(path string) ([]byte, error) {
 	}
 
 	return publicKeyPEM, nil
+}
+
+func buildOrdererEndpoints(id uint32, routerHost string, routerPort int, assemblerHost string, assemblerPort int) []*types.OrdererEndpoint {
+	return []*types.OrdererEndpoint{
+		{Host: routerHost, Port: routerPort, ID: id, API: []string{types.Broadcast}},
+		{Host: assemblerHost, Port: assemblerPort, ID: id, API: []string{types.Deliver}},
+	}
 }

@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
@@ -62,7 +63,7 @@ type PartitionPrefetchIndexer interface {
 type PartitionPrefetchIndexerFactory interface {
 	Create(
 		partition ShardPrimary,
-		logger types.Logger,
+		logger *flogging.FabricLogger,
 		defaultTtl time.Duration,
 		maxSizeBytes int,
 		timerFactory TimerFactory,
@@ -73,7 +74,7 @@ type PartitionPrefetchIndexerFactory interface {
 
 type DefaultPartitionPrefetchIndexerFactory struct{}
 
-func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) PartitionPrefetchIndexer {
+func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger *flogging.FabricLogger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) PartitionPrefetchIndexer {
 	return NewPartitionPrefetchIndex(
 		partition,
 		logger,
@@ -150,7 +151,7 @@ func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, 
 // Auto Eviction:
 // Each batch is put with a TTL timer, after it is expired, we automatically remove the batch and Broadcast on stateCond
 type PartitionPrefetchIndex struct {
-	logger    types.Logger
+	logger    *flogging.FabricLogger
 	partition ShardPrimary
 
 	stateCond *sync.Cond // Protects the counters, caches, and heap
@@ -177,7 +178,7 @@ type PartitionPrefetchIndex struct {
 	cancelContextFunc   context.CancelFunc
 }
 
-func NewPartitionPrefetchIndex(partition ShardPrimary, logger types.Logger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) *PartitionPrefetchIndex {
+func NewPartitionPrefetchIndex(partition ShardPrimary, logger *flogging.FabricLogger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) *PartitionPrefetchIndex {
 	ctx, cancel := context.WithCancel(context.Background())
 	pi := &PartitionPrefetchIndex{
 		logger:                logger,

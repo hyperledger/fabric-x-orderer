@@ -15,12 +15,12 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/gossip"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 // LedgerInfo an adapter to provide the interface to query
@@ -33,20 +33,6 @@ type LedgerInfo interface {
 
 	// GetCurrentBlockHash returns the block header hash of the last block in the ledger.
 	GetCurrentBlockHash() ([]byte, error)
-}
-
-// TODO Remove this as in fabric-x we don't have gossip at the peers.
-
-// GossipServiceAdapter serves to provide basic functionality
-// required from gossip service by delivery service
-//
-//go:generate counterfeiter -o fake/gossip_service_adapter.go --fake-name GossipServiceAdapter . GossipServiceAdapter
-type GossipServiceAdapter interface {
-	// AddPayload adds payload to the local state sync buffer
-	AddPayload(chainID string, payload *gossip.Payload) error
-
-	// Gossip the message across the peers
-	Gossip(msg *gossip.GossipMessage)
 }
 
 //go:generate counterfeiter -o fake/orderer_connection_source_factory.go --fake-name OrdererConnectionSourceFactory . OrdererConnectionSourceFactory
@@ -68,8 +54,7 @@ type DeliverStreamer interface {
 // MaxRetryDurationExceededHandler is a function that decides what to do in case the total time the component spends in
 // reconnection attempts is exceeded. If it returns true, it means that the component should stop retrying.
 //
-// In the peer, with gossip and a dynamic leader, stopping causes the gossip leader to yield.
-// In the peer, with gossip and a static leader, we never stop.
+// In the orderer, we must limit the time spent reconnecting, as we must limit the time we do Synch().
 type MaxRetryDurationExceededHandler func() (stopRetries bool)
 
 const backoffExponentBase = 1.2
@@ -120,13 +105,12 @@ func (d *Deliverer) Initialize(channelConfig *cb.Config) {
 	)
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
-	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, "")
-	orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, types.PartyID(0)) //<< no self-party, as in the peer
+	extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
-		// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
-		d.Logger.Panicf("Bundle creation should not have failed: %s", err)
+		d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
 	}
-	ordererSource.Update(orgAddresses)
+	ordererSource.Update2(extractedEndpoints)
 	d.orderers = ordererSource
 }
 
@@ -213,12 +197,11 @@ func (d *Deliverer) DeliverBlocks() {
 			totalDuration = time.Duration(0)
 
 			if channelConfig != nil {
-				orgAddresses, err := extractAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+				extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
 				if err != nil {
-					// The bundle was created prior to calling this function, so it should not fail when we recreate it here.
-					d.Logger.Panicf("Bundle creation should not have failed: %s", err)
+					d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
 				}
-				d.orderers.Update(orgAddresses)
+				d.orderers.Update2(extractedEndpoints)
 			}
 		}
 		if err := blockReceiver.ProcessIncoming(onSuccess); err != nil {

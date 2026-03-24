@@ -11,13 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric/protoutil"
@@ -25,16 +26,16 @@ import (
 )
 
 type BFTSynchronizer struct {
-	lastReconfig        types.Reconfig
+	lastReconfig        smartbft_types.Reconfig
 	selfID              uint64
-	LatestConfig        func() (types.Configuration, []uint64)
-	BlockToDecision     func(*common.Block) *types.Decision
-	OnCommit            func(*common.Block) types.Reconfig
+	LatestConfig        func() (smartbft_types.Configuration, []uint64)
+	BlockToDecision     func(*common.Block) *smartbft_types.Decision
+	OnCommit            func(*common.Block) smartbft_types.Reconfig
 	Support             ConsenterSupport
 	CryptoProvider      bccsp.BCCSP
 	ClusterDialer       *comm.PredicateDialer
 	LocalConfigCluster  config.Cluster
-	BlockPullerFactory  BlockPullerFactory
+	BlockPullerFactory  HeightDetectorFactory
 	VerifierFactory     VerifierFactory
 	BFTDelivererFactory BFTDelivererFactory
 	Logger              *flogging.FabricLogger
@@ -43,7 +44,7 @@ type BFTSynchronizer struct {
 	syncBuff *SyncBuffer
 }
 
-func (s *BFTSynchronizer) Sync() types.SyncResponse {
+func (s *BFTSynchronizer) Sync() smartbft_types.SyncResponse {
 	s.Logger.Debugf("BFT Sync initiated, party: %d", s.selfID)
 	decision, err := s.synchronize()
 	if err != nil {
@@ -53,9 +54,9 @@ func (s *BFTSynchronizer) Sync() types.SyncResponse {
 		block := s.Support.Block(h - 1)
 		config, nodes := s.LatestConfig()
 		latestDec := s.BlockToDecision(block)
-		return types.SyncResponse{
+		return smartbft_types.SyncResponse{
 			Latest: *latestDec,
-			Reconfig: types.ReconfigSync{
+			Reconfig: smartbft_types.ReconfigSync{
 				InReplicatedDecisions: false, // If we read from ledger we do not need to reconfigure.
 				CurrentNodes:          nodes,
 				CurrentConfig:         config,
@@ -65,18 +66,26 @@ func (s *BFTSynchronizer) Sync() types.SyncResponse {
 
 	// After sync has ended, reset the state of the last reconfig.
 	defer func() {
-		s.lastReconfig = types.Reconfig{}
+		s.lastReconfig = smartbft_types.Reconfig{}
 	}()
 
 	s.Logger.Debugf("reconfig: %+v", s.lastReconfig)
-	return types.SyncResponse{
+	return smartbft_types.SyncResponse{
 		Latest: *decision,
-		Reconfig: types.ReconfigSync{
+		Reconfig: smartbft_types.ReconfigSync{
 			InReplicatedDecisions: s.lastReconfig.InLatestDecision,
 			CurrentConfig:         s.lastReconfig.CurrentConfig,
 			CurrentNodes:          s.lastReconfig.CurrentNodes,
 		},
 	}
+}
+
+func (s *BFTSynchronizer) Stop() {
+	s.Logger.Infof("Stopping BFT Synchronizer, party: %d", s.selfID)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.syncBuff.Stop() // This will stop the BFT deliverer and any go-routines we started in Sync()
 }
 
 // Buffer return the internal SyncBuffer for testability.
@@ -87,9 +96,10 @@ func (s *BFTSynchronizer) Buffer() *SyncBuffer {
 	return s.syncBuff
 }
 
-func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
+func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	// === We probe all the endpoints and establish a target height, as well as detect the self endpoint.
-	targetHeight, myEndpoint, err := s.detectTargetHeight()
+	// TODO make the target height detection stoppable
+	targetHeight, _, err := s.detectTargetHeight()
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get detect target height")
 	}
@@ -106,7 +116,7 @@ func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
 	s.mutex.Unlock()
 
 	// === Create the BFT block deliverer and start a go-routine that fetches block and inserts them into the syncBuffer.
-	bftDeliverer, err := s.createBFTDeliverer(startHeight, myEndpoint)
+	bftDeliverer, err := s.createBFTDeliverer(startHeight, arma_types.PartyID(s.selfID))
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot create BFT block deliverer")
 	}
@@ -117,7 +127,7 @@ func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
 	// === Loop on sync-buffer and pull blocks, writing them to the ledger, returning the last block pulled.
 	lastPulledBlock, err := s.getBlocksFromSyncBuffer(startHeight, targetHeight)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get any blocks from SyncBuffer")
+		return nil, errors.Wrap(err, "failed to get any blocks from SyncBuffer")
 	}
 
 	decision := s.BlockToDecision(lastPulledBlock)
@@ -125,16 +135,12 @@ func (s *BFTSynchronizer) synchronize() (*types.Decision, error) {
 	return decision, nil
 }
 
-// detectTargetHeight probes remote endpoints and detects what is the target height this node needs to reach. It also
-// detects the self-endpoint.
-//
-// In BFT it is highly recommended that the channel/orderer-endpoints (for delivery & broadcast) map 1:1 to the
-// channel/orderers/consenters (for cluster consensus), that is, every consenter should be represented by a
-// delivery endpoint. This important for Sync to work properly.
+// detectTargetHeight probes remote endpoints and detects what is the target height this node needs to reach.
+// TODO make this method stoppable, currently it can take a long time if remote endpoints are not responsive, and we have no way to interrupt it.
 func (s *BFTSynchronizer) detectTargetHeight() (uint64, string, error) {
-	blockPuller, err := s.BlockPullerFactory.CreateBlockPuller(s.Support, s.ClusterDialer, s.LocalConfigCluster, s.CryptoProvider)
+	blockPuller, err := s.BlockPullerFactory.CreateHeightDetector(arma_types.PartyID(s.selfID), s.Support, s.ClusterDialer, s.LocalConfigCluster, s.CryptoProvider, s.Logger)
 	if err != nil {
-		return 0, "", errors.Wrap(err, "cannot get create BlockPuller")
+		return 0, "", errors.Wrap(err, "cannot create HeightDetector")
 	}
 	defer blockPuller.Close()
 
@@ -164,6 +170,8 @@ func (s *BFTSynchronizer) detectTargetHeight() (uint64, string, error) {
 //
 // heights: a slice containing the heights of accessible peers, length must be >0.
 // clusterSize: the cluster size, must be >0.
+//
+// We should emit a height that is equal or smaller than a height given by a correct node.
 func (s *BFTSynchronizer) computeTargetHeight(heights []uint64) uint64 {
 	sort.Slice(heights, func(i, j int) bool { return heights[i] > heights[j] }) // Descending
 	clusterSize := len(s.Support.SharedConfig().Consenters())
@@ -181,12 +189,14 @@ func (s *BFTSynchronizer) computeTargetHeight(heights []uint64) uint64 {
 }
 
 // createBFTDeliverer creates and initializes the BFT block deliverer.
-func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myEndpoint string) (BFTBlockDeliverer, error) {
+func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_types.PartyID) (BFTBlockDeliverer, error) {
 	lastBlock := s.Support.Block(startHeight - 1)
 	lastConfigBlock, err := s.Support.LastConfigBlock(lastBlock)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config block")
 	}
+
+	// TODO adapt this to the block structure used in the consenter decision, which is different from a fabric block
 	lastConfigEnv, err := deliverclient.ConfigFromBlock(lastConfigBlock)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config envelope")
@@ -235,7 +245,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myEndpoint stri
 	)
 
 	s.Logger.Infof("Created a BFTDeliverer: %+v", bftDeliverer)
-	bftDeliverer.Initialize(lastConfigEnv.GetConfig(), myEndpoint)
+	bftDeliverer.Initialize(lastConfigEnv.GetConfig(), myParty)
 
 	return bftDeliverer, nil
 }

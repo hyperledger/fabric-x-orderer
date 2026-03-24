@@ -31,10 +31,10 @@ type OrdererConnectionSource struct {
 	shuffledEndpointsReturnsOnCall map[int]struct {
 		result1 []*orderers.Endpoint
 	}
-	UpdateStub        func(map[string]orderers.OrdererOrg)
-	updateMutex       sync.RWMutex
-	updateArgsForCall []struct {
-		arg1 map[string]orderers.OrdererOrg
+	Update2Stub        func(orderers.Party2Endpoint)
+	update2Mutex       sync.RWMutex
+	update2ArgsForCall []struct {
+		arg1 orderers.Party2Endpoint
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -149,35 +149,35 @@ func (fake *OrdererConnectionSource) ShuffledEndpointsReturnsOnCall(i int, resul
 	}{result1}
 }
 
-func (fake *OrdererConnectionSource) Update(arg1 map[string]orderers.OrdererOrg) {
-	fake.updateMutex.Lock()
-	fake.updateArgsForCall = append(fake.updateArgsForCall, struct {
-		arg1 map[string]orderers.OrdererOrg
+func (fake *OrdererConnectionSource) Update2(arg1 orderers.Party2Endpoint) {
+	fake.update2Mutex.Lock()
+	fake.update2ArgsForCall = append(fake.update2ArgsForCall, struct {
+		arg1 orderers.Party2Endpoint
 	}{arg1})
-	stub := fake.UpdateStub
-	fake.recordInvocation("Update", []interface{}{arg1})
-	fake.updateMutex.Unlock()
+	stub := fake.Update2Stub
+	fake.recordInvocation("Update2", []interface{}{arg1})
+	fake.update2Mutex.Unlock()
 	if stub != nil {
-		fake.UpdateStub(arg1)
+		fake.Update2Stub(arg1)
 	}
 }
 
-func (fake *OrdererConnectionSource) UpdateCallCount() int {
-	fake.updateMutex.RLock()
-	defer fake.updateMutex.RUnlock()
-	return len(fake.updateArgsForCall)
+func (fake *OrdererConnectionSource) Update2CallCount() int {
+	fake.update2Mutex.RLock()
+	defer fake.update2Mutex.RUnlock()
+	return len(fake.update2ArgsForCall)
 }
 
-func (fake *OrdererConnectionSource) UpdateCalls(stub func(map[string]orderers.OrdererOrg)) {
-	fake.updateMutex.Lock()
-	defer fake.updateMutex.Unlock()
-	fake.UpdateStub = stub
+func (fake *OrdererConnectionSource) Update2Calls(stub func(orderers.Party2Endpoint)) {
+	fake.update2Mutex.Lock()
+	defer fake.update2Mutex.Unlock()
+	fake.Update2Stub = stub
 }
 
-func (fake *OrdererConnectionSource) UpdateArgsForCall(i int) map[string]orderers.OrdererOrg {
-	fake.updateMutex.RLock()
-	defer fake.updateMutex.RUnlock()
-	argsForCall := fake.updateArgsForCall[i]
+func (fake *OrdererConnectionSource) Update2ArgsForCall(i int) orderers.Party2Endpoint {
+	fake.update2Mutex.RLock()
+	defer fake.update2Mutex.RUnlock()
+	argsForCall := fake.update2ArgsForCall[i]
 	return argsForCall.arg1
 }
 

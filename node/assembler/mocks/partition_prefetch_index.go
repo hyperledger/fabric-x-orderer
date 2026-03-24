@@ -265,6 +265,14 @@ func (fake *FakePartitionPrefetchIndexer) StopCalls(stub func()) {
 func (fake *FakePartitionPrefetchIndexer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.popOrWaitMutex.RLock()
+	defer fake.popOrWaitMutex.RUnlock()
+	fake.putMutex.RLock()
+	defer fake.putMutex.RUnlock()
+	fake.putForceMutex.RLock()
+	defer fake.putForceMutex.RUnlock()
+	fake.stopMutex.RLock()
+	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

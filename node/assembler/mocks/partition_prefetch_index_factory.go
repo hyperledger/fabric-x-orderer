@@ -5,16 +5,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 )
 
 type FakePartitionPrefetchIndexerFactory struct {
-	CreateStub        func(assembler.ShardPrimary, types.Logger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) assembler.PartitionPrefetchIndexer
+	CreateStub        func(assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) assembler.PartitionPrefetchIndexer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 assembler.ShardPrimary
-		arg2 types.Logger
+		arg2 *flogging.FabricLogger
 		arg3 time.Duration
 		arg4 int
 		arg5 assembler.TimerFactory
@@ -32,12 +33,12 @@ type FakePartitionPrefetchIndexerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakePartitionPrefetchIndexerFactory) Create(arg1 assembler.ShardPrimary, arg2 types.Logger, arg3 time.Duration, arg4 int, arg5 assembler.TimerFactory, arg6 assembler.BatchCacheFactory, arg7 chan types.BatchID, arg8 time.Duration) assembler.PartitionPrefetchIndexer {
+func (fake *FakePartitionPrefetchIndexerFactory) Create(arg1 assembler.ShardPrimary, arg2 *flogging.FabricLogger, arg3 time.Duration, arg4 int, arg5 assembler.TimerFactory, arg6 assembler.BatchCacheFactory, arg7 chan types.BatchID, arg8 time.Duration) assembler.PartitionPrefetchIndexer {
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
 		arg1 assembler.ShardPrimary
-		arg2 types.Logger
+		arg2 *flogging.FabricLogger
 		arg3 time.Duration
 		arg4 int
 		arg5 assembler.TimerFactory
@@ -64,13 +65,13 @@ func (fake *FakePartitionPrefetchIndexerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakePartitionPrefetchIndexerFactory) CreateCalls(stub func(assembler.ShardPrimary, types.Logger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) assembler.PartitionPrefetchIndexer) {
+func (fake *FakePartitionPrefetchIndexerFactory) CreateCalls(stub func(assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) assembler.PartitionPrefetchIndexer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakePartitionPrefetchIndexerFactory) CreateArgsForCall(i int) (assembler.ShardPrimary, types.Logger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) {
+func (fake *FakePartitionPrefetchIndexerFactory) CreateArgsForCall(i int) (assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
@@ -103,6 +104,8 @@ func (fake *FakePartitionPrefetchIndexerFactory) CreateReturnsOnCall(i int, resu
 func (fake *FakePartitionPrefetchIndexerFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

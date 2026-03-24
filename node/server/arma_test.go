@@ -30,12 +30,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,7 +87,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "router")
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "router", "msp")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "batcher1")
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "batcher1", "msp")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editConsentersInSharedConfig(dir, 4)
 		require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "consenter")
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "consenter", "msp")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 
 		originalLogger := testLogger
@@ -178,7 +178,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assembler")
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "assembler", "msp")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 
 		originalLogger := testLogger
@@ -208,7 +208,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "router")
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "router", "msp")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestLaunchArmaNode(t *testing.T) {
 	t.Run("TestBatcherWithLastConfigBlock", func(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "batcher1")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "batcher1", "msp")
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
@@ -302,7 +302,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "assemblerWithLastConfigBlock")
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "assembler", "msp")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -331,8 +331,8 @@ func TestLaunchArmaNode(t *testing.T) {
 		// Create the assembler and check genesis block was appended
 		conf := configContent.ExtractAssemblerConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
-		srv := node.CreateGRPCAssembler(conf)
-		assembler := assembler.NewAssembler(conf, srv, genesisBlock, testLogger)
+		srv := node_utils.CreateGRPCAssembler(conf)
+		assembler := assembler.NewAssembler(conf, srv, genesisBlock, make(chan struct{}), testLogger)
 		require.NotNil(t, assembler)
 		assembler.Stop()
 
@@ -373,7 +373,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		configPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 		storagePath := path.Join(dir, "storage", "party1", "consenterWithLastConfigBlock")
 		mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "consenter", "msp")
-		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath)
+		testutil.EditDirectoryInNodeConfigYAML(t, configPath, storagePath, "", 0)
 		testutil.EditLocalMSPDirForNode(t, configPath, mspPath)
 		err := editBatchersInSharedConfig(dir, 4, 2)
 		require.NoError(t, err)
@@ -399,7 +399,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		// Create the consenter and check genesis block was appended
 		conf := configContent.ExtractConsenterConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
-		srv := node.CreateGRPCConsensus(conf)
+		srv := node_utils.CreateGRPCConsensus(conf)
 		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		require.NoError(t, err)
@@ -456,8 +456,8 @@ func TestLaunchArmaNode(t *testing.T) {
 			Metadata: nil,
 		}
 
-		consensusLedger.Append(state.DecisionToBytes(newConfigProposal, nil))
-		consensusLedger.Append(state.DecisionToBytes(newProposal, nil))
+		consensusLedger.Append(state.CreateBlockToAppendFromDecision(1, newConfigProposal, nil, nil, 1)) // TODO need to compute the prev hash
+		consensusLedger.Append(state.CreateBlockToAppendFromDecision(2, newProposal, nil, nil, 1))
 		consensusLedger.Close()
 
 		_, lastConfigBlock, err := config.ReadConfig(configPath, testLogger)

@@ -14,7 +14,7 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/pkg/identity"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
@@ -31,8 +31,9 @@ type ConsenterSupport interface {
 	// or nil if such a block doesn't exist.
 	Block(number uint64) *cb.Block
 
-	// LastConfigBlock returns the config block before or at the given block,
+	// LastConfigBlock returns the latest config block before or at the given block,
 	// or error if such a block cannot be retrieved.
+	// For the consenter, the input block is the DECISION block, whereas the output block is a FABRIC block, which contains the config envelope in its data.
 	LastConfigBlock(block *cb.Block) (*cb.Block, error)
 
 	// Height returns the number of blocks in the chain this channel is associated with.
@@ -48,14 +49,21 @@ type ConsenterSupport interface {
 	SharedConfig() channelconfig.Orderer
 
 	// WriteBlockSync commits a block to the ledger.
+	// TODO remove the encodedMetadataValue argument
 	WriteBlockSync(block *cb.Block, encodedMetadataValue []byte)
 
 	// WriteConfigBlock commits a block to the ledger, and applies the config update inside.
+	// TODO remove the encodedMetadataValue argument
 	WriteConfigBlock(block *cb.Block, encodedMetadataValue []byte)
 }
 
 type BFTConfigGetter interface {
 	BFTConfig() (types.Configuration, []uint64)
+}
+
+type SynchronizerWithStop interface {
+	api.Synchronizer
+	Stop()
 }
 
 type SynchronizerFactory interface {
@@ -71,7 +79,7 @@ type SynchronizerFactory interface {
 		support ConsenterSupport,
 		bccsp bccsp.BCCSP,
 		clusterDialer *comm.PredicateDialer,
-	) api.Synchronizer
+	) SynchronizerWithStop
 }
 
 type SynchronizerCreator struct{}
@@ -87,7 +95,7 @@ func (*SynchronizerCreator) CreateSynchronizer(
 	support ConsenterSupport,
 	bccsp bccsp.BCCSP,
 	clusterDialer *comm.PredicateDialer,
-) api.Synchronizer {
+) SynchronizerWithStop {
 	return newSynchronizer(logger, selfID, localConfigCluster, rtc, blockToDecision, pruneCommittedRequests, updateRuntimeConfig, support, bccsp, clusterDialer)
 }
 
@@ -103,9 +111,9 @@ func newSynchronizer(
 	support ConsenterSupport,
 	bccsp bccsp.BCCSP,
 	clusterDialer *comm.PredicateDialer,
-) api.Synchronizer {
+) SynchronizerWithStop {
 	switch localConfigCluster.ReplicationPolicy {
-	case "consensus":
+	case "consensus", "":
 		logger.Debug("Creating a BFTSynchronizer")
 		return &BFTSynchronizer{
 			selfID:          selfID,
@@ -119,13 +127,11 @@ func newSynchronizer(
 			CryptoProvider:      bccsp,
 			ClusterDialer:       clusterDialer,
 			LocalConfigCluster:  localConfigCluster,
-			BlockPullerFactory:  &BlockPullerCreator{},
-			VerifierFactory:     &verifierCreator{},
+			BlockPullerFactory:  &HeightDetectorCreator{},
+			VerifierFactory:     &noopVerifierCreator{}, // TODO rewrite &verifierCreator{} and replace
 			BFTDelivererFactory: &bftDelivererCreator{},
 			Logger:              logger,
 		}
-
-	// TODO consider adding the "simple" CFT ReplicationPolicy
 
 	default:
 		logger.Panicf("Unsupported Cluster.ReplicationPolicy: %s", localConfigCluster.ReplicationPolicy)

@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -37,10 +38,10 @@ func printEvent(event []byte) string {
 	return ce.String()
 }
 
-func CreateDataCommonBlock(blockNum uint64, prevHash []byte, batchID arma_types.BatchID, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) (*common.Block, error) {
+func CreateDataCommonBlock(blockNum uint64, prevHash []byte, batchID arma_types.BatchID, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) (*common.Block, error) {
 	block := protoutil.NewBlock(blockNum, prevHash)
 	block.Header.DataHash = batchID.Digest()
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchID, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchID, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		return nil, errors.Errorf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
@@ -51,12 +52,12 @@ func CreateDataCommonBlock(blockNum uint64, prevHash []byte, batchID arma_types.
 	return block, err
 }
 
-func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, configReq []byte) (*common.Block, error) {
+func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, configReq []byte) (*common.Block, error) {
 	configBlock := protoutil.NewBlock(blockNum, prevHash)
 	configBlock.Data = &common.BlockData{Data: [][]byte{configReq}}
 	batchedConfigReq := arma_types.BatchedRequests([][]byte{configReq})
 	configBlock.Header.DataHash = batchedConfigReq.Digest()
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(arma_types.NewSimpleBatch(arma_types.ShardIDConsensus, 0, 0, nil, 0), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		return nil, errors.Errorf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
@@ -67,7 +68,7 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, decisionNum arma_
 	return configBlock, nil
 }
 
-func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte, batchID arma_types.BatchID, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) error {
+func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte, batchID arma_types.BatchID, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) error {
 	// verify hash chain
 	if !bytes.Equal(block.Header.PreviousHash, prevHash) {
 		return errors.Errorf("proposed block header prev hash %s isn't equal to computed prev hash %s", hex.EncodeToString(block.Header.PreviousHash), hex.EncodeToString(prevHash))
@@ -84,7 +85,7 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 	}
 
 	// verify orderer metadata
-	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchID, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0)
+	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchID, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
 	}
@@ -113,7 +114,7 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 	return nil
 }
 
-func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHash []byte, dataHash []byte, decisionNum arma_types.DecisionNum, batchCount, batchIndex int) error {
+func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHash []byte, dataHash []byte, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int) error {
 	// verify block number
 	if configBlock.Header.Number != blockNum {
 		return errors.Errorf("proposed config block header number %d isn't equal to computed number %d", configBlock.Header.Number, blockNum)
@@ -144,7 +145,7 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 	}
 
 	// verify orderer metadata
-	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, []byte{}), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, 0) // TODO set correct tx count
+	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(arma_types.NewSimpleBatch(arma_types.ShardIDConsensus, 0, 0, nil, 0), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
 	}
@@ -171,4 +172,16 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 	}
 
 	return nil
+}
+
+// ConsenterBlockToDecision converts a consenter block to a BFT decision. It returns nil if the block is not valid or if the conversion fails.
+//
+// TODO should we return the error instead of nil to distinguish between an invalid block and a conversion failure?
+// The BFT synchronizer currently requires this signature. Decide after BFT synchronization is integrated.
+func ConsenterBlockToDecision(block *common.Block) *smartbft_types.Decision {
+	decision, err := state.ConsenterBlockToDecision(block)
+	if err != nil {
+		return nil
+	}
+	return decision
 }

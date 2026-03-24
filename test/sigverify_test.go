@@ -54,7 +54,8 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	// 2.
@@ -143,7 +144,8 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 	// 2. Creates a network configuration with the specified number of shards and parties
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	// 3. Generates necessary cryptographic materials and network artifacts using the arma CLI

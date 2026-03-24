@@ -8,12 +8,16 @@ package cauthdsl
 
 import (
 	"bytes"
+	"encoding/hex"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	mb "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/utils/certificate"
 )
 
 // InvalidSignature denotes a non-valid signature.
@@ -21,33 +25,46 @@ var InvalidSignature = []byte("badsigned")
 
 // MockIdentityDeserializer is implemented by both MSPManger and MSP.
 type MockIdentityDeserializer struct {
-	Fail error
+	Fail            error
+	KnownIdentities map[msp.IdentityIdentifier]msp.Identity
 }
 
 // DeserializeIdentity deserializes an identity.
 func (md *MockIdentityDeserializer) DeserializeIdentity( //nolint:ireturn
-	serializedIdentity []byte,
+	id *msppb.Identity,
 ) (msp.Identity, error) {
 	if md.Fail != nil {
 		return nil, md.Fail
 	}
-	return &MockIdentity{IDBytes: serializedIdentity}, nil
+
+	var idBytes []byte
+	switch id.Creator.(type) {
+	case *msppb.Identity_Certificate:
+		idBytes = id.GetCertificate()
+	case *msppb.Identity_CertificateId:
+		return md.KnownIdentities[msp.IdentityIdentifier{Mspid: id.MspId, Id: id.GetCertificateId()}], nil
+	}
+	return &MockIdentity{MspID: id.MspId, IDBytes: idBytes}, nil
 }
 
 // IsWellFormed checks if the given identity can be deserialized into its provider-specific form.
-func (*MockIdentityDeserializer) IsWellFormed(_ *mb.SerializedIdentity) error {
+func (*MockIdentityDeserializer) IsWellFormed(_ *msppb.Identity) error {
 	return nil
 }
 
 // GetKnownDeserializedIdentity returns a known identity matching the given IdentityIdentifier.
 //
 //nolint:ireturn //Identity is an interface.
-func (*MockIdentityDeserializer) GetKnownDeserializedIdentity(msp.IdentityIdentifier) msp.Identity {
-	return nil
+func (md *MockIdentityDeserializer) GetKnownDeserializedIdentity(id msp.IdentityIdentifier) msp.Identity {
+	if md.KnownIdentities == nil {
+		return nil
+	}
+	return md.KnownIdentities[id]
 }
 
 // MockIdentity interface defining operations associated to a "certificate".
 type MockIdentity struct {
+	MspID   string
 	IDBytes []byte
 }
 
@@ -64,7 +81,11 @@ func (*MockIdentity) ExpiresAt() time.Time {
 // SatisfiesPrincipal checks whether this instance matches
 // the description supplied in MSPPrincipal.
 func (id *MockIdentity) SatisfiesPrincipal(p *mb.MSPPrincipal) error {
-	if !bytes.Equal(id.IDBytes, p.Principal) {
+	idBytes, err := msp.NewSerializedIdentity(id.MspID, id.IDBytes)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(idBytes, p.Principal) {
 		return errors.New("Principals do not match")
 	}
 	return nil
@@ -100,18 +121,34 @@ func (*MockIdentity) Verify(_, sig []byte) error {
 	return nil
 }
 
+// SerializeWithIDOfCert converts an identity to bytes.
+func (id *MockIdentity) SerializeWithIDOfCert() ([]byte, error) {
+	certID, err := certificate.DigestPemContent(id.IDBytes, bccsp.SHA256)
+	if err != nil {
+		return nil, err
+	}
+	return msp.NewSerializedIdentityWithIDOfCert(id.MspID, hex.EncodeToString(certID))
+}
+
 // Serialize converts an identity to bytes.
 func (id *MockIdentity) Serialize() ([]byte, error) {
+	return msp.NewSerializedIdentity(id.MspID, id.IDBytes)
+}
+
+// GetCertificatePEM returns the certificate in PEM format.
+func (id *MockIdentity) GetCertificatePEM() ([]byte, error) {
 	return id.IDBytes, nil
 }
 
 // ToIdentities convert serialized identities to msp Identity.
-func ToIdentities(idBytesSlice [][]byte, deserializer msp.IdentityDeserializer) ([]msp.Identity, []bool) {
-	identities := make([]msp.Identity, len(idBytesSlice))
-	for i, idBytes := range idBytesSlice {
-		id, _ := deserializer.DeserializeIdentity(idBytes)
+func ToIdentities(pIdentities []*msppb.Identity, deserializer msp.IdentityDeserializer) (
+	[]msp.Identity, []bool,
+) {
+	identities := make([]msp.Identity, len(pIdentities))
+	for i, id := range pIdentities {
+		id, _ := deserializer.DeserializeIdentity(id)
 		identities[i] = id
 	}
 
-	return identities, make([]bool, len(idBytesSlice))
+	return identities, make([]bool, len(pIdentities))
 }

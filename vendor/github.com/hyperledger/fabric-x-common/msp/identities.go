@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
@@ -157,10 +158,19 @@ func (id *identity) Anonymous() bool {
 func NewSerializedIdentity(mspID string, certPEM []byte) ([]byte, error) {
 	// We serialize identities by prepending the MSPID
 	// and appending the x509 cert in PEM format
-	sId := &msp.SerializedIdentity{Mspid: mspID, IdBytes: certPEM}
-	raw, err := proto.Marshal(sId)
+	raw, err := proto.Marshal(msppb.NewIdentity(mspID, certPEM))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed serializing identity [%s][%X]", mspID, certPEM)
+	}
+	return raw, nil
+}
+
+// NewSerializedIdentityWithIDOfCert returns a serialized identity
+// having as content the passed mspID and certificate ID.
+func NewSerializedIdentityWithIDOfCert(mspID, certID string) ([]byte, error) {
+	raw, err := proto.Marshal(msppb.NewIdentityWithIDOfCert(mspID, certID))
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed serializing identity [%s][%s]", mspID, certID)
 	}
 	return raw, nil
 }
@@ -206,22 +216,35 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	return nil
 }
 
-// Serialize returns a byte array representation of this identity
+func (id *identity) SerializeWithIDOfCert() ([]byte, error) {
+	return NewSerializedIdentityWithIDOfCert(id.id.Mspid, id.id.Id)
+}
+
 func (id *identity) Serialize() ([]byte, error) {
+	pemBytes, err := id.GetCertificatePEM()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewSerializedIdentity(id.id.Mspid, pemBytes)
+}
+
+// GetCertificatePEM returns the certificate in PEM format.
+func (id *identity) GetCertificatePEM() ([]byte, error) {
 	pb := &pem.Block{Bytes: id.cert.Raw, Type: "CERTIFICATE"}
 	pemBytes := pem.EncodeToMemory(pb)
 	if pemBytes == nil {
 		return nil, errors.New("encoding of identity failed")
 	}
+	return pemBytes, nil
+}
 
-	// We serialize identities by prepending the MSPID and appending the ASN.1 DER content of the cert
-	sId := &msp.SerializedIdentity{Mspid: id.id.Mspid, IdBytes: pemBytes}
-	idBytes, err := proto.Marshal(sId)
+func marshalMessage(msg proto.Message, errWrap string) ([]byte, error) {
+	bytes, err := proto.Marshal(msg)
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not marshal a SerializedIdentity structure for identity %s", id.id)
+		return nil, errors.Wrap(err, errWrap)
 	}
-
-	return idBytes, nil
+	return bytes, nil
 }
 
 func (id *identity) getHashOpt(hashFamily string) (bccsp.HashOpts, error) {

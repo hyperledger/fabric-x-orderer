@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
@@ -36,7 +37,7 @@ func setupPrefetchIndexTest(t *testing.T) *prefetchIndexTestVars {
 		partitionToRequestsChan:                 make(map[assembler.ShardPrimary]chan types.BatchID),
 	}
 	partitionPrefetchIndexerFactory := &mocks.FakePartitionPrefetchIndexerFactory{}
-	partitionPrefetchIndexerFactory.CreateCalls(func(sp assembler.ShardPrimary, l types.Logger, d time.Duration, i int, tf assembler.TimerFactory, bcf assembler.BatchCacheFactory, requestsChan chan types.BatchID, popWaitMonitorTimeout time.Duration) assembler.PartitionPrefetchIndexer {
+	partitionPrefetchIndexerFactory.CreateCalls(func(sp assembler.ShardPrimary, l *flogging.FabricLogger, d time.Duration, i int, tf assembler.TimerFactory, bcf assembler.BatchCacheFactory, requestsChan chan types.BatchID, popWaitMonitorTimeout time.Duration) assembler.PartitionPrefetchIndexer {
 		mock := &mocks.FakePartitionPrefetchIndexer{}
 		vars.partitionToPartitionPrefetchIndexerMock[sp] = mock
 		vars.partitionToRequestsChan[sp] = requestsChan

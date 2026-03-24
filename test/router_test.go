@@ -71,6 +71,7 @@ func TestRouterRestartRecover(t *testing.T) {
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
+	defer netInfo.CleanUp()
 	require.NoError(t, err)
 	numOfArmaNodes := len(netInfo)
 
@@ -185,7 +186,7 @@ func TestRouterRestartRecover(t *testing.T) {
 	routerToStop.RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
@@ -317,7 +318,7 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
 	numOfArmaNodes := len(netInfo)
 
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
@@ -395,7 +396,7 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	// 3. Create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
 	numOfArmaNodes := len(netInfo)
 
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
@@ -423,8 +424,8 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	uc, err := testutil.GetUserConfig(dir, types.PartyID(1))
-	assert.NoError(t, err)
-	assert.NotNil(t, uc)
+	require.NoError(t, err)
+	require.NotNil(t, uc)
 
 	totalTxNumber := 1000
 	// rate limiter parameters
@@ -512,7 +513,7 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	// create a config YAML file in the temporary directory.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
 	numOfArmaNodes := len(netInfo)
 
 	// generate the config files in the temporary directory using the armageddon generate command.
@@ -527,8 +528,8 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	uc, err := testutil.GetUserConfig(dir, 1)
-	assert.NoError(t, err)
-	assert.NotNil(t, uc)
+	require.NoError(t, err)
+	require.NotNil(t, uc)
 
 	// 6. Send transactions to the routers.
 	totalTxNumber := 10

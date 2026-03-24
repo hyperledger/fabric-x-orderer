@@ -29,3 +29,9 @@ func (oi *OrderingInformation) String() string {
 
 	return fmt.Sprintf("DecisionNum: %d, BatchIndex: %d, BatchCount: %d; No. Sigs: %d, Common Block: %s", oi.DecisionNum, oi.BatchIndex, oi.BatchCount, len(oi.Signatures), types.CommonBlockToString(oi.CommonBlock))
 }
+
+var GenesisOrderingInformation = OrderingInformation{
+	DecisionNum: 0,
+	BatchIndex:  0,
+	BatchCount:  1,
+}

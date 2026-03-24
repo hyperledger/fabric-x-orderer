@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -27,7 +28,7 @@ type Signer interface {
 // It manages the client side connections and streams established with
 // the Cluster GRPC server and new Cluster service
 type AuthCommMgr struct {
-	Logger Logger
+	Logger *flogging.FabricLogger
 
 	Lock           sync.RWMutex
 	shutdown       bool

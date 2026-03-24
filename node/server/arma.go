@@ -9,8 +9,6 @@ package arma
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -18,12 +16,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
-	"github.com/hyperledger/fabric-x-orderer/node"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
+	"github.com/hyperledger/fabric-x-orderer/node/utils"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -63,29 +61,18 @@ func (cli *CLI) configureNodesCommands() {
 	}
 }
 
-type NodeStopper interface {
-	Stop()
-}
-
-func stopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr string) {
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGTERM)
-
-	go func() {
-		<-signalChan
-
-		logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
-		node.Stop()
-	}()
-}
-
 func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
 		configContent, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigAssembler"))
 		if err != nil {
 			panic(fmt.Sprintf("error launching assembler, err: %s", err))
 		}
+
 		conf := configContent.ExtractAssemblerConfig(lastConfigBlock)
+
+		if err := configContent.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
+			panic(err)
+		}
 
 		var assemblerLogger *flogging.FabricLogger
 		if testLogger != nil {
@@ -94,17 +81,17 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
 		}
 
-		srv := node.CreateGRPCAssembler(conf)
-		assembler := assembler.NewAssembler(conf, srv, lastConfigBlock, assemblerLogger)
+		srv := utils.CreateGRPCAssembler(conf)
+		assembler := assembler.NewAssembler(conf, srv, lastConfigBlock, stop, assemblerLogger)
 
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
 
 		go func() {
 			_ = srv.Start()
-			close(stop)
 		}()
 
-		stopSignalListen(assembler, assemblerLogger, srv.Address())
+		// TODO: move StopSignalListen to Assembler Run and pass stopChan
+		utils.StopSignalListen(nil, assembler, assemblerLogger, srv.Address())
 
 		assemblerLogger.Infof("Assembler listening on %s", srv.Address())
 	}
@@ -125,6 +112,15 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
 		}
 
+		localSignCert, err := signer.GetCertificatePEM()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get sign certificate from signing identity: %s", err))
+		}
+
+		if err := configContent.CheckIfConsenterNodeExistsInSharedConfig(localSignCert); err != nil {
+			panic(err)
+		}
+
 		var consenterLogger *flogging.FabricLogger
 		if testLogger != nil {
 			consenterLogger = testLogger
@@ -132,7 +128,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", conf.PartyId))
 		}
 
-		srv := node.CreateGRPCConsensus(conf)
+		srv := utils.CreateGRPCConsensus(conf)
 		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
 
 		defer consensus.Start()
@@ -146,7 +142,8 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			close(stop)
 		}()
 
-		stopSignalListen(consensus, consenterLogger, srv.Address())
+		// TODO: move StopSignalListen to Consensus.Start and pass stopChan
+		utils.StopSignalListen(nil, consensus, consenterLogger, srv.Address())
 
 		consenterLogger.Infof("Consensus listening on %s", srv.Address())
 	}
@@ -159,7 +156,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("error launching batcher, err: %s", err))
 		}
 
-		conf := config.ExtractBatcherConfig(lastConfigBlock)
+		nodeConfig := config.ExtractBatcherConfig(lastConfigBlock)
 
 		localmsp := msp.BuildLocalMSP(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
@@ -167,30 +164,27 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
 		}
 
+		localSignCert, err := signer.GetCertificatePEM()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get sign certificate from signing identity: %s", err))
+		}
+
+		if err := config.CheckIfBatcherNodeExistsInSharedConfig(localSignCert); err != nil {
+			panic(err)
+		}
+
 		var batcherLogger *flogging.FabricLogger
 		if testLogger != nil {
 			batcherLogger = testLogger
 		} else {
-			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", conf.PartyId, conf.ShardId))
+			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", nodeConfig.PartyId, nodeConfig.ShardId))
 		}
 
-		srv := node.CreateGRPCBatcher(conf)
+		batcher := batcher.CreateBatcher(nodeConfig, config, batcherLogger, stop, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher.StartBatcherService()
+		batcher.Run()
 
-		batcher := batcher.CreateBatcher(conf, batcherLogger, srv, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
-		defer batcher.Run()
-
-		protos.RegisterRequestTransmitServer(srv.Server(), batcher)
-		protos.RegisterBatcherControlServiceServer(srv.Server(), batcher)
-		orderer.RegisterAtomicBroadcastServer(srv.Server(), batcher)
-
-		go func() {
-			srv.Start()
-			close(stop)
-		}()
-
-		stopSignalListen(batcher, batcherLogger, srv.Address())
-
-		batcherLogger.Infof("Batcher listening on %s", srv.Address())
+		batcherLogger.Infof("Batcher listening on %s", batcher.Address())
 	}
 }
 
@@ -209,21 +203,19 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
 		}
 
+		if err := conf.CheckIfRouterNodeExistsInSharedConfig(); err != nil {
+			panic(err)
+		}
+
 		var routerLogger *flogging.FabricLogger
 		if testLogger != nil {
 			routerLogger = testLogger
 		} else {
 			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", routerConf.PartyID))
 		}
-		r := router.NewRouter(routerConf, routerLogger, signer, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
-		ch := r.StartRouterService()
+		r := router.NewRouter(routerConf, conf, routerLogger, signer, stop, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
+		r.StartRouterService()
 
-		go func() {
-			<-ch
-			close(stop)
-		}()
-
-		stopSignalListen(r, routerLogger, r.Address())
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)
 	}
 }

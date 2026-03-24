@@ -7,14 +7,15 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 type OrdererConnectionSourceFactory struct {
-	CreateConnectionSourceStub        func(*flogging.FabricLogger, string) orderers.ConnectionSourcer
+	CreateConnectionSourceStub        func(*flogging.FabricLogger, types.PartyID) orderers.ConnectionSourcer
 	createConnectionSourceMutex       sync.RWMutex
 	createConnectionSourceArgsForCall []struct {
 		arg1 *flogging.FabricLogger
-		arg2 string
+		arg2 types.PartyID
 	}
 	createConnectionSourceReturns struct {
 		result1 orderers.ConnectionSourcer
@@ -26,12 +27,12 @@ type OrdererConnectionSourceFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *OrdererConnectionSourceFactory) CreateConnectionSource(arg1 *flogging.FabricLogger, arg2 string) orderers.ConnectionSourcer {
+func (fake *OrdererConnectionSourceFactory) CreateConnectionSource(arg1 *flogging.FabricLogger, arg2 types.PartyID) orderers.ConnectionSourcer {
 	fake.createConnectionSourceMutex.Lock()
 	ret, specificReturn := fake.createConnectionSourceReturnsOnCall[len(fake.createConnectionSourceArgsForCall)]
 	fake.createConnectionSourceArgsForCall = append(fake.createConnectionSourceArgsForCall, struct {
 		arg1 *flogging.FabricLogger
-		arg2 string
+		arg2 types.PartyID
 	}{arg1, arg2})
 	stub := fake.CreateConnectionSourceStub
 	fakeReturns := fake.createConnectionSourceReturns
@@ -52,13 +53,13 @@ func (fake *OrdererConnectionSourceFactory) CreateConnectionSourceCallCount() in
 	return len(fake.createConnectionSourceArgsForCall)
 }
 
-func (fake *OrdererConnectionSourceFactory) CreateConnectionSourceCalls(stub func(*flogging.FabricLogger, string) orderers.ConnectionSourcer) {
+func (fake *OrdererConnectionSourceFactory) CreateConnectionSourceCalls(stub func(*flogging.FabricLogger, types.PartyID) orderers.ConnectionSourcer) {
 	fake.createConnectionSourceMutex.Lock()
 	defer fake.createConnectionSourceMutex.Unlock()
 	fake.CreateConnectionSourceStub = stub
 }
 
-func (fake *OrdererConnectionSourceFactory) CreateConnectionSourceArgsForCall(i int) (*flogging.FabricLogger, string) {
+func (fake *OrdererConnectionSourceFactory) CreateConnectionSourceArgsForCall(i int) (*flogging.FabricLogger, types.PartyID) {
 	fake.createConnectionSourceMutex.RLock()
 	defer fake.createConnectionSourceMutex.RUnlock()
 	argsForCall := fake.createConnectionSourceArgsForCall[i]

@@ -20,11 +20,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 )
 
-// BlockHandler abstracts the next stage of processing after the block is fetched from the orderer.
-// In the peer the block is given to the gossip service.
-// In the orderer the block is placed in a buffer from which the chain or the follower pull blocks.
-//
 //go:generate counterfeiter -o fake/block_handler.go --fake-name BlockHandler . BlockHandler
+
+// BlockHandler abstracts the next stage of processing after the block is fetched from the orderer.
+// In a peer, the block handler is responsible for validating and committing the block to the ledger.
+// In the orderer the block is placed in a buffer from which the chain or the follower pull blocks.
 type BlockHandler interface {
 	// HandleBlock gives the block to the next stage of processing after fetching it from a remote orderer.
 	HandleBlock(channelID string, block *common.Block) error

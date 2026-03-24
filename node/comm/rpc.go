@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -37,7 +38,7 @@ type ClusterClient interface {
 type RPC struct {
 	consensusLock sync.Mutex
 	submitLock    sync.Mutex
-	Logger        Logger
+	Logger        *flogging.FabricLogger
 	Timeout       time.Duration
 	Channel       string
 	Comm          Communicator

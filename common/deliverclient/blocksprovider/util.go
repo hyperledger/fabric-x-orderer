@@ -12,9 +12,13 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/protos"
 )
 
 type errRefreshEndpoint struct {
@@ -90,25 +94,38 @@ type timeNumber struct {
 	n uint64
 }
 
-func extractAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.BCCSP) (map[string]orderers.OrdererOrg, error) {
+func extractConsenterAddresses(channelID string, config *cb.Config, cryptoProvider bccsp.BCCSP) (orderers.Party2Endpoint, error) {
 	bundle, err := channelconfig.NewBundle(channelID, config, cryptoProvider)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create channel config bundle")
 	}
 
-	orgAddresses := map[string]orderers.OrdererOrg{}
-	if ordererConfig, ok := bundle.OrdererConfig(); ok {
-		for orgName, org := range ordererConfig.Organizations() {
-			var certs [][]byte
-			certs = append(certs, org.MSP().GetTLSRootCerts()...)
-			certs = append(certs, org.MSP().GetTLSIntermediateCerts()...)
+	ordConf, ok := bundle.OrdererConfig()
+	if !ok {
+		return nil, errors.Errorf("orderer config section not found in channel config")
+	}
+	consensusMeta := ordConf.ConsensusMetadata()
+	sharedConfig := &protos.SharedConfig{}
+	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
+	}
 
-			orgAddresses[orgName] = orderers.OrdererOrg{
-				Addresses: org.Endpoints(),
-				RootCerts: certs,
-			}
+	conf := &orderer_config.Configuration{
+		SharedConfig: sharedConfig,
+	}
+
+	cInfo := conf.ExtractConsenters()
+
+	party2Endpoint := make(orderers.Party2Endpoint)
+
+	for _, consenter := range cInfo {
+		party2Endpoint[consenter.PartyID] = &orderers.Endpoint{
+			Address: consenter.Endpoint,
+		}
+		for _, cert := range consenter.TLSCACerts {
+			party2Endpoint[consenter.PartyID].RootCerts = append(party2Endpoint[consenter.PartyID].RootCerts, cert)
 		}
 	}
 
-	return orgAddresses, nil
+	return party2Endpoint, nil
 }

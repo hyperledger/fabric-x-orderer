@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/util"
@@ -43,8 +44,8 @@ type MembersConfig struct {
 // ClusterService implements the server API for ClusterNodeService service
 type ClusterService struct {
 	RequestHandler                   Handler
-	Logger                           Logger
-	StepLogger                       Logger
+	Logger                           *flogging.FabricLogger
+	StepLogger                       *flogging.FabricLogger
 	MinimumExpirationWarningInterval time.Duration
 	CertExpWarningThreshold          time.Duration
 	Membership                       *MembersConfig

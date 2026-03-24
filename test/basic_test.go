@@ -77,7 +77,8 @@ func TestSubmitAndReceive(t *testing.T) {
 			// 1.
 			configPath := filepath.Join(dir, "config.yaml")
 			netInfo := testutil.CreateNetwork(t, configPath, tt.numOfParties, tt.numOfShards, "none", "none")
-			require.NoError(t, err)
+			defer netInfo.CleanUp()
+			require.NotNil(t, netInfo)
 			numOfArmaNodes := len(netInfo)
 			// 2.
 			armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
@@ -191,7 +192,8 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 	// 2.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
@@ -301,7 +303,8 @@ func TestRunNodesAndGetMetrics(t *testing.T) {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, parties, shards, "none", "none")
-	require.NoError(t, err)
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	numOfArmaNodes := len(netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})

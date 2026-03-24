@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
@@ -21,7 +22,7 @@ type SeqAcker interface {
 
 // Acker handles the acks coming from secondaries
 type Acker struct {
-	logger             types.Logger
+	logger             *flogging.FabricLogger
 	threshold          uint16
 	numOfParties       uint16
 	gap                types.BatchSequence
@@ -33,7 +34,7 @@ type Acker struct {
 }
 
 // NewAcker returns a new acker
-func NewAcker(confirmedSeq types.BatchSequence, gap types.BatchSequence, numOfParties uint16, threshold uint16, logger types.Logger) *Acker {
+func NewAcker(confirmedSeq types.BatchSequence, gap types.BatchSequence, numOfParties uint16, threshold uint16, logger *flogging.FabricLogger) *Acker {
 	a := &Acker{
 		logger:             logger,
 		threshold:          threshold,

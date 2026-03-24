@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package delivery
 
 import (
-	"encoding/binary"
 	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -19,48 +19,60 @@ import (
 	"github.com/pkg/errors"
 )
 
-func extractHeaderFromBlock(block *common.Block, logger types.Logger) *state.Header {
-	decisionAsBytes := block.Data.Data[0]
+func extractHeaderFromBlock(block *common.Block, logger *flogging.FabricLogger) *state.Header {
+	if block == nil {
+		logger.Panic("Block is nil")
+	}
+	if block.GetHeader() == nil {
+		logger.Panic("Block header is nil")
+	}
+	if block.GetData() == nil {
+		logger.Panicf("Block data is nil for block: %d", block.GetHeader().GetNumber())
+	}
+	if len(block.GetData().GetData()) == 0 {
+		logger.Panicf("Block data is empty for block: %d", block.GetHeader().GetNumber())
+	}
 
-	headerSize := decisionAsBytes[:4]
-
-	rawHeader := decisionAsBytes[12 : 12+binary.BigEndian.Uint32(headerSize)]
+	proposal, err := state.BytesToProposal(block.GetData().GetData()[0])
+	if err != nil {
+		logger.Panicf("Failed deserializing consenter block: %s", err)
+	}
 
 	header := &state.Header{}
-	if err := header.Deserialize(rawHeader); err != nil {
-		logger.Panicf("Failed parsing rawHeader")
+	if err := header.Deserialize(proposal.Header); err != nil {
+		logger.Panicf("Failed deserializing proposal header: %s", err)
 	}
 	return header
 }
 
 func extractHeaderAndSigsFromBlock(block *common.Block) (*state.Header, [][]smartbft_types.Signature, error) {
-	if len(block.GetData().GetData()) == 0 {
-		return nil, nil, errors.New("missing data in block")
+	if block == nil {
+		return nil, nil, errors.New("block is nil")
 	}
-
-	// An optimization would be to unmarshal just the header and sigs, skipping the proposal payload and metadata which we don't need here.
-	// An even better optimization would be to ask for content type that does not include the proposal payload and metadata.
-	proposal, compoundSigs, err := state.BytesToDecision(block.GetData().GetData()[0])
+	if block.GetHeader() == nil {
+		return nil, nil, errors.New("block header is nil")
+	}
+	decision, err := state.ConsenterBlockToDecision(block)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to extract decision from block: %d", block.GetHeader().GetNumber())
+		return nil, nil, errors.Wrapf(err, "failed to extract decision from consenter block: %d", block.GetHeader().GetNumber())
 	}
 
-	stateHeader := &state.Header{}
-	if err := stateHeader.Deserialize(proposal.Header); err != nil {
-		return nil, nil, errors.Wrapf(err, "failed parsing consensus/state.Header from block: %d", block.GetHeader().GetNumber())
+	header := &state.Header{}
+	if err := header.Deserialize(decision.Proposal.Header); err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to deserialize proposal header from block: %d", block.GetHeader().GetNumber())
 	}
 
-	if stateHeader.Num == 0 { // this is the genesis block
+	if block.Header.Number == 0 { // this is the genesis block
 		sigs := make([][]smartbft_types.Signature, 1) // no signatures
-		return stateHeader, sigs, nil
+		return header, sigs, nil
 	}
 
-	sigs, err := state.UnpackBlockHeaderSigs(compoundSigs, len(stateHeader.AvailableCommonBlocks))
+	sigs, err := state.UnpackBlockHeaderSigs(decision.Signatures, len(header.AvailableCommonBlocks))
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to extract header signatures from compound signature, block %d", block.GetHeader().GetNumber())
 	}
 
-	return stateHeader, sigs, nil
+	return header, sigs, nil
 }
 
 func signersFromSigs(sigs []smartbft_types.Signature) []uint64 {

@@ -16,24 +16,29 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/utils"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 )
 
 // SanitizeIdentity sanitizes the signature scheme of the identity
 func SanitizeIdentity(identity []byte) ([]byte, error) {
-	sID := &msp.SerializedIdentity{}
+	sID := &msppb.Identity{}
 	if err := proto.Unmarshal(identity, sID); err != nil {
 		return nil, errors.Wrapf(err, "failed unmarshaling identity %s", string(identity))
 	}
 
-	finalPEM, err := SanitizeX509Cert(sID.IdBytes)
+	if sID.GetCertificate() == nil {
+		return nil, errors.New("identity does not hold the raw certificate")
+	}
+
+	finalPEM, err := SanitizeX509Cert(sID.GetCertificate())
 	if err != nil {
 		return nil, err
 	}
 
-	sID.IdBytes = finalPEM
+	sID.Creator = &msppb.Identity_Certificate{Certificate: finalPEM}
 
 	return proto.Marshal(sID)
 }

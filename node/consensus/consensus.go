@@ -17,11 +17,14 @@ import (
 	"math/rand"
 	"sync"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
+	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -32,15 +35,19 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	bft_synch "github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
 type Storage interface {
-	Append([]byte)
+	Append(block *common.Block)
+	Height() uint64
+	RetrieveBlockByNumber(blockNumber uint64) (*common.Block, error)
+	WriteBlock(block *common.Block)
 	Close()
 }
 
@@ -51,6 +58,7 @@ type NetStopper interface {
 
 //go:generate counterfeiter -o mocks/synchronizer_stopper.go . SynchronizerStopper
 type SynchronizerStopper interface {
+	// Stop stops the synchronizer and any go-routines it started in Sync().
 	Stop()
 }
 
@@ -79,30 +87,37 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	Net                          NetStopper
-	Config                       *config.ConsenterNodeConfig
-	SigVerifier                  SigVerifier
-	Signer                       Signer
-	CurrentNodes                 []uint64
-	BFTConfig                    smartbft_types.Configuration
-	BFT                          *consensus.Consensus
-	Storage                      Storage
-	BADB                         *badb.BatchAttestationDB
-	Arma                         Arma
+	Logger       *flogging.FabricLogger
+	Net          NetStopper
+	Config       *config.ConsenterNodeConfig
+	SigVerifier  SigVerifier
+	Signer       Signer
+	CurrentNodes []uint64
+	BFT          *smartbft_consensus.Consensus
+	Storage      Storage
+	BADB         *badb.BatchAttestationDB
+	Arma         Arma
+
 	stateLock                    sync.Mutex
 	State                        *state.State
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
-	Logger                       arma_types.Logger
-	Synchronizer                 SynchronizerStopper
-	Metrics                      *ConsensusMetrics
-	RequestVerifier              *requestfilter.RulesVerifier
-	ConfigUpdateProposer         policy.ConfigUpdateProposer
-	ConfigApplier                ConfigApplier
-	ConfigRequestValidator       configrequest.ConfigRequestValidator
-	ConfigRulesVerifier          verify.OrdererRules
-	softStopCh                   chan struct{}
-	softStopOnce                 sync.Once
+	txCount                      uint64
+	PrevHash                     []byte
+
+	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
+	bftSynchronizer     bft_synch.SynchronizerWithStop // The BFT synchronizer built by the factory
+
+	Synchronizer SynchronizerStopper // TODO remove after we change to the BFT synchronizer, and use bftSynchronizer instead
+
+	Metrics                *ConsensusMetrics
+	RequestVerifier        *requestfilter.RulesVerifier
+	ConfigUpdateProposer   policy.ConfigUpdateProposer
+	ConfigApplier          ConfigApplier
+	ConfigRequestValidator configrequest.ConfigRequestValidator
+	ConfigRulesVerifier    verify.OrdererRules
+	softStopCh             chan struct{}
+	softStopOnce           sync.Once
 }
 
 func (c *Consensus) Start() error {
@@ -115,6 +130,11 @@ func (c *Consensus) Stop() {
 	c.SoftStop()
 	c.Storage.Close()
 	c.Net.Stop()
+}
+
+// BFTConfig returns the current BFT configuration and the current nodes in the cluster (from SmartBFT API)
+func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
+	return c.Config.BFTConfig, c.CurrentNodes
 }
 
 func (c *Consensus) SoftStop() {
@@ -267,6 +287,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
+	currentTXCount := c.txCount
 	c.stateLock.Unlock()
 
 	numOfAvailableBlocks := len(attestations)
@@ -297,8 +318,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 
 	for i, ba := range attestations {
 		lastBlockNumber++
-
-		if err := VerifyDataCommonBlock(hdr.AvailableCommonBlocks[i], lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum); err != nil {
+		currentTXCount += ba[0].TXCount()
+		if err := VerifyDataCommonBlock(hdr.AvailableCommonBlocks[i], lastBlockNumber, prevHash, ba[0], currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum); err != nil {
 			return nil, errors.Wrapf(err, "failed verifying proposed block num %d in index %d", lastBlockNumber, i)
 		}
 
@@ -315,8 +336,8 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		batchedConfigReq := arma_types.BatchedRequests([][]byte{configReq})
 		computedConfigBlockHeader.DataHash = batchedConfigReq.Digest()
 		computedCommonBlocksHeaders[numOfAvailableBlocks-1] = computedConfigBlockHeader
-
-		if err := VerifyConfigCommonBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], lastBlockNumber+1, prevHash, computedConfigBlockHeader.DataHash, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1); err != nil {
+		currentTXCount++
+		if err := VerifyConfigCommonBlock(hdr.AvailableCommonBlocks[numOfAvailableBlocks-1], lastBlockNumber+1, prevHash, computedConfigBlockHeader.DataHash, currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1); err != nil {
 			return nil, errors.Wrapf(err, "failed verifying proposed config block num %d", lastBlockNumber+1)
 		}
 	}
@@ -364,31 +385,116 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
 		return nil, err
 	}
-
-	if err := c.VerifySignature(smartbft_types.Signature{
-		Value: values[0],
-		Msg:   []byte(prop.Digest()),
-		ID:    signature.ID,
-	}); err != nil {
-		return nil, errors.Wrap(err, "failed verifying signature over proposal")
+	var msgs [][]byte
+	if _, err := asn1.Unmarshal(signature.Msg, &msgs); err != nil {
+		return nil, err
 	}
+
+	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
 
 	var hdr state.Header
 	if err := hdr.Deserialize(prop.Header); err != nil {
 		return nil, errors.Wrap(err, "failed deserializing proposal header")
 	}
 
-	for i, bh := range hdr.AvailableCommonBlocks {
+	proposalMsg := &state.MessageToSign{}
+	if err := proposalMsg.Unmarshal(msgs[0]); err != nil {
+		return nil, err
+	}
+
+	if err := verifyProposalMessageToSign(proposalMsg, signature.ID, prop, uint64(hdr.Num), decisionNumOfLastConfigBlock, hdr.PrevHash); err != nil {
+		return nil, errors.Wrap(err, "failed verifying proposal msg")
+	}
+	if err := c.VerifySignature(smartbft_types.Signature{
+		Value: values[0],
+		Msg:   proposalMsg.AsBytes(),
+		ID:    signature.ID,
+	}); err != nil {
+		return nil, errors.Wrap(err, "failed verifying signature over proposal")
+	}
+
+	for i, ab := range hdr.AvailableCommonBlocks {
+		msg := &state.MessageToSign{}
+		if err := msg.Unmarshal(msgs[i+1]); err != nil {
+			return nil, err
+		}
+		if err := verifyBlockMessageToSign(msg, signature.ID, ab, lastConfigBlockNum); err != nil {
+			return nil, errors.Wrapf(err, "failed verifying msg over block in index %d", i)
+		}
 		if err := c.VerifySignature(smartbft_types.Signature{
 			Value: values[i+1],
-			Msg:   protoutil.BlockHeaderBytes(bh.Header),
+			Msg:   msg.AsBytes(),
 			ID:    signature.ID,
 		}); err != nil {
-			return nil, errors.Wrap(err, "failed verifying signature over block header")
+			return nil, errors.Wrapf(err, "failed verifying signature over block in index %d", i)
 		}
 	}
 
 	return nil, nil
+}
+
+func verifyProposalMessageToSign(proposalMsg *state.MessageToSign, signatureID uint64, proposal smartbft_types.Proposal, num uint64, decisionNumOfLastConfigBlock uint64, prevHash []byte) error {
+	idHeader, err := protoutil.UnmarshalIdentifierHeader(proposalMsg.IdentifierHeader)
+	if err != nil {
+		return errors.Wrap(err, "failed to unmarshal identifier header from proposal message")
+	}
+	if uint64(idHeader.GetIdentifier()) != signatureID {
+		return errors.Errorf("signature ID %d does not match identifier header ID %d in proposal message", signatureID, idHeader.GetIdentifier())
+	}
+
+	proposalBytes := state.ProposalToBytes(proposal)
+
+	proposalData := &common.BlockData{
+		Data: [][]byte{proposalBytes},
+	}
+
+	proposalMsgBlockHeader := &common.BlockHeader{
+		Number:       num,
+		DataHash:     protoutil.ComputeBlockDataHash(proposalData),
+		PreviousHash: prevHash,
+	}
+
+	computedProposalMsg := &state.MessageToSign{
+		BlockHeader:      protoutil.BlockHeaderBytes(proposalMsgBlockHeader),
+		IdentifierHeader: proposalMsg.IdentifierHeader,
+		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+			LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
+			ConsenterMetadata: proposal.Metadata,
+		}),
+	}
+
+	computedProposalMsgBytes := computedProposalMsg.AsBytes()
+	if !bytes.Equal(proposalMsg.AsBytes(), computedProposalMsgBytes) { // TODO validate msgs like fabric?
+		return errors.New("proposal message content is not as expected")
+	}
+
+	return nil
+}
+
+func verifyBlockMessageToSign(msg *state.MessageToSign, signatureID uint64, block *common.Block, lastConfigBlockNum uint64) error {
+	idHeader, err := protoutil.UnmarshalIdentifierHeader(msg.IdentifierHeader)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal identifier header from message")
+	}
+	if uint64(idHeader.GetIdentifier()) != signatureID {
+		return errors.Errorf("signature ID %d does not match identifier header ID %d in message", signatureID, idHeader.GetIdentifier())
+	}
+	if protoutil.IsConfigBlock(block) {
+		lastConfigBlockNum = block.Header.Number
+	}
+	computedMsg := &state.MessageToSign{
+		BlockHeader:      protoutil.BlockHeaderBytes(block.Header),
+		IdentifierHeader: msg.IdentifierHeader,
+		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+			LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+			ConsenterMetadata: block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
+		}),
+	}
+	computedMsgBytes := computedMsg.AsBytes()
+	if !bytes.Equal(msg.AsBytes(), computedMsgBytes) { // TODO validate msgs like fabric?
+		return errors.New("message content is not as expected")
+	}
+	return nil
 }
 
 // VerifySignature verifies the signature
@@ -474,33 +580,72 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	}
 
 	sigs := make([][]byte, 0)
+	msgs := make([][]byte, 0)
 
-	proposalSig, err := c.Signer.Sign([]byte(proposal.Digest()))
+	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
+
+	proposalBytes := state.ProposalToBytes(proposal)
+	proposalData := &common.BlockData{
+		Data: [][]byte{proposalBytes},
+	}
+
+	proposalMsgBlockHeader := &common.BlockHeader{
+		Number:       uint64(hdr.Num),
+		DataHash:     protoutil.ComputeBlockDataHash(proposalData),
+		PreviousHash: hdr.PrevHash,
+	}
+
+	proposalMsg := &state.MessageToSign{
+		BlockHeader:      protoutil.BlockHeaderBytes(proposalMsgBlockHeader),
+		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.Config.PartyId)),
+		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+			LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
+			ConsenterMetadata: proposal.Metadata,
+		}),
+	}
+
+	proposalSig, err := c.Signer.Sign(proposalMsg.AsBytes())
 	if err != nil {
-		c.Logger.Panicf("Failed signing proposal digest: %v", err)
+		c.Logger.Panicf("Failed signing proposal: %v", err)
 	}
 
 	sigs = append(sigs, proposalSig)
+	msgs = append(msgs, proposalMsg.Marshal())
 
-	for _, bh := range hdr.AvailableCommonBlocks {
-		msg := protoutil.BlockHeaderBytes(bh.Header)
-		sig, err := c.Signer.Sign(msg) // TODO sign like we do in Fabric
+	for _, ab := range hdr.AvailableCommonBlocks {
+		if protoutil.IsConfigBlock(ab) {
+			lastConfigBlockNum = ab.Header.Number
+		}
+		msg := &state.MessageToSign{
+			BlockHeader:      protoutil.BlockHeaderBytes(ab.Header),
+			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.Config.PartyId)),
+			OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+				LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
+				ConsenterMetadata: ab.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
+			}),
+		}
+		sig, err := c.Signer.Sign(msg.AsBytes())
 		if err != nil {
 			c.Logger.Panicf("Failed signing block header: %v", err)
 		}
 
 		sigs = append(sigs, sig)
+		msgs = append(msgs, msg.Marshal())
 	}
 
 	sigsRaw, err := asn1.Marshal(sigs)
 	if err != nil {
 		c.Logger.Panicf("Failed marshaling signatures: %v", err)
 	}
+	msgsRaw, err := asn1.Marshal(msgs)
+	if err != nil {
+		c.Logger.Panicf("Failed marshaling messages: %v", err)
+	}
 
 	return &smartbft_types.Signature{
-		// the Msg is defined by VerifyConsenterSig
+		Msg:   msgsRaw,
 		Value: sigsRaw,
-		ID:    c.BFTConfig.SelfID,
+		ID:    c.Config.BFTConfig.SelfID,
 	}
 }
 
@@ -517,6 +662,8 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	}
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
+	currentTXCount := c.txCount
+	proposalPrevHash := c.PrevHash
 	c.stateLock.Unlock()
 
 	lastCommonBlockHeader := &common.BlockHeader{}
@@ -541,8 +688,8 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	for i, ba := range attestations {
 		lastBlockNumber++
-
-		block, err := CreateDataCommonBlock(lastBlockNumber, prevHash, ba[0], arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum)
+		currentTXCount += ba[0].TXCount()
+		block, err := CreateDataCommonBlock(lastBlockNumber, prevHash, ba[0], currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, i, lastConfigBlockNum)
 		if err != nil {
 			c.Logger.Panicf("Failed to create data block: %s", err.Error())
 		}
@@ -559,8 +706,8 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		if err != nil {
 			c.Logger.Panicf("Failed marshaling config request")
 		}
-
-		configBlock, err := CreateConfigCommonBlock(lastBlockNumber+1, prevHash, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1, configReq)
+		currentTXCount++
+		configBlock, err := CreateConfigCommonBlock(lastBlockNumber+1, prevHash, currentTXCount, arma_types.DecisionNum(md.LatestSequence), numOfAvailableBlocks, numOfAvailableBlocks-1, configReq)
 		if err != nil {
 			c.Logger.Panicf("Failed to create config block: %s", err.Error())
 		}
@@ -582,6 +729,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 			State:                        newState,
 			Num:                          arma_types.DecisionNum(md.LatestSequence),
 			DecisionNumOfLastConfigBlock: decisionNumOfLastConfigBlock,
+			PrevHash:                     proposalPrevHash,
 		}).Serialize(),
 		Metadata:             metadata,
 		Payload:              reqs.Serialize(),
@@ -594,19 +742,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 // It returns whether this proposal was a reconfiguration and the current config.
 // (from SmartBFT API)
 func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) smartbft_types.Reconfig {
-	rawDecision := state.DecisionToBytes(proposal, signatures)
-
-	hdr := &state.Header{}
-	if err := hdr.Deserialize(proposal.Header); err != nil {
-		c.Logger.Panicf("Failed deserializing header: %v", err)
-	}
-
-	digests := make([][]byte, 0, len(hdr.AvailableCommonBlocks))
-	for _, ab := range hdr.AvailableCommonBlocks {
-		if !protoutil.IsConfigBlock(ab) {
-			digests = append(digests, ab.GetHeader().GetDataHash())
-		}
-	}
+	hdr, digests := c.headerAndDigestsFromProposal(proposal)
 
 	// Why do we first give Arma the batchAttestations (digests) and then append the decision to storage?
 	// Upon commit, Arma indexes the batch attestations (digests) which passed the threshold in its index,
@@ -618,17 +754,17 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// This is true because a Index(digests) with the same digests is idempotent.
 
 	c.Arma.Index(digests)
-	c.Storage.Append(rawDecision)
-
-	// update metrics
-	c.Metrics.decisionsCount.Add(1)
-	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
+	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.getPrevHash(), c.getDecisionNumOfLastConfigBlock())
+	c.Storage.Append(block)
 
 	// update state
 	c.stateLock.Lock()
 	c.State = hdr.State
+
+	c.PrevHash = protoutil.BlockHeaderHash(block.Header)
+
 	currentNodes := c.CurrentNodes
-	currentBFTConfig := c.BFTConfig
+	currentBFTConfig := c.Config.BFTConfig
 	inLatestDecision := false
 	// check if this decision includes a config block
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
@@ -650,6 +786,9 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 			// TODO apply reconfig after deliver
 		}
 	}
+
+	c.updateMetricsOnDeliver(hdr)
+
 	c.stateLock.Unlock()
 
 	return smartbft_types.Reconfig{
@@ -657,6 +796,61 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		CurrentConfig:    currentBFTConfig,
 		InLatestDecision: inLatestDecision,
 	}
+}
+
+func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header) {
+	c.Metrics.decisionsCount.Add(1)
+	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
+	txCount := c.getLastTxCountFromHeader(hdr)
+	if txCount > 0 {
+		c.Metrics.txsCount.Add(float64(txCount - c.txCount))
+		c.txCount = txCount
+	}
+}
+
+func (c *Consensus) headerAndDigestsFromProposal(proposal smartbft_types.Proposal) (*state.Header, [][]byte) {
+	hdr := &state.Header{}
+	if err := hdr.Deserialize(proposal.Header); err != nil {
+		c.Logger.Panicf("Failed deserializing header: %v", err)
+	}
+
+	digests := make([][]byte, 0, len(hdr.AvailableCommonBlocks))
+	for _, ab := range hdr.AvailableCommonBlocks {
+		if !protoutil.IsConfigBlock(ab) {
+			digests = append(digests, ab.GetHeader().GetDataHash())
+		}
+	}
+	return hdr, digests
+}
+
+func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
+	if len(header.AvailableCommonBlocks) == 0 {
+		return 0
+	}
+	lastBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
+	_, _, txCount, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(lastBlock)
+	if err != nil {
+		c.Logger.Panicf("Couldn't retrieve tx count from last block; err: %s", err)
+	}
+	return txCount
+}
+
+func (c *Consensus) getDecisionNumOfLastConfigBlock() uint64 {
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
+	return uint64(c.decisionNumOfLastConfigBlock)
+}
+
+func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
+	return uint64(c.decisionNumOfLastConfigBlock), c.lastConfigBlockNum
+}
+
+func (c *Consensus) getPrevHash() []byte {
+	c.stateLock.Lock() // TODO use read lock?
+	defer c.stateLock.Unlock()
+	return c.PrevHash
 }
 
 func (c *Consensus) pickEndpoint() string {
@@ -717,10 +911,11 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
-		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope); err != nil {
+		bccsp := factory.GetDefault()
+		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, bccsp, c.Config.PartyId); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
-		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope); err != nil {
+		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope, bccsp); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate config transition rules")
 		}
 		// TODO: revisit this return
@@ -783,4 +978,34 @@ func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.R
 	}
 
 	return configRequest, nil
+}
+
+// PruneRequestsFromMemPool removes from the mempool the requests included in the given block.
+// It is called by the BFT synchronizer.
+func (c *Consensus) PruneRequestsFromMemPool(consenterBlock *common.Block) {
+	if consenterBlock.GetHeader().GetNumber() == 0 {
+		return // genesis block doesn't include any request
+	}
+
+	// TODO it make sense to have ConsenterBlockToDecision return the error
+	decision := ConsenterBlockToDecision(consenterBlock)
+	if decision == nil {
+		c.Logger.Panicf("Failed parsing block we pulled with BFT Synchronizer")
+	}
+
+	// Every request, including config requests, is included in the proposal's payload as a batch of requests,
+	// so we can just deserialize the payload to get all the included requests and remove them from the mempool.
+	var batch arma_types.BatchedRequests
+	if err := batch.Deserialize(decision.Proposal.Payload); err != nil {
+		c.Logger.Panicf("Failed deserializing proposal payload: %v", err)
+	}
+
+	for _, req := range batch {
+		c.BFT.Pool.RemoveRequest(c.RequestID(req))
+	}
+}
+
+func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_types.Reconfig {
+	// TODO implement update the state and the config bundle according to the given block, and return the new smartbft reconfig struct. For now we just return an empty reconfig struct.
+	return smartbft_types.Reconfig{}
 }

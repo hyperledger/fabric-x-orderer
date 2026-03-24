@@ -16,12 +16,13 @@ import (
 	"math"
 	"slices"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-type Rule func(*State, types.ConfigSequence, types.Logger, ...ControlEvent)
+type Rule func(*State, types.ConfigSequence, *flogging.FabricLogger, ...ControlEvent)
 
 var Rules = []Rule{
 	FilterPendingEventsWithDiffConfigSeq,
@@ -442,7 +443,7 @@ func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (
 	return fmt.Errorf("unknown prefix (%d)", bytes[0])
 }
 
-func (s *State) Process(l types.Logger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
+func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
 	nextState := s.Clone()
 
 	filteredCEs := filterCEsWithDiffConfigSeq(configSeq, l, ces...)
@@ -473,7 +474,7 @@ func (s *State) Clone() *State {
 	return &s2
 }
 
-func CleanupOldComplaints(s *State, configSeq types.ConfigSequence, l types.Logger, _ ...ControlEvent) {
+func CleanupOldComplaints(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
 	newComplaints := make([]Complaint, 0, len(s.Complaints))
 	for _, c := range s.Complaints {
 		shardIndex, _ := shardExists(c.Shard, s.Shards)
@@ -488,7 +489,7 @@ func CleanupOldComplaints(s *State, configSeq types.ConfigSequence, l types.Logg
 	s.Complaints = newComplaints
 }
 
-func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l types.Logger, _ ...ControlEvent) {
+func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
 	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
@@ -536,7 +537,7 @@ func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l ty
 	s.Complaints = newComplaints
 }
 
-func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l types.Logger, ces ...ControlEvent) {
+func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) {
 	shardsAndSequences := make(map[batchAttestationVote]struct{}, len(s.Pending))
 	complaints := make(map[ShardTerm]map[types.PartyID]struct{})
 
@@ -594,7 +595,7 @@ func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l typ
 	}
 }
 
-func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l types.Logger, ces ...ControlEvent) []ControlEvent {
+func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) []ControlEvent {
 	filteredEvents := make([]ControlEvent, 0)
 	for _, ce := range ces {
 		if ce.BAF != nil {
@@ -615,7 +616,7 @@ func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l types.Logger, 
 	return filteredEvents
 }
 
-func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequence, l types.Logger, ces ...ControlEvent) {
+func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) {
 	filteredPending := make([]types.BatchAttestationFragment, 0)
 	for _, baf := range s.Pending {
 		if baf.ConfigSequence() == configSeq {
@@ -637,7 +638,7 @@ func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequen
 	s.Complaints = filteredComplaints
 }
 
-func DetectEquivocation(s *State, l types.Logger, _ ...ControlEvent) {
+func DetectEquivocation(s *State, l *flogging.FabricLogger, _ ...ControlEvent) {
 	// We have a total of N parties per shard.
 	// We collect a quorum of signatures and then wait for f+1 identical ones.
 	// If we can't collect such, it means the primary equivocated.
@@ -696,7 +697,7 @@ func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[strin
 	return m
 }
 
-func ExtractBatchAttestationsFromPending(s *State, l types.Logger) []types.BatchAttestationFragment {
+func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []types.BatchAttestationFragment {
 	// <seq, shard, primary> --> { digest -->  signer }
 	m := batchAttestationVotesByDigests(s)
 

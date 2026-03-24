@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 )
 
@@ -13,11 +14,11 @@ type BFTBlockDeliverer struct {
 	deliverBlocksMutex       sync.RWMutex
 	deliverBlocksArgsForCall []struct {
 	}
-	InitializeStub        func(*common.Config, string)
+	InitializeStub        func(*common.Config, types.PartyID)
 	initializeMutex       sync.RWMutex
 	initializeArgsForCall []struct {
 		arg1 *common.Config
-		arg2 string
+		arg2 types.PartyID
 	}
 	StopStub        func()
 	stopMutex       sync.RWMutex
@@ -51,11 +52,11 @@ func (fake *BFTBlockDeliverer) DeliverBlocksCalls(stub func()) {
 	fake.DeliverBlocksStub = stub
 }
 
-func (fake *BFTBlockDeliverer) Initialize(arg1 *common.Config, arg2 string) {
+func (fake *BFTBlockDeliverer) Initialize(arg1 *common.Config, arg2 types.PartyID) {
 	fake.initializeMutex.Lock()
 	fake.initializeArgsForCall = append(fake.initializeArgsForCall, struct {
 		arg1 *common.Config
-		arg2 string
+		arg2 types.PartyID
 	}{arg1, arg2})
 	stub := fake.InitializeStub
 	fake.recordInvocation("Initialize", []interface{}{arg1, arg2})
@@ -71,13 +72,13 @@ func (fake *BFTBlockDeliverer) InitializeCallCount() int {
 	return len(fake.initializeArgsForCall)
 }
 
-func (fake *BFTBlockDeliverer) InitializeCalls(stub func(*common.Config, string)) {
+func (fake *BFTBlockDeliverer) InitializeCalls(stub func(*common.Config, types.PartyID)) {
 	fake.initializeMutex.Lock()
 	defer fake.initializeMutex.Unlock()
 	fake.InitializeStub = stub
 }
 
-func (fake *BFTBlockDeliverer) InitializeArgsForCall(i int) (*common.Config, string) {
+func (fake *BFTBlockDeliverer) InitializeArgsForCall(i int) (*common.Config, types.PartyID) {
 	fake.initializeMutex.RLock()
 	defer fake.initializeMutex.RUnlock()
 	argsForCall := fake.initializeArgsForCall[i]

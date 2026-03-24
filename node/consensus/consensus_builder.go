@@ -16,10 +16,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/consensus"
+	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
@@ -27,12 +29,14 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	ord_config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	bft_synch "github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -40,7 +44,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger arma_types.Logger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
+func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger *flogging.FabricLogger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	if lastConfigBlock == nil {
 		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
 		return nil
@@ -63,8 +67,8 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
-
+	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock, prevHash := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
+	txCount := getTxCount(consLedger)
 	// indicate that sync is required on startup when new consensus node joins the cluster
 	if consLedger.Height() == 0 && lastConfigBlock.Header.Number > 0 {
 		conf.BFTConfig.SyncOnStart = true
@@ -82,7 +86,6 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
 		Net:            net,
 		Config:         conf,
-		BFTConfig:      conf.BFTConfig,
 		Arma: &Consenter{
 			DB:              badb,
 			Logger:          logger,
@@ -97,7 +100,8 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 		Storage:                      consLedger,
 		SigVerifier:                  buildVerifier(conf.Consenters, conf.Shards, logger),
 		Signer:                       signer,
-		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), logger),
+		synchronizerFactory:          &bft_synch.SynchronizerCreator{},
+		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), txCount, logger),
 		RequestVerifier:              CreateConsensusRulesVerifier(conf),
 		ConfigUpdateProposer:         configUpdateProposer,
 		ConfigApplier:                &DefaultConfigApplier{},
@@ -106,10 +110,37 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 			Bundle:               conf.Bundle,
 		},
 		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
+		txCount:             txCount,
+		PrevHash:            prevHash,
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
 	setupComm(c)
+
+	// TODO just creation in the meantime
+	bftSynch := c.synchronizerFactory.CreateSynchronizer(
+		logger,
+		uint64(conf.PartyId),
+		ord_config.Cluster{
+			SendBufferSize:    100, // TODO get this from local config
+			ClientCertificate: conf.TLSCertificateFile,
+			ClientPrivateKey:  conf.TLSPrivateKeyFile,
+			ReplicationPolicy: "",
+		},
+		c,                                      // implements synchronizer.BFTConfigGetter,
+		ConsenterBlockToDecision,               // func(block *cb.Block) *types.Decision // TODO look at the assembler
+		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),
+		c.UpdateStateAndRuntimeConfig,          // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
+		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,
+		factory.GetDefault(),
+		nil, // c.ClusterService.Dialer)
+	)
+	if bftSynch != nil {
+		logger.Info("Created a BFT Synchronizer")
+		c.bftSynchronizer = bftSynch
+	}
+
+	// TODO BFTSynch remove the simple synchronizer and replace with the BFT synchronizer
 	sync := createSynchronizer(consLedger, c)
 	c.BFT.Synchronizer = sync
 	c.Synchronizer = sync
@@ -117,7 +148,7 @@ func CreateConsensus(conf *config.ConsenterNodeConfig, net NetStopper, lastConfi
 	return c
 }
 
-func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *consensus.Consensus {
+func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *smartbft_consensus.Consensus {
 	walDir := walPath
 	if walDir == "" {
 		walDir = filepath.Join(c.Config.Directory, "wal")
@@ -128,8 +159,8 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 		c.Logger.Panicf("Failed creating BFT WAL: %v", err)
 	}
 
-	bft := &consensus.Consensus{
-		Config:            c.BFTConfig,
+	bft := &smartbft_consensus.Consensus{
+		Config:            c.Config.BFTConfig,
 		Application:       c,
 		Assembler:         c,
 		WAL:               bftWAL,
@@ -149,6 +180,7 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 	return bft
 }
 
+// TODO BFTSynch remove the simple synchronizer and replace with the BFT synchronizer
 func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchronizer {
 	latestCommittedBlock := uint64(0)
 	if ledger.Height() > 0 {
@@ -179,10 +211,11 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 			return ledger.Height()
 		},
 		latestCommittedBlock: latestCommittedBlock,
-		BFTConfig:            c.BFTConfig,
+		BFTConfig:            c.Config.BFTConfig,
 		CurrentNodes:         c.CurrentNodes,
 	}
 
+	// TODO remove once we change to the BFT synchronizer
 	ledger.RegisterAppendListener(synchronizer)
 
 	if len(c.CurrentNodes) > 1 { // don't run the synchronizer when there is only one node
@@ -194,7 +227,7 @@ func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchroni
 	return synchronizer
 }
 
-func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.ShardInfo, logger arma_types.Logger) crypto.ECDSAVerifier {
+func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
 	verifier := make(crypto.ECDSAVerifier)
 	for _, ci := range consenterInfos {
 		pk, _ := pem.Decode(ci.PublicKey)
@@ -231,41 +264,42 @@ func buildVerifier(consenterInfos []config.ConsenterInfo, shardInfo []config.Sha
 	return verifier
 }
 
-func getInitialStateAndMetadata(logger arma_types.Logger, config *config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum) {
+func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum, []byte) {
 	height := ledger.Height()
 	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
 		initState := initialStateFromConfig(config)
+		var prevHash []byte
 		if lastConfigBlock.Header.Number == 0 {
-			appendGenesisBlock(lastConfigBlock, initState, ledger)
+			prevHash = appendGenesisBlock(lastConfigBlock, initState, ledger)
 		}
-		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0
+		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0, prevHash
 	}
 
 	block, err := ledger.RetrieveBlockByNumber(height - 1)
 	if err != nil {
-		panic("couldn't retrieve last block from ledger")
+		panic(fmt.Sprintf("couldn't retrieve last block from ledger: %v", err))
 	}
 
-	proposal, sigs, err := state.BytesToDecision(block.Data.Data[0])
+	decision, err := state.ConsenterBlockToDecision(block)
 	if err != nil {
-		panic("couldn't read decision from last block")
+		panic(fmt.Sprintf("couldn't read decision from last block: %v", err))
 	}
 
 	md := &smartbftprotos.ViewMetadata{}
-	if err := proto.Unmarshal(proposal.Metadata, md); err != nil {
+	if err := proto.Unmarshal(decision.Proposal.Metadata, md); err != nil {
 		panic(err)
 	}
 
 	header := &state.Header{}
-	if err := header.Deserialize(proposal.Header); err != nil {
+	if err := header.Deserialize(decision.Proposal.Header); err != nil {
 		panic(err)
 	}
 
-	return header.State, md, &proposal, sigs, header.DecisionNumOfLastConfigBlock
+	return header.State, md, &decision.Proposal, decision.Signatures, header.DecisionNumOfLastConfigBlock, protoutil.BlockHeaderHash(block.Header)
 }
 
-func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
+func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.State {
 	var initState state.State
 	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
@@ -294,8 +328,8 @@ func initialStateFromConfig(config *config.ConsenterNodeConfig) *state.State {
 	return &initState
 }
 
-func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) {
-	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
+func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) []byte {
+	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData()) // TODO fix compute digest
 
 	lastCommonBlockHeader := &common.BlockHeader{}
 	if err := proto.Unmarshal(initState.AppContext, lastCommonBlockHeader); err != nil {
@@ -308,14 +342,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 
 	availableCommonBlocks := []*common.Block{genesisBlock}
 
-	protoutil.InitBlockMetadata(availableCommonBlocks[0])
-
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(state.NewAvailableBatch(0, arma_types.ShardIDConsensus, 0, genesisDigest), &state.OrderingInformation{DecisionNum: 0, BatchCount: 1, BatchIndex: 0}, 1)
-	if err != nil {
-		panic("failed to invoke AssemblerBlockMetadataToBytes")
-	}
-
-	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
+	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ledger.AssemblerGenesisBlockMetadataToBytes()
 
 	genesisProposal := smartbft_types.Proposal{
 		Payload: protoutil.MarshalOrPanic(genesisBlock),
@@ -327,7 +354,48 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 		Metadata: nil,
 	}
 
-	consensusLedger.Append(state.DecisionToBytes(genesisProposal, nil))
+	block := state.CreateBlockToAppendFromDecision(0, genesisProposal, nil, nil, 0)
+
+	consensusLedger.Append(block)
+
+	return protoutil.BlockHeaderHash(block.Header)
+}
+
+func getTxCount(consensusLedger *ledger.ConsensusLedger) uint64 {
+	height := consensusLedger.Height()
+	if height == 0 {
+		return 0
+	}
+	if height == 1 {
+		return 1 // the genesis block has 1 tx
+	}
+	txCount := uint64(1)
+	for height > 0 {
+		block, err := consensusLedger.RetrieveBlockByNumber(height - 1)
+		if err != nil {
+			panic("couldn't retrieve last block from ledger")
+		}
+		proposal, err := state.BytesToProposal(block.Data.Data[0])
+		if err != nil {
+			panic("couldn't read proposal from last block")
+		}
+		header := &state.Header{}
+		if err := header.Deserialize(proposal.Header); err != nil {
+			panic(err)
+		}
+		availableBlocksLen := len(header.AvailableCommonBlocks)
+		if availableBlocksLen == 0 {
+			height--
+			continue
+		}
+		lastAvailableBlock := header.AvailableCommonBlocks[availableBlocksLen-1]
+		_, _, txCount, err = ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(lastAvailableBlock)
+		if err != nil {
+			panic("couldn't retrieve tx count from last available block")
+		}
+		return txCount
+	}
+	return txCount
 }
 
 func (c *Consensus) clientConfig() comm.ClientConfig {
@@ -421,7 +489,7 @@ func setupComm(c *Consensus) {
 	}
 }
 
-func getSelfID(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID) []byte {
+func getSelfID(consenterInfos []node_config.ConsenterInfo, partyID arma_types.PartyID) []byte {
 	var myIdentity []byte
 	for _, ci := range consenterInfos {
 		pk := ci.PublicKey
@@ -434,7 +502,7 @@ func getSelfID(consenterInfos []config.ConsenterInfo, partyID arma_types.PartyID
 	return myIdentity
 }
 
-func CreateConsensusRulesVerifier(config *config.ConsenterNodeConfig) *requestfilter.RulesVerifier {
+func CreateConsensusRulesVerifier(config *node_config.ConsenterNodeConfig) *requestfilter.RulesVerifier {
 	rv := requestfilter.NewRulesVerifier(nil)
 	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
 	rv.AddRule(requestfilter.NewMaxSizeFilter(config))

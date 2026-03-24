@@ -43,7 +43,8 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 	numOfParties := 4
 	numOfShards := 2
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "TLS", "TLS")
-
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
 	armageddon := armageddon.NewCLI()
 	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir})
 

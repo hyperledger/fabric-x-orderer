@@ -152,7 +152,10 @@ func TestAssemblerLedger_ReadAndParse(t *testing.T) {
 		assert.Equal(t, ordInfos[n].DecisionNum, ordInfo.DecisionNum)
 		assert.Equal(t, ordInfos[n].BatchIndex, ordInfo.BatchIndex)
 		assert.Equal(t, ordInfos[n].BatchCount, ordInfo.BatchCount)
-		assert.Equal(t, ordInfos[n].Signatures, ordInfo.Signatures)
+		assert.Equal(t, ordInfos[n].Signatures[0].ID, ordInfo.Signatures[0].ID)
+		assert.Equal(t, ordInfos[n].Signatures[0].Value, ordInfo.Signatures[0].Value)
+		assert.Equal(t, ordInfos[n].Signatures[1].ID, ordInfo.Signatures[1].ID)
+		assert.Equal(t, ordInfos[n].Signatures[1].Value, ordInfo.Signatures[1].Value)
 		assert.Equal(t, uint64(expectedTransactionCount[n]), transactionCount)
 	}
 }
@@ -188,7 +191,10 @@ func TestAssemblerLedger_LastOrderingInfo(t *testing.T) {
 	assert.Equal(t, ordInfos[1].DecisionNum, ordInfo.DecisionNum)
 	assert.Equal(t, ordInfos[1].BatchIndex, ordInfo.BatchIndex)
 	assert.Equal(t, ordInfos[1].BatchCount, ordInfo.BatchCount)
-	assert.Equal(t, ordInfos[1].Signatures, ordInfo.Signatures)
+	assert.Equal(t, ordInfos[1].Signatures[0].ID, ordInfo.Signatures[0].ID)
+	assert.Equal(t, ordInfos[1].Signatures[0].Value, ordInfo.Signatures[0].Value)
+	assert.Equal(t, ordInfos[1].Signatures[1].ID, ordInfo.Signatures[1].ID)
+	assert.Equal(t, ordInfos[1].Signatures[1].Value, ordInfo.Signatures[1].Value)
 }
 
 func TestAssemblerLedger_BatchFrontier(t *testing.T) {
@@ -466,7 +472,7 @@ func createAssemblerLedger(t *testing.T, tmpDir string, logger *flogging.FabricL
 func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.OrderingInformation) {
 	var batches []types.Batch
 	var ordInfos []*state.OrderingInformation
-	transactionCount := 0
+	transactionCount := 1 // start with 1 to account for the genesis block transaction
 
 	// this 2D matrix holds the last batch-sequence of every [shard][primary]
 	seqArray := make([][]uint64, 8)
@@ -493,14 +499,22 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		require.NotNil(t, fb)
 
 		transactionCount += len(batchedRequests)
+		msg1 := &state.MessageToSign{
+			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+		}
+		msg2 := &state.MessageToSign{
+			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(2)),
+		}
 		ordInfo := &state.OrderingInformation{
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: n + 1, DataHash: fb.Digest()}},
 			Signatures: []smartbft_types.Signature{{
 				ID:    1,
 				Value: []byte("sig1"),
+				Msg:   msg1.Marshal(),
 			}, {
 				ID:    2,
 				Value: []byte("sig2"),
+				Msg:   msg2.Marshal(),
 			}},
 			DecisionNum: types.DecisionNum(3 + n),
 			BatchIndex:  0,
@@ -508,7 +522,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		}
 		protoutil.InitBlockMetadata(ordInfo.CommonBlock)
 
-		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, ordInfo, uint64(transactionCount+len(fb.Requests())))
+		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, ordInfo, uint64(transactionCount))
 		require.NoError(t, err)
 		ordInfo.CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 

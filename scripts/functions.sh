@@ -25,6 +25,7 @@ function filterExcludedAndGeneratedFiles {
         '\.md$'
         '\.pb\.go$'
         '\.pem$'
+        '\.crt$'
         '\.png$'
         '\.pptx$'
         '\.rst$'

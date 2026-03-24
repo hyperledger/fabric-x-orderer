@@ -9,10 +9,11 @@ package prefetch_benchmark_test
 import (
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
-func generateDecisions(logger types.Logger, batchesChan <-chan types.BatchID, decisionsPerSecond float64, maxBatchesPerDecision int, monitor *statsMonitor) <-chan []types.BatchID {
+func generateDecisions(logger *flogging.FabricLogger, batchesChan <-chan types.BatchID, decisionsPerSecond float64, maxBatchesPerDecision int, monitor *statsMonitor) <-chan []types.BatchID {
 	decisionInterval := time.Second / time.Duration(decisionsPerSecond)
 	decisionsChan := make(chan []types.BatchID, int(PREFETCH_STRESS_TEST_MEMORY_FACTOR*decisionsPerSecond))
 	batches := []types.BatchID{}

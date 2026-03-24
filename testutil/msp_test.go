@@ -27,7 +27,8 @@ func TestBuildTestLocalMSP_Create(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	_ = CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	netInfo := CreateNetwork(t, configPath, 4, 2, "TLS", "TLS")
+	defer netInfo.CleanUp()
 
 	armageddon := armageddon.NewCLI()
 	sampleConfigPath := fabric.GetDevConfigDir()
@@ -37,14 +38,14 @@ func TestBuildTestLocalMSP_Create(t *testing.T) {
 	configYamlPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
 	storagePath := path.Join(dir, "storage", "party1", "router")
 	mspPath := path.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "router", "msp")
-	EditDirectoryInNodeConfigYAML(t, configYamlPath, storagePath)
+	EditDirectoryInNodeConfigYAML(t, configYamlPath, storagePath, "", 0)
 	EditLocalMSPDirForNode(t, configYamlPath, mspPath)
 
 	// Override router2 local config yaml to point to the local msp and have a config store
 	configYamlPath = filepath.Join(dir, "config", "party2", "local_config_router.yaml")
 	storagePath = path.Join(dir, "storage", "party2", "router")
 	mspPath = path.Join(dir, "crypto", "ordererOrganizations", "org2", "orderers", "party2", "router", "msp")
-	EditDirectoryInNodeConfigYAML(t, configYamlPath, storagePath)
+	EditDirectoryInNodeConfigYAML(t, configYamlPath, storagePath, "", 0)
 	EditLocalMSPDirForNode(t, configYamlPath, mspPath)
 
 	// Get router1 configuration
