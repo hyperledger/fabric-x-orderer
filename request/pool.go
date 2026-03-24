@@ -55,6 +55,18 @@ type requestItem struct {
 	request []byte
 }
 
+type inspector struct {
+	requestIDFunc func(req []byte) string
+}
+
+func NewInspector(requestIDFunc func(req []byte) string) RequestInspector {
+	return &inspector{requestIDFunc: requestIDFunc}
+}
+
+func (i *inspector) RequestID(req []byte) string {
+	return i.requestIDFunc(req)
+}
+
 // PoolOptions is the pool configuration
 type PoolOptions struct {
 	MaxSize               uint64
@@ -68,15 +80,16 @@ type PoolOptions struct {
 }
 
 // NewPool constructs a new requests pool
-func NewPool(logger *flogging.FabricLogger, inspector RequestInspector, options PoolOptions, striker Striker) *Pool {
+func NewPool(logger *flogging.FabricLogger, requestIDFunc func(req []byte) string, options PoolOptions, striker Striker) *Pool {
 	rp := &Pool{
 		logger:    logger,
-		inspector: inspector,
 		semaphore: semaphore.NewWeighted(int64(options.MaxSize)),
 		options:   options,
 		striker:   striker,
 		size:      0,
 	}
+
+	rp.inspector = NewInspector(requestIDFunc)
 
 	rp.start()
 

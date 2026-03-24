@@ -8,8 +8,6 @@ package batcher
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"runtime"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -42,10 +40,11 @@ type RequestsInspectorVerifier struct {
 	logger          *flogging.FabricLogger
 	mapper          router.ShardMapper
 	requestVerifier RequestVerifier
+	requestIDFunc   func(req []byte) string
 	configSeq       uint32
 }
 
-func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier) *RequestsInspectorVerifier {
+func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier, requestIDFunc func(req []byte) string) *RequestsInspectorVerifier {
 	riv := &RequestsInspectorVerifier{
 		logger:          logger,
 		shardID:         config.ShardId,
@@ -53,6 +52,7 @@ func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.
 		batchMaxSize:    config.BatchMaxSize,
 		batchMaxBytes:   config.BatchMaxBytes,
 		requestMaxBytes: config.RequestMaxBytes,
+		requestIDFunc:   requestIDFunc,
 		configSeq:       uint32(config.Bundle.ConfigtxValidator().Sequence()),
 	}
 	if requestVerifier != nil {
@@ -161,10 +161,5 @@ func (r *RequestsInspectorVerifier) VerifyRequest(req []byte) error {
 }
 
 func (r *RequestsInspectorVerifier) RequestID(req []byte) string {
-	if len(req) == 0 {
-		return ""
-	}
-	// TODO maybe calculate the request ID differently
-	digest := sha256.Sum256(req)
-	return hex.EncodeToString(digest[:])
+	return r.requestIDFunc(req)
 }
