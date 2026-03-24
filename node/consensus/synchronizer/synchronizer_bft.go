@@ -85,6 +85,10 @@ func (s *BFTSynchronizer) Stop() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	if s.syncBuff == nil {
+		return
+	}
+
 	s.syncBuff.Stop() // This will stop the BFT deliverer and any go-routines we started in Sync()
 }
 
