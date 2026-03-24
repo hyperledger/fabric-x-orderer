@@ -208,7 +208,6 @@ func (b *Batcher) SoftStop() {
 	b.primaryReqConnector.Stop()
 	b.running.Wait()
 	b.metrics.Stop()
-	b.wal.Close()
 }
 
 // replicateDecision runs by a separate go routine
