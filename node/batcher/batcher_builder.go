@@ -226,7 +226,12 @@ func getLastKnownDecisionNumFromConfigStore(configStore *configstore.Store, logg
 		logger.Infof("Returning 0 as last known decision number from config store")
 		return 0
 	}
-	ordererBlockMetadata := lastConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+
+	return getLastKnownDecisionNumFromConfigBlock(lastConfigBlock, logger)
+}
+
+func getLastKnownDecisionNumFromConfigBlock(configBlock *common.Block, logger *flogging.FabricLogger) types.DecisionNum {
+	ordererBlockMetadata := configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
 	_, _, _, lastDecisionNumber, _, _, _, err := node_ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
 	if err != nil {
 		logger.Panicf("Failed extracting decision number from last config block: %s", err)

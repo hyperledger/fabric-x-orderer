@@ -174,9 +174,9 @@ func (b *Batcher) Stop() {
 		b.primaryReqConnector.Stop()
 		b.running.Wait()
 		b.metrics.Stop()
-		b.wal.Close()
 	}
 
+	b.wal.Close()
 	b.Net.Stop()
 	b.Ledger.Close()
 
@@ -361,7 +361,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 
 func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
 	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
-	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigStore(b.ConfigStore, b.logger)
+	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigBlock(lastBlock, b.logger)
 
 	// this is not an admin restart.
 	// close net, ledger and SIGTERM channel
