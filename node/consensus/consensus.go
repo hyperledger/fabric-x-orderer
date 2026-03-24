@@ -1005,7 +1005,52 @@ func (c *Consensus) PruneRequestsFromMemPool(consenterBlock *common.Block) {
 	}
 }
 
+// UpdateStateAndRuntimeConfig updates the state and the runtime config bundle according to the given block, and returns the new smartbft reconfig struct.
+// It is called by the BFT synchronizer after a block is pulled, indexed, and written to the ledger.
 func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_types.Reconfig {
-	// TODO implement update the state and the config bundle according to the given block, and return the new smartbft reconfig struct. For now we just return an empty reconfig struct.
-	return smartbft_types.Reconfig{}
+	proposal, err := state.ConsenterBlockToProposal(block)
+	if err != nil {
+		c.Logger.Panicf("Failed parsing block we pulled with BFT Synchronizer: %v", err)
+	}
+	hdr, _ := c.headerAndDigestsFromProposal(*proposal)
+
+	// update state
+	c.stateLock.Lock()
+	c.State = hdr.State
+
+	c.PrevHash = protoutil.BlockHeaderHash(block.Header)
+
+	currentNodes := c.CurrentNodes
+	currentBFTConfig := c.Config.BFTConfig
+	inLatestDecision := false
+	// check if this decision includes a config block
+	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
+		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
+		lastBlockNum := configBlock.Header.Number
+		var err error
+		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.Config.PartyId)
+		if err != nil {
+			c.Logger.Panicf("Failed extracting smartBFT config from config block: %v", err)
+		}
+		inLatestDecision = true
+		c.Logger.Infof("Delivering config block number %d", lastBlockNum)
+		// if this is a new config block (with a larger number) then apply (soft stop)
+		if c.lastConfigBlockNum < lastBlockNum {
+			c.decisionNumOfLastConfigBlock = hdr.Num
+			c.lastConfigBlockNum = lastBlockNum
+			c.Logger.Infof("Synchronizer delivered consenter block: %d, which includes a fabric config block: %d; the consenter will soft stop.", block.GetHeader().Number, lastBlockNum)
+			// TODO dynamically apply the new config without stopping, or if not possible, stop and restart with the new config
+			go c.SoftStop()
+		}
+	}
+
+	c.updateMetricsOnDeliver(hdr)
+
+	c.stateLock.Unlock()
+
+	return smartbft_types.Reconfig{
+		CurrentNodes:     currentNodes,
+		CurrentConfig:    currentBFTConfig,
+		InLatestDecision: inLatestDecision,
+	}
 }
