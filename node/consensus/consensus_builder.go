@@ -133,7 +133,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 		c.UpdateStateAndRuntimeConfig,          // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
 		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,
 		factory.GetDefault(),
-		nil, // c.ClusterService.Dialer)
+		&comm.PredicateDialer{Config: c.clientConfig()},
 	)
 	if bftSynch != nil {
 		logger.Info("Created a BFT Synchronizer")
