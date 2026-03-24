@@ -85,7 +85,7 @@ func newBlockPuller(
 	// Extract endpoint and TLS cert from the config, excluding the self endpoint.
 	endpoints, err := extractEndpointCriteriaFromConfig(myPartyID, support)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to extract endpoint criteria from config")
 	}
 
 	der, _ := pem.Decode(stdDialer.Config.SecOpts.Certificate)

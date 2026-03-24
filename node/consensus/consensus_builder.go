@@ -130,7 +130,6 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
 	setupComm(c)
 
-	// TODO just creation in the meantime
 	bftSynch := c.synchronizerFactory.CreateSynchronizer(
 		c.Logger,
 		uint64(nodeConfig.PartyId),
@@ -148,15 +147,10 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 		factory.GetDefault(),
 		&comm.PredicateDialer{Config: c.clientConfig()},
 	)
-	if bftSynch != nil {
-		c.Logger.Info("Created a BFT Synchronizer")
-		c.bftSynchronizer = bftSynch
-	}
+	c.Logger.Info("Created a BFT Synchronizer")
 
-	// TODO BFTSynch remove the simple synchronizer and replace with the BFT synchronizer
-	sync := createSynchronizer(consLedger, c)
-	c.BFT.Synchronizer = sync
-	c.Synchronizer = sync
+	c.BFT.Synchronizer = bftSynch
+	c.Synchronizer = bftSynch
 }
 
 func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *smartbft_consensus.Consensus {
@@ -189,53 +183,6 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 		bft.LastSignatures = lastSigs
 	}
 	return bft
-}
-
-// TODO BFTSynch remove the simple synchronizer and replace with the BFT synchronizer
-func createSynchronizer(ledger *ledger.ConsensusLedger, c *Consensus) *synchronizer {
-	latestCommittedBlock := uint64(0)
-	if ledger.Height() > 0 {
-		latestCommittedBlock = ledger.Height() - 1
-	}
-	synchronizer := &synchronizer{
-		deliver: func(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) {
-			c.Deliver(proposal, signatures)
-		},
-		getHeight: func() uint64 {
-			return ledger.Height()
-		},
-		getBlock: func(seq uint64) *common.Block {
-			block, err := ledger.RetrieveBlockByNumber(seq)
-			if err != nil {
-				panic(err)
-			}
-			return block
-		},
-		pruneRequestsFromMemPool: func(req []byte) {
-			c.BFT.Pool.RemoveRequest(c.RequestID(req))
-		},
-		memStore: make(map[uint64]*common.Block),
-		cc:       c.clientConfig(),
-		logger:   c.Logger,
-		endpoint: c.pickEndpoint,
-		nextSeq: func() uint64 {
-			return ledger.Height()
-		},
-		latestCommittedBlock: latestCommittedBlock,
-		BFTConfig:            c.Config.BFTConfig,
-		CurrentNodes:         c.CurrentNodes,
-	}
-
-	// TODO remove once we change to the BFT synchronizer
-	ledger.RegisterAppendListener(synchronizer)
-
-	if len(c.CurrentNodes) > 1 { // don't run the synchronizer when there is only one node
-		defer func() {
-			go synchronizer.run()
-		}()
-	}
-
-	return synchronizer
 }
 
 func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
