@@ -202,7 +202,7 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 
 		assemblerGRPC := node_utils.CreateGRPCAssembler(assemblerConf)
 
-		assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, logger)
+		assembler := assembler.NewAssembler(assemblerConf, assemblerGRPC, genesisBlock, make(chan struct{}), logger)
 		assemblers = append(assemblers, assembler)
 
 		orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
@@ -519,7 +519,7 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 
 func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
 	assemblerGRPC := node_utils.CreateGRPCAssembler(conf)
-	assembler := assembler.NewAssembler(conf, assemblerGRPC, lastConfigBlock, logger)
+	assembler := assembler.NewAssembler(conf, assemblerGRPC, lastConfigBlock, make(chan struct{}), logger)
 
 	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
 

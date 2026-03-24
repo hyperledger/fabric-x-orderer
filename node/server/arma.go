@@ -82,13 +82,12 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 		}
 
 		srv := utils.CreateGRPCAssembler(conf)
-		assembler := assembler.NewAssembler(conf, srv, lastConfigBlock, assemblerLogger)
+		assembler := assembler.NewAssembler(conf, srv, lastConfigBlock, stop, assemblerLogger)
 
 		orderer.RegisterAtomicBroadcastServer(srv.Server(), assembler)
 
 		go func() {
 			_ = srv.Start()
-			close(stop)
 		}()
 
 		// TODO: move StopSignalListen to Assembler Run and pass stopChan

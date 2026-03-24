@@ -33,6 +33,7 @@ type Assembler struct {
 	netStopper            NetStopper
 	metrics               *Metrics
 	lastConfigBlockNumber uint64
+	mainExitChan          chan struct{}
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -50,6 +51,8 @@ func (a *Assembler) GetTxCount() uint64 {
 
 // Stop stops the assembler and all its components.
 func (a *Assembler) Stop() {
+	a.logger.Infof("Stopping assembler")
+
 	a.metrics.Stop()
 	a.netStopper.Stop()
 	a.prefetcher.Stop()
@@ -57,6 +60,10 @@ func (a *Assembler) Stop() {
 	a.baReplicator.Stop()
 	a.collator.Stop()
 	a.collator.Ledger.Close()
+
+	a.logger.Info("Assembler has been stopped")
+	// close the whole process.
+	close(a.mainExitChan)
 }
 
 func (a *Assembler) SoftStop() {
@@ -77,6 +84,7 @@ func NewDefaultAssembler(
 	net NetStopper,
 	config *config.AssemblerNodeConfig,
 	configBlock *common.Block,
+	mainExitChan chan struct{},
 	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
 	prefetchIndexFactory PrefetchIndexerFactory,
 	prefetcherFactory PrefetcherFactory,
@@ -171,6 +179,7 @@ func NewDefaultAssembler(
 		baReplicator:          baReplicator,
 		metrics:               metrics,
 		lastConfigBlockNumber: configBlock.GetHeader().GetNumber(),
+		mainExitChan:          mainExitChan,
 	}
 
 	assembler.collator.AssemblerRestarter = assembler
@@ -181,12 +190,13 @@ func NewDefaultAssembler(
 	return assembler
 }
 
-func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, logger *flogging.FabricLogger) *Assembler {
+func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
 		net,
 		config,
 		configBlock,
+		mainExitChan,
 		&node_ledger.DefaultAssemblerLedgerFactory{},
 		&DefaultPrefetchIndexerFactory{},
 		&DefaultPrefetcherFactory{},

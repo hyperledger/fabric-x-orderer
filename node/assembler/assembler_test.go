@@ -183,6 +183,7 @@ func (at *assemblerTest) StartAssembler() {
 		&dummyAssemblerStopper{},
 		at.nodeConfig,
 		at.genesisBlock,
+		make(chan struct{}),
 		&node_ledger.DefaultAssemblerLedgerFactory{},
 		prefetchIndexerFactory,
 		prefetcherFactoryMock,
