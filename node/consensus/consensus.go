@@ -39,6 +39,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -117,19 +118,42 @@ type Consensus struct {
 	ConfigRequestValidator configrequest.ConfigRequestValidator
 	ConfigRulesVerifier    verify.OrdererRules
 	softStopCh             chan struct{}
-	softStopOnce           sync.Once
+
+	lock   sync.Mutex
+	status node_utils.NodeStatus
 }
 
 func (c *Consensus) Start() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.status.SetState(node_utils.StateRunning)
 	c.softStopCh = make(chan struct{})
 	c.Metrics.Start()
 	return c.BFT.Start()
 }
 
 func (c *Consensus) Stop() {
-	c.SoftStop()
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	state := c.status.GetState()
+	if state == node_utils.StateStopped {
+		return
+	}
+
+	c.Logger.Infof("Stopping consensus node")
+	if state != node_utils.StateSoftStopped {
+		close(c.softStopCh)
+		c.BFT.Stop()
+		c.Synchronizer.Stop()
+		c.BADB.Close()
+		c.Metrics.Stop()
+	}
+
 	c.Storage.Close()
 	c.Net.Stop()
+	c.status.SetState(node_utils.StateStopped)
 }
 
 // BFTConfig returns the current BFT configuration and the current nodes in the cluster (from SmartBFT API)
@@ -138,13 +162,22 @@ func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
 }
 
 func (c *Consensus) SoftStop() {
-	c.softStopOnce.Do(func() {
-		close(c.softStopCh)
-		c.BFT.Stop()
-		c.Synchronizer.Stop()
-		c.BADB.Close()
-		c.Metrics.Stop()
-	})
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	state := c.status.GetState()
+	if state == node_utils.StateStopped || state == node_utils.StateSoftStopped {
+		return
+	}
+
+	c.status.SetState(node_utils.StateSoftStopped)
+
+	c.Logger.Infof("Soft stopping consensus node")
+	close(c.softStopCh)
+	c.BFT.Stop()
+	c.Synchronizer.Stop()
+	c.BADB.Close()
+	c.Metrics.Stop()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
