@@ -13,15 +13,18 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
+
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
-type NetStopper interface {
+type Net interface {
 	Stop()
+	Address() string
 }
 
 type Assembler struct {
@@ -30,10 +33,12 @@ type Assembler struct {
 	ds                    *AssemblerDeliverService
 	prefetcher            PrefetcherController
 	baReplicator          delivery.ConsensusBringer
-	netStopper            NetStopper
+	net                   Net
 	metrics               *Metrics
 	lastConfigBlockNumber uint64
 	mainExitChan          chan struct{}
+	stopSignalListenChan  chan struct{}
+	assemblerNodeConfig   *node_config.AssemblerNodeConfig
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -54,12 +59,13 @@ func (a *Assembler) Stop() {
 	a.logger.Infof("Stopping assembler")
 
 	a.metrics.Stop()
-	a.netStopper.Stop()
+	a.net.Stop()
 	a.prefetcher.Stop()
 	a.collator.Index.Stop()
 	a.baReplicator.Stop()
 	a.collator.Stop()
 	a.collator.Ledger.Close()
+	close(a.stopSignalListenChan)
 
 	a.logger.Info("Assembler has been stopped")
 	// close the whole process.
@@ -81,8 +87,8 @@ func (a *Assembler) ConfigBlockNumber() uint64 {
 
 func NewDefaultAssembler(
 	logger *flogging.FabricLogger,
-	net NetStopper,
-	config *config.AssemblerNodeConfig,
+	net Net,
+	nodeConfig *node_config.AssemblerNodeConfig,
 	configBlock *common.Block,
 	mainExitChan chan struct{},
 	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
@@ -91,22 +97,22 @@ func NewDefaultAssembler(
 	batchBringerFactory BatchBringerFactory,
 	consensusBringerFactory delivery.ConsensusBringerFactory,
 ) *Assembler {
-	logger.Infof("Creating assembler, party: %d, address: %s", config.PartyId, config.ListenAddress)
+	logger.Infof("Creating assembler, party: %d, address: %s", nodeConfig.PartyId, nodeConfig.ListenAddress)
 	if configBlock == nil {
-		logger.Panicf("Error creating Assembler%d, config block is nil", config.PartyId)
+		logger.Panicf("Error creating Assembler%d, config block is nil", nodeConfig.PartyId)
 		return nil
 	}
 	if configBlock.Header == nil {
-		logger.Panicf("Error creating Assembler%d, config block header is nil", config.PartyId)
+		logger.Panicf("Error creating Assembler%d, config block header is nil", nodeConfig.PartyId)
 		return nil
 	}
 
-	al, err := assemblerLedgerFactory.Create(logger, config.Directory)
+	al, err := assemblerLedgerFactory.Create(logger, nodeConfig.Directory)
 	if err != nil {
 		logger.Panicf("Failed creating assembler: %v", err)
 	}
 
-	metrics := NewMetrics(config, al.Metrics(), logger)
+	metrics := NewMetrics(nodeConfig, al.Metrics(), logger)
 
 	var transactionCount, blocksCount uint64
 	height := al.LedgerReader().Height()
@@ -145,41 +151,47 @@ func NewDefaultAssembler(
 		}
 	}
 
-	shardIds := shardsFromAssemblerConfig(config)
-	partyIds := partiesFromAssemblerConfig(config)
+	shardIds := shardsFromAssemblerConfig(nodeConfig)
+	partyIds := partiesFromAssemblerConfig(nodeConfig)
 
-	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, config.RestartLedgerScanTimeout)
+	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, nodeConfig.RestartLedgerScanTimeout)
 	if err != nil {
 		logger.Panicf("Failed fetching batch frontier: %v", err)
 	}
 	logger.Infof("Starting with BatchFrontier: %s", node_ledger.BatchFrontierToString(batchFrontier))
 
-	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, config.PrefetchEvictionTtl, config.PrefetchBufferMemoryBytes, config.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{}, config.PopWaitMonitorTimeout)
+	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, nodeConfig.PrefetchEvictionTtl, nodeConfig.PrefetchBufferMemoryBytes, nodeConfig.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{}, nodeConfig.PopWaitMonitorTimeout)
 
-	baReplicator := consensusBringerFactory.Create(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, al, logger)
+	baReplicator := consensusBringerFactory.Create(nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, al, logger)
 
-	br := batchBringerFactory.Create(batchFrontier, config, logger)
+	br := batchBringerFactory.Create(batchFrontier, nodeConfig, logger)
 
 	prefetcher := prefetcherFactory.Create(shardIds, partyIds, index, br, logger)
 	prefetcher.Start()
 
 	assembler := &Assembler{
-		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, config, metrics.deliverMetrics),
+		assemblerNodeConfig: nodeConfig,
+
+		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, nodeConfig, metrics.deliverMetrics),
 		collator: Collator{
 			Shards:                            shardIds,
 			OrderedBatchAttestationReplicator: baReplicator,
 			Index:                             index,
 			Logger:                            logger,
 			Ledger:                            al,
-			ShardCount:                        len(config.Shards),
+			ShardCount:                        len(nodeConfig.Shards),
 		},
 		logger:                logger,
-		netStopper:            net,
 		prefetcher:            prefetcher,
 		baReplicator:          baReplicator,
 		metrics:               metrics,
 		lastConfigBlockNumber: configBlock.GetHeader().GetNumber(),
 		mainExitChan:          mainExitChan,
+		stopSignalListenChan:  make(chan struct{}),
+	}
+
+	if net != nil {
+		assembler.net = net
 	}
 
 	assembler.collator.AssemblerRestarter = assembler
@@ -190,11 +202,11 @@ func NewDefaultAssembler(
 	return assembler
 }
 
-func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
+func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
-		net,
-		config,
+		nil,
+		nodeConfig,
 		configBlock,
 		mainExitChan,
 		&node_ledger.DefaultAssemblerLedgerFactory{},
@@ -203,4 +215,28 @@ func NewAssembler(config *config.AssemblerNodeConfig, net NetStopper, configBloc
 		&DefaultBatchBringerFactory{},
 		&delivery.DefaultConsensusBringerFactory{},
 	)
+}
+
+func (a *Assembler) Address() string {
+	if a.net == nil {
+		return ""
+	}
+
+	return a.net.Address()
+}
+
+func (a *Assembler) StartAssemblerService() {
+	srv := utils.CreateGRPCAssembler(a.assemblerNodeConfig)
+	a.net = srv
+	orderer.RegisterAtomicBroadcastServer(srv.Server(), a)
+	go func() {
+		a.logger.Infof("Assembler network service is starting on %s", srv.Address())
+		err := srv.Start()
+		if err != nil {
+			panic(err)
+		}
+		a.logger.Infof("Assembler network service was stopped")
+	}()
+
+	utils.StopSignalListen(a.stopSignalListenChan, a, a.logger, srv.Address())
 }
