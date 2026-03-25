@@ -23,6 +23,7 @@ import (
 	delivery_mocks "github.com/hyperledger/fabric-x-orderer/node/delivery/mocks"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	ledger_mocks "github.com/hyperledger/fabric-x-orderer/node/ledger/mocks"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
@@ -117,6 +118,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		},
 		UseTLS:             true,
 		ClientAuthRequired: false,
+		Bundle:             testutil.CreateAssemblerBundleForTest(0),
 	}
 
 	return test
@@ -137,6 +139,14 @@ func (at *assemblerTest) StopAssembler() {
 	}
 	close(at.consensusBAChan)
 	at.assembler.Stop()
+}
+
+func (at *assemblerTest) SoftStopAssembler() {
+	for _, batcherChan := range at.shardToBatcherChan {
+		close(batcherChan)
+	}
+	close(at.consensusBAChan)
+	at.assembler.SoftStop()
 }
 
 func (at *assemblerTest) StartAssembler() {
@@ -316,5 +326,45 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	// Assert
 	require.Eventually(t, func() bool {
 		return test.consensusBringerMock.ReplicateCallCount() == 2
+	}, eventuallyTimeout, eventuallyTick)
+}
+
+func TestAssemblerStatusSoftStop(t *testing.T) {
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
+
+	test.StartAssembler()
+
+	require.Eventually(t, func() bool {
+		status := test.assembler.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
+	}, eventuallyTimeout, eventuallyTick)
+
+	test.SoftStopAssembler()
+
+	require.Eventually(t, func() bool {
+		status := test.assembler.GetStatus()
+		return status.State == node_utils.StateSoftStopped && status.ConfigSequenceNumber == 0
+	}, eventuallyTimeout, eventuallyTick)
+}
+
+func TestAssemblerStatusStop(t *testing.T) {
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
+
+	test.StartAssembler()
+
+	require.Eventually(t, func() bool {
+		status := test.assembler.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
+	}, eventuallyTimeout, eventuallyTick)
+
+	test.StopAssembler()
+
+	require.Eventually(t, func() bool {
+		status := test.assembler.GetStatus()
+		return status.State == node_utils.StateStopped && status.ConfigSequenceNumber == 0
 	}, eventuallyTimeout, eventuallyTick)
 }
