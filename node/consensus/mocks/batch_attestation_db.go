@@ -39,10 +39,9 @@ func (fake *FakeBatchAttestationDB) Clean(arg1 uint64) {
 	fake.cleanArgsForCall = append(fake.cleanArgsForCall, struct {
 		arg1 uint64
 	}{arg1})
-	stub := fake.CleanStub
 	fake.recordInvocation("Clean", []interface{}{arg1})
 	fake.cleanMutex.Unlock()
-	if stub != nil {
+	if fake.CleanStub != nil {
 		fake.CleanStub(arg1)
 	}
 }
@@ -77,16 +76,15 @@ func (fake *FakeBatchAttestationDB) Exists(arg1 []byte) bool {
 	fake.existsArgsForCall = append(fake.existsArgsForCall, struct {
 		arg1 []byte
 	}{arg1Copy})
-	stub := fake.ExistsStub
-	fakeReturns := fake.existsReturns
 	fake.recordInvocation("Exists", []interface{}{arg1Copy})
 	fake.existsMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
+	if fake.ExistsStub != nil {
+		return fake.ExistsStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
+	fakeReturns := fake.existsReturns
 	return fakeReturns.result1
 }
 
@@ -148,10 +146,9 @@ func (fake *FakeBatchAttestationDB) Put(arg1 [][]byte, arg2 []uint64) {
 		arg1 [][]byte
 		arg2 []uint64
 	}{arg1Copy, arg2Copy})
-	stub := fake.PutStub
 	fake.recordInvocation("Put", []interface{}{arg1Copy, arg2Copy})
 	fake.putMutex.Unlock()
-	if stub != nil {
+	if fake.PutStub != nil {
 		fake.PutStub(arg1, arg2)
 	}
 }

@@ -8,6 +8,16 @@ import (
 )
 
 type FakeNetStopper struct {
+	AddressStub        func() string
+	addressMutex       sync.RWMutex
+	addressArgsForCall []struct {
+	}
+	addressReturns struct {
+		result1 string
+	}
+	addressReturnsOnCall map[int]struct {
+		result1 string
+	}
 	StopStub        func()
 	stopMutex       sync.RWMutex
 	stopArgsForCall []struct {
@@ -16,14 +26,65 @@ type FakeNetStopper struct {
 	invocationsMutex sync.RWMutex
 }
 
+func (fake *FakeNetStopper) Address() string {
+	fake.addressMutex.Lock()
+	ret, specificReturn := fake.addressReturnsOnCall[len(fake.addressArgsForCall)]
+	fake.addressArgsForCall = append(fake.addressArgsForCall, struct {
+	}{})
+	fake.recordInvocation("Address", []interface{}{})
+	fake.addressMutex.Unlock()
+	if fake.AddressStub != nil {
+		return fake.AddressStub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.addressReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeNetStopper) AddressCallCount() int {
+	fake.addressMutex.RLock()
+	defer fake.addressMutex.RUnlock()
+	return len(fake.addressArgsForCall)
+}
+
+func (fake *FakeNetStopper) AddressCalls(stub func() string) {
+	fake.addressMutex.Lock()
+	defer fake.addressMutex.Unlock()
+	fake.AddressStub = stub
+}
+
+func (fake *FakeNetStopper) AddressReturns(result1 string) {
+	fake.addressMutex.Lock()
+	defer fake.addressMutex.Unlock()
+	fake.AddressStub = nil
+	fake.addressReturns = struct {
+		result1 string
+	}{result1}
+}
+
+func (fake *FakeNetStopper) AddressReturnsOnCall(i int, result1 string) {
+	fake.addressMutex.Lock()
+	defer fake.addressMutex.Unlock()
+	fake.AddressStub = nil
+	if fake.addressReturnsOnCall == nil {
+		fake.addressReturnsOnCall = make(map[int]struct {
+			result1 string
+		})
+	}
+	fake.addressReturnsOnCall[i] = struct {
+		result1 string
+	}{result1}
+}
+
 func (fake *FakeNetStopper) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
-	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if stub != nil {
+	if fake.StopStub != nil {
 		fake.StopStub()
 	}
 }
@@ -43,6 +104,8 @@ func (fake *FakeNetStopper) StopCalls(stub func()) {
 func (fake *FakeNetStopper) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.addressMutex.RLock()
+	defer fake.addressMutex.RUnlock()
 	fake.stopMutex.RLock()
 	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

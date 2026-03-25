@@ -53,16 +53,15 @@ func (fake *FakeConfigApplier) ApplyConfigToState(arg1 *state.State, arg2 *state
 		arg1 *state.State
 		arg2 *state.ConfigRequest
 	}{arg1, arg2})
-	stub := fake.ApplyConfigToStateStub
-	fakeReturns := fake.applyConfigToStateReturns
 	fake.recordInvocation("ApplyConfigToState", []interface{}{arg1, arg2})
 	fake.applyConfigToStateMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2)
+	if fake.ApplyConfigToStateStub != nil {
+		return fake.ApplyConfigToStateStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
+	fakeReturns := fake.applyConfigToStateReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -118,16 +117,15 @@ func (fake *FakeConfigApplier) ExtractSmartBFTConfigFromBlock(arg1 *common.Block
 		arg1 *common.Block
 		arg2 typesa.PartyID
 	}{arg1, arg2})
-	stub := fake.ExtractSmartBFTConfigFromBlockStub
-	fakeReturns := fake.extractSmartBFTConfigFromBlockReturns
 	fake.recordInvocation("ExtractSmartBFTConfigFromBlock", []interface{}{arg1, arg2})
 	fake.extractSmartBFTConfigFromBlockMutex.Unlock()
-	if stub != nil {
-		return stub(arg1, arg2)
+	if fake.ExtractSmartBFTConfigFromBlockStub != nil {
+		return fake.ExtractSmartBFTConfigFromBlockStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2, ret.result3
 	}
+	fakeReturns := fake.extractSmartBFTConfigFromBlockReturns
 	return fakeReturns.result1, fakeReturns.result2, fakeReturns.result3
 }
 

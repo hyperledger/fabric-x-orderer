@@ -20,10 +20,9 @@ func (fake *FakeSynchronizerStopper) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
-	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if stub != nil {
+	if fake.StopStub != nil {
 		fake.StopStub()
 	}
 }

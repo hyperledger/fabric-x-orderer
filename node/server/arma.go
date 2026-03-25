@@ -11,7 +11,6 @@ import (
 	"os"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	msp "github.com/hyperledger/fabric-x-orderer/common/msputils"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -19,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
-	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	"github.com/hyperledger/fabric-x-orderer/node/utils"
 	"google.golang.org/grpc/grpclog"
@@ -119,23 +117,13 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", conf.PartyId))
 		}
 
-		srv := utils.CreateGRPCConsensus(conf)
-		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, stop, signer, &policy.DefaultConfigUpdateProposer{})
+		consensus := consensus.CreateConsensus(conf, lastConfigBlock, consenterLogger, stop, signer, &policy.DefaultConfigUpdateProposer{})
+		consensus.StartConsensusService()
+		consensus.Start()
 
-		defer consensus.Start()
+		utils.StopSignalListen(nil, consensus, consenterLogger, consensus.Address())
 
-		protos.RegisterConsensusServer(srv.Server(), consensus)
-		orderer.RegisterAtomicBroadcastServer(srv.Server(), consensus.DeliverService)
-		orderer.RegisterClusterNodeServiceServer(srv.Server(), consensus)
-
-		go func() {
-			srv.Start()
-		}()
-
-		// TODO: move StopSignalListen to Consensus.Start and pass stopChan
-		utils.StopSignalListen(nil, consensus, consenterLogger, srv.Address())
-
-		consenterLogger.Infof("Consensus listening on %s", srv.Address())
+		consenterLogger.Infof("Consensus listening on %s", consensus.Address())
 	}
 }
 

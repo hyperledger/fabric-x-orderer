@@ -269,7 +269,8 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-		c := consensus.CreateConsensus(conf, net, genesisBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+		c := consensus.CreateConsensus(conf, genesisBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+		c.Net = net
 		mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 		mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 			return s, nil
@@ -487,7 +488,8 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	consenter := consensus.CreateConsensus(conf, newConsenterNode.GRPCServer, lastConfigBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+	consenter := consensus.CreateConsensus(conf, lastConfigBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+	consenter.Net = newConsenterNode.GRPCServer
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
 		return s, nil
