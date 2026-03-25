@@ -489,7 +489,7 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 	require.True(t, bytes.Equal(req.Signature, env.Signature))
 }
 
-// TODO: remove test and test add party + join instead
+// TODO: remove test and test add party + join instead, as it is no longer relevant scenario
 // Scenario:
 // 1. Create batcher with config block number 2
 // 2. The batcher receives from consensus the genesis block and skip it

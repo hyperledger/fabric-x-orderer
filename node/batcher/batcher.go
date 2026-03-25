@@ -13,6 +13,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
@@ -51,12 +52,12 @@ type Net interface {
 }
 
 type Batcher struct {
-	Net         Net
 	logger      *flogging.FabricLogger
 	signer      Signer
 	ConfigStore *configstore.Store
+	wal         *smartbft_wal.WriteAheadLogFile
 
-	stopLock                           sync.Mutex
+	lock                               sync.Mutex
 	requestsInspectorVerifier          *RequestsInspectorVerifier
 	batcherDeliverService              *BatcherDeliverService
 	decisionReplicator                 DecisionReplicator
@@ -67,11 +68,11 @@ type Batcher struct {
 	controlEventBroadcaster            *ControlEventBroadcaster
 	primaryAckConnector                *PrimaryAckConnector
 	primaryReqConnector                *PrimaryReqConnector
+	Net                                Net
 	Ledger                             *node_ledger.BatchLedgerArray
 	config                             *node_config.BatcherNodeConfig
 	fullConfig                         *config.Configuration
 	batchers                           []node_config.BatcherInfo
-	wal                                *smartbft_wal.WriteAheadLogFile
 	stateChan                          chan *state.State
 	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
 	stopChan                           chan struct{}
@@ -121,8 +122,8 @@ func (b *Batcher) StartBatcherService() {
 }
 
 func (b *Batcher) Run() {
-	b.stopLock.Lock()
-	defer b.stopLock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	b.isStopped = false
 	b.isSoftStopped = false
@@ -142,8 +143,8 @@ func (b *Batcher) Run() {
 }
 
 func (b *Batcher) GetStatus() string {
-	b.stopLock.Lock()
-	defer b.stopLock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 	if b.isSoftStopped && !b.isStopped {
 		return "Soft Stopped"
 	}
@@ -154,8 +155,8 @@ func (b *Batcher) GetStatus() string {
 }
 
 func (b *Batcher) Stop() {
-	b.stopLock.Lock()
-	defer b.stopLock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	if b.isStopped {
 		return
@@ -173,9 +174,9 @@ func (b *Batcher) Stop() {
 		b.primaryReqConnector.Stop()
 		b.running.Wait()
 		b.metrics.Stop()
-		b.wal.Close()
 	}
 
+	b.wal.Close()
 	b.Net.Stop()
 	b.Ledger.Close()
 
@@ -187,8 +188,8 @@ func (b *Batcher) Stop() {
 }
 
 func (b *Batcher) SoftStop() {
-	b.stopLock.Lock()
-	defer b.stopLock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	if b.isSoftStopped || b.isStopped {
 		return
@@ -207,7 +208,6 @@ func (b *Batcher) SoftStop() {
 	b.primaryReqConnector.Stop()
 	b.running.Wait()
 	b.metrics.Stop()
-	b.wal.Close()
 }
 
 // replicateDecision runs by a separate go routine
@@ -313,9 +313,9 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	partyID := b.config.PartyId
 	shardID := b.config.ShardId
 
-	b.stopLock.Lock()
+	b.lock.Lock()
 	currentFullConfig := b.fullConfig
-	b.stopLock.Unlock()
+	b.lock.Unlock()
 
 	if currentFullConfig == nil {
 		return true, errors.New("current configuration is nil")
@@ -361,10 +361,11 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 
 func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
 	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigBlock(lastBlock, b.logger)
 
 	// this is not an admin restart.
 	// close net, ledger and SIGTERM channel
-	b.stopLock.Lock()
+	b.lock.Lock()
 	b.Net.Stop()
 	b.Ledger.Close()
 	close(b.stopSignalListenChan)
@@ -373,18 +374,22 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock 
 	b.logger.Infof("Reconfiguring batcher")
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
-	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool)
-	b.stopLock.Unlock()
+	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum)
+	b.lock.Unlock()
 
 	// prune mempool
 	b.logger.Infof("Pruning memory pool")
-	b.batcher.MemPool.Prune(func(req []byte) error {
+	var droppedTxCount uint32
+	verifyOnReconfig := func(req []byte) error {
 		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
-			b.logger.Infof("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
+			atomic.AddUint32(&droppedTxCount, 1)
+			b.logger.Warnf("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
 			return err
 		}
 		return nil
-	})
+	}
+	b.batcher.MemPool.Prune(verifyOnReconfig)
+	b.logger.Infof("Mempool pruning completed: %d transactions were dropped", atomic.LoadUint32(&droppedTxCount))
 
 	// init batcher again
 	b.logger.Infof("Initialize new batcher")
@@ -403,9 +408,9 @@ func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 }
 
 func (b *Batcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	b.stopLock.Lock()
+	b.lock.Lock()
 	bds := b.batcherDeliverService
-	b.stopLock.Unlock()
+	b.lock.Unlock()
 	return bds.Deliver(stream)
 }
 
@@ -732,7 +737,7 @@ func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []by
 }
 
 func (b *Batcher) GetConfig() *node_config.BatcherNodeConfig {
-	b.stopLock.Lock()
-	defer b.stopLock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 	return b.config
 }
