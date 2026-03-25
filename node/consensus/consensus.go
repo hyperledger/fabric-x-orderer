@@ -101,6 +101,7 @@ type Consensus struct {
 
 	stateLock                    sync.Mutex
 	State                        *state.State
+	status                       node_utils.NodeStatus
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
 	txCount                      uint64
@@ -118,14 +119,11 @@ type Consensus struct {
 	ConfigRequestValidator configrequest.ConfigRequestValidator
 	ConfigRulesVerifier    verify.OrdererRules
 	softStopCh             chan struct{}
-
-	lock   sync.Mutex
-	status node_utils.NodeStatus
 }
 
 func (c *Consensus) Start() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
 
 	c.status.SetState(node_utils.StateRunning)
 	c.softStopCh = make(chan struct{})
@@ -134,8 +132,8 @@ func (c *Consensus) Start() error {
 }
 
 func (c *Consensus) Stop() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
 
 	state := c.status.GetState()
 	if state == node_utils.StateStopped {
@@ -162,8 +160,8 @@ func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
 }
 
 func (c *Consensus) SoftStop() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
 
 	state := c.status.GetState()
 	if state == node_utils.StateStopped || state == node_utils.StateSoftStopped {
