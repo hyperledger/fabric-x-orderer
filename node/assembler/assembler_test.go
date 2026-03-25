@@ -52,6 +52,9 @@ type assemblerTest struct {
 type dummyAssemblerStopper struct{}
 
 func (d *dummyAssemblerStopper) Stop() {}
+func (d *dummyAssemblerStopper) Address() string {
+	return ""
+}
 
 func generateRandomBytes(t *testing.T, size int) []byte {
 	b := make([]byte, size)
@@ -183,6 +186,7 @@ func (at *assemblerTest) StartAssembler() {
 		&dummyAssemblerStopper{},
 		at.nodeConfig,
 		at.genesisBlock,
+		make(chan struct{}),
 		&node_ledger.DefaultAssemblerLedgerFactory{},
 		prefetchIndexerFactory,
 		prefetcherFactoryMock,

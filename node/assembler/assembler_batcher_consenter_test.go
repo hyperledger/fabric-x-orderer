@@ -11,13 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -323,17 +321,9 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 	}
 
-	assemblerGRPC := node_utils.CreateGRPCAssembler(nodeConfig)
-
-	assembler := assembler.NewAssembler(nodeConfig, assemblerGRPC, genesisBlock, testutil.CreateLogger(t, int(partyID)))
-
-	orderer.RegisterAtomicBroadcastServer(assemblerGRPC.Server(), assembler)
-	go func() {
-		err := assemblerGRPC.Start()
-		require.NoError(t, err)
-	}()
-
-	return assembler, assemblerGRPC.Address()
+	a := assembler.NewAssembler(nodeConfig, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)))
+	a.StartAssemblerService()
+	return a, a.Address()
 }
 
 func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.ShardID, ca tlsgen.CA) ([]*stubBatcher, []config.BatcherInfo, func()) {

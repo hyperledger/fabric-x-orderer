@@ -46,31 +46,31 @@ type Net interface {
 }
 
 type Router struct {
-	mapper               ShardMapper
-	net                  Net
-	shardRouters         map[types.ShardID]*ShardRouter
-	logger               *flogging.FabricLogger
-	shardIDs             []types.ShardID
+	mapper       ShardMapper
+	net          Net
+	logger       *flogging.FabricLogger
+	shardIDs     []types.ShardID
+	configStore  *configstore.Store
+	mainExitChan chan struct{}
+	feedbackWG   sync.WaitGroup
+	wal          *wal.WriteAheadLogFile
+	signer       identity.SignerSerializer
+
+	lock                 sync.RWMutex
+	status               node_utils.NodeStatus
+	configuration        *config.Configuration
 	routerNodeConfig     *nodeconfig.RouterNodeConfig
+	configSeq            uint32
 	verifier             *requestfilter.RulesVerifier
-	configStore          *configstore.Store
 	configSubmitter      ConfigurationSubmitter
+	shardRouters         map[types.ShardID]*ShardRouter
 	decisionPuller       DecisionPuller
 	metrics              *RouterMetrics
 	stopChan             chan struct{}
 	stopOnce             sync.Once
 	drainChan            chan struct{}
 	drainOnce            sync.Once
-	mainExitChan         chan struct{}
 	stopSignalListenChan chan struct{}
-	feedbackWG           sync.WaitGroup
-	configSeq            uint32
-	wal                  *wal.WriteAheadLogFile
-	signer               identity.SignerSerializer
-	configuration        *config.Configuration
-
-	lock   sync.RWMutex
-	status node_utils.NodeStatus
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
@@ -88,13 +88,12 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Config
 	})
 
 	r := &Router{
-		logger:               logger,
-		signer:               signer,
-		mainExitChan:         mainExitChan,
-		shardIDs:             shardIDs,
-		mapper:               CreateMapperCRC64(logger, uint16(len(shardIDs))),
-		stopSignalListenChan: make(chan struct{}),
-		status:               node_utils.NodeStatus{},
+		logger:       logger,
+		signer:       signer,
+		mainExitChan: mainExitChan,
+		shardIDs:     shardIDs,
+		mapper:       CreateMapperCRC64(logger, uint16(len(shardIDs))),
+		status:       node_utils.NodeStatus{},
 	}
 
 	configStore, err := configstore.NewStore(config.FileStorePath)
@@ -103,18 +102,28 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Config
 	}
 	r.configStore = configStore
 
-	r.initFromConfig(config, configuration, configUpdateProposer, configRulesVerifier)
+	walDir := filepath.Join(config.FileStorePath, "wal")
+	routerWAL, walInitState, err := wal.InitializeAndReadAll(r.logger, walDir, wal.DefaultOptions())
+	if err != nil {
+		r.logger.Panicf("Failed initializing router WAL: %s", err)
+	}
+	r.wal = routerWAL
+
+	seekInfo := delivery.NextSeekInfo(uint64(getNextDecisionNumber(r.configStore, walInitState, r.logger)))
+
+	r.initFromConfig(config, configuration, configUpdateProposer, configRulesVerifier, seekInfo)
 
 	return r
 }
 
-func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) {
+func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configuration *config.Configuration, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules, seekInfo *orderer.SeekInfo) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
 	configSeq := rconfig.Bundle.ConfigtxValidator().Sequence()
 	r.logger.Infof("Initializing router with PartyID: %d from config with sequence: %d", rconfig.PartyID, configSeq)
 
-	r.lock.Lock()
 	r.status.Set(node_utils.StateInitializing, configSeq)
-	r.lock.Unlock()
 
 	if rconfig.NumOfConnectionsForBatcher == 0 {
 		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
@@ -154,21 +163,13 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 		r.shardRouters[shardId] = NewShardRouter(r.logger, batcherEndpoints[shardId], tlsCAsOfBatchers[shardId], r.routerNodeConfig.TLSCertificateFile, r.routerNodeConfig.TLSPrivateKeyFile, r.routerNodeConfig.NumOfConnectionsForBatcher, r.routerNodeConfig.NumOfgRPCStreamsPerConnection, r.verifier, r.configSubmitter)
 	}
 
-	walDir := filepath.Join(rconfig.FileStorePath, "wal")
-	routerWAL, walInitState, err := wal.InitializeAndReadAll(r.logger, walDir, wal.DefaultOptions())
-	if err != nil {
-		r.logger.Panicf("Failed initializing router WAL: %s", err)
-	}
-	r.wal = routerWAL
-
-	seekInfo := delivery.NextSeekInfo(uint64(getNextDecisionNumber(r.configStore, walInitState, r.logger)))
-
 	// TODO - pull decisions from all consenter nodes, not only the one in party
 	r.decisionPuller = CreateConsensusDecisionReplicator(rconfig, seekInfo, r.logger)
 
 	r.metrics = NewRouterMetrics(rconfig, r.logger)
 
 	// initialize channels and once
+	r.stopSignalListenChan = make(chan struct{})
 	r.stopChan = make(chan struct{})
 	r.drainChan = make(chan struct{})
 	r.stopOnce = sync.Once{}
@@ -210,17 +211,24 @@ func getNextDecisionNumber(configStore *configstore.Store, walInitState [][]byte
 	}
 
 	// last config block is not genesis block, extract decision number from its metadata
-	ordererBlockMetadata := lastBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
-	_, _, _, lastConfigBlockDecisionNumber, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
-	if err != nil {
-		logger.Panicf("Failed extracting decision number from last config block: %s", err)
-	}
-
+	lastConfigBlockDecisionNumber := getDecisionNumberFromConfigBlock(lastBlock, logger)
 	logger.Infof("Last config block decision number in router's config store is %d. Router will start pulling consensus decisions from decision number %d", lastConfigBlockDecisionNumber, lastConfigBlockDecisionNumber+1)
 	return lastConfigBlockDecisionNumber + 1
 }
 
+func getDecisionNumberFromConfigBlock(configBlock *common.Block, logger *flogging.FabricLogger) types.DecisionNum {
+	ordererBlockMetadata := configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+	_, _, _, lastConfigBlockDecisionNumber, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
+	if err != nil {
+		logger.Panicf("Failed extracting decision number from last config block: %s", err)
+	}
+	return lastConfigBlockDecisionNumber
+}
+
 func (r *Router) StartRouterService() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
 	srv := node_utils.CreateGRPCRouter(r.routerNodeConfig)
 	r.net = srv
 
@@ -243,9 +251,7 @@ func (r *Router) StartRouterService() {
 	go r.pullAndProcessDecisions()
 
 	// update the router state.
-	r.lock.Lock()
 	r.status.SetState(node_utils.StateRunning)
-	r.lock.Unlock()
 }
 
 func (r *Router) MonitoringServiceAddress() string {
@@ -283,12 +289,12 @@ func (r *Router) Stop() {
 			close(r.stopChan)
 		})
 
-		r.wal.Close()
-
 		for _, sr := range r.shardRouters {
 			sr.Stop()
 		}
 	}
+
+	r.wal.Close()
 
 	close(r.stopSignalListenChan)
 
@@ -300,6 +306,7 @@ func (r *Router) Stop() {
 }
 
 func (r *Router) SoftStop() error {
+	r.logger.Warnf("Soft stop")
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -318,8 +325,6 @@ func (r *Router) SoftStop() error {
 	r.stopOnce.Do(func() {
 		close(r.stopChan)
 	})
-
-	r.wal.Close()
 
 	// next, we stop the shard routers, which will be responsible for sending responses to pending requests
 	for _, sr := range r.shardRouters {
@@ -633,16 +638,7 @@ func (r *Router) pullAndProcessDecisions() {
 			}
 			r.logger.Infof("Added config block %d to config store", blockNum)
 
-			// TODO apply the config block
-
-			// initiate router restart and apply new config
-			r.logger.Warnf("Soft stop")
-			go func() {
-				err := r.SoftStop()
-				if err != nil {
-					r.logger.Warnf("The router was not soft-stopped properly: %v.", err)
-				}
-			}()
+			go r.processNewConfigBlock(block)
 
 			// do not pull additional decisions, until the router is restarted.
 			r.logger.Infof("Stopping decisions pulling from consensus")
@@ -653,6 +649,78 @@ func (r *Router) pullAndProcessDecisions() {
 			return
 		}
 	}
+}
+
+// processNewConfigBlock processes the new config block. First it will soft-stop the router. Then, we try to apply the new config block.
+// If the new config contains changes that require admin restart, it will log a warning and return.
+// Otherwise, the router will be restarted with the new config dynamically.
+func (r *Router) processNewConfigBlock(configBlock *common.Block) {
+	r.logger.Infof("Processing new config block number %d", configBlock.Header.Number)
+
+	err := r.SoftStop()
+	if err != nil {
+		r.logger.Warnf("The router was not Soft-Stopped properly: %v. Admin's action is required", err)
+		// TODO - update router status to "pending admin"?
+		return
+	}
+
+	adminRequired, err := r.ApplyConfig(configBlock)
+	if err != nil {
+		r.logger.Panicf("Failed to apply last config: %v", err)
+	}
+	if adminRequired {
+		r.logger.Warnf("Admin's action is required to apply new config")
+		r.lock.Lock()
+		r.status.SetState(node_utils.StatePendingAdmin)
+		r.lock.Unlock()
+	}
+}
+
+// ApplyConfig applies the new configuration extracted from the config block, and returns whether admin's action is required and error if exists.
+func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
+	// extract new router node config from the last config block and configuration.
+	newConfiguration, err := r.configuration.NewUpdatedConfigurationFromBlock(configBlock)
+	if err != nil {
+		return false, fmt.Errorf("failed to extract new configuration from last config block: %v", err)
+	}
+
+	// first, check if party is evicted in the new configuration. If yes, an admin action is required.
+	evicted, err := config.IsPartyEvicted(r.routerNodeConfig.PartyID, newConfiguration)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if router's party was evicted in the new configuration: %v", err)
+	}
+	if evicted {
+		r.logger.Warnf("Router's party %d was evicted in the new configuration", r.routerNodeConfig.PartyID)
+		return true, nil
+	}
+
+	// check if there is a change that requires admin's action.
+	currPartyConfig, _ := config.FindParty(r.routerNodeConfig.PartyID, r.configuration)
+	newPartyConfig, _ := config.FindParty(r.routerNodeConfig.PartyID, newConfiguration)
+	requireRestart, err := config.IsNodeConfigChangeRestartRequired(currPartyConfig.RouterConfig, newPartyConfig.RouterConfig, r.logger)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if node config change requires restart: %v", err)
+	}
+	if requireRestart {
+		r.logger.Warnf("Admin's action is required to restart the router with the new configuration")
+		return true, nil
+	}
+
+	// extract the new router node config.
+	newRouterNodeConfig := newConfiguration.ExtractRouterConfig(configBlock)
+
+	newConfigSeq := newRouterNodeConfig.Bundle.ConfigtxValidator().Sequence()
+	r.logger.Infof("Applying new config with sequence %d (current: %d), router will be restarted dynamically", newConfigSeq, r.configSeq)
+
+	// close the stop signal listener.
+	close(r.stopSignalListenChan)
+
+	seekInfo := delivery.NextSeekInfo(uint64(getDecisionNumberFromConfigBlock(configBlock, r.logger)))
+
+	r.initFromConfig(newRouterNodeConfig, newConfiguration, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{}, seekInfo)
+	r.StartRouterService()
+	r.logger.Infof("Router started with new config sequence %d, listening on %s, PartyID: %d", newConfigSeq, r.Address(), r.routerNodeConfig.PartyID)
+	return false, nil
 }
 
 // IsAllStreamsOK checks that all the streams across all shard-routers are non-faulty.

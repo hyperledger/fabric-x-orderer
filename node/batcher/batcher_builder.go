@@ -31,6 +31,13 @@ func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config
 		logger.Panicf("Failed creating batcher config store: %s", err.Error())
 	}
 
+	walDir := filepath.Join(nodeConfig.Directory, "wal")
+	batcherWAL, walInitState, err := wal.InitializeAndReadAll(logger, walDir, wal.DefaultOptions())
+	if err != nil {
+		logger.Panicf("Failed creating WAL: %s", err.Error())
+	}
+	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
+
 	b := &Batcher{
 		config:                             nodeConfig,
 		fullConfig:                         fullConfig,
@@ -38,14 +45,15 @@ func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config
 		logger:                             logger,
 		signer:                             signer,
 		ConfigStore:                        configStore,
+		wal:                                batcherWAL,
 		mainExitChan:                       mainExitChan,
 	}
 
-	b.configureBatcher(senderCreator, nil)
+	b.configureBatcher(senderCreator, nil, lastKnownDecisionNum)
 	return b
 }
 
-func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCreator, memPool MemPool) {
+func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCreator, memPool MemPool, lastKnownDecisionNum types.DecisionNum) {
 	var parties []types.PartyID
 	for shIdx, sh := range b.config.Shards {
 		if sh.ShardId != b.config.ShardId {
@@ -70,14 +78,6 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 
 	batchPuller := NewBatchPuller(b.config, ledgerArray, b.logger)
 
-	walDir := filepath.Join(b.config.Directory, "wal")
-	batcherWAL, walInitState, err := wal.InitializeAndReadAll(b.logger, walDir, wal.DefaultOptions())
-	if err != nil {
-		b.logger.Panicf("Failed creating WAL: %s", err.Error())
-	}
-
-	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, b.ConfigStore, b.logger)
-
 	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.logger, lastKnownDecisionNum)
 
 	requestsIDAndVerifier := NewRequestsInspectorVerifier(b.logger, b.config, nil)
@@ -94,7 +94,6 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 	b.Ledger = ledgerArray
 	b.batcherCerts2IDs = make(map[string]types.PartyID)
 	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerArray, b.logger)
-	b.wal = batcherWAL
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(b.config.Consenters))
 	for i, consenterInfo := range b.config.Consenters {
@@ -214,6 +213,10 @@ func getLastKnownDecisionNum(walInitState [][]byte, configStore *configstore.Sto
 		}
 	}
 
+	return getLastKnownDecisionNumFromConfigStore(configStore, logger)
+}
+
+func getLastKnownDecisionNumFromConfigStore(configStore *configstore.Store, logger *flogging.FabricLogger) types.DecisionNum {
 	logger.Infof("Checking config store for last known decision number")
 	lastConfigBlock, err := configStore.Last()
 	if err != nil {
@@ -223,7 +226,12 @@ func getLastKnownDecisionNum(walInitState [][]byte, configStore *configstore.Sto
 		logger.Infof("Returning 0 as last known decision number from config store")
 		return 0
 	}
-	ordererBlockMetadata := lastConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+
+	return getLastKnownDecisionNumFromConfigBlock(lastConfigBlock, logger)
+}
+
+func getLastKnownDecisionNumFromConfigBlock(configBlock *common.Block, logger *flogging.FabricLogger) types.DecisionNum {
+	ordererBlockMetadata := configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
 	_, _, _, lastDecisionNumber, _, _, _, err := node_ledger.AssemblerBlockMetadataFromBytes(ordererBlockMetadata)
 	if err != nil {
 		logger.Panicf("Failed extracting decision number from last config block: %s", err)

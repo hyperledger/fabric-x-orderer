@@ -69,7 +69,9 @@ func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID t
 }
 
 func NewStubBatcherFromConfig(t *testing.T, configStoreDir string, nodeConfigPath string, listener net.Listener) StubBatcher {
-	listener.Close()
+	if listener != nil {
+		listener.Close()
+	}
 
 	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
 	require.NoError(t, err)

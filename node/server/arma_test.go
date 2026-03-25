@@ -331,8 +331,8 @@ func TestLaunchArmaNode(t *testing.T) {
 		// Create the assembler and check genesis block was appended
 		conf := configContent.ExtractAssemblerConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
-		srv := node_utils.CreateGRPCAssembler(conf)
-		assembler := assembler.NewAssembler(conf, srv, genesisBlock, testLogger)
+		assembler := assembler.NewAssembler(conf, genesisBlock, make(chan struct{}), testLogger)
+		assembler.StartAssemblerService()
 		require.NotNil(t, assembler)
 		assembler.Stop()
 
