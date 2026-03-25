@@ -10,18 +10,18 @@ Each party includes:
 - Consenter
 - Assembler
 
-The container is responsible **only for running the Arma services**.
-
-All client operations (`armageddon load` / `armageddon receive`) are executed **from the host machine**, not inside the container.
+The container is responsible for:
+- running the Arma services
+- executing the test using `armageddon load` and `armageddon receive`
 
 ---
 
 ## Architecture
 
-- Docker container = ARMA network (servers)
-- Host machine = client (`armageddon`)
+- Docker container = ARMA network + client (armageddon)
+- Host machine = orchestration only (scripts)
 
-This separation allows realistic integration testing similar to real deployments.
+All communication is done via **localhost + ports**, without DNS or `/etc/hosts`.
 
 ---
 
@@ -29,99 +29,87 @@ This separation allows realistic integration testing similar to real deployments
 
 - Docker installed
 - Linux environment (tested on RHEL)
-- `armageddon` binary available on the host
-
-Before running the example, build `armageddon` and install it on the host:
-
-```bash
-make binary
-cp ./bin/armageddon /usr/local/bin/
-```
-
-You can verify it is available with:
-
-```bash
-armageddon version
-```
 
 ---
 
-## Hostname Resolution (Required)
-
-The generated configuration uses internal hostnames such as:
-
-- router.p1
-- assembler.p1
-
-You must map them on the host:
-
-```bash
-sudo bash -c 'cat >> /etc/hosts <<EOF
-127.0.0.1 assembler.p1 router.p1 consensus.p1 batcher1.p1
-127.0.0.1 assembler.p2 router.p2 consensus.p2 batcher1.p2
-127.0.0.1 assembler.p3 router.p3 consensus.p3 batcher1.p3
-127.0.0.1 assembler.p4 router.p4 consensus.p4 batcher1.p4
-EOF'
-```
-
-This is required only once per machine.
-
----
-
-### Build and Run
+## Build and Run
 
 From the repository root:
 
 ```bash
 cd node/examples/all-in-one/scripts
 bash clean.sh
+bash build.sh
 bash run.sh
 ```
 
-What run.sh does:
+What the scripts do:
 
-- builds the Docker image
-- starts the all-in-one container
-- waits for the generated configuration and exposed ports to become ready
-- runs a host-side test using:
-  - one armageddon receive
-  - one armageddon load
+- **build.sh**
+  - builds the Docker image
+  - compiles `arma` and `armageddon`
+
+- **clean.sh**
+  - stops and removes the container
+  - removes `/tmp/arma-all-in-one`
+
+- **run.sh**
+  - starts the container
+  - waits for configuration and services
+  - runs a test using:
+    - one `armageddon receive`
+    - one `armageddon load`
 
 ---
 
 ## What Happens
 
-- armageddon generates Arma configuration under /tmp/arma-all-in-one
-- the generated configs are patched with:
+- `armageddon generate` creates configuration under `/tmp/arma-all-in-one`
+- configuration is patched with:
   - party-specific ports
-  - external storage paths
-  - listen address set to 0.0.0.0
-- 16 ARMA processes are started inside one container:
+  - storage paths
+  - listen address set to `0.0.0.0`
+- 16 ARMA processes run inside the container:
   - 4 Routers
   - 4 Assemblers
   - 4 Batchers
   - 4 Consenters
-- only router and assembler ports are exposed to the host
-- the test is executed from the host, not inside the container
+- all communication is done using **127.0.0.1 + ports**
+- no hostname resolution is required
 
---- 
+---
 
-## Exposed Ports
+## Networking Model
 
-Per party:
+Each party uses fixed ports:
 
-- Party 1
-  - Router: 6022
-  - Assembler: 6023
-- Party 2
-  - Router: 6122
-  - Assembler: 6123
-- Party 3
-  - Router: 6222
-  - Assembler: 6223
-- Party 4
-  - Router: 6322
-  - Assembler: 6323
+| Component   | Party 1 | Party 2 | Party 3 | Party 4 |
+|------------|--------|--------|--------|--------|
+| Router     | 6022   | 6122   | 6222   | 6322   |
+| Assembler  | 6023   | 6123   | 6223   | 6323   |
+| Batcher    | 6024   | 6124   | 6224   | 6324   |
+| Consenter  | 6025   | 6125   | 6225   | 6325   |
+
+All endpoints use:
+
+```
+127.0.0.1:<port>
+```
+
+No `/etc/hosts` configuration is needed.
+
+---
+
+## TLS Configuration
+
+mTLS is enabled:
+
+```yaml
+UseTLSRouter: "mTLS"
+UseTLSAssembler: "mTLS"
+```
+
+The system runs fully with TLS enabled using localhost endpoints.
 
 ---
 
@@ -139,37 +127,32 @@ Container path:
 /storage/partyX/<role>
 ```
 
-Example roles:
-
+Roles:
 - router
 - assembler
 - batcher
 - consenter
 
-This creates 16 storage folders in total.
-
 ---
 
 ## Testing
 
-The test is executed from the host.
+The test is executed automatically inside the container.
 
-run.sh already performs the basic validation automatically after starting the container.
+Current test configuration:
 
-The current test uses:
-
-- one receiver from party 1
-- one loader through party 1
+- receiver from party 1
+- loader through party 1
 - 1000 transactions
-- rate 200
-- tx size 300
+- rate: 200 TPS
+- tx size: 300 bytes
 
-Equivalent host-side commands are:
+Equivalent commands inside container:
 
 ### Receiver
 ```bash
 armageddon receive \
-  --config /tmp/arma-all-in-one/config/party1/user_config.yaml \
+  --config=/tmp/arma-all-in-one/config/party1/user_config.yaml \
   --pullFromPartyId=1 \
   --expectedTxs=1000 \
   --output=/tmp/arma-all-in-one/logs/output1
@@ -178,7 +161,7 @@ armageddon receive \
 ### Loader
 ```bash
 armageddon load \
-  --config /tmp/arma-all-in-one/config/party1/user_config.yaml \
+  --config=/tmp/arma-all-in-one/config/party1/user_config.yaml \
   --transactions=1000 \
   --rate=200 \
   --txSize=300
@@ -186,25 +169,21 @@ armageddon load \
 
 ---
 
-### Expected Result
+## Expected Result
 
-A successful run should end with the receiver reporting that all expected transactions were received.
-
-Expected receiver message:
+A successful run should end with:
 
 ```
 1000 txs were expected and overall 1000 were successfully received
 ```
 
-The script also prints test results at the end.
-
-You can verify manually:
+Manual verification:
 
 ```bash
 wc -l /tmp/arma-all-in-one/logs/output1
 ```
 
-Expected output:
+Expected:
 
 ```
 1000 /tmp/arma-all-in-one/logs/output1
@@ -214,13 +193,13 @@ Expected output:
 
 ## Logs
 
-Host-side test logs are written under:
+Logs are stored under:
 
 ```
 /tmp/arma-all-in-one/logs/
 ```
 
-Typical files include:
+Important files:
 
 - loader.log
 - receiver.log
@@ -230,10 +209,10 @@ Typical files include:
 
 ## Notes
 
-- The Docker container must remain running while the host-side test is executed.
-- armageddon must be executed from the host, not inside the container.
-- Loader may print connection closing or reconnection messages during shutdown. This is expected and does not necessarily indicate failure.
-- Generated configuration files are stored under:
+- No `/etc/hosts` configuration is required
+- All communication is done via localhost ports
+- Loader may print connection closing or retry messages — this is expected
+- Configuration is generated under:
 ```
 /tmp/arma-all-in-one/config/
 ```
@@ -242,29 +221,23 @@ Typical files include:
 
 ## Debugging
 
-Check that the container is running:
+Check container:
 
 ```bash
 docker ps | grep arma-4p1s
 ```
 
-Check container logs:
+Check logs:
 
 ```bash
 docker logs <container_id>
 ```
 
-Check host-side logs:
+Check test logs:
 
 ```bash
 cat /tmp/arma-all-in-one/logs/loader.log
 cat /tmp/arma-all-in-one/logs/receiver.log
-```
-
-Check generated output:
-
-```bash
-wc -l /tmp/arma-all-in-one/logs/output1
 ```
 
 ---
@@ -277,6 +250,6 @@ bash clean.sh
 
 This will:
 
-- stop the running container
-- remove the container
-- delete all data under /tmp/arma-all-in-one
+- stop the container
+- remove it
+- delete `/tmp/arma-all-in-one`
