@@ -47,7 +47,7 @@ func BenchmarkRequestPool(b *testing.B) {
 
 	requestInspector := &reqInspector{}
 
-	primaryPool := NewPool(sugaredLogger, requestInspector, PoolOptions{
+	primaryPool := NewPool(sugaredLogger, requestInspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          10000,
@@ -57,7 +57,7 @@ func BenchmarkRequestPool(b *testing.B) {
 		SubmitTimeout:         time.Second * 10,
 	}, &striker{})
 
-	secondaryPool := NewPool(sugaredLogger, requestInspector, PoolOptions{
+	secondaryPool := NewPool(sugaredLogger, requestInspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          10000,
@@ -136,7 +136,7 @@ func TestRestartPool(t *testing.T) {
 
 	requestInspector := &reqInspector{}
 
-	pool := NewPool(sugaredLogger, requestInspector, PoolOptions{
+	pool := NewPool(sugaredLogger, requestInspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          10,
@@ -204,7 +204,8 @@ func TestBasicBatching(t *testing.T) {
 	byteReq4 := makeTestRequest("4", "foo-bar-foo-bar")
 	byteReq5 := makeTestRequest("5", "foo-bar-foo-bar-foo")
 
-	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
+	inspector := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, inspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          1,
@@ -245,7 +246,7 @@ func TestBasicBatching(t *testing.T) {
 
 	// change count limit
 
-	pool = NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
+	pool = NewPool(sugaredLogger, inspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          2,
@@ -273,7 +274,7 @@ func TestBasicBatching(t *testing.T) {
 
 	// change size limit
 
-	pool = NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
+	pool = NewPool(sugaredLogger, inspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          3,
@@ -304,7 +305,8 @@ func TestBasicBatching(t *testing.T) {
 func TestBatchingWhileSubmitting(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 
-	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
+	inspector := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, inspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          100,
@@ -350,7 +352,8 @@ func TestBatchingWhileSubmitting(t *testing.T) {
 func TestBatchingTimeout(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 
-	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
+	inspector := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, inspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          100,
@@ -381,7 +384,7 @@ func TestBatchingTimeout(t *testing.T) {
 func TestBasicPrune(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 	insp := &testRequestInspector{}
-	pool := NewPool(sugaredLogger, insp, PoolOptions{
+	pool := NewPool(sugaredLogger, insp.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          10,
@@ -486,7 +489,7 @@ func TestConcurrentRestartAndHalt(t *testing.T) {
 
 	requestInspector := &reqInspector{}
 
-	pool := NewPool(sugaredLogger, requestInspector, PoolOptions{
+	pool := NewPool(sugaredLogger, requestInspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          100,
@@ -560,7 +563,8 @@ func TestConcurrentRestartAndHalt(t *testing.T) {
 func TestHaltRestartBatching(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 
-	pool := NewPool(sugaredLogger, &testRequestInspector{}, PoolOptions{
+	inspector := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, inspector.RequestID, PoolOptions{
 		FirstStrikeThreshold:  time.Second * 5,
 		SecondStrikeThreshold: time.Minute / 2,
 		BatchMaxSize:          5,

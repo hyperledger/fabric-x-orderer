@@ -40,7 +40,7 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		RequestMaxBytes: 60,
 		Bundle:          bundle,
 	}
-	verifier := batcher.NewRequestsInspectorVerifier(logger, config, nil)
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, nil, batcher.DefaultRequestID)
 
 	req1, err := proto.Marshal(tx.CreateStructuredRequest([]byte{1})) // should map to shard 1
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 	}
 	reqVerifier := &mocks.FakeRequestVerifier{}
 
-	verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier)
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier, batcher.DefaultRequestID)
 
 	reqs := make([][]byte, 100)
 	for i := 0; i < 100; i++ {

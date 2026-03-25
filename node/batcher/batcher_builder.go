@@ -8,6 +8,8 @@ package batcher
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/pem"
 	"path/filepath"
 	"sort"
@@ -80,7 +82,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 
 	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.logger, lastKnownDecisionNum)
 
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(b.logger, b.config, nil)
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(b.logger, b.config, nil, DefaultRequestID)
 
 	batchers := batchersFromConfig(b.config)
 	if len(batchers) == 0 {
@@ -137,13 +139,13 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 	}
 
 	if memPool == nil {
-		b.batcher.MemPool = createMemPool(b, b.config)
+		b.batcher.MemPool = createMemPool(b, b.config, DefaultRequestID)
 	} else {
 		b.batcher.MemPool = memPool
 	}
 }
 
-func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) MemPool {
+func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig, requestIDFunc func(req []byte) string) MemPool {
 	opts := request.PoolOptions{
 		MaxSize:               config.MemPoolMaxSize,
 		BatchMaxSize:          config.BatchMaxSize,
@@ -155,7 +157,7 @@ func createMemPool(b *Batcher, config *node_config.BatcherNodeConfig) MemPool {
 		AutoRemoveTimeout:     config.AutoRemoveTimeout,
 	}
 
-	return request.NewPool(b.logger, b.requestsInspectorVerifier, opts, b)
+	return request.NewPool(b.logger, requestIDFunc, opts, b)
 }
 
 func batchersFromConfig(config *node_config.BatcherNodeConfig) []node_config.BatcherInfo {
@@ -238,4 +240,13 @@ func getLastKnownDecisionNumFromConfigBlock(configBlock *common.Block, logger *f
 	}
 	logger.Infof("Returning %d as last known decision number from config store", lastDecisionNumber)
 	return lastDecisionNumber
+}
+
+func DefaultRequestID(req []byte) string {
+	if len(req) == 0 {
+		return ""
+	}
+	// TODO maybe calculate the request ID differently
+	digest := sha256.Sum256(req)
+	return hex.EncodeToString(digest[:])
 }

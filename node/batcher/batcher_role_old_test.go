@@ -195,7 +195,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		sugaredLogger.Warn("OnSecondStrikeTimeout")
 	}
 
-	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
+	pool := request.NewPool(sugaredLogger, requestInspector.RequestID, request.PoolOptions{
 		MaxSize:               1000 * 100,
 		BatchMaxSize:          10000,
 		BatchMaxSizeBytes:     100000,
@@ -265,7 +265,7 @@ func TestBatchersStopSecondaries(t *testing.T) {
 	batchers, _ := createRoleBatchers(t, n)
 	for _, b := range batchers {
 		b.BatchAcker = &mocks.FakeBatchAcker{} // no ack will be received by the primary
-		pool := request.NewPool(b.Logger, b.RequestInspector, request.PoolOptions{
+		pool := request.NewPool(b.Logger, b.RequestInspector.RequestID, request.PoolOptions{
 			MaxSize:               100 * 1000,
 			BatchMaxSize:          100, // batch can't include all requests
 			BatchMaxSizeBytes:     100000,
@@ -357,7 +357,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	}
 
 	requestInspector := &reqInspector{}
-	pool := request.NewPool(sugaredLogger, requestInspector, request.PoolOptions{
+	pool := request.NewPool(sugaredLogger, requestInspector.RequestID, request.PoolOptions{
 		MaxSize:               1000 * 100,
 		BatchMaxSize:          10000,
 		BatchMaxSizeBytes:     100000,
