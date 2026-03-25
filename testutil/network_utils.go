@@ -14,18 +14,34 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
+type wrapListener struct {
+	net.Listener
+	once     sync.Once
+	closeErr error
+}
+
+func (w *wrapListener) Close() error {
+	w.once.Do(func() {
+		w.closeErr = w.Listener.Close()
+	})
+	return w.closeErr
+}
+
 func GetAvailablePort(t *testing.T) (port string, ll net.Listener) {
 	addr := "127.0.0.1:0"
 	listenConfig := net.ListenConfig{}
 
-	ll, err := listenConfig.Listen(context.Background(), "tcp", addr)
+	listener, err := listenConfig.Listen(context.Background(), "tcp", addr)
 	require.NoError(t, err)
+
+	ll = &wrapListener{Listener: listener}
 
 	endpoint := ll.Addr().String()
 	_, portS, err := net.SplitHostPort(endpoint)
