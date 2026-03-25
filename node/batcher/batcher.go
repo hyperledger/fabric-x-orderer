@@ -105,6 +105,9 @@ func (b *Batcher) Address() string {
 }
 
 func (b *Batcher) StartBatcherService() {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
 	srv := node_utils.CreateGRPCBatcher(b.config)
 	b.Net = srv
 
