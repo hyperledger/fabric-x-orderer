@@ -155,6 +155,12 @@ func (c *Consensus) Stop() {
 	c.status.SetState(node_utils.StateStopped)
 }
 
+func (c *Consensus) GetStatus() node_utils.NodeStatus {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.status
+}
+
 // BFTConfig returns the current BFT configuration and the current nodes in the cluster (from SmartBFT API)
 func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
 	return c.Config.BFTConfig, c.CurrentNodes
