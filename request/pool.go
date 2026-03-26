@@ -83,13 +83,12 @@ type PoolOptions struct {
 func NewPool(logger *flogging.FabricLogger, requestIDFunc func(req []byte) string, options PoolOptions, striker Striker) *Pool {
 	rp := &Pool{
 		logger:    logger,
+		inspector: NewInspector(requestIDFunc),
 		semaphore: semaphore.NewWeighted(int64(options.MaxSize)),
 		options:   options,
 		striker:   striker,
 		size:      0,
 	}
-
-	rp.inspector = NewInspector(requestIDFunc)
 
 	rp.start()
 
