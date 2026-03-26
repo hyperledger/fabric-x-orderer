@@ -41,6 +41,7 @@ type DefaultOrdererRules struct{}
 //  5. OrdererEndpoints for each organization must be defined, non-empty,
 //     and include both "broadcast" and "deliver" roles.
 //  6. ConsenterMapping must be consistent with the consenters defined in the shared config.
+//  7. Each consenter in the ConsenterMapping must have a matching organization.
 //
 // TODO: Validate that ca certificates in the sharedConfig are the same as in the ordererOrganization ca certificates.
 // TODO: Validate new certificates - chain of trust, expiration, etc.
@@ -105,6 +106,28 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 	// 6.
 	if err := validateConsenterConsistency(ordererConfig.Consenters(), sharedConfig.PartiesConfig); err != nil {
 		return errors.Wrap(err, "consenter mapping is inconsistent with shared config parties")
+	}
+
+	// 7.
+	orgMap := make(map[string]channelconfig.OrdererOrg, len(ordererConfig.Organizations()))
+	for _, org := range ordererConfig.Organizations() {
+		if org == nil {
+			return errors.New("orderer organization is nil")
+		}
+		orgMap[org.MSPID()] = org
+	}
+
+	consenterMap := make(map[uint32]*common.Consenter, len(ordererConfig.Consenters()))
+	for _, consenter := range ordererConfig.Consenters() {
+		if consenter == nil {
+			return errors.New("consenter config is nil")
+		}
+
+		consenterMap[consenter.Id] = consenter
+
+		if _, exists := orgMap[consenter.MspId]; !exists {
+			return errors.Errorf("missing orderer organization for party %d", consenter.Id)
+		}
 	}
 
 	return nil

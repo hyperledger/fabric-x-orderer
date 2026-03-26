@@ -60,7 +60,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 			ID:            uint32(party.PartyID),
 			Host:          party.ConsenterConfig.Host,
 			Port:          party.ConsenterConfig.Port,
-			MSPID:         "",
+			MSPID:         fmt.Sprintf("org%d", party.PartyID),
 			Identity:      party.ConsenterConfig.SignCert,
 			ClientTLSCert: party.ConsenterConfig.TLSCert,
 			ServerTLSCert: party.ConsenterConfig.TLSCert,
