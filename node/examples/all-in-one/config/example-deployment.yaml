@@ -1,0 +1,36 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+Parties:
+  - ID: 1
+    AssemblerEndpoint: "127.0.0.1:6023"
+    ConsenterEndpoint: "127.0.0.1:6025"
+    RouterEndpoint: "127.0.0.1:6022"
+    BatchersEndpoints:
+      - "127.0.0.1:6024"
+
+  - ID: 2
+    AssemblerEndpoint: "127.0.0.1:6123"
+    ConsenterEndpoint: "127.0.0.1:6125"
+    RouterEndpoint: "127.0.0.1:6122"
+    BatchersEndpoints:
+      - "127.0.0.1:6124"
+
+  - ID: 3
+    AssemblerEndpoint: "127.0.0.1:6223"
+    ConsenterEndpoint: "127.0.0.1:6225"
+    RouterEndpoint: "127.0.0.1:6222"
+    BatchersEndpoints:
+      - "127.0.0.1:6224"
+
+  - ID: 4
+    AssemblerEndpoint: "127.0.0.1:6323"
+    ConsenterEndpoint: "127.0.0.1:6325"
+    RouterEndpoint: "127.0.0.1:6322"
+    BatchersEndpoints:
+      - "127.0.0.1:6324"
+
+UseTLSRouter: "mTLS"
+UseTLSAssembler: "mTLS"
