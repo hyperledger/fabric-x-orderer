@@ -99,13 +99,14 @@ type Consensus struct {
 	BADB         *badb.BatchAttestationDB
 	Arma         Arma
 
-	stateLock                    sync.Mutex
+	lock                         sync.Mutex
 	State                        *state.State
 	status                       node_utils.NodeStatus
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
 	txCount                      uint64
 	PrevHash                     []byte
+	softStopCh                   chan struct{}
 
 	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
 	bftSynchronizer     bft_synch.SynchronizerWithStop // The BFT synchronizer built by the factory
@@ -118,22 +119,21 @@ type Consensus struct {
 	ConfigApplier          ConfigApplier
 	ConfigRequestValidator configrequest.ConfigRequestValidator
 	ConfigRulesVerifier    verify.OrdererRules
-	softStopCh             chan struct{}
 }
 
 func (c *Consensus) Start() error {
-	c.stateLock.Lock()
+	c.lock.Lock()
 	c.status.SetState(node_utils.StateRunning)
 	c.softStopCh = make(chan struct{})
-	c.stateLock.Unlock()
+	c.lock.Unlock()
 
 	c.Metrics.Start()
 	return c.BFT.Start()
 }
 
 func (c *Consensus) Stop() {
-	c.stateLock.Lock()
-	defer c.stateLock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	state := c.status.GetState()
 	if state == node_utils.StateStopped {
@@ -160,8 +160,8 @@ func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
 }
 
 func (c *Consensus) SoftStop() {
-	c.stateLock.Lock()
-	defer c.stateLock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	state := c.status.GetState()
 	if state == node_utils.StateStopped || state == node_utils.StateSoftStopped {
@@ -308,7 +308,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed number %d isn't equal to computed number %x", hdr.Num, md.LatestSequence)
 	}
 
-	c.stateLock.Lock()
+	c.lock.Lock()
 	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
 	if configRequests != nil {
 		var err error
@@ -319,7 +319,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	currentTXCount := c.txCount
-	c.stateLock.Unlock()
+	c.lock.Unlock()
 
 	numOfAvailableBlocks := len(attestations)
 
@@ -683,7 +683,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 // AssembleProposal creates a proposal which includes the given requests (when permitting) and metadata
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
-	c.stateLock.Lock()
+	c.lock.Lock()
 	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
 	if configRequests != nil {
 		var err error
@@ -695,7 +695,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	currentTXCount := c.txCount
 	proposalPrevHash := c.PrevHash
-	c.stateLock.Unlock()
+	c.lock.Unlock()
 
 	lastCommonBlockHeader := &common.BlockHeader{}
 	if err := proto.Unmarshal(newState.AppContext, lastCommonBlockHeader); err != nil {
@@ -789,7 +789,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	c.Storage.Append(block)
 
 	// update state
-	c.stateLock.Lock()
+	c.lock.Lock()
 	c.State = hdr.State
 
 	c.PrevHash = protoutil.BlockHeaderHash(block.Header)
@@ -820,7 +820,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 
 	c.updateMetricsOnDeliver(hdr)
 
-	c.stateLock.Unlock()
+	c.lock.Unlock()
 
 	return smartbft_types.Reconfig{
 		CurrentNodes:     currentNodes,
@@ -867,20 +867,20 @@ func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
 }
 
 func (c *Consensus) getDecisionNumOfLastConfigBlock() uint64 {
-	c.stateLock.Lock()
-	defer c.stateLock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	return uint64(c.decisionNumOfLastConfigBlock)
 }
 
 func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
-	c.stateLock.Lock()
-	defer c.stateLock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	return uint64(c.decisionNumOfLastConfigBlock), c.lastConfigBlockNum
 }
 
 func (c *Consensus) getPrevHash() []byte {
-	c.stateLock.Lock() // TODO use read lock?
-	defer c.stateLock.Unlock()
+	c.lock.Lock() // TODO use read lock?
+	defer c.lock.Unlock()
 	return c.PrevHash
 }
 
@@ -1047,7 +1047,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 	hdr, _ := c.headerAndDigestsFromProposal(*proposal)
 
 	// update state
-	c.stateLock.Lock()
+	c.lock.Lock()
 	c.State = hdr.State
 
 	c.PrevHash = protoutil.BlockHeaderHash(block.Header)
@@ -1078,7 +1078,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 
 	c.updateMetricsOnDeliver(hdr)
 
-	c.stateLock.Unlock()
+	c.lock.Unlock()
 
 	return smartbft_types.Reconfig{
 		CurrentNodes:     currentNodes,
