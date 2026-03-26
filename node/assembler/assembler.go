@@ -9,6 +9,7 @@ package assembler
 import (
 	"encoding/hex"
 	"fmt"
+	"sync"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -28,17 +29,19 @@ type Net interface {
 }
 
 type Assembler struct {
+	logger       *flogging.FabricLogger
+	ds           *AssemblerDeliverService
+	mainExitChan chan struct{}
+
+	lock                  sync.RWMutex
 	collator              Collator
-	logger                *flogging.FabricLogger
-	ds                    *AssemblerDeliverService
 	prefetcher            PrefetcherController
-	baReplicator          delivery.ConsensusBringer
+	status                utils.NodeStatus
 	net                   Net
-	metrics               *Metrics
-	lastConfigBlockNumber uint64
-	mainExitChan          chan struct{}
 	stopSignalListenChan  chan struct{}
 	assemblerNodeConfig   *node_config.AssemblerNodeConfig
+	lastConfigBlockNumber uint64
+	metrics               *Metrics
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -56,28 +59,46 @@ func (a *Assembler) GetTxCount() uint64 {
 
 // Stop stops the assembler and all its components.
 func (a *Assembler) Stop() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	state := a.status.GetState()
+	if state == utils.StateStopped {
+		return
+	}
+
 	a.logger.Infof("Stopping assembler")
+
+	if state != utils.StateSoftStopped {
+		a.prefetcher.Stop()
+		a.collator.Stop()
+	}
 
 	a.metrics.Stop()
 	a.net.Stop()
-	a.prefetcher.Stop()
-	a.collator.Index.Stop()
-	a.baReplicator.Stop()
-	a.collator.Stop()
 	a.collator.Ledger.Close()
 	close(a.stopSignalListenChan)
 
+	a.status.SetState(utils.StateStopped)
 	a.logger.Info("Assembler has been stopped")
 	// close the whole process.
 	close(a.mainExitChan)
 }
 
 func (a *Assembler) SoftStop() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	state := a.status.GetState()
+	if state == utils.StateStopped || state == utils.StateSoftStopped {
+		return
+	}
+
 	a.logger.Infof("Initiating soft stop of assembler")
 	a.prefetcher.Stop()
-	a.collator.Index.Stop()
-	a.baReplicator.Stop()
 	a.collator.Stop()
+
+	a.status.SetState(utils.StateSoftStopped)
 	a.logger.Warnf("Assembler has been partially stopped, delivery service is available. Pending restart")
 }
 
@@ -183,12 +204,16 @@ func NewDefaultAssembler(
 		},
 		logger:                logger,
 		prefetcher:            prefetcher,
-		baReplicator:          baReplicator,
 		metrics:               metrics,
 		lastConfigBlockNumber: configBlock.GetHeader().GetNumber(),
 		mainExitChan:          mainExitChan,
 		stopSignalListenChan:  make(chan struct{}),
+		status:                utils.NodeStatus{},
 	}
+
+	assembler.lock.Lock()
+	assembler.status.Set(utils.StateRunning, nodeConfig.Bundle.ConfigtxValidator().Sequence())
+	assembler.lock.Unlock()
 
 	if net != nil {
 		assembler.net = net
@@ -218,6 +243,8 @@ func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configBlock *comm
 }
 
 func (a *Assembler) Address() string {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
 	if a.net == nil {
 		return ""
 	}
@@ -226,6 +253,8 @@ func (a *Assembler) Address() string {
 }
 
 func (a *Assembler) StartAssemblerService() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
 	srv := utils.CreateGRPCAssembler(a.assemblerNodeConfig)
 	a.net = srv
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), a)
@@ -239,4 +268,12 @@ func (a *Assembler) StartAssemblerService() {
 	}()
 
 	utils.StopSignalListen(a.stopSignalListenChan, a, a.logger, srv.Address())
+
+	a.status.SetState(utils.StateRunning)
+}
+
+func (a *Assembler) GetStatus() utils.NodeStatus {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a.status
 }

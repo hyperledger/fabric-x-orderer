@@ -37,6 +37,7 @@ type AssemblerLedgerWriter interface {
 
 type OrderedBatchAttestationReplicator interface {
 	Replicate() <-chan *state.AvailableBatchOrdered
+	Stop()
 }
 
 type Collator struct {
@@ -57,8 +58,10 @@ func (c *Collator) Run() {
 	go c.processOrderedBatchAttestations()
 }
 
-// Stop waits for the collator's goroutines to finish.
+// Stop first stops the BAs replicator and the index. Then, it waits for the collator's goroutine to finish.
 func (c *Collator) Stop() {
+	c.OrderedBatchAttestationReplicator.Stop()
+	c.Index.Stop()
 	c.runningWG.Wait()
 }
 

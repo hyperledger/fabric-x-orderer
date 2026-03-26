@@ -31,6 +31,8 @@ func (n naiveOrderedBatchAttestationReplicator) Replicate() <-chan *state.Availa
 	return n
 }
 
+func (n naiveOrderedBatchAttestationReplicator) Stop() {}
+
 type naiveIndex struct {
 	sync.Map
 }
