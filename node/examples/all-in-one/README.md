@@ -38,9 +38,9 @@ From the repository root:
 
 ```bash
 cd node/examples/all-in-one/scripts
-bash clean.sh
-bash build.sh
-bash run.sh
+bash clean_sample.sh
+bash build_docker.sh
+bash run_sample.sh
 ```
 
 What the scripts do:
@@ -142,7 +142,7 @@ The test is executed automatically inside the container.
 Current test configuration:
 
 - receiver from party 1
-- loader through party 1
+- loader through all 4 parties
 - 1000 transactions
 - rate: 200 TPS
 - tx size: 300 bytes
