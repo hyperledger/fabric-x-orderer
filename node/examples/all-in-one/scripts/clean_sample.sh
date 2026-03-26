@@ -8,6 +8,8 @@
 set -eux
 
 BASE=/tmp/arma-all-in-one
+HOST_UID=$(id -u)
+HOST_GID=$(id -g)
 
 echo "Stopping all-in-one container..."
 
@@ -17,17 +19,18 @@ echo "Removing container..."
 
 docker ps -aq --filter "ancestor=arma-4p1s" | xargs -r docker rm
 
-echo "Fixing permissions..."
+echo "Fixing ownership and permissions..."
 
 if [ -d "${BASE}" ]; then
   docker run --rm \
-    -v ${BASE}:${BASE} \
+    -u 0:0 \
+    -v "${BASE}:${BASE}" \
     alpine \
-    sh -c "chmod -R u+w ${BASE}"
+    sh -c "chown -R ${HOST_UID}:${HOST_GID} '${BASE}' && chmod -R u+rwX '${BASE}'"
 fi
 
 echo "Removing storage..."
 
-rm -rf ${BASE}
+rm -rf "${BASE}"
 
 echo "Clean done."
