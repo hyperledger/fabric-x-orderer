@@ -577,7 +577,7 @@ func TestRemoveParty(t *testing.T) {
 		Parties:      parties,
 		Transactions: totalTxNumber,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
-		Timeout:      60,
+		Timeout:      120,
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})

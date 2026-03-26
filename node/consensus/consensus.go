@@ -89,14 +89,11 @@ type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
 	Logger       *flogging.FabricLogger
-	Net          NetStopper
 	Config       *config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
 	Signer       Signer
 	CurrentNodes []uint64
-	BFT          *smartbft_consensus.Consensus
 	Storage      Storage
-	BADB         *badb.BatchAttestationDB
 	Arma         Arma
 
 	lock                         sync.Mutex
@@ -107,13 +104,16 @@ type Consensus struct {
 	txCount                      uint64
 	PrevHash                     []byte
 	softStopCh                   chan struct{}
+	Metrics                      *ConsensusMetrics
+	BFT                          *smartbft_consensus.Consensus
+	Net                          NetStopper
+	BADB                         *badb.BatchAttestationDB
 
 	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
 	bftSynchronizer     bft_synch.SynchronizerWithStop // The BFT synchronizer built by the factory
 
 	Synchronizer SynchronizerStopper // TODO remove after we change to the BFT synchronizer, and use bftSynchronizer instead
 
-	Metrics                *ConsensusMetrics
 	RequestVerifier        *requestfilter.RulesVerifier
 	ConfigUpdateProposer   policy.ConfigUpdateProposer
 	ConfigApplier          ConfigApplier
@@ -125,10 +125,11 @@ func (c *Consensus) Start() error {
 	c.lock.Lock()
 	c.status.SetState(node_utils.StateRunning)
 	c.softStopCh = make(chan struct{})
+	c.Metrics.Start()
+	bft := c.BFT
 	c.lock.Unlock()
 
-	c.Metrics.Start()
-	return c.BFT.Start()
+	return bft.Start()
 }
 
 func (c *Consensus) Stop() {
