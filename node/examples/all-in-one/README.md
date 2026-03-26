@@ -21,6 +21,7 @@ The container is responsible for:
 - Docker container = ARMA network + client (armageddon)
 - Host machine = orchestration only (scripts)
 
+All ARMA components run inside the same container, therefore communication via `127.0.0.1` replaces hostname-based networking.
 All communication is done via **localhost + ports**, without DNS or `/etc/hosts`.
 
 ---
@@ -45,15 +46,15 @@ bash run_sample.sh
 
 What the scripts do:
 
-- **build.sh**
+- **build_docker.sh**
   - builds the Docker image
   - compiles `arma` and `armageddon`
 
-- **clean.sh**
+- **clean_sample.sh**
   - stops and removes the container
   - removes `/tmp/arma-all-in-one`
 
-- **run.sh**
+- **run_sample.sh**
   - starts the container
   - waits for configuration and services
   - runs a test using:
@@ -90,6 +91,8 @@ Each party uses fixed ports:
 | Batcher    | 6024   | 6124   | 6224   | 6324   |
 | Consenter  | 6025   | 6125   | 6225   | 6325   |
 
+Ports are exposed from the container to the host to allow the test client (armageddon) to connect.
+
 All endpoints use:
 
 ```
@@ -114,6 +117,8 @@ The system runs fully with TLS enabled using localhost endpoints.
 ---
 
 ## Storage
+
+Each component persists its ledger and state under its respective storage directory.
 
 Host path:
 
@@ -142,12 +147,12 @@ The test is executed automatically inside the container.
 Current test configuration:
 
 - receiver from party 1
-- loader through all 4 parties
+- loader connects via party 1 and distributes transactions across all parties
 - 1000 transactions
 - rate: 200 TPS
 - tx size: 300 bytes
 
-Equivalent commands inside container:
+Equivalent commands executed inside container:
 
 ### Receiver
 ```bash
@@ -203,12 +208,13 @@ Important files:
 
 - loader.log
 - receiver.log
-- output1
+- output1: contains received transactions (one line per transaction)
 
 ---
 
 ## Notes
 
+- This setup is intended for local testing and debugging, not production deployment
 - No `/etc/hosts` configuration is required
 - All communication is done via localhost ports
 - Loader may print connection closing or retry messages — this is expected
@@ -245,7 +251,7 @@ cat /tmp/arma-all-in-one/logs/receiver.log
 ## Clean
 
 ```bash
-bash clean.sh
+bash clean_sample.sh
 ```
 
 This will:
