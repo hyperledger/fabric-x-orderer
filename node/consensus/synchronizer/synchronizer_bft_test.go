@@ -115,6 +115,8 @@ func TestBFTSynchronizer(t *testing.T) {
 		resp := bftSynchronizer.Sync()
 		require.NotNil(t, resp)
 		require.Equal(t, *decision, resp)
+
+		require.NotPanics(t, bftSynchronizer.Stop)
 	})
 
 	t.Run("no remote endpoints", func(t *testing.T) {
@@ -164,6 +166,8 @@ func TestBFTSynchronizer(t *testing.T) {
 		resp := bftSynchronizer.Sync()
 		require.NotNil(t, resp)
 		require.Equal(t, *decision, resp)
+
+		require.NotPanics(t, bftSynchronizer.Stop)
 	})
 
 	t.Run("error creating block puller", func(t *testing.T) {
@@ -414,6 +418,8 @@ func TestBFTSynchronizer(t *testing.T) {
 		require.Equal(t, 1, fakeCS.WriteBlockSyncCallCount())
 		require.Equal(t, 1, fakeCS.WriteConfigBlockCallCount())
 		wg.Wait()
+
+		require.NotPanics(t, bftSynchronizer.Stop)
 	})
 
 	t.Run("remote endpoints above my height: 3 blocks", func(t *testing.T) {
@@ -760,5 +766,67 @@ func TestBFTSynchronizer(t *testing.T) {
 		require.Equal(t, len(ledger)-100, fakeCS.WriteBlockSyncCallCount())
 		require.Equal(t, 0, fakeCS.WriteConfigBlockCallCount())
 		require.Eventually(t, func() bool { return fakeBFTDeliverer.StopCallCount() == 1 }, 10*time.Second, time.Millisecond)
+	})
+}
+
+func TestBFTSynchronizer_Stop(t *testing.T) {
+	blockBytes, err := os.ReadFile("testdata/mychannel.block") // TODO produce block on-the-fly, this is from fabric v3
+	require.NoError(t, err)
+
+	goodConfigBlock := &cb.Block{}
+	require.NoError(t, proto.Unmarshal(blockBytes, goodConfigBlock))
+
+	b99 := makeBlockWithMetadata(99, 42, &smartbftprotos.ViewMetadata{ViewId: 1, LatestSequence: 12})
+
+	t.Run("stop before Synch", func(t *testing.T) {
+		bp := &mocks.FakeHeightDetector{}
+		bpf := &mocks.FakeHeightDetectorFactory{}
+		bpf.CreateHeightDetectorReturns(bp, nil)
+
+		bp.HeightsByEndpointsReturns(
+			map[string]uint64{
+				"example.com:1": 100,
+			},
+			"example.com:1",
+			nil,
+		)
+
+		fakeCS := &mocks.FakeConsenterSupport{}
+		fakeCS.HeightReturns(100)
+		fakeCS.BlockReturns(b99)
+
+		decision := &types.SyncResponse{
+			Latest: types.Decision{
+				Proposal:   types.Proposal{Header: []byte{1, 1, 1, 1}},
+				Signatures: []types.Signature{{ID: 1}, {ID: 2}, {ID: 3}},
+			},
+			Reconfig: types.ReconfigSync{
+				InReplicatedDecisions: false,
+				CurrentNodes:          []uint64{1, 2, 3, 4},
+				CurrentConfig:         types.Configuration{SelfID: 1},
+			},
+		}
+
+		bftSynchronizer := &synchronizer.BFTSynchronizer{
+			LatestConfig: func() (types.Configuration, []uint64) {
+				return types.Configuration{
+					SelfID: 1,
+				}, []uint64{1, 2, 3, 4}
+			},
+			BlockToDecision: func(block *cb.Block) *types.Decision {
+				if block == b99 {
+					return &decision.Latest
+				}
+				return nil
+			},
+			OnCommit:           noopUpdateLastHash,
+			Support:            fakeCS,
+			LocalConfigCluster: config.Cluster{},
+			BlockPullerFactory: bpf,
+			Logger:             flogging.MustGetLogger("test.smartbft"),
+		}
+
+		require.NotNil(t, bftSynchronizer)
+		require.NotPanics(t, bftSynchronizer.Stop)
 	})
 }
