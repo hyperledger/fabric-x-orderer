@@ -80,7 +80,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		prefetchIndexMock:              &assembler_mocks.FakePrefetchIndexer{},
 		consensusBringerMock:           &delivery_mocks.FakeConsensusBringer{},
 	}
-	assemblerEndpoint := "assembler"
+	assemblerEndpoint := ""
 	consenterEndpoint := "consenter"
 
 	shardsInfo := []config.ShardInfo{}
@@ -116,7 +116,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 			PublicKey:  generateRandomBytes(t, 16),
 			TLSCACerts: []config.RawBytes{generateRandomBytes(t, 16)},
 		},
-		UseTLS:             true,
+		UseTLS:             false,
 		ClientAuthRequired: false,
 		Bundle:             testutil.CreateAssemblerBundleForTest(0),
 	}
@@ -203,6 +203,23 @@ func (at *assemblerTest) StartAssembler() {
 		batchBringerFactoryMock,
 		consensusBringerFactoryMock,
 	)
+
+	at.assembler.StartAssemblerService()
+}
+
+func (at *assemblerTest) WaitAssemblerRunning(t *testing.T) {
+	require.Eventually(t, func() bool {
+		status := at.assembler.GetStatus()
+		return status.State == node_utils.StateRunning
+	}, eventuallyTimeout, eventuallyTick)
+	time.Sleep(100 * time.Millisecond) // wait for grpc sever to start, before attemting to close it in the test
+}
+
+func (at *assemblerTest) WaitAssemblerStopped(t *testing.T) {
+	require.Eventually(t, func() bool {
+		status := at.assembler.GetStatus()
+		return status.State == node_utils.StateStopped
+	}, eventuallyTimeout, eventuallyTick)
 }
 
 func TestAssembler_StartPanicsSinceGenesisBlockIsNil(t *testing.T) {
@@ -225,8 +242,10 @@ func TestAssembler_StartAndThenStopShouldOnlyWriteGenesisBlockToLedger(t *testin
 
 	// Act
 	test.StartAssembler()
-	<-time.After(100 * time.Millisecond)
+	test.WaitAssemblerRunning(t)
+
 	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
 
 	// Assert
 	al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
@@ -249,8 +268,10 @@ func TestAssembler_SkipNonGenesisConfigBlock(t *testing.T) {
 
 	// Act
 	test.StartAssembler()
-	<-time.After(100 * time.Millisecond)
+	test.WaitAssemblerRunning(t)
+
 	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
 
 	// Assert
 	al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
@@ -270,10 +291,12 @@ func TestAssembler_RestartWithoutAddingBatchesShouldWork(t *testing.T) {
 
 	// Act & Assert
 	test.StartAssembler()
-	<-time.After(100 * time.Millisecond)
+	test.WaitAssemblerRunning(t)
 	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
+
 	test.StartAssembler()
-	<-time.After(100 * time.Millisecond)
+	test.WaitAssemblerRunning(t)
 	test.StopAssembler()
 }
 
@@ -285,8 +308,9 @@ func TestAssembler_StopCallsAllSubcomponents(t *testing.T) {
 
 	// Act
 	test.StartAssembler()
-	<-time.After(100 * time.Millisecond)
+	test.WaitAssemblerRunning(t)
 	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
 
 	// Assert
 	require.Equal(t, 1, test.consensusBringerMock.StopCallCount())
@@ -299,6 +323,7 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3}
 	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 	test.StartAssembler()
+	test.WaitAssemblerRunning(t)
 	batches := []types.Batch{
 		createTestBatchWithSize(1, 1, 1, []int{1}),
 		createTestBatchWithSize(1, 1, 2, []int{1}),
@@ -321,12 +346,14 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	}, eventuallyTimeout, eventuallyTick)
 
 	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
 	test.StartAssembler()
 
 	// Assert
 	require.Eventually(t, func() bool {
 		return test.consensusBringerMock.ReplicateCallCount() == 2
 	}, eventuallyTimeout, eventuallyTick)
+	test.StopAssembler()
 }
 
 func TestAssemblerStatusSoftStop(t *testing.T) {
@@ -346,6 +373,12 @@ func TestAssemblerStatusSoftStop(t *testing.T) {
 	require.Eventually(t, func() bool {
 		status := test.assembler.GetStatus()
 		return status.State == node_utils.StateSoftStopped && status.ConfigSequenceNumber == 0
+	}, eventuallyTimeout, eventuallyTick)
+
+	test.assembler.Stop()
+	require.Eventually(t, func() bool {
+		status := test.assembler.GetStatus()
+		return status.State == node_utils.StateStopped && status.ConfigSequenceNumber == 0
 	}, eventuallyTimeout, eventuallyTick)
 }
 
