@@ -1039,7 +1039,6 @@ func (c *Consensus) PruneRequestsFromMemPool(consenterBlock *common.Block) {
 // UpdateStateAndRuntimeConfig updates the state and the runtime config bundle according to the given block, and returns the new smartbft reconfig struct.
 // It is called by the BFT synchronizer after a block is pulled, indexed, and written to the ledger.
 func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_types.Reconfig {
-	c.Logger.Infof("UpdateStateAndRuntimeConfig")
 	proposal, err := state.ConsenterBlockToProposal(block)
 	if err != nil {
 		c.Logger.Panicf("Failed parsing block we pulled with BFT Synchronizer: %v", err)
