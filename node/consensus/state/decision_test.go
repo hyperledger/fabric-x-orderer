@@ -11,7 +11,9 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestProposalToBytes(t *testing.T) {
@@ -466,6 +468,208 @@ func TestConsenterBlockToDecision(t *testing.T) {
 			} else {
 				assertSuccessResult(t, decision.Proposal, decision.Signatures, err, tt.expectedProposal, tt.expectedSignatures)
 			}
+		})
+	}
+}
+
+func TestCreateBlockToAppendFromDecision(t *testing.T) {
+	tests := []struct {
+		name          string
+		blockNum      uint64
+		proposal      smartbft_types.Proposal
+		signatures    []smartbft_types.Signature
+		prevHash      []byte
+		lastConfig    uint64
+		validateBlock func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64)
+	}{
+		{
+			name:       "valid block with standard values",
+			blockNum:   1,
+			proposal:   createValidTestProposal(),
+			signatures: createValidTestSignatures(),
+			prevHash:   []byte{1, 2, 3},
+			lastConfig: 1,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				assert.NotNil(t, block)
+				assert.Equal(t, blockNum, block.Header.Number)
+				assert.Equal(t, prevHash, block.Header.PreviousHash)
+				proposalBytes := ProposalToBytes(proposal)
+				testData := &common.BlockData{
+					Data: [][]byte{proposalBytes},
+				}
+				assert.Equal(t, testData, block.Data)
+				assert.Equal(t, protoutil.ComputeBlockDataHash(testData), block.Header.DataHash)
+				assert.Equal(t, DecisionSignaturesToBytes(signatures), block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES])
+				assert.Equal(t, proposal.Metadata, block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER])
+				metadata, err := protoutil.GetMetadataFromBlock(block, common.BlockMetadataIndex_LAST_CONFIG)
+				assert.NoError(t, err)
+				assert.NotNil(t, metadata)
+				lc := &common.LastConfig{}
+				err = proto.Unmarshal(metadata.Value, lc)
+				assert.NoError(t, err)
+				assert.Equal(t, lastConfig, lc.Index)
+			},
+		},
+		{
+			name:       "block with zero block number",
+			blockNum:   0,
+			proposal:   createValidTestProposal(),
+			signatures: createValidTestSignatures(),
+			prevHash:   []byte{1, 2, 3},
+			lastConfig: 0,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that block number 0 is handled correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, uint64(0), block.Header.Number)
+				assert.Equal(t, prevHash, block.Header.PreviousHash)
+				proposalBytes := ProposalToBytes(proposal)
+				testData := &common.BlockData{
+					Data: [][]byte{proposalBytes},
+				}
+				assert.Equal(t, testData, block.Data)
+				assert.Equal(t, protoutil.ComputeBlockDataHash(testData), block.Header.DataHash)
+				assert.Equal(t, DecisionSignaturesToBytes(signatures), block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES])
+				assert.Equal(t, proposal.Metadata, block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER])
+			},
+		},
+		{
+			name:       "block with nil previous hash",
+			blockNum:   1,
+			proposal:   createValidTestProposal(),
+			signatures: createValidTestSignatures(),
+			prevHash:   nil,
+			lastConfig: 1,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that nil previous hash is handled correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, blockNum, block.Header.Number)
+				assert.Nil(t, block.Header.PreviousHash)
+				proposalBytes := ProposalToBytes(proposal)
+				testData := &common.BlockData{
+					Data: [][]byte{proposalBytes},
+				}
+				assert.Equal(t, testData, block.Data)
+				assert.Equal(t, protoutil.ComputeBlockDataHash(testData), block.Header.DataHash)
+				assert.Equal(t, DecisionSignaturesToBytes(signatures), block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES])
+			},
+		},
+		{
+			name:       "block with empty previous hash",
+			blockNum:   1,
+			proposal:   createValidTestProposal(),
+			signatures: createValidTestSignatures(),
+			prevHash:   []byte{},
+			lastConfig: 1,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that empty previous hash is handled correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, blockNum, block.Header.Number)
+				assert.Empty(t, block.Header.PreviousHash)
+				proposalBytes := ProposalToBytes(proposal)
+				testData := &common.BlockData{
+					Data: [][]byte{proposalBytes},
+				}
+				assert.Equal(t, testData, block.Data)
+				assert.Equal(t, protoutil.ComputeBlockDataHash(testData), block.Header.DataHash)
+			},
+		},
+		{
+			name:       "block with empty proposal",
+			blockNum:   1,
+			proposal:   smartbft_types.Proposal{},
+			signatures: createValidTestSignatures(),
+			prevHash:   []byte{1, 2, 3},
+			lastConfig: 1,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that empty proposal is serialized correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, blockNum, block.Header.Number)
+				proposalBytes := ProposalToBytes(proposal)
+				testData := &common.BlockData{
+					Data: [][]byte{proposalBytes},
+				}
+				assert.Equal(t, testData, block.Data)
+				assert.Equal(t, protoutil.ComputeBlockDataHash(testData), block.Header.DataHash)
+				assert.Equal(t, DecisionSignaturesToBytes(signatures), block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES])
+			},
+		},
+		{
+			name:       "block with empty signatures",
+			blockNum:   1,
+			proposal:   createValidTestProposal(),
+			signatures: []smartbft_types.Signature{},
+			prevHash:   []byte{1, 2, 3},
+			lastConfig: 1,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that empty signatures slice is handled correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, blockNum, block.Header.Number)
+				assert.NotNil(t, block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES])
+				assert.Equal(t, DecisionSignaturesToBytes(signatures), block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES])
+			},
+		},
+		{
+			name:       "block with nil signatures",
+			blockNum:   1,
+			proposal:   createValidTestProposal(),
+			signatures: nil,
+			prevHash:   []byte{1, 2, 3},
+			lastConfig: 1,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that nil signatures are handled correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, blockNum, block.Header.Number)
+				assert.NotNil(t, block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES])
+			},
+		},
+		{
+			name:     "block with proposal containing nil metadata",
+			blockNum: 1,
+			proposal: smartbft_types.Proposal{
+				Header:   []byte{1, 2, 3},
+				Payload:  []byte{4, 5, 6},
+				Metadata: nil,
+			},
+			signatures: createValidTestSignatures(),
+			prevHash:   []byte{1, 2, 3},
+			lastConfig: 1,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that proposal with nil metadata is handled correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, blockNum, block.Header.Number)
+				assert.Nil(t, block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER])
+				proposalBytes := ProposalToBytes(proposal)
+				testData := &common.BlockData{
+					Data: [][]byte{proposalBytes},
+				}
+				assert.Equal(t, testData, block.Data)
+			},
+		},
+		{
+			name:       "block with high block number",
+			blockNum:   999999,
+			proposal:   createValidTestProposal(),
+			signatures: createValidTestSignatures(),
+			prevHash:   []byte{1, 2, 3},
+			lastConfig: 999999,
+			validateBlock: func(t *testing.T, block *common.Block, blockNum uint64, proposal smartbft_types.Proposal, signatures []smartbft_types.Signature, prevHash []byte, lastConfig uint64) {
+				// Validates that high block numbers are handled correctly
+				assert.NotNil(t, block)
+				assert.Equal(t, uint64(999999), block.Header.Number)
+				proposalBytes := ProposalToBytes(proposal)
+				testData := &common.BlockData{
+					Data: [][]byte{proposalBytes},
+				}
+				assert.Equal(t, testData, block.Data)
+				assert.Equal(t, protoutil.ComputeBlockDataHash(testData), block.Header.DataHash)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			block := CreateBlockToAppendFromDecision(tt.blockNum, tt.proposal, tt.signatures, tt.prevHash, tt.lastConfig)
+			tt.validateBlock(t, block, tt.blockNum, tt.proposal, tt.signatures, tt.prevHash, tt.lastConfig)
 		})
 	}
 }
