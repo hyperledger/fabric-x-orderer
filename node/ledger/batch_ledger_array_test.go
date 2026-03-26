@@ -153,3 +153,30 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 		}
 	}
 }
+
+func TestBatchLedgerArrayMissingPartyID(t *testing.T) {
+	dir := t.TempDir()
+	logger := flogging.MustGetLogger("test")
+
+	parties := []types.PartyID{1, 2, 3, 4}
+	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
+	require.NoError(t, err)
+	require.NotNil(t, a)
+
+	missing := types.PartyID(99)
+
+	// Part should return nil for a non-existent party
+	part := a.Part(missing)
+	require.Nil(t, part)
+
+	// Height, Append and RetrieveBatchByNumber should panic for non-existent party
+	require.Panics(t, func() { _ = a.Height(missing) })
+
+	require.Panics(t, func() {
+		a.Append(missing, types.BatchSequence(0), 0, types.BatchedRequests{[]byte("x")})
+	})
+
+	require.Panics(t, func() { _ = a.RetrieveBatchByNumber(missing, 0) })
+
+	a.Close()
+}

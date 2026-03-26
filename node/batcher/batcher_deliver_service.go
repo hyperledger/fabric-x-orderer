@@ -96,8 +96,8 @@ func (c *chainManager) GetChain(chainID string) deliver.Chain {
 		c.logger.Errorf("Requested shard does not match this shard: requested=%d, this=%d", shardID, c.ledgerArray.ShardID())
 		return nil
 	}
-	// TODO ledger array should NOT panic if the party is not found
 	if ledger := c.ledgerArray.Part(partyID); ledger == nil {
+		c.logger.Errorf("Requested party ID %d does not exist in batch ledger array", partyID)
 		return nil
 	} else {
 		return &chainReader{ledger: ledger.Ledger()}
