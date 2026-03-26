@@ -97,6 +97,10 @@ func (b *Batcher) ConfigSequence() types.ConfigSequence {
 }
 
 func (b *Batcher) Address() string {
+	// TODO: move stopSignalListen again, and lock the method
+	// b.lock.Lock()
+	// defer b.lock.Unlock()
+
 	if b.Net == nil {
 		return ""
 	}
