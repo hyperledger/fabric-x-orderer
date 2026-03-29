@@ -408,7 +408,7 @@ func TestLaunchArmaNode(t *testing.T) {
 		req := &protos.Request{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(req, nil)
 
-		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, signer, mockConfigUpdateProposer)
+		consensus := consensus.CreateConsensus(conf, srv, genesisBlock, testLogger, make(chan struct{}), signer, mockConfigUpdateProposer)
 		require.NotNil(t, consensus)
 		consensus.Storage.Close()
 

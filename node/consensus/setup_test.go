@@ -175,7 +175,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, genesisBlock, logger, signer, mockConfigUpdateProposer)
+		c := consensus.CreateConsensus(conf, consenterNodes[i].GRPCServer, genesisBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
 		grpcRegisterAndStart(c, consenterNodes[i])
 
 		listener := &storageListener{c: make(chan *common.Block, 100)}
@@ -270,7 +270,7 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, lastConfigBlock, setup.loggers[nodeIndex], signer, mockConfigUpdateProposer)
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], newConsenterNode.GRPCServer, lastConfigBlock, setup.loggers[nodeIndex], make(chan struct{}), signer, mockConfigUpdateProposer)
 
 	grpcRegisterAndStart(setup.consensusNodes[nodeIndex], newConsenterNode)
 
