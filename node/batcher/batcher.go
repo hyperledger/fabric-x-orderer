@@ -97,6 +97,10 @@ func (b *Batcher) ConfigSequence() types.ConfigSequence {
 }
 
 func (b *Batcher) Address() string {
+	// TODO: move stopSignalListen again, and lock the method
+	// b.lock.Lock()
+	// defer b.lock.Unlock()
+
 	if b.Net == nil {
 		return ""
 	}
@@ -105,6 +109,9 @@ func (b *Batcher) Address() string {
 }
 
 func (b *Batcher) StartBatcherService() {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
 	srv := node_utils.CreateGRPCBatcher(b.config)
 	b.Net = srv
 
