@@ -117,13 +117,10 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		orgMap[org.MSPID()] = org
 	}
 
-	consenterMap := make(map[uint32]*common.Consenter, len(ordererConfig.Consenters()))
 	for _, consenter := range ordererConfig.Consenters() {
 		if consenter == nil {
 			return errors.New("consenter config is nil")
 		}
-
-		consenterMap[consenter.Id] = consenter
 
 		if _, exists := orgMap[consenter.MspId]; !exists {
 			return errors.Errorf("missing orderer organization for party %d", consenter.Id)
