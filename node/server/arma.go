@@ -120,7 +120,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 		}
 
 		srv := utils.CreateGRPCConsensus(conf)
-		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, signer, &policy.DefaultConfigUpdateProposer{})
+		consensus := consensus.CreateConsensus(conf, srv, lastConfigBlock, consenterLogger, stop, signer, &policy.DefaultConfigUpdateProposer{})
 
 		defer consensus.Start()
 
@@ -130,7 +130,6 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 
 		go func() {
 			srv.Start()
-			close(stop)
 		}()
 
 		// TODO: move StopSignalListen to Consensus.Start and pass stopChan

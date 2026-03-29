@@ -45,7 +45,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger *flogging.FabricLogger, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
+func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, lastConfigBlock *common.Block, logger *flogging.FabricLogger, mainExitChan chan struct{}, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	if lastConfigBlock == nil {
 		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
 		return nil
@@ -113,6 +113,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
 		txCount:             txCount,
 		PrevHash:            prevHash,
+		MainExitChan:        mainExitChan,
 		status:              node_utils.NodeStatus{},
 	}
 

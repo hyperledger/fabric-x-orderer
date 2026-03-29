@@ -108,6 +108,7 @@ type Consensus struct {
 	BFT                          *smartbft_consensus.Consensus
 	Net                          NetStopper
 	BADB                         *badb.BatchAttestationDB
+	MainExitChan                 chan struct{}
 
 	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
 	bftSynchronizer     bft_synch.SynchronizerWithStop // The BFT synchronizer built by the factory
@@ -153,6 +154,8 @@ func (c *Consensus) Stop() {
 	c.Storage.Close()
 	c.Net.Stop()
 	c.status.SetState(node_utils.StateStopped)
+
+	close(c.MainExitChan)
 }
 
 func (c *Consensus) GetStatus() node_utils.NodeStatus {
