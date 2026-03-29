@@ -40,6 +40,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
 )
@@ -112,6 +113,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, net NetStopper, last
 		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
 		txCount:             txCount,
 		PrevHash:            prevHash,
+		status:              node_utils.NodeStatus{},
 	}
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
