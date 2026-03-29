@@ -8,6 +8,7 @@ package router_test
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"testing"
 	"time"
@@ -37,14 +38,8 @@ import (
 func TestSendConfigUpdate(t *testing.T) {
 	partyId := types.PartyID(1)
 	parties := []types.PartyID{partyId}
-	numOfShards := 1
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
-	require.NotNil(t, netInfo)
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
-
 	testSetup := createReconfigTestSetup(t, dir, partyId)
 	testSetup.Start()
 	defer testSetup.Stop()
@@ -95,14 +90,8 @@ func TestPartyEvicted(t *testing.T) {
 	partyId := types.PartyID(1)
 	partyToRemove := partyId
 	parties := []types.PartyID{partyId}
-	numOfShards := 1
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
-	require.NotNil(t, netInfo)
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
-
 	testSetup := createReconfigTestSetup(t, dir, partyId)
 	testSetup.Start()
 	defer testSetup.Stop()
@@ -152,6 +141,7 @@ func TestPartyEvicted(t *testing.T) {
 type reconfigTestSetup struct {
 	routerNode         *router.Router
 	routerFileStore    string
+	routerListener     net.Listener
 	stubConsenter      *stub.StubConsenter
 	consenterFileStore string
 	stubBatcher        *stub.StubBatcher
@@ -163,6 +153,9 @@ type reconfigTestSetup struct {
 func (s *reconfigTestSetup) Start() {
 	s.stubConsenter.Start()
 	s.stubBatcher.Start()
+	if s.routerListener != nil {
+		s.routerListener.Close()
+	}
 	s.routerNode.StartRouterService()
 }
 
@@ -173,15 +166,23 @@ func (s *reconfigTestSetup) Stop() {
 }
 
 func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *reconfigTestSetup {
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "TLS", "none")
+	require.NotNil(t, netInfo)
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
 	consenterFileStore := t.TempDir()
+	consenterListener := netInfo[testutil.NodeName{PartyID: partyId, NodeType: testutil.Consensus}].Listener
 	consenterNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), "local_config_consenter.yaml")
-	stubConsenter := stub.NewStubConsenterFromConfig(t, consenterFileStore, consenterNodeConfigPath, nil)
+	stubConsenter := stub.NewStubConsenterFromConfig(t, consenterFileStore, consenterNodeConfigPath, consenterListener)
 
 	batcherFileStore := t.TempDir()
+	batcherListener := netInfo[testutil.NodeName{PartyID: partyId, NodeType: testutil.Batcher, ShardID: types.ShardID(1)}].Listener
 	batcherNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), fmt.Sprintf("local_config_batcher%d.yaml", 1))
-	stubBatcher := stub.NewStubBatcherFromConfig(t, batcherFileStore, batcherNodeConfigPath, nil)
+	stubBatcher := stub.NewStubBatcherFromConfig(t, batcherFileStore, batcherNodeConfigPath, batcherListener)
 
 	routerFileStore := t.TempDir()
+	routerListener := netInfo[testutil.NodeName{PartyID: partyId, NodeType: testutil.Router}].Listener
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), "local_config_router.yaml")
 	routerNode, genesisBlock, routerBundle := createRealRouterFromConfig(t, partyId, routerFileStore, routerNodeConfigPath)
 
@@ -192,6 +193,7 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 		batcherFileStore:   batcherFileStore,
 		routerNode:         routerNode,
 		routerFileStore:    routerFileStore,
+		routerListener:     routerListener,
 		genesisBlock:       genesisBlock,
 		bundle:             routerBundle,
 	}
