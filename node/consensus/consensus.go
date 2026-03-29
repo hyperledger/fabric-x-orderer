@@ -791,12 +791,14 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// a batch attestation twice.
 	// This is true because a Index(digests) with the same digests is idempotent.
 
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.Arma.Index(digests)
-	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.getPrevHash(), c.getDecisionNumOfLastConfigBlock())
+	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.PrevHash, uint64(c.decisionNumOfLastConfigBlock))
 	c.Storage.Append(block)
 
 	// update state
-	c.lock.Lock()
 	c.State = hdr.State
 
 	c.PrevHash = protoutil.BlockHeaderHash(block.Header)
@@ -826,8 +828,6 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	}
 
 	c.updateMetricsOnDeliver(hdr)
-
-	c.lock.Unlock()
 
 	return smartbft_types.Reconfig{
 		CurrentNodes:     currentNodes,
@@ -873,22 +873,10 @@ func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
 	return txCount
 }
 
-func (c *Consensus) getDecisionNumOfLastConfigBlock() uint64 {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	return uint64(c.decisionNumOfLastConfigBlock)
-}
-
 func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return uint64(c.decisionNumOfLastConfigBlock), c.lastConfigBlockNum
-}
-
-func (c *Consensus) getPrevHash() []byte {
-	c.lock.Lock() // TODO use read lock?
-	defer c.lock.Unlock()
-	return c.PrevHash
 }
 
 func (c *Consensus) pickEndpoint() string {
