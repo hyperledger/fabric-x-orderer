@@ -29,9 +29,10 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/badb"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -90,7 +91,7 @@ type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
 	Logger       *flogging.FabricLogger
-	Config       *config.ConsenterNodeConfig
+	Config       *node_config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
 	Signer       Signer
 	CurrentNodes []uint64
@@ -100,6 +101,7 @@ type Consensus struct {
 	lock                         sync.Mutex
 	State                        *state.State
 	status                       node_utils.NodeStatus
+	fullConfig                   *config.Configuration
 	lastConfigBlockNum           uint64
 	decisionNumOfLastConfigBlock arma_types.DecisionNum
 	txCount                      uint64
@@ -862,8 +864,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 			c.decisionNumOfLastConfigBlock = hdr.Num
 			c.lastConfigBlockNum = lastBlockNum
 			c.Logger.Infof("Soft stop: pending restart")
-			go c.SoftStop()
-			// TODO apply reconfig after deliver
+			go c.processNewConfigBlock(configBlock)
 		}
 	}
 
@@ -874,6 +875,87 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		CurrentConfig:    currentBFTConfig,
 		InLatestDecision: inLatestDecision,
 	}
+}
+
+func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
+	c.Logger.Infof("Processing new config block number %d", configBlock.Header.Number)
+
+	c.SoftStop()
+
+	isAdminOperationRequired, err := c.ApplyConfig(configBlock)
+	if err != nil {
+		c.Logger.Panicf("Failed to apply new config: %s", err)
+	}
+
+	if isAdminOperationRequired {
+		c.Logger.Infof("Pending admin operation")
+		c.lock.Lock()
+		c.status.SetState(node_utils.StatePendingAdmin)
+		c.lock.Unlock()
+	}
+}
+
+func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
+	c.lock.Lock()
+	partyID := c.Config.PartyId
+	currentFullConfig := c.fullConfig
+	c.lock.Unlock()
+
+	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to build new configuration")
+	}
+
+	// check if party is removed
+	isPartyEvicted, err := config.IsPartyEvicted(partyID, newConfig)
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to detect if party is evicted")
+	}
+	if isPartyEvicted {
+		c.Logger.Infof("Admin action is required, party %d is evicted", partyID)
+		return true, nil
+	}
+
+	// check if consensus identity (address or certificates) is changed
+	currPartyConfig, err := config.FindParty(partyID, currentFullConfig)
+	if err != nil {
+		return true, errors.Errorf("failed to find current consensus config, err: %v\n", err)
+	}
+	newPartyConfig, err := config.FindParty(partyID, newConfig)
+	if err != nil {
+		return true, errors.Errorf("failed to find current consensus config, err: %v\n", err)
+	}
+	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currPartyConfig.GetConsenterConfig(), newPartyConfig.GetConsenterConfig(), c.Logger)
+	if err != nil {
+		return true, errors.Errorf("failed to detect if config change requires an admin restart, err: %v\n", err)
+	}
+
+	if isRestartRequired {
+		c.Logger.Infof("Admin action is required, identity was changed")
+		return true, nil
+	}
+
+	c.stopAndReconfigure(newConfig, lastBlock)
+	return false, nil
+}
+
+func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
+	newConsensusConfig := newConfig.ExtractConsenterConfig(lastBlock)
+	newConfigSeq := newConsensusConfig.Bundle.ConfigtxValidator().Sequence()
+	currentConfigSeq := c.Config.Bundle.ConfigtxValidator().Sequence()
+	c.Logger.Infof("Applying new config with sequence %d (current: %d), consensus will be restarted dynamically", newConfigSeq, currentConfigSeq)
+
+	c.lock.Lock()
+	c.Storage.Close()
+	c.Net.Stop()
+	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{})
+	c.lock.Unlock()
+
+	c.Logger.Infof("Initialize new consensus, config sequence: %d", newConfigSeq)
+	c.StartConsensusService()
+	c.Start()
+
+	c.Logger.Infof("Consensus listening on %s", c.Address())
 }
 
 func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header) {

@@ -387,7 +387,7 @@ func createConsensusNodesAndGRPCServers(t *testing.T, dir string, parties []type
 		consenterLogger := testutil.CreateLogger(t, int(i))
 		server := node_utils.CreateGRPCConsensus(consenterConfig)
 		servers = append(servers, server)
-		consensus := consensus_node.CreateConsensus(consenterConfig, lastConfigBlock, consenterLogger, make(chan struct{}), signer, &policy.DefaultConfigUpdateProposer{})
+		consensus := consensus_node.CreateConsensus(consenterConfig, configContent, lastConfigBlock, consenterLogger, make(chan struct{}), signer, &policy.DefaultConfigUpdateProposer{})
 		consensus.Net = server
 		consensusNodes = append(consensusNodes, consensus)
 	}
