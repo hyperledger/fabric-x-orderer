@@ -783,6 +783,7 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) [
 		"identity":        newParty.ConsenterConfig.SignCert,
 		"client_tls_cert": newParty.ConsenterConfig.TlsCert,
 		"server_tls_cert": newParty.ConsenterConfig.TlsCert,
+		"msp_id":          fmt.Sprintf("org%d", uint32(maxPartyID)),
 	})
 
 	// Update Organization
