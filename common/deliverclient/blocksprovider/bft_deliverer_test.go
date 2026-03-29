@@ -1087,9 +1087,13 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 		setup.initialize(t)
 		setup.start()
 
+		// Use shorter timeout with more frequent polling for faster, more reliable tests
+		const iterationTimeout = 5 * time.Second
+		const pollingInterval = 10 * time.Millisecond
+
 		for n := 1; n <= 40; n++ {
-			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(n))
-			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n))
+			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, iterationTimeout, pollingInterval).Should(Equal(n))
+			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, iterationTimeout, pollingInterval).Should(Equal(n))
 
 			t.Logf("monitor error channel returns censorship error num: %d", n)
 			func() {
@@ -1099,17 +1103,18 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 				setup.monErrC <- &blocksprovider.ErrCensorship{Message: fmt.Sprintf("censorship %d", n)}
 			}()
 
-			numMon := func() int {
+			// Combine all checks into a single Eventually call to reduce cumulative wait time
+			setup.gWithT.Eventually(func() bool {
 				setup.mutex.Lock()
 				defer setup.mutex.Unlock()
 
-				return len(setup.monitorSet)
-			}
-			setup.gWithT.Eventually(numMon, eventuallyTO).Should(Equal(n + 1))
-
-			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n + 1))
-			setup.gWithT.Expect(setup.fakeSleeper.SleepCallCount()).To(Equal(n))
-			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(n + 1))
+				return len(setup.monitorSet) == n+1 &&
+					setup.fakeDialer.DialCallCount() == n+1 &&
+					setup.fakeSleeper.SleepCallCount() == n &&
+					setup.fakeCensorshipMonFactory.CreateCallCount() == n+1
+			}, iterationTimeout, pollingInterval).Should(BeTrue(),
+				fmt.Sprintf("iteration %d: expected monitorSet=%d, dialCount=%d, sleepCount=%d, createCount=%d",
+					n, n+1, n+1, n, n+1))
 		}
 
 		t.Log("Exponential backoff after every round, with saturation")
