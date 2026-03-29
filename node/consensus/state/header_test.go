@@ -99,14 +99,15 @@ func TestHeaderBytes(t *testing.T) {
 	require.Error(t, err)
 	t.Log(err)
 
-	// no error (nil state)
-	bytes = make([]byte, 8+8+4+4+4+len(m1))
+	// no error (nil state and nil prev hash)
+	bytes = make([]byte, 8+8+4+4+2+4+len(m1))
 	binary.BigEndian.PutUint64(bytes, 100)
 	binary.BigEndian.PutUint64(bytes[8:16], 10)
 	binary.BigEndian.PutUint32(bytes[16:20], 0)
-	binary.BigEndian.PutUint32(bytes[20:], 1)
-	binary.BigEndian.PutUint32(bytes[24:], uint32(len(m1)))
-	copy(bytes[28:], m1)
+	binary.BigEndian.PutUint16(bytes[20:22], 0)
+	binary.BigEndian.PutUint32(bytes[22:26], 1)
+	binary.BigEndian.PutUint32(bytes[26:], uint32(len(m1)))
+	copy(bytes[30:], m1)
 	err = hdr.Deserialize(bytes)
 	require.NoError(t, err)
 	require.Nil(t, hdr.State)
@@ -275,5 +276,99 @@ func TestHeaderSerializeDeserialize(t *testing.T) {
 		for i := range hdr.AvailableCommonBlocks {
 			require.Equal(t, hdr.AvailableCommonBlocks[i].Header.Number, hdr2.AvailableCommonBlocks[i].Header.Number)
 		}
+	})
+
+	t.Run("deserialize with nil bytes", func(t *testing.T) {
+		var hdr Header
+		err := hdr.Deserialize(nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "nil bytes")
+	})
+
+	t.Run("deserialize with insufficient bytes for header", func(t *testing.T) {
+		var hdr Header
+		// Only 10 bytes, need at least 26
+		bytes := make([]byte, 10)
+		err := hdr.Deserialize(bytes)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "expected at least 26")
+	})
+
+	t.Run("deserialize with insufficient bytes for block size", func(t *testing.T) {
+		var hdr Header
+		// Create header with 1 block but no space for block size
+		bytes := make([]byte, 26)
+		binary.BigEndian.PutUint64(bytes[0:8], 100)
+		binary.BigEndian.PutUint64(bytes[8:16], 10)
+		binary.BigEndian.PutUint32(bytes[16:20], 0) // state size
+		binary.BigEndian.PutUint16(bytes[20:22], 0) // hash size
+		binary.BigEndian.PutUint32(bytes[22:26], 1) // 1 block
+
+		err := hdr.Deserialize(bytes)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "insufficient bytes to read block size")
+	})
+
+	t.Run("deserialize with insufficient bytes for block data", func(t *testing.T) {
+		var hdr Header
+		// Create header with block size but insufficient data
+		bytes := make([]byte, 30)
+		binary.BigEndian.PutUint64(bytes[0:8], 100)
+		binary.BigEndian.PutUint64(bytes[8:16], 10)
+		binary.BigEndian.PutUint32(bytes[16:20], 0)   // state size
+		binary.BigEndian.PutUint16(bytes[20:22], 0)   // hash size
+		binary.BigEndian.PutUint32(bytes[22:26], 1)   // 1 block
+		binary.BigEndian.PutUint32(bytes[26:30], 100) // block size = 100 bytes
+
+		err := hdr.Deserialize(bytes)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "insufficient bytes to read block data")
+	})
+
+	t.Run("deserialize with invalid block data", func(t *testing.T) {
+		var hdr Header
+		// Create header with invalid protobuf data
+		bytes := make([]byte, 34)
+		binary.BigEndian.PutUint64(bytes[0:8], 100)
+		binary.BigEndian.PutUint64(bytes[8:16], 10)
+		binary.BigEndian.PutUint32(bytes[16:20], 0)        // state size
+		binary.BigEndian.PutUint16(bytes[20:22], 0)        // hash size
+		binary.BigEndian.PutUint32(bytes[22:26], 1)        // 1 block
+		binary.BigEndian.PutUint32(bytes[26:30], 4)        // block size = 4 bytes
+		copy(bytes[30:34], []byte{0xFF, 0xFF, 0xFF, 0xFF}) // invalid protobuf
+
+		err := hdr.Deserialize(bytes)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to unmarshal available common block")
+	})
+
+	t.Run("deserialize with insufficient bytes for state", func(t *testing.T) {
+		var hdr Header
+		// Create header with state size but insufficient data
+		bytes := make([]byte, 26)
+		binary.BigEndian.PutUint64(bytes[0:8], 100)
+		binary.BigEndian.PutUint64(bytes[8:16], 10)
+		binary.BigEndian.PutUint32(bytes[16:20], 50) // state size = 50 bytes
+		binary.BigEndian.PutUint16(bytes[20:22], 0)  // hash size
+		binary.BigEndian.PutUint32(bytes[22:26], 0)  // 0 blocks
+
+		err := hdr.Deserialize(bytes)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "insufficient bytes to read state")
+	})
+
+	t.Run("deserialize with insufficient bytes for prev hash", func(t *testing.T) {
+		var hdr Header
+		// Create header with hash size but insufficient data
+		bytes := make([]byte, 26)
+		binary.BigEndian.PutUint64(bytes[0:8], 100)
+		binary.BigEndian.PutUint64(bytes[8:16], 10)
+		binary.BigEndian.PutUint32(bytes[16:20], 0)  // state size
+		binary.BigEndian.PutUint16(bytes[20:22], 10) // hash size = 10 bytes
+		binary.BigEndian.PutUint32(bytes[22:26], 0)  // 0 blocks
+
+		err := hdr.Deserialize(bytes)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "insufficient bytes to read prev hash")
 	})
 }
