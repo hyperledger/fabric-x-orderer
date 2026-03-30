@@ -164,6 +164,8 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 		batcher.StartBatcherService()
 		batcher.Run()
 
+		utils.StopSignalListen(nil, batcher, batcherLogger, batcher.Address())
+
 		batcherLogger.Infof("Batcher listening on %s", batcher.Address())
 	}
 }

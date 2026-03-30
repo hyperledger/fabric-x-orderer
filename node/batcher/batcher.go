@@ -76,7 +76,6 @@ type Batcher struct {
 	stateChan                          chan *state.State
 	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
 	stopChan                           chan struct{}
-	stopSignalListenChan               chan struct{}
 	mainExitChan                       chan struct{}
 	isStopped                          bool
 	isSoftStopped                      bool
@@ -136,7 +135,6 @@ func (b *Batcher) Run() {
 	b.isSoftStopped = false
 
 	b.stopChan = make(chan struct{})
-	b.stopSignalListenChan = make(chan struct{})
 	b.stateChan = make(chan *state.State, 1)
 
 	b.running.Add(1)
@@ -145,8 +143,6 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Starting batcher")
 	b.batcher.Start()
 	b.metrics.Start()
-
-	node_utils.StopSignalListen(b.stopSignalListenChan, b, b.logger, b.Address())
 }
 
 func (b *Batcher) GetStatus() string {
@@ -187,7 +183,6 @@ func (b *Batcher) Stop() {
 	b.Net.Stop()
 	b.Ledger.Close()
 
-	close(b.stopSignalListenChan)
 	close(b.mainExitChan)
 
 	b.isStopped = true
@@ -375,7 +370,6 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock 
 	b.lock.Lock()
 	b.Net.Stop()
 	b.Ledger.Close()
-	close(b.stopSignalListenChan)
 
 	// update batcher config and re-configure the batcher with the same mempool
 	b.logger.Infof("Reconfiguring batcher")
