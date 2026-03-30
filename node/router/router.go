@@ -56,21 +56,20 @@ type Router struct {
 	wal          *wal.WriteAheadLogFile
 	signer       identity.SignerSerializer
 
-	lock                 sync.RWMutex
-	status               node_utils.NodeStatus
-	configuration        *config.Configuration
-	routerNodeConfig     *nodeconfig.RouterNodeConfig
-	configSeq            uint32
-	verifier             *requestfilter.RulesVerifier
-	configSubmitter      ConfigurationSubmitter
-	shardRouters         map[types.ShardID]*ShardRouter
-	decisionPuller       DecisionPuller
-	metrics              *RouterMetrics
-	stopChan             chan struct{}
-	stopOnce             sync.Once
-	drainChan            chan struct{}
-	drainOnce            sync.Once
-	stopSignalListenChan chan struct{}
+	lock             sync.RWMutex
+	status           node_utils.NodeStatus
+	configuration    *config.Configuration
+	routerNodeConfig *nodeconfig.RouterNodeConfig
+	configSeq        uint32
+	verifier         *requestfilter.RulesVerifier
+	configSubmitter  ConfigurationSubmitter
+	shardRouters     map[types.ShardID]*ShardRouter
+	decisionPuller   DecisionPuller
+	metrics          *RouterMetrics
+	stopChan         chan struct{}
+	stopOnce         sync.Once
+	drainChan        chan struct{}
+	drainOnce        sync.Once
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
@@ -169,7 +168,6 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.metrics = NewRouterMetrics(rconfig, r.logger)
 
 	// initialize channels and once
-	r.stopSignalListenChan = make(chan struct{})
 	r.stopChan = make(chan struct{})
 	r.drainChan = make(chan struct{})
 	r.stopOnce = sync.Once{}
@@ -246,8 +244,6 @@ func (r *Router) StartRouterService() {
 
 	r.configSubmitter.Start()
 
-	node_utils.StopSignalListen(r.stopSignalListenChan, r, r.logger, r.Address())
-
 	go r.pullAndProcessDecisions()
 
 	// update the router state.
@@ -259,6 +255,8 @@ func (r *Router) MonitoringServiceAddress() string {
 }
 
 func (r *Router) Address() string {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
 	if r.net == nil {
 		return ""
 	}
@@ -295,8 +293,6 @@ func (r *Router) Stop() {
 	}
 
 	r.wal.Close()
-
-	close(r.stopSignalListenChan)
 
 	r.status.SetState(node_utils.StateStopped)
 
@@ -711,9 +707,6 @@ func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
 
 	newConfigSeq := newRouterNodeConfig.Bundle.ConfigtxValidator().Sequence()
 	r.logger.Infof("Applying new config with sequence %d (current: %d), router will be restarted dynamically", newConfigSeq, r.configSeq)
-
-	// close the stop signal listener.
-	close(r.stopSignalListenChan)
 
 	seekInfo := delivery.NextSeekInfo(uint64(getDecisionNumberFromConfigBlock(configBlock, r.logger)))
 
