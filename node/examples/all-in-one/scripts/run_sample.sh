@@ -67,7 +67,7 @@ docker logs ${CONTAINER_ID} | tail -n 50
 
 echo "RUNNING TEST..."
 
-# 🔥 FIX: create output directory for receiver
+# create output directory for receiver
 mkdir -p ${LOG_DIR}/output1
 
 docker exec ${CONTAINER_ID} sh -c "
@@ -90,6 +90,16 @@ docker exec ${CONTAINER_ID} sh -c "
   wait
 "
 
-echo "RESULT:"
-cat ${LOG_DIR}/receiver.log || true
-cat ${LOG_DIR}/loader.log || true
+echo "======================"
+echo "RESULT SUMMARY"
+echo "======================"
+
+echo "Loader result:"
+grep "Load command finished" ${LOG_DIR}/loader.log || echo "Loader summary not found"
+
+echo ""
+echo "Receiver result:"
+grep "successfully received" ${LOG_DIR}/receiver.log || echo "Receiver summary not found"
+
+echo ""
+echo "DONE"
