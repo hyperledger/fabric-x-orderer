@@ -38,7 +38,6 @@ type Assembler struct {
 	prefetcher            PrefetcherController
 	status                utils.NodeStatus
 	net                   Net
-	stopSignalListenChan  chan struct{}
 	assemblerNodeConfig   *node_config.AssemblerNodeConfig
 	lastConfigBlockNumber uint64
 	metrics               *Metrics
@@ -77,7 +76,6 @@ func (a *Assembler) Stop() {
 	a.metrics.Stop()
 	a.net.Stop()
 	a.collator.Ledger.Close()
-	close(a.stopSignalListenChan)
 
 	a.status.SetState(utils.StateStopped)
 	a.logger.Info("Assembler has been stopped")
@@ -207,7 +205,6 @@ func NewDefaultAssembler(
 		metrics:               metrics,
 		lastConfigBlockNumber: configBlock.GetHeader().GetNumber(),
 		mainExitChan:          mainExitChan,
-		stopSignalListenChan:  make(chan struct{}),
 		status:                utils.NodeStatus{},
 	}
 
@@ -266,8 +263,6 @@ func (a *Assembler) StartAssemblerService() {
 		}
 		a.logger.Infof("Assembler network service was stopped")
 	}()
-
-	utils.StopSignalListen(a.stopSignalListenChan, a, a.logger, srv.Address())
 
 	a.status.SetState(utils.StateRunning)
 }

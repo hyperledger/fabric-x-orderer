@@ -82,6 +82,8 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 		assembler := assembler.NewAssembler(conf, lastConfigBlock, stop, assemblerLogger)
 		assembler.StartAssemblerService()
 
+		utils.StopSignalListen(nil, assembler, assemblerLogger, assembler.Address())
+
 		assemblerLogger.Infof("Assembler listening on %s", assembler.Address())
 	}
 }
