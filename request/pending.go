@@ -36,6 +36,7 @@ type PendingStore struct {
 	currentBucket         atomic.Value
 	buckets               []*bucket
 	stopped               uint32
+	running               uint32
 	closedWG              sync.WaitGroup
 	closeOnce             sync.Once
 	closeChan             chan struct{}
@@ -64,6 +65,7 @@ func (ps *PendingStore) Start() {
 
 func (ps *PendingStore) run() {
 	defer ps.closedWG.Done()
+	atomic.StoreUint32(&ps.running, 1)
 	for {
 		select {
 		case <-ps.closeChan:
@@ -120,6 +122,9 @@ func (ps *PendingStore) Stop() {
 		return
 	}
 	ps.stop()
+	if atomic.LoadUint32(&ps.running) == 0 {
+		return
+	}
 	select {
 	case ps.stopChan <- struct{}{}:
 	case <-ps.closeChan:

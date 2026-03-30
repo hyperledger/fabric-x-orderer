@@ -223,6 +223,9 @@ func TestMultipleStopCalls(t *testing.T) {
 		SecondStrikeThreshold: time.Second,
 	}
 
+	// Check that Stop can be called before Start
+	ps.Stop()
+
 	ps.Init()
 	ps.Start()
 
@@ -288,9 +291,11 @@ func TestStopFollowedByReset(t *testing.T) {
 	// Stop the store
 	ps.Stop()
 
-	// Wait a bit to ensure second strike would have occurred if not stopped
-	time.Sleep(700 * time.Millisecond)
-	assert.Equal(t, int32(0), secondStrikeCount.Load(), "Second strike should not occur while stopped")
+	// Ensure that a second strike does not occur while the store is stopped.
+	// Wait for longer than SecondStrikeThreshold + Epoch, polling for any second strike.
+	assert.Never(t, func() bool {
+		return secondStrikeCount.Load() > 0
+	}, ps.SecondStrikeThreshold+ps.Epoch+50*time.Millisecond, 10*time.Millisecond, "Second strike should not occur while stopped")
 
 	// Reset timestamps - this should resume the store
 	ps.ResetTimestamps()
