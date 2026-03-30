@@ -136,6 +136,148 @@ func (p *BlockPuller) HeightsByEndpoints() (map[string]uint64, string, error) {
 	return res, myEndpoint, endpointsInfo.err
 }
 
+// GenesisByEndpoints fetches the genesis block (block #0) from all accessible endpoints.
+// Returns a map of endpoint addresses to their genesis blocks.
+// Returns an error if no endpoints are accessible.
+func (p *BlockPuller) GenesisByEndpoints() (map[string]*common.Block, error) {
+	genesisInfos := p.probeGenesisBlocks()
+
+	result := make(map[string]*common.Block)
+	for endpoint, info := range genesisInfos {
+		result[endpoint] = info.block
+		info.conn.Close()
+	}
+
+	if len(result) == 0 {
+		return nil, errors.New("failed to fetch genesis block from any endpoint")
+	}
+
+	p.Logger.Infof("Successfully fetched genesis block from %d endpoints", len(result))
+	return result, nil
+}
+
+// genesisBlockInfo holds information about a genesis block fetched from an endpoint
+type genesisBlockInfo struct {
+	endpoint string
+	block    *common.Block
+	conn     *grpc.ClientConn
+}
+
+// probeGenesisBlocks probes all endpoints in parallel to fetch their genesis blocks
+func (p *BlockPuller) probeGenesisBlocks() map[string]*genesisBlockInfo {
+	genesisInfoChan := make(chan *genesisBlockInfo, len(p.Endpoints))
+
+	var wg sync.WaitGroup
+	wg.Add(len(p.Endpoints))
+
+	for _, endpoint := range p.Endpoints {
+		go func(endpoint EndpointCriteria) {
+			defer wg.Done()
+			info, err := p.fetchGenesisFromEndpoint(endpoint)
+			if err != nil {
+				p.Logger.Warningf("Failed to fetch genesis from %s: %v",
+					endpoint.Endpoint, err)
+				return
+			}
+			genesisInfoChan <- info
+		}(endpoint)
+	}
+
+	wg.Wait()
+	close(genesisInfoChan)
+
+	result := make(map[string]*genesisBlockInfo)
+	for info := range genesisInfoChan {
+		if _, exists := result[info.endpoint]; exists {
+			p.Logger.Warningf("Duplicate endpoint found(%s), skipping it", info.endpoint)
+			info.conn.Close()
+			continue
+		}
+		result[info.endpoint] = info
+	}
+
+	return result
+}
+
+// fetchGenesisFromEndpoint fetches the genesis block from a single endpoint
+func (p *BlockPuller) fetchGenesisFromEndpoint(endpoint EndpointCriteria) (*genesisBlockInfo, error) {
+	// Establish connection
+	conn, err := p.Dialer.Dial(endpoint)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to dial %s", endpoint.Endpoint)
+	}
+
+	// Create seek envelope for block 0
+	env, err := p.seekSpecificBlock(0)
+	if err != nil {
+		conn.Close()
+		return nil, errors.Wrap(err, "failed to create seek envelope")
+	}
+
+	// Request block
+	stream, err := p.requestBlocks(endpoint.Endpoint, NewImpatientStream(conn, p.FetchTimeout), env)
+	if err != nil {
+		conn.Close()
+		return nil, errors.Wrap(err, "failed to request block")
+	}
+	defer stream.abort()
+
+	// Receive block
+	resp, err := stream.Recv()
+	if err != nil {
+		conn.Close()
+		return nil, errors.Wrap(err, "failed to receive block")
+	}
+
+	// Extract and validate block
+	block, err := extractBlockFromResponse(resp)
+	if err != nil {
+		conn.Close()
+		return nil, errors.Wrap(err, "invalid block response")
+	}
+
+	blockNum := block.GetHeader().GetNumber()
+	if blockNum != 0 {
+		conn.Close()
+		return nil, errors.Errorf("expected block 0, got block %d", blockNum)
+	}
+	stream.CloseSend()
+
+	p.Logger.Infof("Successfully fetched genesis block from %s", endpoint.Endpoint)
+
+	return &genesisBlockInfo{
+		endpoint: endpoint.Endpoint,
+		block:    block,
+		conn:     conn,
+	}, nil
+}
+
+// seekSpecificBlock creates a seek envelope for a specific block number
+func (p *BlockPuller) seekSpecificBlock(blockNum uint64) (*common.Envelope, error) {
+	return protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		p.Channel,
+		p.Signer,
+		&orderer.SeekInfo{
+			Start: &orderer.SeekPosition{
+				Type: &orderer.SeekPosition_Specified{
+					Specified: &orderer.SeekSpecified{Number: blockNum},
+				},
+			},
+			Stop: &orderer.SeekPosition{
+				Type: &orderer.SeekPosition_Specified{
+					Specified: &orderer.SeekSpecified{Number: blockNum},
+				},
+			},
+			Behavior:      orderer.SeekInfo_BLOCK_UNTIL_READY,
+			ErrorResponse: orderer.SeekInfo_BEST_EFFORT,
+		},
+		int32(0),
+		uint64(0),
+		util.ComputeSHA256(p.TLSCert),
+	)
+}
+
 // UpdateEndpoints assigns the new endpoints and disconnects from the current one.
 func (p *BlockPuller) UpdateEndpoints(endpoints []EndpointCriteria) {
 	p.Logger.Debugf("Updating endpoints: %v", endpoints)
