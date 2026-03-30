@@ -54,6 +54,68 @@ func TestStateSerializeDeserialize(t *testing.T) {
 	s2.Deserialize(bytes, nil)
 
 	assert.Equal(t, s, s2)
+
+	assert.Equal(t, s.String(), s2.String())
+}
+
+func TestStateString(t *testing.T) {
+	s := consensus_state.State{
+		N:          4,
+		Threshold:  2,
+		Quorum:     3,
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 3}},
+		ShardCount: 2,
+		AppContext: make([]byte, 64),
+		Complaints: []consensus_state.Complaint{
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
+		},
+	}
+
+	// Test that String() returns a non-empty string
+	str := s.String()
+	assert.NotEmpty(t, str)
+
+	// Test that the string contains key information
+	assert.Contains(t, str, "N: 4")
+	assert.Contains(t, str, "Threshold: 2")
+	assert.Contains(t, str, "Quorum: 3")
+	assert.Contains(t, str, "ShardCount: 2")
+	assert.Contains(t, str, "Pending: none")
+	assert.Contains(t, str, "Complaints: 1")
+	assert.Contains(t, str, "Complaint: Signer: 2")
+
+	// Test with more than 5 BAFs
+	s2 := consensus_state.State{
+		N:          4,
+		Threshold:  2,
+		Quorum:     3,
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+		ShardCount: 1,
+		AppContext: make([]byte, 64),
+		Pending: []types.BatchAttestationFragment{
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1}, types.PartyID(2), 0, 0),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), []byte{2}, types.PartyID(2), 0, 0),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), []byte{3}, types.PartyID(2), 0, 0),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(4), []byte{4}, types.PartyID(2), 0, 0),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(5), []byte{5}, types.PartyID(2), 0, 0),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(6), []byte{6}, types.PartyID(2), 0, 0),
+		},
+
+		Complaints: []consensus_state.Complaint{
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 1},
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 3},
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 4},
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 5},
+			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 6},
+		},
+	}
+
+	str2 := s2.String()
+	assert.NotEmpty(t, str2)
+	assert.Contains(t, str2, "Pending: 6")
+	assert.Contains(t, str2, "... and 1 more")
+	assert.Contains(t, str2, "Complaints: 6")
 }
 
 func TestComplaintSerialization(t *testing.T) {

@@ -753,7 +753,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 	}
 
 	numOfAvailableBlocks := len(attestations)
-	c.Logger.Infof("Creating proposal with %d attestations", numOfAvailableBlocks)
+
+	c.Logger.Infof("Creating proposal with %d attestations and new state: %s", numOfAvailableBlocks, newState.String())
+
 	if len(configRequests) > 0 {
 		numOfAvailableBlocks++
 	}
@@ -768,6 +770,9 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 		}
 
 		availableCommonBlocks[i] = block
+
+		c.Logger.Infof("Proposing available common data block: number=%d, prevHash=%x, dataHash=%x, numOfReqs=%d, decisionNum=%d, blockIndex=%d/%d, lastConfigBlockNum=%d",
+			lastBlockNumber, block.Header.PreviousHash, block.Header.DataHash, ba[0].TXCount(), md.LatestSequence, i, numOfAvailableBlocks, lastConfigBlockNum)
 
 		prevHash = protoutil.BlockHeaderHash(block.Header)
 	}
