@@ -36,11 +36,13 @@ type PendingStore struct {
 	currentBucket         atomic.Value
 	buckets               []*bucket
 	stopped               uint32
+	running               uint32
 	closedWG              sync.WaitGroup
 	closeOnce             sync.Once
 	closeChan             chan struct{}
 	resetChan             chan struct{}
 	finishResetChan       chan struct{}
+	stopChan              chan struct{}
 }
 
 func (ps *PendingStore) Init() {
@@ -51,6 +53,7 @@ func (ps *PendingStore) Init() {
 	ps.closeOnce = sync.Once{}
 	ps.resetChan = make(chan struct{})
 	ps.finishResetChan = make(chan struct{})
+	ps.stopChan = make(chan struct{})
 	ps.lastEpochChange = ps.StartTime
 	ps.lastProcessedGC = ps.StartTime
 }
@@ -62,10 +65,14 @@ func (ps *PendingStore) Start() {
 
 func (ps *PendingStore) run() {
 	defer ps.closedWG.Done()
+	atomic.StoreUint32(&ps.running, 1)
 	for {
 		select {
 		case <-ps.closeChan:
 			return
+		case <-ps.stopChan:
+			ps.Logger.Info("Stopped - waiting for reset or close")
+			continue
 		case <-ps.resetChan:
 			ps.reset()
 		case now := <-ps.Time:
@@ -89,7 +96,7 @@ func (ps *PendingStore) ResetTimestamps() {
 }
 
 func (ps *PendingStore) reset() {
-	ps.Stop()
+	ps.stop()
 	defer atomic.StoreUint32(&ps.stopped, 0)
 
 	now := ps.now()
@@ -103,8 +110,25 @@ func (ps *PendingStore) reset() {
 	}
 }
 
-func (ps *PendingStore) Stop() {
+func (ps *PendingStore) stop() {
 	atomic.StoreUint32(&ps.stopped, 1)
+}
+
+// Stop temporarily halts processing while keeping the pending store alive.
+// The store can be resumed via ResetTimestamps().
+// Use Close() for permanent shutdown.
+func (ps *PendingStore) Stop() {
+	if ps.isClosed() {
+		return
+	}
+	ps.stop()
+	if atomic.LoadUint32(&ps.running) == 0 {
+		return
+	}
+	select {
+	case ps.stopChan <- struct{}{}:
+	case <-ps.closeChan:
+	}
 }
 
 func (ps *PendingStore) isStopped() bool {
@@ -112,7 +136,7 @@ func (ps *PendingStore) isStopped() bool {
 }
 
 func (ps *PendingStore) Close() {
-	ps.Stop()
+	ps.stop()
 	ps.closeOnce.Do(func() {
 		if ps.closeChan == nil {
 			return
