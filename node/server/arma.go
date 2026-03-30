@@ -194,6 +194,8 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		r := router.NewRouter(routerConf, conf, routerLogger, signer, stop, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
 		r.StartRouterService()
 
+		utils.StopSignalListen(nil, r, routerLogger, r.Address())
+
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)
 	}
 }
