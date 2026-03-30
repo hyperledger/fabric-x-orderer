@@ -55,6 +55,7 @@ type Storage interface {
 //go:generate counterfeiter -o mocks/net_stopper.go . NetStopper
 type NetStopper interface {
 	Stop()
+	Address() string
 }
 
 //go:generate counterfeiter -o mocks/synchronizer_stopper.go . SynchronizerStopper
@@ -133,6 +134,26 @@ func (c *Consensus) Start() error {
 	return bft.Start()
 }
 
+func (c *Consensus) StartConsensusService() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	srv := node_utils.CreateGRPCConsensus(c.Config)
+	c.Net = srv
+
+	protos.RegisterConsensusServer(srv.Server(), c)
+	orderer.RegisterAtomicBroadcastServer(srv.Server(), c.DeliverService)
+	orderer.RegisterClusterNodeServiceServer(srv.Server(), c)
+
+	go func() {
+		err := srv.Start()
+		if err != nil {
+			panic(err)
+		}
+		c.Logger.Infof("Consensus gRPC server stopped")
+	}()
+}
+
 func (c *Consensus) Stop() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -162,6 +183,17 @@ func (c *Consensus) GetStatus() node_utils.NodeStatus {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return c.status
+}
+
+func (c *Consensus) Address() string {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.Net == nil {
+		return ""
+	}
+
+	return c.Net.Address()
 }
 
 // BFTConfig returns the current BFT configuration and the current nodes in the cluster (from SmartBFT API)
