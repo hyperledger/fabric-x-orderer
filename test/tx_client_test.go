@@ -71,7 +71,7 @@ func TestTxClientSend(t *testing.T) {
 
 	// Pull some block from the middle and count them
 	startBlock := uint64(0)
-	endBlock := uint64(5)
+	endBlock := uint64(totalTxNumber + 1)
 	totalTxs := 0
 	totalBlocks := 0
 
