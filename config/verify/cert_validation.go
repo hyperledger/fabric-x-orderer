@@ -17,9 +17,14 @@ import (
 
 // validatePartyCertificates validates CA certificates and verifies node certificates for the party.
 func validatePartyCertificates(party *config_protos.PartyConfig) error {
+	if len(party.TLSCACerts) == 0 {
+		return errors.New("empty TLS CA certificates")
+	}
+	validationTime := time.Now()
+
 	tlsPool := x509.NewCertPool()
 	for _, raw := range party.TLSCACerts {
-		cert, err := validateCACert(raw)
+		cert, err := validateCACert(raw, validationTime)
 		if err != nil {
 			return errors.Wrap(err, "invalid TLS CA certificate")
 		}
@@ -28,7 +33,7 @@ func validatePartyCertificates(party *config_protos.PartyConfig) error {
 
 	tlsOpts := x509.VerifyOptions{
 		Roots:       tlsPool,
-		CurrentTime: time.Now(),
+		CurrentTime: validationTime,
 		KeyUsages: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,
 			x509.ExtKeyUsageServerAuth,
@@ -76,7 +81,7 @@ func validatePartyCertificates(party *config_protos.PartyConfig) error {
 }
 
 // validateCACert parses a certificate and ensures it is a CA within its validity period.
-func validateCACert(raw []byte) (*x509.Certificate, error) {
+func validateCACert(raw []byte, validationTime time.Time) (*x509.Certificate, error) {
 	if len(raw) == 0 {
 		return nil, errors.New("certificate is empty")
 	}
@@ -89,8 +94,7 @@ func validateCACert(raw []byte) (*x509.Certificate, error) {
 		return nil, errors.Errorf("certificate %q is not a CA", cert.Subject.String())
 	}
 
-	now := time.Now()
-	if now.Before(cert.NotBefore) || now.After(cert.NotAfter) {
+	if validationTime.Before(cert.NotBefore) || validationTime.After(cert.NotAfter) {
 		return nil, errors.Errorf("certificate %q is expired or not yet valid", cert.Subject.String())
 	}
 
@@ -113,7 +117,11 @@ func verifyCert(raw []byte, opts x509.VerifyOptions) error {
 func parseCertificateFromBytes(cert []byte) (*x509.Certificate, error) {
 	pemBlock, _ := pem.Decode(cert)
 	if pemBlock == nil {
-		return nil, errors.Errorf("no PEM data found in certificate %x", cert)
+		return nil, errors.New("no PEM data found in certificate")
+	}
+
+	if pemBlock.Type != "CERTIFICATE" {
+		return nil, errors.Errorf("expected PEM block of type CERTIFICATE, but found %s", pemBlock.Type)
 	}
 
 	certificate, err := x509.ParseCertificate(pemBlock.Bytes)
