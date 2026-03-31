@@ -49,9 +49,10 @@ type DefaultOrdererRules struct{}
 //     and include both "broadcast" and "deliver" roles.
 //  6. ConsenterMapping must be consistent with the consenters defined in the shared config.
 //  7. Each consenter in the ConsenterMapping must have a matching organization.
+//  8. Certificate validation: TLS CA certificates are validated as CAs within their validity period.
+//     TLS certificates are validated for validity and chain-of-trust against the CA certificates.
 //
 // TODO: Validate that ca certificates in the sharedConfig are the same as in the ordererOrganization ca certificates.
-// TODO: Validate new certificates - chain of trust, expiration, etc.
 // TODO: Validate BlockValidationPolicy.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
@@ -131,6 +132,16 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 
 		if _, exists := orgMap[consenter.MspId]; !exists {
 			return errors.Errorf("missing orderer organization for party %d", consenter.Id)
+		}
+	}
+
+	// 8.
+	for _, party := range sharedConfig.PartiesConfig {
+		if party == nil {
+			return errors.New("party config is nil in shared config")
+		}
+		if err := validatePartyCertificates(party); err != nil {
+			return errors.Wrapf(err, "certificate validation failed for party ID %d", party.PartyID)
 		}
 	}
 
