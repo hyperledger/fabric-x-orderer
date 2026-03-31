@@ -69,9 +69,8 @@ func TestTxClientSend(t *testing.T) {
 	// 5. Check If Transaction is sent
 	t.Log("Finished submit")
 
-	// Pull some block from the middle and count them
 	startBlock := uint64(0)
-	endBlock := uint64(5)
+	endBlock := uint64(totalTxNumber + 1)
 	totalTxs := 0
 	totalBlocks := 0
 
