@@ -82,7 +82,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 		assembler := assembler.NewAssembler(conf, lastConfigBlock, stop, assemblerLogger)
 		assembler.StartAssemblerService()
 
-		utils.StopSignalListen(nil, assembler, assemblerLogger, assembler.Address())
+		utils.StopSignalListen(assembler, assemblerLogger, assembler.Address())
 
 		assemblerLogger.Infof("Assembler listening on %s", assembler.Address())
 	}
@@ -123,7 +123,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 		consensus.StartConsensusService()
 		consensus.Start()
 
-		utils.StopSignalListen(nil, consensus, consenterLogger, consensus.Address())
+		utils.StopSignalListen(consensus, consenterLogger, consensus.Address())
 
 		consenterLogger.Infof("Consensus listening on %s", consensus.Address())
 	}
@@ -164,7 +164,7 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 		batcher.StartBatcherService()
 		batcher.Run()
 
-		utils.StopSignalListen(nil, batcher, batcherLogger, batcher.Address())
+		utils.StopSignalListen(batcher, batcherLogger, batcher.Address())
 
 		batcherLogger.Infof("Batcher listening on %s", batcher.Address())
 	}
@@ -198,7 +198,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 		r := router.NewRouter(routerConf, conf, routerLogger, signer, stop, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
 		r.StartRouterService()
 
-		utils.StopSignalListen(nil, r, routerLogger, r.Address())
+		utils.StopSignalListen(r, routerLogger, r.Address())
 
 		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)
 	}

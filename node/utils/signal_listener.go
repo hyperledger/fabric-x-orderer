@@ -19,23 +19,14 @@ type NodeStopper interface {
 }
 
 // TODO: unit test StopSignalListen
-func StopSignalListen(stopChan chan struct{}, node NodeStopper, logger *flogging.FabricLogger, nodeAddr string) {
+func StopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr string) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM)
 
 	go func() {
 		defer signal.Stop(signalChan)
-
-		for {
-			select {
-			case <-signalChan:
-				logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
-				node.Stop()
-				return
-			case <-stopChan:
-				logger.Infof("Exit StopSignalListen routine")
-				return
-			}
-		}
+		<-signalChan
+		logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
+		node.Stop()
 	}()
 }
