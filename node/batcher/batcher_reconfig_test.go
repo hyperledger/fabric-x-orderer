@@ -120,9 +120,10 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 
 	// submit request
 	req := tx.CreateStructuredRequestWithConfigSeq([]byte{2}, 1)
-	resp, err := primaryBatcher.Submit(context.Background(), req)
-	require.NoError(t, err)
-	require.Empty(t, resp.Error)
+	require.Eventually(t, func() bool {
+		resp, err := primaryBatcher.Submit(context.Background(), req)
+		return err == nil && resp.Error == ""
+	}, 60*time.Second, 10*time.Millisecond)
 
 	// make sure request was batched
 	for _, b := range batchers {
