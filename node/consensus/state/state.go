@@ -51,6 +51,41 @@ type State struct {
 	AppContext []byte
 }
 
+func (s *State) String() string {
+	var pendingStr string
+	if len(s.Pending) == 0 {
+		pendingStr = "none"
+	} else {
+		pendingStr = fmt.Sprintf("%d BAFs:", len(s.Pending))
+		for i, baf := range s.Pending {
+			if i < 5 { // Limit to first 5 for brevity
+				pendingStr += fmt.Sprintf("\n    - %s", baf.String())
+			} else if i == 5 {
+				pendingStr += fmt.Sprintf("\n    ... and %d more", len(s.Pending)-5)
+				break
+			}
+		}
+	}
+
+	var complaintsStr string
+	if len(s.Complaints) == 0 {
+		complaintsStr = "none"
+	} else {
+		complaintsStr = fmt.Sprintf("%d complaints:", len(s.Complaints))
+		for i, c := range s.Complaints {
+			if i < 5 { // Limit to first 5 for brevity
+				complaintsStr += fmt.Sprintf("\n    - %s", c.String())
+			} else if i == 5 {
+				complaintsStr += fmt.Sprintf("\n    ... and %d more", len(s.Complaints)-5)
+				break
+			}
+		}
+	}
+
+	return fmt.Sprintf("State{N: %d, Quorum: %d, Threshold: %d, ShardCount: %d, \nPending: %s, \nComplaints: %s}",
+		s.N, s.Quorum, s.Threshold, s.ShardCount, pendingStr, complaintsStr)
+}
+
 type RawState struct {
 	Config     []byte
 	Shards     []byte
