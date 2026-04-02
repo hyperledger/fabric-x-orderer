@@ -6,7 +6,7 @@ require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/gorilla/handlers v1.5.2
-	github.com/hyperledger/fabric-x-common v0.1.1-0.20260325083241-a20cecf8e82d
+	github.com/hyperledger/fabric-x-common v0.1.1-0.20260406135811-b18df7089b57
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2

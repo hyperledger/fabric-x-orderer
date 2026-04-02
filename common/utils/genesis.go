@@ -8,6 +8,7 @@ package utils
 
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	xprotoutil "github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -32,7 +33,7 @@ func EmptyGenesisBlock(channelID string) *common.Block {
 
 	block := protoutil.NewBlock(0, nil)
 	block.Data = &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(envelope)}}
-	block.Header.DataHash = protoutil.ComputeBlockDataHash(block.Data)
+	block.Header.DataHash = xprotoutil.ComputeBlockDataHash(block.Data)
 	block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
 		Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: 0}),
 	})

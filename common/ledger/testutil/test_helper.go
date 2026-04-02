@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/sw"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	pb "github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	xprotoutil "github.com/hyperledger/fabric-x-common/protoutil"
 	xcommon_configtxgen "github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil/fakes"
@@ -331,7 +332,7 @@ func NewBlock(env []*common.Envelope, blockNum uint64, previousHash []byte) *com
 		txEnvBytes, _ := proto.Marshal(env[i])
 		block.Data.Data = append(block.Data.Data, txEnvBytes)
 	}
-	block.Header.DataHash = protoutil.ComputeBlockDataHash(block.Data)
+	block.Header.DataHash = xprotoutil.ComputeBlockDataHash(block.Data)
 	protoutil.InitBlockMetadata(block)
 
 	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = xcommon_txflags.NewWithValues(len(env), pb.TxValidationCode_VALID)

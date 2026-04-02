@@ -246,7 +246,7 @@ github.com/hyperledger/fabric-protos-go-apiv2/orderer
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft
 github.com/hyperledger/fabric-protos-go-apiv2/peer
-# github.com/hyperledger/fabric-x-common v0.1.1-0.20260325083241-a20cecf8e82d
+# github.com/hyperledger/fabric-x-common v0.1.1-0.20260406135811-b18df7089b57
 ## explicit; go 1.25.5
 github.com/hyperledger/fabric-x-common/api/msppb
 github.com/hyperledger/fabric-x-common/api/ordererpb

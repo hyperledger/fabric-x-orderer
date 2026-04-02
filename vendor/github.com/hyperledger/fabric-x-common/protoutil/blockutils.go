@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 	"os"
@@ -74,9 +75,21 @@ func BlockDataHash(b *cb.BlockData) ([]byte, error) {
 	return ComputeBlockDataHash(b), nil
 }
 
+// ComputeBlockDataHash computes a SHA-256 digest of the block data using length-delimited
+// serialization. Each data item is prefixed with its 4-byte big-endian length before hashing.
+// This prevents hash ambiguity when concatenating variable-length items
+// (e.g., [ab, cd] vs [a, bcd] produce the same simple concat but different length-prefixed hashes)
+// and matches the orderer's BatchedRequests.Digest() computation.
 func ComputeBlockDataHash(b *cb.BlockData) []byte {
-	sum := sha256.Sum256(bytes.Join(b.Data, nil))
-	return sum[:]
+	sizeBuff := make([]byte, 4)
+	h := sha256.New()
+	for _, d := range b.Data {
+		//nolint:gosec // block data items are always well within uint32 range
+		binary.BigEndian.PutUint32(sizeBuff, uint32(len(d)))
+		h.Write(sizeBuff) //nolint:revive // hash.Write never returns an error
+		h.Write(d)        //nolint:revive // hash.Write never returns an error
+	}
+	return h.Sum(nil)
 }
 
 // GetChannelIDFromBlockBytes returns channel ID given byte array which represents

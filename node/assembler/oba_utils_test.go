@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	xprotoutil "github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
@@ -23,7 +24,7 @@ type OrderedBatchAttestationCreator struct {
 
 func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *state.AvailableBatchOrdered) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
-	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
+	genesisDigest := xprotoutil.ComputeBlockDataHash(genesisBlock.GetData())
 
 	ba := &state.AvailableBatchOrdered{
 		AvailableBatch: state.NewAvailableBatchGenesis([]byte{}),
