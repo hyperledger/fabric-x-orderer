@@ -406,8 +406,12 @@ func (msp *bccspmsp) DeserializeIdentity(identity *msppb.Identity) (Identity, er
 	case *msppb.Identity_Certificate:
 		return msp.deserializeIdentityInternal(identity.GetCertificate())
 	case *msppb.Identity_CertificateId:
-		return msp.GetKnownDeserializedIdentity(
-			IdentityIdentifier{Mspid: identity.MspId, Id: identity.GetCertificateId()}), nil
+		id := msp.GetKnownDeserializedIdentity(
+			IdentityIdentifier{Mspid: identity.MspId, Id: identity.GetCertificateId()})
+		if id == nil {
+			return nil, errors.New("identity is unknown")
+		}
+		return id, nil
 	default:
 		return nil, errors.New("unknown creator type in the identity")
 	}

@@ -136,12 +136,12 @@ github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2 h1:B1Nt8hK
 github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2/go.mod h1:X+DIyUsaTmalOpmpQfIvFZjKHQedrURQ5t4YqquX7lE=
 github.com/hyperledger/fabric-config v0.3.0 h1:FS5/dc9GAniljP6RYxQRG92AaiBVoN2vTvtOvnWqeQs=
 github.com/hyperledger/fabric-config v0.3.0/go.mod h1:kSevTn78K83Suc++JsEo7Nt1tYIPqDajW+ORz3OhWlg=
-github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5 h1:RPWTL5wxAb+xDOrsCU3QYZP65305F8v3PaOyzdbPVMU=
-github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5/go.mod h1:SHNCq8AB0VpHAmvJEtdbzabv6NNV1F48JdmDihasBjc=
+github.com/hyperledger/fabric-lib-go v1.1.3 h1:alvgtBlbm373P3BLIxdHKVT4I64mORDwQy49uTWdkI4=
+github.com/hyperledger/fabric-lib-go v1.1.3/go.mod h1:zwnGaLwmQ/usgC6Xbzh8jCnOniViRHSsg7WYErxbr30=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7 h1:sQ5qv8vQQfwewa1JlCiSCC8dLElmaU2/frLolpgibEY=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7/go.mod h1:bJnwzfv03oZQeCc863pdGTDgf5nmCy6Za3RAE7d2XsQ=
-github.com/hyperledger/fabric-x-common v0.1.0 h1:JLT2e7LLFC3Trf2M84Fz2SCunTu/p3P41+nybKm3FnY=
-github.com/hyperledger/fabric-x-common v0.1.0/go.mod h1:+VPYRRCGAZo7+rlT55yK3aRmUbRJwQGlWg7lz0SLdMY=
+github.com/hyperledger/fabric-x-common v0.1.1-0.20260325083241-a20cecf8e82d h1:o0oCpWS9sG1WdBbck7cmVvxqhgmX1ndxpJQCCdaHPIs=
+github.com/hyperledger/fabric-x-common v0.1.1-0.20260325083241-a20cecf8e82d/go.mod h1:SSvKRokJbSKTZnVt0XzVsyyALldy+5MKly5couC9lC8=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/joshdk/go-junit v1.0.0 h1:S86cUKIdwBHWwA6xCmFlf3RTLfVXYQfvanM5Uh+K6GE=
 github.com/joshdk/go-junit v1.0.0/go.mod h1:TiiV0PqkaNfFXjEiyjWM3XXrhVyCa1K4Zfga6W52ung=

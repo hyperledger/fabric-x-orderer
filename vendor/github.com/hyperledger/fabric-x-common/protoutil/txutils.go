@@ -10,10 +10,11 @@ import (
 	"bytes"
 	"crypto/sha256"
 	b64 "encoding/base64"
+	"encoding/pem"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
@@ -57,6 +58,46 @@ func GetEnvelopeFromBlock(data []byte) (*common.Envelope, error) {
 	}
 
 	return env, nil
+}
+
+// HashTLSCertificate computes the SHA256 hash of a PEM-encoded TLS certificate.
+// The certificate must be provided in PEM format with block type "CERTIFICATE".
+// This hash can be used with CreateSignedEnvelopeWithTLSBinding to bind a transaction
+// to a specific TLS certificate.
+//
+// Parameters:
+//   - certPEMBlock: PEM-encoded TLS certificate bytes.
+//
+// Returns:
+//   - The SHA256 hash of the certificate DER bytes.
+//   - An error if the input is not a valid PEM-encoded certificate.
+//
+// Example usage:
+//
+//	tlsCertHash, err := protoutil.HashTLSCertificate(certPEMBlock)
+//	if err != nil {
+//	    return err
+//	}
+//	envelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+//	    txType, channelID, signer, dataMsg, msgVersion, epoch, tlsCertHash)
+func HashTLSCertificate(certPEMBlock []byte) ([]byte, error) {
+	var tlsCertBytes []byte
+	for len(tlsCertBytes) == 0 {
+		var certDERBlock *pem.Block
+		certDERBlock, certPEMBlock = pem.Decode(certPEMBlock)
+		if certDERBlock == nil {
+			break
+		}
+		if certDERBlock.Type == "CERTIFICATE" {
+			tlsCertBytes = certDERBlock.Bytes
+		}
+	}
+	if len(tlsCertBytes) == 0 {
+		return nil, errors.New("failed to find any PEM data in certificate input")
+	}
+
+	digest := sha256.Sum256(tlsCertBytes)
+	return digest[:], nil
 }
 
 // CreateSignedEnvelope creates a signed envelope with

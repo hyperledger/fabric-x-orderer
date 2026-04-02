@@ -11,14 +11,14 @@ import (
 	"crypto/x509"
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/msp"
 )
 
-var commLogger = util.MustGetLogger("comm")
+var commLogger = flogging.MustGetLogger("comm")
 
 // CredentialSupport type manages credentials used for gRPC client connections
 type CredentialSupport struct {

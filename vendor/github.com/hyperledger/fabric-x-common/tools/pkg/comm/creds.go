@@ -17,8 +17,6 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"google.golang.org/grpc/credentials"
-
-	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
 var (
@@ -30,14 +28,15 @@ var (
 	alpnProtoStr = []string{"h2"}
 
 	// Logger for TLS client connections
-	tlsClientLogger = util.MustGetLogger("comm.tls")
+	tlsClientLogger = flogging.MustGetLogger("comm.tls")
 )
 
 // NewServerTransportCredentials returns a new initialized
 // grpc/credentials.TransportCredentials
 func NewServerTransportCredentials(
 	serverConfig *TLSConfig,
-	logger *flogging.FabricLogger) credentials.TransportCredentials {
+	logger *flogging.FabricLogger,
+) credentials.TransportCredentials {
 	// NOTE: unlike the default grpc/credentials implementation, we do not
 	// clone the tls.Config which allows us to update it dynamically
 	serverConfig.config.NextProtos = alpnProtoStr
