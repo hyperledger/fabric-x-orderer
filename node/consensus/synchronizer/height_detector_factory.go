@@ -30,6 +30,7 @@ import (
 // It is used by the synchronizer in order to establish a target height for pulling blocks.
 type HeightDetector interface {
 	HeightsByEndpoints() (map[string]uint64, string, error)
+	GenesisByEndpoints() (map[string]*cb.Block, error)
 	Close()
 }
 
@@ -81,7 +82,7 @@ func newBlockPuller(
 	stdDialer.Config.AsyncConnect = false
 	stdDialer.Config.SecOpts.VerifyCertificate = nil
 
-	// TODO Extract endpoint and TLS cert from the config.
+	// Extract endpoint and TLS cert from the config, excluding the self endpoint.
 	endpoints, err := extractEndpointCriteriaFromConfig(myPartyID, support)
 	if err != nil {
 		return nil, err
@@ -130,6 +131,10 @@ func newBlockPuller(
 	return bp, nil
 }
 
+// extractEndpointCriteriaFromConfig extracts endpoint criteria from the channel configuration.
+// It retrieves all consenter addresses from the shared config and converts them into EndpointCriteria,
+// excluding the endpoint corresponding to myPartyID to avoid self-connection.
+// Returns a slice of EndpointCriteria containing the endpoint address and TLS root certificates for each consenter.
 func extractEndpointCriteriaFromConfig(myPartyID types.PartyID, support ConsenterSupport) ([]comm.EndpointCriteria, error) {
 	party2endpoint, err := extractConsenterAddresses(support.SharedConfig())
 	if err != nil {

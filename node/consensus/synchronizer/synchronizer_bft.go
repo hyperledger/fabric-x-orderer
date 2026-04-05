@@ -7,6 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package synchronizer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -15,14 +20,16 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
 type BFTSynchronizer struct {
@@ -111,6 +118,17 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	startHeight := s.Support.Height()
 	if startHeight >= targetHeight {
 		return nil, errors.Errorf("already at target height of %d", targetHeight)
+	}
+
+	if startHeight == 0 {
+		genesisBlock, err := s.fetchGenesisBlock()
+		if err != nil {
+			s.Logger.Panicf("Cannot join the cluster: %s", errors.Wrap(err, "failed to fetch genesis block"))
+		}
+		s.Support.WriteConfigBlock(genesisBlock, nil)
+		startHeight = s.Support.Height()
+
+		s.Logger.Infof("Fetched and wrote genesis block, new height: %d, party: %d", startHeight, s.selfID)
 	}
 
 	// === Create a buffer to accept the blocks delivered from the BFTDeliverer.
@@ -252,6 +270,64 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	bftDeliverer.Initialize(lastConfigEnv.GetConfig(), myParty)
 
 	return bftDeliverer, nil
+}
+
+// fetchGenesisBlock fetches the genesis block from remote orderers.
+// TODO make this method stoppable, currently it can take a long time if remote endpoints are not responsive, and we have no way to interrupt it.
+func (s *BFTSynchronizer) fetchGenesisBlock() (*common.Block, error) {
+	s.Logger.Infof("Fetching genesis block, party: %d", s.selfID)
+	blockPuller, err := s.BlockPullerFactory.CreateHeightDetector(arma_types.PartyID(s.selfID), s.Support, s.ClusterDialer, s.LocalConfigCluster, s.CryptoProvider, s.Logger)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot create HeightDetector")
+	}
+	defer blockPuller.Close()
+
+	genesisByEndpoint, err := blockPuller.GenesisByEndpoints()
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot get GenesisByEndpoints")
+	}
+
+	s.Logger.Infof("Received genesis blocks from %d endpoints: %v", len(genesisByEndpoint), slices.Collect(maps.Keys(genesisByEndpoint)))
+
+	// Calculate required matches
+	clusterSize := len(s.Support.SharedConfig().Consenters())
+	f, requiredMatches, _ := utils.ComputeFTQ(uint16(clusterSize))
+	s.Logger.Infof("Cluster size: %d, F: %d, required matches: %d", clusterSize, f, requiredMatches)
+
+	// Count occurrences of each genesis block by hash
+	blockCounts := make(map[string]int)
+	blockByHash := make(map[string]*common.Block)
+	endpointToHash := []string{}
+	for endpoint, block := range genesisByEndpoint {
+		if block == nil {
+			s.Logger.Warnf("Nil genesis block from endpoint: %s", endpoint)
+			continue
+		}
+
+		blockBytes, err := proto.Marshal(block)
+		if err != nil {
+			s.Logger.Warnf("Cannot marshal genesis block from endpoint: %s; err: %s", endpoint, err)
+			continue
+		}
+
+		blockHash := sha256.Sum256(blockBytes)
+		blockHashStr := hex.EncodeToString(blockHash[:])
+
+		blockCounts[blockHashStr]++
+		blockByHash[blockHashStr] = block
+		endpointToHash = append(endpointToHash, fmt.Sprintf("[EP: %s, H: %s]", endpoint, blockHashStr))
+	}
+
+	// Find a block that appears at least F+1 times
+	for blockHash, count := range blockCounts {
+		if count >= int(requiredMatches) {
+			genesisBlock := blockByHash[blockHash]
+			s.Logger.Infof("Found genesis block with %d matching copies (required: %d)", count, requiredMatches)
+			return genesisBlock, nil
+		}
+	}
+
+	return nil, errors.Errorf("could not find genesis block with at least %d matching copies: %+v", requiredMatches, endpointToHash)
 }
 
 func (s *BFTSynchronizer) getBlocksFromSyncBuffer(startHeight, targetHeight uint64) (*common.Block, error) {

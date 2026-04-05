@@ -4,6 +4,7 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 )
 
@@ -11,6 +12,18 @@ type FakeHeightDetector struct {
 	CloseStub        func()
 	closeMutex       sync.RWMutex
 	closeArgsForCall []struct {
+	}
+	GenesisByEndpointsStub        func() (map[string]*common.Block, error)
+	genesisByEndpointsMutex       sync.RWMutex
+	genesisByEndpointsArgsForCall []struct {
+	}
+	genesisByEndpointsReturns struct {
+		result1 map[string]*common.Block
+		result2 error
+	}
+	genesisByEndpointsReturnsOnCall map[int]struct {
+		result1 map[string]*common.Block
+		result2 error
 	}
 	HeightsByEndpointsStub        func() (map[string]uint64, string, error)
 	heightsByEndpointsMutex       sync.RWMutex
@@ -52,6 +65,62 @@ func (fake *FakeHeightDetector) CloseCalls(stub func()) {
 	fake.closeMutex.Lock()
 	defer fake.closeMutex.Unlock()
 	fake.CloseStub = stub
+}
+
+func (fake *FakeHeightDetector) GenesisByEndpoints() (map[string]*common.Block, error) {
+	fake.genesisByEndpointsMutex.Lock()
+	ret, specificReturn := fake.genesisByEndpointsReturnsOnCall[len(fake.genesisByEndpointsArgsForCall)]
+	fake.genesisByEndpointsArgsForCall = append(fake.genesisByEndpointsArgsForCall, struct {
+	}{})
+	stub := fake.GenesisByEndpointsStub
+	fakeReturns := fake.genesisByEndpointsReturns
+	fake.recordInvocation("GenesisByEndpoints", []interface{}{})
+	fake.genesisByEndpointsMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeHeightDetector) GenesisByEndpointsCallCount() int {
+	fake.genesisByEndpointsMutex.RLock()
+	defer fake.genesisByEndpointsMutex.RUnlock()
+	return len(fake.genesisByEndpointsArgsForCall)
+}
+
+func (fake *FakeHeightDetector) GenesisByEndpointsCalls(stub func() (map[string]*common.Block, error)) {
+	fake.genesisByEndpointsMutex.Lock()
+	defer fake.genesisByEndpointsMutex.Unlock()
+	fake.GenesisByEndpointsStub = stub
+}
+
+func (fake *FakeHeightDetector) GenesisByEndpointsReturns(result1 map[string]*common.Block, result2 error) {
+	fake.genesisByEndpointsMutex.Lock()
+	defer fake.genesisByEndpointsMutex.Unlock()
+	fake.GenesisByEndpointsStub = nil
+	fake.genesisByEndpointsReturns = struct {
+		result1 map[string]*common.Block
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeHeightDetector) GenesisByEndpointsReturnsOnCall(i int, result1 map[string]*common.Block, result2 error) {
+	fake.genesisByEndpointsMutex.Lock()
+	defer fake.genesisByEndpointsMutex.Unlock()
+	fake.GenesisByEndpointsStub = nil
+	if fake.genesisByEndpointsReturnsOnCall == nil {
+		fake.genesisByEndpointsReturnsOnCall = make(map[int]struct {
+			result1 map[string]*common.Block
+			result2 error
+		})
+	}
+	fake.genesisByEndpointsReturnsOnCall[i] = struct {
+		result1 map[string]*common.Block
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeHeightDetector) HeightsByEndpoints() (map[string]uint64, string, error) {
