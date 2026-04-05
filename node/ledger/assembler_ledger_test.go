@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestAssemblerLedger_Create(t *testing.T) {
@@ -96,6 +97,35 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		assert.Equal(t, uint64(3), al.GetTxCount())
 		assert.Equal(t, uint64(2), al.Ledger.Height())
 	})
+}
+
+func TestAssemblerLedger_Append_SignaturesMetadataValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := flogging.MustGetLogger("arma-assembler")
+
+	al := createAssemblerLedger(t, tmpDir, logger)
+	defer al.Close()
+
+	al.AppendConfig(&state.OrderingInformation{
+		CommonBlock: utils.EmptyGenesisBlock("arma"),
+		DecisionNum: 0,
+		BatchIndex:  0,
+		BatchCount:  1,
+	})
+
+	batches, ordInfos := createBatchesAndOrdInfo(t, 1)
+	al.Append(batches[0], ordInfos[0])
+
+	block, err := al.Ledger.RetrieveBlockByNumber(1)
+	require.NoError(t, err)
+
+	sigsMd := &common.Metadata{}
+	require.NoError(t, proto.Unmarshal(block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES], sigsMd))
+	require.NotEmpty(t, sigsMd.Value, "SIGNATURES metadata Value should contain OrdererBlockMetadata")
+
+	// The Value should match the ORDERER metadata that was set on the block
+	expectedOrdererBlockMetadata := ordInfos[0].CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+	assert.Equal(t, expectedOrdererBlockMetadata, sigsMd.Value)
 }
 
 func TestAssemblerLedger_ReadAndParse(t *testing.T) {
@@ -499,14 +529,28 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		require.NotNil(t, fb)
 
 		transactionCount += len(batchedRequests)
+
+		// Create a temporary ordInfo to compute ordererBlockMetadata before building MessageToSign
+		tmpOrdInfo := &state.OrderingInformation{
+			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: n + 1, DataHash: fb.Digest()}},
+			DecisionNum: types.DecisionNum(3 + n),
+			BatchIndex:  0,
+			BatchCount:  1,
+		}
+		protoutil.InitBlockMetadata(tmpOrdInfo.CommonBlock)
+		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, tmpOrdInfo, uint64(transactionCount))
+		require.NoError(t, err)
+
 		msg1 := &state.MessageToSign{
-			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+			IdentifierHeader:     protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+			OrdererBlockMetadata: ordererBlockMetadata,
 		}
 		msg2 := &state.MessageToSign{
-			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(2)),
+			IdentifierHeader:     protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(2)),
+			OrdererBlockMetadata: ordererBlockMetadata,
 		}
 		ordInfo := &state.OrderingInformation{
-			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: n + 1, DataHash: fb.Digest()}},
+			CommonBlock: tmpOrdInfo.CommonBlock,
 			Signatures: []smartbft_types.Signature{{
 				ID:    1,
 				Value: []byte("sig1"),
@@ -520,10 +564,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 			BatchIndex:  0,
 			BatchCount:  1,
 		}
-		protoutil.InitBlockMetadata(ordInfo.CommonBlock)
 
-		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, ordInfo, uint64(transactionCount))
-		require.NoError(t, err)
 		ordInfo.CommonBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ordererBlockMetadata
 
 		if n > 0 {

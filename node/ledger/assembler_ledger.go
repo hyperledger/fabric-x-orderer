@@ -145,9 +145,10 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 	}
 
 	// TODO update the signature on the block in consensus
-	sigs, signers := arrangeSignatures(ordInfo)
+	sigs, signers, ordererBlockMetadata := arrangeSignatures(ordInfo)
 
 	blockToAppend.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
+		Value:      ordererBlockMetadata,
 		Signatures: sigs,
 	})
 
@@ -188,10 +189,11 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 	}
 
 	// TODO update the signature on the block in consensus
-	sigs, signers := arrangeSignatures(orderingInfo)
+	sigs, signers, ordererBlockMetadata := arrangeSignatures(orderingInfo)
 
 	if len(sigs) > 0 {
 		configBlock.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&common.Metadata{
+			Value:      ordererBlockMetadata,
 			Signatures: sigs,
 		})
 	}
@@ -215,9 +217,10 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 }
 
 // TODO this should be done by the consenter
-func arrangeSignatures(orderingInfo *state.OrderingInformation) ([]*common.MetadataSignature, []uint64) {
+func arrangeSignatures(orderingInfo *state.OrderingInformation) ([]*common.MetadataSignature, []uint64, []byte) {
 	var sigs []*common.MetadataSignature
 	var signers []uint64
+	var ordererBlockMetadata []byte
 
 	for _, s := range orderingInfo.Signatures {
 
@@ -230,9 +233,13 @@ func arrangeSignatures(orderingInfo *state.OrderingInformation) ([]*common.Metad
 			IdentifierHeader: msg.IdentifierHeader,
 		})
 
+		if ordererBlockMetadata == nil {
+			ordererBlockMetadata = msg.OrdererBlockMetadata
+		}
+
 		signers = append(signers, s.ID)
 	}
-	return sigs, signers
+	return sigs, signers, ordererBlockMetadata
 }
 
 func (l *AssemblerLedger) LedgerReader() blockledger.Reader {
