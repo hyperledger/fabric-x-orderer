@@ -198,6 +198,13 @@ func (c *Consensus) Address() string {
 	return c.Net.Address()
 }
 
+// GetPartyID returns the party ID and used in testing only
+func (c *Consensus) GetPartyID() arma_types.PartyID {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.Config.PartyId
+}
+
 // BFTConfig returns the current BFT configuration and the current nodes in the cluster (from SmartBFT API)
 func (c *Consensus) BFTConfig() (smartbft_types.Configuration, []uint64) {
 	return c.Config.BFTConfig, c.CurrentNodes

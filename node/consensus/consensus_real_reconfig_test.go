@@ -200,7 +200,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// wait for the updated consensus node to enter pending admin state and then stop the node
 		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId == consenterToUpdate {
+			if consenter.GetPartyID() == consenterToUpdate {
 				c = consenter
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
@@ -213,7 +213,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId != consenterToUpdate {
+			if consenter.GetPartyID() != consenterToUpdate {
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
 					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
@@ -281,7 +281,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// wait for the removed consensus node to enter pending admin state and then stop the node
 		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId == removedParty {
+			if consenter.GetPartyID() == removedParty {
 				c = consenter
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
@@ -294,7 +294,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId != removedParty {
+			if consenter.GetPartyID() != removedParty {
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
 					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
@@ -356,7 +356,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// wait for the removed consensus node to enter pending admin state and then stop the node
 		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId == removedPartyLeader {
+			if consenter.GetPartyID() == removedPartyLeader {
 				c = consenter
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
@@ -369,7 +369,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId != removedPartyLeader {
+			if consenter.GetPartyID() != removedPartyLeader {
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
 					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
@@ -408,7 +408,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		consenterPartyToUpdate := types.PartyID(2)
 		consenterPartyToUpdateIndex := 0
 		for i, consenter := range consensusNodes {
-			if consenter.Config.PartyId == consenterPartyToUpdate {
+			if consenter.GetPartyID() == consenterPartyToUpdate {
 				consenterPartyToUpdateIndex = i
 				break
 			}
@@ -478,7 +478,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// wait for the updated consensus node to enter pending admin state and then stop the node
 		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId == consenterPartyToUpdate {
+			if consenter.GetPartyID() == consenterPartyToUpdate {
 				c = consenter
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
@@ -491,7 +491,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
-			if consenter.Config.PartyId != consenterPartyToUpdate {
+			if consenter.GetPartyID() != consenterPartyToUpdate {
 				require.Eventually(t, func() bool {
 					status := consenter.GetStatus()
 					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
