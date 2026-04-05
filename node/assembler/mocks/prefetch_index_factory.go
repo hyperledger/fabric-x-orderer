@@ -118,8 +118,6 @@ func (fake *FakePrefetchIndexerFactory) CreateReturnsOnCall(i int, result1 assem
 func (fake *FakePrefetchIndexerFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.createMutex.RLock()
-	defer fake.createMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

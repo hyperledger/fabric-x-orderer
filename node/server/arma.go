@@ -61,14 +61,14 @@ func (cli *CLI) configureNodesCommands() {
 
 func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigAssembler"))
+		configuration, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigAssembler"))
 		if err != nil {
 			panic(fmt.Sprintf("error launching assembler, err: %s", err))
 		}
 
-		conf := configContent.ExtractAssemblerConfig(lastConfigBlock)
+		conf := configuration.ExtractAssemblerConfig(lastConfigBlock)
 
-		if err := configContent.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
+		if err := configuration.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
 			panic(err)
 		}
 
@@ -79,7 +79,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
 		}
 
-		assembler := assembler.NewAssembler(conf, lastConfigBlock, stop, assemblerLogger)
+		assembler := assembler.NewAssembler(conf, configuration, lastConfigBlock, stop, assemblerLogger)
 		assembler.StartAssemblerService()
 
 		utils.StopSignalListen(assembler, assemblerLogger, assembler.Address())

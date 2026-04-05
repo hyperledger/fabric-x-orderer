@@ -13,9 +13,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -321,7 +323,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 	}
 
-	a := assembler.NewAssembler(nodeConfig, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)))
+	a := assembler.NewAssembler(nodeConfig, &orderer_config.Configuration{}, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)))
 	a.StartAssemblerService()
 	return a, a.Address()
 }

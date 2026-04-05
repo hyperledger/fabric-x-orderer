@@ -12,14 +12,15 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
-//go:generate counterfeiter -o ./mocks/assembler_restarter.go . AssemblerRestarter
-type AssemblerRestarter interface {
-	SoftStop()
+//go:generate counterfeiter -o ./mocks/config_processor.go . ConfigProcessor
+type ConfigProcessor interface {
+	ProcessNewConfigBlock(configBlock *common.Block)
 	ConfigBlockNumber() uint64
 }
 
@@ -48,7 +49,7 @@ type Collator struct {
 	Index                             AssemblerIndex
 	Shards                            []types.ShardID
 	runningWG                         sync.WaitGroup
-	AssemblerRestarter                AssemblerRestarter
+	ConfigProcessor                   ConfigProcessor
 }
 
 // Run starts a go routine which processes incoming ordered batch attestations from consensus
@@ -79,10 +80,9 @@ func (c *Collator) processOrderedBatchAttestations() {
 			c.Ledger.AppendConfig(orderingInfo)
 
 			// if the config block number is greater than the current config block number, we need to restart the assembler
-			if orderingInfo.CommonBlock.GetHeader().GetNumber() > c.AssemblerRestarter.ConfigBlockNumber() {
-				c.Logger.Infof("Config block number %d is greater than assembler's current config block number %d, initiating soft stop", orderingInfo.CommonBlock.GetHeader().GetNumber(), c.AssemblerRestarter.ConfigBlockNumber())
-				go c.AssemblerRestarter.SoftStop()
-				// TODO apply new config and update lastConfigBlockNumber in assembler
+			if orderingInfo.CommonBlock.GetHeader().GetNumber() > c.ConfigProcessor.ConfigBlockNumber() {
+				c.Logger.Infof("Config block number %d is greater than assembler's current config block number %d", orderingInfo.CommonBlock.GetHeader().GetNumber(), c.ConfigProcessor.ConfigBlockNumber())
+				go c.ConfigProcessor.ProcessNewConfigBlock(orderingInfo.CommonBlock)
 				return
 			}
 

@@ -274,6 +274,8 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	err = broadcastClient.SendTx(env)
 	require.NoError(t, err)
 
+	testutil.WaitForAssemblersLaunch(t, netInfo)
+
 	// Pull from assembler
 	parties := []types.PartyID{}
 	for partyID := 1; partyID <= numOfParties; partyID++ {

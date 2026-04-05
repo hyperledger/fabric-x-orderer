@@ -67,7 +67,7 @@ func TestCollator_Batches(t *testing.T) {
 	// create test batches from all shards
 	digestsSet, batches := createTestBatches(t, shardCount, batchNum, primaryID)
 	// create test setup
-	index, ledger, ordBARep, collator := createCollator(t, shardCount, &assembler_mocks.FakeAssemblerRestarter{})
+	index, ledger, ordBARep, collator := createCollator(t, shardCount, &assembler_mocks.FakeConfigProcessor{})
 
 	collator.Run()
 
@@ -121,8 +121,8 @@ func TestCollator_Config(t *testing.T) {
 	// create test batches from all shards
 	_, batches := createTestBatches(t, shardCount, batchNum, primaryID)
 	// create test setup
-	restarter := &assembler_mocks.FakeAssemblerRestarter{}
-	index, ledger, ordBARep, collator := createCollator(t, shardCount, restarter)
+	configProcessor := &assembler_mocks.FakeConfigProcessor{}
+	index, ledger, ordBARep, collator := createCollator(t, shardCount, configProcessor)
 
 	collator.Run()
 
@@ -173,7 +173,7 @@ func TestCollator_Config(t *testing.T) {
 	require.True(t, protoutil.IsConfigBlock(lastBlock))
 
 	require.Eventually(t, func() bool {
-		return restarter.SoftStopCallCount() == 1
+		return configProcessor.ProcessNewConfigBlockCallCount() == 1
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
@@ -238,7 +238,7 @@ func createTestBatches(t *testing.T, shardCount int, batchNum int, primaryID typ
 	return digestsSet, batches
 }
 
-func createCollator(t *testing.T, shardCount int, AssemblerRestarter assembler.AssemblerRestarter) (*naiveIndex, node_ledger.AssemblerLedgerReaderWriter, naiveOrderedBatchAttestationReplicator, *assembler.Collator) {
+func createCollator(t *testing.T, shardCount int, ConfigProcessor assembler.ConfigProcessor) (*naiveIndex, node_ledger.AssemblerLedgerReaderWriter, naiveOrderedBatchAttestationReplicator, *assembler.Collator) {
 	tempDir := t.TempDir()
 
 	logger := testutil.CreateLogger(t, 0)
@@ -272,7 +272,7 @@ func createCollator(t *testing.T, shardCount int, AssemblerRestarter assembler.A
 		ShardCount:                        shardCount,
 		OrderedBatchAttestationReplicator: ordBARep,
 		Index:                             index,
-		AssemblerRestarter:                AssemblerRestarter,
+		ConfigProcessor:                   ConfigProcessor,
 	}
 	return index, ledger, ordBARep, collator
 }

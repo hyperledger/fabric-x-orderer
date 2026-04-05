@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -28,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+
 	"go.uber.org/zap"
 )
 
@@ -195,6 +197,7 @@ func (at *assemblerTest) StartAssembler() {
 		at.logger,
 		&dummyAssemblerStopper{},
 		at.nodeConfig,
+		&orderer_config.Configuration{},
 		at.genesisBlock,
 		make(chan struct{}),
 		&node_ledger.DefaultAssemblerLedgerFactory{},
