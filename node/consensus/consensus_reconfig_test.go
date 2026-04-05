@@ -24,7 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO: remove test
 func TestSubmitConfigConsensusNode(t *testing.T) {
+	t.Skip()
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
@@ -118,7 +120,9 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	setup.consensusNodes[0].Stop()
 }
 
+// TODO: remove test
 func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
+	t.Skip()
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 

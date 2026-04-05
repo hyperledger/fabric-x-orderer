@@ -48,9 +48,12 @@ import (
 func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, logger *flogging.FabricLogger, mainExitChan chan struct{}, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	c := &Consensus{
 		MainExitChan: mainExitChan,
-		status:       node_utils.NodeStatus{},
-		Logger:       logger,
-		Signer:       signer,
+		status: node_utils.NodeStatus{
+			State:                node_utils.StateInitializing,
+			ConfigSequenceNumber: nodeConfig.Bundle.ConfigtxValidator().Sequence(),
+		},
+		Logger: logger,
+		Signer: signer,
 	}
 
 	c.configureConsensus(nodeConfig, config, lastConfigBlock, configUpdateProposer)

@@ -166,7 +166,7 @@ func (c *Consensus) Stop() {
 	}
 
 	c.Logger.Infof("Stopping consensus node")
-	if state != node_utils.StateSoftStopped {
+	if state != node_utils.StateSoftStopped && state != node_utils.StatePendingAdmin {
 		close(c.softStopCh)
 		c.BFT.Stop()
 		c.Synchronizer.Stop()
@@ -948,14 +948,17 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	c.lock.Lock()
 	c.Storage.Close()
 	c.Net.Stop()
+	c.status.Set(node_utils.StateInitializing, newConfigSeq)
 	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{})
 	c.lock.Unlock()
 
 	c.Logger.Infof("Initialize new consensus, config sequence: %d", newConfigSeq)
 	c.StartConsensusService()
-	c.Start()
-
-	c.Logger.Infof("Consensus listening on %s", c.Address())
+	err := c.Start()
+	if err != nil {
+		panic(fmt.Errorf("consensus failed to restart dynamically, err: %v", err))
+	}
+	c.Logger.Infof("Consensus listening on %s after restarting dynamically with config sequence: %d", c.Address(), newConfigSeq)
 }
 
 func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header) {

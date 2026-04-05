@@ -137,17 +137,32 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
-		// make sure the config block is committed and stop the consensus node
+		// make sure the config block is committed
 		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		configSeq++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
-		// restart consensus nodes
-		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// wait for consensus nodes to apply new config and run again
+		for _, consenter := range consensusNodes {
+			require.Eventually(t, func() bool {
+				status := consenter.GetStatus()
+				return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
+			}, 20*time.Second, 100*time.Millisecond)
+		}
+
+		// re-register ledger listeners
+		ledgerListeners = make([]*storageListener, 0, len(parties))
+		for _, consensusNode := range consensusNodes {
+			ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+			consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+			ledgerListeners = append(ledgerListeners, ledgerListener)
+		}
+
+		// wait for consenters to start before submitting a request
+		time.Sleep(10 * time.Second)
 
 		// send another simple request
 		lastBlockNumber++
-		configSeq++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "")
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq+1, lastBlockNumber, "mismatch config sequence")
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq-1, lastBlockNumber, "mismatch config sequence")
@@ -179,15 +194,63 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// make sure the config block is committed and stop the consensus node
 		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		configSeq++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
-		// restart consensus nodes
-		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// wait for the updated consensus node to enter pending admin state and then stop the node
+		var c *consensus_node.Consensus
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId == consenterToUpdate {
+				c = consenter
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
+				}, 60*time.Second, 100*time.Millisecond)
+				break
+			}
+		}
+		c.Stop()
+
+		// wait for the rest of consensus nodes to apply new config and run again
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId != consenterToUpdate {
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
+				}, 60*time.Second, 100*time.Millisecond)
+			}
+		}
+
+		// restart the updated consensus node
+		updatedConsensusNode, updatedConsensusNodeServer := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{consenterToUpdate})
+		var updatedConsensusNodeLedgerListener []*storageListener
+		require.Eventually(t, func() bool {
+			updatedConsensusNodeLedgerListener = startConsensusNodesAndRegisterGRPCServers([]types.PartyID{consenterToUpdate}, updatedConsensusNode, updatedConsensusNodeServer)
+			status := updatedConsensusNode[0].GetStatus()
+			return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
+		}, 60*time.Second, 100*time.Millisecond)
+
+		// re-register ledger listeners
+		oldConsensusNodes := consensusNodes
+		ledgerListeners = make([]*storageListener, 0, len(parties))
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.Config.PartyId != consenterToUpdate {
+				ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+				consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+				ledgerListeners = append(ledgerListeners, ledgerListener)
+				consensusNodes = append(consensusNodes, consensusNode)
+			}
+		}
+
+		ledgerListeners = append(ledgerListeners, updatedConsensusNodeLedgerListener[0])
+		consensusNodes = append(consensusNodes, updatedConsensusNode[0])
+
+		// wait for consenters to start before submitting a request
+		time.Sleep(10 * time.Second)
 
 		// send another simple request
 		lastBlockNumber++
-		configSeq++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "")
 	})
 
@@ -210,9 +273,34 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
-		// make sure the config block is committed and stop the consensus node
+		// make sure the config block is committed
 		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		configSeq++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
+
+		// wait for the removed consensus node to enter pending admin state and then stop the node
+		var c *consensus_node.Consensus
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId == removedParty {
+				c = consenter
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
+				}, 60*time.Second, 100*time.Millisecond)
+				break
+			}
+		}
+		c.Stop()
+
+		// wait for the rest of consensus nodes to apply new config and run again
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId != removedParty {
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
+				}, 60*time.Second, 100*time.Millisecond)
+			}
+		}
 
 		parties = []types.PartyID{1, 2, 3, 4, 5}
 
@@ -222,13 +310,21 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
 
-		// restart consensus nodes
-		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// re-register ledger listeners
+		oldConsensusNodes := consensusNodes
+		ledgerListeners = make([]*storageListener, 0, len(parties))
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.Config.PartyId != removedParty {
+				ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+				consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+				ledgerListeners = append(ledgerListeners, ledgerListener)
+				consensusNodes = append(consensusNodes, consensusNode)
+			}
+		}
 
 		// send another simple request
 		lastBlockNumber++
-		configSeq++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "")
 	})
 
@@ -253,8 +349,33 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// make sure the config block is committed and stop the consensus node
 		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		configSeq++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
 		require.NotNil(t, lastConfigBlock)
+
+		// wait for the removed consensus node to enter pending admin state and then stop the node
+		var c *consensus_node.Consensus
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId == removedPartyLeader {
+				c = consenter
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
+				}, 60*time.Second, 100*time.Millisecond)
+				break
+			}
+		}
+		c.Stop()
+
+		// wait for the rest of consensus nodes to apply new config and run again
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId != removedPartyLeader {
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
+				}, 60*time.Second, 100*time.Millisecond)
+			}
+		}
 
 		parties = []types.PartyID{2, 3, 4, 5}
 
@@ -264,13 +385,21 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
 
-		// restart consensus nodes
-		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// re-register ledger listeners
+		oldConsensusNodes := consensusNodes
+		ledgerListeners = make([]*storageListener, 0, len(parties))
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.Config.PartyId != removedPartyLeader {
+				ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+				consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+				ledgerListeners = append(ledgerListeners, ledgerListener)
+				consensusNodes = append(consensusNodes, consensusNode)
+			}
+		}
 
 		// send another simple request
 		lastBlockNumber++
-		configSeq++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey, 1, configSeq, lastBlockNumber, "key does not exist")
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey2, 2, configSeq, lastBlockNumber, "")
 	})
@@ -332,9 +461,10 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
-		// make sure the config block is committed and stop the consensus node
+		// make sure the config block is committed
 		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommittedAndStopConsensusNodes(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		configSeq++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
 		require.NotNil(t, lastConfigBlock)
 
 		// update the node local config
@@ -345,13 +475,60 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		err = utils.WriteToYAML(localConfig.NodeLocalConfig, consenterNodeConfigPath)
 		require.NoError(t, err)
 
-		// restart consensus nodes
-		consensusNodes, servers = createConsensusNodesAndGRPCServers(t, dir, parties)
-		ledgerListeners = startConsensusNodesAndRegisterGRPCServers(parties, consensusNodes, servers)
+		// wait for the updated consensus node to enter pending admin state and then stop the node
+		var c *consensus_node.Consensus
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId == consenterPartyToUpdate {
+				c = consenter
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
+				}, 60*time.Second, 100*time.Millisecond)
+				break
+			}
+		}
+		c.Stop()
+
+		// wait for the rest of consensus nodes to apply new config and run again
+		for _, consenter := range consensusNodes {
+			if consenter.Config.PartyId != consenterPartyToUpdate {
+				require.Eventually(t, func() bool {
+					status := consenter.GetStatus()
+					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
+				}, 60*time.Second, 100*time.Millisecond)
+			}
+		}
+
+		// restart the updated consensus node
+		updatedConsensusNode, updatedConsensusNodeServer := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{consenterPartyToUpdate})
+		var updatedConsensusNodeLedgerListener []*storageListener
+		require.Eventually(t, func() bool {
+			updatedConsensusNodeLedgerListener = startConsensusNodesAndRegisterGRPCServers([]types.PartyID{consenterPartyToUpdate}, updatedConsensusNode, updatedConsensusNodeServer)
+			status := updatedConsensusNode[0].GetStatus()
+			return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
+		}, 60*time.Second, 100*time.Millisecond)
+
+		// re-register ledger listeners
+		oldConsensusNodes := consensusNodes
+		ledgerListeners = make([]*storageListener, 0, len(parties))
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.Config.PartyId != consenterPartyToUpdate {
+				ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+				consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+				ledgerListeners = append(ledgerListeners, ledgerListener)
+				consensusNodes = append(consensusNodes, consensusNode)
+			}
+		}
+
+		ledgerListeners = append(ledgerListeners, updatedConsensusNodeLedgerListener[0])
+		consensusNodes = append(consensusNodes, updatedConsensusNode[0])
+
+		// wait for consenters to start before submitting a request
+		time.Sleep(10 * time.Second)
 
 		// send another simple request
 		lastBlockNumber++
-		configSeq++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey2, 2, configSeq, lastBlockNumber, "")
 	})
 
@@ -434,6 +611,7 @@ func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus,
 		}
 		require.NoError(t, err)
 	}
+
 	for _, ledgerListener := range ledgerListeners {
 		require.Eventually(t, func() bool {
 			select {
@@ -442,12 +620,12 @@ func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus,
 			default:
 				return false
 			}
-		}, 30*time.Second, 100*time.Millisecond)
+		}, 60*time.Second, 100*time.Millisecond)
 	}
 }
 
-func makeSureConfigBlockCommittedAndStopConsensusNodes(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, expectedBlockNumber uint64) (lastConfigBlock *common.Block) {
-	for i, consensusNode := range consensusNodes {
+func makeSureConfigBlockCommitted(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, expectedBlockNumber uint64) (lastConfigBlock *common.Block) {
+	for i := range consensusNodes {
 		var lastDecision *common.Block
 		require.Eventually(t, func() bool {
 			select {
@@ -467,8 +645,6 @@ func makeSureConfigBlockCommittedAndStopConsensusNodes(t *testing.T, consensusNo
 		lastConfigBlock = header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 		require.True(t, protoutil.IsConfigBlock(lastConfigBlock))
 		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
-
-		consensusNode.Stop()
 	}
 	return lastConfigBlock
 }
