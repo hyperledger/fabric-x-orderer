@@ -30,7 +30,7 @@ type Net interface {
 
 type Assembler struct {
 	logger       *flogging.FabricLogger
-	ds           *AssemblerDeliverService
+	ledger       node_ledger.AssemblerLedgerReaderWriter
 	mainExitChan chan struct{}
 
 	lock                  sync.RWMutex
@@ -41,6 +41,7 @@ type Assembler struct {
 	assemblerNodeConfig   *node_config.AssemblerNodeConfig
 	lastConfigBlockNumber uint64
 	metrics               *Metrics
+	ds                    *AssemblerDeliverService
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -126,33 +127,105 @@ func NewDefaultAssembler(
 		return nil
 	}
 
-	al, err := assemblerLedgerFactory.Create(logger, nodeConfig.Directory)
+	ledger, err := assemblerLedgerFactory.Create(logger, nodeConfig.Directory)
 	if err != nil {
 		logger.Panicf("Failed creating assembler: %v", err)
 	}
 
-	metrics := NewMetrics(nodeConfig, al.Metrics(), logger)
+	assembler := &Assembler{
+		logger:       logger,
+		ledger:       ledger,
+		mainExitChan: mainExitChan,
+		status:       utils.NodeStatus{},
+		metrics:      NewMetrics(nodeConfig, ledger.Metrics(), logger),
+	}
 
+	assembler.initLedger(configBlock)
+
+	assembler.initFromConfig(net, nodeConfig, configBlock, prefetchIndexFactory, prefetcherFactory, batchBringerFactory, consensusBringerFactory)
+
+	assembler.metrics.Start()
+
+	return assembler
+}
+
+func (a *Assembler) initFromConfig(
+	net Net,
+	nodeConfig *node_config.AssemblerNodeConfig,
+	configBlock *common.Block,
+	prefetchIndexFactory PrefetchIndexerFactory,
+	prefetcherFactory PrefetcherFactory,
+	batchBringerFactory BatchBringerFactory,
+	consensusBringerFactory delivery.ConsensusBringerFactory,
+) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	configSequence := nodeConfig.Bundle.ConfigtxValidator().Sequence()
+
+	a.logger.Infof("Initializing assembler with config sequence number: %d, assembler ledger height: %d", configSequence, a.ledger.LedgerReader().Height())
+	a.status.Set(utils.StateInitializing, configSequence)
+
+	a.assemblerNodeConfig = nodeConfig
+
+	shardIds := shardsFromAssemblerConfig(nodeConfig)
+	partyIds := partiesFromAssemblerConfig(nodeConfig)
+	batchFrontier, err := a.ledger.BatchFrontier(shardIds, partyIds, nodeConfig.RestartLedgerScanTimeout)
+	if err != nil {
+		a.logger.Panicf("Failed fetching batch frontier: %v", err)
+	}
+	a.logger.Infof("Starting with BatchFrontier: %s", node_ledger.BatchFrontierToString(batchFrontier))
+
+	index := prefetchIndexFactory.Create(shardIds, partyIds, a.logger, nodeConfig.PrefetchEvictionTtl, nodeConfig.PrefetchBufferMemoryBytes, nodeConfig.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{}, nodeConfig.PopWaitMonitorTimeout)
+	br := batchBringerFactory.Create(batchFrontier, nodeConfig, a.logger)
+
+	a.prefetcher = prefetcherFactory.Create(shardIds, partyIds, index, br, a.logger)
+
+	baReplicator := consensusBringerFactory.Create(nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, a.ledger, a.logger)
+	a.collator = Collator{
+		Shards:                            shardIds,
+		OrderedBatchAttestationReplicator: baReplicator,
+		Index:                             index,
+		Logger:                            a.logger,
+		Ledger:                            a.ledger,
+		ShardCount:                        len(nodeConfig.Shards),
+		AssemblerRestarter:                a,
+	}
+
+	a.ds = NewAssemblerDeliverService(a.ledger.LedgerReader(), a.logger, nodeConfig, a.metrics.deliverMetrics)
+	a.lastConfigBlockNumber = configBlock.GetHeader().GetNumber()
+
+	if net != nil {
+		a.net = net
+	}
+
+	a.prefetcher.Start()
+	a.collator.Run()
+
+	a.logger.Infof("Assembler initialized successfully with config sequence number: %d", configSequence)
+}
+
+func (a *Assembler) initLedger(configBlock *common.Block) {
 	var transactionCount, blocksCount uint64
-	height := al.LedgerReader().Height()
+	height := a.ledger.LedgerReader().Height()
 	if height > 0 {
-		block, err := al.LedgerReader().RetrieveBlockByNumber(height - 1)
+		block, err := a.ledger.LedgerReader().RetrieveBlockByNumber(height - 1)
 		if err != nil {
-			logger.Panicf("error while fetching last block from ledger %v", err)
+			a.logger.Panicf("error while fetching last block from ledger %v", err)
 		}
 		_, _, transactionCount, err = node_ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
 		if err != nil {
-			logger.Panicf("error while fetching last block ordering info %v", err)
+			a.logger.Panicf("error while fetching last block ordering info %v", err)
 		}
 
 		blocksCount = height
 	}
-	al.Metrics().TransactionCount.Add(float64(transactionCount))
-	al.Metrics().BlocksCount.Add(float64(blocksCount))
+	a.ledger.Metrics().TransactionCount.Add(float64(transactionCount))
+	a.ledger.Metrics().BlocksCount.Add(float64(blocksCount))
 
-	logger.Infof("Starting with ledger height: %d", al.LedgerReader().Height())
+	a.logger.Infof("Starting with ledger height: %d", a.ledger.LedgerReader().Height())
 
-	if al.LedgerReader().Height() == 0 {
+	if a.ledger.LedgerReader().Height() == 0 {
 		// append config block only if it is the genesis block
 		blockNumber := configBlock.GetHeader().Number
 		if blockNumber == 0 {
@@ -163,65 +236,12 @@ func NewDefaultAssembler(
 				BatchIndex:  0,
 				BatchCount:  1,
 			}
-			al.AppendConfig(ordInfo)
-			logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(configBlock.GetHeader())))
+			a.ledger.AppendConfig(ordInfo)
+			a.logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(configBlock.GetHeader())))
 		} else {
-			logger.Infof("Assembler started with non-genesis config block, block number: %d", blockNumber)
+			a.logger.Infof("Assembler started with non-genesis config block, block number: %d", blockNumber)
 		}
 	}
-
-	shardIds := shardsFromAssemblerConfig(nodeConfig)
-	partyIds := partiesFromAssemblerConfig(nodeConfig)
-
-	batchFrontier, err := al.BatchFrontier(shardIds, partyIds, nodeConfig.RestartLedgerScanTimeout)
-	if err != nil {
-		logger.Panicf("Failed fetching batch frontier: %v", err)
-	}
-	logger.Infof("Starting with BatchFrontier: %s", node_ledger.BatchFrontierToString(batchFrontier))
-
-	index := prefetchIndexFactory.Create(shardIds, partyIds, logger, nodeConfig.PrefetchEvictionTtl, nodeConfig.PrefetchBufferMemoryBytes, nodeConfig.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{}, nodeConfig.PopWaitMonitorTimeout)
-
-	baReplicator := consensusBringerFactory.Create(nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, al, logger)
-
-	br := batchBringerFactory.Create(batchFrontier, nodeConfig, logger)
-
-	prefetcher := prefetcherFactory.Create(shardIds, partyIds, index, br, logger)
-	prefetcher.Start()
-
-	assembler := &Assembler{
-		assemblerNodeConfig: nodeConfig,
-
-		ds: NewAssemblerDeliverService(al.LedgerReader(), logger, nodeConfig, metrics.deliverMetrics),
-		collator: Collator{
-			Shards:                            shardIds,
-			OrderedBatchAttestationReplicator: baReplicator,
-			Index:                             index,
-			Logger:                            logger,
-			Ledger:                            al,
-			ShardCount:                        len(nodeConfig.Shards),
-		},
-		logger:                logger,
-		prefetcher:            prefetcher,
-		metrics:               metrics,
-		lastConfigBlockNumber: configBlock.GetHeader().GetNumber(),
-		mainExitChan:          mainExitChan,
-		status:                utils.NodeStatus{},
-	}
-
-	assembler.lock.Lock()
-	assembler.status.Set(utils.StateRunning, nodeConfig.Bundle.ConfigtxValidator().Sequence())
-	assembler.lock.Unlock()
-
-	if net != nil {
-		assembler.net = net
-	}
-
-	assembler.collator.AssemblerRestarter = assembler
-
-	assembler.collator.Run()
-	assembler.metrics.Start()
-
-	return assembler
 }
 
 func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
