@@ -144,10 +144,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// wait for consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
-			require.Eventually(t, func() bool {
-				status := consenter.GetStatus()
-				return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
-			}, 20*time.Second, 100*time.Millisecond)
+			waitForRunningState(t, consenter, uint64(configSeq))
 		}
 
 		// re-register ledger listeners
@@ -198,37 +195,25 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
 		// wait for the updated consensus node to enter pending admin state and then stop the node
-		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == consenterToUpdate {
-				c = consenter
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				consenter.Stop()
 				break
 			}
 		}
-		c.Stop()
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() != consenterToUpdate {
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForRunningState(t, consenter, uint64(configSeq))
 			}
 		}
 
 		// restart the updated consensus node
 		updatedConsensusNode, updatedConsensusNodeServer := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{consenterToUpdate})
-		var updatedConsensusNodeLedgerListener []*storageListener
-		require.Eventually(t, func() bool {
-			updatedConsensusNodeLedgerListener = startConsensusNodesAndRegisterGRPCServers([]types.PartyID{consenterToUpdate}, updatedConsensusNode, updatedConsensusNodeServer)
-			status := updatedConsensusNode[0].GetStatus()
-			return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
-		}, 60*time.Second, 100*time.Millisecond)
+		updatedConsensusNodeLedgerListener := startConsensusNodesAndRegisterGRPCServers([]types.PartyID{consenterToUpdate}, updatedConsensusNode, updatedConsensusNodeServer)
+		waitForRunningState(t, updatedConsensusNode[0], uint64(configSeq))
 
 		// re-register ledger listeners
 		oldConsensusNodes := consensusNodes
@@ -279,26 +264,18 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
 
 		// wait for the removed consensus node to enter pending admin state and then stop the node
-		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == removedParty {
-				c = consenter
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				consenter.Stop()
 				break
 			}
 		}
-		c.Stop()
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() != removedParty {
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForRunningState(t, consenter, uint64(configSeq))
 			}
 		}
 
@@ -354,26 +331,18 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NotNil(t, lastConfigBlock)
 
 		// wait for the removed consensus node to enter pending admin state and then stop the node
-		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == removedPartyLeader {
-				c = consenter
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				consenter.Stop()
 				break
 			}
 		}
-		c.Stop()
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() != removedPartyLeader {
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForRunningState(t, consenter, uint64(configSeq))
 			}
 		}
 
@@ -476,37 +445,25 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		// wait for the updated consensus node to enter pending admin state and then stop the node
-		var c *consensus_node.Consensus
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == consenterPartyToUpdate {
-				c = consenter
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == uint64(configSeq-1)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				consenter.Stop()
 				break
 			}
 		}
-		c.Stop()
 
 		// wait for the rest of consensus nodes to apply new config and run again
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() != consenterPartyToUpdate {
-				require.Eventually(t, func() bool {
-					status := consenter.GetStatus()
-					return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
-				}, 60*time.Second, 100*time.Millisecond)
+				waitForRunningState(t, consenter, uint64(configSeq))
 			}
 		}
 
 		// restart the updated consensus node
 		updatedConsensusNode, updatedConsensusNodeServer := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{consenterPartyToUpdate})
-		var updatedConsensusNodeLedgerListener []*storageListener
-		require.Eventually(t, func() bool {
-			updatedConsensusNodeLedgerListener = startConsensusNodesAndRegisterGRPCServers([]types.PartyID{consenterPartyToUpdate}, updatedConsensusNode, updatedConsensusNodeServer)
-			status := updatedConsensusNode[0].GetStatus()
-			return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(configSeq)
-		}, 60*time.Second, 100*time.Millisecond)
+		updatedConsensusNodeLedgerListener := startConsensusNodesAndRegisterGRPCServers([]types.PartyID{consenterPartyToUpdate}, updatedConsensusNode, updatedConsensusNodeServer)
+		waitForRunningState(t, updatedConsensusNode[0], uint64(configSeq))
 
 		// re-register ledger listeners
 		oldConsensusNodes := consensusNodes
@@ -647,4 +604,18 @@ func makeSureConfigBlockCommitted(t *testing.T, consensusNodes []*consensus_node
 		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
 	}
 	return lastConfigBlock
+}
+
+func waitForRunningState(t *testing.T, consenter *consensus_node.Consensus, configSeq uint64) {
+	require.Eventually(t, func() bool {
+		status := consenter.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == configSeq
+	}, 120*time.Second, 100*time.Millisecond)
+}
+
+func waitForPendingAdminState(t *testing.T, consenter *consensus_node.Consensus, configSeq uint64) {
+	require.Eventually(t, func() bool {
+		status := consenter.GetStatus()
+		return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == configSeq
+	}, 120*time.Second, 100*time.Millisecond)
 }

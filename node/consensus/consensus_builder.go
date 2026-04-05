@@ -52,8 +52,9 @@ func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_co
 			State:                node_utils.StateInitializing,
 			ConfigSequenceNumber: nodeConfig.Bundle.ConfigtxValidator().Sequence(),
 		},
-		Logger: logger,
-		Signer: signer,
+		Logger:  logger,
+		Signer:  signer,
+		PartyID: nodeConfig.PartyId,
 	}
 
 	c.configureConsensus(nodeConfig, config, lastConfigBlock, configUpdateProposer)
@@ -439,7 +440,7 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 }
 
 func setupComm(c *Consensus) {
-	selfID := getSelfID(c.Config.Consenters, c.Config.PartyId)
+	selfID := getSelfID(c.Config.Consenters, c.PartyID)
 	c.ClusterService = &comm.ClusterService{
 		Logger:                           c.Logger,
 		CertExpWarningThreshold:          time.Hour,

@@ -16,6 +16,7 @@ import (
 	"io"
 	"math/rand"
 	"sync"
+	"time"
 
 	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -97,6 +98,7 @@ type Consensus struct {
 	CurrentNodes []uint64
 	Storage      Storage
 	Arma         Arma
+	PartyID      arma_types.PartyID
 
 	lock                         sync.Mutex
 	State                        *state.State
@@ -200,9 +202,7 @@ func (c *Consensus) Address() string {
 
 // GetPartyID returns the party ID and used in testing only
 func (c *Consensus) GetPartyID() arma_types.PartyID {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	return c.Config.PartyId
+	return c.PartyID
 }
 
 // BFTConfig returns the current BFT configuration and the current nodes in the cluster (from SmartBFT API)
@@ -679,7 +679,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 
 	proposalMsg := &state.MessageToSign{
 		BlockHeader:      protoutil.BlockHeaderBytes(proposalMsgBlockHeader),
-		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.Config.PartyId)),
+		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.PartyID)),
 		OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
 			LastConfig:        &common.LastConfig{Index: decisionNumOfLastConfigBlock},
 			ConsenterMetadata: proposal.Metadata,
@@ -700,7 +700,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 		}
 		msg := &state.MessageToSign{
 			BlockHeader:      protoutil.BlockHeaderBytes(ab.Header),
-			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.Config.PartyId)),
+			IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(c.PartyID)),
 			OrdererBlockMetadata: protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
 				LastConfig:        &common.LastConfig{Index: lastConfigBlockNum},
 				ConsenterMetadata: ab.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
@@ -860,7 +860,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
 		lastBlockNum := configBlock.Header.Number
 		var err error
-		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.Config.PartyId)
+		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.PartyID)
 		if err != nil {
 			c.Logger.Panicf("Failed extracting smartBFT config from config block: %v", err)
 		}
@@ -903,10 +903,15 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 }
 
 func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
+	partyID := c.PartyID
+
 	c.lock.Lock()
-	partyID := c.Config.PartyId
 	currentFullConfig := c.fullConfig
 	c.lock.Unlock()
+
+	if currentFullConfig == nil {
+		return true, errors.New("current configuration is nil")
+	}
 
 	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
@@ -926,15 +931,15 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	// check if consensus identity (address or certificates) is changed
 	currPartyConfig, err := config.FindParty(partyID, currentFullConfig)
 	if err != nil {
-		return true, errors.Errorf("failed to find current consensus config, err: %v\n", err)
+		return true, errors.Wrapf(err, "failed to find current consensus config")
 	}
 	newPartyConfig, err := config.FindParty(partyID, newConfig)
 	if err != nil {
-		return true, errors.Errorf("failed to find current consensus config, err: %v\n", err)
+		return true, errors.Wrapf(err, "failed to find new consensus config")
 	}
 	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currPartyConfig.GetConsenterConfig(), newPartyConfig.GetConsenterConfig(), c.Logger)
 	if err != nil {
-		return true, errors.Errorf("failed to detect if config change requires an admin restart, err: %v\n", err)
+		return true, errors.Wrapf(err, "failed to detect if config change requires an admin restart")
 	}
 
 	if isRestartRequired {
@@ -942,17 +947,18 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, nil
 	}
 
+	// TODO: wait for acks from router, batcher and assembler in my party before reconfig
+	time.Sleep(1 * time.Minute)
 	c.stopAndReconfigure(newConfig, lastBlock)
 	return false, nil
 }
 
 func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
+	c.lock.Lock()
 	newConsensusConfig := newConfig.ExtractConsenterConfig(lastBlock)
 	newConfigSeq := newConsensusConfig.Bundle.ConfigtxValidator().Sequence()
 	currentConfigSeq := c.Config.Bundle.ConfigtxValidator().Sequence()
 	c.Logger.Infof("Applying new config with sequence %d (current: %d), consensus will be restarted dynamically", newConfigSeq, currentConfigSeq)
-
-	c.lock.Lock()
 	c.Storage.Close()
 	c.Net.Stop()
 	c.status.Set(node_utils.StateInitializing, newConfigSeq)
@@ -963,7 +969,7 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	c.StartConsensusService()
 	err := c.Start()
 	if err != nil {
-		panic(fmt.Errorf("consensus failed to restart dynamically, err: %v", err))
+		c.Logger.Panicf("consensus failed to restart dynamically, err: %v", err)
 	}
 	c.Logger.Infof("Consensus listening on %s after restarting dynamically with config sequence: %d", c.Address(), newConfigSeq)
 }
@@ -1015,7 +1021,7 @@ func (c *Consensus) pickEndpoint() string {
 	var r int
 	for {
 		r = rand.Intn(len(c.Config.Consenters)) // pick a node randomly
-		if c.Config.PartyId != c.Config.Consenters[r].PartyID {
+		if c.PartyID != c.Config.Consenters[r].PartyID {
 			break // make sure not to pick myself
 		}
 	}
@@ -1070,7 +1076,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
 		bccsp := factory.GetDefault()
-		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, bccsp, c.Config.PartyId); err != nil {
+		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, bccsp, c.PartyID); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
 		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope, bccsp); err != nil {
@@ -1186,7 +1192,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
 		lastBlockNum := configBlock.Header.Number
 		var err error
-		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.Config.PartyId)
+		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.PartyID)
 		if err != nil {
 			c.Logger.Panicf("Failed extracting smartBFT config from config block: %v", err)
 		}
