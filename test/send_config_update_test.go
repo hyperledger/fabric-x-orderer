@@ -464,7 +464,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	testutil.WaitForAssemblersLaunch(t, netInfo)
+	testutil.WaitForRelaunchByType(t, netInfo, []testutil.NodeType{testutil.Assembler}, 1)
 
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
