@@ -45,88 +45,98 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CreateConsensus(conf *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, logger *flogging.FabricLogger, mainExitChan chan struct{}, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
+func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, logger *flogging.FabricLogger, mainExitChan chan struct{}, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
+	c := &Consensus{
+		MainExitChan: mainExitChan,
+		status: node_utils.NodeStatus{
+			State:                node_utils.StateInitializing,
+			ConfigSequenceNumber: nodeConfig.Bundle.ConfigtxValidator().Sequence(),
+		},
+		Logger:  logger,
+		Signer:  signer,
+		PartyID: nodeConfig.PartyId,
+	}
+
+	c.configureConsensus(nodeConfig, config, lastConfigBlock, configUpdateProposer)
+
+	return c
+}
+
+func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, configUpdateProposer policy.ConfigUpdateProposer) {
 	if lastConfigBlock == nil {
-		logger.Panicf("Error creating Consensus%d, last config block is nil", conf.PartyId)
-		return nil
+		c.Logger.Panicf("Error creating Consensus%d, last config block is nil", nodeConfig.PartyId)
 	}
 
 	if lastConfigBlock.Header == nil {
-		logger.Panicf("Error creating Consensus%d, last config block header is nil", conf.PartyId)
-		return nil
+		c.Logger.Panicf("Error creating Consensus%d, last config block header is nil", nodeConfig.PartyId)
 	}
 
-	logger.Infof("Creating consensus, party: %d, address: %s, with last config block number: %d", conf.PartyId, conf.ListenAddress, lastConfigBlock.Header.Number)
+	c.Logger.Infof("Creating consensus, party: %d, address: %s, with last config block number: %d", nodeConfig.PartyId, nodeConfig.ListenAddress, lastConfigBlock.Header.Number)
 
 	var currentNodes []uint64
-	for _, node := range conf.Consenters {
+	for _, node := range nodeConfig.Consenters {
 		currentNodes = append(currentNodes, uint64(node.PartyID))
 	}
 
-	consLedger, err := ledger.NewConsensusLedger(conf.Directory)
+	consLedger, err := ledger.NewConsensusLedger(nodeConfig.Directory)
 	if err != nil {
-		logger.Panicf("Failed creating consensus ledger: %s", err)
+		c.Logger.Panicf("Failed creating consensus ledger: %s", err)
 	}
 
-	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock, prevHash := getInitialStateAndMetadata(logger, conf, lastConfigBlock, consLedger)
+	initialState, metadata, lastProposal, lastSigs, decisionNumOfLastConfigBlock, prevHash := getInitialStateAndMetadata(c.Logger, nodeConfig, lastConfigBlock, consLedger)
 	txCount := getTxCount(consLedger)
 	// indicate that sync is required on startup when new consensus node joins the cluster
 	if consLedger.Height() == 0 && lastConfigBlock.Header.Number > 0 {
-		conf.BFTConfig.SyncOnStart = true
+		nodeConfig.BFTConfig.SyncOnStart = true
 	}
 
-	dbDir := filepath.Join(conf.Directory, "batchDB")
+	dbDir := filepath.Join(nodeConfig.Directory, "batchDB")
 	os.MkdirAll(dbDir, 0o755)
 
-	badb, err := badb.NewBatchAttestationDB(dbDir, logger)
+	badb, err := badb.NewBatchAttestationDB(dbDir, c.Logger)
 	if err != nil {
-		logger.Panicf("Failed creating Batch attestation DB: %v", err)
+		c.Logger.Panicf("Failed creating Batch attestation DB: %v", err)
 	}
 
-	c := &Consensus{
-		DeliverService: delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger}),
-		Config:         conf,
-		Arma: &Consenter{
-			DB:              badb,
-			Logger:          logger,
-			BAFDeserializer: &state.BAFDeserialize{},
-		},
-		BADB:                         badb,
-		Logger:                       logger,
-		State:                        initialState,
-		lastConfigBlockNum:           lastConfigBlock.Header.Number,
-		decisionNumOfLastConfigBlock: decisionNumOfLastConfigBlock,
-		CurrentNodes:                 currentNodes,
-		Storage:                      consLedger,
-		SigVerifier:                  buildVerifier(conf.Consenters, conf.Shards, logger),
-		Signer:                       signer,
-		synchronizerFactory:          &bft_synch.SynchronizerCreator{},
-		Metrics:                      NewConsensusMetrics(conf, consLedger.Height(), txCount, logger),
-		RequestVerifier:              CreateConsensusRulesVerifier(conf),
-		ConfigUpdateProposer:         configUpdateProposer,
-		ConfigApplier:                &DefaultConfigApplier{},
-		ConfigRequestValidator: &configrequest.DefaultValidateConfigRequest{
-			ConfigUpdateProposer: configUpdateProposer,
-			Bundle:               conf.Bundle,
-		},
-		ConfigRulesVerifier: &verify.DefaultOrdererRules{},
-		txCount:             txCount,
-		PrevHash:            prevHash,
-		MainExitChan:        mainExitChan,
-		status:              node_utils.NodeStatus{},
+	c.DeliverService = delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger})
+	c.Config = nodeConfig
+	c.Arma = &Consenter{
+		DB:              badb,
+		Logger:          c.Logger,
+		BAFDeserializer: &state.BAFDeserialize{},
 	}
+	c.BADB = badb
+	c.State = initialState
+	c.lastConfigBlockNum = lastConfigBlock.Header.Number
+	c.decisionNumOfLastConfigBlock = decisionNumOfLastConfigBlock
+	c.CurrentNodes = currentNodes
+	c.Storage = consLedger
+	c.SigVerifier = buildVerifier(nodeConfig.Consenters, nodeConfig.Shards, c.Logger)
+	c.synchronizerFactory = &bft_synch.SynchronizerCreator{}
+	c.Metrics = NewConsensusMetrics(nodeConfig, consLedger.Height(), txCount, c.Logger)
+	c.RequestVerifier = CreateConsensusRulesVerifier(nodeConfig)
+	c.ConfigUpdateProposer = configUpdateProposer
+	c.ConfigApplier = &DefaultConfigApplier{}
+	c.ConfigRequestValidator = &configrequest.DefaultValidateConfigRequest{
+		ConfigUpdateProposer: configUpdateProposer,
+		Bundle:               nodeConfig.Bundle,
+	}
+	c.ConfigRulesVerifier = &verify.DefaultOrdererRules{}
+	c.txCount = txCount
+	c.PrevHash = prevHash
+	c.fullConfig = config
 
-	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, conf.WALDir)
+	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
 	setupComm(c)
 
 	// TODO just creation in the meantime
 	bftSynch := c.synchronizerFactory.CreateSynchronizer(
-		logger,
-		uint64(conf.PartyId),
+		c.Logger,
+		uint64(nodeConfig.PartyId),
 		ord_config.Cluster{
 			SendBufferSize:    100, // TODO get this from local config
-			ClientCertificate: conf.TLSCertificateFile,
-			ClientPrivateKey:  conf.TLSPrivateKeyFile,
+			ClientCertificate: nodeConfig.TLSCertificateFile,
+			ClientPrivateKey:  nodeConfig.TLSPrivateKeyFile,
 			ReplicationPolicy: "",
 		},
 		c,                                      // implements synchronizer.BFTConfigGetter,
@@ -138,7 +148,7 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, lastConfigBlock *com
 		&comm.PredicateDialer{Config: c.clientConfig()},
 	)
 	if bftSynch != nil {
-		logger.Info("Created a BFT Synchronizer")
+		c.Logger.Info("Created a BFT Synchronizer")
 		c.bftSynchronizer = bftSynch
 	}
 
@@ -146,8 +156,6 @@ func CreateConsensus(conf *node_config.ConsenterNodeConfig, lastConfigBlock *com
 	sync := createSynchronizer(consLedger, c)
 	c.BFT.Synchronizer = sync
 	c.Synchronizer = sync
-
-	return c
 }
 
 func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smartbft_types.Proposal, lastSigs []smartbft_types.Signature, walPath string) *smartbft_consensus.Consensus {
@@ -432,7 +440,7 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 }
 
 func setupComm(c *Consensus) {
-	selfID := getSelfID(c.Config.Consenters, c.Config.PartyId)
+	selfID := getSelfID(c.Config.Consenters, c.PartyID)
 	c.ClusterService = &comm.ClusterService{
 		Logger:                           c.Logger,
 		CertExpWarningThreshold:          time.Hour,

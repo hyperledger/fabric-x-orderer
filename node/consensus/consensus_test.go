@@ -300,6 +300,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 
 	c := &node_consensus.Consensus{
 		Config:       &consenterNodeConfig,
+		PartyID:      partyID,
 		PrevHash:     prevHash,
 		Logger:       l,
 		Signer:       signer,
@@ -664,6 +665,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 				SigVerifier:            verifier,
 				RequestVerifier:        requestVerifier,
 				Config:                 config,
+				PartyID:                config.PartyId,
 				ConfigUpdateProposer:   mockConfigUpdateProposer,
 				ConfigApplier:          mockConfigApplier,
 				ConfigRequestValidator: mockConfigRequestValidator,
@@ -1036,6 +1038,7 @@ func TestSignProposal(t *testing.T) {
 			PartyId:   1,
 			BFTConfig: smartbft_types.Configuration{SelfID: 1},
 		},
+		PartyID: 1,
 		Storage: ledger,
 	}
 

@@ -90,14 +90,14 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 
 func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 	return func(configFile *os.File) {
-		configContent, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigConsensus"))
+		config, lastConfigBlock, err := config.ReadConfig(configFile.Name(), flogging.MustGetLogger("ReadConfigConsensus"))
 		if err != nil {
 			panic(fmt.Sprintf("error launching consensus, err: %s", err))
 		}
 
-		conf := configContent.ExtractConsenterConfig(lastConfigBlock)
+		nodeConfig := config.ExtractConsenterConfig(lastConfigBlock)
 
-		localmsp := msp.BuildLocalMSP(configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configContent.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		localmsp := msp.BuildLocalMSP(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
 		signer, err := localmsp.GetDefaultSigningIdentity()
 		if err != nil {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
@@ -108,7 +108,7 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("Failed to get sign certificate from signing identity: %s", err))
 		}
 
-		if err := configContent.CheckIfConsenterNodeExistsInSharedConfig(localSignCert); err != nil {
+		if err := config.CheckIfConsenterNodeExistsInSharedConfig(localSignCert); err != nil {
 			panic(err)
 		}
 
@@ -116,10 +116,10 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 		if testLogger != nil {
 			consenterLogger = testLogger
 		} else {
-			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", conf.PartyId))
+			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", nodeConfig.PartyId))
 		}
 
-		consensus := consensus.CreateConsensus(conf, lastConfigBlock, consenterLogger, stop, signer, &policy.DefaultConfigUpdateProposer{})
+		consensus := consensus.CreateConsensus(nodeConfig, config, lastConfigBlock, consenterLogger, stop, signer, &policy.DefaultConfigUpdateProposer{})
 		consensus.StartConsensusService()
 		consensus.Start()
 
