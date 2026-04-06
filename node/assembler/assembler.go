@@ -319,7 +319,7 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 		a.logger.Panicf("Failed to check if new configuration can be applied: %v", err)
 	}
 	if adminRequired {
-		a.logger.Warnf("Admin's action is required to apply new config. Assembler's deliver service remains available.")
+		a.logger.Warnf("Pending admin action to apply new config. Assembler's deliver service remains available.")
 		a.lock.Lock()
 		a.status.SetState(utils.StatePendingAdmin)
 		a.lock.Unlock()
@@ -376,7 +376,7 @@ func (a *Assembler) checkNewConfiguration(newConfiguration *config.Configuration
 		return false, fmt.Errorf("failed to check if node config change requires restart: %v", err)
 	}
 	if requireRestart {
-		a.logger.Warnf("Admin's action is required to restart the assembler with the new configuration")
+		a.logger.Warnf("Assembler's identity was changed in the new configuration")
 		return true, nil
 	}
 
