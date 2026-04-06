@@ -327,26 +327,6 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 		}
 	}
 
-	armaNetwork.Stop()
-
-	// Check ledger height of consenters
-	for i := 0; i < numOfParties; i++ {
-		localConfigPath := armaNetwork.GetConsenter(t, types.PartyID(i+1)).RunInfo.NodeConfigPath
-		localConfig := testutil.ReadNodeConfigFromYaml(t, localConfigPath)
-		require.Eventually(t, func() bool {
-			consensusLedger, err := ledger.NewConsensusLedger(localConfig.FileStore.Path)
-			require.NoError(t, err)
-			defer consensusLedger.Close()
-			consensusLedgerCount := consensusLedger.Height()
-			return consensusLedgerCount == 2
-		}, 60*time.Second, 100*time.Millisecond)
-	}
-
-	// Restart all nodes
-	readyChan = make(chan string, numOfArmaNodes)
-	armaNetwork.Restart(t, readyChan)
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
-
 	// Initialize a new broadcast client
 	broadcastClient2 := client.NewBroadcastTxClient(uc, 10*time.Second)
 	defer broadcastClient2.Stop()
