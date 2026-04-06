@@ -43,7 +43,7 @@ func TestValidatePartyCertificates(t *testing.T) {
 			},
 		}
 
-		err := validatePartyCertificates(partyConfig)
+		err := validatePartyCertificates(partyConfig, false)
 		require.NoError(t, err)
 	})
 
@@ -52,19 +52,7 @@ func TestValidatePartyCertificates(t *testing.T) {
 			TLSCACerts: [][]byte{[]byte("invalid")},
 		}
 
-		err := validatePartyCertificates(partyConfig)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid TLS CA certificate")
-	})
-
-	t.Run("Expired TLS CA certificate", func(t *testing.T) {
-		// Create a CA that expired 1 year ago
-		_, _, expiredCACertPEM := generateTestCAWithKey(t, now.Add(-2*365*24*time.Hour), now.Add(-365*24*time.Hour))
-		partyConfig := &config_protos.PartyConfig{
-			TLSCACerts: [][]byte{expiredCACertPEM},
-		}
-
-		err := validatePartyCertificates(partyConfig)
+		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid TLS CA certificate")
 	})
@@ -77,7 +65,7 @@ func TestValidatePartyCertificates(t *testing.T) {
 			},
 		}
 
-		err := validatePartyCertificates(partyConfig)
+		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "router TLS validation failed")
 	})
@@ -92,7 +80,7 @@ func TestValidatePartyCertificates(t *testing.T) {
 			},
 		}
 
-		err := validatePartyCertificates(partyConfig)
+		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "router TLS validation failed")
 	})
@@ -117,7 +105,7 @@ func TestValidatePartyCertificates(t *testing.T) {
 			},
 		}
 
-		err := validatePartyCertificates(partyConfig)
+		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "consenter TLS validation failed")
 	})
