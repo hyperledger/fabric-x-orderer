@@ -8,7 +8,6 @@ package channelconfig
 
 import (
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	pb "github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/pkg/errors"
 
@@ -21,15 +20,12 @@ const (
 
 	// ACLsKey is the name of the ACLs config
 	ACLsKey = "ACLs"
-
-	MetaNamespaceVerificationKey = "MetaNamespaceVerificationKey"
 )
 
 // ApplicationProtos is used as the source of the ApplicationConfig
 type ApplicationProtos struct {
-	ACLs                         *pb.ACLs
-	Capabilities                 *cb.Capabilities
-	MetaNamespaceVerificationKey *msp.KeyInfo
+	ACLs         *pb.ACLs
+	Capabilities *cb.Capabilities
 }
 
 // ApplicationConfig implements the Application interface
@@ -81,9 +77,4 @@ func (ac *ApplicationConfig) APIPolicyMapper() PolicyMapper {
 	pm := newAPIsProvider(ac.protos.ACLs.Acls)
 
 	return pm
-}
-
-// MetaNamespaceVerificationKey returns the meta-namespace verification key
-func (ac *ApplicationConfig) MetaNamespaceVerificationKey() *msp.KeyInfo {
-	return ac.protos.MetaNamespaceVerificationKey
 }

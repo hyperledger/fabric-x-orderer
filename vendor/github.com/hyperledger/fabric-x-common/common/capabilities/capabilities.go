@@ -7,13 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package capabilities
 
 import (
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
-
-	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
-var logger = util.MustGetLogger("common.capabilities")
+var logger = flogging.MustGetLogger("common.capabilities")
 
 // provider is the 'plugin' parameter for registry.
 type provider interface {

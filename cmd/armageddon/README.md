@@ -143,7 +143,6 @@ For example, see `ARMA/config/sample/test-sample/bootstrap`. This directory incl
    - shared_config.yaml, which contains paths to certificates and keys.
    - shared_config.bin, which is the encoding of the shared configuration that holds the certificates and keys themselves.
    - bootstrap.block, which is the config block to bootstrap from. Within the block, the `consensusMetadata` field contains the content of the `shared_config.bin` file.
-   - metaNamespaceVerificationKeyPath.pem, which is needed for the creation of the block.
 
    All nodes, by default, bootstrap their shared configuration from the generated config block when they are launched.
 

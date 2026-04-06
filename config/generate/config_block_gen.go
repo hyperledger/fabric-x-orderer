@@ -7,13 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package generate
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -21,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/pkg/errors"
 )
 
 // CreateGenesisBlock creates a config block and writes it to a file under dir/bootstrap.block
@@ -130,37 +123,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 
 	profile.Orderer.ConsenterMapping = consenterMapping
 
-	pubKeyPath := filepath.Join(dir, "metaNamespaceVerificationKeyPath.pem")
-	_, err := generatePublicKey(pubKeyPath)
-	if err != nil {
-		return nil, errors.Errorf("err: %s, failed creating public key", err)
-	}
-	profile.Application.MetaNamespaceVerificationKeyPath = pubKeyPath
-
 	return profile, nil
-}
-
-func generatePublicKey(path string) ([]byte, error) {
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, errors.Errorf("err: %s, failed creating private key", err)
-	}
-
-	publicKey := privateKey.PublicKey
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&publicKey)
-	if err != nil {
-		return nil, errors.Errorf("err: %s, failed marshaling public key", err)
-	}
-	publicKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Bytes: publicKeyBytes, Type: "PUBLIC KEY",
-	})
-
-	err = os.WriteFile(path, publicKeyPEM, 0o644)
-	if err != nil {
-		return nil, errors.Errorf("err: %s, failed to write public key", err)
-	}
-
-	return publicKeyPEM, nil
 }
 
 func buildOrdererEndpoints(id uint32, routerHost string, routerPort int, assemblerHost string, assemblerPort int) []*types.OrdererEndpoint {

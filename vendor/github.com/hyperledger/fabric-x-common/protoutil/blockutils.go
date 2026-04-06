@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/big"
+	"os"
 
 	"github.com/cockroachdb/errors"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -47,16 +48,15 @@ type asn1Header struct {
 }
 
 func BlockHeaderBytes(b *cb.BlockHeader) []byte {
-	asn1Header := asn1Header{
+	result, err := asn1.Marshal(asn1Header{
 		PreviousHash: b.PreviousHash,
 		DataHash:     b.DataHash,
 		Number:       new(big.Int).SetUint64(b.Number),
-	}
-	result, err := asn1.Marshal(asn1Header)
+	})
 	if err != nil {
 		// Errors should only arise for types which cannot be encoded, since the
 		// BlockHeader type is known a-priori to contain only encodable types, an
-		// error here is fatal and should not be propagated
+		// error here is fatal and should not be propagated.
 		panic(err)
 	}
 	return result
@@ -80,7 +80,7 @@ func ComputeBlockDataHash(b *cb.BlockData) []byte {
 }
 
 // GetChannelIDFromBlockBytes returns channel ID given byte array which represents
-// the block
+// the block.
 func GetChannelIDFromBlockBytes(bytes []byte) (string, error) {
 	block, err := UnmarshalBlock(bytes)
 	if err != nil {
@@ -90,7 +90,7 @@ func GetChannelIDFromBlockBytes(bytes []byte) (string, error) {
 	return GetChannelIDFromBlock(block)
 }
 
-// GetChannelIDFromBlock returns channel ID in the block
+// GetChannelIDFromBlock returns channel ID in the block.
 func GetChannelIDFromBlock(block *cb.Block) (string, error) {
 	if block == nil || block.Data == nil || block.Data.Data == nil || len(block.Data.Data) == 0 {
 		return "", errors.New("failed to retrieve channel id - block is empty")
@@ -135,7 +135,7 @@ func GetMetadataFromBlock(block *cb.Block, index cb.BlockMetadataIndex) (*cb.Met
 }
 
 // GetMetadataFromBlockOrPanic retrieves metadata at the specified index, or
-// panics on error
+// panics on error.
 func GetMetadataFromBlockOrPanic(block *cb.Block, index cb.BlockMetadataIndex) *cb.Metadata {
 	md, err := GetMetadataFromBlock(block, index)
 	if err != nil {
@@ -174,7 +174,7 @@ func GetConsenterMetadataFromBlock(block *cb.Block) (*cb.Metadata, error) {
 }
 
 // GetLastConfigIndexFromBlock retrieves the index of the last config block as
-// encoded in the block metadata
+// encoded in the block metadata.
 func GetLastConfigIndexFromBlock(block *cb.Block) (uint64, error) {
 	m, err := GetMetadataFromBlock(block, cb.BlockMetadataIndex_SIGNATURES)
 	if err != nil {
@@ -203,7 +203,7 @@ func GetLastConfigIndexFromBlock(block *cb.Block) (uint64, error) {
 }
 
 // GetLastConfigIndexFromBlockOrPanic retrieves the index of the last config
-// block as encoded in the block metadata, or panics on error
+// block as encoded in the block metadata, or panics on error.
 func GetLastConfigIndexFromBlockOrPanic(block *cb.Block) uint64 {
 	index, err := GetLastConfigIndexFromBlock(block)
 	if err != nil {
@@ -212,15 +212,15 @@ func GetLastConfigIndexFromBlockOrPanic(block *cb.Block) uint64 {
 	return index
 }
 
-// CopyBlockMetadata copies metadata from one block into another
-func CopyBlockMetadata(src *cb.Block, dst *cb.Block) {
+// CopyBlockMetadata copies metadata from one block into another.
+func CopyBlockMetadata(src, dst *cb.Block) {
 	dst.Metadata = src.Metadata
 	// Once copied initialize with rest of the
 	// required metadata positions.
 	InitBlockMetadata(dst)
 }
 
-// InitBlockMetadata initializes metadata structure
+// InitBlockMetadata initializes metadata structure.
 func InitBlockMetadata(block *cb.Block) {
 	if block.Metadata == nil {
 		block.Metadata = &cb.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}}}
@@ -231,10 +231,6 @@ func InitBlockMetadata(block *cb.Block) {
 	}
 }
 
-type VerifierBuilder func(block *cb.Block) BlockVerifierFunc
-
-type BlockVerifierFunc func(header *cb.BlockHeader, metadata *cb.BlockMetadata) error
-
 //go:generate counterfeiter -o mocks/policy.go --fake-name Policy . policy
 type policy interface { // copied from common.policies to avoid circular import.
 	// EvaluateSignedData takes a set of SignedData and evaluates whether
@@ -243,69 +239,89 @@ type policy interface { // copied from common.policies to avoid circular import.
 	EvaluateSignedData(signatureSet []*SignedData) error
 }
 
-func BlockSignatureVerifier(bftEnabled bool, consenters []*cb.Consenter, policy policy) BlockVerifierFunc {
-	return func(header *cb.BlockHeader, metadata *cb.BlockMetadata) error {
-		if len(metadata.GetMetadata()) < int(cb.BlockMetadataIndex_SIGNATURES)+1 {
-			return errors.Errorf("no signatures in block metadata")
-		}
-
-		md := &cb.Metadata{}
-		if err := proto.Unmarshal(metadata.Metadata[cb.BlockMetadataIndex_SIGNATURES], md); err != nil {
-			return errors.Wrapf(err, "error unmarshalling signatures from metadata: %v", err)
-		}
-
-		var signatureSet []*SignedData
-		for _, metadataSignature := range md.Signatures {
-			var signerIdentity *msppb.Identity
-			var signedPayload []byte
-			// if the SignatureHeader is empty and the IdentifierHeader is present, then  the consenter expects us to fetch its identity by its numeric identifier
-			if bftEnabled && len(metadataSignature.GetSignatureHeader()) == 0 && len(metadataSignature.GetIdentifierHeader()) > 0 {
-				identifierHeader, err := UnmarshalIdentifierHeader(metadataSignature.IdentifierHeader)
-				if err != nil {
-					return fmt.Errorf("failed unmarshalling identifier header for block %d: %v", header.GetNumber(), err)
-				}
-				identifier := identifierHeader.GetIdentifier()
-				signerIdentity = searchConsenterIdentityByID(consenters, identifier)
-				if signerIdentity == nil {
-					// The identifier is not within the consenter set
-					continue
-				}
-				signedPayload = util.ConcatenateBytes(md.Value, metadataSignature.IdentifierHeader, BlockHeaderBytes(header))
-			} else {
-				signatureHeader, err := UnmarshalSignatureHeader(metadataSignature.GetSignatureHeader())
-				if err != nil {
-					return fmt.Errorf("failed unmarshalling signature header for block %d: %v", header.GetNumber(), err)
-				}
-
-				signedPayload = util.ConcatenateBytes(md.Value, metadataSignature.SignatureHeader, BlockHeaderBytes(header))
-
-				signerIdentity, err = UnmarshalIdentity(signatureHeader.GetCreator())
-				if err != nil {
-					return err
-				}
-			}
-
-			signatureSet = append(
-				signatureSet,
-				&SignedData{
-					Identity:  signerIdentity,
-					Data:      signedPayload,
-					Signature: metadataSignature.Signature,
-				},
-			)
-		}
-
-		return policy.EvaluateSignedData(signatureSet)
-	}
+// BlockSigVerifier can be used to verify blocks using the given policy.
+// If BFT is enabled, a list of Consenters must also be provided.
+type BlockSigVerifier struct {
+	Policy     policy
+	BFT        bool
+	Consenters []*cb.Consenter
 }
 
-func searchConsenterIdentityByID(consenters []*cb.Consenter, identifier uint32) *msppb.Identity {
-	for _, consenter := range consenters {
+// Verify verifies a block's header and metadata using the verifier's policy.
+func (v *BlockSigVerifier) Verify(header *cb.BlockHeader, metadata *cb.BlockMetadata) error {
+	md, metaErr := UnmarshalBlockMetadataSignatures(metadata.GetMetadata())
+	if metaErr != nil {
+		return errors.Wrapf(metaErr, "error unmarshalling signatures from metadata")
+	}
+
+	// Pre-calculate the header bytes for all the signatures.
+	blockHeaderBytes := BlockHeaderBytes(header)
+
+	signatureSet := make([]*SignedData, 0, len(md.Signatures))
+	for _, metadataSignature := range md.Signatures {
+		if metadataSignature == nil {
+			continue
+		}
+		sigHeader, signerIdentity, err := v.getSigningID(metadataSignature)
+		if err != nil {
+			return errors.WithMessagef(err, "for block: %d", header.GetNumber())
+		}
+		if signerIdentity == nil {
+			// The identifier is not within the consenter set, or no signature header provided.
+			continue
+		}
+		signatureSet = append(signatureSet, &SignedData{
+			Identity:  signerIdentity,
+			Data:      util.ConcatenateBytes(md.Value, sigHeader, blockHeaderBytes),
+			Signature: metadataSignature.Signature,
+		})
+	}
+
+	return v.Policy.EvaluateSignedData(signatureSet)
+}
+
+func (v *BlockSigVerifier) getSigningID(ms *cb.MetadataSignature) (header []byte, identity *msppb.Identity, err error) {
+	// If the SignatureHeader is empty and the IdentifierHeader is present,
+	// then  the consenter expects us to fetch its identity by its numeric identifier.
+	if v.BFT && len(ms.SignatureHeader) == 0 && len(ms.IdentifierHeader) > 0 {
+		identifierHeader, err := UnmarshalIdentifierHeader(ms.IdentifierHeader)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "failed unmarshalling identifier header")
+		}
+		identity = v.searchConsenterIdentityByID(identifierHeader.GetIdentifier())
+		return ms.IdentifierHeader, identity, nil
+	} else if len(ms.SignatureHeader) > 0 {
+		signatureHeader, err := UnmarshalSignatureHeader(ms.SignatureHeader)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "failed unmarshalling signature header")
+		}
+		identity, err = UnmarshalIdentity(signatureHeader.GetCreator())
+		if err != nil {
+			return nil, nil, err
+		}
+		return ms.SignatureHeader, identity, nil
+	}
+	return nil, nil, nil
+}
+
+func (v *BlockSigVerifier) searchConsenterIdentityByID(identifier uint32) *msppb.Identity {
+	for _, consenter := range v.Consenters {
 		if consenter.Id == identifier {
 			return msppb.NewIdentity(consenter.MspId, consenter.Identity)
 		}
 	}
 	return nil
+}
+
+// BlockVerifierFunc is returned by BlockSignatureVerifier.
+// It is preserved for backward compatibility.
+type BlockVerifierFunc func(header *cb.BlockHeader, metadata *cb.BlockMetadata) error
+
+// BlockSignatureVerifier is a wrapper for BlockSigVerifier.
+// It is preserved for backward compatibility.
+func BlockSignatureVerifier(bftEnabled bool, consenters []*cb.Consenter, policy policy) BlockVerifierFunc {
+	v := BlockSigVerifier{Policy: policy, BFT: bftEnabled, Consenters: consenters}
+	return v.Verify
 }
 
 func VerifyTransactionsAreWellFormed(bd *cb.BlockData) error {
@@ -348,4 +364,17 @@ func VerifyTransactionsAreWellFormed(bd *cb.BlockData) error {
 	}
 
 	return nil
+}
+
+// ReadBlockFromFile reads a block from the filesystem.
+func ReadBlockFromFile(blockPath string) (*cb.Block, error) {
+	data, err := os.ReadFile(blockPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not read block %s", blockPath)
+	}
+	block, err := UnmarshalBlock(data)
+	if err != nil {
+		return nil, err
+	}
+	return block, nil
 }

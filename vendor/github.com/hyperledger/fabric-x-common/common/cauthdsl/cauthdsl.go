@@ -11,15 +11,15 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	mb "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/msp"
 )
 
-var cauthdslLogger = util.MustGetLogger("cauthdsl")
+var cauthdslLogger = flogging.MustGetLogger("cauthdsl")
 
 // compile recursively builds a go evaluatable function corresponding to the policy specified, remember to call deduplicate on identities before
 // passing them to this function for evaluation

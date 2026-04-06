@@ -7,13 +7,13 @@ SPDX-License-Identifier: Apache-2.0
 package msp
 
 import (
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/pkg/errors"
 
 	"github.com/hyperledger/fabric-x-common/api/msppb"
-	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
-var mspLogger = util.MustGetLogger("msp")
+var mspLogger = flogging.MustGetLogger("msp")
 
 type mspManagerImpl struct {
 	// map that contains all MSPs that we have setup or otherwise added
@@ -89,8 +89,12 @@ func (mgr *mspManagerImpl) DeserializeIdentity(sID *msppb.Identity) (Identity, e
 		case *msppb.Identity_Certificate:
 			return t.deserializeIdentityInternal(sID.GetCertificate())
 		case *msppb.Identity_CertificateId:
-			return msp.GetKnownDeserializedIdentity(
-				IdentityIdentifier{Mspid: sID.MspId, Id: sID.GetCertificateId()}), nil
+			id := msp.GetKnownDeserializedIdentity(
+				IdentityIdentifier{Mspid: sID.MspId, Id: sID.GetCertificateId()})
+			if id == nil {
+				return nil, errors.New("identity is unknown")
+			}
+			return id, nil
 		default:
 			return nil, errors.New("unknown creator type")
 		}

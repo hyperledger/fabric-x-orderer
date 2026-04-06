@@ -17,16 +17,16 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/pkg/errors"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/api/msppb"
-	"github.com/hyperledger/fabric-x-common/common/util"
 )
 
-var mspIdentityLogger = util.MustGetLogger("msp.identity")
+var mspIdentityLogger = flogging.MustGetLogger("msp.identity")
 
 type identity struct {
 	// id contains the identifier (MSPID and identity identifier) for this instance

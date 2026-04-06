@@ -105,8 +105,6 @@ func (ccv *DynamicApplicationConfigValue) StaticallyOpaqueFieldProto(name string
 		return &common.Capabilities{}, nil
 	case "ACLs":
 		return &peer.ACLs{}, nil
-	case "MetaNamespaceVerificationKey":
-		return &msp.KeyInfo{}, nil
 	default:
 		return nil, fmt.Errorf("Unknown Application ConfigValue name: %s", ccv.name)
 	}

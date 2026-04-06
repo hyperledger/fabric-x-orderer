@@ -28,7 +28,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/tools/configtxlator/rest"
 	"github.com/hyperledger/fabric-x-common/tools/configtxlator/update"
 )
@@ -61,7 +61,7 @@ var (
 	version = app.Command("version", "Show version information")
 )
 
-var logger = util.MustGetLogger("configtxlator")
+var logger = flogging.MustGetLogger("configtxlator")
 
 func main() {
 	kingpin.Version("0.0.1")

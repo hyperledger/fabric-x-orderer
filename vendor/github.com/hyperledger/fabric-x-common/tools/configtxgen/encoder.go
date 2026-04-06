@@ -7,9 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package configtxgen
 
 import (
-	"crypto/ecdsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"os"
 
@@ -383,15 +380,6 @@ func NewApplicationGroup(conf *Application) (*cb.ConfigGroup, error) {
 		addValue(applicationGroup, channelconfig.CapabilitiesValue(conf.Capabilities), channelconfig.AdminsPolicyKey)
 	}
 
-	if len(conf.MetaNamespaceVerificationKeyPath) > 0 {
-		key, err := getPubKeyFromPem(conf.MetaNamespaceVerificationKeyPath)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error reading metanamespace verification key")
-		}
-		addValue(applicationGroup,
-			channelconfig.MetaNamespaceVerificationKeyValue(key), channelconfig.AdminsPolicyKey)
-	}
-
 	for _, org := range conf.Organizations {
 		var err error
 		applicationGroup.Groups[org.Name], err = NewApplicationOrgGroup(org)
@@ -402,68 +390,6 @@ func NewApplicationGroup(conf *Application) (*cb.ConfigGroup, error) {
 
 	applicationGroup.ModPolicy = channelconfig.AdminsPolicyKey
 	return applicationGroup, nil
-}
-
-// getPubKeyFromPem looks for ECDSA public key in PEM file, and returns pem content only with the public key.
-func getPubKeyFromPem(file string) ([]byte, error) {
-	pemContent, err := os.ReadFile(file)
-	if err != nil {
-		return nil, errors.Wrapf(err, "reading from file %s failed", file)
-	}
-
-	for {
-		block, rest := pem.Decode(pemContent)
-		if block == nil {
-			break
-		}
-		pemContent = rest
-
-		logger.Infof("Reading block [%s] from file: %s", block.Type, file)
-
-		key, err := ParseCertificateOrPublicKey(block.Bytes)
-		if err != nil {
-			continue
-		}
-		return pem.EncodeToMemory(&pem.Block{
-			Type:  "PUBLIC KEY",
-			Bytes: key,
-		}), nil
-
-	}
-
-	return nil, errors.New("no ECDSA public key in pem file")
-}
-
-func ParseCertificateOrPublicKey(blockBytes []byte) ([]byte, error) {
-	// Try reading certificate
-	cert, err := x509.ParseCertificate(blockBytes)
-	var publicKey any
-	if err == nil {
-		if cert.PublicKey != nil && cert.PublicKeyAlgorithm == x509.ECDSA {
-			logger.Info("Found certificate with ECDSA public key in block")
-			publicKey = cert.PublicKey
-		}
-	} else {
-		// If fails, try reading public key
-		anyPublicKey, err := x509.ParsePKIXPublicKey(blockBytes)
-		if err == nil && anyPublicKey != nil {
-			var isECDSA bool
-			publicKey, isECDSA = anyPublicKey.(*ecdsa.PublicKey)
-			if isECDSA {
-				logger.Info("Found ECDSA public key in block")
-			}
-		}
-	}
-
-	if publicKey == nil {
-		return nil, errors.New("no ECDSA public key in block")
-	}
-
-	key, err := x509.MarshalPKIXPublicKey(publicKey)
-	if err != nil {
-		return nil, errors.Wrapf(err, "marshalling public key from failed")
-	}
-	return key, nil
 }
 
 // NewApplicationOrgGroup returns an application org component of the channel configuration.  It defines the crypto material for the organization

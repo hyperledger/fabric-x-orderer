@@ -118,11 +118,10 @@ type Consortium struct {
 // Application encodes the application-level configuration needed in config
 // transactions.
 type Application struct {
-	Organizations                    []*Organization    `yaml:"Organizations"`
-	Capabilities                     map[string]bool    `yaml:"Capabilities"`
-	Policies                         map[string]*Policy `yaml:"Policies"`
-	ACLs                             map[string]string  `yaml:"ACLs"`
-	MetaNamespaceVerificationKeyPath string             `yaml:"MetaNamespaceVerificationKeyPath"`
+	Organizations []*Organization    `yaml:"Organizations"`
+	Capabilities  map[string]bool    `yaml:"Capabilities"`
+	Policies      map[string]*Policy `yaml:"Policies"`
+	ACLs          map[string]string  `yaml:"ACLs"`
 }
 
 // Organization encodes the organization-level configuration needed in
@@ -305,9 +304,6 @@ func (p *Profile) CompleteInitialization(configDir string) {
 	if p.Application != nil {
 		for _, org := range p.Application.Organizations {
 			org.completeInitialization(configDir)
-		}
-		if p.Application.MetaNamespaceVerificationKeyPath != "" {
-			cf.TranslatePathInPlace(configDir, &p.Application.MetaNamespaceVerificationKeyPath)
 		}
 	}
 
