@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -39,6 +40,7 @@ type Assembler struct {
 	status                utils.NodeStatus
 	net                   Net
 	assemblerNodeConfig   *node_config.AssemblerNodeConfig
+	configuration         *config.Configuration
 	lastConfigBlockNumber uint64
 	metrics               *Metrics
 	ds                    *AssemblerDeliverService
@@ -109,6 +111,7 @@ func NewDefaultAssembler(
 	logger *flogging.FabricLogger,
 	net Net,
 	nodeConfig *node_config.AssemblerNodeConfig,
+	configuration *config.Configuration,
 	configBlock *common.Block,
 	mainExitChan chan struct{},
 	assemblerLedgerFactory node_ledger.AssemblerLedgerFactory,
@@ -142,7 +145,7 @@ func NewDefaultAssembler(
 
 	assembler.initLedger(configBlock)
 
-	assembler.initFromConfig(net, nodeConfig, configBlock, prefetchIndexFactory, prefetcherFactory, batchBringerFactory, consensusBringerFactory)
+	assembler.initFromConfig(net, nodeConfig, configuration, configBlock, prefetchIndexFactory, prefetcherFactory, batchBringerFactory, consensusBringerFactory)
 
 	assembler.metrics.Start()
 
@@ -152,6 +155,7 @@ func NewDefaultAssembler(
 func (a *Assembler) initFromConfig(
 	net Net,
 	nodeConfig *node_config.AssemblerNodeConfig,
+	configuration *config.Configuration,
 	configBlock *common.Block,
 	prefetchIndexFactory PrefetchIndexerFactory,
 	prefetcherFactory PrefetcherFactory,
@@ -167,6 +171,7 @@ func (a *Assembler) initFromConfig(
 	a.status.Set(utils.StateInitializing, configSequence)
 
 	a.assemblerNodeConfig = nodeConfig
+	a.configuration = configuration
 
 	shardIds := shardsFromAssemblerConfig(nodeConfig)
 	partyIds := partiesFromAssemblerConfig(nodeConfig)
@@ -189,7 +194,7 @@ func (a *Assembler) initFromConfig(
 		Logger:                            a.logger,
 		Ledger:                            a.ledger,
 		ShardCount:                        len(nodeConfig.Shards),
-		AssemblerRestarter:                a,
+		ConfigProcessor:                   a,
 	}
 
 	a.ds = NewAssemblerDeliverService(a.ledger.LedgerReader(), a.logger, nodeConfig, a.metrics.deliverMetrics)
@@ -244,11 +249,12 @@ func (a *Assembler) initLedger(configBlock *common.Block) {
 	}
 }
 
-func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
+func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configuration *config.Configuration, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
 	return NewDefaultAssembler(
 		logger,
 		nil,
 		nodeConfig,
+		configuration,
 		configBlock,
 		mainExitChan,
 		&node_ledger.DefaultAssemblerLedgerFactory{},
@@ -291,4 +297,88 @@ func (a *Assembler) GetStatus() utils.NodeStatus {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	return a.status
+}
+
+func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
+	a.logger.Infof("Processing new config block number %d", configBlock.Header.Number)
+
+	a.SoftStop()
+
+	// extract new configuration and check if it can be applied.
+	if a.configuration == nil {
+		a.logger.Panicf("Current configuration is nil, cannot process new config block")
+	}
+	newConfiguration, err := a.configuration.NewUpdatedConfigurationFromBlock(configBlock)
+	if err != nil {
+		a.logger.Panicf("Failed to apply last config: %v", err)
+	}
+
+	// check if config can be applied
+	adminRequired, err := a.checkNewConfiguration(newConfiguration)
+	if err != nil {
+		a.logger.Panicf("Failed to check if new configuration can be applied: %v", err)
+	}
+	if adminRequired {
+		a.logger.Warnf("Admin's action is required to apply new config. Assembler's deliver service remains available.")
+		a.lock.Lock()
+		a.status.SetState(utils.StatePendingAdmin)
+		a.lock.Unlock()
+		return
+	}
+
+	// apply new config and restart assembler
+	newAssemblerNodeConfig := newConfiguration.ExtractAssemblerConfig(configBlock)
+
+	newConfigSeq := newAssemblerNodeConfig.Bundle.ConfigtxValidator().Sequence()
+	currentConfigSeq := a.assemblerNodeConfig.Bundle.ConfigtxValidator().Sequence()
+	a.logger.Infof("Applying new config with sequence %d (current: %d), assembler will be restarted dynamically", newConfigSeq, currentConfigSeq)
+
+	a.lock.Lock()
+	a.net.Stop()
+	a.lock.Unlock()
+
+	a.initFromConfig(nil, newAssemblerNodeConfig, newConfiguration, configBlock, &DefaultPrefetchIndexerFactory{}, &DefaultPrefetcherFactory{}, &DefaultBatchBringerFactory{}, &delivery.DefaultConsensusBringerFactory{})
+	a.StartAssemblerService()
+
+	a.logger.Infof("Assembler Started with new config sequence %d, listening on %s", newConfigSeq, a.Address())
+}
+
+func (a *Assembler) checkNewConfiguration(newConfiguration *config.Configuration) (bool, error) {
+	//  check if party is evicted in the new configuration. If yes, an admin action is required.
+	evicted, err := config.IsPartyEvicted(a.assemblerNodeConfig.PartyId, newConfiguration)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if assembler's party was evicted in the new configuration: %v", err)
+	}
+	if evicted {
+		a.logger.Warnf("Assembler's party %d was evicted in the new configuration", a.assemblerNodeConfig.PartyId)
+		return true, nil
+	}
+
+	// check if there is a change that requires admin's action.
+	currPartyConfig, err := config.FindParty(a.assemblerNodeConfig.PartyId, a.configuration)
+	if err != nil {
+		return false, fmt.Errorf("failed to find party %d in current configuration: %v", a.assemblerNodeConfig.PartyId, err)
+	}
+	if currPartyConfig == nil {
+		return false, fmt.Errorf("current configuration does not contain party %d", a.assemblerNodeConfig.PartyId)
+	}
+
+	newPartyConfig, err := config.FindParty(a.assemblerNodeConfig.PartyId, newConfiguration)
+	if err != nil {
+		return false, fmt.Errorf("failed to find party %d in new configuration: %v", a.assemblerNodeConfig.PartyId, err)
+	}
+	if newPartyConfig == nil {
+		return false, fmt.Errorf("new configuration does not contain party %d", a.assemblerNodeConfig.PartyId)
+	}
+
+	requireRestart, err := config.IsNodeConfigChangeRestartRequired(currPartyConfig.AssemblerConfig, newPartyConfig.AssemblerConfig, a.logger)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if node config change requires restart: %v", err)
+	}
+	if requireRestart {
+		a.logger.Warnf("Admin's action is required to restart the assembler with the new configuration")
+		return true, nil
+	}
+
+	return false, nil
 }

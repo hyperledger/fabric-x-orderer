@@ -8,6 +8,7 @@ package stub
 
 import (
 	"context"
+	"encoding/asn1"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -222,5 +224,44 @@ func (sc *StubConsenter) DeliverDecisionFromHeader(header *state.Header) error {
 		Header: &common.BlockHeader{}, // dummy header - maybe fill if needed
 		Data:   &common.BlockData{Data: [][]byte{bytes}},
 	}
+	return nil
+}
+
+func (sc *StubConsenter) DeliverConfigDecisionFromBA(ba *state.AvailableBatchOrdered, s *state.State) error {
+	proposal := smartbft_types.Proposal{
+		Header: (&state.Header{
+			Num:                          ba.OrderingInformation.DecisionNum,
+			DecisionNumOfLastConfigBlock: ba.OrderingInformation.DecisionNum,
+			AvailableCommonBlocks:        []*common.Block{ba.OrderingInformation.CommonBlock},
+			State:                        s,
+		}).Serialize(),
+	}
+
+	// Dummy compound signatures
+	sigs := [][]byte{{1}, {2}}
+	sigBytes, err := asn1.Marshal(sigs)
+	if err != nil {
+		panic("failed to marshal fake signature: " + err.Error())
+	}
+	proposalMsg := &state.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+	}
+	msg := &state.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+	}
+	msgs := [][]byte{proposalMsg.Marshal(), msg.Marshal()}
+	msgsBytes, err := asn1.Marshal(msgs)
+	if err != nil {
+		panic("failed to marshal fake signature msgs: " + err.Error())
+	}
+	signatures := []smartbft_types.Signature{{Value: sigBytes, Msg: msgsBytes}}
+	bytes := state.ProposalToBytes(proposal)
+	block := &common.Block{
+		Header: ba.OrderingInformation.CommonBlock.Header,
+		Data:   &common.BlockData{Data: [][]byte{bytes}},
+	}
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
+	sc.decisions <- block
 	return nil
 }

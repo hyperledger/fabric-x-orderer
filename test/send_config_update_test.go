@@ -464,6 +464,8 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	broadcastClient.Stop()
 
+	testutil.WaitForAssemblersLaunch(t, netInfo)
+
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
@@ -477,7 +479,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	})
 
 	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
+	testutil.WaitSoftStoppedByType(t, netInfo, []testutil.NodeType{testutil.Router, testutil.Batcher, testutil.Consensus})
 
 	// Stop Arma nodes
 	armaNetwork.Stop()

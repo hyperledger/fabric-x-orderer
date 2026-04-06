@@ -4,10 +4,11 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 )
 
-type FakeAssemblerRestarter struct {
+type FakeConfigProcessor struct {
 	ConfigBlockNumberStub        func() uint64
 	configBlockNumberMutex       sync.RWMutex
 	configBlockNumberArgsForCall []struct {
@@ -18,15 +19,16 @@ type FakeAssemblerRestarter struct {
 	configBlockNumberReturnsOnCall map[int]struct {
 		result1 uint64
 	}
-	SoftStopStub        func()
-	softStopMutex       sync.RWMutex
-	softStopArgsForCall []struct {
+	ProcessNewConfigBlockStub        func(*common.Block)
+	processNewConfigBlockMutex       sync.RWMutex
+	processNewConfigBlockArgsForCall []struct {
+		arg1 *common.Block
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeAssemblerRestarter) ConfigBlockNumber() uint64 {
+func (fake *FakeConfigProcessor) ConfigBlockNumber() uint64 {
 	fake.configBlockNumberMutex.Lock()
 	ret, specificReturn := fake.configBlockNumberReturnsOnCall[len(fake.configBlockNumberArgsForCall)]
 	fake.configBlockNumberArgsForCall = append(fake.configBlockNumberArgsForCall, struct {
@@ -44,19 +46,19 @@ func (fake *FakeAssemblerRestarter) ConfigBlockNumber() uint64 {
 	return fakeReturns.result1
 }
 
-func (fake *FakeAssemblerRestarter) ConfigBlockNumberCallCount() int {
+func (fake *FakeConfigProcessor) ConfigBlockNumberCallCount() int {
 	fake.configBlockNumberMutex.RLock()
 	defer fake.configBlockNumberMutex.RUnlock()
 	return len(fake.configBlockNumberArgsForCall)
 }
 
-func (fake *FakeAssemblerRestarter) ConfigBlockNumberCalls(stub func() uint64) {
+func (fake *FakeConfigProcessor) ConfigBlockNumberCalls(stub func() uint64) {
 	fake.configBlockNumberMutex.Lock()
 	defer fake.configBlockNumberMutex.Unlock()
 	fake.ConfigBlockNumberStub = stub
 }
 
-func (fake *FakeAssemblerRestarter) ConfigBlockNumberReturns(result1 uint64) {
+func (fake *FakeConfigProcessor) ConfigBlockNumberReturns(result1 uint64) {
 	fake.configBlockNumberMutex.Lock()
 	defer fake.configBlockNumberMutex.Unlock()
 	fake.ConfigBlockNumberStub = nil
@@ -65,7 +67,7 @@ func (fake *FakeAssemblerRestarter) ConfigBlockNumberReturns(result1 uint64) {
 	}{result1}
 }
 
-func (fake *FakeAssemblerRestarter) ConfigBlockNumberReturnsOnCall(i int, result1 uint64) {
+func (fake *FakeConfigProcessor) ConfigBlockNumberReturnsOnCall(i int, result1 uint64) {
 	fake.configBlockNumberMutex.Lock()
 	defer fake.configBlockNumberMutex.Unlock()
 	fake.ConfigBlockNumberStub = nil
@@ -79,37 +81,41 @@ func (fake *FakeAssemblerRestarter) ConfigBlockNumberReturnsOnCall(i int, result
 	}{result1}
 }
 
-func (fake *FakeAssemblerRestarter) SoftStop() {
-	fake.softStopMutex.Lock()
-	fake.softStopArgsForCall = append(fake.softStopArgsForCall, struct {
-	}{})
-	stub := fake.SoftStopStub
-	fake.recordInvocation("SoftStop", []interface{}{})
-	fake.softStopMutex.Unlock()
+func (fake *FakeConfigProcessor) ProcessNewConfigBlock(arg1 *common.Block) {
+	fake.processNewConfigBlockMutex.Lock()
+	fake.processNewConfigBlockArgsForCall = append(fake.processNewConfigBlockArgsForCall, struct {
+		arg1 *common.Block
+	}{arg1})
+	stub := fake.ProcessNewConfigBlockStub
+	fake.recordInvocation("ProcessNewConfigBlock", []interface{}{arg1})
+	fake.processNewConfigBlockMutex.Unlock()
 	if stub != nil {
-		fake.SoftStopStub()
+		fake.ProcessNewConfigBlockStub(arg1)
 	}
 }
 
-func (fake *FakeAssemblerRestarter) SoftStopCallCount() int {
-	fake.softStopMutex.RLock()
-	defer fake.softStopMutex.RUnlock()
-	return len(fake.softStopArgsForCall)
+func (fake *FakeConfigProcessor) ProcessNewConfigBlockCallCount() int {
+	fake.processNewConfigBlockMutex.RLock()
+	defer fake.processNewConfigBlockMutex.RUnlock()
+	return len(fake.processNewConfigBlockArgsForCall)
 }
 
-func (fake *FakeAssemblerRestarter) SoftStopCalls(stub func()) {
-	fake.softStopMutex.Lock()
-	defer fake.softStopMutex.Unlock()
-	fake.SoftStopStub = stub
+func (fake *FakeConfigProcessor) ProcessNewConfigBlockCalls(stub func(*common.Block)) {
+	fake.processNewConfigBlockMutex.Lock()
+	defer fake.processNewConfigBlockMutex.Unlock()
+	fake.ProcessNewConfigBlockStub = stub
 }
 
-func (fake *FakeAssemblerRestarter) Invocations() map[string][][]interface{} {
+func (fake *FakeConfigProcessor) ProcessNewConfigBlockArgsForCall(i int) *common.Block {
+	fake.processNewConfigBlockMutex.RLock()
+	defer fake.processNewConfigBlockMutex.RUnlock()
+	argsForCall := fake.processNewConfigBlockArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FakeConfigProcessor) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.configBlockNumberMutex.RLock()
-	defer fake.configBlockNumberMutex.RUnlock()
-	fake.softStopMutex.RLock()
-	defer fake.softStopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
@@ -117,7 +123,7 @@ func (fake *FakeAssemblerRestarter) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
-func (fake *FakeAssemblerRestarter) recordInvocation(key string, args []interface{}) {
+func (fake *FakeConfigProcessor) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
 	if fake.invocations == nil {
@@ -129,4 +135,4 @@ func (fake *FakeAssemblerRestarter) recordInvocation(key string, args []interfac
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ assembler.AssemblerRestarter = new(FakeAssemblerRestarter)
+var _ assembler.ConfigProcessor = new(FakeConfigProcessor)

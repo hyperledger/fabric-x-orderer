@@ -314,13 +314,13 @@ func TestLaunchArmaNode(t *testing.T) {
 		}()
 
 		// ReadConfig, expect for genesis block
-		configContent, genesisBlock, err := config.ReadConfig(configPath, testLogger)
+		configuration, genesisBlock, err := config.ReadConfig(configPath, testLogger)
 		require.NoError(t, err)
 		require.NotNil(t, genesisBlock)
 
 		// Read assembler ledger and check it is empty
 		assemblerLedgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
-		assemblerLedger, err := assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
+		assemblerLedger, err := assemblerLedgerFactory.Create(testLogger, configuration.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
 		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))
@@ -329,14 +329,14 @@ func TestLaunchArmaNode(t *testing.T) {
 		assemblerLedger.Close()
 
 		// Create the assembler and check genesis block was appended
-		conf := configContent.ExtractAssemblerConfig(genesisBlock)
+		conf := configuration.ExtractAssemblerConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
-		assembler := assembler.NewAssembler(conf, genesisBlock, make(chan struct{}), testLogger)
+		assembler := assembler.NewAssembler(conf, configuration, genesisBlock, make(chan struct{}), testLogger)
 		assembler.StartAssemblerService()
 		require.NotNil(t, assembler)
 		assembler.Stop()
 
-		assemblerLedger, err = assemblerLedgerFactory.Create(testLogger, configContent.LocalConfig.NodeLocalConfig.FileStore.Path)
+		assemblerLedger, err = assemblerLedgerFactory.Create(testLogger, configuration.LocalConfig.NodeLocalConfig.FileStore.Path)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLedger)
 		assemblerLedger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewMonitor(monitoring.Endpoint{Host: "127.0.0.1", Port: 0}, "TestAssemblerWithLastConfigBlock").Provider, "party1", testutil.CreateLogger(t, 0))

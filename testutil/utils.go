@@ -433,6 +433,108 @@ func WaitPanic(t *testing.T, readyChan chan string, waitFor int, duration time.D
 	}
 }
 
+func WaitSoftStoppedByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nodeTypes []NodeType) {
+	// Propagate errors from worker goroutines via a channel so that
+	// `require.Fail` is only invoked from the main goroutine.
+	errCh := make(chan error, len(netInfo))
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+
+		for _, n := range netInfo {
+			if !containsNodeType(nodeTypes, n.NodeType) {
+				continue
+			}
+			wg.Add(1)
+			go func(n *ArmaNodeInfo) {
+				defer wg.Done()
+				select {
+				case <-n.RunInfo.Session.Err.Detect("Soft stop"):
+					return
+				case <-n.RunInfo.Session.Err.Detect("soft stop"):
+					return
+				case <-time.After(45 * time.Second):
+					errCh <- fmt.Errorf("timed out waiting for Arma node %s_%d_%d to stop", n.NodeType.String(), n.PartyId, n.ShardId)
+				}
+			}(n)
+		}
+
+		wg.Wait()
+	}()
+
+	select {
+	case <-done:
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			return
+		}
+	case <-time.After(60 * time.Second):
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			require.Fail(t, "Timed out waiting for Arma nodes to stop")
+		}
+	}
+}
+
+func WaitForAssemblersLaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
+	errCh := make(chan error, len(netInfo))
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+
+		for _, n := range netInfo {
+			if n.NodeType == Assembler {
+				wg.Add(1)
+				go func(n *ArmaNodeInfo) {
+					defer wg.Done()
+					select {
+					case <-n.RunInfo.Session.Err.Detect("Assembler Started with new config sequence"):
+						return
+					case <-time.After(45 * time.Second):
+						errCh <- fmt.Errorf("timed out waiting for Assembler node %s_%d_%d to launch", n.NodeType.String(), n.PartyId, n.ShardId)
+					}
+				}(n)
+			}
+		}
+
+		wg.Wait()
+	}()
+
+	select {
+	case <-done:
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			return
+		}
+	case <-time.After(60 * time.Second):
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			require.Fail(t, "Timed out waiting for Assembler nodes to launch")
+		}
+	}
+}
+
+func containsNodeType(nodeTypes []NodeType, nodeType NodeType) bool {
+	for _, nt := range nodeTypes {
+		if nt == nodeType {
+			return true
+		}
+	}
+	return false
+}
+
 func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 	stopChan := make(chan struct{})
 
