@@ -21,6 +21,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// partyChanges keeps information about membership changes introduced during configuration update.
+type partyChanges struct {
+	Added    []*config_protos.PartyConfig
+	Removed  []*config_protos.PartyConfig
+	Modified []*config_protos.PartyConfig
+}
+
 //go:generate counterfeiter -o mocks/orderer_rules.go . OrdererRules
 type OrdererRules interface {
 	ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error
@@ -189,21 +196,20 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		nextMap[p.PartyID] = p
 	}
 
+	// Compute party changes
+	changes, err := computePartyChanges(currMap, nextMap)
+	if err != nil {
+		return err
+	}
+
 	// 1.
-	added := 0
-	var newID uint32
-	for id := range nextMap {
-		if _, exists := currMap[id]; !exists {
-			added++
-			newID = id
-			if added > 1 {
-				return errors.New("more than one party added in config tx")
-			}
-		}
+	if len(changes.Added) > 1 {
+		return errors.New("more than one party added in config tx")
 	}
 
 	// 2.
-	if added == 1 {
+	if len(changes.Added) == 1 {
+		newID := changes.Added[0].PartyID
 		if newID <= currCfg.MaxPartyID {
 			return errors.Errorf("proposed party ID %d must be greater than previous MaxPartyID %d", newID, currCfg.MaxPartyID)
 		}
@@ -220,38 +226,18 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	}
 
 	// 3.
-	removed := 0
-	for id := range currMap {
-		if _, exists := nextMap[id]; !exists {
-			removed++
-			if removed > 1 {
-				return errors.New("more than one party removed in config tx")
-			}
-		}
+	if len(changes.Removed) > 1 {
+		return errors.New("more than one party removed in config tx")
 	}
 
 	// 4.
-	modified := 0
-	for id, currParty := range currMap {
-		nextParty, exists := nextMap[id]
-		if !exists {
-			continue
-		}
-		changed, err := validatePartyModification(currParty, nextParty)
-		if err != nil {
-			return errors.Errorf("invalid modification for party ID %d: %v", id, err)
-		}
-		if changed {
-			modified++
-			if modified > 1 {
-				return errors.New("more than one party modified in config tx")
-			}
-		}
+	if len(changes.Modified) > 1 {
+		return errors.New("more than one party modified in config tx")
 	}
 
 	// 5.
-	if added+removed+modified > 1 {
-		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d, modified=%d)", added, removed, modified)
+	if len(changes.Added)+len(changes.Removed)+len(changes.Modified) > 1 {
+		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d, modified=%d)", len(changes.Added), len(changes.Removed), len(changes.Modified))
 	}
 
 	return nil
@@ -427,6 +413,37 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*con
 	}
 
 	return nil
+}
+
+// computePartyChanges computes the membership changes between the current and next parties config.
+func computePartyChanges(currMap map[uint32]*config_protos.PartyConfig, nextMap map[uint32]*config_protos.PartyConfig) (*partyChanges, error) {
+	changes := &partyChanges{}
+
+	// detect added
+	for _, nextParty := range nextMap {
+		if _, exists := currMap[nextParty.PartyID]; !exists {
+			changes.Added = append(changes.Added, nextParty)
+		}
+	}
+
+	// detect removed + modified
+	for _, currParty := range currMap {
+		nextParty, exists := nextMap[currParty.PartyID]
+		if !exists {
+			changes.Removed = append(changes.Removed, currParty)
+			continue
+		}
+
+		changed, err := validatePartyModification(currParty, nextParty)
+		if err != nil {
+			return nil, errors.Errorf("invalid modification for party ID %d: %v", currParty.PartyID, err)
+		}
+		if changed {
+			changes.Modified = append(changes.Modified, nextParty)
+		}
+	}
+
+	return changes, nil
 }
 
 // validatePartyModification checks whether a party was modified.
