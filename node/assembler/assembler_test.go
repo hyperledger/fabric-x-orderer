@@ -351,6 +351,7 @@ func TestAssembler_RecoveryWhenPartialDecisionWrittenToLedger(t *testing.T) {
 	test.StopAssembler()
 	test.WaitAssemblerStopped(t)
 	test.StartAssembler()
+	test.WaitAssemblerRunning(t)
 
 	// Assert
 	require.Eventually(t, func() bool {
@@ -365,11 +366,8 @@ func TestAssemblerStatusSoftStop(t *testing.T) {
 	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 
 	test.StartAssembler()
-
-	require.Eventually(t, func() bool {
-		status := test.assembler.GetStatus()
-		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
-	}, eventuallyTimeout, eventuallyTick)
+	test.WaitAssemblerRunning(t)
+	require.Equal(t, test.assembler.GetStatus().ConfigSequenceNumber, uint64(0))
 
 	test.SoftStopAssembler()
 
@@ -379,10 +377,8 @@ func TestAssemblerStatusSoftStop(t *testing.T) {
 	}, eventuallyTimeout, eventuallyTick)
 
 	test.assembler.Stop()
-	require.Eventually(t, func() bool {
-		status := test.assembler.GetStatus()
-		return status.State == node_utils.StateStopped && status.ConfigSequenceNumber == 0
-	}, eventuallyTimeout, eventuallyTick)
+	test.WaitAssemblerStopped(t)
+	require.Equal(t, test.assembler.GetStatus().ConfigSequenceNumber, uint64(0))
 }
 
 func TestAssemblerStatusStop(t *testing.T) {
@@ -391,16 +387,10 @@ func TestAssemblerStatusStop(t *testing.T) {
 	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
 
 	test.StartAssembler()
-
-	require.Eventually(t, func() bool {
-		status := test.assembler.GetStatus()
-		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
-	}, eventuallyTimeout, eventuallyTick)
+	test.WaitAssemblerRunning(t)
+	require.Equal(t, test.assembler.GetStatus().ConfigSequenceNumber, uint64(0))
 
 	test.StopAssembler()
-
-	require.Eventually(t, func() bool {
-		status := test.assembler.GetStatus()
-		return status.State == node_utils.StateStopped && status.ConfigSequenceNumber == 0
-	}, eventuallyTimeout, eventuallyTick)
+	test.WaitAssemblerStopped(t)
+	require.Equal(t, test.assembler.GetStatus().ConfigSequenceNumber, uint64(0))
 }
