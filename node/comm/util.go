@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	xprotoutil "github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/deliverclient"
 	"github.com/hyperledger/fabric/common/policies"
@@ -214,7 +215,7 @@ func VerifyBlockHash(indexInBuffer int, blockBuff []*common.Block) error {
 		return errors.New("missing block data")
 	}
 	seq := block.Header.Number
-	dataHash, err := protoutil.BlockDataHash(block.Data)
+	dataHash, err := xprotoutil.BlockDataHash(block.Data)
 	if err != nil {
 		return err
 	}

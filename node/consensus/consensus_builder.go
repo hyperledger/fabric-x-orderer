@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	xprotoutil "github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
@@ -339,7 +340,7 @@ func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.Stat
 }
 
 func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, consensusLedger *ledger.ConsensusLedger) []byte {
-	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData()) // TODO fix compute digest
+	genesisDigest := xprotoutil.ComputeBlockDataHash(genesisBlock.GetData())
 
 	lastCommonBlockHeader := &common.BlockHeader{}
 	if err := proto.Unmarshal(initState.AppContext, lastCommonBlockHeader); err != nil {
