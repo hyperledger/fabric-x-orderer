@@ -71,7 +71,7 @@ func (a *Assembler) Stop() {
 
 	a.logger.Infof("Stopping assembler")
 
-	if state != utils.StateSoftStopped {
+	if state != utils.StateSoftStopped && state != utils.StatePendingAdmin {
 		a.prefetcher.Stop()
 		a.collator.Stop()
 	}
