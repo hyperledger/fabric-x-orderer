@@ -9,6 +9,13 @@ set -e
 
 BASE_DIR=/tmp/arma-all-in-one
 STORAGE_DIR=/storage
+
+if [ -d "${BASE_DIR}/config/party1" ]; then
+  echo "📦 Pre-generated configs found, skipping generation"
+  echo "🚀 STARTING SERVICES"
+  exec /run_all.sh
+fi
+
 CONFIG=/config/example-deployment.yaml
 
 echo "🔥 PATCH SOURCE CONFIG BEFORE GENERATE (CRITICAL)"
@@ -67,4 +74,4 @@ done
 
 echo "🚀 STARTING SERVICES"
 
-/run_all.sh
+exec /run_all.sh
