@@ -895,7 +895,7 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 	}
 
 	if isAdminOperationRequired {
-		c.Logger.Infof("Pending admin operation")
+		c.Logger.Warnf("Pending admin action to apply new config")
 		c.lock.Lock()
 		c.status.SetState(node_utils.StatePendingAdmin)
 		c.lock.Unlock()
@@ -924,7 +924,7 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, errors.Wrapf(err, "failed to detect if party is evicted")
 	}
 	if isPartyEvicted {
-		c.Logger.Infof("Admin action is required, party %d is evicted", partyID)
+		c.Logger.Warnf("Consensus's party %d was evicted in the new configuration", partyID)
 		return true, nil
 	}
 
@@ -943,7 +943,7 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	}
 
 	if isRestartRequired {
-		c.Logger.Infof("Admin action is required, identity was changed")
+		c.Logger.Warnf("Consensus's identity was changed in the new configuration")
 		return true, nil
 	}
 

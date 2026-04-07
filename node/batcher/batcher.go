@@ -288,7 +288,7 @@ func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 		b.logger.Panicf("Failed applying new config: %s", err)
 	}
 	if isAdminOperationRequired {
-		b.logger.Infof("Pending admin operation")
+		b.logger.Warnf("Pending admin action to apply new config")
 		return
 	}
 }
@@ -334,7 +334,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, errors.Wrapf(err, "failed to detect if party is evicted")
 	}
 	if isPartyEvicted {
-		b.logger.Infof("Admin action is required, party %d is evicted", partyID)
+		b.logger.Warnf("Batcher's party %d was evicted in the new configuration", partyID)
 		return true, nil
 	}
 
@@ -353,7 +353,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	}
 
 	if isRestartRequired {
-		b.logger.Infof("Admin action is required, identity was changed")
+		b.logger.Warnf("Batcher's identity was changed in the new configuration")
 		return true, nil
 	}
 

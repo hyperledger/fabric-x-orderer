@@ -665,7 +665,7 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 		r.logger.Panicf("Failed to apply last config: %v", err)
 	}
 	if adminRequired {
-		r.logger.Warnf("Admin's action is required to apply new config")
+		r.logger.Warnf("Pending admin action to apply new config")
 		r.lock.Lock()
 		r.status.SetState(node_utils.StatePendingAdmin)
 		r.lock.Unlock()
@@ -698,7 +698,7 @@ func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
 		return false, fmt.Errorf("failed to check if node config change requires restart: %v", err)
 	}
 	if requireRestart {
-		r.logger.Warnf("Admin's action is required to restart the router with the new configuration")
+		r.logger.Warnf("Router's identity was changed in the new configuration")
 		return true, nil
 	}
 
