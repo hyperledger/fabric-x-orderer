@@ -971,7 +971,7 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	if err != nil {
 		c.Logger.Panicf("consensus failed to restart dynamically, err: %v", err)
 	}
-	c.Logger.Infof("Consensus listening on %s after restarting dynamically with config sequence: %d", c.Address(), newConfigSeq)
+	c.Logger.Infof("Consensus started with new config sequence %d, listening on %s", newConfigSeq, c.Address())
 }
 
 func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header) {

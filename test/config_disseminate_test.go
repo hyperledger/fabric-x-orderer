@@ -274,7 +274,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	err = broadcastClient.SendTx(env)
 	require.NoError(t, err)
 
-	testutil.WaitForAssemblersLaunch(t, netInfo)
+	testutil.WaitForNetworkRelaunch(t, netInfo, 1)
 
 	// Pull from assembler
 	parties := []types.PartyID{}
@@ -348,19 +348,19 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	// Initialize a new broadcast client
-	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
-	defer broadcastClient.Stop()
+	broadcastClient2 := client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient2.Stop()
 
 	// Send a data tx that is not well signed, i.e. signature did not satisfy the policy /Channel/Writers
 	txContent := tx.PrepareTxWithTimestamp(2, 64, []byte("dataTX"))
 	env = tx.CreateStructuredEnvelope(txContent)
-	err = broadcastClient.SendTx(env)
+	err = broadcastClient2.SendTx(env)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "INTERNAL_SERVER_ERROR, Info: request structure verification error: signature did not satisfy policy /Channel/Writers")
 
 	// Send one more well signed data tx
 	env = tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, fmt.Sprintf("org%d", submittingParty))
-	err = broadcastClient.SendTx(env)
+	err = broadcastClient2.SendTx(env)
 	require.NoError(t, err)
 
 	PullFromAssemblers(t, &BlockPullerOptions{

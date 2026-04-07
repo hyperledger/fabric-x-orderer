@@ -96,9 +96,8 @@ func (b *Batcher) ConfigSequence() types.ConfigSequence {
 }
 
 func (b *Batcher) Address() string {
-	// TODO: move stopSignalListen again, and lock the method
-	// b.lock.Lock()
-	// defer b.lock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	if b.Net == nil {
 		return ""
@@ -376,6 +375,7 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock 
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
 	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum)
+	newConfigSeq := newBatcherConfig.Bundle.ConfigtxValidator().Sequence()
 	b.lock.Unlock()
 
 	// prune mempool
@@ -397,7 +397,7 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock 
 	b.StartBatcherService()
 	b.Run()
 
-	b.logger.Infof("Batcher listening on %s", b.Address())
+	b.logger.Infof("Batcher started with new config sequence %d, listening on %s", newConfigSeq, b.Address())
 }
 
 func (b *Batcher) GetLatestStateChan() <-chan *state.State {

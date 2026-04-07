@@ -340,7 +340,7 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 	a.initFromConfig(nil, newAssemblerNodeConfig, newConfiguration, configBlock, &DefaultPrefetchIndexerFactory{}, &DefaultPrefetcherFactory{}, &DefaultBatchBringerFactory{}, &delivery.DefaultConsensusBringerFactory{})
 	a.StartAssemblerService()
 
-	a.logger.Infof("Assembler Started with new config sequence %d, listening on %s", newConfigSeq, a.Address())
+	a.logger.Infof("Assembler started with new config sequence %d, listening on %s", newConfigSeq, a.Address())
 }
 
 func (a *Assembler) checkNewConfiguration(newConfiguration *config.Configuration) (bool, error) {

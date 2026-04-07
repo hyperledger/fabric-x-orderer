@@ -712,7 +712,7 @@ func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
 
 	r.initFromConfig(newRouterNodeConfig, newConfiguration, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{}, seekInfo)
 	r.StartRouterService()
-	r.logger.Infof("Router started with new config sequence %d, listening on %s, PartyID: %d", newConfigSeq, r.Address(), r.routerNodeConfig.PartyID)
+	r.logger.Infof("Router started with new config sequence %d, listening on %s", newConfigSeq, r.Address())
 	return false, nil
 }
 

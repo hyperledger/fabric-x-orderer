@@ -482,7 +482,7 @@ func WaitSoftStoppedByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nod
 	}
 }
 
-func WaitForAssemblersLaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
+func WaitForRelaunchByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nodeTypes []NodeType, configSeq uint64) {
 	errCh := make(chan error, len(netInfo))
 	done := make(chan struct{})
 
@@ -491,18 +491,19 @@ func WaitForAssemblersLaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 		var wg sync.WaitGroup
 
 		for _, n := range netInfo {
-			if n.NodeType == Assembler {
-				wg.Add(1)
-				go func(n *ArmaNodeInfo) {
-					defer wg.Done()
-					select {
-					case <-n.RunInfo.Session.Err.Detect("Assembler Started with new config sequence"):
-						return
-					case <-time.After(45 * time.Second):
-						errCh <- fmt.Errorf("timed out waiting for Assembler node %s_%d_%d to launch", n.NodeType.String(), n.PartyId, n.ShardId)
-					}
-				}(n)
+			if !containsNodeType(nodeTypes, n.NodeType) {
+				continue
 			}
+			wg.Add(1)
+			go func(n *ArmaNodeInfo) {
+				defer wg.Done()
+				select {
+				case <-n.RunInfo.Session.Err.Detect("started with new config sequence %d", configSeq):
+					return
+				case <-time.After(120 * time.Second):
+					errCh <- fmt.Errorf("timed out waiting for node %s_%d_%d to launch", n.NodeType.String(), n.PartyId, n.ShardId)
+				}
+			}(n)
 		}
 
 		wg.Wait()
@@ -516,14 +517,18 @@ func WaitForAssemblersLaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 		default:
 			return
 		}
-	case <-time.After(60 * time.Second):
+	case <-time.After(180 * time.Second):
 		select {
 		case err := <-errCh:
 			require.Fail(t, err.Error())
 		default:
-			require.Fail(t, "Timed out waiting for Assembler nodes to launch")
+			require.Fail(t, "Timed out waiting for required nodes to launch")
 		}
 	}
+}
+
+func WaitForNetworkRelaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, configSeq uint64) {
+	WaitForRelaunchByType(t, netInfo, []NodeType{Consensus, Assembler, Batcher, Router}, configSeq)
 }
 
 func containsNodeType(nodeTypes []NodeType, nodeType NodeType) bool {
