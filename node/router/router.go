@@ -275,7 +275,7 @@ func (r *Router) Stop() {
 
 	r.logger.Infof("Stopping router listening on %s, PartyID: %d", r.net.Address(), r.routerNodeConfig.PartyID)
 
-	if state != node_utils.StateSoftStopped {
+	if state != node_utils.StateSoftStopped && state != node_utils.StatePendingAdmin {
 		r.net.Stop()
 		r.metrics.Stop()
 
