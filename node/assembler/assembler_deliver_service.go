@@ -103,6 +103,9 @@ type assemblerChainManager struct {
 }
 
 func (acm *assemblerChainManager) GetChain(chainID string) deliver.Chain {
+	if acm.bundle.ConfigtxValidator().ChannelID() != chainID {
+		return nil
+	}
 	return &assemblerChain{ledger: acm.ledger, bundle: acm.bundle, errChan: make(chan struct{})}
 }
 
