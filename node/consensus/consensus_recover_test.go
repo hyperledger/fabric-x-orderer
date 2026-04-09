@@ -39,6 +39,8 @@ func TestCreateConsensusNodePanicsWithNilGenesisBlock(t *testing.T) {
 }
 
 func TestCreateOneConsensusNode(t *testing.T) {
+	t.Parallel()
+
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
@@ -78,6 +80,8 @@ func TestCreateOneConsensusNode(t *testing.T) {
 // Then we restart the stopped node, send one more request, and we make sure the nodes commit another block.
 // Finally, we make sure the restarted node is synced with all blocks.
 func TestCreateMultipleConsensusNodes(t *testing.T) {
+	t.Parallel()
+
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 	dir := t.TempDir()
@@ -166,6 +170,8 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 // The leader fails again, recovers, and writes the second request to the ledger.
 // The leader is never replaced, and no view change occurs.
 func TestLeaderFailureAndRecovery(t *testing.T) {
+	t.Parallel()
+
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 	dir := t.TempDir()
@@ -236,6 +242,8 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 // One request is sent while it is down. The second after its recovery, creating blocks 4 and 5.
 // The recovering node is then expected to get just block number 4 as it may be one block behind.
 func TestNonLeaderNodeFailureRecovery(t *testing.T) {
+	t.Parallel()
+
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 	dir := t.TempDir()
@@ -349,6 +357,8 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 // Nodes (IDs=2,3) fail after the first block is committed.
 // Node (ID=2) recovers, and additional requests are sent and committed while node 3 remains down.
 func TestTwoNodeFailureRecovery(t *testing.T) {
+	t.Parallel()
+
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 	dir := t.TempDir()
@@ -416,6 +426,8 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 //  1. Nodes (IDs=2,3) fail and recover before the first request is sent.
 //  2. Nodes (IDs=2,3) fail, a request is committed by the remaining nodes, and the failed nodes recover and synchronize.
 func TestMultipleNodesFailureRecovery(t *testing.T) {
+	t.Parallel()
+
 	parties := []types.PartyID{1, 2, 3, 4, 5, 6, 7}
 	numOfShards := 1
 	dir := t.TempDir()
@@ -521,6 +533,8 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 // New requests are committed by the remaining nodes during the failure (a view change occurs).
 // After restarting the failed nodes, two more requests are sent, and both blocks are committed to the ledger.
 func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
+	t.Parallel()
+
 	parties := []types.PartyID{1, 2, 3, 4, 5, 6, 7}
 	numOfShards := 1
 	dir := t.TempDir()
@@ -627,6 +641,8 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 // All the rest of the nodes are then put in SoftStop mode, and node (ID=3) recovers.
 // After restarting the failed node, we check it synchronizes with the other nodes and commits the second block.
 func TestSyncFromSoftStoppedNodes(t *testing.T) {
+	t.Parallel()
+
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 	dir := t.TempDir()
