@@ -199,6 +199,74 @@ func TestAssemblerDeliver_WithMTLS_NoCertHash(t *testing.T) {
 	require.Equal(t, resp.GetStatus(), common.Status_BAD_REQUEST)
 }
 
+func TestAssemblerDeliver_WrongChannelID(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	numParties := 4
+	partyID := types.PartyID(1)
+
+	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	defer cleanup()
+
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	defer cleanup()
+
+	shards := []config.ShardInfo{
+		{ShardId: types.ShardID(0), Batchers: batcherInfosShard0},
+		{ShardId: types.ShardID(1), Batchers: batcherInfosShard1},
+	}
+
+	consenterStub := NewStubConsenter(t, partyID, ca)
+	defer consenterStub.Stop()
+
+	clientRootCAs := [][]byte{ca.CertBytes()}
+
+	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
+	defer assembler.Stop()
+
+	// wait for genesis block
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 1
+	}, 3*time.Second, 100*time.Millisecond)
+
+	ckp, err := ca.NewClientCertKeyPair()
+	require.NoError(t, err)
+	cc := createAssemblerClientConn(t, assemblerEndpoint, [][]byte{ca.CertBytes()}, ckp, "mTLS")
+	defer cc.Close()
+	abc := ab.NewAtomicBroadcastClient(cc)
+
+	// create a deliver stream
+	stream, err := abc.Deliver(context.TODO())
+	require.NoError(t, err)
+	defer stream.CloseSend()
+
+	// prepare request envelope with wrong channel ID
+	block, _ := pem.Decode(ckp.Cert)
+	require.True(t, block != nil && block.Type == "CERTIFICATE")
+	tlsCertHash := util.ComputeSHA256(block.Bytes)
+
+	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		common.HeaderType_DELIVER_SEEK_INFO,
+		"wrongchannel",
+		nil,
+		delivery.NextSeekInfo(1),
+		int32(0),
+		uint64(0),
+		tlsCertHash,
+	)
+	require.NoError(t, err)
+
+	// send request envelope
+	err = stream.Send(requestEnvelope)
+	require.NoError(t, err)
+
+	// expect to recv response with NOT_FOUND status
+	resp, err := stream.Recv()
+	require.NoError(t, err)
+	require.Equal(t, resp.GetStatus(), common.Status_NOT_FOUND)
+}
+
 func createAssemblerClientConn(t *testing.T, assemblerEndpoint string, assemblerRootCAs [][]byte, ckp *tlsgen.CertKeyPair, tls string) *grpc.ClientConn {
 	cc := comm.ClientConfig{
 		KaOpts: comm.KeepaliveOptions{
