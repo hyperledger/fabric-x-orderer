@@ -51,7 +51,6 @@ type DefaultOrdererRules struct{}
 //  7. Each consenter in the ConsenterMapping must have a matching organization.
 //
 // TODO: Validate that ca certificates in the sharedConfig are the same as in the ordererOrganization ca certificates.
-// TODO: Validate new certificates - chain of trust, expiration, etc.
 // TODO: Validate BlockValidationPolicy.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
@@ -150,7 +149,11 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 //  3. At most one party can be removed in a config tx.
 //  4. At most one party can be modified in a config tx.
 //  5. Only one membership change is allowed per config tx (add, remove, or modify).
+//  6. Certificate validation:
+//     - enforce certificate validation for newly added parties
 //
+// TODO: validate certificate chain of trust for all parties while ignoring expiration
+// TODO: apply certificate validation for modified parties
 // TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
 	// extract current shared config
@@ -238,6 +241,13 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	// 5.
 	if len(changes.Added)+len(changes.Removed)+len(changes.Modified) > 1 {
 		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d, modified=%d)", len(changes.Added), len(changes.Removed), len(changes.Modified))
+	}
+
+	// 6.
+	for _, party := range changes.Added {
+		if err := validatePartyCertificates(party, false); err != nil {
+			return errors.Wrapf(err, "certificate validation failed for added party ID %d", party.PartyID)
+		}
 	}
 
 	return nil
