@@ -97,11 +97,11 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b99 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -148,11 +148,11 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b99 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -196,11 +196,11 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b99 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -256,11 +256,11 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b99 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -378,11 +378,11 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b2 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit: func(block *cb.Block) types.Reconfig {
 				// Return the expected reconfig for the last block
@@ -515,8 +515,8 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
-				return &decision.Latest
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
+				return &decision.Latest, nil
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -597,8 +597,8 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
-				return &decision.Latest
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
+				return &decision.Latest, nil
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -674,8 +674,8 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
-				return &decision.Latest
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
+				return &decision.Latest, nil
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -758,8 +758,8 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
-				return &decision.Latest
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
+				return &decision.Latest, nil
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,
@@ -874,11 +874,11 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b101 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit: func(block *cb.Block) types.Reconfig {
 				if block == b101 {
@@ -1020,11 +1020,11 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b102 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit: func(block *cb.Block) types.Reconfig {
 				if block == b101 {
@@ -1195,8 +1195,8 @@ func TestBFTSynchronizer(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
-				return &decision.Latest
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
+				return &decision.Latest, nil
 			},
 			OnCommit: func(block *cb.Block) types.Reconfig {
 				return types.Reconfig{
@@ -1320,11 +1320,11 @@ func TestBFTSynchronizer_Stop(t *testing.T) {
 					SelfID: 1,
 				}, []uint64{1, 2, 3, 4}
 			},
-			BlockToDecision: func(block *cb.Block) *types.Decision {
+			BlockToDecision: func(block *cb.Block) (*types.Decision, error) {
 				if block == b99 {
-					return &decision.Latest
+					return &decision.Latest, nil
 				}
-				return nil
+				return nil, errors.New("unexpected block")
 			},
 			OnCommit:           noopUpdateLastHash,
 			Support:            fakeCS,

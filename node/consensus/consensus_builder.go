@@ -140,7 +140,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 			ReplicationPolicy: "",
 		},
 		c,                                      // implements synchronizer.BFTConfigGetter,
-		ConsenterBlockToDecision,               // func(block *cb.Block) *types.Decision // TODO look at the assembler
+		state.ConsenterBlockToDecision,         // func(block *cb.Block) *types.Decision
 		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),
 		c.UpdateStateAndRuntimeConfig,          // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
 		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,

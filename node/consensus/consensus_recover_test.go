@@ -86,6 +86,7 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	numOfShards := 1
 	dir := t.TempDir()
 	genesisBlock, setup := createTestSetupReal(t, dir, parties, numOfShards)
+	t.Log(">>> Network started")
 	time.Sleep(30 * time.Second)
 
 	var err error
@@ -113,6 +114,7 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 		return b.Header.Number == uint64(2) && b1.Header.Number == uint64(2) && b2.Header.Number == uint64(2)
 	}, 2*time.Minute, 1*time.Second)
 
+	t.Log(">>> Stopping node PartyID=1")
 	setup.consensusNodes[0].Stop()
 
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
@@ -134,6 +136,7 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	}, 2*time.Minute, 1*time.Second)
 
 	// Recovery of the stopped node (ID=1)
+	t.Log(">>> Recovering node PartyID=1")
 	recoverNodeReal(t, dir, 0, genesisBlock, setup)
 
 	time.Sleep(time.Minute)

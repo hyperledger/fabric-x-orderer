@@ -390,6 +390,15 @@ func TestConsenterBlockToDecision(t *testing.T) {
 		},
 		{
 			// Validates that ConsenterBlockToDecision properly handles
+			// a nil block (should return error)
+			name: "block is nil",
+			setupBlock: func(t *testing.T) *common.Block {
+				return nil
+			},
+			expectError: true,
+		},
+		{
+			// Validates that ConsenterBlockToDecision properly handles
 			// blocks where the Data field is nil (should return error)
 			name: "block with nil data",
 			setupBlock: func(t *testing.T) *common.Block {
