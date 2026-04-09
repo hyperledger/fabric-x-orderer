@@ -497,8 +497,10 @@ func WaitForRelaunchByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nod
 			wg.Add(1)
 			go func(n *ArmaNodeInfo) {
 				defer wg.Done()
+				detectCh := n.RunInfo.Session.Err.Detect("started with new config sequence %d", configSeq)
+				defer n.RunInfo.Session.Err.CancelDetects()
 				select {
-				case <-n.RunInfo.Session.Err.Detect("started with new config sequence %d", configSeq):
+				case <-detectCh:
 					return
 				case <-time.After(120 * time.Second):
 					errCh <- fmt.Errorf("timed out waiting for node %s_%d_%d to launch", n.NodeType.String(), n.PartyId, n.ShardId)
@@ -529,6 +531,8 @@ func WaitForRelaunchByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nod
 
 func WaitForNetworkRelaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, configSeq uint64) {
 	WaitForRelaunchByType(t, netInfo, []NodeType{Consensus, Assembler, Batcher, Router}, configSeq)
+
+	time.Sleep(time.Minute) // wait for consenters.
 }
 
 func containsNodeType(nodeTypes []NodeType, nodeType NodeType) bool {
