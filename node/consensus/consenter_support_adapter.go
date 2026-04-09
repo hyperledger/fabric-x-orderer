@@ -81,7 +81,10 @@ func (c *ConsenterSupportAdapter) Height() uint64 {
 // with.
 // Implements synchronizer.ConsenterSupport.
 func (c *ConsenterSupportAdapter) ChannelID() string {
-	return c.consensus.Config.Bundle.ConfigtxValidator().ChannelID()
+	channelID := c.consensus.Config.Bundle.ConfigtxValidator().ChannelID()
+	// TODO remove the replacement once we harmonize the channel ID in the config with the one used in the consensus code (and everywhere else).
+	c.consensus.Logger.Debugf("Retrieving channel ID from config bundle: '%s',replacing with 'consensus'", channelID)
+	return "consensus"
 }
 
 // Sequence returns the current configuration sequence number for the channel.

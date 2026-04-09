@@ -14,7 +14,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -115,10 +114,8 @@ type Consensus struct {
 	BADB                         *badb.BatchAttestationDB
 	MainExitChan                 chan struct{}
 
-	synchronizerFactory bft_synch.SynchronizerFactory  // Builds a BFT synchronizer
-	bftSynchronizer     bft_synch.SynchronizerWithStop // The BFT synchronizer built by the factory
-
-	Synchronizer SynchronizerStopper // TODO remove after we change to the BFT synchronizer, and use bftSynchronizer instead
+	synchronizerFactory bft_synch.SynchronizerFactory // Builds a BFT synchronizer
+	Synchronizer        SynchronizerStopper           // The BFT synchronizer built by the factory
 
 	RequestVerifier        *requestfilter.RulesVerifier
 	ConfigUpdateProposer   policy.ConfigUpdateProposer
@@ -1015,18 +1012,6 @@ func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return uint64(c.decisionNumOfLastConfigBlock), c.lastConfigBlockNum
-}
-
-func (c *Consensus) pickEndpoint() string {
-	var r int
-	for {
-		r = rand.Intn(len(c.Config.Consenters)) // pick a node randomly
-		if c.PartyID != c.Config.Consenters[r].PartyID {
-			break // make sure not to pick myself
-		}
-	}
-	c.Logger.Debugf("Returning random node (ID=%d) endpoint : %s", c.Config.Consenters[r].PartyID, c.Config.Consenters[r].Endpoint)
-	return c.Config.Consenters[r].Endpoint
 }
 
 func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
