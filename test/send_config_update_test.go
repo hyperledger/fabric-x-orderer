@@ -82,11 +82,11 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	require.NotNil(t, userConfig)
 
 	totalTxNumber := 100
+
 	// rate limiter parameters
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
 	rate := 500
-
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
@@ -134,7 +134,8 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	defer cleanUp()
 
-	partyToUpdate := types.PartyID(submittingParty)
+	partyToUpdate := submittingParty
+	nonUpdatedRouterParties := []types.PartyID{2, 3, 4}
 	routerIP := strings.Split(userConfig.RouterEndpoints[partyToUpdate-1], ":")[0] // extract IP from the user config router endpoint
 	availablePort, newListener := testutil.GetAvailablePort(t)
 	newPort, err := strconv.Atoi(availablePort)
@@ -144,7 +145,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	configUpdatePbData := configUpdateBuilder.UpdateRouterEndpoint(t, partyToUpdate, routerIP, newPort)
 
-	// Submit config update
+	// Create config tx
 	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
 
@@ -154,8 +155,15 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
+	// Wait for the router to enter pending admin state and then stop it
+	t.Log("Wait for the router to enter pending admin state and then stop it")
+	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Router}, []types.PartyID{partyToUpdate})
+	armaNetwork.GetRouter(t, partyToUpdate).StopArmaNode()
+
+	// Wait for arma nodes to restart dynamically
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForRelaunchByType(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher}, 1)
+	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Router}, nonUpdatedRouterParties, 1)
 
 	// Wait for assemblers to relaunch
 	testutil.WaitForRelaunchByType(t, netInfo, []testutil.NodeType{testutil.Assembler}, 1)
@@ -175,12 +183,8 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	require.True(t, userBlockHandler.RouterEndpointUpdated.Load(), "Router endpoint was not updated in the config update")
 
-	// Restart Arma nodes
-	armaNetwork.Stop()
-
+	// Verify the config stored in the router's config store is updated
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_router.yaml")
-
-	// Verify the router node config stored in the router ledger is updated
 	cfg, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 	require.True(t, cfg.SharedConfig.GetPartiesConfig()[partyToUpdate-1].RouterConfig.Host == routerIP &&
@@ -193,17 +197,18 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)
 	utils.WriteToYAML(localConfig.NodeLocalConfig, routerNodeConfigPath)
 
-	armaNetwork.Restart(t, readyChan)
-	defer armaNetwork.Stop()
+	// Restart Router only
+	t.Log("Restart Router")
+	armaNetwork.GetRouter(t, partyToUpdate).RestartArmaNode(t, readyChan)
 
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
-
-	// Send transactions again and verify they are processed
+	testutil.WaitReady(t, readyChan, 1, 10)
 
 	// Update the user config with the new router endpoint
-	userConfig.RouterEndpoints[0] = fmt.Sprintf("%s:%d", routerIP, newPort)
+	userConfig.RouterEndpoints[partyToUpdate-1] = fmt.Sprintf("%s:%d", routerIP, newPort)
 	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
 
+	// Send transactions again and verify they are processed
+	t.Log("Send transactions")
 	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
@@ -232,6 +237,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	})
 
 	require.True(t, userBlockHandler.RouterEndpointUpdated.Load(), "Router endpoint was not updated in the config update")
+	armaNetwork.Stop()
 }
 
 // Verify that the config update is applied by checking the router endpoint in the config update block
@@ -273,7 +279,7 @@ func TestRemovePartyRunAll(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 4
+	numOfParties := 5
 	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
@@ -315,6 +321,13 @@ func TestRemovePartyRunAll(t *testing.T) {
 		parties = append(parties, types.PartyID(i))
 	}
 
+	remainingParties := make([]types.PartyID, 0, numOfParties-1)
+	for i := 1; i <= numOfParties; i++ {
+		if types.PartyID(i) != partyToRemove {
+			parties = append(parties, types.PartyID(i))
+		}
+	}
+
 	// Submit config update
 	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdatePbData)
 	require.NotNil(t, env)
@@ -323,9 +336,10 @@ func TestRemovePartyRunAll(t *testing.T) {
 	err = broadcastClient.SendTxTo(env, submittingParty)
 	require.NoError(t, err)
 
-	// Wait for Arma nodes to stop
+	// Wait for Arma nodes to soft stop
 	testutil.WaitSoftStopped(t, netInfo)
 
+	// Check that shared config of Router does not include the removed party
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", submittingParty), "local_config_router.yaml")
 	routerNodeConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
@@ -335,38 +349,34 @@ func TestRemovePartyRunAll(t *testing.T) {
 		require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
 	}
 
-	// Stop Arma nodes
-	armaNetwork.Stop()
+	// Wait for the removed party to enter pending admin state and then stop the party
+	t.Log("Wait for the removed party to enter pending admin state and then stop the party")
+	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToRemove})
+	armaNetwork.StopParties([]types.PartyID{partyToRemove})
+
+	// Wait for arma nodes to restart dynamically
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, remainingParties, 1)
 
 	numOfNodesPerParty := 3 + numOfShards
 	readyChan = make(chan string, (numOfParties-1)*numOfNodesPerParty)
 
 	// Try to restart the removed party nodes, expect them to fail to start
+	t.Log("Try to restart the removed party nodes, expect them to fail to start")
 	armaNetwork.RestartParties(t, []types.PartyID{partyToRemove}, readyChan)
 	defer armaNetwork.Stop()
-	// Expect the removed party nodes to fail to start
 	// TODO: improve the detection of failed nodes by checking specific exit codes,
 	// rather than relying on string matching in the output
 	// every node should report a panic during startup
 	testutil.WaitPanic(t, readyChan, numOfNodesPerParty-1, 10)
 
-	numOfArmaNodes = (numOfParties - 1) * numOfNodesPerParty
-	readyChan = make(chan string, numOfArmaNodes)
-	// Restart the remaining parties' nodes
-	remainingParties := []types.PartyID{}
-	for i := 1; i <= numOfParties; i++ {
-		if types.PartyID(i) != partyToRemove {
-			remainingParties = append(remainingParties, types.PartyID(i))
-		}
-	}
-	armaNetwork.RestartParties(t, remainingParties, readyChan)
-	// Expect the rest of the nodes to start successfully
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	armaNetwork.StopParties(remainingParties)
 }
 
 // TestRemoveStoppedPartyThenRestart verifies that after removing a stopped party that via a config update
 // and stopping all Arma nodes, restarting the entire network results in all nodes starting successfully,
 // while the removed party's nodes fail to establish connections to the rest of the network.
+// TODO: dynamic reconfig instead of stop and restart
 func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -531,7 +541,7 @@ func TestRemoveParty(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 4
+	numOfParties := 5
 	numOfShards := 2
 	submittingParty := types.PartyID(1)
 
@@ -563,6 +573,7 @@ func TestRemoveParty(t *testing.T) {
 	require.NotNil(t, uc)
 
 	totalTxNumber := 10
+
 	// Send transactions to all parties to ensure network is operational before config update
 	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
 	require.NoError(t, err)
@@ -575,8 +586,10 @@ func TestRemoveParty(t *testing.T) {
 		err = broadcastClient.SendTx(env)
 		require.NoError(t, err)
 	}
+
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 	statusUnknown := common.Status_UNKNOWN
+
 	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
@@ -605,11 +618,8 @@ func TestRemoveParty(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
+	// Wait for Arma nodes to soft stop
 	testutil.WaitSoftStopped(t, netInfo)
-
-	// Stop Arma nodes
-	armaNetwork.Stop()
 
 	// Verify that the party is removed by checking the router's shared config
 	var remainingParties []types.PartyID
@@ -620,31 +630,26 @@ func TestRemoveParty(t *testing.T) {
 		remainingParties = append(remainingParties, types.PartyID(i))
 	}
 
-	numOfParties--
-	numOfArmaNodes = numOfParties * (3 + numOfShards)
-
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", submittingParty), "local_config_router.yaml")
 	routerNodeConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
-	require.Equal(t, numOfParties, len(routerNodeConfig.SharedConfig.GetPartiesConfig()), "Party was not removed from the config")
+	require.Equal(t, len(remainingParties), len(routerNodeConfig.SharedConfig.GetPartiesConfig()), "Party was not removed from the config")
 
 	for _, partyConfig := range routerNodeConfig.SharedConfig.GetPartiesConfig() {
 		require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
 	}
 
-	// Restart remaining Arma nodes
-	readyChan = make(chan string, numOfArmaNodes)
+	// Wait for the removed party to enter pending admin state and then stop the party
+	t.Log("Wait for the removed party to enter pending admin state and then stop the party")
+	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToRemove})
+	armaNetwork.StopParties([]types.PartyID{partyToRemove})
 
-	// Try to restart the remaining Arma nodes, removed party nodes will fail to start but the rest should start successfully
-	armaNetwork.RestartParties(t, remainingParties, readyChan)
-	defer armaNetwork.Stop()
-
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	// Wait for arma nodes to restart dynamically
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, remainingParties, 1)
 
 	// Send transactions to remaining parties to verify they are processed
-
 	uc.RouterEndpoints = append(uc.RouterEndpoints[:partyToRemove-1], uc.RouterEndpoints[partyToRemove:]...)
-
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for i := range totalTxNumber {
@@ -657,6 +662,7 @@ func TestRemoveParty(t *testing.T) {
 	broadcastClient.Stop()
 
 	statusUnknown = common.Status_UNKNOWN
+
 	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
@@ -667,11 +673,14 @@ func TestRemoveParty(t *testing.T) {
 		Status:       &statusUnknown,
 		Signer:       signutil.CreateTestSigner(t, "org1", dir),
 	})
+
+	armaNetwork.StopParties(remainingParties)
 }
 
 // TestAddNewParty verifies that adding a party via a config update succeeds,
 // that the new party's config is included in the updated shared config,
 // and that the new party can join (start) and process transactions after the config update.
+// TODO: dynamic reconfig instead of stop and restart
 func TestAddNewParty(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -868,6 +877,7 @@ func TestAddNewParty(t *testing.T) {
 
 // TestChangePartyCertificates verifies that updating a party's certificates via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new certificates.
+// TODO: dynamic reconfig instead of stop and restart
 func TestChangePartyCertificates(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1116,6 +1126,8 @@ func TestChangePartyCertificates(t *testing.T) {
 //  4. Restart again, extend client trust with the new TLS CA, and verify continued transaction submission and block pulling.
 //  5. Replace party crypto material on disk, update config to use only the new CA certs, and submit final config update.
 //  6. Restart once more and confirm the network remains operational by sending and pulling additional transactions.
+//
+// TODO: dynamic reconfig instead of stop and restart
 func TestChangePartyCACertificates(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1581,6 +1593,7 @@ func uniqueFileName(path string) string {
 
 // TestUpdateTimeoutParameters verifies that updating a party's timeout parameters via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new timeout parameters.
+// TODO: dynamic reconfig instead of stop and restart
 func TestUpdateTimeoutParameters(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1755,6 +1768,7 @@ func (vt *verifyTimeoutParam) HandleBlock(t *testing.T, block *common.Block) err
 
 // TestUpdateSmartBFTParameters verifies that updating SmartBFT parameters via a config update succeeds,
 // and that the network can continue processing transactions after the config update with the new parameters.
+// TODO: dynamic reconfig instead of stop and restart
 func TestUpdateSmartBFTParameters(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1929,6 +1943,7 @@ func (vt *verifySmartBFTParam) HandleBlock(t *testing.T, block *common.Block) er
 
 // TestUpdateBatchingParameters verifies that updating a party's batching parameters via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new batching parameters.
+// TODO: dynamic reconfig instead of stop and restart
 func TestUpdateBatchingParameters(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
