@@ -1136,10 +1136,9 @@ func (c *Consensus) PruneRequestsFromMemPool(consenterBlock *common.Block) {
 		return // genesis block doesn't include any request
 	}
 
-	// TODO it make sense to have ConsenterBlockToDecision return the error
-	decision := ConsenterBlockToDecision(consenterBlock)
-	if decision == nil {
-		c.Logger.Panicf("Failed parsing block we pulled with BFT Synchronizer")
+	decision, err := state.ConsenterBlockToDecision(consenterBlock)
+	if err != nil {
+		c.Logger.Panicf("Failed parsing block we pulled with BFT Synchronizer: %s", err)
 	}
 
 	// Every request, including config requests, is included in the proposal's payload as a batch of requests,

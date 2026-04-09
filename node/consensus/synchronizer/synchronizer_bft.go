@@ -36,7 +36,7 @@ type BFTSynchronizer struct {
 	lastReconfig        smartbft_types.Reconfig
 	selfID              uint64
 	LatestConfig        func() (smartbft_types.Configuration, []uint64)
-	BlockToDecision     func(*common.Block) *smartbft_types.Decision
+	BlockToDecision     func(*common.Block) (*smartbft_types.Decision, error)
 	OnCommit            func(*common.Block) smartbft_types.Reconfig
 	Support             ConsenterSupport
 	CryptoProvider      bccsp.BCCSP
@@ -56,11 +56,28 @@ func (s *BFTSynchronizer) Sync() smartbft_types.SyncResponse {
 	decision, err := s.synchronize()
 	if err != nil {
 		s.Logger.Warnf("Could not synchronize with remote orderers due to %s, returning state from local ledger, party: %d", err, s.selfID)
+
 		h := s.Support.Height()
 		s.Logger.Warnf("Could not synchronize with remote orderers, returning state from local ledger, h: %d, party: %d", h, s.selfID)
+		if h == 0 {
+			s.Logger.Panicf("Cannot join the cluster: failed to fetch genesis block and fetch state from local ledger: party: %d", s.selfID)
+		}
+
 		block := s.Support.Block(h - 1)
 		config, nodes := s.LatestConfig()
-		latestDec := s.BlockToDecision(block)
+		latestDec, err := s.BlockToDecision(block)
+		if err != nil {
+			s.Logger.Warnf("Could not return state from local ledger, h: %d, party: %d; err: %s", h, s.selfID, err)
+			return smartbft_types.SyncResponse{
+				Latest: smartbft_types.Decision{},
+				Reconfig: smartbft_types.ReconfigSync{
+					InReplicatedDecisions: false, // If we read from ledger we do not need to reconfigure.
+					CurrentNodes:          nodes,
+					CurrentConfig:         config,
+				},
+			}
+		}
+
 		return smartbft_types.SyncResponse{
 			Latest: *latestDec,
 			Reconfig: smartbft_types.ReconfigSync{
@@ -152,9 +169,13 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 		return nil, errors.Wrap(err, "failed to get any blocks from SyncBuffer")
 	}
 
-	decision := s.BlockToDecision(lastPulledBlock)
+	decision, err := s.BlockToDecision(lastPulledBlock)
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot get decision from block")
+	}
+
 	s.Logger.Infof("Returning decision from block [%d], decision: %+v", lastPulledBlock.GetHeader().GetNumber(), decision)
-	return decision, nil
+	return decision, err
 }
 
 // detectTargetHeight probes remote endpoints and detects what is the target height this node needs to reach.
