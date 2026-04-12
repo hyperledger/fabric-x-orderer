@@ -163,9 +163,6 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	testutil.WaitForRelaunchByType(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher}, 1)
 	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Router}, nonUpdatedRouterParties, 1)
 
-	// Wait for assemblers to relaunch
-	testutil.WaitForRelaunchByType(t, netInfo, []testutil.NodeType{testutil.Assembler}, 1)
-
 	// Pull blocks to verify all transactions are included
 	userBlockHandler := &verifyRouterEndpointUpdate{updatedParty: partyToUpdate, routerIP: routerIP, newPort: newPort}
 	PullFromAssemblers(t, &BlockPullerOptions{
