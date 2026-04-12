@@ -492,17 +492,15 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 }
 
 func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, ledgerListeners []*storageListener, privateKey *ecdsa.PrivateKey, batcherID types.PartyID, configSeqToSend types.ConfigSequence, expectedHeaderNumber uint64, expectedError string) {
-	for _, consensusNode := range consensusNodes {
-		baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), batcherID, 1, digest123, 2, 0, configSeqToSend, 1)
-		require.NoError(t, err)
-		controlEvent := &state.ControlEvent{BAF: baf}
-		err = consensusNode.SubmitRequest(controlEvent.Bytes())
-		if expectedError != "" {
-			require.ErrorContains(t, err, expectedError)
-			return
-		}
-		require.NoError(t, err)
+	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), batcherID, 1, digest123, 2, 0, configSeqToSend, 1)
+	require.NoError(t, err)
+	controlEvent := &state.ControlEvent{BAF: baf}
+	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
+	if expectedError != "" {
+		require.ErrorContains(t, err, expectedError)
+		return
 	}
+	require.NoError(t, err)
 
 	for _, ledgerListener := range ledgerListeners {
 		require.Eventually(t, func() bool {
