@@ -57,64 +57,109 @@ func ListenAddressForNode(endpointType ServerEndpointType, listenAddress string)
 }
 
 func CreateGRPCRouter(conf *config.RouterNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(ListenAddressForNode(RouterListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     conf.ClientRootCAs,
-			UseTLS:            conf.UseTLS,
-			RequireClientCert: conf.ClientAuthRequired,
-			Certificate:       conf.TLSCertificateFile,
-			Key:               conf.TLSPrivateKeyFile,
-		},
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service for Router%d: %v", conf.PartyID, err)
-		os.Exit(1)
+	var srv *comm.GRPCServer
+	var err error
+
+	// Retry up to 10 times with increasing delays to handle port release timing
+	for i := 0; i < 10; i++ {
+		srv, err = comm.NewGRPCServer(ListenAddressForNode(RouterListenType, conf.ListenAddress), comm.ServerConfig{
+			KaOpts: comm.KeepaliveOptions{
+				ServerMinInterval: time.Microsecond,
+			},
+			SecOpts: comm.SecureOptions{
+				ClientRootCAs:     conf.ClientRootCAs,
+				UseTLS:            conf.UseTLS,
+				RequireClientCert: conf.ClientAuthRequired,
+				Certificate:       conf.TLSCertificateFile,
+				Key:               conf.TLSPrivateKeyFile,
+			},
+		})
+		if err == nil {
+			return srv
+		}
+		// If address is in use, wait and retry
+		if strings.Contains(err.Error(), "address already in use") {
+			time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+			continue
+		}
+		// For other errors, fail immediately
+		break
 	}
-	return srv
+
+	fmt.Fprintf(os.Stderr, "failed running gRPC service for Router%d: %v", conf.PartyID, err)
+	os.Exit(1)
+	return nil
 }
 
 func CreateGRPCConsensus(conf *config.ConsenterNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(ListenAddressForNode(ConsensusListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     conf.ClientRootCAs,
-			ServerRootCAs:     conf.ClientRootCAs,
-			RequireClientCert: true,
-			UseTLS:            true,
-			Certificate:       conf.TLSCertificateFile,
-			Key:               conf.TLSPrivateKeyFile,
-		},
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service for Consensus%d: %v", conf.PartyId, err)
-		os.Exit(1)
+	var srv *comm.GRPCServer
+	var err error
+
+	// Retry up to 10 times with increasing delays to handle port release timing
+	for i := 0; i < 10; i++ {
+		srv, err = comm.NewGRPCServer(ListenAddressForNode(ConsensusListenType, conf.ListenAddress), comm.ServerConfig{
+			KaOpts: comm.KeepaliveOptions{
+				ServerMinInterval: time.Microsecond,
+			},
+			SecOpts: comm.SecureOptions{
+				ClientRootCAs:     conf.ClientRootCAs,
+				ServerRootCAs:     conf.ClientRootCAs,
+				RequireClientCert: true,
+				UseTLS:            true,
+				Certificate:       conf.TLSCertificateFile,
+				Key:               conf.TLSPrivateKeyFile,
+			},
+		})
+		if err == nil {
+			return srv
+		}
+		// If address is in use, wait and retry
+		if strings.Contains(err.Error(), "address already in use") {
+			time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+			continue
+		}
+		// For other errors, fail immediately
+		break
 	}
-	return srv
+
+	fmt.Fprintf(os.Stderr, "failed running gRPC service for Consensus%d: %v", conf.PartyId, err)
+	os.Exit(1)
+	return nil
 }
 
 func CreateGRPCAssembler(conf *config.AssemblerNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(ListenAddressForNode(AssemblerListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     conf.ClientRootCAs,
-			UseTLS:            conf.UseTLS,
-			RequireClientCert: conf.ClientAuthRequired,
-			Certificate:       conf.TLSCertificateFile,
-			Key:               conf.TLSPrivateKeyFile,
-		},
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service for Assembler%d: %v", conf.PartyId, err)
-		os.Exit(1)
+	var srv *comm.GRPCServer
+	var err error
+
+	// Retry up to 10 times with increasing delays to handle port release timing
+	for i := 0; i < 10; i++ {
+		srv, err = comm.NewGRPCServer(ListenAddressForNode(AssemblerListenType, conf.ListenAddress), comm.ServerConfig{
+			KaOpts: comm.KeepaliveOptions{
+				ServerMinInterval: time.Microsecond,
+			},
+			SecOpts: comm.SecureOptions{
+				ClientRootCAs:     conf.ClientRootCAs,
+				UseTLS:            conf.UseTLS,
+				RequireClientCert: conf.ClientAuthRequired,
+				Certificate:       conf.TLSCertificateFile,
+				Key:               conf.TLSPrivateKeyFile,
+			},
+		})
+		if err == nil {
+			return srv
+		}
+		// If address is in use, wait and retry
+		if strings.Contains(err.Error(), "address already in use") {
+			time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+			continue
+		}
+		// For other errors, fail immediately
+		break
 	}
-	return srv
+
+	fmt.Fprintf(os.Stderr, "failed running gRPC service for Assembler%d: %v", conf.PartyId, err)
+	os.Exit(1)
+	return nil
 }
 
 func TLSCAcertsFromShards(shards []config.ShardInfo) [][]byte {
@@ -148,22 +193,37 @@ func TLSCAcertsFromConsenters(consenters []config.ConsenterInfo) [][]byte {
 }
 
 func CreateGRPCBatcher(conf *config.BatcherNodeConfig) *comm.GRPCServer {
-	srv, err := comm.NewGRPCServer(ListenAddressForNode(BatcherListenType, conf.ListenAddress), comm.ServerConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ServerMinInterval: time.Microsecond,
-		},
-		SecOpts: comm.SecureOptions{
-			ClientRootCAs:     conf.ClientRootCAs,
-			ServerRootCAs:     conf.ClientRootCAs,
-			RequireClientCert: true,
-			UseTLS:            true,
-			Certificate:       conf.TLSCertificateFile,
-			Key:               conf.TLSPrivateKeyFile,
-		},
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed running gRPC service for Batcher%d: %v", conf.PartyId, err)
-		os.Exit(1)
+	var srv *comm.GRPCServer
+	var err error
+
+	// Retry up to 10 times with increasing delays to handle port release timing
+	for i := 0; i < 10; i++ {
+		srv, err = comm.NewGRPCServer(ListenAddressForNode(BatcherListenType, conf.ListenAddress), comm.ServerConfig{
+			KaOpts: comm.KeepaliveOptions{
+				ServerMinInterval: time.Microsecond,
+			},
+			SecOpts: comm.SecureOptions{
+				ClientRootCAs:     conf.ClientRootCAs,
+				ServerRootCAs:     conf.ClientRootCAs,
+				RequireClientCert: true,
+				UseTLS:            true,
+				Certificate:       conf.TLSCertificateFile,
+				Key:               conf.TLSPrivateKeyFile,
+			},
+		})
+		if err == nil {
+			return srv
+		}
+		// If address is in use, wait and retry
+		if strings.Contains(err.Error(), "address already in use") {
+			time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+			continue
+		}
+		// For other errors, fail immediately
+		break
 	}
-	return srv
+
+	fmt.Fprintf(os.Stderr, "failed running gRPC service for Batcher%d: %v", conf.PartyId, err)
+	os.Exit(1)
+	return nil
 }
