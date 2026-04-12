@@ -151,7 +151,7 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 //  5. Only one membership change is allowed per config tx (add, remove, or modify).
 //  6. Certificate validation:
 //     - validate certificate chain of trust for all parties while ignoring expiration.
-//     - enforce expiration checks for newly added and modified parties.
+//     - enforce expiration checks for node certificates of newly added and modified parties.
 //
 // TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
