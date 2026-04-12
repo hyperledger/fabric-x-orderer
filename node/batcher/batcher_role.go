@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/request"
 	"github.com/pkg/errors"
 )
 
@@ -37,6 +38,7 @@ type MemPool interface {
 	RequestCount() int64
 	Close()
 	Prune(predicate func([]byte) error)
+	UpdateOptions(options request.PoolOptions)
 }
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider

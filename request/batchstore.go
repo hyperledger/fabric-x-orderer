@@ -202,3 +202,11 @@ func (bs *BatchStore) prepareBatch(readyBatch *batch) []interface{} {
 
 	return batch
 }
+
+func (bs *BatchStore) updateOptions(batchMaxSize uint32, batchMaxSizeBytes uint32) {
+	bs.lock.Lock()
+	defer bs.lock.Unlock()
+
+	bs.batchMaxSize = batchMaxSize
+	bs.batchMaxSizeBytes = batchMaxSizeBytes
+}

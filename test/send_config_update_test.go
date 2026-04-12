@@ -1940,7 +1940,6 @@ func (vt *verifySmartBFTParam) HandleBlock(t *testing.T, block *common.Block) er
 
 // TestUpdateBatchingParameters verifies that updating a party's batching parameters via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new batching parameters.
-// TODO: dynamic reconfig instead of stop and restart
 func TestUpdateBatchingParameters(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1975,6 +1974,7 @@ func TestUpdateBatchingParameters(t *testing.T) {
 	require.NotNil(t, userConfig)
 
 	txNumber := 100
+
 	// rate limiter parameters
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
@@ -2012,18 +2012,10 @@ func TestUpdateBatchingParameters(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForNetworkRelaunch(t, netInfo, 1)
 
-	// Restart Arma nodes
-	armaNetwork.Stop()
-
-	armaNetwork.Restart(t, readyChan)
-	defer armaNetwork.Stop()
-
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
-
-	// Send transactions again and verify they are processed
+	// Send transactions and verify they are processed
 	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
 
 	for i := range txNumber {

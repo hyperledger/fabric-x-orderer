@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
 type FakeMemPool struct {
@@ -63,6 +64,11 @@ type FakeMemPool struct {
 	}
 	submitReturnsOnCall map[int]struct {
 		result1 error
+	}
+	UpdateOptionsStub        func(request.PoolOptions)
+	updateOptionsMutex       sync.RWMutex
+	updateOptionsArgsForCall []struct {
+		arg1 request.PoolOptions
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -384,6 +390,37 @@ func (fake *FakeMemPool) SubmitReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
+func (fake *FakeMemPool) UpdateOptions(arg1 request.PoolOptions) {
+	fake.updateOptionsMutex.Lock()
+	fake.updateOptionsArgsForCall = append(fake.updateOptionsArgsForCall, struct {
+		arg1 request.PoolOptions
+	}{arg1})
+	fake.recordInvocation("UpdateOptions", []interface{}{arg1})
+	fake.updateOptionsMutex.Unlock()
+	if fake.UpdateOptionsStub != nil {
+		fake.UpdateOptionsStub(arg1)
+	}
+}
+
+func (fake *FakeMemPool) UpdateOptionsCallCount() int {
+	fake.updateOptionsMutex.RLock()
+	defer fake.updateOptionsMutex.RUnlock()
+	return len(fake.updateOptionsArgsForCall)
+}
+
+func (fake *FakeMemPool) UpdateOptionsCalls(stub func(request.PoolOptions)) {
+	fake.updateOptionsMutex.Lock()
+	defer fake.updateOptionsMutex.Unlock()
+	fake.UpdateOptionsStub = stub
+}
+
+func (fake *FakeMemPool) UpdateOptionsArgsForCall(i int) request.PoolOptions {
+	fake.updateOptionsMutex.RLock()
+	defer fake.updateOptionsMutex.RUnlock()
+	argsForCall := fake.updateOptionsArgsForCall[i]
+	return argsForCall.arg1
+}
+
 func (fake *FakeMemPool) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -403,6 +440,8 @@ func (fake *FakeMemPool) Invocations() map[string][][]interface{} {
 	defer fake.restartMutex.RUnlock()
 	fake.submitMutex.RLock()
 	defer fake.submitMutex.RUnlock()
+	fake.updateOptionsMutex.RLock()
+	defer fake.updateOptionsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

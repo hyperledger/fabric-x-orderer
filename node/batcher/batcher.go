@@ -31,6 +31,7 @@ import (
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
+	"github.com/hyperledger/fabric-x-orderer/request"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -376,6 +377,17 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock 
 	b.fullConfig = newConfig
 	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum)
 	newConfigSeq := newBatcherConfig.Bundle.ConfigtxValidator().Sequence()
+	poolOptions := request.PoolOptions{
+		MaxSize:               newBatcherConfig.MemPoolMaxSize,
+		BatchMaxSize:          newBatcherConfig.BatchMaxSize,
+		BatchMaxSizeBytes:     newBatcherConfig.BatchMaxBytes,
+		RequestMaxBytes:       newBatcherConfig.RequestMaxBytes,
+		SubmitTimeout:         newBatcherConfig.SubmitTimeout,
+		FirstStrikeThreshold:  newBatcherConfig.FirstStrikeThreshold,
+		SecondStrikeThreshold: newBatcherConfig.SecondStrikeThreshold,
+		AutoRemoveTimeout:     newBatcherConfig.AutoRemoveTimeout,
+	}
+	b.batcher.MemPool.UpdateOptions(poolOptions)
 	b.lock.Unlock()
 
 	// prune mempool

@@ -377,3 +377,10 @@ func (ps *PendingStore) GetAllRequests(max uint64) [][]byte {
 
 	return requests
 }
+
+func (ps *PendingStore) updateOptions(firstStrikeThreshold, secondStrikeThreshold, autoRemoveTimeout time.Duration) {
+	ps.ReqIDGCInterval = autoRemoveTimeout / 4
+	ps.ReqIDLifetime = autoRemoveTimeout
+	ps.SecondStrikeThreshold = secondStrikeThreshold
+	ps.FirstStrikeThreshold = firstStrikeThreshold
+}

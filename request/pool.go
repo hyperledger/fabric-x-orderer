@@ -377,3 +377,21 @@ func (rp *Pool) moveToBatchStore() {
 	rp.pending = nil
 	atomic.StoreInt64(&rp.size, int64(len(requests)))
 }
+
+// UpdateOptions updates only the pool options.
+// This method is expected to be called after the pool is halted.
+func (rp *Pool) UpdateOptions(options PoolOptions) {
+	rp.lock.Lock()
+	defer rp.lock.Unlock()
+
+	if rp.isClosed() {
+		return
+	}
+
+	rp.options = options
+	if rp.batchingEnabled {
+		rp.batchStore.updateOptions(rp.options.BatchMaxSize, rp.options.BatchMaxSizeBytes)
+	} else {
+		rp.pending.updateOptions(rp.options.FirstStrikeThreshold, rp.options.SecondStrikeThreshold, rp.options.AutoRemoveTimeout)
+	}
+}
