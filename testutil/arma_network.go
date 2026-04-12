@@ -10,6 +10,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path"
+	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -89,6 +92,44 @@ func (armaNetwork *ArmaNetwork) Kill() {
 				armaNetwork.armaNodes[k][i][j].KillArmaNode()
 			}
 		}
+	}
+}
+
+func (armaNetwork *ArmaNetwork) AddAndStartParty(t *testing.T, dir string, armaBinaryPath string, readyChan chan string, addedNetInfo map[NodeName]*ArmaNodeInfo) {
+	nodes := map[NodeType]string{
+		Router:    "local_config_router",
+		Batcher:   "local_config_batcher",
+		Consensus: "local_config_consenter",
+		Assembler: "local_config_assembler",
+	}
+
+	nodeInfos := make([]*ArmaNodeInfo, 0, len(addedNetInfo))
+	for n := range addedNetInfo {
+		nodeInfos = append(nodeInfos, addedNetInfo[n])
+	}
+
+	sort.Slice(nodeInfos, sortArmaNodeInfo(nodeInfos))
+
+	for _, netNode := range nodeInfos {
+		shardId := ""
+		if netNode.ShardId != 0 {
+			shardId = strconv.FormatUint(uint64(netNode.ShardId), 10)
+		}
+
+		partyId := fmt.Sprintf("party%d", netNode.PartyId)
+
+		partyDir := path.Join(dir, "config", partyId)
+		nodeConfigPath := path.Join(partyDir, nodes[netNode.NodeType]+shardId+".yaml")
+
+		storagePath := path.Join(dir, "storage", partyId, fmt.Sprintf("%s%s", netNode.NodeType.String(), shardId))
+		err := os.MkdirAll(storagePath, 0o755)
+		require.NoError(t, err)
+
+		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, netNode.ConfigBlockPath, uint32(netNode.MonitoringListener.Addr().(*net.TCPAddr).Port))
+		netNode.RunInfo = &ArmaNodeRunInfo{ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
+		netNode.RunInfo.Session = runNode(t, netNode, readyChan)
+		require.NotNil(t, netNode.RunInfo.Session, fmt.Sprintf("failed to start Arma node %s", netNode.NodeType.String()))
+		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
 	}
 }
 
