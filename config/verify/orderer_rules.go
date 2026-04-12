@@ -150,10 +150,9 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 //  4. At most one party can be modified in a config tx.
 //  5. Only one membership change is allowed per config tx (add, remove, or modify).
 //  6. Certificate validation:
-//     - enforce certificate validation for newly added parties
+//     - validate certificate chain of trust for all parties while ignoring expiration.
+//     - enforce expiration checks for node certificates of newly added and modified parties.
 //
-// TODO: validate certificate chain of trust for all parties while ignoring expiration
-// TODO: apply certificate validation for modified parties
 // TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
 	// extract current shared config
@@ -244,9 +243,21 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	}
 
 	// 6.
+	for _, party := range nextMap {
+		if err := validatePartyCertificates(party, true); err != nil {
+			return errors.Wrapf(err, "certificate validation failed for party ID %d", party.PartyID)
+		}
+	}
+
 	for _, party := range changes.Added {
 		if err := validatePartyCertificates(party, false); err != nil {
 			return errors.Wrapf(err, "certificate validation failed for added party ID %d", party.PartyID)
+		}
+	}
+
+	for _, party := range changes.Modified {
+		if err := validatePartyCertificates(party, false); err != nil {
+			return errors.Wrapf(err, "certificate validation failed for modified party ID %d", party.PartyID)
 		}
 	}
 

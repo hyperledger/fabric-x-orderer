@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package verify_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -329,8 +330,8 @@ func TestValidateTransition_ModifyOneParty(t *testing.T) {
 	defer cleanup()
 
 	// modify party 1 TLS cert
-	cert := []byte("new-tls-cert")
-	updatePb := builder.UpdateConsensusTLSCert(t, types.PartyID(1), cert)
+	newCert := generateConsenterTLSCert(t, dir, 1)
+	updatePb := builder.UpdateConsensusTLSCert(t, types.PartyID(1), newCert)
 
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
@@ -357,8 +358,8 @@ func TestValidateTransition_FailedModifyTwoParties(t *testing.T) {
 	defer cleanup()
 
 	// modify two parties TLS certs
-	builder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("new-tls-cert-1"))
-	builder.UpdateConsensusTLSCert(t, types.PartyID(2), []byte("new-tls-cert-2"))
+	builder.UpdateConsensusTLSCert(t, types.PartyID(1), generateConsenterTLSCert(t, dir, 1))
+	builder.UpdateConsensusTLSCert(t, types.PartyID(2), generateConsenterTLSCert(t, dir, 2))
 	updatePb := builder.ConfigUpdatePBData(t)
 
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, 1, updatePb)
@@ -397,7 +398,8 @@ func TestValidateTransition_FailedAddAndModify(t *testing.T) {
 	}()
 
 	// also modify an existing party
-	builder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("modified-tls-cert"))
+	newCert := generateConsenterTLSCert(t, dir, 1)
+	builder.UpdateConsensusTLSCert(t, types.PartyID(1), newCert)
 	updatePb := builder.ConfigUpdatePBData(t)
 
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
@@ -429,7 +431,8 @@ func TestValidateTransition_FailedRemoveAndModify(t *testing.T) {
 	builder.RemoveParty(t, 3)
 
 	// also modify party 1
-	builder.UpdateConsensusTLSCert(t, types.PartyID(1), []byte("modified-tls-cert"))
+	newCert := generateConsenterTLSCert(t, dir, 1)
+	builder.UpdateConsensusTLSCert(t, types.PartyID(1), newCert)
 	updatePb := builder.ConfigUpdatePBData(t)
 
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
@@ -482,4 +485,21 @@ func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope,
 	verifier.AddStructureRule(sr)
 
 	return dir, env, bundle, builder, proposer, fakeSigner, verifier, cleanup
+}
+
+func generateConsenterTLSCert(t *testing.T, dir string, partyID int) []byte {
+	t.Helper()
+
+	org := fmt.Sprintf("org%d", partyID)
+
+	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "tlsca", "tlsca-cert.pem")
+	tlsCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "tlsca", "priv_sk")
+
+	tlsDir := filepath.Join(dir, "crypto", "ordererOrganizations", org, "orderers", fmt.Sprintf("party%d", partyID), "consenter", "tls")
+	newKeyPath := filepath.Join(tlsDir, "key.pem")
+
+	newCert, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", tlsDir, newKeyPath, []string{"127.0.0.1"})
+	require.NoError(t, err)
+
+	return newCert
 }
