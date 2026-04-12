@@ -9,6 +9,7 @@ package verify
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"time"
 
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/pkg/errors"
@@ -21,7 +22,7 @@ func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiratio
 	}
 
 	if len(party.CACerts) == 0 {
-		return errors.New("empty CA certificates")
+		return errors.New("empty signing CA certificates")
 	}
 
 	tlsPool := x509.NewCertPool()
@@ -54,6 +55,9 @@ func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiratio
 	signOpts := x509.VerifyOptions{
 		Roots:         signPool,
 		Intermediates: nil, // TODO: add intermediate CA certs when added to the party config
+		KeyUsages: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageAny,
+		},
 	}
 
 	if party.RouterConfig != nil {
@@ -128,7 +132,7 @@ func verifyCert(raw []byte, opts x509.VerifyOptions, ignoreExpiration bool) erro
 	}
 
 	if _, err = cert.Verify(opts); err != nil {
-		if validationRes, ok := err.(x509.CertificateInvalidError); !ok || (!ignoreExpiration || validationRes.Reason != x509.Expired) {
+		if validationRes, ok := err.(x509.CertificateInvalidError); !ok || (!ignoreExpiration || validationRes.Reason != x509.Expired) || time.Now().Before(cert.NotBefore) {
 			return errors.Wrapf(err, "verifying certificate with serial number %d", cert.SerialNumber)
 		}
 	}

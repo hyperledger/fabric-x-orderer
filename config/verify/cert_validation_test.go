@@ -158,7 +158,7 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 
 		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "empty CA certificates")
+		require.Contains(t, err.Error(), "empty signing CA certificates")
 	})
 
 	t.Run("Invalid signing CA certificate", func(t *testing.T) {
@@ -244,6 +244,65 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "consenter signing certificate validation failed")
+
+		// Should succeed when expiration is ignored
+		err = validatePartyCertificates(partyConfig, true)
+		require.NoError(t, err)
+	})
+	t.Run("Invalid batcher signing certificate", func(t *testing.T) {
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
+			RouterConfig: &config_protos.RouterNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
+			},
+			BatchersConfig: []*config_protos.BatcherNodeConfig{
+				{
+					TlsCert:  tlsCertPEM,
+					SignCert: []byte("invalid"),
+				},
+			},
+		}
+
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "batcher signing certificate validation failed")
+	})
+
+	t.Run("Expired batcher signing certificate", func(t *testing.T) {
+		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
+			RouterConfig: &config_protos.RouterNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
+			},
+			BatchersConfig: []*config_protos.BatcherNodeConfig{
+				{
+					TlsCert:  tlsCertPEM,
+					SignCert: expiredSignCert,
+				},
+			},
+		}
+
+		// Should fail when expiration is enforced
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
 
 		// Should succeed when expiration is ignored
 		err = validatePartyCertificates(partyConfig, true)
