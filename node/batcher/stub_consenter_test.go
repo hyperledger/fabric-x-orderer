@@ -12,6 +12,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -100,15 +101,27 @@ func (sc *stubConsenter) StopNet() {
 func (sc *stubConsenter) Restart() {
 	sc.StopNet()
 	addr := sc.net.Address()
-	server, err := comm.NewGRPCServer(addr, comm.ServerConfig{
-		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: sc.certificate,
-			Key:         sc.key,
-		},
-	})
+
+	var server *comm.GRPCServer
+	var err error
+
+	// Retry up to 10 times with increasing delays
+	for i := range 10 {
+		server, err = comm.NewGRPCServer(addr, comm.ServerConfig{
+			SecOpts: comm.SecureOptions{
+				UseTLS:      true,
+				Certificate: sc.certificate,
+				Key:         sc.key,
+			},
+		})
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+	}
+
 	if err != nil {
-		panic(fmt.Sprintf("failed to restart gRPC server: %v", err))
+		panic(fmt.Sprintf("failed to restart gRPC server after retries: %v", err))
 	}
 
 	sc.net = server
