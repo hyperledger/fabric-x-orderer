@@ -157,6 +157,9 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	// Wait for Arma nodes to stop
 	testutil.WaitSoftStopped(t, netInfo)
 
+	// Wait for assemblers to relaunch
+	testutil.WaitForRelaunchByType(t, netInfo, []testutil.NodeType{testutil.Assembler}, 1)
+
 	// Pull blocks to verify all transactions are included
 	userBlockHandler := &verifyRouterEndpointUpdate{updatedParty: partyToUpdate, routerIP: routerIP, newPort: newPort}
 	PullFromAssemblers(t, &BlockPullerOptions{
