@@ -60,7 +60,7 @@ const (
 	SampleAppChannelSmartBftProfile = "SampleAppChannelSmartBft"
 
 	// SampleSingleMSPChannelProfile references the sample profile which
-	// includes only the sample MSP and is used to create a channel
+	// includes only the sample MSP and is used to create a channel.
 	SampleSingleMSPChannelProfile = "SampleSingleMSPChannel"
 
 	// SampleFabricX references the sample profile used for
@@ -72,13 +72,13 @@ const (
 	TwoOrgsSampleFabricX = "TwoOrgsSampleFabricX"
 
 	// SampleConsortiumName is the sample consortium from the
-	// sample configtx.yaml
+	// sample configtx.yaml.
 	SampleConsortiumName = "SampleConsortium"
-	// SampleOrgName is the name of the sample org in the sample profiles
+	// SampleOrgName is the name of the sample org in the sample profiles.
 	SampleOrgName = "SampleOrg"
 
 	// AdminRoleAdminPrincipal is set as AdminRole to cause the MSP role of
-	// type Admin to be used as the admin principal default
+	// type Admin to be used as the admin principal default.
 	AdminRoleAdminPrincipal = "Role.ADMIN"
 )
 
@@ -103,20 +103,18 @@ type Profile struct {
 	Policies     map[string]*Policy     `yaml:"Policies"`
 }
 
-// Policy encodes a channel config policy
+// Policy encodes a channel config policy.
 type Policy struct {
 	Type string `yaml:"Type"`
 	Rule string `yaml:"Rule"`
 }
 
-// Consortium represents a group of organizations which may create channels
-// with each other
+// Consortium represents a group of organizations which may create channels with each other.
 type Consortium struct {
 	Organizations []*Organization `yaml:"Organizations"`
 }
 
-// Application encodes the application-level configuration needed in config
-// transactions.
+// Application encodes the application-level configuration needed in config transactions.
 type Application struct {
 	Organizations []*Organization    `yaml:"Organizations"`
 	Capabilities  map[string]bool    `yaml:"Capabilities"`
@@ -124,8 +122,7 @@ type Application struct {
 	ACLs          map[string]string  `yaml:"ACLs"`
 }
 
-// Organization encodes the organization-level configuration needed in
-// config transactions.
+// Organization encodes the organization-level configuration needed in config transactions.
 type Organization struct {
 	Name     string             `yaml:"Name"`
 	ID       string             `yaml:"ID"`
@@ -192,8 +189,8 @@ type ConsensusMetadata struct {
 	Path string `yaml:"Path"`
 }
 
-var genesisDefaults = TopLevel{
-	Orderer: &Orderer{
+func genesisOrdererDefaults() Orderer {
+	return Orderer{
 		OrdererType:  "solo",
 		BatchTimeout: 2 * time.Second,
 		BatchSize: BatchSize{
@@ -228,7 +225,7 @@ var genesisDefaults = TopLevel{
 			SpeedUpViewChange:         smartbfttypes.DefaultConfig.SpeedUpViewChange,
 		},
 		Arma: &ConsensusMetadata{},
-	},
+	}
 }
 
 // LoadTopLevel simply loads the configtx.yaml file into the structs above and
@@ -337,27 +334,26 @@ func (org *Organization) completeInitialization(configDir string) {
 }
 
 func (ord *Orderer) completeInitialization(configDir string) {
-loop:
-	for {
-		switch {
-		case ord.OrdererType == "":
-			logger.Infof("Orderer.OrdererType unset, setting to %v", genesisDefaults.Orderer.OrdererType)
-			ord.OrdererType = genesisDefaults.Orderer.OrdererType
-		case ord.BatchTimeout == 0:
-			logger.Infof("Orderer.BatchTimeout unset, setting to %s", genesisDefaults.Orderer.BatchTimeout)
-			ord.BatchTimeout = genesisDefaults.Orderer.BatchTimeout
-		case ord.BatchSize.MaxMessageCount == 0:
-			logger.Infof("Orderer.BatchSize.MaxMessageCount unset, setting to %v", genesisDefaults.Orderer.BatchSize.MaxMessageCount)
-			ord.BatchSize.MaxMessageCount = genesisDefaults.Orderer.BatchSize.MaxMessageCount
-		case ord.BatchSize.AbsoluteMaxBytes == 0:
-			logger.Infof("Orderer.BatchSize.AbsoluteMaxBytes unset, setting to %v", genesisDefaults.Orderer.BatchSize.AbsoluteMaxBytes)
-			ord.BatchSize.AbsoluteMaxBytes = genesisDefaults.Orderer.BatchSize.AbsoluteMaxBytes
-		case ord.BatchSize.PreferredMaxBytes == 0:
-			logger.Infof("Orderer.BatchSize.PreferredMaxBytes unset, setting to %v", genesisDefaults.Orderer.BatchSize.PreferredMaxBytes)
-			ord.BatchSize.PreferredMaxBytes = genesisDefaults.Orderer.BatchSize.PreferredMaxBytes
-		default:
-			break loop
-		}
+	d := genesisOrdererDefaults()
+	if ord.OrdererType == "" {
+		logger.Infof("Orderer.OrdererType unset, setting to %v", d.OrdererType)
+		ord.OrdererType = d.OrdererType
+	}
+	if ord.BatchTimeout == 0 {
+		logger.Infof("Orderer.BatchTimeout unset, setting to %s", d.BatchTimeout)
+		ord.BatchTimeout = d.BatchTimeout
+	}
+	if ord.BatchSize.MaxMessageCount == 0 {
+		logger.Infof("Orderer.BatchSize.MaxMessageCount unset, setting to %v", d.BatchSize.MaxMessageCount)
+		ord.BatchSize.MaxMessageCount = d.BatchSize.MaxMessageCount
+	}
+	if ord.BatchSize.AbsoluteMaxBytes == 0 {
+		logger.Infof("Orderer.BatchSize.AbsoluteMaxBytes unset, setting to %v", d.BatchSize.AbsoluteMaxBytes)
+		ord.BatchSize.AbsoluteMaxBytes = d.BatchSize.AbsoluteMaxBytes
+	}
+	if ord.BatchSize.PreferredMaxBytes == 0 {
+		logger.Infof("Orderer.BatchSize.PreferredMaxBytes unset, setting to %v", d.BatchSize.PreferredMaxBytes)
+		ord.BatchSize.PreferredMaxBytes = d.BatchSize.PreferredMaxBytes
 	}
 
 	logger.Infof("orderer type: %s", ord.OrdererType)
@@ -367,83 +363,17 @@ loop:
 	case "solo":
 		// nothing to be done here
 	case EtcdRaft:
-		if ord.EtcdRaft == nil {
-			logger.Panicf("%s configuration missing", EtcdRaft)
-		}
-		if ord.EtcdRaft.Options == nil {
-			logger.Infof("Orderer.EtcdRaft.Options unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options)
-			ord.EtcdRaft.Options = genesisDefaults.Orderer.EtcdRaft.Options
-		}
-	second_loop:
-		for {
-			switch {
-			case ord.EtcdRaft.Options.TickInterval == "":
-				logger.Infof("Orderer.EtcdRaft.Options.TickInterval unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options.TickInterval)
-				ord.EtcdRaft.Options.TickInterval = genesisDefaults.Orderer.EtcdRaft.Options.TickInterval
-
-			case ord.EtcdRaft.Options.ElectionTick == 0:
-				logger.Infof("Orderer.EtcdRaft.Options.ElectionTick unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options.ElectionTick)
-				ord.EtcdRaft.Options.ElectionTick = genesisDefaults.Orderer.EtcdRaft.Options.ElectionTick
-
-			case ord.EtcdRaft.Options.HeartbeatTick == 0:
-				logger.Infof("Orderer.EtcdRaft.Options.HeartbeatTick unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options.HeartbeatTick)
-				ord.EtcdRaft.Options.HeartbeatTick = genesisDefaults.Orderer.EtcdRaft.Options.HeartbeatTick
-
-			case ord.EtcdRaft.Options.MaxInflightBlocks == 0:
-				logger.Infof("Orderer.EtcdRaft.Options.MaxInflightBlocks unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options.MaxInflightBlocks)
-				ord.EtcdRaft.Options.MaxInflightBlocks = genesisDefaults.Orderer.EtcdRaft.Options.MaxInflightBlocks
-
-			case ord.EtcdRaft.Options.SnapshotIntervalSize == 0:
-				logger.Infof("Orderer.EtcdRaft.Options.SnapshotIntervalSize unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options.SnapshotIntervalSize)
-				ord.EtcdRaft.Options.SnapshotIntervalSize = genesisDefaults.Orderer.EtcdRaft.Options.SnapshotIntervalSize
-
-			case len(ord.EtcdRaft.Consenters) == 0:
-				logger.Panicf("%s configuration did not specify any consenter", EtcdRaft)
-
-			default:
-				break second_loop
-			}
-		}
-
-		if _, err := time.ParseDuration(ord.EtcdRaft.Options.TickInterval); err != nil {
-			logger.Panicf("Etcdraft TickInterval (%s) must be in time duration format", ord.EtcdRaft.Options.TickInterval)
-		}
-
-		// validate the specified members for Options
-		if ord.EtcdRaft.Options.ElectionTick <= ord.EtcdRaft.Options.HeartbeatTick {
-			logger.Panicf("election tick must be greater than heartbeat tick")
-		}
-
-		for _, c := range ord.EtcdRaft.GetConsenters() {
-			if c.Host == "" {
-				logger.Panicf("consenter info in %s configuration did not specify host", EtcdRaft)
-			}
-			if c.Port == 0 {
-				logger.Panicf("consenter info in %s configuration did not specify port", EtcdRaft)
-			}
-			if c.ClientTlsCert == nil {
-				logger.Panicf("consenter info in %s configuration did not specify client TLS cert", EtcdRaft)
-			}
-			if c.ServerTlsCert == nil {
-				logger.Panicf("consenter info in %s configuration did not specify server TLS cert", EtcdRaft)
-			}
-			clientCertPath := string(c.GetClientTlsCert())
-			cf.TranslatePathInPlace(configDir, &clientCertPath)
-			c.ClientTlsCert = []byte(clientCertPath)
-			serverCertPath := string(c.GetServerTlsCert())
-			cf.TranslatePathInPlace(configDir, &serverCertPath)
-			c.ServerTlsCert = []byte(serverCertPath)
-		}
+		completeInitializationOfEtcdRaft(ord.EtcdRaft, d.EtcdRaft, configDir)
 	case BFT:
 		if ord.SmartBFT == nil {
-			logger.Infof("Orderer.SmartBFT.Options unset, setting to %v", genesisDefaults.Orderer.SmartBFT)
-			ord.SmartBFT = genesisDefaults.Orderer.SmartBFT
+			logger.Infof("Orderer.SmartBFT.Options unset, setting to %v", d.SmartBFT)
+			ord.SmartBFT = d.SmartBFT
 		}
 		ord.translateConsenterMapping(configDir, BFT)
 	case Arma:
 		if ord.Arma == nil {
-			logger.Infof("Orderer.Arma unset, setting to %v", genesisDefaults.Orderer.Arma)
-			ord.Arma = genesisDefaults.Orderer.Arma
+			logger.Infof("Orderer.Arma unset, setting to %v", d.Arma)
+			ord.Arma = d.Arma
 		}
 		if ord.Arma.Path != "" {
 			cf.TranslatePathInPlace(configDir, &ord.Arma.Path)
@@ -454,7 +384,74 @@ loop:
 	}
 }
 
-func (ord *Orderer) translateConsenterMapping(configDir string, ordererType string) {
+//nolint:gocognit // cognitive complexity 19.
+func completeInitializationOfEtcdRaft(c, d *etcdraft.ConfigMetadata, configDir string) {
+	if c == nil {
+		logger.Panicf("%s configuration missing", EtcdRaft)
+		return
+	}
+	if c.Options == nil {
+		logger.Infof("Orderer.EtcdRaft.Options unset, setting to %v", d.Options)
+		c.Options = d.Options
+	}
+	if c.Options.TickInterval == "" {
+		logger.Infof("Orderer.EtcdRaft.Options.TickInterval unset, setting to %v", d.Options.TickInterval)
+		c.Options.TickInterval = d.Options.TickInterval
+	}
+	if c.Options.ElectionTick == 0 {
+		logger.Infof("Orderer.EtcdRaft.Options.ElectionTick unset, setting to %v", d.Options.ElectionTick)
+		c.Options.ElectionTick = d.Options.ElectionTick
+	}
+	if c.Options.HeartbeatTick == 0 {
+		logger.Infof("Orderer.EtcdRaft.Options.HeartbeatTick unset, setting to %v",
+			d.Options.HeartbeatTick)
+		c.Options.HeartbeatTick = d.Options.HeartbeatTick
+	}
+	if c.Options.MaxInflightBlocks == 0 {
+		logger.Infof("Orderer.EtcdRaft.Options.MaxInflightBlocks unset, setting to %v",
+			d.Options.MaxInflightBlocks)
+		c.Options.MaxInflightBlocks = d.Options.MaxInflightBlocks
+	}
+	if c.Options.SnapshotIntervalSize == 0 {
+		logger.Infof("Orderer.EtcdRaft.Options.SnapshotIntervalSize unset, setting to %v",
+			d.Options.SnapshotIntervalSize)
+		c.Options.SnapshotIntervalSize = d.Options.SnapshotIntervalSize
+	}
+	if len(c.Consenters) == 0 {
+		logger.Panicf("%s configuration did not specify any consenter", EtcdRaft)
+	}
+	if _, err := time.ParseDuration(c.Options.TickInterval); err != nil {
+		logger.Panicf("Etcdraft TickInterval (%s) must be in time duration format", c.Options.TickInterval)
+	}
+
+	// validate the specified members for Options
+	if c.Options.ElectionTick <= c.Options.HeartbeatTick {
+		logger.Panic("election tick must be greater than heartbeat tick")
+	}
+
+	for _, consenter := range c.GetConsenters() {
+		if consenter.Host == "" {
+			logger.Panicf("consenter info in %s configuration did not specify host", EtcdRaft)
+		}
+		if consenter.Port == 0 {
+			logger.Panicf("consenter info in %s configuration did not specify port", EtcdRaft)
+		}
+		if consenter.ClientTlsCert == nil {
+			logger.Panicf("consenter info in %s configuration did not specify client TLS cert", EtcdRaft)
+		}
+		if consenter.ServerTlsCert == nil {
+			logger.Panicf("consenter info in %s configuration did not specify server TLS cert", EtcdRaft)
+		}
+		clientCertPath := string(consenter.GetClientTlsCert())
+		cf.TranslatePathInPlace(configDir, &clientCertPath)
+		consenter.ClientTlsCert = []byte(clientCertPath)
+		serverCertPath := string(consenter.GetServerTlsCert())
+		cf.TranslatePathInPlace(configDir, &serverCertPath)
+		consenter.ServerTlsCert = []byte(serverCertPath)
+	}
+}
+
+func (ord *Orderer) translateConsenterMapping(configDir, ordererType string) {
 	if len(ord.ConsenterMapping) == 0 {
 		logger.Panicf("%s configuration did not specify any consenter", ordererType)
 	}
@@ -513,7 +510,7 @@ func (c *configCache) load(config *viperutil.ConfigParser, configPath string) (*
 	if !ok {
 		err := config.EnhancedExactUnmarshal(conf)
 		if err != nil {
-			return nil, fmt.Errorf("Error unmarshalling config into struct: %s", err)
+			return nil, fmt.Errorf("error unmarshalling config into struct: %w", err)
 		}
 
 		serializedConf, err = json.Marshal(conf)
