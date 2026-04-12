@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -535,6 +536,9 @@ func WaitForNetworkRelaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, co
 	time.Sleep(time.Minute) // wait for consenters.
 }
 
+// WaitForRelaunchByTypeAndParty waits for specific nodes to relaunch with a new configuration sequence.
+// This function is used in tests to verify that nodes of specified types and parties have successfully
+// restarted after a configuration update.
 func WaitForRelaunchByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nodeTypes []NodeType, parties []types.PartyID, configSeq uint64) {
 	errCh := make(chan error, len(netInfo))
 	done := make(chan struct{})
@@ -547,7 +551,7 @@ func WaitForRelaunchByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaNodeI
 			if !containsNodeType(nodeTypes, n.NodeType) {
 				continue
 			}
-			if !containsParty(n.PartyId, parties) {
+			if !containsParty(parties, n.PartyId) {
 				continue
 			}
 			wg.Add(1)
@@ -585,6 +589,9 @@ func WaitForRelaunchByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaNodeI
 	}
 }
 
+// WaitForPendingAdminByTypeAndParty waits for specific nodes to enter pending admin state.
+// This function is used in tests to verify that nodes of specified types and parties have successfully
+// entered pending admin state and wait for admin action.
 func WaitForPendingAdminByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nodeTypes []NodeType, parties []types.PartyID) {
 	errCh := make(chan error, len(netInfo))
 	done := make(chan struct{})
@@ -597,7 +604,7 @@ func WaitForPendingAdminByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaN
 			if !containsNodeType(nodeTypes, n.NodeType) {
 				continue
 			}
-			if !containsParty(n.PartyId, parties) {
+			if !containsParty(parties, n.PartyId) {
 				continue
 			}
 			wg.Add(1)
@@ -636,21 +643,11 @@ func WaitForPendingAdminByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaN
 }
 
 func containsNodeType(nodeTypes []NodeType, nodeType NodeType) bool {
-	for _, nt := range nodeTypes {
-		if nt == nodeType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(nodeTypes, nodeType)
 }
 
-func containsParty(nodeParty types.PartyID, parties []types.PartyID) bool {
-	for _, p := range parties {
-		if p == nodeParty {
-			return true
-		}
-	}
-	return false
+func containsParty(parties []types.PartyID, nodeParty types.PartyID) bool {
+	return slices.Contains(parties, nodeParty)
 }
 
 func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {

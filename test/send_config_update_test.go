@@ -155,12 +155,10 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for the router to enter pending admin state and then stop it
 	t.Log("Wait for the router to enter pending admin state and then stop it")
 	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Router}, []types.PartyID{partyToUpdate})
 	armaNetwork.GetRouter(t, partyToUpdate).StopArmaNode()
 
-	// Wait for arma nodes to restart dynamically
 	t.Log("Wait for arma nodes to restart dynamically")
 	testutil.WaitForRelaunchByType(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher}, 1)
 	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Router}, nonUpdatedRouterParties, 1)
@@ -197,7 +195,6 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)
 	utils.WriteToYAML(localConfig.NodeLocalConfig, routerNodeConfigPath)
 
-	// Restart Router only
 	t.Log("Restart Router")
 	armaNetwork.GetRouter(t, partyToUpdate).RestartArmaNode(t, readyChan)
 
@@ -207,8 +204,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	userConfig.RouterEndpoints[partyToUpdate-1] = fmt.Sprintf("%s:%d", routerIP, newPort)
 	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
 
-	// Send transactions again and verify they are processed
-	t.Log("Send transactions")
+	t.Log("Send transactions again and verify they are processed")
 	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
@@ -349,19 +345,16 @@ func TestRemovePartyRunAll(t *testing.T) {
 		require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
 	}
 
-	// Wait for the removed party to enter pending admin state and then stop the party
 	t.Log("Wait for the removed party to enter pending admin state and then stop the party")
 	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToRemove})
 	armaNetwork.StopParties([]types.PartyID{partyToRemove})
 
-	// Wait for arma nodes to restart dynamically
 	t.Log("Wait for arma nodes to restart dynamically")
 	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, remainingParties, 1)
 
 	numOfNodesPerParty := 3 + numOfShards
 	readyChan = make(chan string, (numOfParties-1)*numOfNodesPerParty)
 
-	// Try to restart the removed party nodes, expect them to fail to start
 	t.Log("Try to restart the removed party nodes, expect them to fail to start")
 	armaNetwork.RestartParties(t, []types.PartyID{partyToRemove}, readyChan)
 	defer armaNetwork.Stop()
@@ -639,12 +632,10 @@ func TestRemoveParty(t *testing.T) {
 		require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
 	}
 
-	// Wait for the removed party to enter pending admin state and then stop the party
 	t.Log("Wait for the removed party to enter pending admin state and then stop the party")
 	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToRemove})
 	armaNetwork.StopParties([]types.PartyID{partyToRemove})
 
-	// Wait for arma nodes to restart dynamically
 	t.Log("Wait for arma nodes to restart dynamically")
 	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, remainingParties, 1)
 
