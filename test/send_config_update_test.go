@@ -1581,7 +1581,8 @@ func uniqueFileName(path string) string {
 
 // TestUpdateTimeoutParameters verifies that updating a party's timeout parameters via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new timeout parameters.
-// TODO: dynamic reconfig instead of stop and restart
+// NOTE: as the memory pool options are not updated in dynamic reconfig, this scenario is tested as an admin action requirement.
+// TODO: move to dynamic reconfig approach
 func TestUpdateTimeoutParameters(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1931,7 +1932,8 @@ func (vt *verifySmartBFTParam) HandleBlock(t *testing.T, block *common.Block) er
 
 // TestUpdateBatchingParameters verifies that updating a party's batching parameters via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new batching parameters.
-// TODO: dynamic reconfig instead of stop and restart
+// NOTE: as the memory pool options are not updated in dynamic reconfig, this scenario is tested as an admin action requirement.
+// TODO: move to dynamic reconfig approach
 func TestUpdateBatchingParameters(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
