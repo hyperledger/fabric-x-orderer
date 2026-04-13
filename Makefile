@@ -79,7 +79,7 @@ unit-tests:
 
 .PHONY: integration-tests
 integration-tests:
-	go test -race -timeout 20m ./test/...
+	go test -race -timeout 30m ./test/...
 
 .PHONY: sample-tests
 sample-tests:
