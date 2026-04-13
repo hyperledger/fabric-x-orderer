@@ -1757,7 +1757,6 @@ func (vt *verifyTimeoutParam) HandleBlock(t *testing.T, block *common.Block) err
 
 // TestUpdateSmartBFTParameters verifies that updating SmartBFT parameters via a config update succeeds,
 // and that the network can continue processing transactions after the config update with the new parameters.
-// TODO: dynamic reconfig instead of stop and restart
 func TestUpdateSmartBFTParameters(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1792,6 +1791,7 @@ func TestUpdateSmartBFTParameters(t *testing.T) {
 	require.NotNil(t, userConfig)
 
 	txNumber := 100
+
 	// rate limiter parameters
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
@@ -1858,16 +1858,8 @@ func TestUpdateSmartBFTParameters(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
-
-	// Restart Arma nodes
-	armaNetwork.Stop()
-
-	armaNetwork.Restart(t, readyChan)
-	defer armaNetwork.Stop()
-
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForNetworkRelaunch(t, netInfo, 1)
 
 	// Send transactions again and verify they are processed
 	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
