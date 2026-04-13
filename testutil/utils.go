@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -524,7 +525,7 @@ func WaitForRelaunchByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nod
 		case err := <-errCh:
 			require.Fail(t, err.Error())
 		default:
-			require.Fail(t, "Timed out waiting for required nodes to launch")
+			require.Fail(t, "Timed out waiting for required nodes: %v to launch", nodeTypes)
 		}
 	}
 }
@@ -535,13 +536,118 @@ func WaitForNetworkRelaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, co
 	time.Sleep(time.Minute) // wait for consenters.
 }
 
-func containsNodeType(nodeTypes []NodeType, nodeType NodeType) bool {
-	for _, nt := range nodeTypes {
-		if nt == nodeType {
-			return true
+// WaitForRelaunchByTypeAndParty waits for specific nodes to relaunch with a new configuration sequence.
+// This function is used in tests to verify that nodes of specified types and parties have successfully
+// restarted after a configuration update.
+func WaitForRelaunchByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nodeTypes []NodeType, parties []types.PartyID, configSeq uint64) {
+	errCh := make(chan error, len(netInfo))
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+
+		for _, n := range netInfo {
+			if !containsNodeType(nodeTypes, n.NodeType) {
+				continue
+			}
+			if !containsParty(parties, n.PartyId) {
+				continue
+			}
+			wg.Add(1)
+			go func(n *ArmaNodeInfo) {
+				defer wg.Done()
+				detectCh := n.RunInfo.Session.Err.Detect("started with new config sequence %d", configSeq)
+				defer n.RunInfo.Session.Err.CancelDetects()
+				select {
+				case <-detectCh:
+					return
+				case <-time.After(120 * time.Second):
+					errCh <- fmt.Errorf("timed out waiting for node %s_%d_%d to launch", n.NodeType.String(), n.PartyId, n.ShardId)
+				}
+			}(n)
+		}
+
+		wg.Wait()
+	}()
+
+	select {
+	case <-done:
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			return
+		}
+	case <-time.After(180 * time.Second):
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			require.Fail(t, "Timed out waiting for required nodes: %v from parties: %v to launch", nodeTypes, parties)
 		}
 	}
-	return false
+}
+
+// WaitForPendingAdminByTypeAndParty waits for specific nodes to enter pending admin state.
+// This function is used in tests to verify that nodes of specified types and parties have successfully
+// entered pending admin state and wait for admin action.
+func WaitForPendingAdminByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nodeTypes []NodeType, parties []types.PartyID) {
+	errCh := make(chan error, len(netInfo))
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+
+		for _, n := range netInfo {
+			if !containsNodeType(nodeTypes, n.NodeType) {
+				continue
+			}
+			if !containsParty(parties, n.PartyId) {
+				continue
+			}
+			wg.Add(1)
+			go func(n *ArmaNodeInfo) {
+				defer wg.Done()
+				detectCh := n.RunInfo.Session.Err.Detect("Pending admin action to apply new config")
+				defer n.RunInfo.Session.Err.CancelDetects()
+				select {
+				case <-detectCh:
+					return
+				case <-time.After(120 * time.Second):
+					errCh <- fmt.Errorf("timed out waiting for node %s_%d_%d to enter pending admin state", n.NodeType.String(), n.PartyId, n.ShardId)
+				}
+			}(n)
+		}
+
+		wg.Wait()
+	}()
+
+	select {
+	case <-done:
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			return
+		}
+	case <-time.After(180 * time.Second):
+		select {
+		case err := <-errCh:
+			require.Fail(t, err.Error())
+		default:
+			require.Fail(t, "Timed out waiting for required nodes to enter pending admin state")
+		}
+	}
+}
+
+func containsNodeType(nodeTypes []NodeType, nodeType NodeType) bool {
+	return slices.Contains(nodeTypes, nodeType)
+}
+
+func containsParty(parties []types.PartyID, nodeParty types.PartyID) bool {
+	return slices.Contains(parties, nodeParty)
 }
 
 func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
