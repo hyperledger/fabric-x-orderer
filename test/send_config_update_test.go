@@ -690,7 +690,6 @@ func (ec *exportConfigBlockToFile) HandleBlock(t *testing.T, block *common.Block
 // TestAddNewParty verifies that adding a party via a config update succeeds,
 // that the new party's config is included in the updated shared config,
 // and that the new party can join (start) and process transactions after the config update.
-// TODO: dynamic reconfig instead of stop and restart
 func TestAddNewParty(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -888,7 +887,7 @@ func TestAddNewParty(t *testing.T) {
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
-		Transactions: totalTxNumber*2 + 1, // including the first tx sent to the new party
+		Transactions: totalTxNumber*2 + 2, // including the config tx and the single tx
 		Timeout:      120,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
