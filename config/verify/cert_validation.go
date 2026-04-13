@@ -9,15 +9,20 @@ package verify
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"time"
 
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/pkg/errors"
 )
 
-// validatePartyCertificates validates CA certificates and verifies node certificates for the party.
+// validatePartyCertificates validates TLS CA and CA certificates, and verifies TLS and signing certificates for the party.
 func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiration bool) error {
 	if len(party.TLSCACerts) == 0 {
 		return errors.New("empty TLS CA certificates")
+	}
+
+	if len(party.CACerts) == 0 {
+		return errors.New("empty signing CA certificates")
 	}
 
 	tlsPool := x509.NewCertPool()
@@ -38,9 +43,26 @@ func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiratio
 		},
 	}
 
+	signPool := x509.NewCertPool()
+	for _, raw := range party.CACerts {
+		cert, err := validateCACert(raw)
+		if err != nil {
+			return errors.Wrap(err, "invalid CA certificate")
+		}
+		signPool.AddCert(cert)
+	}
+
+	signOpts := x509.VerifyOptions{
+		Roots:         signPool,
+		Intermediates: nil, // TODO: add intermediate CA certs when added to the party config
+		KeyUsages: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageAny,
+		},
+	}
+
 	if party.RouterConfig != nil {
 		if err := verifyCert(party.RouterConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
-			return errors.Wrap(err, "router TLS validation failed")
+			return errors.Wrap(err, "router TLS certificate validation failed")
 		}
 	} else {
 		return errors.New("router config is nil")
@@ -48,7 +70,7 @@ func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiratio
 
 	if party.AssemblerConfig != nil {
 		if err := verifyCert(party.AssemblerConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
-			return errors.Wrap(err, "assembler TLS validation failed")
+			return errors.Wrap(err, "assembler TLS certificate validation failed")
 		}
 	} else {
 		return errors.New("assembler config is nil")
@@ -56,7 +78,10 @@ func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiratio
 
 	if party.ConsenterConfig != nil {
 		if err := verifyCert(party.ConsenterConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
-			return errors.Wrap(err, "consenter TLS validation failed")
+			return errors.Wrap(err, "consenter TLS certificate validation failed")
+		}
+		if err := verifyCert(party.ConsenterConfig.SignCert, signOpts, ignoreExpiration); err != nil {
+			return errors.Wrap(err, "consenter signing certificate validation failed")
 		}
 	} else {
 		return errors.New("consenter config is nil")
@@ -64,20 +89,22 @@ func validatePartyCertificates(party *config_protos.PartyConfig, ignoreExpiratio
 
 	for _, b := range party.BatchersConfig {
 		if b == nil {
-			return errors.Errorf("batcher config is nil")
+			return errors.New("batcher config is nil")
 		}
 
 		if err := verifyCert(b.TlsCert, tlsOpts, ignoreExpiration); err != nil {
-			return errors.Wrap(err, "batcher TLS validation failed")
+			return errors.Wrap(err, "batcher TLS certificate validation failed")
+		}
+		if err := verifyCert(b.SignCert, signOpts, ignoreExpiration); err != nil {
+			return errors.Wrap(err, "batcher signing certificate validation failed")
 		}
 
 	}
 
-	// TODO: Add similar validation for CACerts and SignCert.
 	return nil
 }
 
-// validateCACert decodes PEM cert, parses and ensures it is a CA within its validity period.
+// validateCACert decodes PEM cert, parses and ensures it is a CA.
 func validateCACert(raw []byte) (*x509.Certificate, error) {
 	if len(raw) == 0 {
 		return nil, errors.New("certificate is empty")
@@ -94,7 +121,7 @@ func validateCACert(raw []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-// verifyCert decodes PEM cert, parses and validates certificate chain, expiration, and key usage.
+// verifyCert decodes PEM cert, parses and verifies the certificate chain, with optional expiration handling.
 func verifyCert(raw []byte, opts x509.VerifyOptions, ignoreExpiration bool) error {
 	if len(raw) == 0 {
 		return errors.New("certificate is empty")
@@ -105,8 +132,8 @@ func verifyCert(raw []byte, opts x509.VerifyOptions, ignoreExpiration bool) erro
 	}
 
 	if _, err = cert.Verify(opts); err != nil {
-		if validationRes, ok := err.(x509.CertificateInvalidError); !ok || (!ignoreExpiration || validationRes.Reason != x509.Expired) {
-			return errors.Wrapf(err, "verifying tls cert with serial number %d", cert.SerialNumber)
+		if validationRes, ok := err.(x509.CertificateInvalidError); !ok || (!ignoreExpiration || validationRes.Reason != x509.Expired) || time.Now().Before(cert.NotBefore) {
+			return errors.Wrapf(err, "verifying certificate with serial number %d", cert.SerialNumber)
 		}
 	}
 

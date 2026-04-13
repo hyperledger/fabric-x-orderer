@@ -21,25 +21,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidatePartyCertificates(t *testing.T) {
+func TestValidatePartyCertificates_TLS(t *testing.T) {
 	now := time.Now()
-	caCert, caKey, caCertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
-	nodeCertPEM := generateTestNodeCert(t, caCert, caKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	tlsCACert, tlsCAKey, tlsCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	tlsCertPEM := generateTestTLSCert(t, tlsCACert, tlsCAKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+
+	signCACert, signCAKey, signCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	signCertPEM := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
 
 	t.Run("Valid party certificates", func(t *testing.T) {
 		partyConfig := &config_protos.PartyConfig{
-			TLSCACerts: [][]byte{caCertPEM},
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &config_protos.RouterNodeConfig{
-				TlsCert: nodeCertPEM,
+				TlsCert: tlsCertPEM,
 			},
 			AssemblerConfig: &config_protos.AssemblerNodeConfig{
-				TlsCert: nodeCertPEM,
+				TlsCert: tlsCertPEM,
 			},
 			ConsenterConfig: &config_protos.ConsenterNodeConfig{
-				TlsCert: nodeCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			BatchersConfig: []*config_protos.BatcherNodeConfig{
-				{TlsCert: nodeCertPEM},
+				{
+					TlsCert:  tlsCertPEM,
+					SignCert: signCertPEM,
+				},
 			},
 		}
 
@@ -47,9 +55,20 @@ func TestValidatePartyCertificates(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("Empty TLS CA certificates", func(t *testing.T) {
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{},
+		}
+
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "empty TLS CA certificates")
+	})
+
 	t.Run("Invalid TLS CA certificate", func(t *testing.T) {
 		partyConfig := &config_protos.PartyConfig{
 			TLSCACerts: [][]byte{[]byte("invalid")},
+			CACerts:    [][]byte{signCACertPEM},
 		}
 
 		err := validatePartyCertificates(partyConfig, false)
@@ -59,7 +78,8 @@ func TestValidatePartyCertificates(t *testing.T) {
 
 	t.Run("Invalid router TLS certificate", func(t *testing.T) {
 		partyConfig := &config_protos.PartyConfig{
-			TLSCACerts: [][]byte{caCertPEM},
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &config_protos.RouterNodeConfig{
 				TlsCert: []byte("invalid"),
 			},
@@ -67,47 +87,226 @@ func TestValidatePartyCertificates(t *testing.T) {
 
 		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "router TLS validation failed")
+		require.Contains(t, err.Error(), "router TLS certificate validation failed")
 	})
 
-	t.Run("Certificate not signed by provided CA", func(t *testing.T) {
-		_, _, differentCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	t.Run("TLS certificate not signed by provided CA", func(t *testing.T) {
+		_, _, differentTLSCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
 
 		partyConfig := &config_protos.PartyConfig{
-			TLSCACerts: [][]byte{differentCACertPEM},
+			TLSCACerts: [][]byte{differentTLSCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &config_protos.RouterNodeConfig{
-				TlsCert: nodeCertPEM,
+				TlsCert: tlsCertPEM,
 			},
 		}
 
 		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "router TLS validation failed")
+		require.Contains(t, err.Error(), "router TLS certificate validation failed")
 	})
 
 	t.Run("Expired consenter TLS certificate", func(t *testing.T) {
 		// expired consenter cert
-		expiredConsenterCert := generateTestNodeCert(t, caCert, caKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+		expiredConsenterTLSCert := generateTestTLSCert(t, tlsCACert, tlsCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
 
 		partyConfig := &config_protos.PartyConfig{
-			TLSCACerts: [][]byte{caCertPEM},
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &config_protos.RouterNodeConfig{
-				TlsCert: nodeCertPEM,
+				TlsCert: tlsCertPEM,
 			},
 			AssemblerConfig: &config_protos.AssemblerNodeConfig{
-				TlsCert: nodeCertPEM,
+				TlsCert: tlsCertPEM,
 			},
 			ConsenterConfig: &config_protos.ConsenterNodeConfig{
-				TlsCert: expiredConsenterCert,
+				TlsCert:  expiredConsenterTLSCert,
+				SignCert: signCertPEM,
 			},
 			BatchersConfig: []*config_protos.BatcherNodeConfig{
-				{TlsCert: nodeCertPEM},
+				{
+					TlsCert:  tlsCertPEM,
+					SignCert: signCertPEM,
+				},
+			},
+		}
+
+		// Should fail when expiration is enforced
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "consenter TLS certificate validation failed")
+
+		// Should succeed when expiration is ignored
+		err = validatePartyCertificates(partyConfig, true)
+		require.NoError(t, err)
+	})
+}
+
+func TestValidatePartyCertificates_Signing(t *testing.T) {
+	now := time.Now()
+	tlsCACert, tlsCAKey, tlsCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	tlsCertPEM := generateTestTLSCert(t, tlsCACert, tlsCAKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+
+	signCACert, signCAKey, signCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	signCertPEM := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+
+	t.Run("Empty signing CA certificates", func(t *testing.T) {
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{},
+		}
+
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "empty signing CA certificates")
+	})
+
+	t.Run("Invalid signing CA certificate", func(t *testing.T) {
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{[]byte("invalid")},
+		}
+
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid CA certificate")
+	})
+
+	t.Run("Invalid consenter signing certificate", func(t *testing.T) {
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
+			RouterConfig: &config_protos.RouterNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+				TlsCert:  tlsCertPEM,
+				SignCert: []byte("invalid"),
 			},
 		}
 
 		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "consenter TLS validation failed")
+		require.Contains(t, err.Error(), "consenter signing certificate validation failed")
+	})
+
+	t.Run("Signing certificate not signed by provided CA", func(t *testing.T) {
+		_, _, differentSignCACertPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{differentSignCACertPEM}, // Different CA
+			RouterConfig: &config_protos.RouterNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM, // Signed by different CA
+			},
+		}
+
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "consenter signing certificate validation failed")
+	})
+
+	t.Run("Expired consenter signing certificate", func(t *testing.T) {
+		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
+			RouterConfig: &config_protos.RouterNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+				TlsCert:  tlsCertPEM,
+				SignCert: expiredSignCert,
+			},
+			BatchersConfig: []*config_protos.BatcherNodeConfig{
+				{
+					TlsCert:  tlsCertPEM,
+					SignCert: signCertPEM,
+				},
+			},
+		}
+
+		// Should fail when expiration is enforced
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "consenter signing certificate validation failed")
+
+		// Should succeed when expiration is ignored
+		err = validatePartyCertificates(partyConfig, true)
+		require.NoError(t, err)
+	})
+	t.Run("Invalid batcher signing certificate", func(t *testing.T) {
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
+			RouterConfig: &config_protos.RouterNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
+			},
+			BatchersConfig: []*config_protos.BatcherNodeConfig{
+				{
+					TlsCert:  tlsCertPEM,
+					SignCert: []byte("invalid"),
+				},
+			},
+		}
+
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "batcher signing certificate validation failed")
+	})
+
+	t.Run("Expired batcher signing certificate", func(t *testing.T) {
+		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+
+		partyConfig := &config_protos.PartyConfig{
+			TLSCACerts: [][]byte{tlsCACertPEM},
+			CACerts:    [][]byte{signCACertPEM},
+			RouterConfig: &config_protos.RouterNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			AssemblerConfig: &config_protos.AssemblerNodeConfig{
+				TlsCert: tlsCertPEM,
+			},
+			ConsenterConfig: &config_protos.ConsenterNodeConfig{
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
+			},
+			BatchersConfig: []*config_protos.BatcherNodeConfig{
+				{
+					TlsCert:  tlsCertPEM,
+					SignCert: expiredSignCert,
+				},
+			},
+		}
+
+		// Should fail when expiration is enforced
+		err := validatePartyCertificates(partyConfig, false)
+		require.Error(t, err)
+
+		// Should succeed when expiration is ignored
+		err = validatePartyCertificates(partyConfig, true)
+		require.NoError(t, err)
 	})
 }
 
@@ -141,7 +340,7 @@ func generateTestCAWithKey(t *testing.T, notBefore, notAfter time.Time) (*x509.C
 	return cert, priv, certPEM
 }
 
-func generateTestNodeCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, notBefore, notAfter time.Time) []byte {
+func generateTestTLSCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, notBefore, notAfter time.Time) []byte {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
@@ -151,8 +350,8 @@ func generateTestNodeCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.P
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"Test Node"},
-			CommonName:   "Test Node",
+			Organization: []string{"Test TLS"},
+			CommonName:   "Test TLS",
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -167,4 +366,30 @@ func generateTestNodeCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.P
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	return certPEM
+}
+
+func generateTestSigningCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, notBefore, notAfter time.Time) []byte {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	require.NoError(t, err)
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Test Signing"},
+			CommonName:   "Test Signing",
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
+	require.NoError(t, err)
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 }
