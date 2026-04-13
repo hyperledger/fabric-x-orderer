@@ -196,6 +196,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, c
 		pk:      batcherNode.pk,
 	}
 	var err error
+	time.Sleep(100 * time.Millisecond) // wait for the port to be released by node stop before restarting the node on the same port
 	newBatcherNode.GRPCServer, err = newGRPCServer(batcherNode.Address(), ca, &tlsgen.CertKeyPair{
 		Key:  batcherNode.TLSKey,
 		Cert: batcherNode.TLSCert,

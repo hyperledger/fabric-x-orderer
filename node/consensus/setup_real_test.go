@@ -79,6 +79,7 @@ func createBatcherNodesInfo(t *testing.T, dir string, parties []types.PartyID) (
 }
 
 func recoverNodeReal(t *testing.T, dir string, nodeIndex int, expectedConfigBlock *common.Block, setup consensusTestSetup) {
+	time.Sleep(100 * time.Millisecond) // wait for the port to be released by node stop before restarting the node on the same port
 	recoveredConsensusNodes, recoveredServers, recoveredConfigBlock := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{types.PartyID(nodeIndex + 1)})
 	require.Len(t, recoveredConsensusNodes, 1)
 	require.Len(t, recoveredServers, 1)
