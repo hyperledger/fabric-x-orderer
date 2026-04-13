@@ -101,6 +101,8 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
+	// TODO: make sure the memory pull is updated accordingly
+
 	// wait for the batcher to initialize
 	for j := range parties {
 		require.Eventually(t, func() bool {
