@@ -174,7 +174,8 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 		return nil, errors.Wrapf(err, "cannot get decision from block")
 	}
 
-	s.Logger.Infof("Returning decision from block [%d], decision: %+v", lastPulledBlock.GetHeader().GetNumber(), decision)
+	// TODO add a short string representation of the decision for better logging.
+	s.Logger.Infof("Returning decision from block [%d]", lastPulledBlock.GetHeader().GetNumber())
 	return decision, err
 }
 
@@ -287,7 +288,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 		},
 	)
 
-	s.Logger.Infof("Created a BFTDeliverer: %+v", bftDeliverer)
+	s.Logger.Infof("Created a BFTDeliverer on channel: %s", s.Support.ChannelID())
 	bftDeliverer.Initialize(lastConfigEnv.GetConfig(), myParty)
 
 	return bftDeliverer, nil
