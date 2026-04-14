@@ -335,6 +335,14 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to build new configuration")
 	}
+	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
+	// check if batching params changed
+	// TODO: remove this check when memory pool supports dynamic reconfig
+	if b.hasBatchingParamsChanged(newBatcherConfig) {
+		b.logger.Warnf("Batcher's pool options was changed in the new configuration")
+		return true, nil
+	}
 
 	// check if party is removed
 	isPartyEvicted, err := config.IsPartyEvicted(partyID, newConfig)
@@ -365,20 +373,12 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, nil
 	}
 
-	b.stopAndReconfigure(newConfig, lastBlock)
+	b.stopAndReconfigure(newConfig, newBatcherConfig, lastBlock)
 	return false, nil
 }
 
-func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
-	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcherConfig *node_config.BatcherNodeConfig, lastBlock *common.Block) {
 	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigBlock(lastBlock, b.logger)
-
-	// check if batching params changed and if so, stay in pending admin state
-	// TODO: remove this check when memory pool supports dynamic reconfig
-	if b.hasBatchingParamsChanged(newBatcherConfig) {
-		b.logger.Warnf("Batcher's pool options was changed in the new configuration")
-		return
-	}
 
 	// this is not an admin restart.
 	// close net, ledger and SIGTERM channel
