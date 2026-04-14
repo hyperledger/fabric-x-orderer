@@ -220,9 +220,8 @@ func TestConfigDisseminate(t *testing.T) {
 }
 
 // TestConfigTXDisseminationWithVerification verifies that a config tx modifying a SmartBFT parameter is properly disseminated across all nodes.
-// All nodes are expected to receive the tx and append it to the respective config store (routers and batchers) and ledgers (consenters and assebmlers),
+// All nodes are expected to receive the tx and append it to the respective config store (routers and batchers) and ledgers (consenters and assemblers),
 // The network then undergoes a dynamic reconfiguration process after which it becomes available again.
-// Once the config tx is applied, improperly signed data txs should be rejected, while properly signed ones should be processed successfully.
 func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	// Compile Arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})

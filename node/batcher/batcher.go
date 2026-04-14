@@ -340,7 +340,7 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	// check if batching params changed
 	// TODO: remove this check when memory pool supports dynamic reconfig
 	if b.hasBatchingParamsChanged(newBatcherConfig) {
-		b.logger.Warnf("Batcher's pool options was changed in the new configuration")
+		b.logger.Warnf("Batcher's pool options were changed in the new configuration")
 		return true, nil
 	}
 
