@@ -452,6 +452,32 @@ func TestValidateTransition_FailedRemoveAndModify(t *testing.T) {
 	require.ErrorContains(t, err, "only one party can be changed in a config tx")
 }
 
+func TestValidateTransition_ChannelID(t *testing.T) {
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+
+	_, env, currBundle, _, _, _, _, cleanup := setupOrdererRulesTest(t, 2)
+	defer cleanup()
+
+	payload := &common.Payload{}
+	require.NoError(t, proto.Unmarshal(env.Payload, payload))
+
+	ch := &common.ChannelHeader{}
+	require.NoError(t, proto.Unmarshal(payload.Header.ChannelHeader, ch))
+
+	// change channel ID
+	ch.ChannelId = "different-channel"
+	payload.Header.ChannelHeader = protoutil.MarshalOrPanic(ch)
+	nextEnv := &common.Envelope{
+		Payload:   protoutil.MarshalOrPanic(payload),
+		Signature: env.Signature,
+	}
+
+	err := or.ValidateTransition(currBundle, nextEnv, bccsp)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "channel ID cannot change")
+}
+
 func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope, channelconfig.Resources, *configutil.ConfigUpdateBuilder, *policy.DefaultConfigUpdateProposer, identity.SignerSerializer, *requestfilter.RulesVerifier, func()) {
 	t.Helper()
 	dir := t.TempDir()
