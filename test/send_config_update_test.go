@@ -665,10 +665,31 @@ func TestRemoveParty(t *testing.T) {
 	armaNetwork.StopParties(remainingParties)
 }
 
+type exportConfigBlockToFile struct {
+	configSeq uint64
+	path      string
+}
+
+func (ec *exportConfigBlockToFile) HandleBlock(t *testing.T, block *common.Block) error {
+	if protoutil.IsConfigBlock(block) {
+		env, err := protoutil.ExtractEnvelope(block, 0)
+		require.NoError(t, err)
+		payload, err := protoutil.UnmarshalPayload(env.Payload)
+		require.NoError(t, err)
+		configEnv, err := protoutil.UnmarshalConfigEnvelope(payload.Data)
+		require.NoError(t, err)
+		if configEnv.GetConfig().GetSequence() == ec.configSeq {
+			configBlock := &common.Block{Header: block.GetHeader(), Data: block.GetData(), Metadata: block.GetMetadata()}
+			err := configtxgen.WriteOutputBlock(configBlock, ec.path)
+			require.NoError(t, err)
+		}
+	}
+	return nil
+}
+
 // TestAddNewParty verifies that adding a party via a config update succeeds,
 // that the new party's config is included in the updated shared config,
 // and that the new party can join (start) and process transactions after the config update.
-// TODO: dynamic reconfig instead of stop and restart
 func TestAddNewParty(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -694,31 +715,33 @@ func TestAddNewParty(t *testing.T) {
 	numOfArmaNodes := len(netInfo)
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	submittingParty := types.PartyID(1)
 
-	userConfig, err := testutil.GetUserConfig(dir, types.PartyID(submittingParty))
+	userConfig, err := testutil.GetUserConfig(dir, submittingParty)
 	require.NoError(t, err)
 
 	broadcastClient := client.NewBroadcastTxClient(userConfig, 10*time.Second)
+
 	totalTxNumber := 100
+
 	// rate limiter parameters
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
 	rate := 500
-
-	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, userConfig.MSPDir)
-	require.NoError(t, err)
-	org := fmt.Sprintf("org%d", submittingParty)
-
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
 		os.Exit(3)
 	}
+
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, userConfig.MSPDir)
+	require.NoError(t, err)
+	org := fmt.Sprintf("org%d", submittingParty)
 
 	for i := range totalTxNumber {
 		status := rl.GetToken()
@@ -762,21 +785,27 @@ func TestAddNewParty(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
+	t.Log("Wait for network relaunch")
+	testutil.WaitForNetworkRelaunch(t, netInfo, 1)
 
-	armaNetwork.Stop()
-
-	// Get the config block from an assembler ledger and write it to a temp location
+	t.Log("Get the config block from an assembler ledger and write it to a temp location")
 	configBlockStoreDir := t.TempDir()
-	defer os.RemoveAll(configBlockStoreDir)
-
 	newConfigBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-	_, lastConfigBlock, err := config.ReadConfig(filepath.Join(dir, "config", fmt.Sprintf("party%d", submittingParty), "local_config_assembler.yaml"), flogging.MustGetLogger("TestAddNewParty"))
-	require.NoError(t, err)
-	configBlock := &common.Block{Header: lastConfigBlock.GetHeader(), Data: lastConfigBlock.GetData(), Metadata: lastConfigBlock.GetMetadata()}
-	err = configtxgen.WriteOutputBlock(configBlock, newConfigBlockPath)
-	require.NoError(t, err)
+
+	PullFromAssemblers(t, &BlockPullerOptions{
+		UserConfig:   userConfig,
+		Parties:      parties,
+		Transactions: totalTxNumber + 1, // include the config block
+		Timeout:      120,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+		BlockHandler: &exportConfigBlockToFile{configSeq: 1, path: newConfigBlockPath},
+	})
+
+	t.Log("Verify the config block file was created")
+	require.FileExists(t, newConfigBlockPath, "Config block file should exist after pulling from assembler")
+	t.Logf("Config block successfully written to: %s", newConfigBlockPath)
 
 	// Update the config block path in the net info of the added party to point to the new config block path
 	// This is needed for the added party to be able to join the network using the new config block
@@ -812,13 +841,14 @@ func TestAddNewParty(t *testing.T) {
 	}
 
 	maps.Copy(netInfo, addedNetInfo)
-	numOfArmaNodes = len(netInfo)
-	readyChan = make(chan string, numOfArmaNodes)
+	numOfNewArmaNodes := len(addedNetInfo)
+	readyChan = make(chan string, numOfNewArmaNodes)
 
-	armaNetwork = testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Log("Start the new added party")
+	armaNetwork.AddAndStartNodes(t, dir, armaBinaryPath, readyChan, addedNetInfo)
 
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	t.Log("Wait for the new party to be ready")
+	testutil.WaitReady(t, readyChan, len(addedNetInfo), 10)
 
 	userConfig, err = testutil.GetUserConfig(dir, submittingParty)
 	require.NoError(t, err)
@@ -826,11 +856,13 @@ func TestAddNewParty(t *testing.T) {
 	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
 	defer broadcastClient.Stop()
 
+	t.Log("Send a single transaction to the network")
 	txContent := tx.PrepareTxWithTimestamp(0, 64, []byte("sessionNumber"))
 	env = tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, org)
 	err = broadcastClient.SendTxTo(env, addedPartyId)
 	require.NoError(t, err)
 
+	t.Log("Send more transactions to the network")
 	totalTxNumber = 100
 
 	for i := range totalTxNumber {
@@ -855,7 +887,7 @@ func TestAddNewParty(t *testing.T) {
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
-		Transactions: totalTxNumber * 2, // including the first tx sent to the new party
+		Transactions: totalTxNumber*2 + 2, // including the config tx and the single tx
 		Timeout:      120,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
