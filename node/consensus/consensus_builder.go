@@ -383,6 +383,7 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 			ServerRootCAs:     tlsCAs,
 		},
 		DialTimeout: time.Second * 5,
+		BaOpts:      comm.DefaultBackoffOptions,
 	}
 	return cc
 }
