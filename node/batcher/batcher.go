@@ -310,7 +310,6 @@ func (b *Batcher) hasBatchingParamsChanged(newConfig *node_config.BatcherNodeCon
 	return newConfig.FirstStrikeThreshold != b.config.FirstStrikeThreshold ||
 		newConfig.SecondStrikeThreshold != b.config.SecondStrikeThreshold ||
 		newConfig.AutoRemoveTimeout != b.config.AutoRemoveTimeout ||
-		newConfig.BatchCreationTimeout != b.config.BatchCreationTimeout ||
 		newConfig.BatchMaxSize != b.config.BatchMaxSize ||
 		newConfig.BatchMaxBytes != b.config.BatchMaxBytes ||
 		newConfig.RequestMaxBytes != b.config.RequestMaxBytes
