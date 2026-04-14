@@ -374,7 +374,7 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock 
 	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigBlock(lastBlock, b.logger)
 
 	// check if batching params changed and if so, stay in pending admin state
-	// TODO: remove this check when memory pool supports reconfig of batching params
+	// TODO: remove this check when memory pool supports dynamic reconfig
 	if b.hasBatchingParamsChanged(newBatcherConfig) {
 		b.logger.Warnf("Batcher's pool options was changed in the new configuration")
 		return
