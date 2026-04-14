@@ -895,7 +895,6 @@ func TestAddNewParty(t *testing.T) {
 
 // TestChangePartyCertificates verifies that updating a party's certificates via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new certificates.
-// TODO: dynamic reconfig instead of stop and restart
 func TestChangePartyCertificates(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -933,12 +932,20 @@ func TestChangePartyCertificates(t *testing.T) {
 	numOfArmaNodes := len(netInfo)
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	parties := make([]types.PartyID, 0, numOfParties)
 	for i := 1; i <= numOfParties; i++ {
 		parties = append(parties, types.PartyID(i))
+	}
+
+	nonUpdatedParties := make([]types.PartyID, 0, len(parties)-1)
+	for _, party := range parties {
+		if party != partyToUpdate {
+			nonUpdatedParties = append(nonUpdatedParties, party)
+		}
 	}
 
 	uc, err := testutil.GetUserConfig(dir, submittingParty)
@@ -1034,19 +1041,24 @@ func TestChangePartyCertificates(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
+	t.Logf("Wait for the party %d nodes to enter pending admin state and then stop it", partyToUpdate)
+	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToUpdate})
+	armaNetwork.StopParties([]types.PartyID{partyToUpdate})
 
-	// Stop Arma nodes
-	armaNetwork.Stop()
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, nonUpdatedParties, 1)
+
+	t.Logf("Restart party %d", partyToUpdate)
+	armaNetwork.RestartParties(t, []types.PartyID{partyToUpdate}, readyChan)
+	testutil.WaitReady(t, readyChan, 3+numOfShards, 10)
 
 	// Verify that the party's certificates are updated by checking the router's shared config
-	assemblerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_assembler.yaml")
-	assemblerConfig, _, err := config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_router.yaml")
+	routerConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
 	var updatedPartyConfig *protos.PartyConfig
-	for _, partyConfig := range assemblerConfig.SharedConfig.GetPartiesConfig() {
+	for _, partyConfig := range routerConfig.SharedConfig.GetPartiesConfig() {
 		if partyConfig.PartyID == uint32(partyToUpdate) {
 			updatedPartyConfig = partyConfig
 			break
@@ -1083,12 +1095,6 @@ func TestChangePartyCertificates(t *testing.T) {
 	// Verify that the consenter TLS and signing cert paths are updated in the config
 	require.Equal(t, newTlsCertBytes, updatedPartyConfig.ConsenterConfig.GetTlsCert(), "Consenter certificate path was not updated in the config")
 	require.Equal(t, newSignCertBytes, updatedPartyConfig.ConsenterConfig.GetSignCert(), "Consenter signing certificate path was not updated in the config")
-
-	// Restart Arma nodes
-	armaNetwork.Restart(t, readyChan)
-	defer armaNetwork.Stop()
-
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	updatedRouterInfo := armaNetwork.GetRouter(t, partyToUpdate)
 	// Verify that the updated router TLS connection to a consenter node is successful by checking for successful pulls,
