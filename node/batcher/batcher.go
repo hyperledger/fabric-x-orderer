@@ -306,6 +306,16 @@ func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuratio
 	return nil, errors.Errorf("batcher in shard %v does not exist in the party config", shardID)
 }
 
+func (b *Batcher) hasBatchingParamsChanged(newConfig *node_config.BatcherNodeConfig) bool {
+	return newConfig.FirstStrikeThreshold != b.config.FirstStrikeThreshold ||
+		newConfig.SecondStrikeThreshold != b.config.SecondStrikeThreshold ||
+		newConfig.AutoRemoveTimeout != b.config.AutoRemoveTimeout ||
+		newConfig.BatchCreationTimeout != b.config.BatchCreationTimeout ||
+		newConfig.BatchMaxSize != b.config.BatchMaxSize ||
+		newConfig.BatchMaxBytes != b.config.BatchMaxBytes ||
+		newConfig.RequestMaxBytes != b.config.RequestMaxBytes
+}
+
 // ApplyConfig applies the new configuration to the batcher.
 // It receives the new config block and checks if an admin operation is required (party evicted or identity change), if so returns true.
 // If not, it reconfigures the batcher with the new config, retains the current memory pool, prunes the memory pool, and starts the batcher.
@@ -363,6 +373,13 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
 	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
 	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigBlock(lastBlock, b.logger)
+
+	// check if batching params changed and if so, stay in pending admin state
+	// TODO: remove this check when memory pool supports reconfig of batching params
+	if b.hasBatchingParamsChanged(newBatcherConfig) {
+		b.logger.Warnf("Batcher's pool options was changed in the new configuration")
+		return
+	}
 
 	// this is not an admin restart.
 	// close net, ledger and SIGTERM channel

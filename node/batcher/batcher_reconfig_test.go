@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -94,52 +93,60 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// wait for the batchers initialized with the new AutoRemoveTimeout parameter
+	// TODO: complete dynamic reconfig scenario when memory pool supports reconfig (uncommented below)
+	// wait for the batcher to soft stop
 	for j := range parties {
 		require.Eventually(t, func() bool {
-			return batchers[j].GetConfig().AutoRemoveTimeout == 15*time.Millisecond
+			return batchers[j].GetStatus() == "Soft Stopped"
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// TODO: make sure the memory pull is updated accordingly
+	//// wait for the batchers initialized with the new AutoRemoveTimeout parameter
+	//for j := range parties {
+	//	require.Eventually(t, func() bool {
+	//		return batchers[j].GetConfig().AutoRemoveTimeout == 15*time.Millisecond
+	//	}, 60*time.Second, 10*time.Millisecond)
+	//}
 
-	// wait for the batcher to initialize
-	for j := range parties {
-		require.Eventually(t, func() bool {
-			return batchers[j].GetStatus() == "Running"
-		}, 60*time.Second, 10*time.Millisecond)
-	}
+	// TODO: make sure the memory pool is updated accordingly
 
-	// find the primary
-	var primaryBatcher *batcher.Batcher
-	primaryID := batchers[0].GetPrimaryID()
-	for _, b := range batchers {
-		if b.GetPrimaryID() == primaryID {
-			primaryBatcher = b
-			break
-		}
-	}
-
-	// submit request
-	req := tx.CreateStructuredRequestWithConfigSeq([]byte{2}, 1)
-	require.Eventually(t, func() bool {
-		resp, err := primaryBatcher.Submit(context.Background(), req)
-		return err == nil && resp.Error == ""
-	}, 60*time.Second, 10*time.Millisecond)
-
-	// make sure request was batched
-	for _, b := range batchers {
-		require.Eventually(t, func() bool {
-			return b.Ledger.Height(primaryID) == uint64(1)
-		}, 30*time.Second, 10*time.Millisecond)
-	}
-
-	// make sure consenters received the required BAF
-	for _, sc := range stubConsenters {
-		require.Eventually(t, func() bool {
-			return sc.BAFCount() == len(parties)
-		}, 30*time.Second, 10*time.Millisecond)
-	}
+	//// wait for the batcher to initialize
+	//for j := range parties {
+	//	require.Eventually(t, func() bool {
+	//		return batchers[j].GetStatus() == "Running"
+	//	}, 60*time.Second, 10*time.Millisecond)
+	//}
+	//
+	//// find the primary
+	//var primaryBatcher *batcher.Batcher
+	//primaryID := batchers[0].GetPrimaryID()
+	//for _, b := range batchers {
+	//	if b.GetPrimaryID() == primaryID {
+	//		primaryBatcher = b
+	//		break
+	//	}
+	//}
+	//
+	//// submit request
+	//req := tx.CreateStructuredRequestWithConfigSeq([]byte{2}, 1)
+	//require.Eventually(t, func() bool {
+	//	resp, err := primaryBatcher.Submit(context.Background(), req)
+	//	return err == nil && resp.Error == ""
+	//}, 60*time.Second, 10*time.Millisecond)
+	//
+	//// make sure request was batched
+	//for _, b := range batchers {
+	//	require.Eventually(t, func() bool {
+	//		return b.Ledger.Height(primaryID) == uint64(1)
+	//	}, 30*time.Second, 10*time.Millisecond)
+	//}
+	//
+	//// make sure consenters received the required BAF
+	//for _, sc := range stubConsenters {
+	//	require.Eventually(t, func() bool {
+	//		return sc.BAFCount() == len(parties)
+	//	}, 30*time.Second, 10*time.Millisecond)
+	//}
 }
 
 // Scenario:
