@@ -95,7 +95,7 @@ func (armaNetwork *ArmaNetwork) Kill() {
 	}
 }
 
-func (armaNetwork *ArmaNetwork) AddAndStartParty(t *testing.T, dir string, armaBinaryPath string, readyChan chan string, addedNetInfo map[NodeName]*ArmaNodeInfo) {
+func (armaNetwork *ArmaNetwork) AddAndStartNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan string, addedNetInfo map[NodeName]*ArmaNodeInfo) {
 	nodes := map[NodeType]string{
 		Router:    "local_config_router",
 		Batcher:   "local_config_batcher",

@@ -11,11 +11,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"slices"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -344,24 +341,6 @@ func runNode(t *testing.T, node *ArmaNodeInfo, readyChan chan string) *gexec.Ses
 }
 
 func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan chan string, netInfo map[NodeName]*ArmaNodeInfo) *ArmaNetwork {
-	nodes := map[NodeType]string{
-		Router:    "local_config_router",
-		Batcher:   "local_config_batcher",
-		Consensus: "local_config_consenter",
-		Assembler: "local_config_assembler",
-	}
-
-	nodeInfos := make([]*ArmaNodeInfo, 0, len(netInfo))
-	numOfParties := 0
-	for n := range netInfo {
-		nodeInfos = append(nodeInfos, netInfo[n])
-		if n.NodeType == Consensus {
-			numOfParties++
-		}
-	}
-
-	sort.Slice(nodeInfos, sortArmaNodeInfo(nodeInfos))
-
 	armaNetwork := ArmaNetwork{
 		armaNodes: map[NodeType][][]*ArmaNodeInfo{
 			Router:    {},
@@ -371,27 +350,7 @@ func RunArmaNodes(t *testing.T, dir string, armaBinaryPath string, readyChan cha
 		},
 	}
 
-	for _, netNode := range nodeInfos {
-		shardId := ""
-		if netNode.ShardId != 0 {
-			shardId = strconv.FormatUint(uint64(netNode.ShardId), 10)
-		}
-
-		partyId := fmt.Sprintf("party%d", netNode.PartyId)
-
-		partyDir := path.Join(dir, "config", partyId)
-		nodeConfigPath := path.Join(partyDir, nodes[netNode.NodeType]+shardId+".yaml")
-
-		storagePath := path.Join(dir, "storage", partyId, fmt.Sprintf("%s%s", netNode.NodeType.String(), shardId))
-		err := os.MkdirAll(storagePath, 0o755)
-		require.NoError(t, err)
-
-		EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, netNode.ConfigBlockPath, uint32(netNode.MonitoringListener.Addr().(*net.TCPAddr).Port))
-		netNode.RunInfo = &ArmaNodeRunInfo{ArmaBinaryPath: armaBinaryPath, NodeConfigPath: nodeConfigPath}
-		netNode.RunInfo.Session = runNode(t, netNode, readyChan)
-		require.NotNil(t, netNode.RunInfo.Session, fmt.Sprintf("failed to start Arma node %s", netNode.NodeType.String()))
-		armaNetwork.AddArmaNode(netNode.NodeType, int(netNode.PartyId)-1, netNode)
-	}
+	armaNetwork.AddAndStartNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
 	return &armaNetwork
 }

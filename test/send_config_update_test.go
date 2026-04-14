@@ -845,7 +845,7 @@ func TestAddNewParty(t *testing.T) {
 	readyChan = make(chan string, numOfNewArmaNodes)
 
 	t.Log("Start the new added party")
-	armaNetwork.AddAndStartParty(t, dir, armaBinaryPath, readyChan, addedNetInfo)
+	armaNetwork.AddAndStartNodes(t, dir, armaBinaryPath, readyChan, addedNetInfo)
 
 	t.Log("Wait for the new party to be ready")
 	testutil.WaitReady(t, readyChan, len(addedNetInfo), 10)
