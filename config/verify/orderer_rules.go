@@ -140,18 +140,19 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 // current configuration to the next proposed configuration, before
 // the new configuration is applied. The rules are as follows:
 //
-//  1. At most one party can be added in a config tx.
-//  2. MaxPartyID transition rules:
+//  1. Channel ID must remain unchanged.
+//  2. At most one party can be added in a config tx.
+//  3. MaxPartyID transition rules:
 //     - If a party is added, its PartyID must equal current MaxPartyID + 1.
 //     - If a party is added, next MaxPartyID must equal that PartyID.
 //     - If no party is added, MaxPartyID must remain unchanged.
 //     This ensures PartyIDs are strictly increasing and never reused.
-//  3. At most one party can be removed in a config tx.
-//  4. At most one party can be modified in a config tx.
-//  5. Only one membership change is allowed per config tx (add, remove, or modify).
-//  6. Certificate validation:
+//  4. At most one party can be removed in a config tx.
+//  5. At most one party can be modified in a config tx.
+//  6. Only one membership change is allowed per config tx (add, remove, or modify).
+//  7. Certificate validation:
 //     - validate certificate chain of trust for all parties while ignoring expiration.
-//     - enforce expiration checks for node certificates of newly added and modified parties.
+//     - enforce expiration checks only for node certificates of newly added and modified parties.
 //
 // TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
@@ -170,6 +171,11 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	nextBundle, err := channelconfig.NewBundleFromEnvelope(next, bccsp)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bundle from next envelope config")
+	}
+
+	// 1.
+	if current.ConfigtxValidator().ChannelID() != nextBundle.ConfigtxValidator().ChannelID() {
+		return errors.New("channel ID cannot change in the proposed config")
 	}
 
 	nextOrdererCfg, ok := nextBundle.OrdererConfig()
@@ -204,12 +210,12 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		return err
 	}
 
-	// 1.
+	// 2.
 	if len(changes.Added) > 1 {
 		return errors.New("more than one party added in config tx")
 	}
 
-	// 2.
+	// 3.
 	if len(changes.Added) == 1 {
 		newID := changes.Added[0].PartyID
 		if newID <= currCfg.MaxPartyID {
@@ -227,23 +233,23 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 		}
 	}
 
-	// 3.
+	// 4.
 	if len(changes.Removed) > 1 {
 		return errors.New("more than one party removed in config tx")
 	}
 
-	// 4.
+	// 5.
 	if len(changes.Modified) > 1 {
 		return errors.New("more than one party modified in config tx")
 	}
 
-	// 5.
+	// 6.
 	if len(changes.Added)+len(changes.Removed)+len(changes.Modified) > 1 {
 		return errors.Errorf("only one party can be changed in a config tx (added=%d, removed=%d, modified=%d)", len(changes.Added), len(changes.Removed), len(changes.Modified))
 	}
 
-	// 6.
-	for _, party := range nextMap {
+	// 7.
+	for _, party := range nextCfg.PartiesConfig {
 		if err := validatePartyCertificates(party, true); err != nil {
 			return errors.Wrapf(err, "certificate validation failed for party ID %d", party.PartyID)
 		}
