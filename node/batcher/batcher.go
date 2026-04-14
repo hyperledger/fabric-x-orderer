@@ -306,6 +306,15 @@ func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuratio
 	return nil, errors.Errorf("batcher in shard %v does not exist in the party config", shardID)
 }
 
+func (b *Batcher) hasBatchingParamsChanged(newConfig *node_config.BatcherNodeConfig) bool {
+	return newConfig.FirstStrikeThreshold != b.config.FirstStrikeThreshold ||
+		newConfig.SecondStrikeThreshold != b.config.SecondStrikeThreshold ||
+		newConfig.AutoRemoveTimeout != b.config.AutoRemoveTimeout ||
+		newConfig.BatchMaxSize != b.config.BatchMaxSize ||
+		newConfig.BatchMaxBytes != b.config.BatchMaxBytes ||
+		newConfig.RequestMaxBytes != b.config.RequestMaxBytes
+}
+
 // ApplyConfig applies the new configuration to the batcher.
 // It receives the new config block and checks if an admin operation is required (party evicted or identity change), if so returns true.
 // If not, it reconfigures the batcher with the new config, retains the current memory pool, prunes the memory pool, and starts the batcher.
@@ -325,6 +334,14 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to build new configuration")
+	}
+	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
+	// check if batching params changed
+	// TODO: remove this check when memory pool supports dynamic reconfig
+	if b.hasBatchingParamsChanged(newBatcherConfig) {
+		b.logger.Warnf("Batcher's pool options were changed in the new configuration")
+		return true, nil
 	}
 
 	// check if party is removed
@@ -356,12 +373,11 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, nil
 	}
 
-	b.stopAndReconfigure(newConfig, lastBlock)
+	b.stopAndReconfigure(newConfig, newBatcherConfig, lastBlock)
 	return false, nil
 }
 
-func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, lastBlock *common.Block) {
-	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcherConfig *node_config.BatcherNodeConfig, lastBlock *common.Block) {
 	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigBlock(lastBlock, b.logger)
 
 	// this is not an admin restart.
