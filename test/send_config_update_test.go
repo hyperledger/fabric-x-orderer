@@ -715,6 +715,7 @@ func TestAddNewParty(t *testing.T) {
 	numOfArmaNodes := len(netInfo)
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -789,7 +790,6 @@ func TestAddNewParty(t *testing.T) {
 
 	t.Log("Get the config block from an assembler ledger and write it to a temp location")
 	configBlockStoreDir := t.TempDir()
-	defer os.RemoveAll(configBlockStoreDir)
 	newConfigBlockPath := filepath.Join(configBlockStoreDir, "config.block")
 
 	PullFromAssemblers(t, &BlockPullerOptions{
@@ -893,8 +893,6 @@ func TestAddNewParty(t *testing.T) {
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})
-
-	armaNetwork.Stop()
 }
 
 // TestChangePartyCertificates verifies that updating a party's certificates via a config update succeeds,
