@@ -51,6 +51,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	configUpdateBuilder.UpdateAssemblerEndpoint(t, types.PartyID(1), "newIP", 3434)
 	configUpdateBuilder.UpdateBatcherEndpoint(t, types.PartyID(1), types.ShardID(1), "newIP", 3434)
 	configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "10ms"))
+	configUpdateBuilder.UpdateBatchRequestMaxBytes(t, 1048576)
 	configUpdateBuilder.UpdateSmartBFTConfig(t, cfgutil.NewSmartBFTConfig(cfgutil.SmartBFTConfigName.RequestMaxBytes, "1048576"))
 	configUpdateBuilder.RemoveParty(t, types.PartyID(2))
 	configUpdateBuilder.AddNewParty(t, &cfgutil.PartyConfig{

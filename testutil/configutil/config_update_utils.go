@@ -276,6 +276,11 @@ func (c *ConfigUpdateBuilder) UpdateBatchTimeouts(t *testing.T, batchTimeoutsCon
 	return c.createConfigUpdate(t, c.configData)
 }
 
+func (c *ConfigUpdateBuilder) UpdateBatchRequestMaxBytes(t *testing.T, batchRequestMaxBytesConfig int) []byte {
+	overwriteNestedJSONValue(t, c.configData, batchRequestMaxBytesConfig, "channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "BatchingConfig", "RequestMaxBytes")
+	return c.createConfigUpdate(t, c.configData)
+}
+
 func (c *ConfigUpdateBuilder) UpdateSmartBFTConfig(t *testing.T, smartBFTConfig *smartBFTConfig) []byte {
 	overwriteNestedJSONValue(t, c.configData, smartBFTConfig.Value(), "channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "ConsensusConfig", "SmartBFTConfig", smartBFTConfig.Name())
 	return c.createConfigUpdate(t, c.configData)
