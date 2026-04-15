@@ -544,6 +544,7 @@ func waitForRunningState(t *testing.T, consenter *consensus_node.Consensus, conf
 		status := consenter.GetStatus()
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == configSeq
 	}, 120*time.Second, 100*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 }
 
 func waitForPendingAdminState(t *testing.T, consenter *consensus_node.Consensus, configSeq uint64) {
