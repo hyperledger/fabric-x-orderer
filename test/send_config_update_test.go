@@ -1150,8 +1150,6 @@ func TestChangePartyCertificates(t *testing.T) {
 //  4. Restart again, extend client trust with the new TLS CA, and verify continued transaction submission and block pulling.
 //  5. Replace party crypto material on disk, update config to use only the new CA certs, and submit final config update.
 //  6. Restart once more and confirm the network remains operational by sending and pulling additional transactions.
-//
-// TODO: dynamic reconfig instead of stop and restart
 func TestChangePartyCACertificates(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1186,6 +1184,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	numOfArmaNodes := len(netInfo)
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -1229,6 +1228,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToUpdate := types.PartyID(1)
+	nonUpdatedParties := []types.PartyID{2, 3, 4}
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
 
@@ -1288,27 +1288,24 @@ func TestChangePartyCACertificates(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForNetworkRelaunch(t, netInfo, 1)
 
-	// Stop Arma nodes
-	armaNetwork.Stop()
-
-	// Verify that the party's certificates are updated by checking the assembler's shared config
-	assemblerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_assembler.yaml")
-	assemblerConfig, lastConfigBlock, err := config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+	// Verify that the party's CA certificates are updated by checking the router's shared config
+	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_router.yaml")
+	routerConfig, lastConfigBlock, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
-	assemblerNodeConfig := assemblerConfig.ExtractAssemblerConfig(lastConfigBlock)
-	ordererConfig, ok := assemblerNodeConfig.Bundle.OrdererConfig()
+	routerNodeConfig := routerConfig.ExtractRouterConfig(lastConfigBlock)
+	ordererConfig, ok := routerNodeConfig.Bundle.OrdererConfig()
 	require.True(t, ok, "failed to extract orderer config from the last config block")
 
-	assemblerSharedConfig := protos.SharedConfig{}
-	err = proto.Unmarshal(ordererConfig.ConsensusMetadata(), &assemblerSharedConfig)
+	routerSharedConfig := protos.SharedConfig{}
+	err = proto.Unmarshal(ordererConfig.ConsensusMetadata(), &routerSharedConfig)
 	require.NoError(t, err)
 
 	var updatedPartyConfig *protos.PartyConfig
-	for _, partyConfig := range assemblerSharedConfig.GetPartiesConfig() {
+	for _, partyConfig := range routerSharedConfig.GetPartiesConfig() {
 		if partyConfig.PartyID == uint32(partyToUpdate) {
 			updatedPartyConfig = partyConfig
 			break
@@ -1333,10 +1330,6 @@ func TestChangePartyCACertificates(t *testing.T) {
 		}
 		return false
 	}(), "TLS CA certs were not updated in the config")
-
-	// 2. Restart Arma nodes
-	armaNetwork.Restart(t, readyChan)
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
@@ -1414,24 +1407,24 @@ func TestChangePartyCACertificates(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
+	t.Logf("Wait for party %d to enter pending admin state and then stop it", partyToUpdate)
+	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToUpdate})
+	armaNetwork.StopParties([]types.PartyID{partyToUpdate})
 
-	// Stop Arma nodes
-	armaNetwork.Stop()
+	t.Log("Wait for arma nodes to restart dynamically")
+	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, nonUpdatedParties, 2)
 
-	// Get the config block from an assembler ledger and write it to a temp location
-	_, lastConfigBlock, err = config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+	// Get the config block from router's config store and write it to a temp location
+	_, lastConfigBlock, err = config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigR", zap.DebugLevel))
 	require.NoError(t, err)
 	newConfigBlockPath = filepath.Join(dir, "config2.block")
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
 	require.NoError(t, err)
 
 	// 4.
-	// Restart Arma nodes
-	armaNetwork.Restart(t, readyChan)
-
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	// Restart the updated party
+	armaNetwork.RestartParties(t, []types.PartyID{partyToUpdate}, readyChan)
+	testutil.WaitReady(t, readyChan, 3+numOfShards, 10)
 
 	// 5.
 	// Update the TLS CA certs
@@ -1497,17 +1490,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStopped(t, netInfo)
-
-	// Stop Arma nodes
-	armaNetwork.Stop()
-
-	// Restart Arma nodes
-	armaNetwork.Restart(t, readyChan)
-	defer armaNetwork.Stop()
-
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+	testutil.WaitForNetworkRelaunch(t, netInfo, 3)
 
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 	signer, certBytes, err = testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
