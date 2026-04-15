@@ -31,6 +31,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// Scenario:
+// 1. Start assembler with stub consenter and batcher.
+// 2. Submit a valid config update that changes batch timeout settings.
+// 3. Verify assembler is running and advances config sequence.
 func TestSendConfigUpdate(t *testing.T) {
 	partyId := types.PartyID(1)
 	parties := []types.PartyID{partyId}
@@ -42,7 +46,7 @@ func TestSendConfigUpdate(t *testing.T) {
 
 	// wait for the assembler to be running.
 	require.Eventually(t, func() bool {
-		status := testSetup.assembblerNode.GetStatus()
+		status := testSetup.assemblerNode.GetStatus()
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -51,40 +55,20 @@ func TestSendConfigUpdate(t *testing.T) {
 	defer cleanUp()
 	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
 	require.NotNil(t, configUpdatePbData)
-	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
-	configEnvelope, err := testSetup.bundle.ConfigtxValidator().ProposeConfigUpdate(configUpdateEnvelope)
-	require.NoError(t, err)
-	env, err := protoutil.CreateSignedEnvelope(common.HeaderType_CONFIG, testSetup.bundle.ConfigtxValidator().ChannelID(), nil, configEnvelope, int32(0), 0)
-	require.NoError(t, err)
-	require.NotNil(t, env)
-	configReq, err := protoutil.Marshal(env)
-	require.NoError(t, err)
-	require.NotNil(t, configReq)
 
-	// prepare the decision and deliver it.
-	prevHash := protoutil.BlockHeaderHash(testSetup.genesisBlock.Header)
-	configBlock, err := consensus.CreateConfigCommonBlock(testSetup.genesisBlock.GetHeader().GetNumber()+1, prevHash, 1, types.DecisionNum(1), 1, 0, configReq)
-	require.NoError(t, err)
-	decisionNum := types.DecisionNum(1)
-	s := &state.State{N: uint16(len(parties)), ShardCount: 1, Shards: []state.ShardTerm{{Shard: types.ShardID(1), Term: 0}}}
-
-	ba := &state.AvailableBatchOrdered{
-		AvailableBatch: state.NewAvailableBatch(1, types.ShardIDConsensus, 1, nil),
-		OrderingInformation: &state.OrderingInformation{
-			CommonBlock: configBlock,
-			DecisionNum: decisionNum,
-		},
-	}
-	err = testSetup.stubConsenter.DeliverConfigDecisionFromBA(ba, s)
-	require.NoError(t, err)
+	testSetup.SendConfigUpdate(t, configUpdatePbData, parties, dir, 1)
 
 	// check that the assembler has applied the new config and is running with the new config
 	require.Eventually(t, func() bool {
-		status := testSetup.assembblerNode.GetStatus()
+		status := testSetup.assemblerNode.GetStatus()
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
+// Scenario:
+// 1. Start assembler with stub consenter and batcher.
+// 2. Submit a config update that removes the party.
+// 3. Verify assembler transitions to pending-admin state.
 func TestPartyEvicted(t *testing.T) {
 	partyId := types.PartyID(1)
 	partyToRemove := partyId
@@ -97,7 +81,7 @@ func TestPartyEvicted(t *testing.T) {
 
 	// wait for the assembler to be running.
 	require.Eventually(t, func() bool {
-		status := testSetup.assembblerNode.GetStatus()
+		status := testSetup.assemblerNode.GetStatus()
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
 	}, 20*time.Second, 100*time.Millisecond)
 
@@ -106,42 +90,98 @@ func TestPartyEvicted(t *testing.T) {
 	defer cleanUp()
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 	require.NotNil(t, configUpdatePbData)
-	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
-	configEnvelope, err := testSetup.bundle.ConfigtxValidator().ProposeConfigUpdate(configUpdateEnvelope)
-	require.NoError(t, err)
-	env, err := protoutil.CreateSignedEnvelope(common.HeaderType_CONFIG, testSetup.bundle.ConfigtxValidator().ChannelID(), nil, configEnvelope, int32(0), 0)
-	require.NoError(t, err)
-	require.NotNil(t, env)
-	configReq, err := protoutil.Marshal(env)
-	require.NoError(t, err)
-	require.NotNil(t, configReq)
 
-	// prepare the decision and deliver it.
-	prevHash := protoutil.BlockHeaderHash(testSetup.genesisBlock.Header)
-	configBlock, err := consensus.CreateConfigCommonBlock(testSetup.genesisBlock.GetHeader().GetNumber()+1, prevHash, 1, types.DecisionNum(1), 1, 0, configReq)
-	require.NoError(t, err)
-	decisionNum := types.DecisionNum(1)
-	s := &state.State{N: uint16(len(parties)), ShardCount: 1, Shards: []state.ShardTerm{{Shard: types.ShardID(1), Term: 0}}}
-
-	ba := &state.AvailableBatchOrdered{
-		AvailableBatch: state.NewAvailableBatch(1, types.ShardIDConsensus, 1, nil),
-		OrderingInformation: &state.OrderingInformation{
-			CommonBlock: configBlock,
-			DecisionNum: decisionNum,
-		},
-	}
-	err = testSetup.stubConsenter.DeliverConfigDecisionFromBA(ba, s)
-	require.NoError(t, err)
+	testSetup.SendConfigUpdate(t, configUpdatePbData, parties, dir, 1)
 
 	// check that the assembler detected that it got evicted and is pending admin.
 	require.Eventually(t, func() bool {
-		status := testSetup.assembblerNode.GetStatus()
+		status := testSetup.assemblerNode.GetStatus()
+		return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == 0
+	}, 20*time.Second, 100*time.Millisecond)
+}
+
+// Scenario:
+// 1. Start assembler for a single party.
+// 2. Submit a config update that changes the assembler endpoint.
+// 3. Verify assembler detects endpoint change and transitions to pending-admin state.
+func TestAssemblerEndpointUpdate(t *testing.T) {
+	partyId := types.PartyID(1)
+	parties := []types.PartyID{partyId}
+
+	dir := t.TempDir()
+	testSetup := createReconfigTestSetup(t, dir, partyId)
+	testSetup.Start()
+	defer testSetup.Stop()
+
+	// wait for the assembler to be running.
+	require.Eventually(t, func() bool {
+		status := testSetup.assemblerNode.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
+	}, 20*time.Second, 100*time.Millisecond)
+
+	// create the config request.
+	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	defer cleanUp()
+	configUpdatePbData := configUpdateBuilder.UpdateAssemblerEndpoint(t, partyId, "9.9.9.9", 9999)
+	require.NotNil(t, configUpdatePbData)
+
+	testSetup.SendConfigUpdate(t, configUpdatePbData, parties, dir, 1)
+
+	// check that the assembler detected that its endpoint got updated and is pending admin.
+	require.Eventually(t, func() bool {
+		status := testSetup.assemblerNode.GetStatus()
+		return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == 0
+	}, 20*time.Second, 100*time.Millisecond)
+}
+
+// Scenario:
+// 1. Start assembler with stub consenter and batcher.
+// 2. Generate a new assembler TLS certificate signed by the CA.
+// 3. Submit a config update with the new cert and verify pending-admin transition.
+func TestAssemblerCertUpdate(t *testing.T) {
+	partyId := types.PartyID(1)
+	parties := []types.PartyID{partyId}
+
+	dir := t.TempDir()
+	testSetup := createReconfigTestSetup(t, dir, partyId)
+	testSetup.Start()
+	defer testSetup.Stop()
+
+	// wait for the assembler to be running.
+	require.Eventually(t, func() bool {
+		status := testSetup.assemblerNode.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
+	}, 20*time.Second, 100*time.Millisecond)
+
+	// create the config request.
+	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	defer cleanUp()
+
+	nodesIPs := testutil.GetNodesIPsFromNetInfo(testSetup.netInfo)
+	require.NotNil(t, nodesIPs)
+
+	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "tlsca", "tlsca-cert.pem")
+	tlsCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "tlsca", "priv_sk")
+	newAssemblerTLSCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "orderers", fmt.Sprintf("party%d", partyId), "assembler", "tls")
+	newAssemblerTLSKeyPath := filepath.Join(newAssemblerTLSCertPath, "key.pem")
+
+	newAssemblerTLSCert, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newAssemblerTLSCertPath, newAssemblerTLSKeyPath, nodesIPs)
+	require.NoError(t, err)
+	require.NotNil(t, newAssemblerTLSCert)
+
+	configUpdatePbData := configUpdateBuilder.UpdateAssemblerTLSCert(t, partyId, newAssemblerTLSCert)
+	require.NotNil(t, configUpdatePbData)
+	testSetup.SendConfigUpdate(t, configUpdatePbData, parties, dir, 1)
+
+	// check that the assembler detected that its certificate got updated and is pending admin.
+	require.Eventually(t, func() bool {
+		status := testSetup.assemblerNode.GetStatus()
 		return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == 0
 	}, 20*time.Second, 100*time.Millisecond)
 }
 
 type reconfigTestSetup struct {
-	assembblerNode     *assembler.Assembler
+	assemblerNode      *assembler.Assembler
 	assemblerFileStore string
 	assemblerListener  net.Listener
 	stubConsenter      *stub.StubConsenter
@@ -150,6 +190,7 @@ type reconfigTestSetup struct {
 	batcherFileStore   string
 	genesisBlock       *common.Block
 	bundle             channelconfig.Resources
+	netInfo            map[testutil.NodeName]*testutil.ArmaNodeInfo
 }
 
 func (s *reconfigTestSetup) Start() {
@@ -158,13 +199,41 @@ func (s *reconfigTestSetup) Start() {
 	if s.assemblerListener != nil {
 		s.assemblerListener.Close()
 	}
-	s.assembblerNode.StartAssemblerService()
+	s.assemblerNode.StartAssemblerService()
 }
 
 func (s *reconfigTestSetup) Stop() {
-	s.assembblerNode.Stop()
+	s.assemblerNode.Stop()
 	s.stubBatcher.Stop()
 	s.stubConsenter.Stop()
+}
+
+func (s *reconfigTestSetup) SendConfigUpdate(t *testing.T, configUpdatePbData []byte, parties []types.PartyID, dir string, decisionNum types.DecisionNum) {
+	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configEnvelope, err := s.bundle.ConfigtxValidator().ProposeConfigUpdate(configUpdateEnvelope)
+	require.NoError(t, err)
+	env, err := protoutil.CreateSignedEnvelope(common.HeaderType_CONFIG, s.bundle.ConfigtxValidator().ChannelID(), nil, configEnvelope, int32(0), 0)
+	require.NoError(t, err)
+	require.NotNil(t, env)
+	configReq, err := protoutil.Marshal(env)
+	require.NoError(t, err)
+	require.NotNil(t, configReq)
+
+	// prepare the decision and deliver it.
+	prevHash := protoutil.BlockHeaderHash(s.genesisBlock.Header)
+	configBlock, err := consensus.CreateConfigCommonBlock(s.genesisBlock.GetHeader().GetNumber()+1, prevHash, 1, decisionNum, 1, 0, configReq)
+	require.NoError(t, err)
+	st := &state.State{N: uint16(len(parties)), ShardCount: 1, Shards: []state.ShardTerm{{Shard: types.ShardID(1), Term: 0}}}
+
+	ba := &state.AvailableBatchOrdered{
+		AvailableBatch: state.NewAvailableBatch(1, types.ShardIDConsensus, 1, nil),
+		OrderingInformation: &state.OrderingInformation{
+			CommonBlock: configBlock,
+			DecisionNum: decisionNum,
+		},
+	}
+	err = s.stubConsenter.DeliverConfigDecisionFromBA(ba, st)
+	require.NoError(t, err)
 }
 
 func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *reconfigTestSetup {
@@ -194,11 +263,12 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 		consenterFileStore: consenterFileStore,
 		stubBatcher:        &stubBatcher,
 		batcherFileStore:   batcherFileStore,
-		assembblerNode:     assemblerNode,
+		assemblerNode:      assemblerNode,
 		assemblerFileStore: assemblerFileStore,
 		assemblerListener:  assemblerListener,
 		genesisBlock:       genesisBlock,
 		bundle:             assemblerBundle,
+		netInfo:            netInfo,
 	}
 }
 
