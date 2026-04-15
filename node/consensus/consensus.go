@@ -147,11 +147,13 @@ func (c *Consensus) StartConsensusService() {
 	orderer.RegisterClusterNodeServiceServer(srv.Server(), c)
 
 	go func() {
+		address := srv.Address()
+		c.Logger.Infof("Consensus network service is starting on %s", address)
 		err := srv.Start()
 		if err != nil {
 			panic(err)
 		}
-		c.Logger.Infof("Consensus gRPC server stopped")
+		c.Logger.Infof("Consensus network service on %s has been stopped", address)
 	}()
 }
 

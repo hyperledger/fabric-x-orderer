@@ -118,11 +118,13 @@ func (b *Batcher) StartBatcherService() {
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), b)
 
 	go func() {
+		address := srv.Address()
+		b.logger.Infof("Batcher network service is starting on %s", address)
 		err := srv.Start()
 		if err != nil {
 			panic(err)
 		}
-		b.logger.Infof("Batcher gRPC server stopped")
+		b.logger.Infof("Batcher network service on %s has been stopped", address)
 	}()
 }
 

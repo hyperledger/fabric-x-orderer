@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -40,6 +41,7 @@ type StubConsenter struct {
 	txs         uint32           // Number of txs received from router
 	partyID     types.PartyID
 	decisions   chan *common.Block
+	logger      *flogging.FabricLogger
 }
 
 func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubConsenter {
@@ -64,6 +66,7 @@ func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubCon
 		server:      server,
 		partyID:     partyID,
 		decisions:   make(chan *common.Block, 100),
+		logger:      testutil.CreateLogger(t, int(partyID)),
 	}
 	return stubConsenter
 }
@@ -93,6 +96,7 @@ func NewStubConsenterFromConfig(t *testing.T, configStoreDir string, nodeConfigP
 		certificate: consenterConfig.TLSCertificateFile,
 		key:         consenterConfig.TLSPrivateKeyFile,
 		decisions:   make(chan *common.Block, 100),
+		logger:      testutil.CreateLogger(t, int(consenterConfig.PartyId)),
 	}
 
 	return stubConsenter
@@ -129,9 +133,12 @@ func (sc *StubConsenter) Start() {
 	protos.RegisterConsensusServer(sc.server.Server(), sc)
 	orderer.RegisterAtomicBroadcastServer(sc.server.Server(), sc)
 	go func() {
+		address := sc.server.Address()
+		sc.logger.Infof("StubConsenter network service is starting on %s", address)
 		if err := sc.server.Start(); err != nil {
 			panic(err)
 		}
+		sc.logger.Infof("StubConsenter network service on %s has been stopped", address)
 	}()
 }
 
@@ -161,9 +168,12 @@ func (sc *StubConsenter) Restart() {
 	protos.RegisterConsensusServer(sc.server.Server(), sc)
 	orderer.RegisterAtomicBroadcastServer(sc.server.Server(), sc)
 	go func() {
+		address := sc.server.Address()
+		sc.logger.Infof("StubConsenter network service is re-starting on %s", address)
 		if err := sc.server.Start(); err != nil {
 			panic(err)
 		}
+		sc.logger.Infof("StubConsenter network service on %s has been stopped", address)
 	}()
 }
 

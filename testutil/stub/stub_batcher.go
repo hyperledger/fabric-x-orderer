@@ -146,9 +146,12 @@ func (sb *StubBatcher) Server() *comm.GRPCServer {
 func (sb *StubBatcher) Start() {
 	protos.RegisterRequestTransmitServer(sb.server.Server(), sb)
 	go func() {
+		address := sb.server.Address()
+		sb.logger.Infof("StubBatcher network service is starting on %s", address)
 		if err := sb.server.Start(); err != nil {
 			panic(err)
 		}
+		sb.logger.Infof("StubBatcher network service on %s has been stopped", address)
 	}()
 }
 
@@ -177,9 +180,12 @@ func (sb *StubBatcher) Restart() {
 	// register the service again and start the new server
 	protos.RegisterRequestTransmitServer(sb.server.Server(), sb)
 	go func() {
+		address := sb.server.Address()
+		sb.logger.Infof("StubBatcher network service is re-starting on %s", address)
 		if err := sb.server.Start(); err != nil {
 			panic(err)
 		}
+		sb.logger.Infof("StubBatcher network service on %s has been stopped", address)
 	}()
 }
 
