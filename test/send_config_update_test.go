@@ -363,10 +363,11 @@ func TestRemovePartyRunAll(t *testing.T) {
 	armaNetwork.StopParties(remainingParties)
 }
 
-// TestRemoveStoppedPartyThenRestart verifies that after removing a stopped party that via a config update
-// and stopping all Arma nodes, restarting the entire network results in all nodes starting successfully,
-// while the removed party's nodes fail to establish connections to the rest of the network.
-// TODO: dynamic reconfig instead of stop and restart
+// TestRemoveStoppedPartyThenRestart verifies the removal of a stopped party.
+// A network of 5 nodes is initialized, then party 5 is stopped.
+// A config tx removing this party is submitted.
+// all Arma nodes, except those of the removed party, restart dynamically.
+// When the removed party's nodes restarted, they fail to establish connections with the rest of the network.
 func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -374,7 +375,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 4
+	numOfParties := 5
 	numOfShards := 1
 
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
@@ -393,6 +394,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	numOfArmaNodes := len(netInfo)
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -417,7 +419,8 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	partyToRemove := types.PartyID(4)
+	partyToRemove := types.PartyID(5)
+
 	// Stop the party to be removed
 	armaNetwork.StopParties([]types.PartyID{partyToRemove})
 
@@ -482,43 +485,38 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 		Signer:       signutil.CreateTestSigner(t, "org1", dir),
 	})
 
-	// Wait for Arma nodes to stop
-	testutil.WaitSoftStoppedByType(t, netInfo, []testutil.NodeType{testutil.Router, testutil.Batcher, testutil.Consensus})
-
-	// Stop Arma nodes
-	armaNetwork.Stop()
-
+	// Verify that the party is removed by checking the router's shared config
 	for _, partyId := range remainingParties {
-		// Verify that the party is removed by checking the assembler's shared config
-		assemblerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), "local_config_assembler.yaml")
-		assemblerNodeConfig, _, err := config.ReadConfig(assemblerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigAssembler", zap.DebugLevel))
+		routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), "local_config_router.yaml")
+		routerNodeConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 		require.NoError(t, err)
-		require.Equal(t, numOfParties-1, len(assemblerNodeConfig.SharedConfig.GetPartiesConfig()), "Party was not removed from the config")
+		require.Equal(t, numOfParties-1, len(routerNodeConfig.SharedConfig.GetPartiesConfig()), "Party was not removed from the config")
 
-		for _, partyConfig := range assemblerNodeConfig.SharedConfig.GetPartiesConfig() {
+		for _, partyConfig := range routerNodeConfig.SharedConfig.GetPartiesConfig() {
 			require.NotEqual(t, partyToRemove, partyConfig.PartyID, "Removed party still exists in the config")
 		}
 	}
 
-	// Restart nodes
-	armaNetwork.Restart(t, readyChan)
-	defer armaNetwork.Stop()
+	// Restart the removed party
+	armaNetwork.RestartParties(t, []types.PartyID{partyToRemove}, readyChan)
+	testutil.WaitReady(t, readyChan, 3+numOfShards, 10)
 
-	// Expect all the nodes to start successfully
-	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
-
-	primaryPartyID := types.PartyID((uint64(1))%uint64(numOfParties) + 1)
-
-	primaryBatcher := armaNetwork.GetBatcher(t, primaryPartyID, types.ShardID(1))
-	primaryBatcherEndPoint := fmt.Sprintf("%s:%d", primaryBatcher.Listener.Addr().(*net.TCPAddr).IP.String(), primaryBatcher.Listener.Addr().(*net.TCPAddr).Port)
+	observedPrimaryIdByRemovedParty := types.PartyID((uint64(1))%uint64(numOfParties) + 1)
+	primaryBatcher := armaNetwork.GetBatcher(t, observedPrimaryIdByRemovedParty, types.ShardID(1))
+	primaryBatcherEndpoint := fmt.Sprintf("%s:%d", primaryBatcher.Listener.Addr().(*net.TCPAddr).IP.String(), primaryBatcher.Listener.Addr().(*net.TCPAddr).Port)
 	removedBatcher := armaNetwork.GetBatcher(t, partyToRemove, types.ShardID(1))
 
-	// Verify that the removed party's batcher fails to connect to the primary batcher of its shard
-	require.Eventually(t, func() bool {
-		<-removedBatcher.RunInfo.Session.Err.Detect("%s", fmt.Sprintf("Failed creating Deliver stream to %s", primaryBatcherEndPoint))
-		<-removedBatcher.RunInfo.Session.Err.Detect("error: tls: unknown certificate authority")
-		return true
-	}, 10*time.Second, 500*time.Millisecond, "Removed party's batcher succeded to connect to the primary batcher")
+	// Verify that the removed party's batcher fails to connect to the primary batcher of its shard (as seen from its own stale view).
+	detectCh := removedBatcher.RunInfo.Session.Err.Detect(
+		`Failed creating Deliver stream to %s: .*error: tls: unknown certificate authority`,
+		primaryBatcherEndpoint,
+	)
+	defer removedBatcher.RunInfo.Session.Err.CancelDetects()
+	select {
+	case <-detectCh:
+	case <-time.After(15 * time.Second):
+		require.Fail(t, "Removed party's batcher succeeded to connect to the primary batcher")
+	}
 }
 
 // TestRemoveParty verifies that removing a party via a config update succeeds,
