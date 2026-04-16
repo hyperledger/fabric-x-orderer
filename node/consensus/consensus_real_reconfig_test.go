@@ -57,7 +57,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	netInfo := testutil.CreateNetworkWithPortAllocator(t, configPath, len(parties), numOfShards, "TLS", "none", testutil.SharedTestPortAllocator())
 	require.NotNil(t, netInfo)
 
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
@@ -65,7 +65,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
-	updateFileStorePath(t, dir, parties)
+	updateFileStoreAndMonitoringPort(t, dir, netInfo)
 
 	netInfo.CleanUp()
 	consensusNodes, servers, _ := createConsensusNodesAndGRPCServers(t, dir, parties)

@@ -8,6 +8,7 @@ package consensus_test
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	consensus_node "github.com/hyperledger/fabric-x-orderer/node/consensus"
@@ -32,12 +32,12 @@ import (
 
 func createTestSetupReal(t *testing.T, dir string, parties []types.PartyID, numOfShards int) (*common.Block, consensusTestSetup) {
 	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	netInfo := testutil.CreateNetworkWithPortAllocator(t, configPath, len(parties), numOfShards, "TLS", "none", testutil.SharedTestPortAllocator())
 	require.NotNil(t, netInfo)
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
-	updateFileStorePath(t, dir, parties)
+	updateFileStoreAndMonitoringPort(t, dir, netInfo)
 
 	netInfo.CleanUp()
 	consensusNodes, servers, genesisBlock := createConsensusNodesAndGRPCServers(t, dir, parties)
@@ -149,24 +149,19 @@ func startConsensusNodesAndRegisterGRPCServers(t *testing.T, parties []types.Par
 	return ledgerListeners
 }
 
-func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID) {
-	for _, i := range parties {
-		fileStoreDir := t.TempDir()
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
-		require.NoError(t, err)
-		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
-		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
-		require.NoError(t, err)
-	}
-
-	for _, i := range parties {
-		fileStoreDir := t.TempDir()
-		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_batcher1.yaml")
-		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
-		require.NoError(t, err)
-		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
-		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
-		require.NoError(t, err)
+func updateFileStoreAndMonitoringPort(t *testing.T, dir string, netInfo testutil.ArmaNodesInfoMap) {
+	for _, nodeInfo := range netInfo {
+		var nodeConfigPath string
+		switch nodeInfo.NodeType {
+		case testutil.Consensus:
+			nodeConfigPath = filepath.Join(dir, "config", fmt.Sprintf("party%d", nodeInfo.PartyId), "local_config_consenter.yaml")
+		case testutil.Batcher:
+			nodeConfigPath = filepath.Join(dir, "config", fmt.Sprintf("party%d", nodeInfo.PartyId), fmt.Sprintf("local_config_batcher%d.yaml", nodeInfo.ShardId))
+		default:
+			continue
+		}
+		storagePath := t.TempDir()
+		monitoringPort := uint32(nodeInfo.MonitoringListener.Addr().(*net.TCPAddr).Port)
+		testutil.EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, nodeInfo.ConfigBlockPath, monitoringPort)
 	}
 }
