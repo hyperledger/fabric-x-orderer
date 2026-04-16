@@ -1,6 +1,6 @@
 module github.com/hyperledger/fabric-x-orderer
 
-go 1.25.5
+go 1.26.2
 
 require (
 	github.com/cockroachdb/errors v1.12.0

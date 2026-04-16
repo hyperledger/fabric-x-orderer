@@ -4,7 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.25.5 AS builder
+ARG GO_IMAGE_TAG=1.26.2
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:${GO_IMAGE_TAG} AS builder
 # Build arguments used for cross-compiling
 ARG TARGETOS
 ARG TARGETARCH
