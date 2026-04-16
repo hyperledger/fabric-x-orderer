@@ -234,12 +234,13 @@ func (r *Router) StartRouterService() {
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), r)
 
 	go func() {
-		r.logger.Infof("Router network service is starting on %s", srv.Address())
+		address := srv.Address()
+		r.logger.Infof("Router network service is starting on %s", address)
 		err := srv.Start()
 		if err != nil {
 			panic(err)
 		}
-		r.logger.Infof("Router network service was stopped")
+		r.logger.Infof("Router network service on %s has been stopped", address)
 	}()
 
 	r.configSubmitter.Start()

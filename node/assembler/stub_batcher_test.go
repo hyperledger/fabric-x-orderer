@@ -29,6 +29,7 @@ type stubBatcher struct {
 	cert        []byte
 	key         []byte
 	batcherInfo config.BatcherInfo
+	logger      *flogging.FabricLogger
 
 	deliveryService *batcher.BatcherDeliverService
 }
@@ -74,12 +75,16 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		key:             certKeyPair.Key,
 		batcherInfo:     batcherInfo,
 		deliveryService: deliveryService,
+		logger:          logger,
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher.deliveryService)
 	go func() {
+		address := server.Address()
+		logger.Infof("StubBatcher network service is starting on %s", address)
 		err := server.Start()
 		require.NoError(t, err)
+		logger.Infof("StubBatcher network service on %s has been stopped", address)
 	}()
 
 	return stubBatcher
@@ -106,9 +111,12 @@ func (sb *stubBatcher) Restart() {
 	orderer.RegisterAtomicBroadcastServer(server.Server(), sb.deliveryService)
 
 	go func() {
+		address := server.Address()
+		sb.logger.Infof("StubBatcher network service is re-starting on %s", address)
 		if err := sb.server.Start(); err != nil {
 			panic(err)
 		}
+		sb.logger.Infof("StubBatcher network service on %s has been stopped", address)
 	}()
 }
 

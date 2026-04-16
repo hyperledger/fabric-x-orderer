@@ -282,12 +282,13 @@ func (a *Assembler) StartAssemblerService() {
 	a.net = srv
 	orderer.RegisterAtomicBroadcastServer(srv.Server(), a)
 	go func() {
-		a.logger.Infof("Assembler network service is starting on %s", srv.Address())
+		address := srv.Address()
+		a.logger.Infof("Assembler network service is starting on %s", address)
 		err := srv.Start()
 		if err != nil {
 			panic(err)
 		}
-		a.logger.Infof("Assembler network service was stopped")
+		a.logger.Infof("Assembler network service on %s has been stopped", address)
 	}()
 
 	a.status.SetState(utils.StateRunning)

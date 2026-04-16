@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -33,6 +34,7 @@ type stubConsenter struct {
 	consenterInfo  config.ConsenterInfo
 	decisions      chan *common.Block
 	decisionSentCh chan struct{} // decision sent signal
+	logger         *flogging.FabricLogger
 }
 
 func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubConsenter {
@@ -64,13 +66,17 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubCo
 		consenterInfo:  consenterInfo,
 		decisions:      make(chan *common.Block, 100),
 		decisionSentCh: make(chan struct{}, 1),
+		logger:         flogging.MustGetLogger(fmt.Sprintf("stub-consenter-P%d", partyID)),
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubConsenter)
 
 	go func() {
+		address := server.Address()
+		stubConsenter.logger.Infof("StubConsenter network service is starting on %s", address)
 		err := server.Start()
 		require.NoError(t, err)
+		stubConsenter.logger.Infof("StubConsenter network service on %s has been stopped", address)
 	}()
 
 	return stubConsenter
@@ -97,9 +103,12 @@ func (sc *stubConsenter) Restart() {
 	orderer.RegisterAtomicBroadcastServer(server.Server(), sc)
 
 	go func() {
+		address := server.Address()
+		sc.logger.Infof("StubConsenter network service is re-starting on %s", address)
 		if err := sc.server.Start(); err != nil {
 			panic(err)
 		}
+		sc.logger.Infof("StubConsenter network service on %s has been stopped", address)
 	}()
 }
 
