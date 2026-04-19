@@ -478,6 +478,10 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 		return nil, errors.Wrap(err, "failed deserializing proposal header")
 	}
 
+	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
+		decisionNumOfLastConfigBlock = uint64(hdr.Num)
+	}
+
 	proposalMsg := &state.MessageToSign{}
 	if err := proposalMsg.Unmarshal(msgs[0]); err != nil {
 		return nil, err
@@ -664,6 +668,10 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 	msgs := make([][]byte, 0)
 
 	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
+
+	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
+		decisionNumOfLastConfigBlock = uint64(hdr.Num)
+	}
 
 	proposalBytes := state.ProposalToBytes(proposal)
 	proposalData := &common.BlockData{
