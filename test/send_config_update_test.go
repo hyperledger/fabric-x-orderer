@@ -1139,17 +1139,22 @@ func TestChangePartyCertificates(t *testing.T) {
 	})
 }
 
-// TestChangePartyCACertificates verifies end-to-end certificate rotation for a party in a running Arma network.
-//
-// The test bootstraps a multi-party, multi-shard network, sends baseline transactions to confirm liveness,
-// and then performs a staged configuration update workflow for one target party:
-//
-//  1. Append new TLS CA and signing CA certificates to channel config and verify they are present in shared metadata.
-//  2. Restart nodes and confirm transaction flow still succeeds with trust overlap.
-//  3. Update node-level TLS/signing certificates (router, batchers, assembler, consenter) via config update.
-//  4. Restart again, extend client trust with the new TLS CA, and verify continued transaction submission and block pulling.
-//  5. Replace party crypto material on disk, update config to use only the new CA certs, and submit final config update.
-//  6. Restart once more and confirm the network remains operational by sending and pulling additional transactions.
+// TestChangePartyCACertificates tests a party's CA change.
+// Scenario:
+// 1. Run an arma network of 4 parties, single shard.
+// 2. Send txs and pull blocks to ensure network is operational.
+// 3. Create a new TLS and signing CA for party 1.
+// 4. Send a config tx that appends each CA to the current CA list (TLS and signing) of party 1.
+// 5. Wait for dynamic restart of all nodes.
+// 6. Send more txs and pull blocks to verify the network is operational again.
+// 7. Send a config tx that updates all node-level TLS and signing certificates, issued by the new CA's, for party 1.
+// 8. Wait for the nodes of party 1 to enter a pending admin state and stop party 1.
+// 9. Restart party 1 and wait for dynamic restart of the non-updated parties
+// 10. Extend client trust with the new TLS CA and send more txs and pull blocks to verify the network is operational again.
+// 11. Update party 1 crypto material on disk with new certificates.
+// 12. Send a config tx that updates the CA's list to include only the new CAs (i.e., remove old CAs).
+// 13. Wait for dynamic restart of all nodes.
+// 14. Send more txs and pull blocks to verify the network is operational again.
 func TestChangePartyCACertificates(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
 	dir, err := os.MkdirTemp("", t.Name())
@@ -1228,7 +1233,12 @@ func TestChangePartyCACertificates(t *testing.T) {
 	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToUpdate := types.PartyID(1)
-	nonUpdatedParties := []types.PartyID{2, 3, 4}
+	nonUpdatedParties := make([]types.PartyID, 0, len(parties)-1)
+	for _, party := range parties {
+		if party != partyToUpdate {
+			nonUpdatedParties = append(nonUpdatedParties, party)
+		}
+	}
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
 
@@ -1411,6 +1421,11 @@ func TestChangePartyCACertificates(t *testing.T) {
 	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToUpdate})
 	armaNetwork.StopParties([]types.PartyID{partyToUpdate})
 
+	// 4.
+	// Restart the updated party
+	armaNetwork.RestartParties(t, []types.PartyID{partyToUpdate}, readyChan)
+	testutil.WaitReady(t, readyChan, 3+numOfShards, 10)
+
 	t.Log("Wait for arma nodes to restart dynamically")
 	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, nonUpdatedParties, 2)
 
@@ -1420,11 +1435,6 @@ func TestChangePartyCACertificates(t *testing.T) {
 	newConfigBlockPath = filepath.Join(dir, "config2.block")
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
 	require.NoError(t, err)
-
-	// 4.
-	// Restart the updated party
-	armaNetwork.RestartParties(t, []types.PartyID{partyToUpdate}, readyChan)
-	testutil.WaitReady(t, readyChan, 3+numOfShards, 10)
 
 	// 5.
 	// Update the TLS CA certs
