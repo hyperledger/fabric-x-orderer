@@ -14,14 +14,10 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
 
 //go:generate counterfeiter -o mocks/height_detector.go . HeightDetector
@@ -136,7 +132,7 @@ func newBlockPuller(
 // excluding the endpoint corresponding to myPartyID to avoid self-connection.
 // Returns a slice of EndpointCriteria containing the endpoint address and TLS root certificates for each consenter.
 func extractEndpointCriteriaFromConfig(myPartyID types.PartyID, support ConsenterSupport) ([]comm.EndpointCriteria, error) {
-	party2endpoint, err := extractConsenterAddresses(support.SharedConfig())
+	party2endpoint, err := config.ExtractConsenterAddresses(support.SharedConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -154,31 +150,4 @@ func extractEndpointCriteriaFromConfig(myPartyID types.PartyID, support Consente
 	}
 
 	return endpoints, nil
-}
-
-func extractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
-	consensusMeta := ordererConfig.ConsensusMetadata()
-	sharedConfig := &protos.SharedConfig{}
-	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
-	}
-
-	conf := &config.Configuration{
-		SharedConfig: sharedConfig,
-	}
-
-	cInfo := conf.ExtractConsenters()
-
-	party2Endpoint := make(orderers.Party2Endpoint)
-
-	for _, consenter := range cInfo {
-		party2Endpoint[consenter.PartyID] = &orderers.Endpoint{
-			Address: consenter.Endpoint,
-		}
-		for _, cert := range consenter.TLSCACerts {
-			party2Endpoint[consenter.PartyID].RootCerts = append(party2Endpoint[consenter.PartyID].RootCerts, cert)
-		}
-	}
-
-	return party2Endpoint, nil
 }

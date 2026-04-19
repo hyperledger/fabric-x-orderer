@@ -18,10 +18,16 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"google.golang.org/grpc"
 
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
+
+//go:generate counterfeiter -o fake/endpoints_extractor.go --fake-name EndpointsExtractor . EndpointsExtractor
+type EndpointsExtractor interface {
+	ExtractEndpoints(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error)
+}
 
 // LedgerInfo an adapter to provide the interface to query
 // the ledger committer for current ledger height
@@ -71,6 +77,7 @@ type Deliverer struct {
 	DoneC                  chan struct{}
 	Signer                 identity.SignerSerializer
 	DeliverStreamer        DeliverStreamer
+	EndpointsExtractor     EndpointsExtractor
 	Logger                 *flogging.FabricLogger
 
 	// The maximal value of the actual retry interval, which cannot increase beyond this value
@@ -106,9 +113,19 @@ func (d *Deliverer) Initialize(channelConfig *cb.Config) {
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
 	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, types.PartyID(0)) //<< no self-party, as in the peer
-	extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+
+	ordererConfig, err := extractOrdererConfig(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
-		d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
+		d.Logger.Panicf("Failed to extract orderer config: %s", err)
+	}
+
+	if d.EndpointsExtractor == nil {
+		d.Logger.Panic("EndpointsExtractor is nil")
+	}
+
+	extractedEndpoints, err := d.EndpointsExtractor.ExtractEndpoints(ordererConfig)
+	if err != nil {
+		d.Logger.Panicf("Failed to extract endpoints: %s", err)
 	}
 	ordererSource.Update2(extractedEndpoints)
 	d.orderers = ordererSource
@@ -197,9 +214,14 @@ func (d *Deliverer) DeliverBlocks() {
 			totalDuration = time.Duration(0)
 
 			if channelConfig != nil {
-				extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+				ordererConfig, err := extractOrdererConfig(d.ChannelID, channelConfig, d.CryptoProvider)
 				if err != nil {
-					d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
+					d.Logger.Panicf("Failed to extract orderer config: %s", err)
+				}
+
+				extractedEndpoints, err := d.EndpointsExtractor.ExtractEndpoints(ordererConfig)
+				if err != nil {
+					d.Logger.Panicf("Failed to extract endpoints: %s", err)
 				}
 				d.orderers.Update2(extractedEndpoints)
 			}

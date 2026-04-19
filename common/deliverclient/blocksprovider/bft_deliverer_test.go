@@ -50,6 +50,7 @@ type bftDelivererTestSetup struct {
 	fakeDeliverClient                  *fake.DeliverClient
 	fakeCensorshipMonFactory           *fake.CensorshipDetectorFactory
 	fakeCensorshipMon                  *fake.CensorshipDetector
+	fakeEndpointsExtractor             *fake.EndpointsExtractor
 	fakeSleeper                        *fake.Sleeper
 	fakeDurationExceededHandler        *fake.DurationExceededHandler
 	fakeCryptoProvider                 bccsp.BCCSP
@@ -81,6 +82,7 @@ func newBFTDelivererTestSetup(t *testing.T) *bftDelivererTestSetup {
 		fakeDeliverStreamer:                &fake.DeliverStreamer{},
 		fakeDeliverClient:                  &fake.DeliverClient{},
 		fakeCensorshipMonFactory:           &fake.CensorshipDetectorFactory{},
+		fakeEndpointsExtractor:             &fake.EndpointsExtractor{},
 		fakeSleeper:                        &fake.Sleeper{},
 		fakeDurationExceededHandler:        &fake.DurationExceededHandler{},
 		deliverClientDoneC:                 make(chan struct{}),
@@ -211,6 +213,13 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 	s.channelConfig, s.fakeCryptoProvider, err = testSetupBFT(t, tempDir)
 	require.NoError(t, err)
 
+	s.fakeEndpointsExtractor.ExtractEndpointsReturns(orderers.Party2Endpoint{
+		types.PartyID(1): &orderers.Endpoint{Address: "orderer-address-1"},
+		types.PartyID(2): &orderers.Endpoint{Address: "orderer-address-2"},
+		types.PartyID(3): &orderers.Endpoint{Address: "orderer-address-3"},
+		types.PartyID(4): &orderers.Endpoint{Address: "orderer-address-4"},
+	}, nil)
+
 	s.d = &blocksprovider.BFTDeliverer{
 		ChannelID:                       "channel-id",
 		BlockHandler:                    s.fakeBlockHandler,
@@ -223,6 +232,7 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 		Signer:                          s.fakeSigner,
 		DeliverStreamer:                 s.fakeDeliverStreamer,
 		CensorshipDetectorFactory:       s.fakeCensorshipMonFactory,
+		EndpointsExtractor:              s.fakeEndpointsExtractor,
 		Logger:                          flogging.MustGetLogger("BFTDeliverer.test"),
 		TLSCertHash:                     []byte("tls-cert-hash"),
 		MaxRetryInterval:                10 * time.Second,
