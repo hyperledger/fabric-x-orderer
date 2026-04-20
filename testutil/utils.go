@@ -90,27 +90,41 @@ func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 	return &config
 }
 
+var defaultPortAllocator PortAllocator = &DefaultPortAllocator{}
+
+func allocatePort(t *testing.T, allocator PortAllocator) (string, net.Listener) {
+	if allocator == nil {
+		allocator = defaultPortAllocator
+	}
+	return allocator.Allocate(t)
+}
+
 // CreateNetwork creates a config.yaml file with the network configuration. This file is the input for armageddon generate command.
 func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) ArmaNodesInfoMap {
+	return CreateNetworkWithPortAllocator(t, configPath, numOfParties, numOfBatcherShards, useTLSRouter, useTLSAssembler, defaultPortAllocator)
+}
+
+// CreateNetworkWithPortAllocator creates a config.yaml file with a caller-provided port allocator.
+func CreateNetworkWithPortAllocator(t *testing.T, configPath string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string, allocator PortAllocator) ArmaNodesInfoMap {
 	var parties []genconfig.Party
 	netInfo := *NewArmaNodesInfoMap()
 	var maxPartyID types.PartyID
 
 	for i := range numOfParties {
-		assemblerPort, lla := GetAvailablePort(t)
-		_, llam := GetAvailablePort(t)
-		consenterPort, llc := GetAvailablePort(t)
-		_, llcm := GetAvailablePort(t)
-		routerPort, llr := GetAvailablePort(t)
-		_, llrm := GetAvailablePort(t)
-		var llbs []net.Listener
-		var llbms []net.Listener
+		assemblerPort, assemblerListener := allocatePort(t, allocator)
+		_, assemblerMonitoringListener := allocatePort(t, allocator)
+		consenterPort, consenterListener := allocatePort(t, allocator)
+		_, consenterMonitoringListener := allocatePort(t, allocator)
+		routerPort, routerListener := allocatePort(t, allocator)
+		_, routerMonitoringListener := allocatePort(t, allocator)
+		var batchersListenersInShard []net.Listener
+		var batchersMonitoringListenersInShard []net.Listener
 		var batchersEndpoints []string
 		for range numOfBatcherShards {
-			batcherPort, llb := GetAvailablePort(t)
-			_, llbm := GetAvailablePort(t)
-			llbs = append(llbs, llb)
-			llbms = append(llbms, llbm)
+			batcherPort, batcherListener := allocatePort(t, allocator)
+			_, batcherMonitoringListener := allocatePort(t, allocator)
+			batchersListenersInShard = append(batchersListenersInShard, batcherListener)
+			batchersMonitoringListenersInShard = append(batchersMonitoringListenersInShard, batcherMonitoringListener)
 			batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
 		}
 
@@ -130,18 +144,18 @@ func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatch
 		}
 
 		nodeName := NodeName{PartyID: types.PartyID(i + 1), NodeType: Router}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(i + 1), MonitoringListener: llrm}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: routerListener, NodeType: Router, PartyId: types.PartyID(i + 1), MonitoringListener: routerMonitoringListener}
 
-		for j, b := range llbs {
+		for j, b := range batchersListenersInShard {
 			nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Batcher, ShardID: types.ShardID(j + 1)}
-			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1), MonitoringListener: llbms[j]}
+			netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(i + 1), ShardId: types.ShardID(j + 1), MonitoringListener: batchersMonitoringListenersInShard[j]}
 		}
 
 		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Consensus}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(i + 1), MonitoringListener: llcm}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: consenterListener, NodeType: Consensus, PartyId: types.PartyID(i + 1), MonitoringListener: consenterMonitoringListener}
 
 		nodeName = NodeName{PartyID: types.PartyID(i + 1), NodeType: Assembler}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(i + 1), MonitoringListener: llam}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: assemblerListener, NodeType: Assembler, PartyId: types.PartyID(i + 1), MonitoringListener: assemblerMonitoringListener}
 	}
 
 	network := genconfig.Network{
@@ -166,6 +180,11 @@ type NodeName struct {
 // ExtendNetwork extends an existing network configuration by adding a party to it.
 // It updates the config file with the new party and returns the new party's information and config only
 func ExtendNetwork(t *testing.T, configPath string) (ArmaNodesInfoMap, *genconfig.Network) {
+	return ExtendNetworkWithPortAllocator(t, configPath, defaultPortAllocator)
+}
+
+// ExtendNetworkWithPortAllocator extends the network and uses a caller-provided allocator for new ports.
+func ExtendNetworkWithPortAllocator(t *testing.T, configPath string, allocator PortAllocator) (ArmaNodesInfoMap, *genconfig.Network) {
 	netInfo := *NewArmaNodesInfoMap()
 
 	networkConfig := genconfig.Network{}
@@ -176,21 +195,21 @@ func ExtendNetwork(t *testing.T, configPath string) (ArmaNodesInfoMap, *genconfi
 
 	numOfBatcherShards := len(networkConfig.Parties[0].BatchersEndpoints)
 
-	assemblerPort, lla := GetAvailablePort(t)
-	_, llam := GetAvailablePort(t)
-	consenterPort, llc := GetAvailablePort(t)
-	_, llcm := GetAvailablePort(t)
-	routerPort, llr := GetAvailablePort(t)
-	_, llrm := GetAvailablePort(t)
-	var llbs []net.Listener
-	var llbms []net.Listener
+	assemblerPort, assemblerListener := allocatePort(t, allocator)
+	_, assemblerMonitoringListener := allocatePort(t, allocator)
+	consenterPort, consenterListener := allocatePort(t, allocator)
+	_, consenterMonitoringListener := allocatePort(t, allocator)
+	routerPort, routerListener := allocatePort(t, allocator)
+	_, routerMonitoringListener := allocatePort(t, allocator)
+	var batchersListenersInShard []net.Listener
+	var batchersMonitoringListenersInShard []net.Listener
 	var batchersEndpoints []string
 
 	for range numOfBatcherShards {
-		batcherPort, llb := GetAvailablePort(t)
-		_, llbm := GetAvailablePort(t)
-		llbs = append(llbs, llb)
-		llbms = append(llbms, llbm)
+		batcherPort, batcherListener := allocatePort(t, allocator)
+		_, batcherMonitoringListener := allocatePort(t, allocator)
+		batchersListenersInShard = append(batchersListenersInShard, batcherListener)
+		batchersMonitoringListenersInShard = append(batchersMonitoringListenersInShard, batcherMonitoringListener)
 		batchersEndpoints = append(batchersEndpoints, "127.0.0.1:"+batcherPort)
 	}
 
@@ -205,17 +224,17 @@ func ExtendNetwork(t *testing.T, configPath string) (ArmaNodesInfoMap, *genconfi
 	networkConfig.Parties = append(networkConfig.Parties, newPartyConfig)
 
 	nodeName := NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Router}
-	netInfo[nodeName] = &ArmaNodeInfo{Listener: llr, NodeType: Router, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: llrm}
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: routerListener, NodeType: Router, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: routerMonitoringListener}
 
-	for j, b := range llbs {
+	for j, b := range batchersListenersInShard {
 		nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Batcher, ShardID: types.ShardID(j + 1)}
-		netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(networkConfig.MaxPartyID), ShardId: types.ShardID(j + 1), MonitoringListener: llbms[j]}
+		netInfo[nodeName] = &ArmaNodeInfo{Listener: b, NodeType: Batcher, PartyId: types.PartyID(networkConfig.MaxPartyID), ShardId: types.ShardID(j + 1), MonitoringListener: batchersMonitoringListenersInShard[j]}
 	}
 
 	nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Consensus}
-	netInfo[nodeName] = &ArmaNodeInfo{Listener: llc, NodeType: Consensus, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: llcm}
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: consenterListener, NodeType: Consensus, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: consenterMonitoringListener}
 	nodeName = NodeName{PartyID: networkConfig.MaxPartyID, NodeType: Assembler}
-	netInfo[nodeName] = &ArmaNodeInfo{Listener: lla, NodeType: Assembler, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: llam}
+	netInfo[nodeName] = &ArmaNodeInfo{Listener: assemblerListener, NodeType: Assembler, PartyId: types.PartyID(networkConfig.MaxPartyID), MonitoringListener: assemblerMonitoringListener}
 
 	err = utils.WriteToYAML(networkConfig, configPath)
 	require.NoError(t, err)
