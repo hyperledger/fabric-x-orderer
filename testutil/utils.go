@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package testutil
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
 )
@@ -631,37 +633,38 @@ func containsParty(parties []types.PartyID, nodeParty types.PartyID) bool {
 func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 	require.NotNil(t, netInfo)
 
-	stopChan := make(chan struct{})
-	timeOut := make(chan *ArmaNodeInfo, len(netInfo))
+	timeOut, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	g, ctx := errgroup.WithContext(timeOut)
 
-	go func() {
-		defer close(stopChan)
-		wg := sync.WaitGroup{}
+	timeOutChan := make(chan *ArmaNodeInfo, len(netInfo))
 
-		for _, n := range netInfo {
-			require.NotNil(t, n.RunInfo, fmt.Sprintf("RunInfo is nil for node %s_%d_%d", n.NodeType.String(), n.PartyId, n.ShardId))
-			wg.Go(func() {
-				select {
-				case <-n.RunInfo.Session.Err.Detect("Soft stop"):
-				case <-n.RunInfo.Session.Err.Detect("soft stop"):
-				case <-time.After(90 * time.Second):
-					timeOut <- n
-				}
-			})
-		}
-		wg.Wait()
-	}()
-
-	select {
-	case <-stopChan:
-	case <-time.After(120 * time.Second):
-		require.Fail(t, "Timed out waiting for Arma nodes to stop")
+	for _, n := range netInfo {
+		require.NotNil(t, n.RunInfo, fmt.Sprintf("RunInfo is nil for node %s_%d_%d", n.NodeType.String(), n.PartyId, n.ShardId))
+		ni := n
+		g.Go(func() error {
+			defer ni.RunInfo.Session.Err.CancelDetects() // ensure that detects are cancelled when done
+			select {
+			case <-ctx.Done():
+				// return an error to indicate that the wait timed out
+				return ctx.Err()
+			case <-ni.RunInfo.Session.Err.Detect("Soft stop"):
+			case <-ni.RunInfo.Session.Err.Detect("soft stop"):
+			case <-time.After(90 * time.Second):
+				timeOutChan <- ni
+			}
+			return nil
+		})
 	}
 
-	close(timeOut)
+	// wait for all goroutines to finish and check if any of them returned an error (indicating a timeout)
+	if err := g.Wait(); err != nil {
+		require.Fail(t, fmt.Sprintf("Timed out waiting for Arma nodes to stop: %s", err))
+	}
+	close(timeOutChan)
 
 	timedOutNodes := make([]string, 0, len(netInfo))
-	for n := range timeOut {
+	for n := range timeOutChan {
 		timedOutNodes = append(timedOutNodes, fmt.Sprintf("%s_%d_%d", n.NodeType.String(), n.PartyId, n.ShardId))
 	}
 
@@ -727,4 +730,13 @@ func GetNodesIPsFromNetInfo(netInfo map[NodeName]*ArmaNodeInfo) []string {
 		ips = append(ips, utils.TrimPortFromEndpoint(val.Listener.Addr().String()))
 	}
 	return ips
+}
+
+func StopAndRestartArmaNetwork(t *testing.T, armaNetwork *ArmaNetwork) {
+	armaNetwork.Stop()
+	totalNodes := armaNetwork.Len()
+	require.NotZero(t, totalNodes, "expected at least one Arma node to restart")
+	readyChan := make(chan string, totalNodes)
+	armaNetwork.Restart(t, readyChan)
+	WaitReady(t, readyChan, totalNodes, 10)
 }
