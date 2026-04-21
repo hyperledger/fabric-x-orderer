@@ -36,9 +36,9 @@ func TestBatcherRun(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
@@ -195,9 +195,9 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
@@ -227,9 +227,9 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
@@ -324,9 +324,9 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
@@ -455,9 +455,9 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
@@ -503,9 +503,9 @@ func TestBatcherJoin(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, 1, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, 1)
 	batchersInfo := createBatchersInfo(1, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, 1, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, 1)
 	consentersInfo := createConsentersInfo(1, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, 1)
@@ -577,9 +577,9 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
@@ -631,9 +631,9 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)

@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"net"
 	"path"
 	"testing"
 	"time"
@@ -33,6 +34,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	localhost = "127.0.0.1"
+)
+
+// allocateMonitoringAddress allocates a unique port for monitoring/metrics endpoint
+func allocateMonitoringAddress(t *testing.T) string {
+	port, listener := testutil.SharedTestPortAllocator().Allocate(t)
+	listener.Close()
+	return net.JoinHostPort(localhost, port)
+}
+
 type node struct {
 	*comm.GRPCServer
 	TLSCert []byte
@@ -41,7 +53,7 @@ type node struct {
 	pk      node_config.RawBytes
 }
 
-func createNodes(t *testing.T, ca tlsgen.CA, num int, addr string) []*node {
+func createNodes(t *testing.T, ca tlsgen.CA, num int) []*node {
 	var result []*node
 
 	var sks []*ecdsa.PrivateKey
@@ -55,10 +67,14 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int, addr string) []*node {
 	}
 
 	for i := 0; i < num; i++ {
-		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
+		kp, err := ca.NewServerCertKeyPair(localhost)
 		require.NoError(t, err)
 
-		srv, err := newGRPCServer(addr, ca, kp)
+		// allocate a port using the shared port allocator
+		port, listener := testutil.SharedTestPortAllocator().Allocate(t)
+		listener.Close()
+
+		srv, err := newGRPCServer(net.JoinHostPort(localhost, port), ca, kp)
 		require.NoError(t, err)
 
 		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i]})
@@ -153,7 +169,7 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
-			MonitoringListenAddress:             "127.0.0.1:0",
+			MonitoringListenAddress:             allocateMonitoringAddress(t),
 			MetricsLogInterval:                  5 * time.Second,
 		}
 		configs = append(configs, conf)
