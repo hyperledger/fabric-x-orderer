@@ -1147,16 +1147,17 @@ func TestChangePartyCertificates(t *testing.T) {
 // 4. Send a config tx that appends each CA to the current CA list (TLS and signing) of party 1.
 // 5. Wait for dynamic restart of all nodes.
 // 6. Send more txs and pull blocks to verify the network is operational again.
-// 7. Send a config tx that updates all node-level TLS and signing certificates, issued by the new CA's, for party 1.
-// 8. Wait for the nodes of party 1 to enter a pending admin state and stop party 1.
-// 9. Restart party 1 and wait for dynamic restart of the non-updated parties
-// 10. Extend client trust with the new TLS CA and send more txs and pull blocks to verify the network is operational again.
-// 11. Update party 1 crypto material on disk with new certificates.
-// 12. Send a config tx that updates the CA's list to include only the new CAs (i.e., remove old CAs).
-// 13. Wait for dynamic restart of all nodes.
-// 14. Send more txs and pull blocks to verify the network is operational again.
+// 7. Update party 1 crypto material (TLS and signing certificates) on disk with new certificates.
+// 8. Send a config tx that updates all node-level TLS and signing certificates, issued by the new CA's, for party 1.
+// 9. Wait for the nodes of party 1 to enter a pending admin state and stop party 1.
+// 10. Restart party 1 and wait for dynamic restart of the non-updated parties
+// 11. Extend client trust with the new TLS CA and send more txs and pull blocks to verify the network is operational again.
+// 12. Update party 1 crypto material on disk with new CAs.
+// 13. Send a config tx that updates the CA's list to include only the new CAs (i.e., remove old CAs).
+// 14. Wait for dynamic restart of all nodes.
+// 15. Send more txs and pull blocks to verify the network is operational again.
 func TestChangePartyCACertificates(t *testing.T) {
-	// Prepare Arma config and crypto and get the genesis block
+	// 1.
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
@@ -1201,9 +1202,9 @@ func TestChangePartyCACertificates(t *testing.T) {
 	uc, err := testutil.GetUserConfig(dir, submittingParty)
 	require.NoError(t, err)
 
+	// 2.
 	txNumber := 10
 	totalTxNumber := 0
-	// Send transactions to all parties to ensure network is operational before config update
 	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
 	require.NoError(t, err)
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
@@ -1216,9 +1217,10 @@ func TestChangePartyCACertificates(t *testing.T) {
 		require.NoError(t, err)
 		totalTxNumber++
 	}
+
+	// Pull blocks to verify all transactions are included
 	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown := common.Status_UNKNOWN
-	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
@@ -1229,16 +1231,14 @@ func TestChangePartyCACertificates(t *testing.T) {
 		Signer:       pullRequestSigner,
 	})
 
-	// 1.
+	// 3.
 	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToUpdate := types.PartyID(1)
-	nonUpdatedParties := make([]types.PartyID, 0, len(parties)-1)
-	for _, party := range parties {
-		if party != partyToUpdate {
-			nonUpdatedParties = append(nonUpdatedParties, party)
-		}
-	}
+	nonUpdatedParties := slices.DeleteFunc(slices.Clone(parties), func(partyID types.PartyID) bool {
+		return partyID == partyToUpdate
+	})
+
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
 
@@ -1290,6 +1290,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	env := configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
 
+	// 4.
 	// Send the config tx
 	err = broadcastClient.SendTxTo(env, submittingParty)
 	require.NoError(t, err)
@@ -1298,6 +1299,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 
 	broadcastClient.Stop()
 
+	// 5.
 	t.Log("Wait for arma nodes to restart dynamically")
 	testutil.WaitForNetworkRelaunch(t, netInfo, 1)
 
@@ -1341,6 +1343,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 		return false
 	}(), "TLS CA certs were not updated in the config")
 
+	// 6.
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 
 	for range txNumber {
@@ -1351,9 +1354,9 @@ func TestChangePartyCACertificates(t *testing.T) {
 		totalTxNumber++
 	}
 
+	// Pull blocks to verify all transactions are included
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
-	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
@@ -1368,12 +1371,13 @@ func TestChangePartyCACertificates(t *testing.T) {
 		copyNonCAFilesPredicate, false,
 	)
 
+	// 7.
 	newConfigBlockPath := filepath.Join(dir, "config1.block")
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
 	require.NoError(t, err)
+
 	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
-	// 3.
 	// Update the router TLS certs in the config
 	newRouterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "tls-cert.pem"))
 	require.NoError(t, err)
@@ -1409,6 +1413,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
 
+	// 8.
 	// Send the config tx
 	err = broadcastClient.SendTxTo(env, submittingParty)
 	require.NoError(t, err)
@@ -1417,11 +1422,12 @@ func TestChangePartyCACertificates(t *testing.T) {
 
 	broadcastClient.Stop()
 
+	// 9.
 	t.Logf("Wait for party %d to enter pending admin state and then stop it", partyToUpdate)
 	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToUpdate})
 	armaNetwork.StopParties([]types.PartyID{partyToUpdate})
 
-	// 4.
+	// 10.
 	// Restart the updated party
 	armaNetwork.RestartParties(t, []types.PartyID{partyToUpdate}, readyChan)
 	testutil.WaitReady(t, readyChan, 3+numOfShards, 10)
@@ -1430,13 +1436,13 @@ func TestChangePartyCACertificates(t *testing.T) {
 	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, nonUpdatedParties, 2)
 
 	// Get the config block from router's config store and write it to a temp location
-	_, lastConfigBlock, err = config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigR", zap.DebugLevel))
+	_, lastConfigBlock, err = config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 	newConfigBlockPath = filepath.Join(dir, "config2.block")
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
 	require.NoError(t, err)
 
-	// 5.
+	// 11.
 	// Update the TLS CA certs
 	uc.TLSCACerts = append(uc.TLSCACerts, newTlsCACertBytes)
 
@@ -1452,9 +1458,9 @@ func TestChangePartyCACertificates(t *testing.T) {
 		totalTxNumber++
 	}
 
+	// Pull blocks to verify all transactions are included
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
-	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
@@ -1465,7 +1471,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 		Signer:       pullRequestSigner,
 	})
 
-	// 6.
+	// 12.
 	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
 	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
@@ -1492,6 +1498,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
 
+	// 13.
 	// Send the config tx
 	err = broadcastClient.SendTxTo(env, submittingParty)
 	require.NoError(t, err)
@@ -1500,8 +1507,10 @@ func TestChangePartyCACertificates(t *testing.T) {
 
 	broadcastClient.Stop()
 
+	// 14.
 	testutil.WaitForNetworkRelaunch(t, netInfo, 3)
 
+	// 15.
 	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
 	signer, certBytes, err = testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
 	require.NoError(t, err)
@@ -1514,9 +1523,9 @@ func TestChangePartyCACertificates(t *testing.T) {
 		totalTxNumber++
 	}
 
+	// Pull blocks to verify all transactions are included
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
-	// Pull blocks to verify all transactions are included
 	PullFromAssemblers(t, &BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
