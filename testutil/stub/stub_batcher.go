@@ -41,13 +41,21 @@ type StubBatcher struct {
 	dropRequests bool
 }
 
+const (
+	localhost = "127.0.0.1"
+)
+
 func NewStubBatcher(t *testing.T, ca tlsgen.CA, partyID types.PartyID, shardID types.ShardID) StubBatcher {
 	// create a (cert,key) pair for the batcher
-	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
+	certKeyPair, err := ca.NewServerCertKeyPair(localhost)
 	require.NoError(t, err)
 
-	// create a GRPC Server which will listen for incoming connections on some available port
-	server, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{
+	// allocate a port using the shared port allocator
+	port, listener := testutil.SharedTestPortAllocator().Allocate(t)
+	listener.Close()
+
+	// create a GRPC Server which will listen for incoming connections on the allocated port
+	server, err := comm.NewGRPCServer(net.JoinHostPort(localhost, port), comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
 			UseTLS:      true,
 			Certificate: certKeyPair.Cert,
