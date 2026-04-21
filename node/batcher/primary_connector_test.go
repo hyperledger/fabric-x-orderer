@@ -26,10 +26,10 @@ func TestPrimaryConnector(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
 
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 
 	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)

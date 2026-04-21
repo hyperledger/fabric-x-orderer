@@ -405,7 +405,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
 			PartyId:                 nodeID,
 			ShardId:                 shardID,
-			MonitoringListenAddress: "127.0.0.1:0",
+			MonitoringListenAddress: allocateMonitoringAddress(t),
 			MetricsLogInterval:      0 * time.Second,
 		}, batchersInfo, ledger, sugaredLogger),
 	}

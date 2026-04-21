@@ -30,7 +30,7 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -77,7 +77,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
@@ -139,7 +139,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -225,7 +225,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -320,7 +320,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	req := make([]byte, 8)
 	binary.BigEndian.PutUint64(req, uint64(1))
@@ -420,7 +420,7 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -494,7 +494,7 @@ func TestPrimaryWaiting(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -537,7 +537,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -621,7 +621,7 @@ func TestResubmitPending(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, batcherID)
 
-	batcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	batcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
@@ -727,7 +727,7 @@ func TestVerifyBatch(t *testing.T) {
 	batcherID := 2
 	shardID := 0
 	logger := testutil.CreateLogger(t, batcherID)
-	secondaryBatcher := createBatcher(arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 	verifier := &mocks.FakeBatchedRequestsVerifier{}
 	verifier.VerifyBatchedRequestsReturns(nil)
 	secondaryBatcher.BatchedRequestsVerifier = verifier
@@ -799,7 +799,7 @@ func TestVerifyBatch(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
-func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger *flogging.FabricLogger) *batcher.BatcherRole {
+func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger *flogging.FabricLogger) *batcher.BatcherRole {
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64) arma_types.BatchAttestationFragment {
 		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, 0, txCount)
@@ -835,7 +835,7 @@ func createBatcher(batcherID arma_types.PartyID, shardID arma_types.ShardID, bat
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
 			PartyId:                 batcherID,
 			ShardId:                 shardID,
-			MonitoringListenAddress: "127.0.0.1:0",
+			MonitoringListenAddress: allocateMonitoringAddress(t),
 			MetricsLogInterval:      0 * time.Second,
 		}, batchersInfo, ledger, logger),
 	}
