@@ -9,6 +9,7 @@ package assembler_test
 import (
 	"encoding/asn1"
 	"fmt"
+	"net"
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -18,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -38,11 +40,15 @@ type stubConsenter struct {
 }
 
 func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubConsenter {
-	certKeyPair, err := ca.NewServerCertKeyPair("127.0.0.1")
+	certKeyPair, err := ca.NewServerCertKeyPair(localhost)
 	require.NoError(t, err)
 
-	// create a GRPC Server which will listen for incoming connections on some available port
-	server, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{
+	// allocate a port using the shared port allocator
+	port, listener := testutil.SharedTestPortAllocator().Allocate(t)
+	listener.Close()
+
+	// create a GRPC Server which will listen for incoming connections on the allocated port
+	server, err := comm.NewGRPCServer(net.JoinHostPort(localhost, port), comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
 			UseTLS:      true,
 			Certificate: certKeyPair.Cert,
