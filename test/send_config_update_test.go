@@ -137,10 +137,14 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	partyToUpdate := submittingParty
 	nonUpdatedRouterParties := []types.PartyID{2, 3, 4}
 	routerIP := strings.Split(userConfig.RouterEndpoints[partyToUpdate-1], ":")[0] // extract IP from the user config router endpoint
-	availablePort, newListener := testutil.GetAvailablePort(t)
+	availablePort, newListener := testutil.SharedTestPortAllocator().Allocate(t)
 	newPort, err := strconv.Atoi(availablePort)
 	require.NoError(t, err)
 	routerToUpdate := armaNetwork.GetRouter(t, submittingParty)
+	// Close the previous listener before replacing it
+	if routerToUpdate.Listener != nil {
+		routerToUpdate.Listener.Close()
+	}
 	routerToUpdate.Listener = newListener
 
 	configUpdatePbData := configUpdateBuilder.UpdateRouterEndpoint(t, partyToUpdate, routerIP, newPort)
