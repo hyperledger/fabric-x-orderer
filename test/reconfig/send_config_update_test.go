@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package test
+package reconfig
 
 import (
 	"bytes"
@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
+	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
@@ -120,7 +121,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 
 	statusUknown := common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -169,7 +170,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	// Pull blocks to verify all transactions are included
 	userBlockHandler := &verifyRouterEndpointUpdate{updatedParty: partyToUpdate, routerIP: routerIP, newPort: newPort}
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber + 1, // including config update tx
@@ -222,7 +223,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	// Pull blocks to verify all transactions are included
 	userBlockHandler = &verifyRouterEndpointUpdate{updatedParty: partyToUpdate, routerIP: routerIP, newPort: newPort}
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber*2 + 1, // including config update tx
@@ -479,7 +480,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      remainingParties,
 		Transactions: totalTxNumber*2 + 1, // including config update tx
@@ -583,7 +584,7 @@ func TestRemoveParty(t *testing.T) {
 	statusUnknown := common.Status_UNKNOWN
 
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -654,7 +655,7 @@ func TestRemoveParty(t *testing.T) {
 	statusUnknown = common.Status_UNKNOWN
 
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      remainingParties,
 		Transactions: totalTxNumber*2 + 1, // including config update tx
@@ -764,7 +765,7 @@ func TestAddNewParty(t *testing.T) {
 
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 	statusUnknown := common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -794,7 +795,7 @@ func TestAddNewParty(t *testing.T) {
 	configBlockStoreDir := t.TempDir()
 	newConfigBlockPath := filepath.Join(configBlockStoreDir, "config.block")
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber + 1, // include the config block
@@ -886,7 +887,7 @@ func TestAddNewParty(t *testing.T) {
 
 	pullRequestSigner = signutil.CreateTestSigner(t, "org1", dir)
 	statusUnknown = common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber*2 + 2, // including the config tx and the single tx
@@ -970,7 +971,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -1132,7 +1133,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber*2 + 1, // including config update tx
@@ -1225,7 +1226,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	// Pull blocks to verify all transactions are included
 	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown := common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -1361,7 +1362,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	// Pull blocks to verify all transactions are included
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -1465,7 +1466,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	// Pull blocks to verify all transactions are included
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -1530,7 +1531,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	// Pull blocks to verify all transactions are included
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown = common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -1699,7 +1700,7 @@ func TestUpdateTimeoutParameters(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 
 	statusUnknown := common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -1755,7 +1756,7 @@ func TestUpdateTimeoutParameters(t *testing.T) {
 
 	totalTxNumber += txNumber
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber + 1, // including config update tx
@@ -1874,7 +1875,7 @@ func TestUpdateSmartBFTParameters(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 
 	statusUnknown := common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -1922,7 +1923,7 @@ func TestUpdateSmartBFTParameters(t *testing.T) {
 
 	totalTxNumber += txNumber
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber + 1, // including config update tx
@@ -2072,7 +2073,7 @@ func TestUpdateBatchingParameters(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 	statusUnknown := common.Status_UNKNOWN
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   userConfig,
 		Parties:      parties,
 		Transactions: totalTxNumber + 1, // including config update tx
@@ -2191,7 +2192,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -2353,7 +2354,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -2438,7 +2439,7 @@ func TestRemoveMultipleParties(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -2517,7 +2518,7 @@ func TestRemoveMultipleParties(t *testing.T) {
 
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -2604,7 +2605,7 @@ func TestJoinMultipleParties(t *testing.T) {
 	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
 	statusUnknown := common.Status_UNKNOWN
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -2702,7 +2703,7 @@ func TestJoinMultipleParties(t *testing.T) {
 
 	pullRequestSigner = signutil.CreateTestSigner(t, submittingOrg, dir)
 	// Pull blocks to verify all transactions are included
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		Transactions: totalTxNumber,
@@ -2710,5 +2711,85 @@ func TestJoinMultipleParties(t *testing.T) {
 		Timeout:      60,
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
+	})
+}
+
+// TestSubmitReceiveAndVerifySignaturesConfigBlock tests the end-to-end process of submitting a configuration
+// transaction, receiving the resulting configuration block, and verifying its signatures.
+func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
+	// 1. Builds the arma binary and creates a temporary directory for test artifacts
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	numOfShards := 1
+	numOfParties := 1
+
+	// create temp dir
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 2. Creates a network configuration with the specified number of shards and parties
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "none", "none")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+	numOfArmaNodes := len(netInfo)
+
+	// 3. Generates necessary cryptographic materials and network artifacts using the arma CLI
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 4. Starts arma nodes and waits for them to be ready
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+
+	logger := testutil.CreateLogger(t, 0)
+
+	// 5. Builds a signature verifier from the consenter information
+	verifier := test_utils.BuildVerifier(dir, types.PartyID(1), logger)
+
+	// 6. Creates a broadcast client to submit transactions and submits a configuration transaction based on the genesis block
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	// Create config tx
+	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
+	submittingPartyID := 1
+	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
+	defer cleanUp()
+
+	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, configutil.NewBatchSizeConfig(configutil.BatchSizeConfigName.MaxMessageCount, 500))
+	require.NotEmpty(t, configUpdatePbData)
+
+	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, submittingPartyID, configUpdatePbData)
+	require.NotNil(t, env)
+
+	// Send the config tx
+	err = broadcastClient.SendTx(env)
+	require.NoError(t, err)
+	totalBlocks := 2 // genesis + config block
+
+	// 7. Pulls and verifies blocks from assemblers, ensuring the configuration block's signatures are valid
+	statusSuccess := common.Status_UNKNOWN
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    []types.PartyID{types.PartyID(submittingPartyID)},
+		StartBlock: uint64(0),
+		Status:     &statusSuccess,
+		Verifier:   verifier,
+		Blocks:     totalBlocks,
+		ErrString:  "cancelled pull from assembler: %d",
+		LogString:  "configuration block 1 partyID %d verified with",
+		Signer:     signutil.CreateTestSigner(t, "org1", dir),
 	})
 }

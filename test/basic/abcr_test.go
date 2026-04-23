@@ -4,20 +4,15 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-// package test contains integration tests.
-package test
+package basic
 
 import (
-	"runtime"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/router"
+	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	_ "github.com/onsi/gomega/gexec"
@@ -32,8 +27,8 @@ func TestABCR(t *testing.T) {
 	require.NoError(t, err)
 	numParties := 4
 
-	batcherNodes, batcherInfos := createBatcherNodesAndInfo(t, ca, numParties)
-	consenterNodes, consenterInfos := createConsenterNodesAndInfo(t, ca, numParties)
+	batcherNodes, batcherInfos := test_utils.CreateBatcherNodesAndInfo(t, ca, numParties)
+	consenterNodes, consenterInfos := test_utils.CreateConsenterNodesAndInfo(t, ca, numParties)
 
 	for i := 0; i < numParties; i++ {
 		t.Logf("batcher: %v, %s", batcherInfos[i], batcherNodes[i].ToString())
@@ -43,17 +38,17 @@ func TestABCR(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, _, _, cleanConsenters := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
+	_, _, _, cleanConsenters := test_utils.CreateConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 
-	_, _, _, cleanBatchers := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
+	_, _, _, cleanBatchers := test_utils.CreateBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
 
-	routers, _, _, _ := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, make([]string, numParties), genesisBlock)
+	routers, _, _, _ := test_utils.CreateRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, make([]string, numParties), genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()
 	}
 
-	assemblers, _, _, _, cleanAssemblers := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
+	assemblers, _, _, _, cleanAssemblers := test_utils.CreateAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
 
 	defer func() {
 		for i := range routers {
@@ -64,50 +59,7 @@ func TestABCR(t *testing.T) {
 		cleanAssemblers()
 	}()
 
-	sendTransactions(t, routers, assemblers[3])
-}
-
-func sendTransactions(t *testing.T, routers []*router.Router, assembler *assembler.Assembler) {
-	sendTxn(runtime.NumCPU()+1, 0, routers)
-
-	time.Sleep(time.Second)
-
-	var wg sync.WaitGroup
-	wg.Add(runtime.NumCPU())
-
-	workPerWorker := 100
-
-	initialCount := int(assembler.GetTxCount())
-
-	start := time.Now()
-
-	for workerID := 0; workerID < runtime.NumCPU(); workerID++ {
-		go func(workerID int) {
-			defer wg.Done()
-
-			for txNum := 0; txNum < workPerWorker; txNum++ {
-				sendTxn(workerID, initialCount+txNum, routers)
-			}
-		}(workerID)
-	}
-
-	wg.Wait()
-
-	totalTxn := workPerWorker * runtime.NumCPU()
-	expected := initialCount + totalTxn
-	t.Logf("Expecting %d TXs (%d to %d)", totalTxn, initialCount, expected)
-	require.Eventually(t, func() bool {
-		n := assembler.GetTxCount()
-		t.Logf("Received TXs: %d", n)
-		return int(n) >= expected
-	}, time.Minute, time.Second)
-
-	elapsed := int(time.Since(start).Seconds())
-	if elapsed == 0 {
-		elapsed = 1
-	}
-
-	t.Logf("%f (totalTxn / elapsed)\n", float32(totalTxn)/float32(elapsed))
+	test_utils.SendTransactions(t, routers, assemblers[3])
 }
 
 // func runPerf(t *testing.T, routerTLSCA, assemblerTLSCA [][]byte, routerEndpoints []string, assemblerEndpoint string, clientPath string) {

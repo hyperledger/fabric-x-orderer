@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package test
+package utils
 
 import (
 	"bytes"
@@ -20,6 +20,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -96,7 +97,7 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*flogging.FabricLogger) {
+func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*flogging.FabricLogger) {
 	var routers []*router.Router
 	var certs []node_config.RawBytes
 	var configs []*node_config.RouterNodeConfig
@@ -161,7 +162,7 @@ func createRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 	return routers, certs, configs, loggers
 }
 
-func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*flogging.FabricLogger, func()) {
+func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*flogging.FabricLogger, func()) {
 	var assemblerDirs []string
 	var assemblers []*assembler.Assembler
 	var loggers []*flogging.FabricLogger
@@ -212,7 +213,7 @@ func createAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 	}
 }
 
-func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*flogging.FabricLogger, func()) {
+func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*flogging.FabricLogger, func()) {
 	var consensuses []*consensus.Consensus
 	var loggers []*flogging.FabricLogger
 	var configs []*node_config.ConsenterNodeConfig
@@ -295,7 +296,7 @@ func createConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 	}
 }
 
-func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*flogging.FabricLogger, func()) {
+func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*flogging.FabricLogger, func()) {
 	var batchers []*batcher.Batcher
 	var loggers []*flogging.FabricLogger
 	var configs []*node_config.BatcherNodeConfig
@@ -376,7 +377,7 @@ func createBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 	}
 }
 
-func createBatcherNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []node_config.BatcherInfo) {
+func CreateBatcherNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []node_config.BatcherInfo) {
 	nodes := createNodes(t, num, ca)
 
 	var batchersInfo []node_config.BatcherInfo
@@ -393,7 +394,7 @@ func createBatcherNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []
 	return nodes, batchersInfo
 }
 
-func createConsenterNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []node_config.ConsenterInfo) {
+func CreateConsenterNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []node_config.ConsenterInfo) {
 	nodes := createNodes(t, num, ca)
 
 	var consentersInfo []node_config.ConsenterInfo
@@ -432,7 +433,7 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 	return result
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *flogging.FabricLogger) *batcher.Batcher {
+func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *flogging.FabricLogger) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -467,7 +468,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 	return batcher
 }
 
-func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *consensus.Consensus {
+func RecoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *consensus.Consensus {
 	newConsenterNode := &node{
 		TLSCert: consenterNode.TLSCert,
 		TLSKey:  consenterNode.TLSKey,
@@ -512,13 +513,13 @@ func recoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	return consenter
 }
 
-func recoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
+func RecoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
 	assembler := assembler.NewAssembler(conf, &config.Configuration{}, lastConfigBlock, make(chan struct{}), logger)
 	assembler.StartAssemblerService()
 	return assembler
 }
 
-func recoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLogger) *router.Router {
+func RecoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLogger) *router.Router {
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
@@ -539,7 +540,7 @@ func recoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLo
 	return router
 }
 
-func sendTxn(workerID int, txnNum int, routers []*router.Router) {
+func SendTxn(workerID int, txnNum int, routers []*router.Router) {
 	txn := make([]byte, 32)
 	binary.BigEndian.PutUint64(txn, uint64(txnNum))
 	binary.BigEndian.PutUint16(txn[30:], uint16(workerID))
@@ -832,4 +833,47 @@ func BuildVerifier(configDir string, partyID types.PartyID, logger *flogging.Fab
 	}
 
 	return &verifier
+}
+
+func SendTransactions(t *testing.T, routers []*router.Router, assembler *assembler.Assembler) {
+	SendTxn(runtime.NumCPU()+1, 0, routers)
+
+	time.Sleep(time.Second)
+
+	var wg sync.WaitGroup
+	wg.Add(runtime.NumCPU())
+
+	workPerWorker := 100
+
+	initialCount := int(assembler.GetTxCount())
+
+	start := time.Now()
+
+	for workerID := 0; workerID < runtime.NumCPU(); workerID++ {
+		go func(workerID int) {
+			defer wg.Done()
+
+			for txNum := 0; txNum < workPerWorker; txNum++ {
+				SendTxn(workerID, initialCount+txNum, routers)
+			}
+		}(workerID)
+	}
+
+	wg.Wait()
+
+	totalTxn := workPerWorker * runtime.NumCPU()
+	expected := initialCount + totalTxn
+	t.Logf("Expecting %d TXs (%d to %d)", totalTxn, initialCount, expected)
+	require.Eventually(t, func() bool {
+		n := assembler.GetTxCount()
+		t.Logf("Received TXs: %d", n)
+		return int(n) >= expected
+	}, time.Minute, time.Second)
+
+	elapsed := int(time.Since(start).Seconds())
+	if elapsed == 0 {
+		elapsed = 1
+	}
+
+	t.Logf("%f (totalTxn / elapsed)\n", float32(totalTxn)/float32(elapsed))
 }

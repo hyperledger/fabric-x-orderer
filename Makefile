@@ -77,9 +77,20 @@ check-protos:
 unit-tests:
 	go test -race -timeout 20m $$(go list ./... | grep -v /test)
 
+.PHONY: integration-basic
+integration-basic:
+	go test -race -timeout 30m ./test/basic/...
+
+.PHONY: integration-faulttolerance
+integration-faulttolerance:
+	go test -race -timeout 30m ./test/faulttolerance/...
+
+.PHONY: integration-reconfig
+integration-reconfig:
+	go test -race -timeout 30m ./test/reconfig/...
+
 .PHONY: integration-tests
-integration-tests:
-	go test -race -timeout 30m ./test/...
+integration-tests: integration-basic integration-faulttolerance integration-reconfig
 
 .PHONY: sample-tests
 sample-tests:

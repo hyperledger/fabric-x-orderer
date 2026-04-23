@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package test
+package reconfig
 
 import (
 	"context"
@@ -38,6 +38,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 )
@@ -50,24 +51,24 @@ func TestConfigDisseminate(t *testing.T) {
 	require.NoError(t, err)
 	numParties := 4
 
-	batcherNodes, batcherInfos := createBatcherNodesAndInfo(t, ca, numParties)
-	consenterNodes, consenterInfos := createConsenterNodesAndInfo(t, ca, numParties)
+	batcherNodes, batcherInfos := test_utils.CreateBatcherNodesAndInfo(t, ca, numParties)
+	consenterNodes, consenterInfos := test_utils.CreateConsenterNodesAndInfo(t, ca, numParties)
 
 	shards := []config.ShardInfo{{ShardId: 1, Batchers: batcherInfos}}
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	consenters, consentersConfigs, consentersLoggers, _ := createConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
+	consenters, consentersConfigs, consentersLoggers, _ := test_utils.CreateConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 
-	batchers, batchersConfigs, batchersLoggers, _ := createBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
+	batchers, batchersConfigs, batchersLoggers, _ := test_utils.CreateBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
 
-	routers, certs, routersConfigs, routersLoggers := createRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, []string{consenterNodes[0].Address(), consenterNodes[1].Address(), consenterNodes[2].Address(), consenterNodes[3].Address()}, genesisBlock)
+	routers, certs, routersConfigs, routersLoggers := test_utils.CreateRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, []string{consenterNodes[0].Address(), consenterNodes[1].Address(), consenterNodes[2].Address(), consenterNodes[3].Address()}, genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()
 	}
 
-	assemblers, assemblersDir, assemblersConfigs, assemblersLoggers, _ := createAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
+	assemblers, assemblersDir, assemblersConfigs, assemblersLoggers, _ := test_utils.CreateAssemblers(t, numParties, ca, shards, consenterInfos, genesisBlock)
 
 	// update consensus router config
 	for i := range consenters {
@@ -100,7 +101,7 @@ func TestConfigDisseminate(t *testing.T) {
 	}
 
 	// submit data txs and make sure the assembler got them
-	sendTransactions(t, routers, assemblers[0])
+	test_utils.SendTransactions(t, routers, assemblers[0])
 
 	// check the init size of the config store
 	for i := range routers {
@@ -177,10 +178,10 @@ func TestConfigDisseminate(t *testing.T) {
 	}
 
 	for i := 0; i < numParties; i++ {
-		batchers[i] = recoverBatcher(t, ca, batchersConfigs[i], batcherNodes[i], batchersLoggers[i])
-		consenters[i] = recoverConsenter(t, ca, consentersConfigs[i], consenterNodes[i], consentersLoggers[i], lastBlock)
-		assemblers[i] = recoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i], lastBlock)
-		routers[i] = recoverRouter(routersConfigs[i], routersLoggers[i])
+		batchers[i] = test_utils.RecoverBatcher(t, ca, batchersConfigs[i], batcherNodes[i], batchersLoggers[i])
+		consenters[i] = test_utils.RecoverConsenter(t, ca, consentersConfigs[i], consenterNodes[i], consentersLoggers[i], lastBlock)
+		assemblers[i] = test_utils.RecoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i], lastBlock)
+		routers[i] = test_utils.RecoverRouter(routersConfigs[i], routersLoggers[i])
 	}
 	time.Sleep(5 * time.Second)
 
@@ -195,7 +196,7 @@ func TestConfigDisseminate(t *testing.T) {
 	}
 
 	// submit data txs and make sure the assembler receives them after recovery
-	sendTransactions(t, routers, assemblers[0])
+	test_utils.SendTransactions(t, routers, assemblers[0])
 
 	// verify last block points to the last config block
 	for i := range assemblers {
@@ -291,7 +292,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	endBlock := uint64(1)
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig: uc,
 		Parties:    parties,
 		StartBlock: startBlock,
@@ -348,7 +349,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 	err = broadcastClient2.SendTx(env)
 	require.NoError(t, err)
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig: uc,
 		Parties:    parties,
 		StartBlock: startBlock,
