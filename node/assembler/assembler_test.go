@@ -111,7 +111,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		ReplicationChannelSize:    100,
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shardsInfo,
-		MonitoringListenAddress:   "127.0.0.1:0",
+		MonitoringListenAddress:   testutil.AllocateLocalhostAddress(t),
 		Consenter: config.ConsenterInfo{
 			PartyID:    myParty,
 			Endpoint:   consenterEndpoint,

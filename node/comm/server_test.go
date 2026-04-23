@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	testgrpc "github.com/hyperledger/fabric-x-orderer/node/comm/testdata/grpc"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -425,7 +426,7 @@ func TestNewGRPCServerInvalidParameters(t *testing.T) {
 	require.Error(t, err, "error expected")
 
 	// address in use
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "failed to create listener")
 	defer lis.Close()
 
@@ -546,7 +547,7 @@ func TestNewGRPCServerFromListener(t *testing.T) {
 	t.Parallel()
 
 	// create our listener
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "failed to create listener")
 	testAddress := lis.Addr().String()
 
@@ -580,7 +581,7 @@ func TestNewSecureGRPCServer(t *testing.T) {
 	t.Parallel()
 
 	// create our listener
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "failed to create listener")
 	testAddress := lis.Addr().String()
 
@@ -745,7 +746,7 @@ func TestWithSignedRootCertificates(t *testing.T) {
 	require.NoError(t, err, "failed to load test certificates")
 
 	// create our listener
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "failed to create listener")
 	testAddress := lis.Addr().String()
 
@@ -806,7 +807,7 @@ func TestWithSignedIntermediateCertificates(t *testing.T) {
 	}
 
 	// create our listener
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
@@ -865,7 +866,7 @@ func runMutualAuth(t *testing.T, servers []testServer, trustedClients, unTrusted
 	// loop through all the test servers
 	for i := 0; i < len(servers); i++ {
 		// create listener
-		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 		if err != nil {
 			return err
 		}
@@ -979,7 +980,7 @@ func TestSetClientRootCAs(t *testing.T) {
 
 	// get the config for one of our Org1 test servers
 	serverConfig := testOrgs[0].testServers([][]byte{})[0].config
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "listen failed")
 	defer lis.Close()
 	address := lis.Addr().String()
@@ -1075,7 +1076,7 @@ func TestUpdateTLSCert(t *testing.T) {
 	}
 
 	// create our listener
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "listen failed")
 	testAddress := lis.Addr().String()
 
@@ -1190,7 +1191,7 @@ func TestCipherSuites(t *testing.T) {
 	}
 
 	// create our listener
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "listen failed")
 	testAddress := lis.Addr().String()
 	srv, err := comm.NewGRPCServerFromListener(lis, serverConfig)
@@ -1222,7 +1223,7 @@ func TestCipherSuites(t *testing.T) {
 }
 
 func TestServerInterceptors(t *testing.T) {
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err, "listen failed")
 	msg := "error from interceptor"
 

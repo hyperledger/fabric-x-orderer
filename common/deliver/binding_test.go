@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/pkg/comm"
 	"github.com/hyperledger/fabric-x-common/tools/pkg/comm/testpb"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -41,10 +42,8 @@ func TestNoopBindingInspector(t *testing.T) {
 }
 
 func TestBindingInspector(t *testing.T) {
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to create listener for test server: %v", err)
-	}
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
+	require.NoError(t, err)
 
 	extract := func(msg proto.Message) []byte {
 		env, isEnvelope := msg.(*common.Envelope)

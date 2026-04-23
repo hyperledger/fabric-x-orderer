@@ -32,12 +32,14 @@ func prepareNetworkConfig(t *testing.T) *genconfig.Network {
 	localhost := "127.0.0.1"
 	var parties []genconfig.Party
 	var listeners []net.Listener
+	allocator := testutil.SharedTestPortAllocator()
+
 	for i := 0; i < 4; i++ {
-		assemblerPort, lla := testutil.SharedTestPortAllocator().Allocate(t)
-		consenterPort, llc := testutil.SharedTestPortAllocator().Allocate(t)
-		routerPort, llr := testutil.SharedTestPortAllocator().Allocate(t)
-		batcher1Port, llb1 := testutil.SharedTestPortAllocator().Allocate(t)
-		batcher2Port, llb2 := testutil.SharedTestPortAllocator().Allocate(t)
+		assemblerPort, assemblerListener := allocator.Allocate(t)
+		consenterPort, consenterListener := allocator.Allocate(t)
+		routerPort, routerListener := allocator.Allocate(t)
+		batcher1Port, batcher1Listener := allocator.Allocate(t)
+		batcher2Port, batcher2Listener := allocator.Allocate(t)
 
 		party := genconfig.Party{
 			ID:                types.PartyID(i + 1),
@@ -48,7 +50,7 @@ func prepareNetworkConfig(t *testing.T) *genconfig.Network {
 		}
 
 		parties = append(parties, party)
-		listeners = append(listeners, lla, llc, llr, llb1, llb2)
+		listeners = append(listeners, assemblerListener, consenterListener, routerListener, batcher1Listener, batcher2Listener)
 	}
 
 	network := genconfig.Network{
