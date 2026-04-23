@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package test
+package basic
 
 import (
 	"fmt"
@@ -18,10 +18,12 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,7 +133,7 @@ func TestSubmitAndReceive(t *testing.T) {
 
 			signer := signutil.CreateTestSigner(t, "org1", dir)
 
-			PullFromAssemblers(t, &BlockPullerOptions{
+			utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 				UserConfig: uc,
 				Parties:    parties,
 				StartBlock: startBlock,
@@ -145,7 +147,7 @@ func TestSubmitAndReceive(t *testing.T) {
 			startBlock = uint64(0)
 			endBlock = uint64(1)
 
-			PullFromAssemblers(t, &BlockPullerOptions{
+			utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 				UserConfig: uc,
 				Parties:    parties,
 				StartBlock: startBlock,
@@ -159,7 +161,7 @@ func TestSubmitAndReceive(t *testing.T) {
 			startBlock = uint64(1)
 			endBlock = uint64(1000)
 
-			PullFromAssemblers(t, &BlockPullerOptions{
+			utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 				UserConfig: uc,
 				Parties:    parties,
 				StartBlock: startBlock,
@@ -246,7 +248,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 	signer := signutil.CreateTestSigner(t, "org1", dir)
 
 	statusSuccess := common.Status_SUCCESS
-	PullFromAssemblers(t, &BlockPullerOptions{
+	utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 		UserConfig: uc,
 		Parties:    parties,
 		StartBlock: startBlock,
@@ -256,7 +258,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 	})
 
 	statusUknown := common.Status_UNKNOWN
-	PullFromAssemblers(t, &BlockPullerOptions{
+	utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 		UserConfig: uc,
 		Parties:    parties,
 		StartBlock: startBlock,
@@ -271,7 +273,7 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 	endBlock = uint64(2)
 
 	statusBadRequest := common.Status_BAD_REQUEST
-	PullFromAssemblers(t, &BlockPullerOptions{
+	utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 		UserConfig: uc,
 		Parties:    parties,
 		StartBlock: startBlock,

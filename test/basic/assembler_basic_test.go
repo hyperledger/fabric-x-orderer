@@ -4,10 +4,11 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package test
+package basic
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTxClientSend(t *testing.T) {
+// scenario:
+// start an arma network with 4 parties and mTLS enabled for assembler
+// send some transactions to the network
+// pull blocks from one of the assemblers and count them, verify that all expected transactions are included in the pulled blocks
+func TestPullBlocksFromAssemblerWithMTLS(t *testing.T) {
 	totalTxNumber := 100
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -33,9 +38,9 @@ func TestTxClientSend(t *testing.T) {
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "mTLS")
 	defer netInfo.CleanUp()
-	require.NotNil(t, netInfo)
+	require.NoError(t, err)
 	// 2.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
@@ -69,8 +74,9 @@ func TestTxClientSend(t *testing.T) {
 	// 5. Check If Transaction is sent
 	t.Log("Finished submit")
 
+	// Pull some block from the middle and count them
 	startBlock := uint64(0)
-	endBlock := uint64(totalTxNumber + 1)
+	endBlock := uint64(math.MaxUint64)
 	totalTxs := 0
 	totalBlocks := 0
 
@@ -85,7 +91,9 @@ func TestTxClientSend(t *testing.T) {
 		}
 		return nil
 	}
-	dc.PullBlocks(cnx, 1, startBlock, endBlock, handler, signutil.CreateTestSigner(t, "org1", dir))
+	status, err := dc.PullBlocks(cnx, 1, startBlock, endBlock, handler, signutil.CreateTestSigner(t, "org1", dir))
+	assert.ErrorContains(t, err, "context canceled")
+	assert.Equal(t, common.Status(0), status)
 	assert.Equal(t, totalTxNumber+1, totalTxs)
 	assert.True(t, totalBlocks > 2)
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)

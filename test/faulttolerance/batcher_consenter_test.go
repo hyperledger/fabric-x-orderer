@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package test
+package faulttolerance
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
@@ -29,21 +30,21 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	require.NoError(t, err)
 	numParties := 4
 
-	batcherNodesShard0, batchersInfoShard0 := createBatcherNodesAndInfo(t, ca, numParties)
-	batcherNodesShard1, batchersInfoShard1 := createBatcherNodesAndInfo(t, ca, numParties)
-	consenterNodes, consentersInfo := createConsenterNodesAndInfo(t, ca, numParties)
+	batcherNodesShard0, batchersInfoShard0 := test_utils.CreateBatcherNodesAndInfo(t, ca, numParties)
+	batcherNodesShard1, batchersInfoShard1 := test_utils.CreateBatcherNodesAndInfo(t, ca, numParties)
+	consenterNodes, consentersInfo := test_utils.CreateConsenterNodesAndInfo(t, ca, numParties)
 
 	shards := []config.ShardInfo{{ShardId: 0, Batchers: batchersInfoShard0}, {ShardId: 1, Batchers: batchersInfoShard1}}
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, _, _, clean := createConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
+	_, _, _, clean := test_utils.CreateConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
 	defer clean()
 
-	batchers0, configs, loggers, clean := createBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, shards[0].ShardId, genesisBlock)
+	batchers0, configs, loggers, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, shards[0].ShardId, genesisBlock)
 	defer clean()
 
-	batchers1, _, _, clean := createBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, shards[1].ShardId, genesisBlock)
+	batchers1, _, _, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, shards[1].ShardId, genesisBlock)
 	defer clean()
 
 	for i := 0; i < 4; i++ {
@@ -98,7 +99,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Recover old primary in shard 0
-	batchers0[0] = recoverBatcher(t, ca, configs[0], batcherNodesShard0[0], loggers[0])
+	batchers0[0] = test_utils.RecoverBatcher(t, ca, configs[0], batcherNodesShard0[0], loggers[0])
 
 	require.Eventually(t, func() bool {
 		return batchers0[0].Ledger.Height(2) == 1

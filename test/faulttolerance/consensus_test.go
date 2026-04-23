@@ -3,7 +3,8 @@ Copyright IBM Corp. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
 */
-package test
+
+package faulttolerance
 
 import (
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/onsi/gomega/gexec"
@@ -83,7 +85,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 
 	signer := signutil.CreateTestSigner(t, "org1", dir)
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		StartBlock:   0,
@@ -110,7 +112,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 			correctParties = append(correctParties, types.PartyID(i+1))
 		}
 	}
-	PullFromAssemblers(t, &BlockPullerOptions{
+	utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      correctParties,
 		StartBlock:   0,
@@ -130,7 +132,7 @@ func TestSubmitStopThenRestartConsenter(t *testing.T) {
 
 	waitForTxSent.Wait()
 
-	PullFromAssemblers(t, &BlockPullerOptions{
+	utils.PullFromAssemblers(t, &utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
 		StartBlock:   0,
