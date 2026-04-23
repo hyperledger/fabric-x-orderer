@@ -18,7 +18,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -33,13 +32,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
-
-var caFolders = map[string]struct{}{
-	"ca":         {},
-	"tlsca":      {},
-	"cacerts":    {},
-	"tlscacerts": {},
-}
 
 func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	// Prepare Arma config and crypto and get the genesis block
@@ -253,27 +245,5 @@ func (v *verifyRouterEndpointUpdate) HandleBlock(t *testing.T, block *common.Blo
 		v.RouterEndpointUpdated.Store(partyConfig.RouterConfig.Host == v.routerIP && partyConfig.RouterConfig.Port == uint32(v.newPort))
 	}
 
-	return nil
-}
-
-type exportConfigBlockToFile struct {
-	configSeq uint64
-	path      string
-}
-
-func (ec *exportConfigBlockToFile) HandleBlock(t *testing.T, block *common.Block) error {
-	if protoutil.IsConfigBlock(block) {
-		env, err := protoutil.ExtractEnvelope(block, 0)
-		require.NoError(t, err)
-		payload, err := protoutil.UnmarshalPayload(env.Payload)
-		require.NoError(t, err)
-		configEnv, err := protoutil.UnmarshalConfigEnvelope(payload.Data)
-		require.NoError(t, err)
-		if configEnv.GetConfig().GetSequence() == ec.configSeq {
-			configBlock := &common.Block{Header: block.GetHeader(), Data: block.GetData(), Metadata: block.GetMetadata()}
-			err := configtxgen.WriteOutputBlock(configBlock, ec.path)
-			require.NoError(t, err)
-		}
-	}
 	return nil
 }

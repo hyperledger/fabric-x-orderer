@@ -28,13 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var caFolders = map[string]struct{}{
-	"ca":         {},
-	"tlsca":      {},
-	"cacerts":    {},
-	"tlscacerts": {},
-}
-
 // TestUpdateTimeoutParameters verifies that updating a party's timeout parameters via a config update succeeds,
 // and that the party can continue processing transactions after the config update with the new timeout parameters.
 // NOTE: as the memory pool options are not updated in dynamic reconfig, this scenario is tested as an admin action requirement.

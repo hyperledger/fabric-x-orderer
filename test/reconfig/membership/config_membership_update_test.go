@@ -35,13 +35,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var caFolders = map[string]struct{}{
-	"ca":         {},
-	"tlsca":      {},
-	"cacerts":    {},
-	"tlscacerts": {},
-}
-
 // TestRemovePartyRunAll verifies that removing a party via a config update
 // propagates to the running Arma network. It boots a temporary network,
 // submits a config update to remove a specific party, waits for nodes to stop,
