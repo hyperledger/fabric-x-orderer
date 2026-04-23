@@ -132,7 +132,7 @@ func (c *Consensus) Start() error {
 	bft := c.BFT
 	c.lock.Unlock()
 
-	return bft.Start()
+	return bft.Start() // start the bft without holding the lock to avoid deadlock
 }
 
 func (c *Consensus) StartConsensusService() {
@@ -159,6 +159,11 @@ func (c *Consensus) StartConsensusService() {
 
 func (c *Consensus) Stop() {
 	c.lock.Lock()
+	bft := c.BFT
+	c.lock.Unlock()
+	bft.Stop() // stop the bft without holding the lock to avoid deadlock (it is safe to stop it multiple times)
+
+	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	state := c.status.GetState()
@@ -169,7 +174,6 @@ func (c *Consensus) Stop() {
 	c.Logger.Infof("Stopping consensus node")
 	if state != node_utils.StateSoftStopped && state != node_utils.StatePendingAdmin {
 		close(c.softStopCh)
-		c.BFT.Stop()
 		c.Synchronizer.Stop()
 		c.BADB.Close()
 		c.Metrics.Stop()
@@ -1174,6 +1178,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 
 	// update state
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.State = hdr.State
 
 	c.PrevHash = protoutil.BlockHeaderHash(block.Header)
@@ -1203,8 +1208,6 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 	}
 
 	c.updateMetricsOnDeliver(hdr)
-
-	c.lock.Unlock()
 
 	return smartbft_types.Reconfig{
 		CurrentNodes:     currentNodes,
