@@ -391,7 +391,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		consenterConfig := cfg.ExtractConsenterConfig(lcb)
 		nodeIP := strings.Split(consenterConfig.Consenters[consenterPartyToUpdateIndex].Endpoint, ":")[0]
-		availablePort, _ := testutil.GetAvailablePort(t)
+		availablePort, ll := testutil.SharedTestPortAllocator().Allocate(t)
+		ll.Close()
 		newPort, err := strconv.Atoi(availablePort)
 		require.NoError(t, err)
 
