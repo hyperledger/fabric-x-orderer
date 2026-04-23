@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package reconfig
+package configtx
 
 import (
 	"os"
@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-common/common/configtx"
+	ctx "github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config/protos"
@@ -93,7 +93,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
 
 	// Verify that the config update contains the expected updates
-	configUpdate, err := configtx.UnmarshalConfigUpdate(configUpdatePbData)
+	configUpdate, err := ctx.UnmarshalConfigUpdate(configUpdatePbData)
 	require.NoError(t, err)
 	require.NotNil(t, configUpdate.WriteSet.Groups["Orderer"].Values["ConsensusType"].GetValue())
 

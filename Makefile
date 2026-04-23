@@ -79,15 +79,34 @@ unit-tests:
 
 .PHONY: integration-basic
 integration-basic:
-	go test -race -timeout 30m ./test/basic/...
+	go test -race -timeout 15m ./test/basic/...
 
 .PHONY: integration-faulttolerance
 integration-faulttolerance:
-	go test -race -timeout 30m ./test/faulttolerance/...
+	go test -race -timeout 15m ./test/faulttolerance/...
+
+.PHONY: integration-reconfig-membership
+integration-reconfig-membership:
+	go test -race -timeout 15m ./test/reconfig/membership/...
+
+.PHONY: integration-reconfig-identity
+integration-reconfig-identity:
+	go test -race -timeout 15m ./test/reconfig/identity/...
+
+.PHONY: integration-reconfig-endpoints
+integration-reconfig-endpoints:
+	go test -race -timeout 15m ./test/reconfig/endpoints/...
+
+.PHONY: integration-reconfig-params
+integration-reconfig-params:
+	go test -race -timeout 15m ./test/reconfig/params/...
+
+.PHONY: integration-reconfig-configtx
+integration-reconfig-configtx:
+	go test -race -timeout 15m ./test/reconfig/configtx/...
 
 .PHONY: integration-reconfig
-integration-reconfig:
-	go test -race -timeout 30m ./test/reconfig/...
+integration-reconfig: integration-reconfig-membership integration-reconfig-identity integration-reconfig-endpoints integration-reconfig-params integration-reconfig-configtx
 
 .PHONY: integration-tests
 integration-tests: integration-basic integration-faulttolerance integration-reconfig

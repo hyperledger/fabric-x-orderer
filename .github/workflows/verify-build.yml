@@ -86,20 +86,34 @@ jobs:
       - run: make integration-faulttolerance
         name: Run Integration Fault Tolerance Tests
   integration-reconfig:
-    name: Integration Reconfig Tests
+    name: ${{ matrix.name }}
     needs: basic-checks
     runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Reconfig Membership Tests
+            target: integration-reconfig-membership
+          - name: Reconfig Identity Tests
+            target: integration-reconfig-identity
+          - name: Reconfig Endpoints Tests
+            target: integration-reconfig-endpoints
+          - name: Reconfig Params Tests
+            target: integration-reconfig-params
+          - name: Reconfig Configtx Tests
+            target: integration-reconfig-configtx
     steps:
       - uses: actions/checkout@v5
+        name: Checkout Fabric-X Code
         with:
           fetch-depth: 0
-        name: Checkout Fabric-X Code
       - uses: actions/setup-go@v6
         name: Install Go
         with:
           go-version-file: go.mod
-      - run: make integration-reconfig
-        name: Run Integration Reconfig Tests
+      - run: make ${{ matrix.target }}
+        name: Run ${{ matrix.name }}
   sample-tests:
     name: Sample Tests
     needs: basic-checks
