@@ -179,7 +179,7 @@ func TestConfigDisseminate(t *testing.T) {
 	for i := 0; i < numParties; i++ {
 		batchers[i] = recoverBatcher(t, ca, batchersConfigs[i], batcherNodes[i], batchersLoggers[i])
 		consenters[i] = recoverConsenter(t, ca, consentersConfigs[i], consenterNodes[i], consentersLoggers[i], lastBlock)
-		assemblers[i] = recoverAssembler(t, assemblersConfigs[i], assemblersLoggers[i], lastBlock)
+		assemblers[i] = recoverAssembler(assemblersConfigs[i], assemblersLoggers[i], lastBlock)
 		routers[i] = recoverRouter(routersConfigs[i], routersLoggers[i])
 	}
 	time.Sleep(5 * time.Second)

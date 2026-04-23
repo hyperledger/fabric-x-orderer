@@ -30,6 +30,7 @@ const (
 	DefaultAssemblerMonitoringPort             = 0
 	DefaultClientSignatureVerificationRequired = false
 	DefaultMetricsLogInterval                  = time.Duration(10) * time.Second
+	DefaultMetricsProviderType                 = "prometheus"
 )
 
 var (
@@ -58,7 +59,6 @@ type GeneralConfigParams struct {
 	shardID                             types.ShardID
 	tlsEnabled                          bool
 	clientAuthRequired                  bool
-	monitoringListenPort                uint32
 	metricsLogInterval                  time.Duration
 	clientSignatureVerificationRequired bool
 }
@@ -98,9 +98,9 @@ func createNetworkLocalConfig(network Network, cryptoBaseDir string, configBaseD
 
 	redundantShardID := types.ShardID(0)
 	for _, party := range network.Parties {
-		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", utils.TrimPortFromEndpoint(party.RouterEndpoint), utils.GetPortFromEndpoint(party.RouterEndpoint), DefaultRouterMonitoringPort, 10*time.Second, useTLSRouter, clientAuthRequiredRouter, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
-		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", utils.TrimPortFromEndpoint(party.ConsenterEndpoint), utils.GetPortFromEndpoint(party.ConsenterEndpoint), DefaultConsenterMonitoringPort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
-		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", utils.TrimPortFromEndpoint(party.AssemblerEndpoint), utils.GetPortFromEndpoint(party.AssemblerEndpoint), DefaultAssemblerMonitoringPort, DefaultMetricsLogInterval, useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		routerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "router", utils.TrimPortFromEndpoint(party.RouterEndpoint), utils.GetPortFromEndpoint(party.RouterEndpoint), 10*time.Second, useTLSRouter, clientAuthRequiredRouter, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		consensusGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "consenter", utils.TrimPortFromEndpoint(party.ConsenterEndpoint), utils.GetPortFromEndpoint(party.ConsenterEndpoint), DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		assemblerGeneralParams := NewGeneralConfigParams(party.ID, redundantShardID, "assembler", utils.TrimPortFromEndpoint(party.AssemblerEndpoint), utils.GetPortFromEndpoint(party.AssemblerEndpoint), DefaultMetricsLogInterval, useTLSAssembler, clientAuthRequiredAssembler, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		partyLocalConfig := PartyLocalConfig{
 			ID:                   party.ID,
 			RouterLocalConfig:    NewRouterLocalConfig(routerGeneralParams),
@@ -161,7 +161,7 @@ func createPartyConfigFiles(partyLocalConfig PartyLocalConfig, configBaseDir str
 	return nil
 }
 
-func NewGeneralConfigParams(partyID types.PartyID, shardID types.ShardID, role string, listenAddress string, listenPort uint32, monitoringListenPort uint32, metricsLogInterval time.Duration, tlsEnabled bool, clientAuthRequired bool, logLevel string, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) GeneralConfigParams {
+func NewGeneralConfigParams(partyID types.PartyID, shardID types.ShardID, role string, listenAddress string, listenPort uint32, metricsLogInterval time.Duration, tlsEnabled bool, clientAuthRequired bool, logLevel string, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) GeneralConfigParams {
 	return GeneralConfigParams{
 		partyID:            partyID,
 		shardID:            shardID,
@@ -174,7 +174,7 @@ func NewGeneralConfigParams(partyID types.PartyID, shardID types.ShardID, role s
 		tlsEnabled:         tlsEnabled,
 		clientAuthRequired: clientAuthRequired,
 		// set default monitoring values
-		monitoringListenPort:                monitoringListenPort,
+		// monitoringListenPort:                monitoringListenPort,
 		metricsLogInterval:                  metricsLogInterval,
 		clientSignatureVerificationRequired: clientSignatureVerificationRequired,
 	}
@@ -198,9 +198,9 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 	}
 
 	generalConfig := &config.GeneralConfig{
-		ListenAddress:        generalConfigParams.listenAddress,
-		ListenPort:           generalConfigParams.listenPort,
-		MonitoringListenPort: generalConfigParams.monitoringListenPort,
+		ListenAddress: generalConfigParams.listenAddress,
+		ListenPort:    generalConfigParams.listenPort,
+		// MonitoringListenPort: generalConfigParams.monitoringListenPort,
 		TLSConfig: config.TLSConfigYaml{
 			Enabled:            generalConfigParams.tlsEnabled,
 			PrivateKey:         filepath.Join(partyPath, nodeRole, "tls", "key.pem"),
@@ -238,10 +238,12 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 func NewRouterLocalConfig(routerGeneralParams GeneralConfigParams) *config.NodeLocalConfig {
 	params := config.DefaultRouterParams
 	return &config.NodeLocalConfig{
-		PartyID:       routerGeneralParams.partyID,
-		GeneralConfig: NewGeneralConfig(routerGeneralParams),
-		FileStore:     &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		RouterParams:  &params,
+		PartyID:          routerGeneralParams.partyID,
+		GeneralConfig:    NewGeneralConfig(routerGeneralParams),
+		FileStore:        &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
+		RouterParams:     &params,
+		OperationsConfig: &config.Operations{ListenPort: DefaultRouterMonitoringPort},
+		MetricsConfig:    &config.Metrics{Provider: DefaultMetricsProviderType},
 	}
 }
 
@@ -256,13 +258,15 @@ func createBatcherLocalConfig(batcherGeneralParams GeneralConfigParams) *config.
 			MemPoolMaxSize:   config.DefaultBatcherParams.MemPoolMaxSize,
 			SubmitTimeout:    config.DefaultBatcherParams.SubmitTimeout,
 		},
+		OperationsConfig: &config.Operations{ListenPort: DefaultBatcherMonitoringBasePort},
+		MetricsConfig:    &config.Metrics{Provider: DefaultMetricsProviderType},
 	}
 }
 
 func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []string, cryptoBaseDir string, configBaseDir string, clientSignatureVerificationRequired bool) []*config.NodeLocalConfig {
 	var batchers []*config.NodeLocalConfig
 	for i, batcherEndpoint := range batcherEndpoints {
-		batcherGeneralParams := NewGeneralConfigParams(partyID, types.ShardID(uint16(i+1)), "batcher", utils.TrimPortFromEndpoint(batcherEndpoint), utils.GetPortFromEndpoint(batcherEndpoint), DefaultBatcherMonitoringBasePort, DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
+		batcherGeneralParams := NewGeneralConfigParams(partyID, types.ShardID(uint16(i+1)), "batcher", utils.TrimPortFromEndpoint(batcherEndpoint), utils.GetPortFromEndpoint(batcherEndpoint), DefaultMetricsLogInterval, true, false, "info", cryptoBaseDir, configBaseDir, clientSignatureVerificationRequired)
 		batcher := createBatcherLocalConfig(batcherGeneralParams)
 		batchers = append(batchers, batcher)
 	}
@@ -272,19 +276,23 @@ func NewBatchersLocalConfigPerParty(partyID types.PartyID, batcherEndpoints []st
 func NewConsensusLocalConfig(consensusGeneralParams GeneralConfigParams) *config.NodeLocalConfig {
 	fileStorePath := "/var/dec-trust/production/orderer/store"
 	return &config.NodeLocalConfig{
-		PartyID:         consensusGeneralParams.partyID,
-		GeneralConfig:   NewGeneralConfig(consensusGeneralParams),
-		FileStore:       &config.FileStore{Path: fileStorePath},
-		ConsensusParams: &config.ConsensusParams{WALDir: config.DefaultConsenterNodeConfigParams(fileStorePath).WALDir},
+		PartyID:          consensusGeneralParams.partyID,
+		GeneralConfig:    NewGeneralConfig(consensusGeneralParams),
+		FileStore:        &config.FileStore{Path: fileStorePath},
+		ConsensusParams:  &config.ConsensusParams{WALDir: config.DefaultConsenterNodeConfigParams(fileStorePath).WALDir},
+		OperationsConfig: &config.Operations{ListenPort: DefaultConsenterMonitoringPort},
+		MetricsConfig:    &config.Metrics{Provider: DefaultMetricsProviderType},
 	}
 }
 
 func NewAssemblerLocalConfig(assemblerGeneralParams GeneralConfigParams) *config.NodeLocalConfig {
 	params := config.DefaultAssemblerParams
 	return &config.NodeLocalConfig{
-		PartyID:         assemblerGeneralParams.partyID,
-		GeneralConfig:   NewGeneralConfig(assemblerGeneralParams),
-		FileStore:       &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
-		AssemblerParams: &params,
+		PartyID:          assemblerGeneralParams.partyID,
+		GeneralConfig:    NewGeneralConfig(assemblerGeneralParams),
+		FileStore:        &config.FileStore{Path: "/var/dec-trust/production/orderer/store"},
+		AssemblerParams:  &params,
+		OperationsConfig: &config.Operations{ListenPort: DefaultAssemblerMonitoringPort},
+		MetricsConfig:    &config.Metrics{Provider: DefaultMetricsProviderType},
 	}
 }

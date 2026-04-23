@@ -38,6 +38,7 @@ import (
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -289,11 +290,12 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
 	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{
-		Bundle:                  bundle,
-		PartyId:                 partyID,
-		MonitoringListenAddress: "127.0.0.1:0",
-		MetricsLogInterval:      3 * time.Second,
-		BFTConfig:               smartbft_types.DefaultConfig,
+		Bundle:             bundle,
+		PartyId:            partyID,
+		Operations:         &localconfig.Defaults.Operations,
+		Metrics:            &localconfig.Metrics{Provider: "prometheus"},
+		MetricsLogInterval: 3 * time.Second,
+		BFTConfig:          smartbft_types.DefaultConfig,
 	}
 	consenterNodeConfig.BFTConfig.SelfID = uint64(partyID)
 	consenterNodeConfig.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch

@@ -26,6 +26,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -70,6 +72,7 @@ type Router struct {
 	stopOnce         sync.Once
 	drainChan        chan struct{}
 	drainOnce        sync.Once
+	system           *operations.System
 }
 
 func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Configuration, logger *flogging.FabricLogger, signer identity.SignerSerializer, mainExitChan chan struct{}, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *Router {
@@ -166,6 +169,7 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.decisionPuller = CreateConsensusDecisionReplicator(rconfig, seekInfo, r.logger)
 
 	r.metrics = NewRouterMetrics(rconfig, r.logger)
+	r.system = operations.NewOperationsSystem(*rconfig.Operations, *rconfig.Metrics)
 
 	// initialize channels and once
 	r.stopChan = make(chan struct{})
@@ -175,8 +179,12 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 
 	r.init()
 
-	r.metrics.Start()
+	if err := r.system.Start(); err != nil {
+		r.logger.Panicf("failed to start operations subsystem: %s", err)
+	}
 
+	r.metrics.StartMetricsTracker()
+	r.logger.Infof("Prometheus serving on URL: %s", r.MonitoringServiceAddress())
 	r.logger.Infof("Router with PartyID: %d has been initialized from config with sequence: %d", rconfig.PartyID, r.configSeq)
 }
 
@@ -252,7 +260,11 @@ func (r *Router) StartRouterService() {
 }
 
 func (r *Router) MonitoringServiceAddress() string {
-	return r.metrics.monitor.Address()
+	url, err := monitoring.MakeMetricsURL(r.system.Addr())
+	if err != nil {
+		r.logger.Panicf("failed to construct metrics URL: %s", err)
+	}
+	return url
 }
 
 func (r *Router) Address() string {
@@ -278,7 +290,8 @@ func (r *Router) Stop() {
 
 	if state != node_utils.StateSoftStopped && state != node_utils.StatePendingAdmin {
 		r.net.Stop()
-		r.metrics.Stop()
+		r.metrics.StopMetricsTracker()
+		r.system.Stop()
 
 		// stop config submitter goroutine
 		r.configSubmitter.Stop()
@@ -337,7 +350,8 @@ func (r *Router) SoftStop() error {
 	// then, we stop other components
 	r.configSubmitter.Stop()
 	r.net.Stop() // this will close all client connections, so some (immediate) responses may not be sent.
-	r.metrics.Stop()
+	r.metrics.StopMetricsTracker()
+	r.system.Stop()
 
 	r.status.SetState(node_utils.StateSoftStopped)
 

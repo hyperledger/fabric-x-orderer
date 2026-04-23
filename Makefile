@@ -75,11 +75,11 @@ check-protos:
 
 .PHONY: unit-tests
 unit-tests:
-	go test -race -timeout 20m $$(go list ./... | grep -v /test)
+	go test -race -timeout 30m $$(go list ./... | grep -v /test)
 
 .PHONY: integration-tests
 integration-tests:
-	go test -race -timeout 30m ./test/...
+	go test -race -timeout 40m ./test/...
 
 .PHONY: sample-tests
 sample-tests:

@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/stretchr/testify/require"
 )
 
@@ -833,10 +834,11 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
-			PartyId:                 batcherID,
-			ShardId:                 shardID,
-			MonitoringListenAddress: allocateMonitoringAddress(t),
-			MetricsLogInterval:      0 * time.Second,
+			PartyId:            batcherID,
+			ShardId:            shardID,
+			Operations:         &localconfig.Defaults.Operations,
+			Metrics:            &localconfig.Metrics{Provider: "prometheus"},
+			MetricsLogInterval: 0 * time.Second,
 		}, batchersInfo, ledger, logger),
 	}
 

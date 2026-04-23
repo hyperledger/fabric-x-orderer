@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 	request_mocks "github.com/hyperledger/fabric-x-orderer/request/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/stretchr/testify/require"
 )
 
@@ -240,10 +241,11 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
-			PartyId:                 nodeID,
-			ShardId:                 shardID,
-			MonitoringListenAddress: "127.0.0.1:0",
-			MetricsLogInterval:      0 * time.Second,
+			PartyId:            nodeID,
+			ShardId:            shardID,
+			Operations:         &localconfig.Defaults.Operations,
+			Metrics:            &localconfig.Metrics{Provider: "prometheus"},
+			MetricsLogInterval: 0 * time.Second,
 		}, batchersInfo, ledger, sugaredLogger),
 	}
 
@@ -403,10 +405,11 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
-			PartyId:                 nodeID,
-			ShardId:                 shardID,
-			MonitoringListenAddress: allocateMonitoringAddress(t),
-			MetricsLogInterval:      0 * time.Second,
+			PartyId:            nodeID,
+			ShardId:            shardID,
+			Operations:         &localconfig.Defaults.Operations,
+			Metrics:            &localconfig.Metrics{Provider: "prometheus"},
+			MetricsLogInterval: 0 * time.Second,
 		}, batchersInfo, ledger, sugaredLogger),
 	}
 
