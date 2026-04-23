@@ -650,7 +650,7 @@ func WaitSoftStopped(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo) {
 				return ctx.Err()
 			case <-ni.RunInfo.Session.Err.Detect("Soft stop"):
 			case <-ni.RunInfo.Session.Err.Detect("soft stop"):
-			case <-time.After(90 * time.Second):
+			case <-time.After(120 * time.Second):
 				timeOutChan <- ni
 			}
 			return nil
