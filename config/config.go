@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -859,4 +860,31 @@ func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Bloc
 	}
 
 	return newConfig, nil
+}
+
+func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+	consensusMeta := ordererConfig.ConsensusMetadata()
+	sharedConfig := &protos.SharedConfig{}
+	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
+	}
+
+	conf := &Configuration{
+		SharedConfig: sharedConfig,
+	}
+
+	cInfo := conf.ExtractConsenters()
+
+	party2Endpoint := make(orderers.Party2Endpoint)
+
+	for _, consenter := range cInfo {
+		party2Endpoint[consenter.PartyID] = &orderers.Endpoint{
+			Address: consenter.Endpoint,
+		}
+		for _, cert := range consenter.TLSCACerts {
+			party2Endpoint[consenter.PartyID].RootCerts = append(party2Endpoint[consenter.PartyID].RootCerts, cert)
+		}
+	}
+
+	return party2Endpoint, nil
 }

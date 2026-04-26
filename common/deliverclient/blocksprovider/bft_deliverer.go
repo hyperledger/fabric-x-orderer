@@ -70,6 +70,7 @@ type BFTDeliverer struct {
 	Signer                    identity.SignerSerializer
 	DeliverStreamer           DeliverStreamer
 	CensorshipDetectorFactory CensorshipDetectorFactory
+	EndpointsExtractor        EndpointsExtractor
 	Logger                    *flogging.FabricLogger
 
 	// The initial value of the actual retry interval, which is increased on every failed retry
@@ -118,9 +119,19 @@ func (d *BFTDeliverer) Initialize(channelConfig *common.Config, selfParty types.
 
 	osLogger := flogging.MustGetLogger("peer.orderers")
 	ordererSource := d.OrderersSourceFactory.CreateConnectionSource(osLogger, selfParty)
-	extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+
+	ordererConfig, err := extractOrdererConfig(d.ChannelID, channelConfig, d.CryptoProvider)
 	if err != nil {
-		d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
+		d.Logger.Panicf("Failed to extract orderer config: %s", err)
+	}
+
+	if d.EndpointsExtractor == nil {
+		d.Logger.Panic("EndpointsExtractor is nil")
+	}
+
+	extractedEndpoints, err := d.EndpointsExtractor.ExtractEndpoints(ordererConfig)
+	if err != nil {
+		d.Logger.Panicf("Failed to extract endpoints: %s", err)
 	}
 	ordererSource.Update2(extractedEndpoints)
 	d.orderers = ordererSource
@@ -403,9 +414,14 @@ func (d *BFTDeliverer) onBlockProcessingSuccess(blockNum uint64, channelConfig *
 	d.lastBlockTime = time.Now()
 
 	if channelConfig != nil {
-		extractedEndpoints, err := extractConsenterAddresses(d.ChannelID, channelConfig, d.CryptoProvider)
+		ordererConfig, err := extractOrdererConfig(d.ChannelID, channelConfig, d.CryptoProvider)
 		if err != nil {
-			d.Logger.Panicf("Failed to extract consenter endpoints: %s", err)
+			d.Logger.Panicf("Failed to extract orderer config: %s", err)
+		}
+
+		extractedEndpoints, err := d.EndpointsExtractor.ExtractEndpoints(ordererConfig)
+		if err != nil {
+			d.Logger.Panicf("Failed to extract endpoints: %s", err)
 		}
 		d.Logger.Debugf("Extracted orderer addresses: %+v", extractedEndpoints)
 		d.orderers.Update2(extractedEndpoints)

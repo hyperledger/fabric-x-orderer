@@ -13,7 +13,7 @@ import (
 )
 
 type BFTDelivererFactory struct {
-	CreateBFTDelivererStub        func(string, blocksprovider.BlockHandler, blocksprovider.LedgerInfo, blocksprovider.UpdatableBlockVerifier, blocksprovider.Dialer, blocksprovider.OrdererConnectionSourceFactory, bccsp.BCCSP, chan struct{}, identity.SignerSerializer, blocksprovider.DeliverStreamer, blocksprovider.CensorshipDetectorFactory, *flogging.FabricLogger, time.Duration, time.Duration, time.Duration, time.Duration, blocksprovider.MaxRetryDurationExceededHandler) synchronizer.BFTBlockDeliverer
+	CreateBFTDelivererStub        func(string, blocksprovider.BlockHandler, blocksprovider.LedgerInfo, blocksprovider.UpdatableBlockVerifier, blocksprovider.Dialer, blocksprovider.OrdererConnectionSourceFactory, bccsp.BCCSP, chan struct{}, identity.SignerSerializer, blocksprovider.DeliverStreamer, blocksprovider.CensorshipDetectorFactory, blocksprovider.EndpointsExtractor, *flogging.FabricLogger, time.Duration, time.Duration, time.Duration, time.Duration, blocksprovider.MaxRetryDurationExceededHandler) synchronizer.BFTBlockDeliverer
 	createBFTDelivererMutex       sync.RWMutex
 	createBFTDelivererArgsForCall []struct {
 		arg1  string
@@ -27,12 +27,13 @@ type BFTDelivererFactory struct {
 		arg9  identity.SignerSerializer
 		arg10 blocksprovider.DeliverStreamer
 		arg11 blocksprovider.CensorshipDetectorFactory
-		arg12 *flogging.FabricLogger
-		arg13 time.Duration
+		arg12 blocksprovider.EndpointsExtractor
+		arg13 *flogging.FabricLogger
 		arg14 time.Duration
 		arg15 time.Duration
 		arg16 time.Duration
-		arg17 blocksprovider.MaxRetryDurationExceededHandler
+		arg17 time.Duration
+		arg18 blocksprovider.MaxRetryDurationExceededHandler
 	}
 	createBFTDelivererReturns struct {
 		result1 synchronizer.BFTBlockDeliverer
@@ -44,7 +45,7 @@ type BFTDelivererFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *BFTDelivererFactory) CreateBFTDeliverer(arg1 string, arg2 blocksprovider.BlockHandler, arg3 blocksprovider.LedgerInfo, arg4 blocksprovider.UpdatableBlockVerifier, arg5 blocksprovider.Dialer, arg6 blocksprovider.OrdererConnectionSourceFactory, arg7 bccsp.BCCSP, arg8 chan struct{}, arg9 identity.SignerSerializer, arg10 blocksprovider.DeliverStreamer, arg11 blocksprovider.CensorshipDetectorFactory, arg12 *flogging.FabricLogger, arg13 time.Duration, arg14 time.Duration, arg15 time.Duration, arg16 time.Duration, arg17 blocksprovider.MaxRetryDurationExceededHandler) synchronizer.BFTBlockDeliverer {
+func (fake *BFTDelivererFactory) CreateBFTDeliverer(arg1 string, arg2 blocksprovider.BlockHandler, arg3 blocksprovider.LedgerInfo, arg4 blocksprovider.UpdatableBlockVerifier, arg5 blocksprovider.Dialer, arg6 blocksprovider.OrdererConnectionSourceFactory, arg7 bccsp.BCCSP, arg8 chan struct{}, arg9 identity.SignerSerializer, arg10 blocksprovider.DeliverStreamer, arg11 blocksprovider.CensorshipDetectorFactory, arg12 blocksprovider.EndpointsExtractor, arg13 *flogging.FabricLogger, arg14 time.Duration, arg15 time.Duration, arg16 time.Duration, arg17 time.Duration, arg18 blocksprovider.MaxRetryDurationExceededHandler) synchronizer.BFTBlockDeliverer {
 	fake.createBFTDelivererMutex.Lock()
 	ret, specificReturn := fake.createBFTDelivererReturnsOnCall[len(fake.createBFTDelivererArgsForCall)]
 	fake.createBFTDelivererArgsForCall = append(fake.createBFTDelivererArgsForCall, struct {
@@ -59,19 +60,20 @@ func (fake *BFTDelivererFactory) CreateBFTDeliverer(arg1 string, arg2 blocksprov
 		arg9  identity.SignerSerializer
 		arg10 blocksprovider.DeliverStreamer
 		arg11 blocksprovider.CensorshipDetectorFactory
-		arg12 *flogging.FabricLogger
-		arg13 time.Duration
+		arg12 blocksprovider.EndpointsExtractor
+		arg13 *flogging.FabricLogger
 		arg14 time.Duration
 		arg15 time.Duration
 		arg16 time.Duration
-		arg17 blocksprovider.MaxRetryDurationExceededHandler
-	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17})
+		arg17 time.Duration
+		arg18 blocksprovider.MaxRetryDurationExceededHandler
+	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18})
 	stub := fake.CreateBFTDelivererStub
 	fakeReturns := fake.createBFTDelivererReturns
-	fake.recordInvocation("CreateBFTDeliverer", []interface{}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17})
+	fake.recordInvocation("CreateBFTDeliverer", []interface{}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18})
 	fake.createBFTDelivererMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17)
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18)
 	}
 	if specificReturn {
 		return ret.result1
@@ -85,17 +87,17 @@ func (fake *BFTDelivererFactory) CreateBFTDelivererCallCount() int {
 	return len(fake.createBFTDelivererArgsForCall)
 }
 
-func (fake *BFTDelivererFactory) CreateBFTDelivererCalls(stub func(string, blocksprovider.BlockHandler, blocksprovider.LedgerInfo, blocksprovider.UpdatableBlockVerifier, blocksprovider.Dialer, blocksprovider.OrdererConnectionSourceFactory, bccsp.BCCSP, chan struct{}, identity.SignerSerializer, blocksprovider.DeliverStreamer, blocksprovider.CensorshipDetectorFactory, *flogging.FabricLogger, time.Duration, time.Duration, time.Duration, time.Duration, blocksprovider.MaxRetryDurationExceededHandler) synchronizer.BFTBlockDeliverer) {
+func (fake *BFTDelivererFactory) CreateBFTDelivererCalls(stub func(string, blocksprovider.BlockHandler, blocksprovider.LedgerInfo, blocksprovider.UpdatableBlockVerifier, blocksprovider.Dialer, blocksprovider.OrdererConnectionSourceFactory, bccsp.BCCSP, chan struct{}, identity.SignerSerializer, blocksprovider.DeliverStreamer, blocksprovider.CensorshipDetectorFactory, blocksprovider.EndpointsExtractor, *flogging.FabricLogger, time.Duration, time.Duration, time.Duration, time.Duration, blocksprovider.MaxRetryDurationExceededHandler) synchronizer.BFTBlockDeliverer) {
 	fake.createBFTDelivererMutex.Lock()
 	defer fake.createBFTDelivererMutex.Unlock()
 	fake.CreateBFTDelivererStub = stub
 }
 
-func (fake *BFTDelivererFactory) CreateBFTDelivererArgsForCall(i int) (string, blocksprovider.BlockHandler, blocksprovider.LedgerInfo, blocksprovider.UpdatableBlockVerifier, blocksprovider.Dialer, blocksprovider.OrdererConnectionSourceFactory, bccsp.BCCSP, chan struct{}, identity.SignerSerializer, blocksprovider.DeliverStreamer, blocksprovider.CensorshipDetectorFactory, *flogging.FabricLogger, time.Duration, time.Duration, time.Duration, time.Duration, blocksprovider.MaxRetryDurationExceededHandler) {
+func (fake *BFTDelivererFactory) CreateBFTDelivererArgsForCall(i int) (string, blocksprovider.BlockHandler, blocksprovider.LedgerInfo, blocksprovider.UpdatableBlockVerifier, blocksprovider.Dialer, blocksprovider.OrdererConnectionSourceFactory, bccsp.BCCSP, chan struct{}, identity.SignerSerializer, blocksprovider.DeliverStreamer, blocksprovider.CensorshipDetectorFactory, blocksprovider.EndpointsExtractor, *flogging.FabricLogger, time.Duration, time.Duration, time.Duration, time.Duration, blocksprovider.MaxRetryDurationExceededHandler) {
 	fake.createBFTDelivererMutex.RLock()
 	defer fake.createBFTDelivererMutex.RUnlock()
 	argsForCall := fake.createBFTDelivererArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8, argsForCall.arg9, argsForCall.arg10, argsForCall.arg11, argsForCall.arg12, argsForCall.arg13, argsForCall.arg14, argsForCall.arg15, argsForCall.arg16, argsForCall.arg17
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8, argsForCall.arg9, argsForCall.arg10, argsForCall.arg11, argsForCall.arg12, argsForCall.arg13, argsForCall.arg14, argsForCall.arg15, argsForCall.arg16, argsForCall.arg17, argsForCall.arg18
 }
 
 func (fake *BFTDelivererFactory) CreateBFTDelivererReturns(result1 synchronizer.BFTBlockDeliverer) {

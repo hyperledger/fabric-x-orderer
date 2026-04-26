@@ -22,12 +22,14 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/test"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/config"
 )
 
 const eventuallyTO = 20 * time.Second
@@ -45,6 +47,7 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 		fakeSigner                         *fake.Signer
 		fakeDeliverStreamer                *fake.DeliverStreamer
 		fakeDeliverClient                  *fake.DeliverClient
+		fakeEndpointsExtractor             *fake.EndpointsExtractor
 		fakeSleeper                        *fake.Sleeper
 		fakeDurationExceededHandler        *fake.DurationExceededHandler
 		fakeCryptoProvider                 bccsp.BCCSP
@@ -122,6 +125,12 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 		channelConfig, fakeCryptoProvider, err = testSetupBFT(suiteT, tempDir)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+		// Use a stub that extracts real endpoints from the config.
+		fakeEndpointsExtractor = &fake.EndpointsExtractor{}
+		fakeEndpointsExtractor.ExtractEndpointsStub = func(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+			return config.ExtractConsenterAddresses(ordererConfig)
+		}
+
 		d = &blocksprovider.Deliverer{
 			ChannelID:                       "channel-id",
 			BlockHandler:                    fakeBlockHandler,
@@ -133,6 +142,7 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 			DoneC:                           make(chan struct{}),
 			Signer:                          fakeSigner,
 			DeliverStreamer:                 fakeDeliverStreamer,
+			EndpointsExtractor:              fakeEndpointsExtractor,
 			Logger:                          flogging.MustGetLogger("blocksprovider"),
 			TLSCertHash:                     []byte("tls-cert-hash"),
 			MaxRetryDuration:                time.Hour,

@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
@@ -31,6 +32,14 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
+
+// ConsenterEndpointsExtractor implements blocksprovider.EndpointsExtractor
+type ConsenterEndpointsExtractor struct{}
+
+// ExtractEndpoints extracts consenter endpoints from the given orderer configuration
+func (e *ConsenterEndpointsExtractor) ExtractEndpoints(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+	return config.ExtractConsenterAddresses(ordererConfig)
+}
 
 type BFTSynchronizer struct {
 	lastReconfig        smartbft_types.Reconfig
@@ -277,6 +286,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 		s.Support,
 		blocksprovider.DeliverAdapter{},
 		&blocksprovider.BFTCensorshipMonitorFactory{},
+		&ConsenterEndpointsExtractor{},
 		flogging.MustGetLogger("orderer.blocksprovider").With("channel", s.Support.ChannelID()),
 		minRetryInterval,
 		maxRetryInterval,
