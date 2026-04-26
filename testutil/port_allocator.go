@@ -10,6 +10,8 @@ import (
 	"net"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // PortAllocator allocates a TCP port and returns both its numeric string and
@@ -97,4 +99,16 @@ var sharedTestPortAllocator = NewTestScopedPortAllocator()
 
 func SharedTestPortAllocator() *TestScopedPortAllocator {
 	return sharedTestPortAllocator
+}
+
+// AllocateLocalhostAddress reserves a unique port via the shared test port
+// allocator, closes the listener, and returns a localhost TCP
+// address using that port.
+func AllocateLocalhostAddress(t *testing.T) string {
+	t.Helper()
+
+	port, ll := SharedTestPortAllocator().Allocate(t)
+	require.NoError(t, ll.Close())
+
+	return net.JoinHostPort("127.0.0.1", port)
 }

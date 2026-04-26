@@ -94,7 +94,7 @@ func newGRPCServer(addr string, ca tlsgen.CA, kp *tlsgen.CertKeyPair) (*comm.GRP
 	})
 }
 
-func createNodes(t *testing.T, ca tlsgen.CA, num int, addr string) []*node {
+func createNodes(t *testing.T, ca tlsgen.CA, num int) []*node {
 	var result []*node
 
 	var sks []*ecdsa.PrivateKey
@@ -110,6 +110,7 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int, addr string) []*node {
 		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
 		require.NoError(t, err)
 
+		addr := testutil.AllocateLocalhostAddress(t)
 		srv, err := newGRPCServer(addr, ca, kp)
 		require.NoError(t, err)
 
@@ -150,9 +151,9 @@ func createConsenterInfo(partyID types.PartyID, n *node, ca tlsgen.CA) nodeconfi
 }
 
 func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock *common.Block) consensusTestSetup {
-	consenterNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	consenterNodes := createNodes(t, ca, numParties)
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
-	batcherNodes := createNodes(t, ca, numParties, "127.0.0.1:0")
+	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
 
 	var consensusNodes []*consensus.Consensus
@@ -167,7 +168,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 
 		dir := t.TempDir()
 
-		conf := makeConf(dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
+		conf := makeConf(t, dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
 
 		signer := buildSigner(conf, logger)
@@ -216,7 +217,7 @@ func grpcRegisterAndStart(c *consensus.Consensus, n *node) {
 	}()
 }
 
-func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodeconfig.ConsenterInfo, batchersInfo []nodeconfig.BatcherInfo) *nodeconfig.ConsenterNodeConfig {
+func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consentersInfo []nodeconfig.ConsenterInfo, batchersInfo []nodeconfig.BatcherInfo) *nodeconfig.ConsenterNodeConfig {
 	sk, err := x509.MarshalPKCS8PrivateKey(n.sk)
 	if err != nil {
 		panic(err)
@@ -247,7 +248,7 @@ func makeConf(dir string, n *node, partyID types.PartyID, consentersInfo []nodec
 		Bundle:                  bundle,
 		RequestMaxBytes:         1000,
 		MetricsLogInterval:      2 * time.Second,
-		MonitoringListenAddress: "127.0.0.1:0",
+		MonitoringListenAddress: testutil.AllocateLocalhostAddress(t),
 	}
 }
 

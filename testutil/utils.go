@@ -103,7 +103,7 @@ func allocatePort(t *testing.T, allocator PortAllocator) (string, net.Listener) 
 
 // CreateNetwork creates a config.yaml file with the network configuration. This file is the input for armageddon generate command.
 func CreateNetwork(t *testing.T, configPath string, numOfParties int, numOfBatcherShards int, useTLSRouter string, useTLSAssembler string) ArmaNodesInfoMap {
-	return CreateNetworkWithPortAllocator(t, configPath, numOfParties, numOfBatcherShards, useTLSRouter, useTLSAssembler, defaultPortAllocator)
+	return CreateNetworkWithPortAllocator(t, configPath, numOfParties, numOfBatcherShards, useTLSRouter, useTLSAssembler, SharedTestPortAllocator())
 }
 
 // CreateNetworkWithPortAllocator creates a config.yaml file with a caller-provided port allocator.
@@ -182,7 +182,7 @@ type NodeName struct {
 // ExtendNetwork extends an existing network configuration by adding a party to it.
 // It updates the config file with the new party and returns the new party's information and config only
 func ExtendNetwork(t *testing.T, configPath string) (ArmaNodesInfoMap, *genconfig.Network) {
-	return ExtendNetworkWithPortAllocator(t, configPath, defaultPortAllocator)
+	return ExtendNetworkWithPortAllocator(t, configPath, SharedTestPortAllocator())
 }
 
 // ExtendNetworkWithPortAllocator extends the network and uses a caller-provided allocator for new ports.

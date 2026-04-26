@@ -291,7 +291,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{
 		Bundle:                  bundle,
 		PartyId:                 partyID,
-		MonitoringListenAddress: "127.0.0.1:0",
+		MonitoringListenAddress: testutil.AllocateLocalhostAddress(t),
 		MetricsLogInterval:      3 * time.Second,
 		BFTConfig:               smartbft_types.DefaultConfig,
 	}

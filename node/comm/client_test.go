@@ -17,6 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	testgrpc "github.com/hyperledger/fabric-x-orderer/node/comm/testdata/grpc"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -41,10 +42,7 @@ func TestClientConfigDial(t *testing.T) {
 	t.Parallel()
 	testCerts := comm.LoadTestCerts(t)
 
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	badAddress := l.Addr().String()
-	defer l.Close()
+	badAddress := testutil.AllocateLocalhostAddress(t)
 
 	certPool := x509.NewCertPool()
 	ok := certPool.AppendCertsFromPEM(testCerts.CAPEM)
@@ -225,7 +223,7 @@ func TestClientConfigDial(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			lis, err := net.Listen("tcp", "127.0.0.1:0")
+			lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 			if err != nil {
 				t.Fatalf("error creating server for test: %v", err)
 			}
@@ -257,7 +255,7 @@ func TestSetMessageSize(t *testing.T) {
 	t.Parallel()
 
 	// setup test server
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	if err != nil {
 		t.Fatalf("failed to create listener for test server: %v", err)
 	}

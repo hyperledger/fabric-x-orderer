@@ -307,7 +307,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		TLSCertificateFile:        ckp.Cert,
 		PartyId:                   partyID,
 		Directory:                 t.TempDir(),
-		ListenAddress:             "127.0.0.1:0",
+		ListenAddress:             testutil.AllocateLocalhostAddress(t),
 		PrefetchBufferMemoryBytes: 1 * 1024 * 1024 * 1024,
 		RestartLedgerScanTimeout:  5 * time.Second,
 		PrefetchEvictionTtl:       time.Hour,
@@ -318,7 +318,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Consenter:                 consenterInfo,
 		UseTLS:                    true,
 		ClientAuthRequired:        ClientAuthRequired,
-		MonitoringListenAddress:   "127.0.0.1:0",
+		MonitoringListenAddress:   testutil.AllocateLocalhostAddress(t),
 		ClientRootCAs:             clientRootCAs,
 		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
 	}

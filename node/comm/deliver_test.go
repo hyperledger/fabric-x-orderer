@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/onsi/gomega"
 	"github.com/pkg/errors"
@@ -317,7 +318,7 @@ func (ds *deliverServer) addExpectPullAssert(seq uint64) {
 }
 
 func newClusterNode(t *testing.T) *deliverServer {
-	srv, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{})
+	srv, err := comm.NewGRPCServer(testutil.AllocateLocalhostAddress(t), comm.ServerConfig{})
 	require.NoError(t, err)
 	ds := &deliverServer{
 		logger:         flogging.MustGetLogger("test.debug"),
@@ -336,7 +337,7 @@ func newClusterNodeWithTLS(t *testing.T) *deliverServer {
 	cert, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
-	srv, err := comm.NewGRPCServer("127.0.0.1:0", comm.ServerConfig{
+	srv, err := comm.NewGRPCServer(testutil.AllocateLocalhostAddress(t), comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
 			Key:         cert.Key,
 			Certificate: cert.Cert,

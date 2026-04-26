@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -42,7 +43,7 @@ func TestTLSCA(t *testing.T) {
 	require.NotNil(t, ca)
 
 	srv := createTLSService(t, ca, "127.0.0.1")
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", testutil.AllocateLocalhostAddress(t))
 	require.NoError(t, err)
 	go srv.Serve(listener)
 	defer srv.Stop()

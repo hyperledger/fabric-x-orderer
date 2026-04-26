@@ -971,7 +971,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		UseTLS:                              useTLS,
 		ClientRootCAs:                       clientRootCAs,
 		TLSPrivateKeyFile:                   ckp.Key,
-		ListenAddress:                       "127.0.0.1:0",
+		ListenAddress:                       testutil.AllocateLocalhostAddress(t),
 		FileStorePath:                       fileStorePath,
 		ClientAuthRequired:                  clientAuthRequired,
 		Shards:                              shards,
@@ -979,7 +979,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
-		MonitoringListenAddress:             "127.0.0.1:0",
+		MonitoringListenAddress:             testutil.AllocateLocalhostAddress(t),
 		MetricsLogInterval:                  1 * time.Second,
 	}
 
