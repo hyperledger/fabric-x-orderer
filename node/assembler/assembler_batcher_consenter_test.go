@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
@@ -318,9 +319,15 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Consenter:                 consenterInfo,
 		UseTLS:                    true,
 		ClientAuthRequired:        ClientAuthRequired,
-		MonitoringListenAddress:   testutil.AllocateLocalhostAddress(t),
-		ClientRootCAs:             clientRootCAs,
-		Bundle:                    testutil.CreateAssemblerBundleForTest(0),
+		Operations: &monitoring.Operations{
+			ListenAddress: "127.0.0.1:0",
+		},
+		Metrics: &monitoring.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: 10 * time.Second,
+		},
+		ClientRootCAs: clientRootCAs,
+		Bundle:        testutil.CreateAssemblerBundleForTest(0),
 	}
 
 	a := assembler.NewAssembler(nodeConfig, &orderer_config.Configuration{}, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)))

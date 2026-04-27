@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -169,8 +170,13 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 			BatchSequenceGap:                    types.BatchSequence(10),
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
-			MonitoringListenAddress:             allocateMonitoringAddress(t),
-			MetricsLogInterval:                  5 * time.Second,
+			Operations: &monitoring.Operations{
+				ListenAddress: allocateMonitoringAddress(t),
+			},
+			Metrics: &monitoring.Metrics{
+				Provider:           "disabled",
+				MetricsLogInterval: 10 * time.Second,
+			},
 		}
 		configs = append(configs, conf)
 

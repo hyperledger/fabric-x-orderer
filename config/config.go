@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -245,8 +246,14 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
-	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
+	}
+	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
 	}
 
 	// use shards to get every party's RootCAs
@@ -276,8 +283,13 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
-		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
-		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Operations: &monitoring.Operations{
+			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+		},
+		Metrics: &monitoring.Metrics{
+			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
+			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+		},
 	}
 	return routerConfig
 }
@@ -287,8 +299,14 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
 	}
-	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
+	}
+	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
 	}
 
 	// use shards to get every party's RootCAs
@@ -313,25 +331,30 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
 
 	batcherConfig := &nodeconfig.BatcherNodeConfig{
-		Shards:                              shards,
-		Consenters:                          config.ExtractConsenters(),
-		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
-		ConfigStorePath:                     config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
-		ShardId:                             shardId,
-		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
-		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
-		ClientRootCAs:                       trustedRoots,
-		SigningPrivateKey:                   signingPrivateKey,
-		MemPoolMaxSize:                      config.LocalConfig.NodeLocalConfig.BatcherParams.MemPoolMaxSize,
-		BatchMaxSize:                        config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
-		BatchMaxBytes:                       config.SharedConfig.BatchingConfig.BatchSize.AbsoluteMaxBytes,
-		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
-		SubmitTimeout:                       config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
-		BatchSequenceGap:                    types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
-		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
-		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Shards:             shards,
+		Consenters:         config.ExtractConsenters(),
+		Directory:          config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		ListenAddress:      net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
+		ConfigStorePath:    config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		PartyId:            config.LocalConfig.NodeLocalConfig.PartyID,
+		ShardId:            shardId,
+		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
+		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
+		ClientRootCAs:      trustedRoots,
+		SigningPrivateKey:  signingPrivateKey,
+		MemPoolMaxSize:     config.LocalConfig.NodeLocalConfig.BatcherParams.MemPoolMaxSize,
+		BatchMaxSize:       config.SharedConfig.BatchingConfig.BatchSize.MaxMessageCount,
+		BatchMaxBytes:      config.SharedConfig.BatchingConfig.BatchSize.AbsoluteMaxBytes,
+		RequestMaxBytes:    config.SharedConfig.BatchingConfig.RequestMaxBytes,
+		SubmitTimeout:      config.LocalConfig.NodeLocalConfig.BatcherParams.SubmitTimeout,
+		BatchSequenceGap:   types.BatchSequence(config.LocalConfig.NodeLocalConfig.BatcherParams.BatchSequenceGap),
+		Operations: &monitoring.Operations{
+			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+		},
+		Metrics: &monitoring.Metrics{
+			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
+			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
 	}
@@ -364,8 +387,14 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
-	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
+	}
+	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
 	}
 
 	// TODO: avoid duplications in clientRootCAs
@@ -382,20 +411,25 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	trustedRoots = append(trustedRoots, localConfigClientsTrustedRoots...)
 
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
-		Shards:                              shards,
-		Consenters:                          consenters,
-		Router:                              config.ExtractRouterInParty(),
-		Directory:                           config.LocalConfig.NodeLocalConfig.FileStore.Path,
-		ListenAddress:                       net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
-		PartyId:                             config.LocalConfig.NodeLocalConfig.PartyID,
-		TLSPrivateKeyFile:                   config.LocalConfig.TLSConfig.PrivateKey,
-		TLSCertificateFile:                  config.LocalConfig.TLSConfig.Certificate,
-		ClientRootCAs:                       trustedRoots,
-		SigningPrivateKey:                   signingPrivateKey,
-		WALDir:                              DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
-		BFTConfig:                           BFTConfig,
-		MonitoringListenAddress:             net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
-		MetricsLogInterval:                  config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
+		Shards:             shards,
+		Consenters:         consenters,
+		Router:             config.ExtractRouterInParty(),
+		Directory:          config.LocalConfig.NodeLocalConfig.FileStore.Path,
+		ListenAddress:      net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
+		PartyId:            config.LocalConfig.NodeLocalConfig.PartyID,
+		TLSPrivateKeyFile:  config.LocalConfig.TLSConfig.PrivateKey,
+		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
+		ClientRootCAs:      trustedRoots,
+		SigningPrivateKey:  signingPrivateKey,
+		WALDir:             DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
+		BFTConfig:          BFTConfig,
+		Operations: &monitoring.Operations{
+			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+		},
+		Metrics: &monitoring.Metrics{
+			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
+			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
@@ -412,8 +446,14 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 			break
 		}
 	}
-	if config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
+	}
+	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
+		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
 	}
 
 	// use shards to get every party's RootCAs
@@ -444,9 +484,14 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 		UseTLS:                    config.LocalConfig.TLSConfig.Enabled,
 		ClientAuthRequired:        config.LocalConfig.TLSConfig.ClientAuthRequired,
 		ClientRootCAs:             trustedRoots,
-		MonitoringListenAddress:   net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.MonitoringListenPort))),
-		MetricsLogInterval:        config.LocalConfig.NodeLocalConfig.GeneralConfig.MetricsLogInterval,
-		Bundle:                    bundle,
+		Operations: &monitoring.Operations{
+			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
+		},
+		Metrics: &monitoring.Metrics{
+			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
+			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+		},
+		Bundle: bundle,
 	}
 	return assemblerConfig
 }
