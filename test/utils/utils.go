@@ -723,12 +723,12 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 				if err != nil {
 					return fmt.Errorf("failed unmarshalling identifier header for block %d: %v", block.Header.GetNumber(), err)
 				}
-				msg := &state.MessageToSign{
+				msg := &protoutil.MessageToSign{
 					IdentifierHeader:     metadataSignature.IdentifierHeader,
 					BlockHeader:          protoutil.BlockHeaderBytes(bhdr),
 					OrdererBlockMetadata: md.GetValue(),
 				}
-				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, msg.AsBytes(), metadataSignature.GetSignature()); err != nil {
+				if err = sigVerifier.VerifySignature(types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, msg.ASN1MarshalOrPanic(), metadataSignature.GetSignature()); err != nil {
 					t.Logf("failed verifying signature for block %d: %v", block.Header.GetNumber(), err)
 					continue
 				}

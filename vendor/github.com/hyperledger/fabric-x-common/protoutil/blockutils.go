@@ -16,13 +16,16 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/IBM/idemix/common/flogging"
 	"github.com/cockroachdb/errors"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/api/msppb"
-	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/common/crypto"
 )
+
+var logger = flogging.MustGetLogger("protoutil")
 
 // NewBlock constructs a block with no data and no metadata.
 func NewBlock(seqNum uint64, previousHash []byte) *cb.Block {
@@ -277,15 +280,18 @@ func (v *BlockSigVerifier) Verify(header *cb.BlockHeader, metadata *cb.BlockMeta
 		}
 		sigHeader, signerIdentity, err := v.getSigningID(metadataSignature)
 		if err != nil {
-			return errors.WithMessagef(err, "for block: %d", header.GetNumber())
-		}
-		if signerIdentity == nil {
-			// The identifier is not within the consenter set, or no signature header provided.
+			logger.Warning("Failed fetching signing identity in block [%d]: %s", header.GetNumber(), err)
 			continue
 		}
+		if signerIdentity == nil {
+			logger.Warning("An identifier is not within the consenter set, "+
+				"or no signature header provided in block [%d]: %s", header.GetNumber())
+			continue
+		}
+		messageToSign := &MessageToSign{sigHeader, blockHeaderBytes, md.Value}
 		signatureSet = append(signatureSet, &SignedData{
 			Identity:  signerIdentity,
-			Data:      util.ConcatenateBytes(md.Value, sigHeader, blockHeaderBytes),
+			Data:      messageToSign.ASN1MarshalOrPanic(),
 			Signature: metadataSignature.Signature,
 		})
 	}
@@ -390,4 +396,38 @@ func ReadBlockFromFile(blockPath string) (*cb.Block, error) {
 		return nil, err
 	}
 	return block, nil
+}
+
+// MessageToSign is used when signing a block.
+type MessageToSign struct {
+	IdentifierHeader     []byte
+	BlockHeader          []byte
+	OrdererBlockMetadata []byte
+}
+
+// ASN1MarshalOrPanic marshals the message to sign or panics on error.
+func (m MessageToSign) ASN1MarshalOrPanic() []byte {
+	mBytes, err := asn1.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return mBytes
+}
+
+// ASN1Unmarshal unmarshals the message to sign.
+func (m *MessageToSign) ASN1Unmarshal(b []byte) error {
+	_, err := asn1.Unmarshal(b, m)
+	return err
+}
+
+// NewIdentifierHeaderOrPanic creates an IdentifierHeader with the given id and a nonce or panics on error.
+func NewIdentifierHeaderOrPanic(id uint32) *cb.IdentifierHeader {
+	nonce, err := crypto.GetRandomNonce()
+	if err != nil {
+		panic(err)
+	}
+	return &cb.IdentifierHeader{
+		Identifier: id,
+		Nonce:      nonce,
+	}
 }

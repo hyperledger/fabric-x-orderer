@@ -233,7 +233,7 @@ func NewOrdererGroup(conf *Orderer, channelCapabilities map[string]bool) (*cb.Co
 	case ConsensusTypeArma:
 		consenterProtos, err := consenterProtosFromConfig(conf.ConsenterMapping)
 		if err != nil {
-			return nil, errors.Errorf("cannot load consenter config for orderer type %s: %s", ConsensusTypeBFT, err)
+			return nil, errors.Errorf("cannot load consenter config for orderer type %s: %s", ConsensusTypeArma, err)
 		}
 		addValue(ordererGroup, channelconfig.OrderersValue(consenterProtos), channelconfig.AdminsPolicyKey)
 		if conf.Arma.Path != "" {
@@ -241,6 +241,8 @@ func NewOrdererGroup(conf *Orderer, channelCapabilities map[string]bool) (*cb.Co
 				return nil, errors.Errorf("cannot load metadata for orderer type %s: %s", conf.OrdererType, err)
 			}
 		}
+		// Overwrite policy manually by computing it from the consenters
+		policies.EncodeBFTBlockVerificationPolicy(consenterProtos, ordererGroup)
 	default:
 		return nil, errors.Errorf("unknown orderer type: %s", conf.OrdererType)
 	}
