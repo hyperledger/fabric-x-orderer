@@ -758,7 +758,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	remainingParties := make([]types.PartyID, 0, numOfParties-1)
 	for i := 1; i <= numOfParties; i++ {
 		if types.PartyID(i) != partyToRemove {
-			parties = append(parties, types.PartyID(i))
+			remainingParties = append(remainingParties, types.PartyID(i))
 		}
 	}
 	builder.RemoveParty(t, partyToRemove)
@@ -775,13 +775,14 @@ func TestReplacePartiesPartially(t *testing.T) {
 	totalTxNumber++ // for the config update transaction
 
 	// 4.
-	t.Log("Wait for the removed party to enter pending admin state and then stop the party")
+	t.Logf("Wait for the removed party %d to enter pending admin state", partyToRemove)
 	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToRemove})
-	armaNetwork.StopParties([]types.PartyID{partyToRemove})
 
 	t.Logf("Wait for arma nodes to restart dynamically after removal of party %d", partyToRemove)
 	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, remainingParties, configSeq)
 
+	t.Logf("Stop the removed party %d", partyToRemove)
+	armaNetwork.StopParties([]types.PartyID{partyToRemove})
 	// 5.
 	// Remove the removed party from the network info and parties list
 	maps.DeleteFunc(netInfo, func(nodeName testutil.NodeName, _ *testutil.ArmaNodeInfo) bool {
@@ -934,7 +935,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
-		Transactions: totalTxNumber,
+		Transactions: totalTxNumber + 1,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Timeout:      60,
 		Status:       &statusUnknown,
