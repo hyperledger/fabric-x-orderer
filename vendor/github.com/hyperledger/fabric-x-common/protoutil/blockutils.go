@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/IBM/idemix/common/flogging"
 	"github.com/cockroachdb/errors"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"google.golang.org/protobuf/proto"
@@ -23,6 +24,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/util"
 )
+
+var logger = flogging.MustGetLogger("protoutil")
 
 // NewBlock constructs a block with no data and no metadata.
 func NewBlock(seqNum uint64, previousHash []byte) *cb.Block {
@@ -277,10 +280,12 @@ func (v *BlockSigVerifier) Verify(header *cb.BlockHeader, metadata *cb.BlockMeta
 		}
 		sigHeader, signerIdentity, err := v.getSigningID(metadataSignature)
 		if err != nil {
-			return errors.WithMessagef(err, "for block: %d", header.GetNumber())
+			logger.Warning("Failed fetching signing identity in block [%d]: %s", header.GetNumber(), err)
+			continue
 		}
 		if signerIdentity == nil {
-			// The identifier is not within the consenter set, or no signature header provided.
+			logger.Warning("An identifier is not within the consenter set, "+
+				"or no signature header provided in block [%d]: %s", header.GetNumber())
 			continue
 		}
 		signatureSet = append(signatureSet, &SignedData{
