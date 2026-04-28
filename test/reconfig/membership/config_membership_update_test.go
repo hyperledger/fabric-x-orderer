@@ -650,27 +650,19 @@ func TestAddNewParty(t *testing.T) {
 // TestReplacePartiesPartially verifies that an arma network can dynamically replace parties
 // by removing one party and adding multiple new parties in successive configuration updates.
 // Scenario:
-//
 //  1. Run an arma network of 4 parties, single shard.
-//
 //  2. Send txs and pull blocks to ensure network is operational.
-//
-//  3. Send a config tx that removes party 1.
-//
+//  3. Send a config tx that removes party 5.
 //  4. Wait for the removed party to enter pending admin state and then stop the party, wait for the rest of the network to restart dynamically.
-//
 //  5. Clean the removed party from the network information, the shared config yaml and the crypto dir.
-//
-//  6. Pull the last config block from assembler so that block is written to a temporal directory, this block will be the bootstrap block of the first added party.
-//
-//  7. Send successive config updates that adds a party:
+//  6. Pull the last config block from assembler so that block is written to a temporary directory, this block will be the bootstrap block of the first added party.
+//  7. Send successive config updates that add a party:
 //     Iteratively (4 times):
 //     - Send a config tx that adds a new party.
 //     - Wait for dynamic restart of all nodes.
 //     - Pull the last config block from assembler so that block is written to a temporal directory, this block will be the bootstrap block of the next added party.
 //     - Add the new party to the network and start the party.
 //     - Updates user configurations across all parties to include new endpoints and TLS certificates of the added parties.
-//
 //  8. Send more txs and pull blocks to verify the network is operational again, after all accumulated configuration changes.
 func TestReplacePartiesPartially(t *testing.T) {
 	// 1.
@@ -817,7 +809,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
-		Transactions: totalTxNumber + 1, // include the config block
+		Transactions: totalTxNumber,
 		Timeout:      120,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
@@ -828,6 +820,8 @@ func TestReplacePartiesPartially(t *testing.T) {
 	t.Logf("Verify the config block %d file was created", configSeq)
 	require.FileExists(t, configBlockPath, "Config block file should exist after pulling from assembler")
 	t.Logf("Config block successfully written to: %s", configBlockPath)
+
+	broadcastClient.Stop()
 
 	// 8.
 	for range 4 {
