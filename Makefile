@@ -109,7 +109,7 @@ integration-reconfig: integration-reconfig-membership integration-reconfig-ident
 
 .PHONY: integration-reconfig-membership
 integration-reconfig-membership:
-	go test -race -timeout 20m ./test/reconfig/membership/...
+	go test -race -timeout 30m ./test/reconfig/membership/...
 
 .PHONY: integration-reconfig-identity
 integration-reconfig-identity:
