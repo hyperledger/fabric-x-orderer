@@ -908,6 +908,26 @@ func TestReplacePartiesPartially(t *testing.T) {
 			err = utils.WriteToYAML(userConfig, filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), "user_config.yaml"))
 			require.NoError(t, err)
 		}
+
+		// Reload uc to get the updated endpoints after writing all user configs
+		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
+		require.NoError(t, err)
+
+		// Pull blocks from the newly added party's assembler to verify it has synced
+		t.Logf("Wait for party %d to complete syncing", addedPartyId)
+		syncVerifier := &verifySyncComplete{expectedConfigSeq: configSeq, syncComplete: false}
+		test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+			UserConfig:   uc,
+			Parties:      []types.PartyID{addedPartyId}, // Only pull from the new party
+			Transactions: totalTxNumber + 1,
+			Timeout:      120,
+			ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+			Status:       &statusUnknown,
+			Signer:       pullRequestSigner,
+			BlockHandler: syncVerifier,
+		})
+		require.True(t, syncVerifier.syncComplete, "Party %d did not sync config block %d", addedPartyId, configSeq)
+		t.Logf("Party %d has completed syncing with config block %d", addedPartyId, configSeq)
 	}
 
 	// After removing and adding parties, verify that the remaining parties can still process transactions with the updated config
@@ -941,6 +961,27 @@ func TestReplacePartiesPartially(t *testing.T) {
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})
+}
+
+type verifySyncComplete struct {
+	expectedConfigSeq uint64
+	syncComplete      bool
+}
+
+func (v *verifySyncComplete) HandleBlock(t *testing.T, block *common.Block) error {
+	if protoutil.IsConfigBlock(block) {
+		env, err := protoutil.ExtractEnvelope(block, 0)
+		require.NoError(t, err)
+		payload, err := protoutil.UnmarshalPayload(env.Payload)
+		require.NoError(t, err)
+		configEnv, err := protoutil.UnmarshalConfigEnvelope(payload.Data)
+		require.NoError(t, err)
+		if configEnv.GetConfig().GetSequence() == v.expectedConfigSeq {
+			t.Logf("Verified party has synced config block %d", block.Header.Number)
+			v.syncComplete = true
+		}
+	}
+	return nil
 }
 
 // TestRemoveMultipleParties verifies that the Arma orderer network can dynamically remove multiple parties
