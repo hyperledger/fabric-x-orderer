@@ -73,9 +73,17 @@ check-protos:
 	@echo "Checking protos..."
 	@./scripts/check_protos.sh
 
+.PHONY: unit-tests-consensus
+unit-tests-consensus:
+	go test -race -timeout 15m ./node/consensus/...
+
+.PHONY: unit-tests-batcher
+unit-tests-batcher:
+	go test -race -timeout 15m ./node/batcher/...
+
 .PHONY: unit-tests
 unit-tests:
-	go test -race -timeout 20m $$(go list ./... | grep -v /test)
+	go test -race -timeout 15m $$(go list ./... | grep -v /test | grep -v node/consensus | grep -v node/batcher)
 
 .PHONY: integration-basic
 integration-basic:
