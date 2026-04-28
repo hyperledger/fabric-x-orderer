@@ -87,7 +87,7 @@ integration-faulttolerance:
 
 .PHONY: integration-reconfig-membership
 integration-reconfig-membership:
-	go test -race -timeout 15m ./test/reconfig/membership/...
+	go test -race -timeout 20m ./test/reconfig/membership/...
 
 .PHONY: integration-reconfig-identity
 integration-reconfig-identity:
