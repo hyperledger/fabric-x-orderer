@@ -257,13 +257,13 @@ func (sc *StubConsenter) DeliverConfigDecisionFromBA(ba *state.AvailableBatchOrd
 	if err != nil {
 		panic("failed to marshal fake signature: " + err.Error())
 	}
-	proposalMsg := &state.MessageToSign{
-		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+	proposalMsg := &protoutil.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(protoutil.NewIdentifierHeaderOrPanic(1)),
 	}
-	msg := &state.MessageToSign{
-		IdentifierHeader: protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+	msg := &protoutil.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(protoutil.NewIdentifierHeaderOrPanic(1)),
 	}
-	msgs := [][]byte{proposalMsg.Marshal(), msg.Marshal()}
+	msgs := [][]byte{proposalMsg.ASN1MarshalOrPanic(), msg.ASN1MarshalOrPanic()}
 	msgsBytes, err := asn1.Marshal(msgs)
 	if err != nil {
 		panic("failed to marshal fake signature msgs: " + err.Error())

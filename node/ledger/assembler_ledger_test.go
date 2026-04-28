@@ -13,13 +13,13 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -541,12 +541,12 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		ordererBlockMetadata, err := node_ledger.AssemblerBlockMetadataToBytes(fb, tmpOrdInfo, uint64(transactionCount))
 		require.NoError(t, err)
 
-		msg1 := &state.MessageToSign{
-			IdentifierHeader:     protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(1)),
+		msg1 := &protoutil.MessageToSign{
+			IdentifierHeader:     protoutil.MarshalOrPanic(protoutil.NewIdentifierHeaderOrPanic(1)),
 			OrdererBlockMetadata: ordererBlockMetadata,
 		}
-		msg2 := &state.MessageToSign{
-			IdentifierHeader:     protoutil.MarshalOrPanic(state.NewIdentifierHeaderOrPanic(2)),
+		msg2 := &protoutil.MessageToSign{
+			IdentifierHeader:     protoutil.MarshalOrPanic(protoutil.NewIdentifierHeaderOrPanic(2)),
 			OrdererBlockMetadata: ordererBlockMetadata,
 		}
 		ordInfo := &state.OrderingInformation{
@@ -554,11 +554,11 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 			Signatures: []smartbft_types.Signature{{
 				ID:    1,
 				Value: []byte("sig1"),
-				Msg:   msg1.Marshal(),
+				Msg:   msg1.ASN1MarshalOrPanic(),
 			}, {
 				ID:    2,
 				Value: []byte("sig2"),
-				Msg:   msg2.Marshal(),
+				Msg:   msg2.ASN1MarshalOrPanic(),
 			}},
 			DecisionNum: types.DecisionNum(3 + n),
 			BatchIndex:  0,

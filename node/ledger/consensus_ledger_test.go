@@ -12,11 +12,11 @@ import (
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger/mocks"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,12 +41,12 @@ func assertBlocksExist(t *testing.T, ledger *ledger.ConsensusLedger, blockNums .
 func createSignatures(signerIDs []uint64) []smartbft_types.Signature {
 	var signatures []smartbft_types.Signature
 	for _, id := range signerIDs {
-		identifierHeader := state.NewIdentifierHeaderOrPanic(types.PartyID(id))
-		msg := &state.MessageToSign{
+		identifierHeader := protoutil.NewIdentifierHeaderOrPanic(uint32(id))
+		msg := &protoutil.MessageToSign{
 			IdentifierHeader: protoutil.MarshalOrPanic(identifierHeader),
 		}
 		msgs := make([][]byte, 0)
-		msgs = append(msgs, msg.Marshal())
+		msgs = append(msgs, msg.ASN1MarshalOrPanic())
 		msgsRaw, err := asn1.Marshal(msgs)
 		if err != nil {
 			panic(err)

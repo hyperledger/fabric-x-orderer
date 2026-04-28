@@ -14,13 +14,13 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -224,8 +224,8 @@ func arrangeSignatures(orderingInfo *state.OrderingInformation) ([]*common.Metad
 
 	for _, s := range orderingInfo.Signatures {
 
-		msg := &state.MessageToSign{}
-		if err := msg.Unmarshal(s.Msg); err != nil {
+		msg := &protoutil.MessageToSign{}
+		if err := msg.ASN1Unmarshal(s.Msg); err != nil {
 			panic(err)
 		}
 		sigs = append(sigs, &common.MetadataSignature{
