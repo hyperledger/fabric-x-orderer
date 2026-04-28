@@ -50,7 +50,7 @@ import (
 // 7. submit a config update request that removes a non-leader consenter and make sure it's committed and the removed consenter cannot participate after restart
 // 8. submit a config update request that removes the leader consenter and make sure it's committed and the removed leader cannot participate after restart
 // 9. submit a config update request that changes a consenter's endpoint and make sure it's committed and the new endpoint is effective after restart
-// TODO: add more scenarios such as adding a new consenter, removing multiple consenters, etc.
+// 10. submit a config update request that adds a new consenter and make sure it's committed and the new consenter can participate in consensus
 func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4, 5, 6}
 	numOfShards := 1
@@ -165,7 +165,6 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	t.Run("config update with consenter's certificate change", func(t *testing.T) {
 		// submit a config request that changes a consenter's certificate
 		newConfigBlockStoreDir := t.TempDir()
-		defer os.RemoveAll(newConfigBlockStoreDir)
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(newConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
 		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
@@ -241,7 +240,6 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// submit a config request that removes the last party
 		configBlockStoreDir := t.TempDir()
-		defer os.RemoveAll(configBlockStoreDir)
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(configBlockStoreDir, "config.block"))
 		require.NoError(t, err)
 		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
@@ -307,7 +305,6 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// submit a config request that removes the first party (leader)
 		anotherConfigBlockStoreDir := t.TempDir()
-		defer os.RemoveAll(anotherConfigBlockStoreDir)
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
 		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
@@ -473,16 +470,94 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 				consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
 				ledgerListeners = append(ledgerListeners, ledgerListener)
 				consensusNodes = append(consensusNodes, consensusNode)
+			} else {
+				ledgerListeners = append(ledgerListeners, updatedConsensusNodeLedgerListener[0])
+				consensusNodes = append(consensusNodes, updatedConsensusNode[0])
 			}
 		}
-
-		ledgerListeners = append(ledgerListeners, updatedConsensusNodeLedgerListener[0])
-		consensusNodes = append(consensusNodes, updatedConsensusNode[0])
 
 		// wait for consenters to start before submitting a request
 		time.Sleep(10 * time.Second)
 
 		// send another simple request
+		lastBlockNumber++
+		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey2, 2, configSeq, lastBlockNumber, "")
+	})
+
+	t.Run("config update with consenter addition", func(t *testing.T) {
+		// create config update to add the new party
+		addConfigBlockStoreDir := t.TempDir()
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(addConfigBlockStoreDir, "config.block"))
+		require.NoError(t, err)
+		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(addConfigBlockStoreDir, "config.block"))
+		defer cleanUp()
+
+		// add the new party to the configuration
+		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+		require.NotNil(t, addedNetInfo)
+
+		// create and sign the config transaction (parties are now [2,3,4,5] after party 1 was removed)
+		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
+		env := configutil.CreateConfigTX(t, dir, parties[0:3], int(parties[0]), configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+		}
+
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
+
+		// make sure the config block is committed
+		lastBlockNumber++
+		configSeq++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, ledgerListeners, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
+
+		// wait for existing consensus nodes to apply new config and run again
+		for _, consenter := range consensusNodes {
+			waitForRunningState(t, consenter, uint64(configSeq))
+		}
+
+		// add the new party to the parties list
+		parties = append(parties, addedPartyID)
+
+		// write the last config block to a file so the new party can read it
+		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
+		require.NoError(t, err)
+
+		// update the config block path in the net info of the added party
+		for _, netNode := range addedNetInfo {
+			netNode.ConfigBlockPath = newConfigBlockPath
+		}
+
+		// update file store and monitoring port for the new party
+		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
+
+		// close the listeners allocated by ExtendNetwork so the ports can be reused
+		for _, nodeInfo := range addedNetInfo {
+			nodeInfo.Close()
+		}
+
+		// start the new consensus node
+		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
+		newConsensusNodeLedgerListener := startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
+		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
+
+		// re-register ledger listeners for all nodes including the new one
+		ledgerListeners = make([]*storageListener, 0, len(parties))
+		for _, consensusNode := range consensusNodes {
+			ledgerListener := &storageListener{c: make(chan *common.Block, 100)}
+			consensusNode.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(ledgerListener)
+			ledgerListeners = append(ledgerListeners, ledgerListener)
+		}
+		ledgerListeners = append(ledgerListeners, newConsensusNodeLedgerListener[0])
+		consensusNodes = append(consensusNodes, newConsensusNode[0])
+
+		// wait for consenters to start before submitting a request
+		time.Sleep(10 * time.Second)
+
+		// send another simple request to verify the new consenter is participating
 		lastBlockNumber++
 		sendSimpleRequest(t, consensusNodes, ledgerListeners, privateKey2, 2, configSeq, lastBlockNumber, "")
 	})
