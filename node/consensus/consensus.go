@@ -1197,9 +1197,12 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 		}
 		inLatestDecision = true
 		c.Logger.Infof("Delivering config block number %d", lastBlockNum)
+		// if this is an old config block update the decision number
+		if c.decisionNumOfLastConfigBlock < hdr.Num {
+			c.decisionNumOfLastConfigBlock = hdr.Num
+		}
 		// if this is a new config block (with a larger number) then apply (soft stop)
 		if c.lastConfigBlockNum < lastBlockNum {
-			c.decisionNumOfLastConfigBlock = hdr.Num
 			c.lastConfigBlockNum = lastBlockNum
 			c.Logger.Infof("Synchronizer delivered consenter block: %d, which includes a fabric config block: %d; the consenter will soft stop.", block.GetHeader().Number, lastBlockNum)
 			// TODO dynamically apply the new config without stopping, or if not possible, stop and restart with the new config
