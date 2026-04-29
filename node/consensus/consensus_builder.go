@@ -222,19 +222,27 @@ func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_
 	return verifier
 }
 
-func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, ledger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum, []byte) {
-	height := ledger.Height()
+func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, consLedger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum, []byte) {
+	height := consLedger.Height()
 	logger.Infof("Initial consenter ledger height is: %d", height)
 	if height == 0 {
 		initState := initialStateFromConfig(config)
-		var prevHash []byte
 		if lastConfigBlock.Header.Number == 0 {
-			prevHash = appendGenesisBlock(lastConfigBlock, initState, ledger)
+			logger.Info("Starting from genesis block")
+			prevHash := appendGenesisBlock(lastConfigBlock, initState, consLedger)
+			return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0, prevHash
 		}
-		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0, prevHash
+		logger.Infof("Starting from join config block number %d", lastConfigBlock.Header.Number)
+		// Extract the decision number from the provided last config block
+		_, ordInfo, _, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(lastConfigBlock)
+		if err != nil {
+			logger.Panicf("Failed to extract ordering info from last config block: %v", err)
+		}
+
+		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, ordInfo.DecisionNum, nil
 	}
 
-	block, err := ledger.RetrieveBlockByNumber(height - 1)
+	block, err := consLedger.RetrieveBlockByNumber(height - 1)
 	if err != nil {
 		panic(fmt.Sprintf("couldn't retrieve last block from ledger: %v", err))
 	}
