@@ -7,9 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/asn1"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -20,6 +18,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state/stateprotos"
+	"google.golang.org/protobuf/proto"
 )
 
 type Rule func(*State, types.ConfigSequence, *flogging.FabricLogger, ...ControlEvent)
@@ -85,24 +85,46 @@ func (s *State) String() string {
 		s.N, s.Quorum, s.Threshold, len(s.Shards), pendingStr, complaintsStr)
 }
 
-type RawState struct {
-	Config     []byte
-	Shards     []byte
-	Pending    []byte
-	Complaints []byte
-	AppContext []byte
-}
-
 func (s *State) Serialize() []byte {
-	rawState := RawState{
-		Complaints: complaintsToBytes(s.Complaints),
-		Pending:    fragmentsToBytes(s.Pending),
-		Shards:     shardsToBytes(s.Shards),
-		Config:     s.configToBytes(),
+	// Convert State to proto RawState
+	protoShards := make([]*stateprotos.ShardTerm, len(s.Shards))
+	for i, shard := range s.Shards {
+		protoShards[i] = &stateprotos.ShardTerm{
+			Shard: uint32(shard.Shard),
+			Term:  shard.Term,
+		}
+	}
+
+	protoComplaints := make([]*stateprotos.Complaint, len(s.Complaints))
+	for i, c := range s.Complaints {
+		protoComplaints[i] = &stateprotos.Complaint{
+			ConfigSeq: uint64(c.ConfigSeq),
+			Shard:     uint32(c.Shard),
+			Term:      c.Term,
+			Signer:    uint32(c.Signer),
+			Signature: c.Signature,
+			Reason:    c.Reason,
+		}
+	}
+
+	protoPending := make([][]byte, len(s.Pending))
+	for i, baf := range s.Pending {
+		protoPending[i] = baf.Serialize()
+	}
+
+	protoState := &stateprotos.State{
+		Config: &stateprotos.Config{
+			N:         uint32(s.N),
+			Quorum:    uint32(s.Quorum),
+			Threshold: uint32(s.Threshold),
+		},
+		Shards:     protoShards,
+		Pending:    protoPending,
+		Complaints: protoComplaints,
 		AppContext: s.AppContext,
 	}
 
-	buff, err := asn1.Marshal(rawState)
+	buff, err := proto.Marshal(protoState)
 	if err != nil {
 		panic(err)
 	}
@@ -110,166 +132,70 @@ func (s *State) Serialize() []byte {
 	return buff
 }
 
-func (s *State) configToBytes() []byte {
-	buff := make([]byte, 2*4)
-	binary.BigEndian.PutUint16(buff, s.N)
-	binary.BigEndian.PutUint16(buff[2:], s.Quorum)
-	binary.BigEndian.PutUint16(buff[4:], s.Threshold)
-	return buff
-}
-
-func shardsToBytes(shards []ShardTerm) []byte {
-	if len(shards) == 0 {
-		return nil
-	}
-	buff := make([]byte, len(shards)*(2+8))
-
-	var pos int
-	for _, shard := range shards {
-		binary.BigEndian.PutUint16(buff[pos:], uint16(shard.Shard))
-		pos += 2
-		binary.BigEndian.PutUint64(buff[pos:], shard.Term)
-		pos += 8
-	}
-	return buff
-}
-
-func complaintsToBytes(complaints []Complaint) []byte {
-	if len(complaints) == 0 {
-		return nil
-	}
-	cBuff := bytes.Buffer{}
-	for _, c := range complaints {
-		cBytes := c.Bytes()
-		cByteLenBuff := make([]byte, 4)
-		binary.BigEndian.PutUint32(cByteLenBuff, uint32(len(cBytes)))
-		cBuff.Write(cByteLenBuff)
-		cBuff.Write(cBytes)
-	}
-
-	cBuffBytes := cBuff.Bytes()
-	return cBuffBytes
-}
-
-func fragmentsToBytes(fragments []types.BatchAttestationFragment) []byte {
-	if len(fragments) == 0 {
-		return nil
-	}
-	fragmentBuff := bytes.Buffer{}
-	for _, baf := range fragments {
-		bafBytes := baf.Serialize()
-		bafByteLenBuff := make([]byte, 4)
-		binary.BigEndian.PutUint32(bafByteLenBuff, uint32(len(bafBytes)))
-		fragmentBuff.Write(bafByteLenBuff)
-		fragmentBuff.Write(bafBytes)
-	}
-
-	fragmentBuffBytes := fragmentBuff.Bytes()
-	return fragmentBuffBytes
-}
-
 func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 	s.Pending = nil
 	s.Shards = nil
 	s.Complaints = nil
+	s.AppContext = []byte{}
 
-	var rs RawState
-	if _, err := asn1.Unmarshal(rawBytes, &rs); err != nil {
+	var ps stateprotos.State
+	if err := proto.Unmarshal(rawBytes, &ps); err != nil {
 		return err
 	}
 
-	s.loadConfig(rs.Config)
-	s.loadShards(rs.Shards)
-	if err := s.loadPending(rs.Pending, bafd); err != nil {
-		return fmt.Errorf("failed loading batch attestation fragments: %v", err)
-	}
-	if err := s.loadComplaints(rs.Complaints); err != nil {
-		return fmt.Errorf("failed loading complaints: %v", err)
+	// Load config
+	if ps.Config != nil {
+		s.N = uint16(ps.Config.N)
+		s.Quorum = uint16(ps.Config.Quorum)
+		s.Threshold = uint16(ps.Config.Threshold)
 	}
 
-	s.AppContext = rs.AppContext
+	// Load shards
+	if len(ps.Shards) > 0 {
+		s.Shards = make([]ShardTerm, len(ps.Shards))
+		for i, protoShard := range ps.Shards {
+			s.Shards[i] = ShardTerm{
+				Shard: types.ShardID(protoShard.Shard),
+				Term:  protoShard.Term,
+			}
+		}
+	}
+
+	// Load pending
+	if len(ps.Pending) > 0 {
+		s.Pending = make([]types.BatchAttestationFragment, 0, len(ps.Pending))
+		for _, bafBytes := range ps.Pending {
+			baf, err := bafd.Deserialize(bafBytes)
+			if err != nil {
+				return fmt.Errorf("failed loading batch attestation fragment: %v", err)
+			}
+			s.Pending = append(s.Pending, baf)
+		}
+	}
+
+	// Load complaints
+	if len(ps.Complaints) > 0 {
+		s.Complaints = make([]Complaint, len(ps.Complaints))
+		for i, protoComplaint := range ps.Complaints {
+			s.Complaints[i] = Complaint{
+				ShardTerm: ShardTerm{
+					Shard: types.ShardID(protoComplaint.Shard),
+					Term:  protoComplaint.Term,
+				},
+				Signer:    types.PartyID(protoComplaint.Signer),
+				Signature: protoComplaint.Signature,
+				Reason:    protoComplaint.Reason,
+				ConfigSeq: types.ConfigSequence(protoComplaint.ConfigSeq),
+			}
+		}
+	}
+
+	// Load app context - ensure it's never nil, always []byte{} at minimum
+	if ps.AppContext != nil {
+		s.AppContext = ps.AppContext
+	}
 
 	return nil
-}
-
-func (s *State) loadPending(buff []byte, bafd BAFDeserializer) error {
-	var pending []types.BatchAttestationFragment
-
-	var pos int
-	for pos < len(buff) {
-		lengthOfBAF := binary.BigEndian.Uint32(buff[pos:])
-		pos += 4
-		bafBytes := make([]byte, lengthOfBAF)
-		copy(bafBytes, buff[pos:])
-		pos += int(lengthOfBAF)
-		baf, err := bafd.Deserialize(bafBytes)
-		if err != nil {
-			return err
-		}
-		pending = append(pending, baf)
-	}
-
-	if len(pending) == 0 {
-		s.Pending = nil
-		return nil
-	}
-
-	s.Pending = pending
-
-	return nil
-}
-
-func (s *State) loadComplaints(buff []byte) error {
-	var complaints []Complaint
-
-	var pos int
-	for pos < len(buff) {
-		lengthOfComplaint := binary.BigEndian.Uint32(buff[pos:])
-		pos += 4
-		rawComplaint := make([]byte, lengthOfComplaint)
-		copy(rawComplaint, buff[pos:])
-		pos += int(lengthOfComplaint)
-
-		var c Complaint
-		if err := c.FromBytes(rawComplaint); err != nil {
-			return err
-		}
-
-		complaints = append(complaints, c)
-	}
-
-	if len(complaints) == 0 {
-		s.Complaints = nil
-		return nil
-	}
-
-	s.Complaints = complaints
-	return nil
-}
-
-func (s *State) loadShards(rawBytes []byte) {
-	if len(rawBytes) == 0 {
-		s.Shards = nil
-		return
-	}
-	var pos int
-	count := len(rawBytes) / (2 + 8)
-	shards := make([]ShardTerm, count)
-	for i := 0; i < count; i++ {
-		shards[i] = ShardTerm{
-			Shard: types.ShardID(binary.BigEndian.Uint16(rawBytes[pos:])),
-			Term:  binary.BigEndian.Uint64(rawBytes[pos+2:]),
-		}
-		pos += 10
-	}
-
-	s.Shards = shards
-}
-
-func (s *State) loadConfig(buff []byte) {
-	s.N = binary.BigEndian.Uint16(buff[0:2])
-	s.Quorum = binary.BigEndian.Uint16(buff[2:4])
-	s.Threshold = binary.BigEndian.Uint16(buff[4:6])
 }
 
 type ShardTerm struct {
