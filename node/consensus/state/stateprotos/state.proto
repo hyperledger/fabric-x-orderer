@@ -1,0 +1,43 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+package stateprotos;
+
+option go_package = "github.com/hyperledger/fabric-x-orderer/node/consensus/state/stateprotos";
+
+// Config represents the consensus configuration of a state
+message Config {
+    uint32 n = 1;
+    uint32 quorum = 2;
+    uint32 threshold = 3;
+}
+
+// ShardTerm represents a shard and its term
+message ShardTerm {
+    uint32 shard = 1;
+    uint64 term = 2;
+}
+
+// Complaint represents a complaint about a batcher
+message Complaint {
+    uint64 config_seq = 1;
+    uint32 shard = 2;
+    uint64 term = 3;
+    uint32 signer = 4;
+    bytes signature = 5;
+    string reason = 6;
+}
+
+// State represents the state of the consensus
+message State {
+    Config config = 1;
+    repeated ShardTerm shards = 2;
+    repeated bytes pending = 3;  // BatchAttestationFragments as bytes (external serialization)
+    repeated Complaint complaints = 4;
+    bytes app_context = 5;
+}

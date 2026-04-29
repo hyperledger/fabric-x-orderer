@@ -14,7 +14,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -37,23 +36,116 @@ var (
 )
 
 func TestStateSerializeDeserialize(t *testing.T) {
-	s := consensus_state.State{
-		N:          4,
-		Threshold:  2,
-		Quorum:     3,
-		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
-		AppContext: make([]byte, 64),
+	tests := []struct {
+		name  string
+		state consensus_state.State
+	}{
+		{
+			name: "full state with all fields",
+			state: consensus_state.State{
+				N:          4,
+				Threshold:  2,
+				Quorum:     3,
+				Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				AppContext: make([]byte, 64),
+			},
+		},
+		{
+			name: "state with empty app context",
+			state: consensus_state.State{
+				N:          4,
+				Threshold:  2,
+				Quorum:     3,
+				Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				AppContext: []byte{}, // empty slice, never nil after proto serialization
+			},
+		},
+		{
+			name: "state with multiple shards",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards: []consensus_state.ShardTerm{
+					{Shard: 1, Term: 1},
+					{Shard: 2, Term: 3},
+					{Shard: 3, Term: 5},
+				},
+				AppContext: []byte{1, 2, 3},
+			},
+		},
+		{
+			name: "state with complaints",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				Complaints: []consensus_state.Complaint{
+					{
+						ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1},
+						Signer:    2,
+						Signature: []byte{1, 2, 3, 4},
+						Reason:    "test complaint",
+						ConfigSeq: 10,
+					},
+				},
+				AppContext: []byte{5, 6, 7},
+			},
+		},
+		{
+			name: "minimal state with zero values",
+			state: consensus_state.State{
+				N:          0,
+				Threshold:  0,
+				Quorum:     0,
+				Shards:     nil,
+				Pending:    nil,
+				Complaints: nil,
+				AppContext: []byte{},
+			},
+		},
+		{
+			name: "state with large app context",
+			state: consensus_state.State{
+				N:          10,
+				Threshold:  7,
+				Quorum:     8,
+				Shards:     []consensus_state.ShardTerm{{Shard: 5, Term: 100}},
+				AppContext: make([]byte, 1024), // 1KB
+			},
+		},
+		{
+			name: "state with high term numbers",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards: []consensus_state.ShardTerm{
+					{Shard: 1, Term: 999999},
+					{Shard: 2, Term: 1000000},
+				},
+				AppContext: []byte{},
+			},
+		},
 	}
 
-	bytes := s.Serialize()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Serialize
+			bytes := tt.state.Serialize()
+			assert.NotEmpty(t, bytes, "serialized bytes should not be empty")
 
-	s2 := consensus_state.State{}
+			// Deserialize
+			var deserialized consensus_state.State
+			err := deserialized.Deserialize(bytes, nil)
+			assert.NoError(t, err, "deserialization should not fail")
 
-	s2.Deserialize(bytes, nil)
-
-	assert.Equal(t, s, s2)
-
-	assert.Equal(t, s.String(), s2.String())
+			// Compare
+			assert.Equal(t, tt.state, deserialized, "deserialized state should match original")
+			assert.Equal(t, tt.state.String(), deserialized.String(), "string representations should match")
+		})
+	}
 }
 
 func TestStateString(t *testing.T) {
