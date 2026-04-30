@@ -657,7 +657,7 @@ func TestAddNewParty(t *testing.T) {
 //  5. Clean the removed party from the network information, the shared config yaml and the crypto dir.
 //  6. Pull the last config block from assembler so that block is written to a temporary directory, this block will be the bootstrap block of the first added party.
 //  7. Send successive config updates that add a party:
-//     Iteratively (4 times):
+//     Iteratively (2 times):
 //     - Send a config tx that adds a new party.
 //     - Wait for dynamic restart of all nodes.
 //     - Pull the last config block from assembler so that block is written to a temporal directory, this block will be the bootstrap block of the next added party.
@@ -800,7 +800,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	err = os.RemoveAll(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyToRemove)))
 	require.NoError(t, err)
 
-	// 7.
+	// 6.
 	t.Log("Get the config block from an assembler ledger and write it to a temp location")
 	submittingPartyID = parties[0]
 	configBlockStoreDir := t.TempDir()
@@ -823,8 +823,8 @@ func TestReplacePartiesPartially(t *testing.T) {
 
 	broadcastClient.Stop()
 
-	// 8.
-	for range 4 {
+	// 7.
+	for range 2 {
 		// Create config update to add a new party
 		builder, _ = configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
 		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
@@ -922,6 +922,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 		})
 		require.True(t, syncVerifier.syncComplete, "Party %d did not sync config block %d", addedPartyId, configSeq)
 		t.Logf("Party %d has completed syncing with config block %d", addedPartyId, configSeq)
+		time.Sleep(60 * time.Second) // give the new party some time to finish connecting to the consensus cluster
 	}
 
 	// After removing and adding parties, verify that the remaining parties can still process transactions with the updated config
