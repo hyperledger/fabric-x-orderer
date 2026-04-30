@@ -650,7 +650,7 @@ func TestAddNewParty(t *testing.T) {
 // TestReplacePartiesPartially verifies that an arma network can dynamically replace parties
 // by removing one party and adding multiple new parties in successive configuration updates.
 // Scenario:
-//  1. Run an arma network of 4 parties, single shard.
+//  1. Run an arma network of 5 parties, single shard.
 //  2. Send txs and pull blocks to ensure network is operational.
 //  3. Send a config tx that removes party 5.
 //  4. Wait for the removed party to enter pending admin state and then stop the party, wait for the rest of the network to restart dynamically.
