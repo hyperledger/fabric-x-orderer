@@ -118,7 +118,7 @@ func TestValidateBlockValidationPolicy(t *testing.T) {
 		}
 
 		err := validateBlockValidationPolicy(buildBlockValidationPolicy(wrongConsenters), consenters)
-		require.ErrorContains(t, err, "block validation policy does not match the current consenters")
+		require.ErrorContains(t, err, "unexpected identity in policy")
 	})
 }
 

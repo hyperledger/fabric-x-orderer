@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
-	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
@@ -526,33 +525,55 @@ func validateBlockValidationPolicy(policy *common.ConfigPolicy, consenters []*co
 		return errors.New("block validation policy is nil")
 	}
 
+	// verify signature policy type
+	if policy.Policy.Type != int32(common.Policy_SIGNATURE) {
+		return errors.New("policy type is not signature")
+	}
+
+	envelope := &common.SignaturePolicyEnvelope{}
+	if err := proto.Unmarshal(policy.Policy.Value, envelope); err != nil {
+		return errors.Wrap(err, "failed to unmarshal policy")
+	}
+
+	// verify expected BFT quorum
 	n := len(consenters)
 	f := (n - 1) / 3
+	expectedQuorum := int32(policies.ComputeBFTQuorum(n, f))
 
-	identities := make([]*msp.MSPPrincipal, 0, n)
-	signedBy := make([]*common.SignaturePolicy, 0, n)
-	for i, consenter := range consenters {
+	nOutOf := envelope.GetRule().GetNOutOf()
+	if nOutOf == nil || nOutOf.N != expectedQuorum {
+		return errors.Errorf("quorum mismatch expected %d got %d", expectedQuorum, nOutOf.GetN())
+	}
+
+	// verify policy identities match consenter identities
+	expectedIdentities := make(map[string]struct{}, n)
+	for _, consenter := range consenters {
 		if consenter == nil {
 			return errors.New("consenter is nil")
 		}
 
-		signedBy = append(signedBy, policydsl.SignedBy(int32(i)))
-		identities = append(identities, &msp.MSPPrincipal{
-			PrincipalClassification: msp.MSPPrincipal_IDENTITY,
-			Principal:               protoutil.MarshalOrPanic(msppb.NewIdentity(consenter.MspId, consenter.Identity)),
-		})
+		id := protoutil.MarshalOrPanic(msppb.NewIdentity(consenter.MspId, consenter.Identity))
+		expectedIdentities[string(id)] = struct{}{}
 	}
 
-	expected := &common.Policy{
-		Type: int32(common.Policy_SIGNATURE),
-		Value: protoutil.MarshalOrPanic(&common.SignaturePolicyEnvelope{
-			Rule:       policydsl.NOutOf(int32(policies.ComputeBFTQuorum(n, f)), signedBy),
-			Identities: identities,
-		}),
+	for _, id := range envelope.Identities {
+		if id == nil {
+			return errors.New("identity is nil")
+		}
+		if id.PrincipalClassification != msp.MSPPrincipal_IDENTITY {
+			return errors.New("invalid identity classification")
+		}
+
+		key := string(id.Principal)
+		if _, ok := expectedIdentities[key]; !ok {
+			return errors.New("unexpected identity in policy")
+		}
+
+		delete(expectedIdentities, key)
 	}
 
-	if !proto.Equal(expected, policy.Policy) {
-		return errors.New("block validation policy does not match the current consenters")
+	if len(expectedIdentities) != 0 {
+		return errors.New("missing identities in policy")
 	}
 
 	return nil
