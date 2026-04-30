@@ -175,8 +175,8 @@ github.com/gorilla/mux
 # github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware
-# github.com/hyperledger-labs/SmartBFT v0.0.0-20251222105915-424e45b7a9fb
-## explicit; go 1.25.5
+# github.com/hyperledger-labs/SmartBFT v0.0.0-20260430093940-62e71617084b
+## explicit; go 1.26.0
 github.com/hyperledger-labs/SmartBFT/internal/bft
 github.com/hyperledger-labs/SmartBFT/pkg/api
 github.com/hyperledger-labs/SmartBFT/pkg/consensus
@@ -479,8 +479,8 @@ golang.org/x/net/idna
 golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
-# golang.org/x/sync v0.19.0
-## explicit; go 1.24.0
+# golang.org/x/sync v0.20.0
+## explicit; go 1.25.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.39.0
