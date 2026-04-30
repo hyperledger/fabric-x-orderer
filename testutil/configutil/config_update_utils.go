@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
+	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -34,9 +35,10 @@ import (
 )
 
 var (
-	partiesConfigPath    = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "PartiesConfig"}
-	sharedConfigPath     = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata"}
-	consenterMappingPath = []string{"channel_group", "groups", "Orderer", "values", "Orderers", "value", "consenter_mapping"}
+	partiesConfigPath              = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata", "PartiesConfig"}
+	sharedConfigPath               = []string{"channel_group", "groups", "Orderer", "values", "ConsensusType", "value", "metadata"}
+	consenterMappingPath           = []string{"channel_group", "groups", "Orderer", "values", "Orderers", "value", "consenter_mapping"}
+	blockValidationPolicyValuePath = []string{"channel_group", "groups", "Orderer", "policies", "BlockValidation", "policy", "value"}
 )
 
 type (
@@ -341,6 +343,7 @@ func (c *ConfigUpdateBuilder) UpdateConsenterSignCert(t *testing.T, partyID type
 		}
 	}
 	require.True(t, found, "PartyID %d not found in ConsenterMapping", partyID)
+	c.syncBlockValidationPolicy(t, mappingList)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -829,6 +832,7 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) [
 	overwriteNestedJSONValue(t, c.configData, sharedConfig, sharedConfigPath...)
 	overwriteNestedJSONValue(t, c.configData, consenterMappingList, consenterMappingPath...)
 	overwriteNestedJSONValue(t, c.configData, orgs, "channel_group", "groups", "Orderer", "groups")
+	c.syncBlockValidationPolicy(t, consenterMappingList)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -876,6 +880,7 @@ func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) [
 	overwriteNestedJSONValue(t, c.configData, partiesConfigList, partiesConfigPath...)
 	overwriteNestedJSONValue(t, c.configData, consenterMappingList, consenterMappingPath...)
 	overwriteNestedJSONValue(t, c.configData, orgs, "channel_group", "groups", "Orderer", "groups")
+	c.syncBlockValidationPolicy(t, consenterMappingList)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -1162,4 +1167,36 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	})
 
 	return addedPartyId, addedNetInfo
+}
+
+func (c *ConfigUpdateBuilder) syncBlockValidationPolicy(t *testing.T, consenterMappingList []any) {
+	n := len(consenterMappingList)
+	f := (n - 1) / 3
+	quorum := policies.ComputeBFTQuorum(n, f)
+
+	identities := make([]any, 0, n)
+	rules := make([]any, 0, n)
+	for i, consenter := range consenterMappingList {
+		consenterMap := consenter.(map[string]any)
+		rules = append(rules, map[string]any{"signed_by": uint(i)})
+		identities = append(identities, map[string]any{
+			"principal_classification": "IDENTITY",
+			"principal": map[string]any{
+				"mspid":    consenterMap["msp_id"],
+				"id_bytes": consenterMap["identity"],
+			},
+		})
+	}
+
+	policyValue := map[string]any{
+		"rule": map[string]any{
+			"n_out_of": map[string]any{
+				"n":     quorum,
+				"rules": rules,
+			},
+		},
+		"identities": identities,
+	}
+
+	overwriteNestedJSONValue(t, c.configData, policyValue, blockValidationPolicyValuePath...)
 }
