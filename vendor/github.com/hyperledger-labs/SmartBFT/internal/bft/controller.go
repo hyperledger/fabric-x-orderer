@@ -626,15 +626,11 @@ func (c *Controller) sync() (viewNum uint64, seq uint64, decisions uint64) {
 		latestDecisionMetadata = md
 	}
 
-	c.Logger.Infof("Synchronizer returned with view %d seq %d and dec %d", latestDecisionViewNum, latestDecisionSeq, latestDecisionDecisions)
-
 	controllerSequence := c.latestSeq()
 	newProposalSequence = controllerSequence + 1
 
 	controllerViewNum := c.currViewNumber
 	newViewNum = controllerViewNum
-
-	newDecisionsInView = c.getCurrentDecisionsInView()
 
 	if latestDecisionSeq > controllerSequence {
 		c.Logger.Infof("Synchronizer returned with sequence %d while the controller is at sequence %d", latestDecisionSeq, controllerSequence)
@@ -689,7 +685,6 @@ func (c *Controller) sync() (viewNum uint64, seq uint64, decisions uint64) {
 		c.ViewChanger.InformNewView(newViewNum)
 	}
 
-	c.Logger.Infof("Returning from sync with new view %d new seq %d and new dec %d", newViewNum, newProposalSequence, newDecisionsInView)
 	return newViewNum, newProposalSequence, newDecisionsInView
 }
 
