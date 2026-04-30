@@ -28,9 +28,14 @@ ORDERER_CREATED = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 basic-checks: check-license check-dco check-protos linter
 
 .PHONY: linter
-linter: check-deps
+linter: check-deps check-help-docs
 	@echo "LINT: Running code checks.."
 	./scripts/golinter.sh
+
+.PHONY: check-help-docs
+check-help-docs: binary
+	@echo "HELP: Checking CLI help documentation is current..."
+	@./scripts/help_docs.sh check
 
 .PHONY: check-deps
 check-deps:
