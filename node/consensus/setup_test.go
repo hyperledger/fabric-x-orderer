@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -237,18 +238,23 @@ func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consente
 	bundle.PolicyManagerReturns(policyManager)
 
 	return &nodeconfig.ConsenterNodeConfig{
-		Shards:                  []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
-		Consenters:              consentersInfo,
-		PartyId:                 partyID,
-		TLSPrivateKeyFile:       n.TLSKey,
-		TLSCertificateFile:      n.TLSCert,
-		SigningPrivateKey:       pem.EncodeToMemory(&pem.Block{Bytes: sk}),
-		Directory:               dir,
-		BFTConfig:               BFTConfig,
-		Bundle:                  bundle,
-		RequestMaxBytes:         1000,
-		MetricsLogInterval:      2 * time.Second,
-		MonitoringListenAddress: testutil.AllocateLocalhostAddress(t),
+		Shards:             []nodeconfig.ShardInfo{{ShardId: 1, Batchers: batchersInfo}},
+		Consenters:         consentersInfo,
+		PartyId:            partyID,
+		TLSPrivateKeyFile:  n.TLSKey,
+		TLSCertificateFile: n.TLSCert,
+		SigningPrivateKey:  pem.EncodeToMemory(&pem.Block{Bytes: sk}),
+		Directory:          dir,
+		BFTConfig:          BFTConfig,
+		Bundle:             bundle,
+		RequestMaxBytes:    1000,
+		Metrics: &monitoring.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: 10 * time.Second,
+		},
+		Operations: &monitoring.Operations{
+			ListenAddress: "127.0.0.1:0",
+		},
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
@@ -289,11 +290,16 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
 	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{
-		Bundle:                  bundle,
-		PartyId:                 partyID,
-		MonitoringListenAddress: testutil.AllocateLocalhostAddress(t),
-		MetricsLogInterval:      3 * time.Second,
-		BFTConfig:               smartbft_types.DefaultConfig,
+		Bundle:  bundle,
+		PartyId: partyID,
+		Operations: &monitoring.Operations{
+			ListenAddress: "127.0.0.1:0",
+		},
+		Metrics: &monitoring.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: 10 * time.Second,
+		},
+		BFTConfig: smartbft_types.DefaultConfig,
 	}
 	consenterNodeConfig.BFTConfig.SelfID = uint64(partyID)
 	consenterNodeConfig.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch

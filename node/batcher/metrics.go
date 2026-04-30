@@ -111,7 +111,7 @@ type BatcherMetrics struct {
 }
 
 func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo []config.BatcherInfo, ledger BatchLedger, logger *flogging.FabricLogger) *BatcherMetrics {
-	host, port, err := net.SplitHostPort(batcherNodeConfig.MonitoringListenAddress)
+	host, port, err := net.SplitHostPort(batcherNodeConfig.Operations.ListenAddress)
 	if err != nil {
 		logger.Panicf("failed to get hostname: %v", err)
 	}
@@ -142,7 +142,7 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 	batchesCreatedTotal.Add(float64(batches))
 
 	return &BatcherMetrics{
-		interval: batcherNodeConfig.MetricsLogInterval,
+		interval: batcherNodeConfig.Metrics.MetricsLogInterval,
 		partyID:  batcherNodeConfig.PartyId,
 		shardID:  batcherNodeConfig.ShardId,
 		logger:   logger,

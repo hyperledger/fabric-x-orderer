@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
@@ -833,10 +834,15 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
-			PartyId:                 batcherID,
-			ShardId:                 shardID,
-			MonitoringListenAddress: allocateMonitoringAddress(t),
-			MetricsLogInterval:      0 * time.Second,
+			PartyId: batcherID,
+			ShardId: shardID,
+			Operations: &monitoring.Operations{
+				ListenAddress: "127.0.0.1:0",
+			},
+			Metrics: &monitoring.Metrics{
+				Provider:           "disabled",
+				MetricsLogInterval: 10 * time.Second,
+			},
 		}, batchersInfo, ledger, logger),
 	}
 
