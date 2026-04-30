@@ -13,8 +13,13 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/pkg/errors"
@@ -49,9 +54,9 @@ type DefaultOrdererRules struct{}
 //     and include both "broadcast" and "deliver" roles.
 //  6. ConsenterMapping must be consistent with the consenters defined in the shared config.
 //  7. Each consenter in the ConsenterMapping must have a matching organization.
+//  8. BlockValidationPolicy must be consistent with the current consenters.
 //
 // TODO: Validate that ca certificates in the sharedConfig are the same as in the ordererOrganization ca certificates.
-// TODO: Validate BlockValidationPolicy.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -131,6 +136,14 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		if _, exists := orgMap[consenter.MspId]; !exists {
 			return errors.Errorf("missing orderer organization for party %d", consenter.Id)
 		}
+	}
+
+	// 8.
+	config := bundle.ConfigtxValidator().ConfigProto()
+	ordererGroup := config.ChannelGroup.Groups["Orderer"]
+
+	if err := validateBlockValidationPolicy(ordererGroup.Policies["BlockValidation"], ordererConfig.Consenters()); err != nil {
+		return errors.Wrap(err, "block validation policy does not match current consenters")
 	}
 
 	return nil
@@ -503,4 +516,44 @@ func validatePartyModification(curr, next *config_protos.PartyConfig) (bool, err
 	}
 
 	return true, nil
+}
+
+func validateBlockValidationPolicy(policy *common.ConfigPolicy, consenters []*common.Consenter) error {
+	if policy == nil {
+		return errors.New("block validation policy is missing from orderer group")
+	}
+	if policy.Policy == nil {
+		return errors.New("block validation policy is nil")
+	}
+
+	n := len(consenters)
+	f := (n - 1) / 3
+
+	identities := make([]*msp.MSPPrincipal, 0, n)
+	signedBy := make([]*common.SignaturePolicy, 0, n)
+	for i, consenter := range consenters {
+		if consenter == nil {
+			return errors.New("consenter is nil")
+		}
+
+		signedBy = append(signedBy, policydsl.SignedBy(int32(i)))
+		identities = append(identities, &msp.MSPPrincipal{
+			PrincipalClassification: msp.MSPPrincipal_IDENTITY,
+			Principal:               protoutil.MarshalOrPanic(msppb.NewIdentity(consenter.MspId, consenter.Identity)),
+		})
+	}
+
+	expected := &common.Policy{
+		Type: int32(common.Policy_SIGNATURE),
+		Value: protoutil.MarshalOrPanic(&common.SignaturePolicyEnvelope{
+			Rule:       policydsl.NOutOf(int32(policies.ComputeBFTQuorum(n, f)), signedBy),
+			Identities: identities,
+		}),
+	}
+
+	if !proto.Equal(expected, policy.Policy) {
+		return errors.New("block validation policy does not match the current consenters")
+	}
+
+	return nil
 }
