@@ -40,8 +40,8 @@ jobs:
         name: Install protoc-gen-go
       - run: make basic-checks
         name: Run Basic Checks
-  unit-tests:
-    name: Unit Tests
+  unit-tests-other:
+    name: Unit Tests Other
     needs: basic-checks
     runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
     steps:
@@ -53,8 +53,8 @@ jobs:
         name: Install Go
         with:
           go-version-file: go.mod
-      - run: make unit-tests
-        name: Run Unit Tests
+      - run: make unit-tests-other
+        name: Run Unit Tests Other
   unit-tests-consensus:
     name: Unit Tests Consensus
     needs: basic-checks

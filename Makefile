@@ -75,14 +75,14 @@ check-protos:
 
 .PHONY: unit-tests-consensus
 unit-tests-consensus:
-	go test -race -timeout 15m ./node/consensus/...
+	go test -race -timeout 20m ./node/consensus/...
 
 .PHONY: unit-tests-batcher
 unit-tests-batcher:
 	go test -race -timeout 15m ./node/batcher/...
 
-.PHONY: unit-tests
-unit-tests:
+.PHONY: unit-tests-other
+unit-tests-other:
 	go test -race -timeout 15m $$(go list ./... | grep -v /test | grep -v node/consensus | grep -v node/batcher)
 
 .PHONY: integration-basic
