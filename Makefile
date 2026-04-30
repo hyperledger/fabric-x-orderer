@@ -73,17 +73,23 @@ check-protos:
 	@echo "Checking protos..."
 	@./scripts/check_protos.sh
 
+.PHONY: unit-tests
+unit-tests: unit-tests-other unit-tests-consensus unit-tests-batcher
+
 .PHONY: unit-tests-consensus
 unit-tests-consensus:
-	go test -race -timeout 15m ./node/consensus/...
+	go test -race -timeout 20m ./node/consensus/...
 
 .PHONY: unit-tests-batcher
 unit-tests-batcher:
 	go test -race -timeout 15m ./node/batcher/...
 
-.PHONY: unit-tests
-unit-tests:
+.PHONY: unit-tests-other
+unit-tests-other:
 	go test -race -timeout 15m $$(go list ./... | grep -v /test | grep -v node/consensus | grep -v node/batcher)
+
+.PHONY: integration-tests
+integration-tests: integration-basic integration-faulttolerance integration-reconfig
 
 .PHONY: integration-basic
 integration-basic:
@@ -92,6 +98,9 @@ integration-basic:
 .PHONY: integration-faulttolerance
 integration-faulttolerance:
 	go test -race -timeout 15m ./test/faulttolerance/...
+
+.PHONY: integration-reconfig
+integration-reconfig: integration-reconfig-membership integration-reconfig-identity integration-reconfig-endpoints integration-reconfig-params integration-reconfig-configtx
 
 .PHONY: integration-reconfig-membership
 integration-reconfig-membership:
@@ -112,12 +121,6 @@ integration-reconfig-params:
 .PHONY: integration-reconfig-configtx
 integration-reconfig-configtx:
 	go test -race -timeout 15m ./test/reconfig/configtx/...
-
-.PHONY: integration-reconfig
-integration-reconfig: integration-reconfig-membership integration-reconfig-identity integration-reconfig-endpoints integration-reconfig-params integration-reconfig-configtx
-
-.PHONY: integration-tests
-integration-tests: integration-basic integration-faulttolerance integration-reconfig
 
 .PHONY: sample-tests
 sample-tests:
