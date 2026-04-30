@@ -141,8 +141,8 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 	config := bundle.ConfigtxValidator().ConfigProto()
 	ordererGroup := config.ChannelGroup.Groups["Orderer"]
 
-	if err := validateBlockValidationPolicy(ordererGroup.Policies["BlockValidation"], ordererConfig.Consenters()); err != nil {
-		return errors.Wrap(err, "block validation policy does not match current consenters")
+	if err := validateBlockValidationPolicy(ordererGroup.Policies[policies.BlockValidationPolicyKey], ordererConfig.Consenters()); err != nil {
+		return errors.Wrap(err, "invalid block validation policy")
 	}
 
 	return nil
