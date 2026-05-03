@@ -126,8 +126,8 @@ github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWS
 github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 h1:UH//fgunKIs4JdUbpDl1VZCDaL56wXCB/5+wF6uHfaI=
 github.com/grpc-ecosystem/go-grpc-middleware v1.4.0/go.mod h1:g5qyo/la0ALbONm6Vbp88Yd8NsDy6rZz+RcrMPxvld8=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
-github.com/hyperledger-labs/SmartBFT v0.0.0-20260430093940-62e71617084b h1:gWY2uOlYSV0KMidHctQNMNrmyXGN3WufapBqAUQZQa4=
-github.com/hyperledger-labs/SmartBFT v0.0.0-20260430093940-62e71617084b/go.mod h1:BLK++r4BpOjd5M5wncauC9PXBDKBcNCYJkGMgwfJm7M=
+github.com/hyperledger-labs/SmartBFT v1.0.1 h1:5+otMbvxtiuGwwOg37QvXDcln9almNBRp9fYVW+kgdY=
+github.com/hyperledger-labs/SmartBFT v1.0.1/go.mod h1:BLK++r4BpOjd5M5wncauC9PXBDKBcNCYJkGMgwfJm7M=
 github.com/hyperledger/aries-bbs-go v0.0.0-20240528084656-761671ea73bc h1:3Ykk6MtyfnlzMOQry9zkxsoLWpCWZwDPqehO/BJwArM=
 github.com/hyperledger/aries-bbs-go v0.0.0-20240528084656-761671ea73bc/go.mod h1:Kofn6A6WWea1ZM8Rys5aBW9dszwJ7Ywa0kyyYL0TPYw=
 github.com/hyperledger/fabric v1.4.0-rc1.0.20250510200036-435a7f1a780a h1:l9dE3iuE+mKj7K8Tcx904cF8zJpaNQONh3GNZdXnnyc=
