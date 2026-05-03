@@ -859,7 +859,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 		test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 			UserConfig:   uc,
 			Parties:      parties,
-			Transactions: totalTxNumber + 1, // include the config block
+			Transactions: totalTxNumber,
 			Timeout:      120,
 			ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 			Status:       &statusUnknown,
@@ -913,7 +913,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 		test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 			UserConfig:   uc,
 			Parties:      []types.PartyID{addedPartyId}, // Only pull from the new party
-			Transactions: totalTxNumber + 1,
+			Transactions: totalTxNumber,
 			Timeout:      120,
 			ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 			Status:       &statusUnknown,
@@ -950,7 +950,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:   uc,
 		Parties:      parties,
-		Transactions: totalTxNumber + 1,
+		Transactions: totalTxNumber,
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Timeout:      60,
 		Status:       &statusUnknown,
