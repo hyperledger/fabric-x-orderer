@@ -11,7 +11,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 //go:generate mockery -dir . -name RPC -case underscore -output mocks

@@ -9,9 +9,9 @@ package configutil
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
-	"github.com/hyperledger/fabric/protoutil"
 )
 
 // CreateConsensusConfigBlock creates a config block received from consensus.

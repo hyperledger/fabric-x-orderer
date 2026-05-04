@@ -12,7 +12,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
 
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
 )
 

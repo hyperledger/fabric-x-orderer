@@ -21,9 +21,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )

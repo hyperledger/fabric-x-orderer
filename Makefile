@@ -25,7 +25,7 @@ ORDERER_REVISION = $(shell git rev-parse HEAD)
 ORDERER_CREATED = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 .PHONY: basic-checks
-basic-checks: check-license check-dco check-protos linter
+basic-checks: check-license check-dco check-imports check-protos linter
 
 .PHONY: linter
 linter: check-deps check-help-docs
@@ -77,6 +77,11 @@ check-dco:
 check-protos:
 	@echo "Checking protos..."
 	@./scripts/check_protos.sh
+
+.PHONY: check-imports
+check-imports:
+	@echo "Checking imports..."
+	@./scripts/check_imports.sh
 
 .PHONY: unit-tests
 unit-tests: unit-tests-other unit-tests-consensus unit-tests-batcher

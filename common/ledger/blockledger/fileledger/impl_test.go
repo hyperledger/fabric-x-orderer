@@ -21,7 +21,7 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
