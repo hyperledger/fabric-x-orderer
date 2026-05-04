@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
@@ -243,10 +243,10 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
 			PartyId: nodeID,
 			ShardId: shardID,
-			Operations: &monitoring.Operations{
+			Operations: &operations.Operations{
 				ListenAddress: "127.0.0.1:0",
 			},
-			Metrics: &monitoring.Metrics{
+			Metrics: &operations.Metrics{
 				Provider:           "disabled",
 				MetricsLogInterval: 0 * time.Second,
 			},
@@ -411,10 +411,10 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
 			PartyId: nodeID,
 			ShardId: shardID,
-			Operations: &monitoring.Operations{
+			Operations: &operations.Operations{
 				ListenAddress: allocateMonitoringAddress(t),
 			},
-			Metrics: &monitoring.Metrics{
+			Metrics: &operations.Metrics{
 				Provider:           "disabled",
 				MetricsLogInterval: 0 * time.Second,
 			},

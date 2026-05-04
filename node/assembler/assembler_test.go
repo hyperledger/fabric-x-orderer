@@ -13,7 +13,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
@@ -112,10 +112,10 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		ReplicationChannelSize:    100,
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shardsInfo,
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: "127.0.0.1:0",
 		},
-		Metrics: &monitoring.Metrics{
+		Metrics: &operations.Metrics{
 			Provider:           "disabled",
 			MetricsLogInterval: 10 * time.Second,
 		},

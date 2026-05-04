@@ -22,7 +22,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
@@ -292,10 +292,10 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	consenterNodeConfig := nodeconfig.ConsenterNodeConfig{
 		Bundle:  bundle,
 		PartyId: partyID,
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: "127.0.0.1:0",
 		},
-		Metrics: &monitoring.Metrics{
+		Metrics: &operations.Metrics{
 			Provider:           "disabled",
 			MetricsLogInterval: 10 * time.Second,
 		},
@@ -319,6 +319,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Net:          &consensus_mocks.FakeNetStopper{},
 		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
 		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
+		System:       operations.NewOperationsSystem(*consenterNodeConfig.Operations, *consenterNodeConfig.Metrics),
 		MainExitChan: make(chan struct{}),
 	}
 

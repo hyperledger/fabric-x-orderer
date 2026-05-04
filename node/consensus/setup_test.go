@@ -20,7 +20,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -248,11 +248,11 @@ func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consente
 		BFTConfig:          BFTConfig,
 		Bundle:             bundle,
 		RequestMaxBytes:    1000,
-		Metrics: &monitoring.Metrics{
+		Metrics: &operations.Metrics{
 			Provider:           "disabled",
 			MetricsLogInterval: 10 * time.Second,
 		},
-		Operations: &monitoring.Operations{
+		Operations: &operations.Operations{
 			ListenAddress: "127.0.0.1:0",
 		},
 	}
