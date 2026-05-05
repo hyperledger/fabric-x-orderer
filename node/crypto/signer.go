@@ -20,7 +20,7 @@ type ECDSASigner ecdsa.PrivateKey
 
 func (s ECDSASigner) Sign(message []byte) ([]byte, error) {
 	digest := util.ComputeSHA256(message)
-	sk := (ecdsa.PrivateKey)(s)
+	sk := ecdsa.PrivateKey(s)
 	return signECDSA(&sk, digest)
 }
 

@@ -213,7 +213,7 @@ func TestVerifySignedTxsByBatcherForwardRequest(t *testing.T) {
 
 	// 6. Determine primary and non-primary party IDs for shard 1 by calculating the primary party ID using the formula:
 	// types.PartyID((uint64(b.Shard) + term) % uint64(b.N)) where term is assumed to be 0 and b.N is the number of parties.
-	primaryPartyID := types.PartyID((uint64(1))%uint64(numOfParties) + 1)
+	primaryPartyID := types.PartyID(uint64(1)%uint64(numOfParties) + 1)
 	nonPrimaryPartyID := types.PartyID(uint64(primaryPartyID)%uint64(numOfParties) + 1)
 
 	t.Logf("Non-primary party ID is %d", nonPrimaryPartyID)

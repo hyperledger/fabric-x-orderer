@@ -183,10 +183,11 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 			mon.ErrorsChannelCalls(func() <-chan error {
 				return monErrC
 			})
-			mon.MonitorCalls(func() {
-				<-monDoneC
-				close(monEndC)
-			},
+			mon.MonitorCalls(
+				func() {
+					<-monDoneC
+					close(monEndC)
+				},
 			)
 			mon.StopCalls(func() {
 				select {
@@ -207,7 +208,8 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 			s.monEndC = monEndC
 
 			return mon
-		})
+		},
+	)
 
 	var err error
 	s.channelConfig, s.fakeCryptoProvider, err = testSetupBFT(t, tempDir)
@@ -276,7 +278,8 @@ func (s *bftDelivererTestSetup) assertEventuallyMonitorCallCount(n int) {
 			defer s.mutex.Unlock()
 
 			return s.fakeCensorshipMon.MonitorCallCount()
-		}, eventuallyTO).Should(Equal(n))
+		}, eventuallyTO,
+	).Should(Equal(n))
 }
 
 func TestBFTDeliverer_NoBlocks(t *testing.T) {
@@ -717,7 +720,8 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 			func() bool {
 				bNum2, bTime2 := setup.d.BlockProgress()
 				return uint64(7) == bNum2 && bTime2.After(bTime)
-			}).Should(BeTrue())
+			},
+		).Should(BeTrue())
 
 		setup.stop()
 	})

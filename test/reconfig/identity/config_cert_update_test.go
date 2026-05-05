@@ -419,7 +419,8 @@ func TestChangePartyCACertificates(t *testing.T) {
 	require.NoError(t, err, "failed to regenerate crypto config with Armageddon")
 
 	// merge the new crypto config for the updated party to the existing crypto config directory so that the config update builder can pick up the new certs
-	copyDir(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg),
+	copyDir(
+		filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg),
 		filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg),
 		copyCAFilesPredicate,
 		true,
@@ -517,7 +518,8 @@ func TestChangePartyCACertificates(t *testing.T) {
 		Signer:       pullRequestSigner,
 	})
 
-	copyDir(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg), filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg),
+	copyDir(
+		filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg), filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg),
 		copyNonCAFilesPredicate, false,
 	)
 

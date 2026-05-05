@@ -277,7 +277,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	armaNetwork.RestartParties(t, []types.PartyID{partyToRemove}, readyChan)
 	testutil.WaitReady(t, readyChan, 3+numOfShards, 10)
 
-	observedPrimaryIdByRemovedParty := types.PartyID((uint64(1))%uint64(numOfParties) + 1)
+	observedPrimaryIdByRemovedParty := types.PartyID(uint64(1)%uint64(numOfParties) + 1)
 	primaryBatcher := armaNetwork.GetBatcher(t, observedPrimaryIdByRemovedParty, types.ShardID(1))
 	primaryBatcherEndpoint := fmt.Sprintf("%s:%d", primaryBatcher.Listener.Addr().(*net.TCPAddr).IP.String(), primaryBatcher.Listener.Addr().(*net.TCPAddr).Port)
 	removedBatcher := armaNetwork.GetBatcher(t, partyToRemove, types.ShardID(1))

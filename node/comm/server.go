@@ -147,7 +147,8 @@ func NewGRPCServerFromListener(listener net.Listener, serverConfig ServerConfig)
 	}
 	serverOpts = append(
 		serverOpts,
-		grpc.ConnectionTimeout(serverConfig.ConnectionTimeout))
+		grpc.ConnectionTimeout(serverConfig.ConnectionTimeout),
+	)
 	// set the interceptors
 	if len(serverConfig.StreamInterceptors) > 0 {
 		serverOpts = append(

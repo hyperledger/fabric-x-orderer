@@ -33,7 +33,8 @@ func NewConsensusLedger(ledgerDir string) (*ConsensusLedger, error) {
 		blkstorage.NewConf(ledgerDir, -1),
 		&blkstorage.IndexConfig{
 			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
+		}, &disabled.Provider{},
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed creating block provider")
 	}

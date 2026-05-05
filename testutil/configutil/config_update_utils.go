@@ -586,7 +586,7 @@ func (c *ConfigUpdateBuilder) UpdateOrderingEndpoint(t *testing.T, partyID types
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
 			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)
 			consenterConfig["host"] = host
-			consenterConfig["port"] = (float64)(port)
+			consenterConfig["port"] = float64(port)
 			found = true
 			break
 		}
@@ -602,7 +602,7 @@ func (c *ConfigUpdateBuilder) UpdateOrderingEndpoint(t *testing.T, partyID types
 		mappingMap := mapping.(map[string]any)
 		if uint32(partyID) == uint32(mappingMap["id"].(float64)) {
 			mappingMap["host"] = host
-			mappingMap["port"] = (float64)(port)
+			mappingMap["port"] = float64(port)
 			found = true
 			break
 		}
@@ -624,7 +624,7 @@ func (c *ConfigUpdateBuilder) UpdateRouterEndpoint(t *testing.T, partyID types.P
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
 			routerConfig := partyMap["RouterConfig"].(map[string]any)
 			routerConfig["host"] = host
-			routerConfig["port"] = (float64)(port)
+			routerConfig["port"] = float64(port)
 			found = true
 			break
 		}
@@ -647,7 +647,7 @@ func (c *ConfigUpdateBuilder) UpdateAssemblerEndpoint(t *testing.T, partyID type
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
 			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)
 			assemblerConfig["host"] = host
-			assemblerConfig["port"] = (float64)(port)
+			assemblerConfig["port"] = float64(port)
 			found = true
 			break
 		}
@@ -673,7 +673,7 @@ func (c *ConfigUpdateBuilder) UpdateBatcherEndpoint(t *testing.T, partyID types.
 				bcMap := bc.(map[string]any)
 				if uint32(shardID) == uint32(bcMap["shardID"].(float64)) {
 					bcMap["host"] = host
-					bcMap["port"] = (float64)(port)
+					bcMap["port"] = float64(port)
 					found = true
 					break
 				}

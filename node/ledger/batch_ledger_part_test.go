@@ -27,7 +27,8 @@ func TestBatchLedgerPart(t *testing.T) {
 		blkstorage.NewConf(dir, -1),
 		&blkstorage.IndexConfig{
 			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
+		}, &disabled.Provider{},
+	)
 	require.NoError(t, err)
 
 	part, err := newBatchLedgerPart(provider, 5, 1, 2, logger)
@@ -73,7 +74,8 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 		blkstorage.NewConf(dir, -1),
 		&blkstorage.IndexConfig{
 			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
+		}, &disabled.Provider{},
+	)
 	require.NoError(t, err)
 
 	part, err := newBatchLedgerPart(provider, 1, 1, 2, logger)

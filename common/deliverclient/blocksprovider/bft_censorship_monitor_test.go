@@ -143,7 +143,8 @@ func TestBFTCensorshipMonitor_NoHeadersNoBlocks(t *testing.T) {
 			})
 
 			return client, func() {}, nil
-		})
+		},
+	)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -215,7 +216,8 @@ func TestBFTCensorshipMonitor_CensorshipDetected(t *testing.T) {
 			})
 
 			return client, func() {}, nil
-		})
+		},
+	)
 	b7time := time.Now()
 	s.fakeProgressReporter.BlockProgressReturns(uint64(7), b7time)
 
@@ -299,7 +301,8 @@ func TestBFTCensorshipMonitor_SuspicionsRemovedCensorshipDetected(t *testing.T) 
 			})
 
 			return client, func() {}, nil
-		})
+		},
+	)
 	blockTime := time.Now()
 	s.fakeProgressReporter.BlockProgressReturns(uint64(7), blockTime)
 
@@ -407,7 +410,8 @@ func TestBFTCensorshipMonitor_SuspicionRemoved(t *testing.T) {
 			})
 
 			return client, func() {}, nil
-		})
+		},
+	)
 	blockTime := time.Now()
 	s.fakeProgressReporter.BlockProgressReturns(uint64(7), blockTime)
 
@@ -517,7 +521,8 @@ func TestBFTCensorshipMonitor_FaultySourceIgnored(t *testing.T) {
 			}
 
 			return client, func() {}, nil
-		})
+		},
+	)
 	blockTime := time.Now()
 	s.fakeProgressReporter.BlockProgressReturns(uint64(7), blockTime)
 
@@ -642,7 +647,8 @@ func TestBFTCensorshipMonitor_FaultySourceRecovery(t *testing.T) {
 			})
 
 			return client, func() {}, nil
-		})
+		},
+	)
 	blockTime := time.Now()
 	s.fakeProgressReporter.BlockProgressReturns(uint64(7), blockTime)
 

@@ -178,7 +178,8 @@ func (m *BatcherMetrics) Stop() {
 			m.monitor.Stop()
 			m.monitor = nil
 		}
-		m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
+		m.logger.Infof(
+			"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
 			m.partyID,
 			m.shardID,
 			m.role(),
@@ -207,7 +208,8 @@ func (m *BatcherMetrics) trackMetrics() {
 			pulled := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
 			resends := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)
 
-			m.logger.Infof("BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resend_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
+			m.logger.Infof(
+				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resend_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d",
 				m.partyID,
 				m.shardID,
 				m.role(),

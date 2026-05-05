@@ -145,7 +145,8 @@ func (m *ConsensusMetrics) trackMetrics() {
 			dec := uint64(monitoring.GetMetricValue(m.decisionsCount.(prometheus.Metric), m.logger))
 			blk := uint64(monitoring.GetMetricValue(m.blocksCount.(prometheus.Metric), m.logger))
 
-			m.logger.Infof("CONSENSUS_METRICS party_id=%d: interval=%.2f sec, decisions: interval=%d, rate=%.4f, total=%d, blocks: interval=%d, rate=%.4f, total=%d, bafs: total=%d, complaints: total=%d",
+			m.logger.Infof(
+				"CONSENSUS_METRICS party_id=%d: interval=%.2f sec, decisions: interval=%d, rate=%.4f, total=%d, blocks: interval=%d, rate=%.4f, total=%d, bafs: total=%d, complaints: total=%d",
 				m.partyID,
 				sec,
 				dec-prevDec, float64(dec-prevDec)/sec,

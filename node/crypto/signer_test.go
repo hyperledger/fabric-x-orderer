@@ -33,6 +33,6 @@ func TestECDSASigner(t *testing.T) {
 	// Verify the signature over the massage
 	r, s, err := utils.UnmarshalECDSASignature(sig)
 	require.NoError(t, err)
-	verify := ecdsa.Verify(&((*ecdsa.PrivateKey)(&signer).PublicKey), util.ComputeSHA256(msg), r, s)
+	verify := ecdsa.Verify(&(*ecdsa.PrivateKey)(&signer).PublicKey, util.ComputeSHA256(msg), r, s)
 	require.True(t, verify)
 }
