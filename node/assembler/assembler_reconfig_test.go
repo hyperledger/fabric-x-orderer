@@ -223,7 +223,7 @@ func (s *reconfigTestSetup) SendConfigUpdate(t *testing.T, configUpdatePbData []
 	prevHash := protoutil.BlockHeaderHash(s.genesisBlock.Header)
 	configBlock, err := consensus.CreateConfigCommonBlock(s.genesisBlock.GetHeader().GetNumber()+1, prevHash, 1, decisionNum, 1, 0, configReq)
 	require.NoError(t, err)
-	st := &state.State{N: uint16(len(parties)), ShardCount: 1, Shards: []state.ShardTerm{{Shard: types.ShardID(1), Term: 0}}}
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: types.ShardID(1), Term: 0}}}
 
 	ba := &state.AvailableBatchOrdered{
 		AvailableBatch: state.NewAvailableBatch(1, types.ShardIDConsensus, 1, nil),

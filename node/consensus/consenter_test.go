@@ -21,12 +21,11 @@ import (
 
 func TestConsenter(t *testing.T) {
 	s := &state.State{
-		ShardCount: 1,
-		N:          4,
-		Shards:     []state.ShardTerm{{Shard: 1, Term: 1}},
-		Threshold:  2,
-		Pending:    []arma_types.BatchAttestationFragment{},
-		Quorum:     4,
+		N:         4,
+		Shards:    []state.ShardTerm{{Shard: 1, Term: 1}},
+		Threshold: 2,
+		Pending:   []arma_types.BatchAttestationFragment{},
+		Quorum:    4,
 	}
 
 	logger := testutil.CreateLogger(t, 0)

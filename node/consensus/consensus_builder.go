@@ -266,7 +266,6 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 
 func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.State {
 	var initState state.State
-	initState.ShardCount = uint16(len(config.Shards))
 	initState.N = uint16(len(config.Consenters))
 	_, T, Q := utils.ComputeFTQ(initState.N)
 	initState.Threshold = T

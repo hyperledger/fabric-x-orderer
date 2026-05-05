@@ -20,10 +20,9 @@ import (
 
 var (
 	initialState = consensus_state.State{
-		N:          4,
-		Threshold:  2,
-		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
-		ShardCount: 1,
+		N:         4,
+		Threshold: 2,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 	}
 
 	complaint = consensus_state.Complaint{
@@ -43,7 +42,6 @@ func TestStateSerializeDeserialize(t *testing.T) {
 		Threshold:  2,
 		Quorum:     3,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
-		ShardCount: 1,
 		AppContext: make([]byte, 64),
 	}
 
@@ -64,7 +62,6 @@ func TestStateString(t *testing.T) {
 		Threshold:  2,
 		Quorum:     3,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 3}},
-		ShardCount: 2,
 		AppContext: make([]byte, 64),
 		Complaints: []consensus_state.Complaint{
 			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
@@ -90,7 +87,6 @@ func TestStateString(t *testing.T) {
 		Threshold:  2,
 		Quorum:     3,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
-		ShardCount: 1,
 		AppContext: make([]byte, 64),
 		Pending: []types.BatchAttestationFragment{
 			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1}, types.PartyID(2), 0, 0),
@@ -211,7 +207,6 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 		N:          4,
 		Threshold:  2,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
-		ShardCount: 1,
 		Complaints: []consensus_state.Complaint{complaint},
 	}
 
@@ -273,10 +268,9 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 
 func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 	state := consensus_state.State{
-		N:          4,
-		Threshold:  2,
-		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
-		ShardCount: 2,
+		N:         4,
+		Threshold: 2,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
 		Complaints: []consensus_state.Complaint{
 			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
 			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 3},
@@ -320,10 +314,9 @@ func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 
 func TestPrimaryRotateDueToComplaints(t *testing.T) {
 	state := consensus_state.State{
-		N:          4,
-		Threshold:  2,
-		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
-		ShardCount: 2,
+		N:         4,
+		Threshold: 2,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
 		Complaints: []consensus_state.Complaint{
 			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2},
 			{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 3},

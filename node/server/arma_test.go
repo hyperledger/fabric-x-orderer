@@ -426,7 +426,6 @@ func TestLaunchArmaNode(t *testing.T) {
 		dataCommonBlock1 := createDataBlock(uint64(1))
 
 		initialState := &state.State{
-			ShardCount: 2,
 			N:          4,
 			Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 			Threshold:  2,

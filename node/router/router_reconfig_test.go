@@ -351,7 +351,7 @@ func (s *reconfigTestSetup) SendConfigUpdate(t *testing.T, parties []types.Party
 		Num:                          decisionNum,
 		DecisionNumOfLastConfigBlock: decisionNum,
 		AvailableCommonBlocks:        []*common.Block{configBlock},
-		State:                        &state.State{N: uint16(len(parties)), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}},
+		State:                        &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}},
 	}
 	err = s.stubConsenter.DeliverDecisionFromHeader(header)
 	require.NoError(t, err)

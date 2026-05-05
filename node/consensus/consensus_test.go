@@ -150,7 +150,6 @@ func TestConsensus(t *testing.T) {
 			verifier := make(crypto.ECDSAVerifier)
 
 			initialState := &state.State{
-				ShardCount: 2,
 				N:          4,
 				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
@@ -627,7 +626,6 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	} {
 		t.Run(tst.name, func(t *testing.T) {
 			initialState := &state.State{
-				ShardCount: 2,
 				N:          4,
 				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
@@ -782,7 +780,6 @@ func TestVerifyProposal(t *testing.T) {
 	}
 
 	initialState := state.State{
-		ShardCount: 2,
 		N:          4,
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
@@ -1006,7 +1003,6 @@ func TestSignProposal(t *testing.T) {
 	}
 
 	initialState := state.State{
-		ShardCount: 2,
 		N:          4,
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
@@ -1113,7 +1109,6 @@ func TestConsensusStartStop(t *testing.T) {
 	}
 
 	initialState := &state.State{
-		ShardCount: 2,
 		N:          1,
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  1,
@@ -1445,7 +1440,6 @@ func TestConsensusSoftStop(t *testing.T) {
 	}
 
 	initialState := &state.State{
-		ShardCount: 1,
 		N:          1,
 		Shards:     []state.ShardTerm{{Shard: 1}},
 		Threshold:  1,

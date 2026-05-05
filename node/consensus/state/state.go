@@ -44,7 +44,6 @@ type State struct {
 	N          uint16
 	Quorum     uint16
 	Threshold  uint16
-	ShardCount uint16
 	Shards     []ShardTerm
 	Pending    []types.BatchAttestationFragment
 	Complaints []Complaint
@@ -83,7 +82,7 @@ func (s *State) String() string {
 	}
 
 	return fmt.Sprintf("State{N: %d, Quorum: %d, Threshold: %d, ShardCount: %d, \nPending: %s, \nComplaints: %s}",
-		s.N, s.Quorum, s.Threshold, s.ShardCount, pendingStr, complaintsStr)
+		s.N, s.Quorum, s.Threshold, len(s.Shards), pendingStr, complaintsStr)
 }
 
 type RawState struct {
@@ -95,10 +94,6 @@ type RawState struct {
 }
 
 func (s *State) Serialize() []byte {
-	if s.ShardCount != uint16(len(s.Shards)) {
-		panic(fmt.Sprintf("shard count is %d but detected %d shards", s.ShardCount, len(s.Shards)))
-	}
-
 	rawState := RawState{
 		Complaints: complaintsToBytes(s.Complaints),
 		Pending:    fragmentsToBytes(s.Pending),
@@ -120,7 +115,6 @@ func (s *State) configToBytes() []byte {
 	binary.BigEndian.PutUint16(buff, s.N)
 	binary.BigEndian.PutUint16(buff[2:], s.Quorum)
 	binary.BigEndian.PutUint16(buff[4:], s.Threshold)
-	binary.BigEndian.PutUint16(buff[6:], s.ShardCount)
 	return buff
 }
 
@@ -185,7 +179,7 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 	}
 
 	s.loadConfig(rs.Config)
-	s.loadShards(rs.Shards, int(s.ShardCount))
+	s.loadShards(rs.Shards)
 	if err := s.loadPending(rs.Pending, bafd); err != nil {
 		return fmt.Errorf("failed loading batch attestation fragments: %v", err)
 	}
@@ -253,13 +247,14 @@ func (s *State) loadComplaints(buff []byte) error {
 	return nil
 }
 
-func (s *State) loadShards(rawBytes []byte, count int) {
-	if count == 0 {
+func (s *State) loadShards(rawBytes []byte) {
+	if len(rawBytes) == 0 {
 		s.Shards = nil
 		return
 	}
 	var pos int
-	shards := make([]ShardTerm, int(s.ShardCount))
+	count := len(rawBytes) / (2 + 8)
+	shards := make([]ShardTerm, count)
 	for i := 0; i < count; i++ {
 		shards[i] = ShardTerm{
 			Shard: types.ShardID(binary.BigEndian.Uint16(rawBytes[pos:])),
@@ -275,7 +270,6 @@ func (s *State) loadConfig(buff []byte) {
 	s.N = binary.BigEndian.Uint16(buff[0:2])
 	s.Quorum = binary.BigEndian.Uint16(buff[2:4])
 	s.Threshold = binary.BigEndian.Uint16(buff[4:6])
-	s.ShardCount = binary.BigEndian.Uint16(buff[6:8])
 }
 
 type ShardTerm struct {
