@@ -11,6 +11,7 @@ FABRIC_PROTOUTIL="github.com/hyperledger/fabric/protoutil"
 EXCLUDED="^vendor/|node/delivery/deliver_service.go|node/batcher/batcher_deliver_service.go|node/comm/util.go"
 
 CHECK=$(git diff --name-only --diff-filter=ACMRTUXB origin/main...HEAD)
+[[ -z "$CHECK" ]] && CHECK=$(git diff-tree --no-commit-id --name-only --diff-filter=ACMRTUXB -r HEAD^..HEAD)
 
 CHECK=$(echo "$CHECK" | grep '\.go$' | grep -Ev "$EXCLUDED" || true)
 [[ -z "$CHECK" ]] && exit 0
