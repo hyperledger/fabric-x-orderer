@@ -78,7 +78,7 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 	require.NoError(t, err)
 	availableCommonBlocks := []*common.Block{configBlock}
 	shardID := types.ShardID(1)
-	state := &state.State{N: uint16(len(parties)), ShardCount: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
+	state := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
 
 	for i := range parties {
 		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), availableCommonBlocks, state)
