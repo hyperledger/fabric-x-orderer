@@ -18,9 +18,9 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
