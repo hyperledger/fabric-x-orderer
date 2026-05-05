@@ -69,7 +69,8 @@ func createBatcherNodesInfo(t *testing.T, dir string, parties []types.PartyID) (
 
 		batcherSK, err := tx.CreateECDSAPrivateKey(batcherConfig.SigningPrivateKey)
 		require.NoError(t, err)
-		batcherNodes = append(batcherNodes,
+		batcherNodes = append(
+			batcherNodes,
 			&node{sk: batcherSK},
 		)
 

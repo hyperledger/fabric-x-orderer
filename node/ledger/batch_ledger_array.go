@@ -43,7 +43,8 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		blkstorage.NewConf(batchLedgerDir, -1),
 		&blkstorage.IndexConfig{
 			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
+		}, &disabled.Provider{},
+	)
 	if err != nil {
 		return nil, errors.Errorf("failed creating block provider: %s", err)
 	}

@@ -74,9 +74,9 @@ func AssemblerBlockMetadataFromBytes(metadata []byte) (primary types.PartyID, sh
 	seq = types.BatchSequence(binary.BigEndian.Uint64(metadata[4:12]))
 
 	num = types.DecisionNum(binary.BigEndian.Uint64(metadata[12:20]))
-	batchIndex = (binary.BigEndian.Uint32(metadata[20:24]))
-	batchCount = (binary.BigEndian.Uint32(metadata[24:28]))
-	transactionCount = (binary.BigEndian.Uint64(metadata[28:36]))
+	batchIndex = binary.BigEndian.Uint32(metadata[20:24])
+	batchCount = binary.BigEndian.Uint32(metadata[24:28])
+	transactionCount = binary.BigEndian.Uint64(metadata[28:36])
 
 	return primary, shard, seq, num, batchIndex, batchCount, transactionCount, err
 }

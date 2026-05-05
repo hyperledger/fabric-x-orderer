@@ -69,7 +69,8 @@ func NewAssemblerLedger(logger *flogging.FabricLogger, ledgerPath string) (*Asse
 		blkstorage.NewConf(ledgerPath, -1),
 		&blkstorage.IndexConfig{
 			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{})
+		}, &disabled.Provider{},
+	)
 	if err != nil {
 		logger.Panicf("Failed creating provider: %v", err)
 	}
@@ -152,7 +153,8 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 		Signatures: sigs,
 	})
 
-	l.Logger.Debugf("Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
+	l.Logger.Debugf(
+		"Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
 		blockToAppend.Header,                        // Header
 		len(blockToAppend.GetData().GetData()),      // Data
 		batch.Primary(), batch.Shard(), batch.Seq(), // Metadata batchID
@@ -200,7 +202,8 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 
 	l.metrics.TransactionCount.Add(1) // for the config TX
 
-	l.Logger.Debugf("Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
+	l.Logger.Debugf(
+		"Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
 		configBlock.Header,                   // Header
 		len(configBlock.GetData().GetData()), // Data
 		0, types.ShardIDConsensus, 0,         // Metadata batchID

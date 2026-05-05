@@ -490,7 +490,8 @@ func testBlockfileMgrSimulateCrashAtFirstBlockInFile(t *testing.T, deleteBlkfile
 
 	// last block file (block file number 1) should have been truncated to zero length and concluded as the next file to append to
 	require.Equal(t, 0, testutilGetFileSize(t, lastFilePath))
-	require.Equal(t,
+	require.Equal(
+		t,
 		&blockfilesInfo{
 			latestFileNumber:   1,
 			latestFileSize:     0,

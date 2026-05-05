@@ -615,11 +615,12 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 				gomega.Eventually(fakeBlockHandler.HandleBlockCallCount, eventuallyTO).Should(gomega.Equal(1))
 				channelID, block := fakeBlockHandler.HandleBlockArgsForCall(0)
 				gomega.Expect(channelID).To(gomega.Equal("channel-id"))
-				gomega.Expect(block).To(gomega.Equal(&common.Block{
-					Header: &common.BlockHeader{
-						Number: 8,
+				gomega.Expect(block).To(gomega.Equal(
+					&common.Block{
+						Header: &common.BlockHeader{
+							Number: 8,
+						},
 					},
-				},
 				))
 			})
 		})
@@ -705,12 +706,13 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 			gomega.Eventually(fakeBlockHandler.HandleBlockCallCount, eventuallyTO).Should(gomega.Equal(1))
 			channelID, block := fakeBlockHandler.HandleBlockArgsForCall(0)
 			gomega.Expect(channelID).To(gomega.Equal("channel-id"))
-			gomega.Expect(block).To(test.ProtoEqual(&common.Block{
-				Header: &common.BlockHeader{Number: 8},
-				Data: &common.BlockData{
-					Data: [][]byte{protoutil.MarshalOrPanic(env)},
+			gomega.Expect(block).To(test.ProtoEqual(
+				&common.Block{
+					Header: &common.BlockHeader{Number: 8},
+					Data: &common.BlockData{
+						Data: [][]byte{protoutil.MarshalOrPanic(env)},
+					},
 				},
-			},
 			))
 			gomega.Eventually(fakeUpdatableBlockVerifier.VerifyBlockCallCount, eventuallyTO).Should(gomega.Equal(1))
 		})

@@ -64,7 +64,8 @@ var _ = Describe("Deliver", func() {
 				time.Second,
 				false,
 				deliver.NewMetrics(&disabled.Provider{}),
-				false)
+				false,
+			)
 			Expect(handler).NotTo(BeNil())
 
 			Expect(handler.ChainManager).To(Equal(fakeChainManager))
@@ -80,7 +81,8 @@ var _ = Describe("Deliver", func() {
 					time.Second,
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
-					false)
+					false,
+				)
 
 				Expect(handler.ExpirationCheckFunc(certBytes)).To(Equal(cert.NotAfter))
 			})
@@ -93,7 +95,8 @@ var _ = Describe("Deliver", func() {
 					time.Second,
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
-					true)
+					true,
+				)
 
 				Expect(handler.ExpirationCheckFunc(certBytes)).NotTo(Equal(cert.NotAfter))
 			})
