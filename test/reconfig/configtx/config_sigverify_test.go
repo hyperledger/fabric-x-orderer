@@ -75,8 +75,7 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 	// Create config tx
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
 	submittingPartyID := 1
-	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
-	defer cleanUp()
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
 
 	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, configutil.NewBatchSizeConfig(configutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)

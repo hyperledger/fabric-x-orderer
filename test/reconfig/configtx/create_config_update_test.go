@@ -12,10 +12,10 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	ctx "github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	cfgutil "github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/onsi/gomega/gexec"
@@ -38,8 +38,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// Create config update
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	newCACerts := [][]byte{[]byte("newCACert")}
 	newTLSCACerts := [][]byte{[]byte("newTLSCACert")}
@@ -55,25 +54,25 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	configUpdateBuilder.UpdateSmartBFTConfig(t, cfgutil.NewSmartBFTConfig(cfgutil.SmartBFTConfigName.RequestMaxBytes, "1048576"))
 	configUpdateBuilder.RemoveParty(t, types.PartyID(2))
 	configUpdateBuilder.AddNewParty(t, &cfgutil.PartyConfig{
-		PartyConfig: protos.PartyConfig{
+		PartyConfig: ordererpb.PartyConfig{
 			CACerts:    newCACerts,
 			TLSCACerts: newTLSCACerts,
-			ConsenterConfig: &protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				Host:    "localhost",
 				Port:    7050,
 				TlsCert: []byte("consenterNewCert"),
 			},
-			RouterConfig: &protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				Host:    "localhost",
 				Port:    8050,
 				TlsCert: []byte("routerNewCert"),
 			},
-			AssemblerConfig: &protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				Host:    "localhost",
 				Port:    9050,
 				TlsCert: []byte("assemblerNewCert"),
 			},
-			BatchersConfig: []*protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
 					ShardID: 1,
 					Host:    "localhost",
@@ -101,7 +100,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	err = proto.Unmarshal(configUpdate.WriteSet.Groups["Orderer"].Values["ConsensusType"].GetValue(), &consensusType)
 	require.NoError(t, err)
 
-	sharedConfig := protos.SharedConfig{}
+	sharedConfig := ordererpb.SharedConfig{}
 	err = proto.Unmarshal(consensusType.GetMetadata(), &sharedConfig)
 	require.NoError(t, err)
 

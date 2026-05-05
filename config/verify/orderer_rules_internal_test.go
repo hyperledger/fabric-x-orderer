@@ -12,28 +12,28 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/stretchr/testify/require"
 )
 
 func TestValidatePartyModification(t *testing.T) {
-	curr := &config_protos.PartyConfig{
+	curr := &ordererpb.PartyConfig{
 		PartyID: 1,
 		CACerts: [][]byte{[]byte("cert")},
-		BatchersConfig: []*config_protos.BatcherNodeConfig{
+		BatchersConfig: []*ordererpb.BatcherNodeConfig{
 			{ShardID: 1},
 			{ShardID: 2},
 		},
 	}
 
 	t.Run("batcher shard count changed", func(t *testing.T) {
-		next := &config_protos.PartyConfig{
+		next := &ordererpb.PartyConfig{
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("cert")},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{ShardID: 1},
 			},
 		}
@@ -45,10 +45,10 @@ func TestValidatePartyModification(t *testing.T) {
 	})
 
 	t.Run("batcher shard id changed", func(t *testing.T) {
-		next := &config_protos.PartyConfig{
+		next := &ordererpb.PartyConfig{
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("cert")},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{ShardID: 1},
 				{ShardID: 3},
 			},
@@ -61,10 +61,10 @@ func TestValidatePartyModification(t *testing.T) {
 	})
 
 	t.Run("next batcher config is nil", func(t *testing.T) {
-		next := &config_protos.PartyConfig{
+		next := &ordererpb.PartyConfig{
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("cert")},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{ShardID: 1},
 				nil,
 			},
@@ -76,10 +76,10 @@ func TestValidatePartyModification(t *testing.T) {
 	})
 
 	t.Run("certificate changed", func(t *testing.T) {
-		next := &config_protos.PartyConfig{
+		next := &ordererpb.PartyConfig{
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("new-cert")},
-			BatchersConfig: []*config_protos.BatcherNodeConfig{
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{ShardID: 1},
 				{ShardID: 2},
 			},

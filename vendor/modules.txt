@@ -36,9 +36,6 @@ github.com/Masterminds/semver/v3
 # github.com/alecthomas/kingpin v2.2.6+incompatible
 ## explicit
 github.com/alecthomas/kingpin
-# github.com/alecthomas/kingpin/v2 v2.4.0
-## explicit; go 1.17
-github.com/alecthomas/kingpin/v2
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 ## explicit
 github.com/alecthomas/template
@@ -117,9 +114,6 @@ github.com/consensys/gnark-crypto/utils/cpu
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
-# github.com/felixge/httpsnoop v1.0.4
-## explicit; go 1.13
-github.com/felixge/httpsnoop
 # github.com/fsnotify/fsnotify v1.9.0
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
@@ -166,12 +160,6 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6
 ## explicit; go 1.24.0
 github.com/google/pprof/profile
-# github.com/gorilla/handlers v1.5.2
-## explicit; go 1.20
-github.com/gorilla/handlers
-# github.com/gorilla/mux v1.8.1
-## explicit; go 1.20
-github.com/gorilla/mux
 # github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware
@@ -250,12 +238,11 @@ github.com/hyperledger/fabric-protos-go-apiv2/orderer
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft
 github.com/hyperledger/fabric-protos-go-apiv2/peer
-# github.com/hyperledger/fabric-x-common v0.2.2
+# github.com/hyperledger/fabric-x-common v0.2.3-0.20260505123657-00f397ed1253
 ## explicit; go 1.25.5
 github.com/hyperledger/fabric-x-common/api/msppb
 github.com/hyperledger/fabric-x-common/api/ordererpb
 github.com/hyperledger/fabric-x-common/api/types
-github.com/hyperledger/fabric-x-common/cmd/configtxlator
 github.com/hyperledger/fabric-x-common/common/capabilities
 github.com/hyperledger/fabric-x-common/common/cauthdsl
 github.com/hyperledger/fabric-x-common/common/channelconfig
@@ -263,7 +250,6 @@ github.com/hyperledger/fabric-x-common/common/configtx
 github.com/hyperledger/fabric-x-common/common/crypto
 github.com/hyperledger/fabric-x-common/common/crypto/tlsgen
 github.com/hyperledger/fabric-x-common/common/genesis
-github.com/hyperledger/fabric-x-common/common/metadata
 github.com/hyperledger/fabric-x-common/common/policies
 github.com/hyperledger/fabric-x-common/common/policydsl
 github.com/hyperledger/fabric-x-common/common/util
@@ -282,7 +268,6 @@ github.com/hyperledger/fabric-x-common/protoutil
 github.com/hyperledger/fabric-x-common/protoutil/identity
 github.com/hyperledger/fabric-x-common/protoutil/identity/mocks
 github.com/hyperledger/fabric-x-common/tools/configtxgen
-github.com/hyperledger/fabric-x-common/tools/configtxlator/rest
 github.com/hyperledger/fabric-x-common/tools/configtxlator/update
 github.com/hyperledger/fabric-x-common/tools/fileutil
 github.com/hyperledger/fabric-x-common/tools/pkg/comm
@@ -440,9 +425,6 @@ github.com/syndtr/goleveldb/leveldb/opt
 github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
-# github.com/xhit/go-str2duration/v2 v2.1.0
-## explicit; go 1.13
-github.com/xhit/go-str2duration/v2
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr

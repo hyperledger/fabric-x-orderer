@@ -27,12 +27,12 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
@@ -260,7 +260,7 @@ func createSharedConfigProto(sharedConfigYamlPath *string, outputDir *string) {
 	sharedConfigToProto(sharedConfig, outputDir)
 }
 
-func sharedConfigToProto(sharedConfig *protos.SharedConfig, outputDir *string) {
+func sharedConfigToProto(sharedConfig *ordererpb.SharedConfig, outputDir *string) {
 	sharedConfigBytes, err := proto.Marshal(sharedConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error marshaling shared config: %s", err)
@@ -275,7 +275,7 @@ func sharedConfigToProto(sharedConfig *protos.SharedConfig, outputDir *string) {
 	}
 }
 
-func sharedConfigToBlock(sharedConfig *protos.SharedConfig, sharedConfigYaml *config.SharedConfigYaml, blockDir *string, baseDir *string, sampleConfigPath *string) {
+func sharedConfigToBlock(sharedConfig *ordererpb.SharedConfig, sharedConfigYaml *config.SharedConfigYaml, blockDir *string, baseDir *string, sampleConfigPath *string) {
 	sharedConfigBytes, err := proto.Marshal(sharedConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error marshaling shared config: %s", err)

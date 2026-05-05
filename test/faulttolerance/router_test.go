@@ -102,7 +102,7 @@ func TestRouterRestartRecover(t *testing.T) {
 
 	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
@@ -215,7 +215,7 @@ func TestRouterRestartRecover(t *testing.T) {
 
 	gotError = false
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
@@ -251,7 +251,7 @@ func TestRouterRestartRecover(t *testing.T) {
 	primaryRouterToStop.RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	for i := 0; i < totalTxNumber; i++ {
+	for i := range totalTxNumber {
 		status := rl.GetToken()
 		if !status {
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)

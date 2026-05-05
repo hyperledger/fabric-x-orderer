@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -28,7 +29,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -40,7 +40,7 @@ import (
 // Configuration holds the complete configuration of a database node.
 type Configuration struct {
 	LocalConfig  *LocalConfig
-	SharedConfig *protos.SharedConfig
+	SharedConfig *ordererpb.SharedConfig
 }
 
 // ReadConfig reads the configurations from the config file and returns it. The configuration includes both local and shared.
@@ -53,7 +53,7 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 	var nodeRole string
 	conf := &Configuration{
 		LocalConfig:  &LocalConfig{},
-		SharedConfig: &protos.SharedConfig{},
+		SharedConfig: &ordererpb.SharedConfig{},
 	}
 
 	conf.LocalConfig, nodeRole, err = LoadLocalConfig(configFilePath)
@@ -177,7 +177,7 @@ func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error)
 	return genesisBlock, nil
 }
 
-func sharedConfigFromBlock(block *common.Block) (*protos.SharedConfig, error) {
+func sharedConfigFromBlock(block *common.Block) (*ordererpb.SharedConfig, error) {
 	if block == nil {
 		return nil, errors.New("block is nil")
 	}
@@ -186,7 +186,7 @@ func sharedConfigFromBlock(block *common.Block) (*protos.SharedConfig, error) {
 		return nil, err
 	}
 
-	sharedConfig := &protos.SharedConfig{}
+	sharedConfig := &ordererpb.SharedConfig{}
 	err = proto.Unmarshal(consensusMetaData, sharedConfig)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal consensus metadata to a shared configuration")
@@ -598,7 +598,7 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 
 func (config *Configuration) ExtractRouterInParty() nodeconfig.RouterInfo {
 	partyID := config.LocalConfig.NodeLocalConfig.PartyID
-	var party *protos.PartyConfig
+	var party *ordererpb.PartyConfig
 	for _, p := range config.SharedConfig.PartiesConfig {
 		if types.PartyID(p.PartyID) == partyID {
 			party = p
@@ -752,7 +752,7 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCer
 	localShardID := uint32(localConfig.BatcherParams.ShardID)
 	localTLSCert := config.LocalConfig.TLSConfig.Certificate
 
-	var sharedPartyConfig *protos.PartyConfig
+	var sharedPartyConfig *ordererpb.PartyConfig
 	for _, party := range config.SharedConfig.PartiesConfig {
 		if localPartyID == party.PartyID {
 			sharedPartyConfig = party
@@ -763,7 +763,7 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCer
 		return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
 	}
 
-	var sharedBatcherConfig *protos.BatcherNodeConfig
+	var sharedBatcherConfig *ordererpb.BatcherNodeConfig
 	for _, batcher := range sharedPartyConfig.BatchersConfig {
 		if localShardID == batcher.ShardID {
 			sharedBatcherConfig = batcher
@@ -909,7 +909,7 @@ func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Bloc
 
 func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
 	consensusMeta := ordererConfig.ConsensusMetadata()
-	sharedConfig := &protos.SharedConfig{}
+	sharedConfig := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
 	}

@@ -13,9 +13,9 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/stretchr/testify/require"
@@ -39,7 +39,7 @@ func TestReadGenesisBlock(t *testing.T) {
 	consensusMetaData, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock)
 	require.NoError(t, err)
 
-	var sharedConfigFromBlock protos.SharedConfig
+	var sharedConfigFromBlock ordererpb.SharedConfig
 	err = proto.Unmarshal(consensusMetaData, &sharedConfigFromBlock)
 	require.NoError(t, err)
 

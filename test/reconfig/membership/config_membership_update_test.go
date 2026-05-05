@@ -79,8 +79,7 @@ func TestRemovePartyRunAll(t *testing.T) {
 	defer broadcastClient.Stop()
 
 	// Create config update to remove a party
-	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToRemove := types.PartyID(2)
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
@@ -230,8 +229,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 	}
 
 	// Create config update to remove a party
-	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 
@@ -366,8 +364,7 @@ func TestRemoveParty(t *testing.T) {
 	})
 
 	// Create config update to remove a party
-	configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToRemove := types.PartyID(2)
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
@@ -525,7 +522,7 @@ func TestAddNewParty(t *testing.T) {
 	})
 
 	// Create config update to add a party
-	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	addedPartyId, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
 
 	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
@@ -745,7 +742,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 
 	// 3.
 	configBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
-	builder, _ := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+	builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
 	partyToRemove := types.PartyID(5)
 	remainingParties := make([]types.PartyID, 0, numOfParties-1)
 	for i := 1; i <= numOfParties; i++ {
@@ -826,7 +823,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	// 7.
 	for range 2 {
 		// Create config update to add a new party
-		builder, _ = configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
 		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
 
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
@@ -1069,7 +1066,7 @@ func TestRemoveMultipleParties(t *testing.T) {
 
 	for range 3 {
 		// Create config update to remove a party
-		builder, _ := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
 		builder.RemoveParty(t, types.PartyID(numOfParties))
 
 		broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
@@ -1235,7 +1232,7 @@ func TestJoinMultipleParties(t *testing.T) {
 
 	for range 3 {
 		// Create config update to add a new party
-		builder, _ := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
 		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
 		require.NoError(t, err)

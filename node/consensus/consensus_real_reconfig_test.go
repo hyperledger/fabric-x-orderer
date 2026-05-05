@@ -88,8 +88,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	var routerCtx context.Context
 	t.Run("reject config update", func(t *testing.T) {
 		// submit to consensus a config request from router, with parameter update
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 		configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
 		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 		configReq := &protos.Request{
@@ -122,8 +121,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	var lastConfigBlock *common.Block
 	t.Run("config update with parameter change", func(t *testing.T) {
 		// submit to consensus a config request from router, with parameter update
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 		configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
 		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 		configReq := &protos.Request{
@@ -159,8 +157,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		newConfigBlockStoreDir := t.TempDir()
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(newConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
 		consenterToUpdate := types.PartyID(2)
 		caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
 		caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
@@ -228,8 +225,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configBlockStoreDir := t.TempDir()
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(configBlockStoreDir, "config.block"))
 		require.NoError(t, err)
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
 		configUpdatePbData := configUpdateBuilder.RemoveParty(t, removedParty)
 		env := configutil.CreateConfigTX(t, dir, parties[0:5], 1, configUpdatePbData)
 		configReq := &protos.Request{
@@ -289,8 +285,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		anotherConfigBlockStoreDir := t.TempDir()
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(anotherConfigBlockStoreDir, "config.block"))
 		configUpdatePbData := configUpdateBuilder.RemoveParty(t, removedPartyLeader)
 		env := configutil.CreateConfigTX(t, dir, parties[1:5], 1, configUpdatePbData)
 		configReq := &protos.Request{
@@ -375,8 +370,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		oneMoreConfigBlockStoreDir := t.TempDir()
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
 		configUpdatePbData := configUpdateBuilder.UpdateOrderingEndpoint(t, consenterPartyToUpdate, nodeIP, newPort)
 		env := configutil.CreateConfigTX(t, dir, parties[0:4], 1, configUpdatePbData)
 		configReq := &protos.Request{
@@ -462,8 +456,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		addConfigBlockStoreDir := t.TempDir()
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(addConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(addConfigBlockStoreDir, "config.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(addConfigBlockStoreDir, "config.block"))
 
 		// add the new party to the configuration
 		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)

@@ -9,29 +9,33 @@ package configutil
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/protolator"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxlator/update"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 var (
@@ -179,21 +183,21 @@ func createSigner(privateKeyPath string) (*crypto.ECDSASigner, error) {
 }
 
 type ConfigUpdateBuilder struct {
-	configtxlatorPath string
-	configDir         string
-	jsonConfigPath    string
-	configData        map[string]any
-	maxPartiesNum     int
+	// configtxlatorPath string
+	configDir      string
+	jsonConfigPath string
+	configData     map[string]any
+	maxPartiesNum  int
 }
 
-func NewConfigUpdateBuilder(t *testing.T, configDir string, lastConfigBlockPath string) (*ConfigUpdateBuilder, func()) {
+func NewConfigUpdateBuilder(t *testing.T, configDir string, lastConfigBlockPath string) *ConfigUpdateBuilder {
 	// Compile configtxlator tool
-	configtxlatorPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/testutil/configtxlator", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	require.NoError(t, err)
-	require.NotNil(t, configtxlatorPath)
+	// configtxlatorPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-common/cmd/configtxlator", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	// require.NoError(t, err)
+	// require.NotNil(t, configtxlatorPath)
 
 	// Get the config data in json representation
-	configBlockData := getJSONConfigBlockData(t, configDir, configtxlatorPath, lastConfigBlockPath)
+	configBlockData := getJSONConfigBlockData(t, configDir, lastConfigBlockPath)
 
 	configDataPath := []string{"data", "data[0]", "payload", "data", "config"}
 	configData := getNestedJSONValue(t, configBlockData, configDataPath...)
@@ -206,20 +210,26 @@ func NewConfigUpdateBuilder(t *testing.T, configDir string, lastConfigBlockPath 
 	require.NoError(t, err)
 
 	return &ConfigUpdateBuilder{
-		configtxlatorPath: configtxlatorPath,
-		configDir:         configDir,
-		jsonConfigPath:    jsonConfigPath,
-		configData:        configData.(map[string]any),
-	}, gexec.CleanupBuildArtifacts
+		// configtxlatorPath: configtxlatorPath,
+		configDir:      configDir,
+		jsonConfigPath: jsonConfigPath,
+		configData:     configData.(map[string]any),
+	}
 }
 
-func getJSONConfigBlockData(t *testing.T, dir string, configtxlatorPath string, genesisBlockPath string) map[string]any {
+func getJSONConfigBlockData(t *testing.T, workingDir string, configBlockPath string) map[string]any {
 	// Decode the genesis block from proto to json representation
-	jsonPath := filepath.Join(dir, "config_block.json")
-	cmd := exec.Command(configtxlatorPath, "proto_decode", "--input", genesisBlockPath, "--type", "common.Block", "--output", jsonPath)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "Command failed with output: %s", string(output))
-	require.FileExists(t, jsonPath)
+	jsonPath := filepath.Join(workingDir, "config_block.json")
+	// cmd := exec.Command(configtxlatorPath, "proto_decode", "--input", genesisBlockPath, "--type", "common.Block", "--output", jsonPath)
+	// output, err := cmd.CombinedOutput()
+	// require.NoError(t, err, "Command failed with output: %s", string(output))
+	// require.FileExists(t, jsonPath)
+	input := mustOpenFile(t, configBlockPath)
+	defer input.Close()
+	output := mustCreateFile(t, jsonPath)
+	defer output.Close()
+	err := decodeProto("common.Block", input, output)
+	require.NoError(t, err)
 
 	// Read the block in the json representation
 	jsonData, err := os.ReadFile(jsonPath)
@@ -234,7 +244,177 @@ func getJSONConfigBlockData(t *testing.T, dir string, configtxlatorPath string, 
 	return data
 }
 
+func mustCreateFile(t *testing.T, path string) *os.File {
+	t.Helper()
+
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("failed to create file %s: %v", path, err)
+	}
+
+	return file
+}
+
+func mustOpenFile(t *testing.T, path string) *os.File {
+	t.Helper()
+
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("failed to open file %s: %v", path, err)
+	}
+
+	return file
+}
+
+func encodeProto(msgName string, input, output *os.File) error {
+	mt, err := protoregistry.GlobalTypes.FindMessageByName(protoreflect.FullName(msgName))
+	if err != nil {
+		return errors.Wrapf(err, "error encode input")
+	}
+
+	msgType := reflect.TypeOf(mt.Zero().Interface())
+
+	if msgType == nil {
+		return errors.Errorf("message of type %s unknown", msgType)
+	}
+	msg := reflect.New(msgType.Elem()).Interface().(proto.Message)
+
+	err = protolator.DeepUnmarshalJSON(input, msg)
+	if err != nil {
+		return errors.Wrapf(err, "error decoding input")
+	}
+
+	if msg == nil {
+		return errors.New("error marshaling: proto: Marshal called with nil")
+	}
+	out, err := proto.Marshal(msg)
+	if err != nil {
+		return errors.Wrapf(err, "error marshaling")
+	}
+
+	_, err = output.Write(out)
+	if err != nil {
+		return errors.Wrapf(err, "error writing output")
+	}
+
+	return nil
+}
+
+func decodeProto(msgName string, input, output *os.File) error {
+	mt, err := protoregistry.GlobalTypes.FindMessageByName(protoreflect.FullName(msgName))
+	if err != nil {
+		return errors.Wrapf(err, "error encode input")
+	}
+
+	msgType := reflect.TypeOf(mt.Zero().Interface())
+
+	if msgType == nil {
+		return errors.Errorf("message of type %s unknown", msgType)
+	}
+	msg := reflect.New(msgType.Elem()).Interface().(proto.Message)
+
+	in, err := io.ReadAll(input)
+	if err != nil {
+		return errors.Wrapf(err, "error reading input")
+	}
+
+	err = proto.Unmarshal(in, msg)
+	if err != nil {
+		return errors.Wrapf(err, "error unmarshalling")
+	}
+
+	err = protolator.DeepMarshalJSON(output, msg)
+	if err != nil {
+		return errors.Wrapf(err, "error encoding output")
+	}
+
+	return nil
+}
+
+func computeUpdate(original, updated, output *os.File, channelID string) error {
+	origIn, err := io.ReadAll(original)
+	if err != nil {
+		return errors.Wrapf(err, "error reading original config")
+	}
+
+	origConf := &common.Config{}
+	err = proto.Unmarshal(origIn, origConf)
+	if err != nil {
+		return errors.Wrapf(err, "error unmarshalling original config")
+	}
+
+	updtIn, err := io.ReadAll(updated)
+	if err != nil {
+		return errors.Wrapf(err, "error reading updated config")
+	}
+
+	updtConf := &common.Config{}
+	err = proto.Unmarshal(updtIn, updtConf)
+	if err != nil {
+		return errors.Wrapf(err, "error unmarshalling updated config")
+	}
+
+	cu, err := update.Compute(origConf, updtConf)
+	if err != nil {
+		return errors.Wrapf(err, "error computing config update")
+	}
+
+	if cu == nil {
+		return errors.New("error marshaling computed config update: proto: Marshal called with nil")
+	}
+
+	cu.ChannelId = channelID
+
+	outBytes, err := proto.Marshal(cu)
+	if err != nil {
+		return errors.Wrapf(err, "error marshaling computed config update")
+	}
+
+	_, err = output.Write(outBytes)
+	if err != nil {
+		return errors.Wrapf(err, "error writing config update to output")
+	}
+
+	return nil
+}
+
+// encodeJSONToProto encodes a JSON config file to protobuf format
+func encodeJSONToProto(t *testing.T, jsonPath, pbPath string) {
+	t.Helper()
+
+	input := mustOpenFile(t, jsonPath)
+	defer input.Close()
+
+	output := mustCreateFile(t, pbPath)
+	defer output.Close()
+
+	err := encodeProto("common.Config", input, output)
+	require.NoError(t, err)
+	require.FileExists(t, pbPath)
+}
+
+// computeConfigUpdateToFile computes a config update from original and modified protobuf files
+func computeConfigUpdateToFile(t *testing.T, originalPbPath, modifiedPbPath, outputPath, channelID string) {
+	t.Helper()
+
+	original := mustOpenFile(t, originalPbPath)
+	defer original.Close()
+
+	modified := mustOpenFile(t, modifiedPbPath)
+	defer modified.Close()
+
+	output := mustCreateFile(t, outputPath)
+	defer output.Close()
+
+	err := computeUpdate(original, modified, output, channelID)
+	require.NoError(t, err)
+	require.FileExists(t, outputPath)
+}
+
 func (c *ConfigUpdateBuilder) createConfigUpdate(t *testing.T, modifiedJSONConfigData map[string]any) []byte {
+	t.Helper()
+
+	// Write modified config to file
 	modifiedConfigData, err := json.Marshal(modifiedJSONConfigData)
 	require.NoError(t, err)
 
@@ -242,25 +422,18 @@ func (c *ConfigUpdateBuilder) createConfigUpdate(t *testing.T, modifiedJSONConfi
 	err = os.WriteFile(modifiedJsonConfigPath, modifiedConfigData, 0o644)
 	require.NoError(t, err)
 
+	// Encode original and modified configs to protobuf
 	pbConfigPath := filepath.Join(c.configDir, "config.pb")
-	cmd := exec.Command(c.configtxlatorPath, "proto_encode", "--input", c.jsonConfigPath, "--type", "common.Config", "--output", pbConfigPath)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "Command failed with output: %s", string(output))
-	require.FileExists(t, pbConfigPath)
+	encodeJSONToProto(t, c.jsonConfigPath, pbConfigPath)
 
 	modifiedPbConfigPath := filepath.Join(c.configDir, "modified_config.pb")
-	cmd = exec.Command(c.configtxlatorPath, "proto_encode", "--input", modifiedJsonConfigPath, "--type", "common.Config", "--output", modifiedPbConfigPath)
-	output, err = cmd.CombinedOutput()
-	require.NoError(t, err, "Command failed with output: %s", string(output))
-	require.FileExists(t, modifiedPbConfigPath)
+	encodeJSONToProto(t, modifiedJsonConfigPath, modifiedPbConfigPath)
 
-	// Compute update
+	// Compute config update
 	configUpdatePbPath := filepath.Join(c.configDir, "config_update.pb")
-	cmd = exec.Command(c.configtxlatorPath, "compute_update", "--channel_id", "arma", "--original", pbConfigPath, "--updated", modifiedPbConfigPath, "--output", configUpdatePbPath)
-	output, err = cmd.CombinedOutput()
-	require.NoError(t, err, "Command failed with output: %s", string(output))
-	require.FileExists(t, configUpdatePbPath)
+	computeConfigUpdateToFile(t, pbConfigPath, modifiedPbConfigPath, configUpdatePbPath, "arma")
 
+	// Read and return result
 	configUpdatePbData, err := os.ReadFile(configUpdatePbPath)
 	require.NoError(t, err)
 	require.NotEmpty(t, configUpdatePbData)
@@ -727,7 +900,7 @@ func (c *ConfigUpdateBuilder) UpdateOrgEndpoints(t *testing.T, partyID types.Par
 }
 
 type PartyConfig struct {
-	protos.PartyConfig
+	ordererpb.PartyConfig
 	AdminCerts [][]byte
 }
 
@@ -907,10 +1080,12 @@ func CreateConfigTX(t *testing.T, dir string, signingParties []types.PartyID, su
 		require.NotNil(t, adminSigner)
 		require.NotNil(t, adminCertBytes)
 
-		sId := &msp.SerializedIdentity{
-			Mspid:   fmt.Sprintf("org%d", partyID),
-			IdBytes: adminCertBytes,
-		}
+		// sId := &msp.SerializedIdentity{
+		// 	Mspid:   fmt.Sprintf("org%d", partyID),
+		// 	IdBytes: adminCertBytes,
+		// }
+
+		sId := msppb.NewIdentity(fmt.Sprintf("org%d", partyID), adminCertBytes)
 
 		sigHeader, err := protoutil.NewSignatureHeader(adminSigner)
 		require.NoError(t, err)
@@ -976,7 +1151,7 @@ func ReadConfigEnvelopeFromConfigBlock(configBlock *common.Block) (*common.Confi
 	return configEnvelope, nil
 }
 
-func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID types.PartyID) *protos.PartyConfig {
+func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID types.PartyID) *ordererpb.PartyConfig {
 	sharedConfig := GetSharedConfig(t, configEnvelope)
 	partiesConfig := sharedConfig.GetPartiesConfig()
 	require.NotNil(t, partiesConfig)
@@ -990,7 +1165,7 @@ func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID
 	return nil
 }
 
-func GetSharedConfig(t *testing.T, configEnvelope *common.ConfigEnvelope) *protos.SharedConfig {
+func GetSharedConfig(t *testing.T, configEnvelope *common.ConfigEnvelope) *ordererpb.SharedConfig {
 	require.NotNil(t, configEnvelope)
 
 	require.NotNil(t, configEnvelope.Config.GetChannelGroup().Groups["Orderer"].Values["ConsensusType"].GetValue())
@@ -999,7 +1174,7 @@ func GetSharedConfig(t *testing.T, configEnvelope *common.ConfigEnvelope) *proto
 	err := proto.Unmarshal(configEnvelope.Config.GetChannelGroup().Groups["Orderer"].Values["ConsensusType"].GetValue(), &consensusType)
 	require.NoError(t, err)
 
-	sharedConfig := protos.SharedConfig{}
+	sharedConfig := ordererpb.SharedConfig{}
 	err = proto.Unmarshal(consensusType.GetMetadata(), &sharedConfig)
 	require.NoError(t, err)
 
@@ -1113,7 +1288,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	assemblerTlsCert, err := os.ReadFile(assemblerConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
 	require.NoError(t, err)
 
-	batchersConfig := make([]*protos.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
+	batchersConfig := make([]*ordererpb.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
 
 	for i := range addedPartyConfig.Parties[0].BatchersEndpoints {
 		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)))
@@ -1123,7 +1298,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
 		require.NoError(t, err)
 
-		batchersConfig[i] = &protos.BatcherNodeConfig{
+		batchersConfig[i] = &ordererpb.BatcherNodeConfig{
 			ShardID:  uint32(i + 1),
 			Host:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 			Port:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
@@ -1142,21 +1317,21 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	require.NoError(t, err)
 
 	c.AddNewParty(t, &PartyConfig{
-		PartyConfig: protos.PartyConfig{
+		PartyConfig: ordererpb.PartyConfig{
 			CACerts:    [][]byte{caCert},
 			TLSCACerts: [][]byte{tlsCACert},
-			ConsenterConfig: &protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				Host:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 				Port:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
 				SignCert: consenterSignCert,
 				TlsCert:  consenterTlsCert,
 			},
-			RouterConfig: &protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				Host:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 				Port:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
 				TlsCert: routerTlsCert,
 			},
-			AssemblerConfig: &protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				Host:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 				Port:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
 				TlsCert: assemblerTlsCert,
@@ -1182,8 +1357,8 @@ func (c *ConfigUpdateBuilder) syncBlockValidationPolicy(t *testing.T, consenterM
 		identities = append(identities, map[string]any{
 			"principal_classification": "IDENTITY",
 			"principal": map[string]any{
-				"mspid":    consenterMap["msp_id"],
-				"id_bytes": consenterMap["identity"],
+				"msp_id":      consenterMap["msp_id"],
+				"certificate": consenterMap["identity"],
 			},
 		})
 	}
