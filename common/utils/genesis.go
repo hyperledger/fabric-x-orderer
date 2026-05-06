@@ -7,9 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package utils
 
 import (
+	"encoding/binary"
+
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -41,11 +43,35 @@ func EmptyGenesisBlock(channelID string) *common.Block {
 			LastConfig: &common.LastConfig{Index: 0},
 		}),
 	})
-	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ledger.AssemblerGenesisBlockMetadataToBytes()
+	block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = GenesisBlockMetadataBytes()
 	return block
 }
 
 // EmptyGenesisBlockBytes constructs and returns an empty, marshalled, genesis block for a given channel ID.
 func EmptyGenesisBlockBytes(channelID string) []byte {
 	return protoutil.MarshalOrPanic(EmptyGenesisBlock(channelID))
+}
+
+// uint16 + uint16 + uint64 + uint64 + uint32 + uint32 + uint64
+const blockMetadataSerializedSize = 2 + 2 + 8 + 8 + 4 + 4 + 8
+
+func GenesisBlockMetadataBytes() []byte {
+	buff := make([]byte, blockMetadataSerializedSize)
+	var pos int
+	binary.BigEndian.PutUint16(buff[pos:], 0) // primary
+	pos += 2
+	binary.BigEndian.PutUint16(buff[pos:], uint16(types.ShardIDConsensus))
+	pos += 2
+	binary.BigEndian.PutUint64(buff[pos:], 0) // seq
+	pos += 8
+
+	binary.BigEndian.PutUint64(buff[pos:], 0) // decision num
+	pos += 8
+	binary.BigEndian.PutUint32(buff[pos:], 0) // batch index
+	pos += 4
+	binary.BigEndian.PutUint32(buff[pos:], 0) // batch count
+	pos += 4
+	binary.BigEndian.PutUint64(buff[pos:], 1) // transaction count
+
+	return buff
 }

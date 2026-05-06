@@ -14,10 +14,10 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	common_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
-
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -234,7 +234,7 @@ func (a *Assembler) initLedger(configBlock *common.Block) {
 		// append config block only if it is the genesis block
 		blockNumber := configBlock.GetHeader().Number
 		if blockNumber == 0 {
-			configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = node_ledger.AssemblerGenesisBlockMetadataToBytes()
+			configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = common_utils.GenesisBlockMetadataBytes()
 			ordInfo := &state.OrderingInformation{
 				CommonBlock: configBlock,
 				DecisionNum: 0,

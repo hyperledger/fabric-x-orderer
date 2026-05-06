@@ -18,7 +18,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state/stateprotos"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -86,7 +87,7 @@ func (s *State) String() string {
 }
 
 func (s *State) Serialize() []byte {
-	// Convert State to proto RawState
+	// Convert State to proto stateprotos.State
 	protoShards := make([]*stateprotos.ShardTerm, len(s.Shards))
 	for i, shard := range s.Shards {
 		protoShards[i] = &stateprotos.ShardTerm{
@@ -113,18 +114,14 @@ func (s *State) Serialize() []byte {
 	}
 
 	protoState := &stateprotos.State{
-		Config: &stateprotos.Config{
-			N:         uint32(s.N),
-			Quorum:    uint32(s.Quorum),
-			Threshold: uint32(s.Threshold),
-		},
-		Shards:     protoShards,
-		Pending:    protoPending,
-		Complaints: protoComplaints,
-		AppContext: s.AppContext,
+		NumberOfParties: uint32(s.N),
+		Shards:          protoShards,
+		Pending:         protoPending,
+		Complaints:      protoComplaints,
+		AppContext:      s.AppContext,
 	}
 
-	buff, err := proto.Marshal(protoState)
+	buff, err := proto.MarshalOptions{Deterministic: true}.Marshal(protoState)
 	if err != nil {
 		panic(err)
 	}
@@ -133,27 +130,34 @@ func (s *State) Serialize() []byte {
 }
 
 func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
-	s.Pending = nil
-	s.Shards = nil
-	s.Complaints = nil
-	s.AppContext = []byte{}
-
 	var ps stateprotos.State
 	if err := proto.Unmarshal(rawBytes, &ps); err != nil {
 		return err
 	}
 
-	// Load config
-	if ps.Config != nil {
-		s.N = uint16(ps.Config.N)
-		s.Quorum = uint16(ps.Config.Quorum)
-		s.Threshold = uint16(ps.Config.Threshold)
+	if ps.NumberOfParties > math.MaxUint16 {
+		return fmt.Errorf("the NumberOfParties value %d exceeds uint16 maximum %d", ps.NumberOfParties, math.MaxUint16)
 	}
+
+	s.N = uint16(ps.NumberOfParties)
+	if s.N == 0 {
+		s.Threshold = 0
+		s.Quorum = 0
+	} else {
+		_, s.Threshold, s.Quorum = utils.ComputeFTQ(s.N)
+	}
+
+	s.Shards = nil
+	s.Pending = nil
+	s.Complaints = nil
 
 	// Load shards
 	if len(ps.Shards) > 0 {
 		s.Shards = make([]ShardTerm, len(ps.Shards))
 		for i, protoShard := range ps.Shards {
+			if protoShard.Shard > math.MaxUint16 {
+				return fmt.Errorf("the Shard value %d at index %d exceeds uint16 maximum %d", protoShard.Shard, i, math.MaxUint16)
+			}
 			s.Shards[i] = ShardTerm{
 				Shard: types.ShardID(protoShard.Shard),
 				Term:  protoShard.Term,
@@ -163,6 +167,9 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 
 	// Load pending
 	if len(ps.Pending) > 0 {
+		if bafd == nil {
+			return fmt.Errorf("no BAF deserializer provided and pending batch attestation fragments are present")
+		}
 		s.Pending = make([]types.BatchAttestationFragment, 0, len(ps.Pending))
 		for _, bafBytes := range ps.Pending {
 			baf, err := bafd.Deserialize(bafBytes)
@@ -177,6 +184,12 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 	if len(ps.Complaints) > 0 {
 		s.Complaints = make([]Complaint, len(ps.Complaints))
 		for i, protoComplaint := range ps.Complaints {
+			if protoComplaint.Shard > math.MaxUint16 {
+				return fmt.Errorf("the Complaint Shard value %d at index %d exceeds uint16 maximum %d", protoComplaint.Shard, i, math.MaxUint16)
+			}
+			if protoComplaint.Signer > math.MaxUint16 {
+				return fmt.Errorf("the Complaint Signer value %d at index %d exceeds uint16 maximum %d", protoComplaint.Signer, i, math.MaxUint16)
+			}
 			s.Complaints[i] = Complaint{
 				ShardTerm: ShardTerm{
 					Shard: types.ShardID(protoComplaint.Shard),
@@ -191,6 +204,7 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 	}
 
 	// Load app context - ensure it's never nil, always []byte{} at minimum
+	s.AppContext = []byte{}
 	if ps.AppContext != nil {
 		s.AppContext = ps.AppContext
 	}
