@@ -683,7 +683,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 		DialTimeout: time.Second * 5,
 	}
 
-	requestEnvelope, err := createRequestEnvelopeForUser(userConfig)
+	requestEnvelope, err := createDeliverRequestWithSeekInfo(userConfig, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create a request envelope: %v", err)
 		os.Exit(3)
@@ -783,7 +783,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 						continue
 					}
 
-					requestEnvelope, err = createRequestEnvelopeForUserFromSeq(userConfig, lastBlockNum+1)
+					requestEnvelope, err = createDeliverRequestWithSeekInfo(userConfig, lastBlockNum+1)
 					if err != nil {
 						logger.Warnf("failed to recreate request envelope: %v — retrying", err)
 						_ = gRPCAssemblerClientConn.Close()
@@ -874,7 +874,6 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	logger.Debugf("exit pulling blocks from the assembler")
 }
 
-// pullBlock no longer closes the connection internally — the caller manages reconnection
 func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string) (*common.Block, error) {
 	resp, err := stream.Recv()
 	if err != nil {
@@ -1012,11 +1011,7 @@ func writeStatisticsToCSV(file *os.File, statistic Statistics, timeIntervalToSam
 	}
 }
 
-func createRequestEnvelopeForUser(userConfig *UserConfig) (*common.Envelope, error) {
-	return createRequestEnvelopeForUserFromSeq(userConfig, 0)
-}
-
-func createRequestEnvelopeForUserFromSeq(userConfig *UserConfig, startSeq uint64) (*common.Envelope, error) {
+func createDeliverRequestWithSeekInfo(userConfig *UserConfig, startSeq uint64) (*common.Envelope, error) {
 	signer, err := signutil.CreateSignerForUser(userConfig.MSPDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create signer for user: %v", err)
@@ -1045,8 +1040,7 @@ func createRequestEnvelopeForUserFromSeq(userConfig *UserConfig, startSeq uint64
 }
 
 // receiveResponseFromAssembler is used by the submit command, which is a short-lived operation.
-// Unlike pullBlocksFromAssemblerAndCollectStatistics, no reconnect logic is needed here —
-// if the assembler goes down during a submit run, it is correct to fail fast.
+// Unlike pullBlocksFromAssemblerAndCollectStatistics, no reconnect logic is supported.
 func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
 	// arbitrarily choose the first assembler to pull blocks from
 	pullFromPartyId := 1
@@ -1069,7 +1063,7 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 		DialTimeout: time.Second * 5,
 	}
 
-	requestEnvelope, err := createRequestEnvelopeForUser(userConfig)
+	requestEnvelope, err := createDeliverRequestWithSeekInfo(userConfig, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create a request envelope: %v", err)
 		os.Exit(3)
@@ -1109,6 +1103,8 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 		block, err := pullBlock(stream, endpointToPullFrom)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", pullFromPartyId, err)
+			_ = stream.CloseSend()
+			_ = gRPCAssemblerClientConn.Close()
 			os.Exit(3)
 		}
 

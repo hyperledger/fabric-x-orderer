@@ -11,6 +11,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/csv"
 	"fmt"
 	"os"
 	"os/exec"
@@ -796,6 +797,175 @@ func checkCryptoDir(outputDir string) error {
 	}
 
 	return nil
+}
+
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files in a folder structure
+//  3. Run arma with the generated config files to run each of the nodes for a single party
+//  4. Run armageddon receive command to pull blocks from the assembler and report results (in a go routine)
+//  5. Run armageddon load command to send txs to all routers at a specified rate (in a go routine)
+//  6. Wait 30 seconds with assembler running, verify assembler is up and CSV has non-zero rows
+//  7. Shutdown the assembler (simulating a crash)
+//  8. Wait 30 seconds with assembler down, verify assembler is down and CSV has zero rows
+//  9. Restart the assembler
+//
+// 10. Wait 30 seconds with assembler running, verify assembler is up and CSV has non-zero rows again
+// 11. Wait for the txs to be received by the assembler
+func TestLoadAndReceive_AssemblerFailsAndRecovers(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1. Create network configuration with 1 party and 1 shard (simpler test)
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "TLS", "TLS")
+	defer netInfo.CleanUp()
+
+	// 2. Generate config files and crypto material
+	armageddon := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddon.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
+
+	// 3. Compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// run arma nodes
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 4, 10) // Wait for 4 nodes: consenter, assembler, router, 1 batcher
+
+	// 4. + 5. Start sending and receiving transactions in parallel
+	userConfigPath := path.Join(dir, "config", "party1", "user_config.yaml")
+	rate := "100"      // 100 tx/second
+	totalTxs := "9000" // 90 seconds * 100 tx/s = 9000 total
+	txSize := "128"
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Start receiving blocks (this creates the CSV file)
+	go func() {
+		defer wg.Done()
+		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", totalTxs, "--output", dir})
+	}()
+
+	// Start sending transactions
+	go func() {
+		defer wg.Done()
+		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", totalTxs, "--rate", rate, "--txSize", txSize})
+	}()
+
+	// 6. Wait 30 seconds, then check assembler is up and CSV has non-zero rows
+	time.Sleep(30 * time.Second)
+	t.Log("Phase 1: Checking assembler is UP and processing blocks")
+	assembler := armaNetwork.GetAssembler(t, 1)
+	require.NotNil(t, assembler.RunInfo.Session, "Assembler process should be running")
+	checkCSVHasNonZeroRows(t, dir, 3) // Check at least 3 rows with non-zero values
+
+	// 7. Stop the assembler
+	t.Log("Phase 2: Stopping assembler to simulate crash")
+	assembler.StopArmaNode()
+
+	// 8. Wait 30 seconds, then check assembler is down and CSV has zero rows
+	time.Sleep(30 * time.Second)
+	t.Log("Phase 2: Verifying assembler is DOWN and no blocks are being received")
+	checkCSVHasZeroRows(t, dir, 3) // Check at least 3 rows with zero values
+
+	// 9. Restart the assembler
+	t.Log("Phase 3: Restarting assembler to simulate recovery")
+	assembler.RestartArmaNode(t, readyChan)
+	testutil.WaitReady(t, readyChan, 1, 10)
+
+	// 10. Wait 30 seconds, then check assembler is up and CSV has non-zero rows again
+	time.Sleep(30 * time.Second)
+	t.Log("Phase 3: Verifying assembler is UP again and processing blocks")
+	require.NotNil(t, assembler.RunInfo.Session, "Assembler process should be running after restart")
+	checkCSVHasNonZeroRows(t, dir, 3) // Check at least 3 more rows with non-zero values
+
+	// 11. Wait for all goroutines to finish
+	wg.Wait()
+}
+
+// checkCSVHasNonZeroRows verifies that the statistics CSV file has at least minRows rows
+// with non-zero values for number of transactions and number of blocks.
+// This indicates the assembler is processing blocks normally.
+func checkCSVHasNonZeroRows(t *testing.T, dir string, minRows int) {
+	// Find the CSV file (it has timestamp in name: statistics_YYYY-MM-DD_HH:MM:SS.csv)
+	files, err := filepath.Glob(filepath.Join(dir, "statistics_*.csv"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files, "Statistics CSV file should exist")
+
+	// Read CSV file
+	file, err := os.Open(files[0])
+	require.NoError(t, err)
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1 // Allow variable number of fields per record
+
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+
+	// Skip header rows (first 3 rows: description, empty line, column headers)
+	require.Greater(t, len(records), 3, "CSV should have header rows")
+	dataRows := records[3:]
+
+	// Count rows with non-zero txs and blocks
+	nonZeroCount := 0
+	for _, row := range dataRows {
+		if len(row) >= 3 {
+			numTxs := row[1]    // Column: "Number of txs"
+			numBlocks := row[2] // Column: "Number of blocks"
+			if numTxs != "0" && numBlocks != "0" {
+				nonZeroCount++
+			}
+		}
+	}
+
+	require.GreaterOrEqual(t, nonZeroCount, minRows, "Expected at least %d rows with non-zero values (assembler processing blocks)", minRows)
+}
+
+// checkCSVHasZeroRows verifies that the statistics CSV file has at least minRows rows
+// with zero values for number of transactions and number of blocks.
+// This indicates the assembler is down and not processing blocks.
+func checkCSVHasZeroRows(t *testing.T, dir string, minRows int) {
+	files, err := filepath.Glob(filepath.Join(dir, "statistics_*.csv"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files, "Statistics CSV file should exist")
+
+	file, err := os.Open(files[0])
+	require.NoError(t, err)
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1 // Allow variable number of fields per record
+
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+
+	// Skip header rows
+	require.Greater(t, len(records), 3, "CSV should have header rows")
+	dataRows := records[3:]
+
+	// Count rows with zero txs and blocks (but non-zero timestamp)
+	zeroCount := 0
+	for _, row := range dataRows {
+		if len(row) >= 3 {
+			numTxs := row[1]    // Column: "Number of txs"
+			numBlocks := row[2] // Column: "Number of blocks"
+			if numTxs == "0" && numBlocks == "0" {
+				zeroCount++
+			}
+		}
+	}
+
+	require.GreaterOrEqual(t, zeroCount, minRows, "Expected at least %d rows with zero values (assembler down)", minRows)
 }
 
 func fileExists(path string) bool {
