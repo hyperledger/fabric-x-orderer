@@ -171,7 +171,7 @@ Operationally, clients should submit transactions to routers and read ordered bl
 
 ## 10. Observability
 
-Each role defines metrics in its package-level `metrics.go` file. Monitoring bind settings are controlled by `General.MonitoringListenAddress` and `General.MonitoringListenPort`. Periodic metrics logging is controlled by `General.MetricsLogInterval`.
+Each role defines metrics in its package-level `metrics.go` file. Monitoring bind settings are controlled by `Operations.ListenAddress` and `Operations.ListenPort`. Periodic metrics logging is controlled by `Metrics.MetricsLogInterval`.
 
 Useful bottleneck signals include router submission/stream behavior, batcher request-pool pressure, consenter BAF/decision throughput, and assembler fetch/cache/collation progress. These signals should be read together because backpressure often appears downstream first and then propagates upstream.
 
@@ -181,8 +181,8 @@ For example, slow assembler fetches may indicate missing or slow batcher data, w
 
 The role-specific documents contain deeper operational and implementation details. Start with this architecture document for the overall flow, then use the links below to inspect startup behavior, APIs, metrics, and failure handling for each service.
 
-- Router details: [router.md](router.md)
-- Batcher details: [batcher.md](batcher.md)
+- Router details: [`node/router`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/router)
+- Batcher details: [`node/batcher`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/batcher)
 - Consenter details: [consenter.md](consenter.md)
 - Assembler details: [assembler.md](assembler.md)
 - Deployment guide: [../deployment/README.md](https://github.com/hyperledger/fabric-x-orderer/blob/main/deployment/README.md)
