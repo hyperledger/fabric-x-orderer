@@ -182,13 +182,6 @@ func (cc *ChannelConfig) Validate(channelCapabilities ChannelCapabilities) error
 		}
 	}
 
-	// We check global orderer addresses only if we are below ChannelV1_4_2
-	if !channelCapabilities.OrgSpecificOrdererEndpoints() {
-		if err := cc.validateOrdererAddresses(); err != nil {
-			return err
-		}
-	}
-
 	// We validate no global endpoints at V3_0 or above
 	if channelCapabilities.ConsensusTypeBFT() {
 		return cc.validateNoOrdererAddresses()
