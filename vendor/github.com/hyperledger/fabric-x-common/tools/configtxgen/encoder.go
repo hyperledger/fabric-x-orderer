@@ -185,11 +185,8 @@ func NewChannelGroup(conf *Profile) (*cb.ConfigGroup, error) {
 //
 //nolint:gocognit // cognitive complexity 23.
 func NewOrdererGroup(conf *Orderer, channelCapabilities map[string]bool) (*cb.ConfigGroup, error) {
-	if conf.OrdererType == "BFT" && !channelCapabilities["V3_0"] {
-		return nil, errors.Errorf("orderer type BFT must be used with V3_0 channel capability: %v", channelCapabilities)
-	}
-	if len(conf.Addresses) > 0 && channelCapabilities["V3_0"] {
-		return nil, errors.Errorf("global orderer endpoints exist, but can not be used with V3_0 capability: %v", conf.Addresses)
+	if len(conf.Addresses) > 0 {
+		return nil, errors.Errorf("global orderer endpoints exist, but are not supported: %v", conf.Addresses)
 	}
 
 	ordererGroup := protoutil.NewConfigGroup()
@@ -333,7 +330,6 @@ func NewConsortiumOrgGroup(conf *Organization) (*cb.ConfigGroup, error) {
 
 // NewOrdererOrgGroup returns an orderer org component of the channel configuration.  It defines the crypto material for the
 // organization (its MSP).  It sets the mod_policy of all elements to "Admins".
-// channelCapabilities map[string]bool
 func NewOrdererOrgGroup(conf *Organization, channelCapabilities map[string]bool) (*cb.ConfigGroup, error) {
 	ordererOrgGroup := protoutil.NewConfigGroup()
 	ordererOrgGroup.ModPolicy = channelconfig.AdminsPolicyKey
@@ -359,8 +355,8 @@ func NewOrdererOrgGroup(conf *Organization, channelCapabilities map[string]bool)
 			endpoints[i] = e.String()
 		}
 		addValue(ordererOrgGroup, channelconfig.EndpointsValue(endpoints), channelconfig.AdminsPolicyKey)
-	} else if channelCapabilities["V3_0"] {
-		return nil, errors.Errorf("orderer endpoints for organization %s are missing and must be configured when capability V3_0 is enabled", conf.Name)
+	} else {
+		return nil, errors.Errorf("orderer endpoints for organization %s are missing and must be configured", conf.Name)
 	}
 
 	return ordererOrgGroup, nil

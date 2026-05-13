@@ -90,12 +90,6 @@ func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, mspConfigHand
 		return nil, fmt.Errorf("OrdererOrg config does not allow sub-groups")
 	}
 
-	if !channelCapabilities.OrgSpecificOrdererEndpoints() {
-		if _, ok := orgGroup.Values[EndpointsKey]; ok {
-			return nil, errors.Errorf("Orderer Org %s cannot contain endpoints value until V1_4_2+ capabilities have been enabled", orgName)
-		}
-	}
-
 	protos := &OrdererOrgProtos{}
 	orgProtos := &OrganizationProtos{}
 
@@ -146,7 +140,7 @@ func NewOrdererConfig(ordererGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler,
 		}
 	}
 
-	if channelCapabilities.ConsensusTypeBFT() {
+	if oc.ConsensusType() == "arma" || oc.ConsensusType() == "BFT" {
 		if err := oc.validateAllOrgsHaveEndpoints(); err != nil {
 			return nil, err
 		}

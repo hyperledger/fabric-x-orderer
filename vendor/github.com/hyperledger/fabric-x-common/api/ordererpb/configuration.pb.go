@@ -37,6 +37,7 @@ type SharedConfig struct {
 	PartiesConfig   []*PartyConfig         `protobuf:"bytes,1,rep,name=PartiesConfig,proto3" json:"PartiesConfig,omitempty"`
 	ConsensusConfig *ConsensusConfig       `protobuf:"bytes,2,opt,name=ConsensusConfig,proto3" json:"ConsensusConfig,omitempty"`
 	BatchingConfig  *BatchingConfig        `protobuf:"bytes,3,opt,name=BatchingConfig,proto3" json:"BatchingConfig,omitempty"`
+	MaxPartyID      uint32                 `protobuf:"varint,4,opt,name=MaxPartyID,proto3" json:"MaxPartyID,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -90,6 +91,13 @@ func (x *SharedConfig) GetBatchingConfig() *BatchingConfig {
 		return x.BatchingConfig
 	}
 	return nil
+}
+
+func (x *SharedConfig) GetMaxPartyID() uint32 {
+	if x != nil {
+		return x.MaxPartyID
+	}
+	return 0
 }
 
 // PartyConfig carries the identity, certificates and nodes configuration of a party.
@@ -966,11 +974,14 @@ var File_api_ordererpb_configuration_proto protoreflect.FileDescriptor
 
 const file_api_ordererpb_configuration_proto_rawDesc = "" +
 	"\n" +
-	"!api/ordererpb/configuration.proto\x12\tordererpb\"\xd5\x01\n" +
+	"!api/ordererpb/configuration.proto\x12\tordererpb\"\xf5\x01\n" +
 	"\fSharedConfig\x12<\n" +
 	"\rPartiesConfig\x18\x01 \x03(\v2\x16.ordererpb.PartyConfigR\rPartiesConfig\x12D\n" +
 	"\x0fConsensusConfig\x18\x02 \x01(\v2\x1a.ordererpb.ConsensusConfigR\x0fConsensusConfig\x12A\n" +
-	"\x0eBatchingConfig\x18\x03 \x01(\v2\x19.ordererpb.BatchingConfigR\x0eBatchingConfig\"\xfc\x02\n" +
+	"\x0eBatchingConfig\x18\x03 \x01(\v2\x19.ordererpb.BatchingConfigR\x0eBatchingConfig\x12\x1e\n" +
+	"\n" +
+	"MaxPartyID\x18\x04 \x01(\rR\n" +
+	"MaxPartyID\"\xfc\x02\n" +
 	"\vPartyConfig\x12\x18\n" +
 	"\aPartyID\x18\x01 \x01(\rR\aPartyID\x12\x18\n" +
 	"\aCACerts\x18\x02 \x03(\fR\aCACerts\x12\x1e\n" +
