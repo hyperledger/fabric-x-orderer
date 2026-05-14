@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 //go:generate counterfeiter -o fake/censorship_detector.go --fake-name CensorshipDetector . CensorshipDetector
@@ -63,6 +64,7 @@ type BFTDeliverer struct {
 	Ledger       LedgerInfo
 
 	UpdatableBlockVerifier    UpdatableBlockVerifier
+	ConfigBlockOps            utils.ConfigBlockOperations
 	Dialer                    Dialer
 	OrderersSourceFactory     OrdererConnectionSourceFactory
 	CryptoProvider            bccsp.BCCSP
@@ -368,6 +370,7 @@ func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint) {
 			channelID:              d.ChannelID,
 			blockHandler:           d.BlockHandler,
 			updatableBlockVerifier: d.UpdatableBlockVerifier,
+			configBlockOps:         d.ConfigBlockOps,
 			deliverClient:          deliverClient,
 			cancelSendFunc:         cancel,
 			recvC:                  make(chan *orderer.DeliverResponse),

@@ -16,12 +16,12 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"google.golang.org/grpc"
-
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"google.golang.org/grpc"
 )
 
 //go:generate counterfeiter -o fake/endpoints_extractor.go --fake-name EndpointsExtractor . EndpointsExtractor
@@ -91,6 +91,9 @@ type Deliverer struct {
 
 	// TLSCertHash should be nil when TLS is not enabled
 	TLSCertHash []byte // util.ComputeSHA256(b.credSupport.GetClientCertificate().Certificate[0])
+
+	// ConfigBlockOps provides block-type-specific operations for config blocks
+	ConfigBlockOps utils.ConfigBlockOperations
 
 	sleeper sleeper
 
@@ -203,6 +206,7 @@ func (d *Deliverer) DeliverBlocks() {
 			recvC:                  make(chan *orderer.DeliverResponse),
 			stopC:                  make(chan struct{}),
 			endpoint:               endpoint,
+			configBlockOps:         d.ConfigBlockOps,
 			logger:                 d.Logger.With("orderer-address", endpoint.Address),
 		}
 		d.blockReceiver = blockReceiver

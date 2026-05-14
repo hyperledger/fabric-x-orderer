@@ -33,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 type bftDelivererTestSetup struct {
@@ -234,6 +235,7 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 		Signer:                          s.fakeSigner,
 		DeliverStreamer:                 s.fakeDeliverStreamer,
 		CensorshipDetectorFactory:       s.fakeCensorshipMonFactory,
+		ConfigBlockOps:                  &utils.CommonBlockOperations{},
 		EndpointsExtractor:              s.fakeEndpointsExtractor,
 		Logger:                          flogging.MustGetLogger("BFTDeliverer.test"),
 		TLSCertHash:                     []byte("tls-cert-hash"),
