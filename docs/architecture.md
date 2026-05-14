@@ -20,14 +20,14 @@ SPDX-License-Identifier: Apache-2.0
 ## 1. Overview
 
 Fabric-X Orderer is a Byzantine Fault Tolerant ordering service based on the Arma protocol. 
-The main objective of the Arma protocol is performance: its goal is to order a large volume of transactions per second while maintaining a resonable transaction latency.
-This is acheived by employing three design principles:
+The main objective of the Arma protocol is performance: its goal is to order a large volume of transactions per second while maintaining a reasonable transaction latency.
+This is achieved by employing three design principles:
 
  - Separation of transaction dissemination from consensus
  - Parallelism through pipelining and sharding
  - Small transactions by stripping certificates from transactions and keeping predefined full signer identities in an in-memory cache
 
-The system is composed of four node roles. **Routers** accept transaction submissions, verify them, and forward them to batchers. **Batchers** create, persist and replicate batches, and send batch attestation fragments (small messages with a batch digest) to consenters. **Consenters** order batch attestation fragments through SmartBFT, producing a totally ordered stream of batch attestations. Finally, **assemblers** collate the small totaly ordered batch attestations with full batches pulled from the batchers, and create the final Fabric-compatible block ledger.
+The system is composed of four node roles. **Routers** accept transaction submissions, verify them, and forward them to batchers. **Batchers** create, persist and replicate batches, and send batch attestation fragments (small messages with a batch digest) to consenters. **Consenters** order batch attestation fragments through SmartBFT, producing a totally ordered stream of batch attestations. Finally, **assemblers** collate the small totally ordered batch attestations with full batches pulled from the batchers, and create the final Fabric-compatible block ledger.
 
 Arma separates transaction dissemination, batch replication, and payload persistence from consensus. Consensus orders batch attestations and other batch metadata instead of full transaction payloads, which keeps the critical BFT path fast and lets batching and storage scale by using additional hardware through the use of parallelism and sharding.
 
@@ -182,7 +182,7 @@ Different parties may belong to different organizations that do not trust each o
 The Arma protocol can tolerate **F=Floor(N/3)** failures, where **N** is the number of parties. That is, in order to tolerate **F** failures, one must deploy **N >= 3F+1** parties.
 Arma provides tolerance against Byzantine failures, i.e., arbitrary deviations from the protocol, which includes crashes as well as malicious behavior.
 
-Thus, the minimal deployment which support fault tolerance has 4 nodes. The recommended minimal production deployment has 7 nodes.
+Thus, the minimal deployment which supports fault tolerance has 4 parties. The recommended minimal production deployment has 7 parties.
 
 Production deployments should enable TLS/mTLS and use identical genesis/configuration inputs across all parties. Correct configuration and certificate material are part of fault tolerance: a node with wrong membership or trust roots may be alive but unable to participate safely in routing, attestation, consensus, or delivery.
 
