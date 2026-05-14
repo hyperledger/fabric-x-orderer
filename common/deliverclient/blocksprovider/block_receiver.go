@@ -13,11 +13,9 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/pkg/errors"
-
-	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/pkg/errors"
 )
 
 //go:generate counterfeiter -o fake/block_handler.go --fake-name BlockHandler . BlockHandler
@@ -34,6 +32,7 @@ type BlockReceiver struct {
 	channelID              string
 	blockHandler           BlockHandler
 	updatableBlockVerifier UpdatableBlockVerifier
+	configBlockOps         utils.ConfigBlockOperations
 	deliverClient          orderer.AtomicBroadcast_DeliverClient
 	cancelSendFunc         func()
 	recvC                  chan *orderer.DeliverResponse
@@ -150,8 +149,8 @@ func (br *BlockReceiver) processMsg(msg *orderer.DeliverResponse) (uint64, *comm
 		br.logger.Debugf("Handled block %d", blockNum)
 
 		var channelConfig *common.Config
-		if protoutil.IsConfigBlock(t.Block) {
-			configEnv, err := deliverclient.ConfigFromBlock(t.Block)
+		if br.configBlockOps.IsConfigBlock(t.Block) {
+			configEnv, err := br.configBlockOps.ConfigFromBlock(t.Block)
 			if err != nil {
 				return 0, nil, errors.WithMessagef(err, "failed to extract channel-config from config block [%d] from orderer [%s]", blockNum, br.endpoint.String())
 			}

@@ -144,6 +144,7 @@ func (*bftDelivererCreator) CreateBFTDeliverer(
 		Signer:                          signer,
 		DeliverStreamer:                 deliverStreamer,
 		CensorshipDetectorFactory:       censorshipDetectorFactory,
+		ConfigBlockOps:                  &ConsenterBlockOperations{},
 		EndpointsExtractor:              endpointsExtractor,
 		Logger:                          logger,
 		InitialRetryInterval:            initialRetryInterval,

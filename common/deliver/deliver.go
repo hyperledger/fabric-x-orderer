@@ -23,6 +23,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -335,7 +337,7 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 		// Data blocks carry nil data for block attestations.
 		// Never mutate the block received from the iterator as it is from a cache.
 		block2send := block
-		if seekInfo.ContentType == ab.SeekInfo_HEADER_WITH_SIG && !protoutil.IsConfigBlock(block) {
+		if seekInfo.ContentType == ab.SeekInfo_HEADER_WITH_SIG && !isConfigBlock(block) {
 			block2send = &cb.Block{
 				Header:   block.Header,
 				Metadata: block.Metadata,
@@ -390,6 +392,13 @@ func (h *Handler) parseEnvelope(ctx context.Context, envelope *cb.Envelope) (*cb
 	}
 
 	return payload, chdr, shdr, nil
+}
+
+// isConfigBlock checks if a block is a config block.
+func isConfigBlock(block *cb.Block) bool {
+	commonOps := &utils.CommonBlockOperations{}
+	consenterOps := &synchronizer.ConsenterBlockOperations{}
+	return commonOps.IsConfigBlock(block) || consenterOps.IsConfigBlock(block)
 }
 
 func (h *Handler) validateChannelHeader(ctx context.Context, chdr *cb.ChannelHeader) error {

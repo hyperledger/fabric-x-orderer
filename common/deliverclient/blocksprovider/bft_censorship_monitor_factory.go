@@ -6,12 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 
 package blocksprovider
 
-import "github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+import (
+	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+)
 
 // BFTCensorshipMonitorFactory creates an instance of a BFTCensorshipMonitor. It is an implementation of the
 // CensorshipDetectorFactory interface which abstracts the creation of a BFTCensorshipMonitor.
-type BFTCensorshipMonitorFactory struct{}
+type BFTCensorshipMonitorFactory struct {
+	ConfigBlockOps utils.ConfigBlockOperations
+}
 
 func (f *BFTCensorshipMonitorFactory) Create(chainID string, updatableVerifier UpdatableBlockVerifier, requester DeliverClientRequester, progressReporter BlockProgressReporter, fetchSources []*orderers.Endpoint, blockSourceIndex int, timeoutConf TimeoutConfig) CensorshipDetector {
-	return NewBFTCensorshipMonitor(chainID, updatableVerifier, requester, progressReporter, fetchSources, blockSourceIndex, timeoutConf)
+	return NewBFTCensorshipMonitor(chainID, updatableVerifier, requester, progressReporter, fetchSources, blockSourceIndex, timeoutConf, f.ConfigBlockOps)
 }

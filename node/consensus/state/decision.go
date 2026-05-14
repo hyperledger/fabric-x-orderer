@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
 type asn1Signature struct {
@@ -169,4 +170,21 @@ func CreateBlockToAppendFromDecision(number uint64, proposal smartbft_types.Prop
 	})
 
 	return block
+}
+
+// GetLastConfigIndexFromConsenterBlock returns the last config index from the consenter block.
+func GetLastConfigIndexFromConsenterBlock(block *common.Block) (uint64, error) {
+	if block.GetHeader().Number == 0 {
+		return 0, nil
+	}
+	m, err := protoutil.GetMetadataFromBlock(block, common.BlockMetadataIndex_LAST_CONFIG)
+	if err != nil {
+		return 0, err
+	}
+	lastConfig := &common.LastConfig{}
+	err = proto.Unmarshal(m.Value, lastConfig)
+	if err != nil {
+		return 0, err
+	}
+	return lastConfig.Index, nil
 }

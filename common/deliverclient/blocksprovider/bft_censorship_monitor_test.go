@@ -22,11 +22,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 func TestNewBFTCensorshipMonitor_New(t *testing.T) {
 	s := newMonitorTestSetup(t, 5)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{})
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{}, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 }
 
@@ -35,7 +36,7 @@ func TestNewBFTCensorshipMonitor_New(t *testing.T) {
 // - stop the monitor without reading from error channel
 func TestBFTCensorshipMonitor_Stop(t *testing.T) {
 	s := newMonitorTestSetup(t, 1)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{})
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{}, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	var wg sync.WaitGroup
@@ -55,7 +56,7 @@ func TestBFTCensorshipMonitor_Stop(t *testing.T) {
 // - stop the monitor, ensure error channel contains an error
 func TestBFTCensorshipMonitor_StopWithErrors(t *testing.T) {
 	s := newMonitorTestSetup(t, 1)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{})
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{}, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	var wg sync.WaitGroup
@@ -82,7 +83,7 @@ func TestBFTCensorshipMonitor_StopWithErrors(t *testing.T) {
 // - monitor exits, ensure error channel contains an error
 func TestBFTCensorshipMonitor_NoSources(t *testing.T) {
 	s := newMonitorTestSetup(t, 0)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{})
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{}, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	var wg sync.WaitGroup
@@ -118,7 +119,7 @@ func TestBFTCensorshipMonitor_NoHeadersNoBlocks(t *testing.T) {
 		BlockCensorshipTimeout: time.Second,
 	}
 	s := newMonitorTestSetup(t, numOrderers)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig)
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	fakeEnv := &common.Envelope{Payload: []byte("bogus"), Signature: []byte("bogus")}
@@ -191,7 +192,7 @@ func TestBFTCensorshipMonitor_CensorshipDetected(t *testing.T) {
 		BlockCensorshipTimeout: time.Second,
 	}
 	s := newMonitorTestSetup(t, numOrderers)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig)
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	fakeEnv := &common.Envelope{Payload: []byte("bogus"), Signature: []byte("bogus")}
@@ -276,7 +277,7 @@ func TestBFTCensorshipMonitor_SuspicionsRemovedCensorshipDetected(t *testing.T) 
 		BlockCensorshipTimeout: time.Second,
 	}
 	s := newMonitorTestSetup(t, numOrderers)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig)
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	fakeEnv := &common.Envelope{Payload: []byte("bogus"), Signature: []byte("bogus")}
@@ -385,7 +386,7 @@ func TestBFTCensorshipMonitor_SuspicionRemoved(t *testing.T) {
 		BlockCensorshipTimeout: 5 * time.Second,
 	}
 	s := newMonitorTestSetup(t, numOrderers)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig)
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	fakeEnv := &common.Envelope{Payload: []byte("bogus"), Signature: []byte("bogus")}
@@ -487,7 +488,7 @@ func TestBFTCensorshipMonitor_FaultySourceIgnored(t *testing.T) {
 		BlockCensorshipTimeout: 5 * time.Second,
 	}
 	s := newMonitorTestSetup(t, numOrderers)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig)
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	fakeEnv := &common.Envelope{Payload: []byte("bogus"), Signature: []byte("bogus")}
@@ -602,7 +603,7 @@ func TestBFTCensorshipMonitor_FaultySourceRecovery(t *testing.T) {
 		BlockCensorshipTimeout: 1 * time.Second,
 	}
 	s := newMonitorTestSetup(t, numOrderers)
-	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig)
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, blockSource, tConfig, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 
 	fakeEnv := &common.Envelope{Payload: []byte("bogus"), Signature: []byte("bogus")}
