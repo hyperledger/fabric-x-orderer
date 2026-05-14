@@ -29,12 +29,11 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	xprotoutil "github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric/common/channelconfig"
-	"github.com/hyperledger/fabric/common/deliverclient"
-	"github.com/hyperledger/fabric/common/policies"
-	"github.com/hyperledger/fabric/common/util"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -215,7 +214,7 @@ func VerifyBlockHash(indexInBuffer int, blockBuff []*common.Block) error {
 		return errors.New("missing block data")
 	}
 	seq := block.Header.Number
-	dataHash, err := xprotoutil.BlockDataHash(block.Data)
+	dataHash, err := protoutil.BlockDataHash(block.Data)
 	if err != nil {
 		return err
 	}
@@ -707,13 +706,15 @@ func SHA256Digest(data []byte) []byte {
 	return hash[:]
 }
 
+type VerifierBuilder func(block *common.Block) protoutil.BlockVerifierFunc
+
 // VerifyBlocksBFT verifies the given consecutive sequence of blocks is valid, always verifies signature,
 // and returns nil if it's valid, else an error.
-func VerifyBlocksBFT(blocks []*common.Block, signatureVerifier protoutil.BlockVerifierFunc, vb protoutil.VerifierBuilder) error {
+func VerifyBlocksBFT(blocks []*common.Block, signatureVerifier protoutil.BlockVerifierFunc, vb VerifierBuilder) error {
 	return verifyBlockSequence(blocks, signatureVerifier, vb)
 }
 
-func verifyBlockSequence(blockBuff []*common.Block, signatureVerifier protoutil.BlockVerifierFunc, vb protoutil.VerifierBuilder) error {
+func verifyBlockSequence(blockBuff []*common.Block, signatureVerifier protoutil.BlockVerifierFunc, vb VerifierBuilder) error {
 	if len(blockBuff) == 0 {
 		return errors.New("buffer is empty")
 	}
