@@ -182,7 +182,7 @@ Different parties may belong to different organizations that do not trust each o
 The Arma protocol can tolerate **F=Floor(N/3)** failures, where **N** is the number of parties. That is, in order to tolerate **F** failures, one must deploy **N >= 3F+1** parties.
 Arma provides tolerance against Byzantine failures, i.e., arbitrary deviations from the protocol, which includes crashes as well as malicious behavior.
 
-Thus, the minimal deployment which supports fault tolerance has 4 parties. The recommended minimal production deployment has 7 parties.
+Thus, the minimal deployment which supports fault tolerance has 4 parties. The recommended minimal production deployment has 7 parties, as this allows to bring one party down for maintenance while tolerating one extra unplanned failure.
 
 Production deployments should enable TLS/mTLS and use identical genesis/configuration inputs across all parties. Correct configuration and certificate material are part of fault tolerance: a node with wrong membership or trust roots may be alive but unable to participate safely in routing, attestation, consensus, or delivery.
 
