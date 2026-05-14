@@ -147,7 +147,7 @@ The figure below shows the service’s throughput with varying numbers of partie
 The 300 Byte transaction size represents a typical token transaction carrying two inputs and two outputs.
 
 <figure>
-  <img src=./doc/figures/throughput_shards_parties_plot.png alt="Fabric-X Orderer Throughput, by number of parties and shards" width="1000" height="auto">
+  <img src=./docs/figures/throughput_shards_parties_plot.png alt="Fabric-X Orderer Throughput, by number of parties and shards" width="1000" height="auto">
 </figure>
 
 This experiment ran on 4 AWS sites: us-east-2 (Ohio), us-east-1 (N. Virginia), us-west-1 (N. California), and us-west-2 (Oregon).
