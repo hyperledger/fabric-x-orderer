@@ -859,7 +859,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	defer c.lock.Unlock()
 
 	c.Arma.Index(digests)
-	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.PrevHash, uint64(c.decisionNumOfLastConfigBlock))
+	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.PrevHash, uint64(hdr.DecisionNumOfLastConfigBlock))
 	c.Storage.Append(block)
 
 	// update state
