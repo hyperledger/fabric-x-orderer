@@ -6,10 +6,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 type CensorshipDetectorFactory struct {
-	CreateStub        func(string, blocksprovider.UpdatableBlockVerifier, blocksprovider.DeliverClientRequester, blocksprovider.BlockProgressReporter, []*orderers.Endpoint, int, blocksprovider.TimeoutConfig) blocksprovider.CensorshipDetector
+	CreateStub        func(string, blocksprovider.UpdatableBlockVerifier, blocksprovider.DeliverClientRequester, blocksprovider.BlockProgressReporter, []*orderers.Endpoint, int, blocksprovider.TimeoutConfig, utils.ConfigBlockOperations) blocksprovider.CensorshipDetector
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 string
@@ -19,6 +20,7 @@ type CensorshipDetectorFactory struct {
 		arg5 []*orderers.Endpoint
 		arg6 int
 		arg7 blocksprovider.TimeoutConfig
+		arg8 utils.ConfigBlockOperations
 	}
 	createReturns struct {
 		result1 blocksprovider.CensorshipDetector
@@ -30,7 +32,7 @@ type CensorshipDetectorFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *CensorshipDetectorFactory) Create(arg1 string, arg2 blocksprovider.UpdatableBlockVerifier, arg3 blocksprovider.DeliverClientRequester, arg4 blocksprovider.BlockProgressReporter, arg5 []*orderers.Endpoint, arg6 int, arg7 blocksprovider.TimeoutConfig) blocksprovider.CensorshipDetector {
+func (fake *CensorshipDetectorFactory) Create(arg1 string, arg2 blocksprovider.UpdatableBlockVerifier, arg3 blocksprovider.DeliverClientRequester, arg4 blocksprovider.BlockProgressReporter, arg5 []*orderers.Endpoint, arg6 int, arg7 blocksprovider.TimeoutConfig, arg8 utils.ConfigBlockOperations) blocksprovider.CensorshipDetector {
 	var arg5Copy []*orderers.Endpoint
 	if arg5 != nil {
 		arg5Copy = make([]*orderers.Endpoint, len(arg5))
@@ -46,13 +48,14 @@ func (fake *CensorshipDetectorFactory) Create(arg1 string, arg2 blocksprovider.U
 		arg5 []*orderers.Endpoint
 		arg6 int
 		arg7 blocksprovider.TimeoutConfig
-	}{arg1, arg2, arg3, arg4, arg5Copy, arg6, arg7})
+		arg8 utils.ConfigBlockOperations
+	}{arg1, arg2, arg3, arg4, arg5Copy, arg6, arg7, arg8})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
-	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4, arg5Copy, arg6, arg7})
+	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4, arg5Copy, arg6, arg7, arg8})
 	fake.createMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
 	}
 	if specificReturn {
 		return ret.result1
@@ -66,17 +69,17 @@ func (fake *CensorshipDetectorFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *CensorshipDetectorFactory) CreateCalls(stub func(string, blocksprovider.UpdatableBlockVerifier, blocksprovider.DeliverClientRequester, blocksprovider.BlockProgressReporter, []*orderers.Endpoint, int, blocksprovider.TimeoutConfig) blocksprovider.CensorshipDetector) {
+func (fake *CensorshipDetectorFactory) CreateCalls(stub func(string, blocksprovider.UpdatableBlockVerifier, blocksprovider.DeliverClientRequester, blocksprovider.BlockProgressReporter, []*orderers.Endpoint, int, blocksprovider.TimeoutConfig, utils.ConfigBlockOperations) blocksprovider.CensorshipDetector) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *CensorshipDetectorFactory) CreateArgsForCall(i int) (string, blocksprovider.UpdatableBlockVerifier, blocksprovider.DeliverClientRequester, blocksprovider.BlockProgressReporter, []*orderers.Endpoint, int, blocksprovider.TimeoutConfig) {
+func (fake *CensorshipDetectorFactory) CreateArgsForCall(i int) (string, blocksprovider.UpdatableBlockVerifier, blocksprovider.DeliverClientRequester, blocksprovider.BlockProgressReporter, []*orderers.Endpoint, int, blocksprovider.TimeoutConfig, utils.ConfigBlockOperations) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8
 }
 
 func (fake *CensorshipDetectorFactory) CreateReturns(result1 blocksprovider.CensorshipDetector) {
@@ -105,6 +108,8 @@ func (fake *CensorshipDetectorFactory) CreateReturnsOnCall(i int, result1 blocks
 func (fake *CensorshipDetectorFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

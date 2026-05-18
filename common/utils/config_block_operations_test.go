@@ -83,16 +83,22 @@ func TestCommonBlockOperations_ConfigFromBlock(t *testing.T) {
 	})
 
 	t.Run("returns error for invalid envelope", func(t *testing.T) {
-		block := &common.Block{Data: &common.BlockData{Data: [][]byte{{1, 2, 3}}}}
+		block := &common.Block{
+			Header: &common.BlockHeader{Number: 1},
+			Data:   &common.BlockData{Data: [][]byte{{1, 2, 3}}},
+		}
 		_, err := ops.ConfigFromBlock(block)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error unmarshalling Envelope")
 	})
 
 	t.Run("returns error for invalid payload in envelope", func(t *testing.T) {
-		block := &common.Block{Data: &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(&common.Envelope{
-			Payload: []byte{1, 2, 3},
-		})}}}
+		block := &common.Block{
+			Header: &common.BlockHeader{Number: 2},
+			Data: &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(&common.Envelope{
+				Payload: []byte{1, 2, 3},
+			})}},
+		}
 		_, err := ops.ConfigFromBlock(block)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error unmarshalling Payload")

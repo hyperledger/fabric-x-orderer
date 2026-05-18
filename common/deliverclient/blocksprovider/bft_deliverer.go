@@ -41,6 +41,7 @@ type CensorshipDetectorFactory interface {
 		fetchSources []*orderers.Endpoint,
 		blockSourceIndex int,
 		timeoutConf TimeoutConfig,
+		configBlockOps utils.ConfigBlockOperations,
 	) CensorshipDetector
 }
 
@@ -195,7 +196,7 @@ func (d *BFTDeliverer) DeliverBlocks() {
 
 		// Create and start a censorship monitor.
 		d.censorshipMonitor = d.CensorshipDetectorFactory.Create(
-			d.ChannelID, d.UpdatableBlockVerifier, d.requester, d, d.fetchSources, d.fetchSourceIndex, timeoutConfig,
+			d.ChannelID, d.UpdatableBlockVerifier, d.requester, d, d.fetchSources, d.fetchSourceIndex, timeoutConfig, d.ConfigBlockOps,
 		)
 		go d.censorshipMonitor.Monitor()
 

@@ -39,7 +39,7 @@ func (c *CommonBlockOperations) IsConfigBlock(block *common.Block) bool {
 // ConfigFromBlock extracts the config envelope from a common config block.
 // It returns an error if the block is not a config block or if extraction fails.
 func (c *CommonBlockOperations) ConfigFromBlock(block *common.Block) (*common.ConfigEnvelope, error) {
-	if block == nil || block.Data == nil || len(block.Data.Data) == 0 {
+	if block == nil || block.Header == nil || block.Data == nil || len(block.Data.Data) == 0 {
 		return nil, errors.New("empty block")
 	}
 

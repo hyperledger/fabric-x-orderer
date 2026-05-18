@@ -174,7 +174,13 @@ func CreateBlockToAppendFromDecision(number uint64, proposal smartbft_types.Prop
 
 // GetLastConfigIndexFromConsenterBlock returns the last config index from the consenter block.
 func GetLastConfigIndexFromConsenterBlock(block *common.Block) (uint64, error) {
-	if block.GetHeader().Number == 0 {
+	if block == nil {
+		return 0, errors.New("nil block")
+	}
+	if block.Header == nil {
+		return 0, errors.New("nil block header")
+	}
+	if block.Header.Number == 0 {
 		return 0, nil
 	}
 	m, err := protoutil.GetMetadataFromBlock(block, common.BlockMetadataIndex_LAST_CONFIG)

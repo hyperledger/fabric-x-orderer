@@ -16,9 +16,7 @@ import (
 
 func TestNewBFTCensorshipMonitorFactory(t *testing.T) {
 	s := newMonitorTestSetup(t, 5)
-	f := &blocksprovider.BFTCensorshipMonitorFactory{
-		ConfigBlockOps: &utils.CommonBlockOperations{},
-	}
-	mon := f.Create(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{})
+	f := &blocksprovider.BFTCensorshipMonitorFactory{}
+	mon := f.Create(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{}, &utils.CommonBlockOperations{})
 	require.NotNil(t, mon)
 }

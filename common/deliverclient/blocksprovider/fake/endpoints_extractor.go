@@ -94,6 +94,8 @@ func (fake *EndpointsExtractor) ExtractEndpointsReturnsOnCall(i int, result1 ord
 func (fake *EndpointsExtractor) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.extractEndpointsMutex.RLock()
+	defer fake.extractEndpointsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
