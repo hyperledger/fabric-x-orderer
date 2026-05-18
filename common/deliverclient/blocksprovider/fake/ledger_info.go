@@ -151,6 +151,10 @@ func (fake *LedgerInfo) LedgerHeightReturnsOnCall(i int, result1 uint64, result2
 func (fake *LedgerInfo) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.getCurrentBlockHashMutex.RLock()
+	defer fake.getCurrentBlockHashMutex.RUnlock()
+	fake.ledgerHeightMutex.RLock()
+	defer fake.ledgerHeightMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

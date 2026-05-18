@@ -284,9 +284,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 		make(chan struct{}),
 		s.Support,
 		blocksprovider.DeliverAdapter{},
-		&blocksprovider.BFTCensorshipMonitorFactory{
-			ConfigBlockOps: &ConsenterBlockOperations{},
-		},
+		&blocksprovider.BFTCensorshipMonitorFactory{},
 		&ConsenterEndpointsExtractor{},
 		flogging.MustGetLogger("orderer.blocksprovider").With("channel", s.Support.ChannelID()),
 		minRetryInterval,

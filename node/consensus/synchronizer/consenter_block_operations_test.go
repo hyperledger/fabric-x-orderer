@@ -36,6 +36,11 @@ func TestConsenterBlockOperations_IsConfigBlock(t *testing.T) {
 		require.False(t, ops.IsConfigBlock(normalBlock))
 	})
 
+	t.Run("returns true for consenter block with multiple data blocks where last is config", func(t *testing.T) {
+		blockWithMultipleDataLastConfig := createConsenterBlockWithMultipleDataLastConfig(t, 20)
+		require.True(t, ops.IsConfigBlock(blockWithMultipleDataLastConfig))
+	})
+
 	t.Run("returns false for nil block", func(t *testing.T) {
 		require.False(t, ops.IsConfigBlock(nil))
 	})
@@ -222,6 +227,36 @@ func createConsenterNormalBlock(t *testing.T, blockNum uint64) *common.Block {
 	}
 
 	return state.CreateBlockToAppendFromDecision(blockNum, proposal, signatures, []byte("prevhash"), 0)
+}
+
+func createConsenterBlockWithMultipleDataLastConfig(t *testing.T, blockNum uint64) *common.Block {
+	// Create multiple normal Fabric blocks followed by a config block
+	fabricBlock1 := createCommonNormalBlock(t, blockNum)
+	fabricBlock2 := createCommonNormalBlock(t, blockNum+1)
+	fabricBlock3 := createCommonNormalBlock(t, blockNum+2)
+	fabricConfigBlock := createCommonConfigBlock(t, blockNum+3)
+
+	consenterBlockNum := blockNum
+
+	// Create a consenter decision header with multiple blocks where the last is a config block
+	header := &state.Header{
+		Num:                          types.DecisionNum(consenterBlockNum),
+		DecisionNumOfLastConfigBlock: types.DecisionNum(consenterBlockNum),
+		AvailableCommonBlocks:        []*common.Block{fabricBlock1, fabricBlock2, fabricBlock3, fabricConfigBlock},
+	}
+
+	proposal := smartbft_types.Proposal{
+		Header:               header.Serialize(),
+		Payload:              []byte("payload"),
+		Metadata:             []byte("metadata"),
+		VerificationSequence: 1,
+	}
+
+	signatures := []smartbft_types.Signature{
+		{ID: 1, Value: []byte("sig1"), Msg: []byte("msg1")},
+	}
+
+	return state.CreateBlockToAppendFromDecision(consenterBlockNum, proposal, signatures, []byte("prevhash"), consenterBlockNum)
 }
 
 func setLastConfigIndex(t *testing.T, block *common.Block, index uint64) {

@@ -175,6 +175,7 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 			endpoints []*orderers.Endpoint,
 			index int,
 			config blocksprovider.TimeoutConfig,
+			configBlockOps utils.ConfigBlockOperations,
 		) blocksprovider.CensorshipDetector {
 			monErrC := make(chan error, 1)
 			monDoneC := make(chan struct{})

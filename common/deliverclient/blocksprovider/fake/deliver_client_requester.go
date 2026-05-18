@@ -8,22 +8,23 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"google.golang.org/grpc"
 )
 
 type DeliverClientRequester struct {
-	ConnectStub        func(*common.Envelope, *orderers.Endpoint) (orderer.AtomicBroadcast_DeliverClient, func(), error)
+	ConnectStub        func(*common.Envelope, *orderers.Endpoint) (grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse], func(), error)
 	connectMutex       sync.RWMutex
 	connectArgsForCall []struct {
 		arg1 *common.Envelope
 		arg2 *orderers.Endpoint
 	}
 	connectReturns struct {
-		result1 orderer.AtomicBroadcast_DeliverClient
+		result1 grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse]
 		result2 func()
 		result3 error
 	}
 	connectReturnsOnCall map[int]struct {
-		result1 orderer.AtomicBroadcast_DeliverClient
+		result1 grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse]
 		result2 func()
 		result3 error
 	}
@@ -44,7 +45,7 @@ type DeliverClientRequester struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *DeliverClientRequester) Connect(arg1 *common.Envelope, arg2 *orderers.Endpoint) (orderer.AtomicBroadcast_DeliverClient, func(), error) {
+func (fake *DeliverClientRequester) Connect(arg1 *common.Envelope, arg2 *orderers.Endpoint) (grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse], func(), error) {
 	fake.connectMutex.Lock()
 	ret, specificReturn := fake.connectReturnsOnCall[len(fake.connectArgsForCall)]
 	fake.connectArgsForCall = append(fake.connectArgsForCall, struct {
@@ -70,7 +71,7 @@ func (fake *DeliverClientRequester) ConnectCallCount() int {
 	return len(fake.connectArgsForCall)
 }
 
-func (fake *DeliverClientRequester) ConnectCalls(stub func(*common.Envelope, *orderers.Endpoint) (orderer.AtomicBroadcast_DeliverClient, func(), error)) {
+func (fake *DeliverClientRequester) ConnectCalls(stub func(*common.Envelope, *orderers.Endpoint) (grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse], func(), error)) {
 	fake.connectMutex.Lock()
 	defer fake.connectMutex.Unlock()
 	fake.ConnectStub = stub
@@ -83,30 +84,30 @@ func (fake *DeliverClientRequester) ConnectArgsForCall(i int) (*common.Envelope,
 	return argsForCall.arg1, argsForCall.arg2
 }
 
-func (fake *DeliverClientRequester) ConnectReturns(result1 orderer.AtomicBroadcast_DeliverClient, result2 func(), result3 error) {
+func (fake *DeliverClientRequester) ConnectReturns(result1 grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse], result2 func(), result3 error) {
 	fake.connectMutex.Lock()
 	defer fake.connectMutex.Unlock()
 	fake.ConnectStub = nil
 	fake.connectReturns = struct {
-		result1 orderer.AtomicBroadcast_DeliverClient
+		result1 grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse]
 		result2 func()
 		result3 error
 	}{result1, result2, result3}
 }
 
-func (fake *DeliverClientRequester) ConnectReturnsOnCall(i int, result1 orderer.AtomicBroadcast_DeliverClient, result2 func(), result3 error) {
+func (fake *DeliverClientRequester) ConnectReturnsOnCall(i int, result1 grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse], result2 func(), result3 error) {
 	fake.connectMutex.Lock()
 	defer fake.connectMutex.Unlock()
 	fake.ConnectStub = nil
 	if fake.connectReturnsOnCall == nil {
 		fake.connectReturnsOnCall = make(map[int]struct {
-			result1 orderer.AtomicBroadcast_DeliverClient
+			result1 grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse]
 			result2 func()
 			result3 error
 		})
 	}
 	fake.connectReturnsOnCall[i] = struct {
-		result1 orderer.AtomicBroadcast_DeliverClient
+		result1 grpc.BidiStreamingClient[common.Envelope, orderer.DeliverResponse]
 		result2 func()
 		result3 error
 	}{result1, result2, result3}
@@ -179,6 +180,10 @@ func (fake *DeliverClientRequester) SeekInfoHeadersFromReturnsOnCall(i int, resu
 func (fake *DeliverClientRequester) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.connectMutex.RLock()
+	defer fake.connectMutex.RUnlock()
+	fake.seekInfoHeadersFromMutex.RLock()
+	defer fake.seekInfoHeadersFromMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
