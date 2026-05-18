@@ -570,9 +570,9 @@ func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *s
 		os.Exit(-1)
 	}
 
-	// pull blocks from the assembler and report statistics to statistics.csv file
+	// pull blocks from the assembler and report statistics to a timestamped CSV file
 	pullBlocksFromAssemblerAndCollectStatistics(userConfig, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs)
-	logger.Infof("Receive command finished, statistics can be found in: %v\n", path.Join(*receiveOutputDir, "statistics.csv"))
+	logger.Infof("Receive command finished, statistics can be found in the output directory: %v\n", *receiveOutputDir)
 }
 
 func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
@@ -786,6 +786,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 					requestEnvelope, err = createDeliverRequestWithSeekInfo(userConfig, lastBlockNum+1)
 					if err != nil {
 						logger.Warnf("failed to recreate request envelope: %v — retrying", err)
+						_ = stream.CloseSend()
 						_ = gRPCAssemblerClientConn.Close()
 						continue
 					}
@@ -793,6 +794,7 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 					err = stream.Send(requestEnvelope)
 					if err != nil {
 						logger.Warnf("failed to send request envelope to assembler %d: %v — retrying", pullFromPartyId, err)
+						_ = stream.CloseSend()
 						_ = gRPCAssemblerClientConn.Close()
 						continue
 					}
@@ -928,9 +930,9 @@ func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
 	logger.Infof("Load command finished, sent %d TXs in %v seconds, TX size %d, avg. tx sending rate: %.2f\n", transactions, elapsed, txSize, avgTxSendingRate)
 }
 
-// manageStatistics manages a statistics queue and every hour writes the queue to a CSV file
+// manageStatistics manages a statistics queue and writes statistics to a timestamped CSV file for this run
 func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, stopChan <-chan bool, startTime float64, expectedTxs int, pullFrom int, timeIntervalToSampleStat time.Duration) {
-	filePath := path.Join(receiveOutputDir, fmt.Sprintf("statistics_%s.csv", time.Now().Format("2006-01-02_15:04:05")))
+	filePath := path.Join(receiveOutputDir, fmt.Sprintf("statistics_%s.csv", time.Now().Format("2006-01-02_150405")))
 	logger.Infof("Statistics are written to: %v\n", filePath)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
