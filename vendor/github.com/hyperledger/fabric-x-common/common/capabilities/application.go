@@ -69,9 +69,10 @@ func (ap *ApplicationProvider) Type() string {
 	return applicationTypeName
 }
 
-// ACLs returns whether ACLs may be specified in the channel application config
+// ACLs returns whether ACLs may be specified in the channel application config.
+// In Fabric-X, ACLs are always allowed regardless of capability version.
 func (ap *ApplicationProvider) ACLs() bool {
-	return ap.v12 || ap.v13 || ap.v142 || ap.v20 || ap.v25
+	return true
 }
 
 // ForbidDuplicateTXIdInBlock specifies whether two transactions with the same TXId are permitted
