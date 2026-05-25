@@ -24,6 +24,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver/mock"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/pkg/errors"
@@ -65,6 +67,7 @@ var _ = Describe("Deliver", func() {
 				false,
 				deliver.NewMetrics(&disabled.Provider{}),
 				false,
+				&utils.CommonConfigBlockOperations{},
 			)
 			Expect(handler).NotTo(BeNil())
 
@@ -82,6 +85,7 @@ var _ = Describe("Deliver", func() {
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
 					false,
+					&utils.CommonConfigBlockOperations{},
 				)
 
 				Expect(handler.ExpirationCheckFunc(certBytes)).To(Equal(cert.NotAfter))
@@ -96,6 +100,7 @@ var _ = Describe("Deliver", func() {
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
 					true,
+					&utils.CommonConfigBlockOperations{},
 				)
 
 				Expect(handler.ExpirationCheckFunc(certBytes)).NotTo(Equal(cert.NotAfter))
@@ -209,6 +214,7 @@ var _ = Describe("Deliver", func() {
 				ExpirationCheckFunc: func([]byte) time.Time {
 					return time.Time{}
 				},
+				ConfigBlockOps: &utils.CommonConfigBlockOperations{},
 			}
 			server = &deliver.Server{
 				Receiver:       fakeReceiver,
@@ -610,6 +616,52 @@ var _ = Describe("Deliver", func() {
 						Expect(b.Data.Data).NotTo(BeNil())
 					}
 				}
+			})
+			Context("when seek info is configured to header with sig content type and block is a consenter decision config block", func() {
+				BeforeEach(func() {
+					seekInfo = &ab.SeekInfo{
+						Start:       &ab.SeekPosition{},
+						Stop:        seekNewest,
+						ContentType: ab.SeekInfo_HEADER_WITH_SIG,
+					}
+					fakeBlockReader.HeightReturns(2)
+					fakeBlockIterator.NextStub = func() (*cb.Block, cb.Status) {
+						// Create a consenter decision config block where LAST_CONFIG equals the decision number
+						blockNum := uint64(fakeBlockIterator.NextCallCount())
+						proposalBytes := []byte("proposal")
+						block := &cb.Block{
+							Header: &cb.BlockHeader{
+								Number:       blockNum,
+								DataHash:     []byte("datahash"),
+								PreviousHash: []byte("prevhash"),
+							},
+							Data: &cb.BlockData{
+								Data: [][]byte{proposalBytes},
+							},
+						}
+						protoutil.InitBlockMetadata(block)
+						block.Metadata.Metadata[cb.BlockMetadataIndex_SIGNATURES] = []byte("signatures")
+						block.Metadata.Metadata[cb.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&cb.Metadata{
+							Value: protoutil.MarshalOrPanic(&cb.LastConfig{Index: blockNum}),
+						})
+
+						return block, cb.Status_SUCCESS
+					}
+					handler.ConfigBlockOps = &state.ConsenterConfigBlockOperations{}
+				})
+
+				It("sends blocks with non nil Data for consenter decision config blocks", func() {
+					err := handler.Handle(context.Background(), server)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(fakeBlockReader.IteratorCallCount()).To(Equal(1))
+					Expect(fakeBlockIterator.NextCallCount()).To(Equal(1))
+					Expect(fakeResponseSender.SendBlockResponseCallCount()).To(Equal(1))
+
+					b, _, _, _ := fakeResponseSender.SendBlockResponseArgsForCall(0)
+					// Consenter decision config blocks should keep their Data
+					Expect(b.Data).NotTo(BeNil())
+					Expect(b.Data.Data).NotTo(BeNil())
+				})
 			})
 		})
 

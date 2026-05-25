@@ -559,6 +559,22 @@ func (fake *DeliverClient) TrailerReturnsOnCall(i int, result1 metadata.MD) {
 func (fake *DeliverClient) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.closeSendMutex.RLock()
+	defer fake.closeSendMutex.RUnlock()
+	fake.contextMutex.RLock()
+	defer fake.contextMutex.RUnlock()
+	fake.headerMutex.RLock()
+	defer fake.headerMutex.RUnlock()
+	fake.recvMutex.RLock()
+	defer fake.recvMutex.RUnlock()
+	fake.recvMsgMutex.RLock()
+	defer fake.recvMsgMutex.RUnlock()
+	fake.sendMutex.RLock()
+	defer fake.sendMutex.RUnlock()
+	fake.sendMsgMutex.RLock()
+	defer fake.sendMsgMutex.RUnlock()
+	fake.trailerMutex.RLock()
+	defer fake.trailerMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

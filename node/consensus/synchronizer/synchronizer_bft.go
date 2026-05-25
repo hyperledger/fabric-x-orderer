@@ -248,9 +248,8 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config block")
 	}
-
-	// TODO adapt this to the block structure used in the consenter decision, which is different from a fabric block
-	lastConfigEnv, err := deliverclient.ConfigFromBlock(lastConfigBlock)
+	blockOps := &utils.CommonConfigBlockOperations{}
+	lastConfigEnv, err := blockOps.ConfigFromBlock(lastConfigBlock)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config envelope")
 	}

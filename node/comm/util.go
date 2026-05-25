@@ -33,7 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -726,10 +726,16 @@ func verifyBlockSequence(blockBuff []*common.Block, signatureVerifier protoutil.
 		if err := VerifyBlockHash(i, blockBuff); err != nil {
 			return err
 		}
-		configFromBlock, err := deliverclient.ConfigFromBlock(block)
+		ops := &utils.CommonConfigBlockOperations{}
 
-		if err != nil && err != deliverclient.ErrNotAConfig {
-			return err
+		// Only try to extract config if it's a config block
+		var configFromBlock *common.ConfigEnvelope
+		var err error
+		if ops.IsConfigBlock(block) {
+			configFromBlock, err = ops.ConfigFromBlock(block)
+			if err != nil {
+				return err
+			}
 		}
 
 		if err := VerifyBlockSignature(block, signatureVerifier); err != nil {

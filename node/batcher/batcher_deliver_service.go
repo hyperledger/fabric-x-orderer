@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"google.golang.org/protobuf/proto"
 )
@@ -44,6 +45,7 @@ func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverSe
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
 			return time.Now().Add(time.Hour * 365 * 24)
 		},
+		ConfigBlockOps: &utils.CommonConfigBlockOperations{},
 	}
 
 	return handler.Handle(stream.Context(), &deliver.Server{

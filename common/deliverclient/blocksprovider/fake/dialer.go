@@ -100,6 +100,8 @@ func (fake *Dialer) DialReturnsOnCall(i int, result1 *grpc.ClientConn, result2 e
 func (fake *Dialer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.dialMutex.RLock()
+	defer fake.dialMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

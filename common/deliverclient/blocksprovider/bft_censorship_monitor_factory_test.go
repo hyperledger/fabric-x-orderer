@@ -9,14 +9,14 @@ package blocksprovider_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewBFTCensorshipMonitorFactory(t *testing.T) {
 	s := newMonitorTestSetup(t, 5)
 	f := &blocksprovider.BFTCensorshipMonitorFactory{}
-	mon := f.Create(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{})
+	mon := f.Create(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{}, &utils.CommonConfigBlockOperations{})
 	require.NotNil(t, mon)
 }

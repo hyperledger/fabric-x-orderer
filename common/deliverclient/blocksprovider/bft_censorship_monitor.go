@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 // BlockProgressReporter provides information on the last block fetched from an orderer.
@@ -48,6 +49,7 @@ type DeliverClientRequester interface {
 type BFTCensorshipMonitor struct {
 	chainID                 string
 	updatableHeaderVerifier UpdatableBlockVerifier
+	configBlockOps          utils.ConfigBlockOperations
 	requester               DeliverClientRequester
 	fetchSources            []*orderers.Endpoint
 	blockSourceIndex        int
@@ -119,6 +121,7 @@ func NewBFTCensorshipMonitor(
 	fetchSources []*orderers.Endpoint,
 	blockSourceIndex int,
 	timeoutConf TimeoutConfig,
+	configBlockOps utils.ConfigBlockOperations,
 ) *BFTCensorshipMonitor {
 	timeoutConf.ApplyDefaults()
 	// This window is calculated such that if a receiver continuously fails when the retry interval was scaled up to
@@ -137,6 +140,7 @@ func NewBFTCensorshipMonitor(
 		blockSourceIndex:        blockSourceIndex,
 		timeoutConfig:           timeoutConf,
 		stopHistoryWindowDur:    stopWindowDur,
+		configBlockOps:          configBlockOps,
 		logger:                  flogging.MustGetLogger("BFTCensorshipMonitor").With("channel", chainID),
 	}
 
@@ -367,7 +371,7 @@ func (m *BFTCensorshipMonitor) launchHeaderReceivers() error {
 		}
 
 		hrRcvMon.headerReceiver = NewBFTHeaderReceiver(m.chainID, ep.Address, headerClient, m.updatableHeaderVerifier,
-			hrRcvMon.headerReceiver, flogging.MustGetLogger("BFTHeaderReceiver"))
+			m.configBlockOps, hrRcvMon.headerReceiver, flogging.MustGetLogger("BFTHeaderReceiver"))
 		hrRcvMon.connectFailureCounter = 0
 		hrRcvMon.retryDeadline = time.Time{}
 
