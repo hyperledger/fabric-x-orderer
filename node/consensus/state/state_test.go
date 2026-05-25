@@ -14,7 +14,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -37,23 +36,251 @@ var (
 )
 
 func TestStateSerializeDeserialize(t *testing.T) {
-	s := consensus_state.State{
-		N:          4,
-		Threshold:  2,
-		Quorum:     3,
-		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
-		AppContext: make([]byte, 64),
+	tests := []struct {
+		name  string
+		state consensus_state.State
+	}{
+		{
+			name: "full state with all fields",
+			state: consensus_state.State{
+				N:          4,
+				Threshold:  2,
+				Quorum:     3,
+				Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				AppContext: make([]byte, 64),
+			},
+		},
+		{
+			name: "state with empty app context",
+			state: consensus_state.State{
+				N:          4,
+				Threshold:  2,
+				Quorum:     3,
+				Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				AppContext: []byte{}, // empty slice, never nil after proto serialization
+			},
+		},
+		{
+			name: "state with multiple shards",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards: []consensus_state.ShardTerm{
+					{Shard: 1, Term: 1},
+					{Shard: 2, Term: 3},
+					{Shard: 3, Term: 5},
+				},
+				AppContext: []byte{1, 2, 3},
+			},
+		},
+		{
+			name: "state with complaints",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				Complaints: []consensus_state.Complaint{
+					{
+						ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1},
+						Signer:    2,
+						Signature: []byte{1, 2, 3, 4},
+						Reason:    "test complaint",
+						ConfigSeq: 10,
+					},
+				},
+				AppContext: []byte{5, 6, 7},
+			},
+		},
+		{
+			name: "minimal state with zero values",
+			state: consensus_state.State{
+				N:          0,
+				Threshold:  0,
+				Quorum:     0,
+				Shards:     nil,
+				Pending:    nil,
+				Complaints: nil,
+				AppContext: []byte{},
+			},
+		},
+		{
+			name: "state with large app context",
+			state: consensus_state.State{
+				N:          10,
+				Threshold:  4,
+				Quorum:     7,
+				Shards:     []consensus_state.ShardTerm{{Shard: 5, Term: 100}},
+				AppContext: make([]byte, 1024), // 1KB
+			},
+		},
+		{
+			name: "state with high term numbers",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards: []consensus_state.ShardTerm{
+					{Shard: 1, Term: 999999},
+					{Shard: 2, Term: 1000000},
+				},
+				AppContext: []byte{},
+			},
+		},
+		{
+			name: "state with single pending BAF using BAFDeserializer",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				Pending: []types.BatchAttestationFragment{
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0)
+						baf.SetSignature([]byte{}) // Set empty signature to match deserialization behavior
+						return baf
+					}(),
+				},
+				AppContext: []byte{10, 20, 30},
+			},
+		},
+		{
+			name: "state with multiple pending BAFs using BAFDeserializer",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 2}},
+				Pending: []types.BatchAttestationFragment{
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(2), []byte{4, 5, 6}, types.PartyID(3), 1, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(3), types.BatchSequence(3), []byte{7, 8, 9}, types.PartyID(1), 2, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+				},
+				AppContext: []byte{100, 200},
+			},
+		},
+		{
+			name: "state with pending BAFs and complaints using BAFDeserializer",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				Pending: []types.BatchAttestationFragment{
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(5), []byte{11, 22, 33}, types.PartyID(2), 5, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+				},
+				Complaints: []consensus_state.Complaint{
+					{
+						ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1},
+						Signer:    3,
+						Signature: []byte{99, 88, 77},
+						Reason:    "primary timeout",
+						ConfigSeq: 5,
+					},
+				},
+				AppContext: []byte{50, 60, 70},
+			},
+		},
+		{
+			name: "state with pending BAFs with signatures using BAFDeserializer",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				Pending: []types.BatchAttestationFragment{
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(10), []byte{44, 55, 66}, types.PartyID(2), 3, 0)
+						baf.SetSignature([]byte{111, 222, 233})
+						return baf
+					}(),
+				},
+				AppContext: []byte{},
+			},
+		},
+		{
+			name: "state with many pending BAFs using BAFDeserializer",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+				Pending: []types.BatchAttestationFragment{
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1}, types.PartyID(2), 0, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(2), []byte{2}, types.PartyID(3), 0, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(3), types.BatchSequence(3), []byte{3}, types.PartyID(1), 0, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(4), []byte{4}, types.PartyID(2), 0, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(5), []byte{5}, types.PartyID(3), 0, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+					func() types.BatchAttestationFragment {
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(3), types.BatchSequence(6), []byte{6}, types.PartyID(1), 0, 0)
+						baf.SetSignature([]byte{})
+						return baf
+					}(),
+				},
+				AppContext: []byte{255},
+			},
+		},
 	}
 
-	bytes := s.Serialize()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Serialize
+			bytes := tt.state.Serialize()
 
-	s2 := consensus_state.State{}
+			// For minimal state with all zero values, protobuf produces an empty byte slice
+			// which is valid behavior (all fields have default values)
+			if tt.name != "minimal state with zero values" {
+				assert.NotEmpty(t, bytes, "serialized bytes should not be empty")
+			}
 
-	s2.Deserialize(bytes, nil)
+			// Deserialize
+			var deserialized consensus_state.State
+			bafd := &consensus_state.BAFDeserialize{}
+			err := deserialized.Deserialize(bytes, bafd)
+			assert.NoError(t, err, "deserialization should not fail")
 
-	assert.Equal(t, s, s2)
-
-	assert.Equal(t, s.String(), s2.String())
+			// Compare
+			assert.Equal(t, tt.state, deserialized, "deserialized state should match original")
+			assert.Equal(t, tt.state.String(), deserialized.String(), "string representations should match")
+		})
+	}
 }
 
 func TestStateString(t *testing.T) {

@@ -306,7 +306,7 @@ func appendGenesisBlock(genesisBlock *common.Block, initState *state.State, cons
 
 	availableCommonBlocks := []*common.Block{genesisBlock}
 
-	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = ledger.AssemblerGenesisBlockMetadataToBytes()
+	availableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = utils.GenesisBlockMetadataBytes()
 
 	genesisProposal := smartbft_types.Proposal{
 		Payload: protoutil.MarshalOrPanic(genesisBlock),

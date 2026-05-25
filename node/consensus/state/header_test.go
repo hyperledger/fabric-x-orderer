@@ -19,7 +19,7 @@ import (
 
 func TestHeaderBytes(t *testing.T) {
 	hdr := Header{
-		State:                        &State{AppContext: []byte{}},
+		State:                        &State{N: 4, Threshold: 2, Quorum: 3, AppContext: []byte{}},
 		Num:                          100,
 		DecisionNumOfLastConfigBlock: 10,
 		PrevHash:                     []byte{123},

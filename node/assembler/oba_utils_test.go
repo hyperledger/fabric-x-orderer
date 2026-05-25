@@ -26,7 +26,7 @@ func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *stat
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
 
 	ba := &state.AvailableBatchOrdered{
-		AvailableBatch: state.NewAvailableBatchGenesis([]byte{}),
+		AvailableBatch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, []byte{}),
 		OrderingInformation: &state.OrderingInformation{
 			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: 0, PreviousHash: nil, DataHash: genesisDigest}},
 			DecisionNum: 0,
