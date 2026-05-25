@@ -108,9 +108,7 @@ func (cp *DefaultConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(envelope *
 		return nil, fmt.Errorf("error validating new bundle against old bundle to %s", bundle.ConfigtxValidator().ChannelID())
 	}
 
-	// TODO: validate old orderer config against new orderer config
-	// TODO: validate ConsensusMetadata (shared config)
-	// TODO: validate old channel/application against old channel/application
+	// TODO: check whether validation is needed for channel/application config changes
 
 	return configEnvelope, nil
 }
