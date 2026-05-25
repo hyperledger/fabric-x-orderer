@@ -779,6 +779,13 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			if err != nil {
 				return errors.Wrapf(err, "failed verifying block %d using the block verification assistant", block.Header.Number)
 			}
+
+			if isConfigBlock {
+				err = blockVerificationAssistant.UpdateConfig(block)
+				if err != nil {
+					return errors.Wrapf(err, "failed updating block verification assistant with config block %d", block.Header.Number)
+				}
+			}
 		}
 
 		if isConfigBlock && needVerification {

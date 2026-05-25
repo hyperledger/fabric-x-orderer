@@ -363,6 +363,7 @@ func TestRemoveParty(t *testing.T) {
 		Timeout:      120,
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
+		Verifier:     test_utils.BuildVerifier(dir, types.PartyID(1), testutil.CreateLogger(t, 1)),
 	})
 
 	// Create config update to remove a party
@@ -434,6 +435,7 @@ func TestRemoveParty(t *testing.T) {
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
 		Signer:       signutil.CreateTestSigner(t, "org1", dir),
+		Verifier:     test_utils.BuildVerifier(dir, types.PartyID(1), testutil.CreateLogger(t, 1)),
 	})
 
 	armaNetwork.StopParties(remainingParties)
@@ -522,6 +524,7 @@ func TestAddNewParty(t *testing.T) {
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
+		Verifier:     test_utils.BuildVerifier(dir, types.PartyID(1), testutil.CreateLogger(t, 1)),
 	})
 
 	// Create config update to add a party
@@ -552,6 +555,7 @@ func TestAddNewParty(t *testing.T) {
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
+		Verifier:     test_utils.BuildVerifier(dir, types.PartyID(1), testutil.CreateLogger(t, 1)),
 		BlockHandler: &exportConfigBlockToFile{configSeq: 1, path: newConfigBlockPath},
 	})
 
@@ -644,6 +648,7 @@ func TestAddNewParty(t *testing.T) {
 		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
+		Verifier:     test_utils.BuildVerifier(dir, types.PartyID(1), testutil.CreateLogger(t, 1)),
 	})
 }
 
