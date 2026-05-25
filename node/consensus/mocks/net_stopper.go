@@ -31,15 +31,16 @@ func (fake *FakeNetStopper) Address() string {
 	ret, specificReturn := fake.addressReturnsOnCall[len(fake.addressArgsForCall)]
 	fake.addressArgsForCall = append(fake.addressArgsForCall, struct {
 	}{})
+	stub := fake.AddressStub
+	fakeReturns := fake.addressReturns
 	fake.recordInvocation("Address", []interface{}{})
 	fake.addressMutex.Unlock()
-	if fake.AddressStub != nil {
-		return fake.AddressStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.addressReturns
 	return fakeReturns.result1
 }
 
@@ -82,9 +83,10 @@ func (fake *FakeNetStopper) Stop() {
 	fake.stopMutex.Lock()
 	fake.stopArgsForCall = append(fake.stopArgsForCall, struct {
 	}{})
+	stub := fake.StopStub
 	fake.recordInvocation("Stop", []interface{}{})
 	fake.stopMutex.Unlock()
-	if fake.StopStub != nil {
+	if stub != nil {
 		fake.StopStub()
 	}
 }

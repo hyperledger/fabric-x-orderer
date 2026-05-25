@@ -22,7 +22,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -254,8 +253,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 		return nil, errors.Wrapf(err, "failed to retrieve last config envelope")
 	}
 
-	var updatableVerifier deliverclient.CloneableUpdatableBlockVerifier
-	updatableVerifier, err = s.VerifierFactory.CreateBlockVerifier(lastConfigBlock, lastBlock, s.CryptoProvider, s.Logger)
+	updatableVerifier, err := s.VerifierFactory.CreateBlockVerifier(lastConfigBlock, lastBlock, s.CryptoProvider, s.Logger)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create BlockVerificationAssistant")
 	}

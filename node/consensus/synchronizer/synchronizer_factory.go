@@ -126,7 +126,7 @@ func newSynchronizer(
 			ClusterDialer:       clusterDialer,
 			LocalConfigCluster:  localConfigCluster,
 			BlockPullerFactory:  &HeightDetectorCreator{},
-			VerifierFactory:     &noopVerifierCreator{}, // TODO rewrite &verifierCreator{} and replace
+			VerifierFactory:     &ConsenterBlockVerifierCreator{},
 			BFTDelivererFactory: &bftDelivererCreator{},
 			Logger:              logger,
 		}
