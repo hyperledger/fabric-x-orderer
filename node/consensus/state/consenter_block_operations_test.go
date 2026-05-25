@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package synchronizer_test
+package state_test
 
 import (
 	"testing"
@@ -14,12 +14,11 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 	"github.com/stretchr/testify/require"
 )
 
 func TestConsenterBlockOperations_IsConfigBlock(t *testing.T) {
-	ops := &synchronizer.ConsenterBlockOperations{}
+	ops := &state.ConsenterConfigBlockOperations{}
 
 	t.Run("returns true for consenter config block", func(t *testing.T) {
 		configBlock := createConsenterConfigBlock(t, 5)
@@ -54,7 +53,7 @@ func TestConsenterBlockOperations_IsConfigBlock(t *testing.T) {
 }
 
 func TestConsenterBlockOperations_ConfigFromBlock(t *testing.T) {
-	ops := &synchronizer.ConsenterBlockOperations{}
+	ops := &state.ConsenterConfigBlockOperations{}
 
 	t.Run("extracts config from consenter config block", func(t *testing.T) {
 		configBlock := createConsenterConfigBlock(t, 5)

@@ -24,6 +24,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver/mock"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/pkg/errors"
@@ -65,6 +67,7 @@ var _ = Describe("Deliver", func() {
 				false,
 				deliver.NewMetrics(&disabled.Provider{}),
 				false,
+				&utils.CommonConfigBlockOperations{},
 			)
 			Expect(handler).NotTo(BeNil())
 
@@ -82,6 +85,7 @@ var _ = Describe("Deliver", func() {
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
 					false,
+					&utils.CommonConfigBlockOperations{},
 				)
 
 				Expect(handler.ExpirationCheckFunc(certBytes)).To(Equal(cert.NotAfter))
@@ -96,6 +100,7 @@ var _ = Describe("Deliver", func() {
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
 					true,
+					&utils.CommonConfigBlockOperations{},
 				)
 
 				Expect(handler.ExpirationCheckFunc(certBytes)).NotTo(Equal(cert.NotAfter))
@@ -209,6 +214,7 @@ var _ = Describe("Deliver", func() {
 				ExpirationCheckFunc: func([]byte) time.Time {
 					return time.Time{}
 				},
+				ConfigBlockOps: &utils.CommonConfigBlockOperations{},
 			}
 			server = &deliver.Server{
 				Receiver:       fakeReceiver,
@@ -641,6 +647,7 @@ var _ = Describe("Deliver", func() {
 
 						return block, cb.Status_SUCCESS
 					}
+					handler.ConfigBlockOps = &state.ConsenterConfigBlockOperations{}
 				})
 
 				It("sends blocks with non nil Data for consenter decision config blocks", func() {

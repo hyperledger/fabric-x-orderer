@@ -726,7 +726,7 @@ func verifyBlockSequence(blockBuff []*common.Block, signatureVerifier protoutil.
 		if err := VerifyBlockHash(i, blockBuff); err != nil {
 			return err
 		}
-		ops := &utils.CommonBlockOperations{}
+		ops := &utils.CommonConfigBlockOperations{}
 
 		// Only try to extract config if it's a config block
 		var configFromBlock *common.ConfigEnvelope

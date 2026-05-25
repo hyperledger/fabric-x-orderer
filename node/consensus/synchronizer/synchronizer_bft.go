@@ -248,7 +248,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config block")
 	}
-	blockOps := &utils.CommonBlockOperations{}
+	blockOps := &utils.CommonConfigBlockOperations{}
 	lastConfigEnv, err := blockOps.ConfigFromBlock(lastConfigBlock)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config envelope")

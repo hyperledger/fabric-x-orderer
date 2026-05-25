@@ -16,7 +16,7 @@ import (
 )
 
 func TestCommonBlockOperations_IsConfigBlock(t *testing.T) {
-	ops := &utils.CommonBlockOperations{}
+	ops := &utils.CommonConfigBlockOperations{}
 
 	t.Run("returns true for config block", func(t *testing.T) {
 		configBlock := createCommonConfigBlock(t, 5)
@@ -34,7 +34,7 @@ func TestCommonBlockOperations_IsConfigBlock(t *testing.T) {
 }
 
 func TestCommonBlockOperations_ConfigFromBlock(t *testing.T) {
-	ops := &utils.CommonBlockOperations{}
+	ops := &utils.CommonConfigBlockOperations{}
 
 	t.Run("extracts config from config block", func(t *testing.T) {
 		configBlock := createCommonConfigBlock(t, 5)

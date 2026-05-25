@@ -236,7 +236,7 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 		Signer:                          s.fakeSigner,
 		DeliverStreamer:                 s.fakeDeliverStreamer,
 		CensorshipDetectorFactory:       s.fakeCensorshipMonFactory,
-		ConfigBlockOps:                  &utils.CommonBlockOperations{},
+		ConfigBlockOps:                  &utils.CommonConfigBlockOperations{},
 		EndpointsExtractor:              s.fakeEndpointsExtractor,
 		Logger:                          flogging.MustGetLogger("BFTDeliverer.test"),
 		TLSCertHash:                     []byte("tls-cert-hash"),

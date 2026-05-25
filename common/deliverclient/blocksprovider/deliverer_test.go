@@ -143,7 +143,7 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 			DoneC:                           make(chan struct{}),
 			Signer:                          fakeSigner,
 			DeliverStreamer:                 fakeDeliverStreamer,
-			ConfigBlockOps:                  &utils.CommonBlockOperations{},
+			ConfigBlockOps:                  &utils.CommonConfigBlockOperations{},
 			EndpointsExtractor:              fakeEndpointsExtractor,
 			Logger:                          flogging.MustGetLogger("blocksprovider"),
 			TLSCertHash:                     []byte("tls-cert-hash"),

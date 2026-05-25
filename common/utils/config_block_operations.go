@@ -24,12 +24,12 @@ type ConfigBlockOperations interface {
 	ConfigFromBlock(block *common.Block) (*common.ConfigEnvelope, error)
 }
 
-// CommonBlockOperations implements ConfigBlockOperations for regular Fabric common blocks.
+// CommonConfigBlockOperations implements ConfigBlockOperations for regular Fabric common blocks.
 // These are the standard blocks used also by Fabric.
-type CommonBlockOperations struct{}
+type CommonConfigBlockOperations struct{}
 
 // IsConfigBlock checks if a common block is a config block by examining its transaction type.
-func (c *CommonBlockOperations) IsConfigBlock(block *common.Block) bool {
+func (c *CommonConfigBlockOperations) IsConfigBlock(block *common.Block) bool {
 	if block == nil {
 		return false
 	}
@@ -38,7 +38,7 @@ func (c *CommonBlockOperations) IsConfigBlock(block *common.Block) bool {
 
 // ConfigFromBlock extracts the config envelope from a common config block.
 // It returns an error if the block is not a config block or if extraction fails.
-func (c *CommonBlockOperations) ConfigFromBlock(block *common.Block) (*common.ConfigEnvelope, error) {
+func (c *CommonConfigBlockOperations) ConfigFromBlock(block *common.Block) (*common.ConfigEnvelope, error) {
 	if block == nil || block.Header == nil || block.Data == nil || len(block.Data.Data) == 0 {
 		return nil, errors.New("empty block")
 	}
