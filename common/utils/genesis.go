@@ -28,7 +28,6 @@ func EmptyGenesisBlock(channelID string) *common.Block {
 	payloadSignatureHeader := protoutil.MakeSignatureHeader(nil, make([]byte, 24)) // zero nonce
 	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
 	payloadHeader := protoutil.MakePayloadHeader(payloadChannelHeader, payloadSignatureHeader)
-	// TODO an empty config for now
 	payload := &common.Payload{Header: payloadHeader, Data: protoutil.MarshalOrPanic(&common.ConfigEnvelope{Config: &common.Config{ChannelGroup: protoutil.NewConfigGroup()}})}
 	envelope := &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: nil}
 

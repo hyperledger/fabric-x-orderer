@@ -104,10 +104,9 @@ func (c *ConsenterSupportAdapter) SharedConfig() channelconfig.Orderer {
 	return ordererConfig
 }
 
-// WriteBlockSync commits a regular (non-config) block to the ledger together
-// with its encoded metadata value, blocking until the write is complete.
+// WriteBlockSync commits a regular (non-config) block to the ledger, blocking until the write is complete.
 // Implements synchronizer.ConsenterSupport.
-func (c *ConsenterSupportAdapter) WriteBlockSync(block *common.Block, encodedMetadataValue []byte) {
+func (c *ConsenterSupportAdapter) WriteBlockSync(block *common.Block) {
 	// Index the batches before writing the block to the ledger, like we do in Consensus.Deliver.
 	hdr := c.indexAndWrite(block)
 
@@ -115,10 +114,9 @@ func (c *ConsenterSupportAdapter) WriteBlockSync(block *common.Block, encodedMet
 	// The state is updated with the call to OnCommit from the BFT synchronizer.
 }
 
-// WriteConfigBlock commits a config block to the ledger and applies the
-// configuration update contained within it.
+// WriteConfigBlock commits a config block to the ledger and applies the configuration update contained within it.
 // Implements synchronizer.ConsenterSupport.
-func (c *ConsenterSupportAdapter) WriteConfigBlock(block *common.Block, encodedMetadataValue []byte) {
+func (c *ConsenterSupportAdapter) WriteConfigBlock(block *common.Block) {
 	// Index the batches before writing the block to the ledger, like we do in Consensus.Deliver.
 	hdr := c.indexAndWrite(block)
 

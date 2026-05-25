@@ -151,7 +151,7 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 		if err != nil {
 			s.Logger.Panicf("Cannot join the cluster: %s", errors.Wrap(err, "failed to fetch genesis block"))
 		}
-		s.Support.WriteConfigBlock(genesisBlock, nil)
+		s.Support.WriteConfigBlock(genesisBlock)
 		startHeight = s.Support.Height()
 
 		s.Logger.Infof("Fetched and wrote genesis block, new height: %d, party: %d", startHeight, s.selfID)
@@ -376,10 +376,10 @@ func (s *BFTSynchronizer) getBlocksFromSyncBuffer(startHeight, targetHeight uint
 			break
 		}
 		if protoutil.IsConfigBlock(block) {
-			s.Support.WriteConfigBlock(block, nil)
+			s.Support.WriteConfigBlock(block)
 			s.Logger.Debugf("Fetched and committed config block [%d] from cluster", seq)
 		} else {
-			s.Support.WriteBlockSync(block, nil)
+			s.Support.WriteBlockSync(block)
 			s.Logger.Debugf("Fetched and committed block [%d] from cluster", seq)
 		}
 		lastPulledBlock = block
