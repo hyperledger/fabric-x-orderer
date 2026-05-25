@@ -110,17 +110,15 @@ type FakeConsenterSupport struct {
 	signatureVerifierReturnsOnCall map[int]struct {
 		result1 protoutil.BlockVerifierFunc
 	}
-	WriteBlockSyncStub        func(*common.Block, []byte)
+	WriteBlockSyncStub        func(*common.Block)
 	writeBlockSyncMutex       sync.RWMutex
 	writeBlockSyncArgsForCall []struct {
 		arg1 *common.Block
-		arg2 []byte
 	}
-	WriteConfigBlockStub        func(*common.Block, []byte)
+	WriteConfigBlockStub        func(*common.Block)
 	writeConfigBlockMutex       sync.RWMutex
 	writeConfigBlockArgsForCall []struct {
 		arg1 *common.Block
-		arg2 []byte
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -641,22 +639,16 @@ func (fake *FakeConsenterSupport) SignatureVerifierReturnsOnCall(i int, result1 
 	}{result1}
 }
 
-func (fake *FakeConsenterSupport) WriteBlockSync(arg1 *common.Block, arg2 []byte) {
-	var arg2Copy []byte
-	if arg2 != nil {
-		arg2Copy = make([]byte, len(arg2))
-		copy(arg2Copy, arg2)
-	}
+func (fake *FakeConsenterSupport) WriteBlockSync(arg1 *common.Block) {
 	fake.writeBlockSyncMutex.Lock()
 	fake.writeBlockSyncArgsForCall = append(fake.writeBlockSyncArgsForCall, struct {
 		arg1 *common.Block
-		arg2 []byte
-	}{arg1, arg2Copy})
+	}{arg1})
 	stub := fake.WriteBlockSyncStub
-	fake.recordInvocation("WriteBlockSync", []interface{}{arg1, arg2Copy})
+	fake.recordInvocation("WriteBlockSync", []interface{}{arg1})
 	fake.writeBlockSyncMutex.Unlock()
 	if stub != nil {
-		fake.WriteBlockSyncStub(arg1, arg2)
+		fake.WriteBlockSyncStub(arg1)
 	}
 }
 
@@ -666,35 +658,29 @@ func (fake *FakeConsenterSupport) WriteBlockSyncCallCount() int {
 	return len(fake.writeBlockSyncArgsForCall)
 }
 
-func (fake *FakeConsenterSupport) WriteBlockSyncCalls(stub func(*common.Block, []byte)) {
+func (fake *FakeConsenterSupport) WriteBlockSyncCalls(stub func(*common.Block)) {
 	fake.writeBlockSyncMutex.Lock()
 	defer fake.writeBlockSyncMutex.Unlock()
 	fake.WriteBlockSyncStub = stub
 }
 
-func (fake *FakeConsenterSupport) WriteBlockSyncArgsForCall(i int) (*common.Block, []byte) {
+func (fake *FakeConsenterSupport) WriteBlockSyncArgsForCall(i int) *common.Block {
 	fake.writeBlockSyncMutex.RLock()
 	defer fake.writeBlockSyncMutex.RUnlock()
 	argsForCall := fake.writeBlockSyncArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
+	return argsForCall.arg1
 }
 
-func (fake *FakeConsenterSupport) WriteConfigBlock(arg1 *common.Block, arg2 []byte) {
-	var arg2Copy []byte
-	if arg2 != nil {
-		arg2Copy = make([]byte, len(arg2))
-		copy(arg2Copy, arg2)
-	}
+func (fake *FakeConsenterSupport) WriteConfigBlock(arg1 *common.Block) {
 	fake.writeConfigBlockMutex.Lock()
 	fake.writeConfigBlockArgsForCall = append(fake.writeConfigBlockArgsForCall, struct {
 		arg1 *common.Block
-		arg2 []byte
-	}{arg1, arg2Copy})
+	}{arg1})
 	stub := fake.WriteConfigBlockStub
-	fake.recordInvocation("WriteConfigBlock", []interface{}{arg1, arg2Copy})
+	fake.recordInvocation("WriteConfigBlock", []interface{}{arg1})
 	fake.writeConfigBlockMutex.Unlock()
 	if stub != nil {
-		fake.WriteConfigBlockStub(arg1, arg2)
+		fake.WriteConfigBlockStub(arg1)
 	}
 }
 
@@ -704,17 +690,17 @@ func (fake *FakeConsenterSupport) WriteConfigBlockCallCount() int {
 	return len(fake.writeConfigBlockArgsForCall)
 }
 
-func (fake *FakeConsenterSupport) WriteConfigBlockCalls(stub func(*common.Block, []byte)) {
+func (fake *FakeConsenterSupport) WriteConfigBlockCalls(stub func(*common.Block)) {
 	fake.writeConfigBlockMutex.Lock()
 	defer fake.writeConfigBlockMutex.Unlock()
 	fake.WriteConfigBlockStub = stub
 }
 
-func (fake *FakeConsenterSupport) WriteConfigBlockArgsForCall(i int) (*common.Block, []byte) {
+func (fake *FakeConsenterSupport) WriteConfigBlockArgsForCall(i int) *common.Block {
 	fake.writeConfigBlockMutex.RLock()
 	defer fake.writeConfigBlockMutex.RUnlock()
 	argsForCall := fake.writeConfigBlockArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
+	return argsForCall.arg1
 }
 
 func (fake *FakeConsenterSupport) Invocations() map[string][][]interface{} {

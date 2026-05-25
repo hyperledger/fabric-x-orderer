@@ -320,10 +320,10 @@ func TestBFTSynchronizer(t *testing.T) {
 			}
 			return ledger[u]
 		})
-		fakeCS.WriteConfigBlockCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteConfigBlockCalls(func(b *cb.Block) {
 			ledger = append(ledger, b)
 		})
-		fakeCS.WriteBlockSyncCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteBlockSyncCalls(func(b *cb.Block) {
 			ledger = append(ledger, b)
 		})
 		fakeCS.LastConfigBlockCalls(func(b *cb.Block) (*cb.Block, error) {
@@ -816,10 +816,10 @@ func TestBFTSynchronizer(t *testing.T) {
 			return ledger[u]
 		})
 		fakeCS.SequenceCalls(func() uint64 { return blockNum2configSqn[uint64(len(ledger))] })
-		fakeCS.WriteConfigBlockCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteConfigBlockCalls(func(b *cb.Block) {
 			ledger = append(ledger, b)
 		})
-		fakeCS.WriteBlockSyncCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteBlockSyncCalls(func(b *cb.Block) {
 			ledger = append(ledger, b)
 		})
 		fakeCS.LastConfigBlockCalls(func(b *cb.Block) (*cb.Block, error) {
@@ -962,10 +962,10 @@ func TestBFTSynchronizer(t *testing.T) {
 			return ledger[u]
 		})
 		fakeCS.SequenceCalls(func() uint64 { return blockNum2configSqn[uint64(len(ledger))] })
-		fakeCS.WriteConfigBlockCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteConfigBlockCalls(func(b *cb.Block) {
 			ledger = append(ledger, b)
 		})
-		fakeCS.WriteBlockSyncCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteBlockSyncCalls(func(b *cb.Block) {
 			ledger = append(ledger, b)
 		})
 		fakeCS.LastConfigBlockCalls(func(b *cb.Block) (*cb.Block, error) {
@@ -1127,13 +1127,13 @@ func TestBFTSynchronizer(t *testing.T) {
 
 			return blockNum2configSqn[uint64(len(ledger))]
 		})
-		fakeCS.WriteConfigBlockCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteConfigBlockCalls(func(b *cb.Block) {
 			ledgerLock.Lock()
 			defer ledgerLock.Unlock()
 
 			ledger = append(ledger, b)
 		})
-		fakeCS.WriteBlockSyncCalls(func(b *cb.Block, m []byte) {
+		fakeCS.WriteBlockSyncCalls(func(b *cb.Block) {
 			ledgerLock.Lock()
 			defer ledgerLock.Unlock()
 
