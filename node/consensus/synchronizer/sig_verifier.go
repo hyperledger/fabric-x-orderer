@@ -94,8 +94,7 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 		return errors.Wrap(err, "failed to deserialize signatures from metadata")
 	}
 
-	// TODO: pre calculate also for available blocks signatures
-	// Pre-calculate the header bytes for all the signatures.
+	// Pre-calculate the header bytes for proposal signature
 	blockHeaderBytes := protoutil.BlockHeaderBytes(block.GetHeader())
 
 	// Pre-calculate orderer block metadata for proposal signature
@@ -110,6 +109,7 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 	})
 
 	var hdr state.Header
+	var availableCommonBlocksHeaderBytes [][]byte
 	if verifyData {
 		proposalBytes := block.Data.Data[0]
 		proposal, err := state.BytesToProposal(proposalBytes)
@@ -119,10 +119,18 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 		if err := hdr.Deserialize(proposal.Header); err != nil {
 			return errors.Wrap(err, "failed deserializing proposal header")
 		}
+		// Pre-calculate the available common blocks block header bytes
+		availableCommonBlocksHeaderBytes = make([][]byte, 0, len(hdr.AvailableCommonBlocks))
+		for _, availableBlock := range hdr.AvailableCommonBlocks {
+			availableCommonBlocksHeaderBytes = append(availableCommonBlocksHeaderBytes, protoutil.BlockHeaderBytes(availableBlock.GetHeader()))
+		}
 	}
 	// TODO: shouldn't we check that the message contains the correct block header bytes and metadata?
 
-	signatureSet := make([]*protoutil.SignedData, 0, len(sigs))
+	signatureSets := make([][]*protoutil.SignedData, 0, len(hdr.AvailableCommonBlocks)+1)
+	for range len(hdr.AvailableCommonBlocks) + 1 {
+		signatureSets = append(signatureSets, make([]*protoutil.SignedData, 0, len(sigs)))
+	}
 	for _, sig := range sigs {
 		var values [][]byte
 		if _, err := asn1.Unmarshal(sig.Value, &values); err != nil {
@@ -168,12 +176,24 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 			v.Logger.Warnf("signature with id %d has unknown consenter identity", sig.ID)
 			continue
 		}
+
+		if verifyData {
+			signatures, err := v.collectBlocksSignatures(msgs[1:], values[1:], availableCommonBlocksHeaderBytes, sig.ID)
+			if err != nil {
+				v.Logger.Warnf("failed to collect signatures for all blocks with signer id %d; err: %s", sig.ID, err)
+				continue
+			}
+			for i := range len(hdr.AvailableCommonBlocks) {
+				signatureSets[i+1] = append(signatureSets[i+1], signatures[i])
+			}
+		}
+
 		computedMsg := &protoutil.MessageToSign{
 			IdentifierHeader:     proposalMsg.IdentifierHeader,
 			BlockHeader:          blockHeaderBytes,
 			OrdererBlockMetadata: proposalOrdererBlockMetadata,
 		}
-		signatureSet = append(signatureSet, &protoutil.SignedData{
+		signatureSets[0] = append(signatureSets[0], &protoutil.SignedData{
 			Identity:  signerIdentity,
 			Data:      computedMsg.ASN1MarshalOrPanic(),
 			Signature: values[0],
@@ -181,7 +201,19 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 		v.Logger.Infof("Appended signature from ID %d to signature set for block ID %d", sig.ID, block.GetHeader().GetNumber())
 	}
 
-	return v.Policy.EvaluateSignedData(signatureSet)
+	if err := v.Policy.EvaluateSignedData(signatureSets[0]); err != nil {
+		return errors.Wrapf(err, "failed to evaluate signature set of the first (proposal) signature for block ID %d", block.GetHeader().GetNumber())
+	}
+
+	if verifyData {
+		for i := range len(hdr.AvailableCommonBlocks) {
+			if err := v.Policy.EvaluateSignedData(signatureSets[i+1]); err != nil {
+				return errors.Wrapf(err, "failed to evaluate signature set in index %d for block ID %d", i, block.GetHeader().GetNumber())
+			}
+		}
+	}
+
+	return nil
 }
 
 func (v *BlockSigVerifier) searchConsenterIdentityByID(identifier uint32) *msppb.Identity {
@@ -191,4 +223,40 @@ func (v *BlockSigVerifier) searchConsenterIdentityByID(identifier uint32) *msppb
 		}
 	}
 	return nil
+}
+
+func (v *BlockSigVerifier) collectBlocksSignatures(msgs [][]byte, values [][]byte, blockHeaderBytes [][]byte, id uint64) ([]*protoutil.SignedData, error) {
+	if len(msgs) != len(values) || len(msgs) != len(blockHeaderBytes) {
+		return nil, errors.Errorf("the length of the msgs, values and blockHeaderBytes slices are not equal for signature id %d", id)
+	}
+	signatureSet := make([]*protoutil.SignedData, 0, len(msgs))
+	for i, msg := range msgs {
+		signedMsg := &protoutil.MessageToSign{}
+		if err := signedMsg.ASN1Unmarshal(msg); err != nil {
+			return nil, errors.Wrapf(err, "failed to unmarshal the signature msg in index %d with id %d", i, id)
+		}
+		// verify message identifier header
+		idHeader, err := protoutil.UnmarshalIdentifierHeader(signedMsg.IdentifierHeader)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to unmarshal identifier header from the signature msg in index %d with id %d", i, id)
+		}
+		if uint64(idHeader.GetIdentifier()) != id {
+			return nil, errors.Errorf("signature ID %d does not match identifier header ID %d in signature msg in index %d", id, idHeader.GetIdentifier(), i)
+		}
+		signerIdentity := v.searchConsenterIdentityByID(idHeader.GetIdentifier())
+		if signerIdentity == nil {
+			return nil, errors.Errorf("signature with id %d has unknown consenter identity", id)
+		}
+		computedMsg := &protoutil.MessageToSign{
+			IdentifierHeader:     signedMsg.IdentifierHeader,
+			BlockHeader:          blockHeaderBytes[i],
+			OrdererBlockMetadata: signedMsg.OrdererBlockMetadata, // TODO: calculate this
+		}
+		signatureSet = append(signatureSet, &protoutil.SignedData{
+			Identity:  signerIdentity,
+			Data:      computedMsg.ASN1MarshalOrPanic(),
+			Signature: values[i],
+		})
+	}
+	return signatureSet, nil
 }
