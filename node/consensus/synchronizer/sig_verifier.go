@@ -126,38 +126,47 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 	for _, sig := range sigs {
 		var values [][]byte
 		if _, err := asn1.Unmarshal(sig.Value, &values); err != nil {
-			return errors.Wrapf(err, "failed to unmarshal signature values with id %d", sig.ID) // TODO continue instead of return
+			v.Logger.Warnf("failed to unmarshal signature values with id %d; err: %s", sig.ID, err)
+			continue
 		}
 		var msgs [][]byte
 		if _, err := asn1.Unmarshal(sig.Msg, &msgs); err != nil {
-			return errors.Wrapf(err, "failed to unmarshal signature msgs with id %d", sig.ID)
+			v.Logger.Warnf("failed to unmarshal signature msgs with id %d; err: %s", sig.ID, err)
+			continue
 		}
 		if len(msgs) != len(values) {
-			return errors.Errorf("signature with id %d has different number of values and msgs", sig.ID)
+			v.Logger.Warnf("signature with id %d has different number of values and msgs", sig.ID)
+			continue
 		}
 		if len(msgs) == 0 {
-			return errors.Errorf("signature with id %d has no messages", sig.ID)
+			v.Logger.Warnf("signature with id %d has no messages", sig.ID)
+			continue
 		}
 		if verifyData {
 			if len(msgs) != len(hdr.AvailableCommonBlocks)+1 {
-				return errors.Errorf("signature with id %d has different number of messages than available common blocks", sig.ID)
+				v.Logger.Warnf("signature with id %d has different number of messages than available common blocks", sig.ID)
+				continue
 			}
 		}
 		proposalMsg := &protoutil.MessageToSign{}
 		if err := proposalMsg.ASN1Unmarshal(msgs[0]); err != nil {
-			return errors.Wrapf(err, "failed to unmarshal the first signature msg with id %d", sig.ID)
+			v.Logger.Warnf("failed to unmarshal the first signature msg with id %d; err: %s", sig.ID, err)
+			continue
 		}
 		// verify proposal message identifier header
 		idHeader, err := protoutil.UnmarshalIdentifierHeader(proposalMsg.IdentifierHeader)
 		if err != nil {
-			return errors.Wrap(err, "failed to unmarshal identifier header from proposal message")
+			v.Logger.Warnf("failed to unmarshal identifier header from proposal message; err: %s", err)
+			continue
 		}
 		if uint64(idHeader.GetIdentifier()) != sig.ID {
-			return errors.Errorf("signature ID %d does not match identifier header ID %d in proposal message", sig.ID, idHeader.GetIdentifier())
+			v.Logger.Warnf("signature ID %d does not match identifier header ID %d in proposal message", sig.ID, idHeader.GetIdentifier())
+			continue
 		}
 		signerIdentity := v.searchConsenterIdentityByID(idHeader.GetIdentifier())
 		if signerIdentity == nil {
-			return errors.Errorf("signature with id %d has unknown consenter identity", sig.ID)
+			v.Logger.Warnf("signature with id %d has unknown consenter identity", sig.ID)
+			continue
 		}
 		computedMsg := &protoutil.MessageToSign{
 			IdentifierHeader:     proposalMsg.IdentifierHeader,
