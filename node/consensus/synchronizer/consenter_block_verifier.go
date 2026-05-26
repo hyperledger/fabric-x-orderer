@@ -53,6 +53,13 @@ func (*ConsenterBlockVerifierCreator) CreateBlockVerifier(
 	if !protoutil.IsConfigBlock(configBlock) {
 		return nil, errors.New("config block parameter does not carry a config block")
 	}
+	configIndex, err := protoutil.GetLastConfigIndexFromBlock(configBlock)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed getting config index from config block")
+	}
+	if configIndex != configBlock.Header.Number {
+		return nil, errors.Errorf("config block number [%d] is different than its own config index [%d]", configBlock.Header.Number, configIndex)
+	}
 
 	if lastBlock == nil {
 		return nil, errors.New("last block is nil")
