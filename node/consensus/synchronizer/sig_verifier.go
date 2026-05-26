@@ -98,6 +98,17 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 	// Pre-calculate the header bytes for all the signatures.
 	blockHeaderBytes := protoutil.BlockHeaderBytes(block.GetHeader())
 
+	// Pre-calculate orderer block metadata for proposal signature
+	proposalMetadata := block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+	lastConfigIndex, err := state.GetLastConfigIndexFromConsenterBlock(block)
+	if err != nil {
+		return errors.Wrap(err, "failed to get last config index from consenter block")
+	}
+	proposalOrdererBlockMetadata := protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+		LastConfig:        &common.LastConfig{Index: lastConfigIndex},
+		ConsenterMetadata: proposalMetadata,
+	})
+
 	var hdr state.Header
 	if verifyData {
 		proposalBytes := block.Data.Data[0]
@@ -151,7 +162,7 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 		computedMsg := &protoutil.MessageToSign{
 			IdentifierHeader:     proposalMsg.IdentifierHeader,
 			BlockHeader:          blockHeaderBytes,
-			OrdererBlockMetadata: proposalMsg.OrdererBlockMetadata, // TODO maybe take this from somewhere else
+			OrdererBlockMetadata: proposalOrdererBlockMetadata,
 		}
 		signatureSet = append(signatureSet, &protoutil.SignedData{
 			Identity:  signerIdentity,
