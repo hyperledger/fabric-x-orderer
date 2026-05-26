@@ -88,10 +88,6 @@ type BlockSigVerifier struct {
 
 // Verify verifies a block's signatures using the verifier's policy.
 func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
-	for _, consenter := range v.Consenters {
-		v.Logger.Infof("Consenter %d", consenter.Id)
-	}
-
 	sigsBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
 	sigs, err := state.BytesToDecisionSignatures(sigsBytes)
 	if err != nil {

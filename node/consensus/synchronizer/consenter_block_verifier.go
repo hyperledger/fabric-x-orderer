@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"sync"
 
-	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -19,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/pkg/errors"
 )
 
 //go:generate counterfeiter -o mocks/verifier_factory.go --fake-name VerifierFactory . VerifierFactory
@@ -69,21 +69,25 @@ func (*ConsenterBlockVerifierCreator) CreateBlockVerifier(
 	}
 	payload, err := protoutil.UnmarshalPayload(configTx.Payload)
 	if err != nil {
-		return nil, errors.WithMessage(err, "error umarshaling envelope to payload")
+		return nil, errors.WithMessage(err, "error unmarshaling envelope to payload")
 	}
 
 	if payload.Header == nil {
-		return nil, errors.New("missing channel header")
+		return nil, errors.New("payload header is nil")
+	}
+
+	if payload.Header.ChannelHeader == nil {
+		return nil, errors.New("payload header channel header is nil")
 	}
 
 	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
 	if err != nil {
-		return nil, errors.WithMessage(err, "error unmarshalling channel header")
+		return nil, errors.WithMessage(err, "error unmarshaling channel header")
 	}
 
 	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
 	if err != nil {
-		return nil, errors.WithMessage(err, "error umarshaling config envelope from payload data")
+		return nil, errors.WithMessage(err, "error unmarshaling config envelope from payload data")
 	}
 
 	svc := &SigVerifierCreator{
@@ -222,7 +226,7 @@ func (c *ConsenterBlockVerifier) VerifyBlockAttestation(block *common.Block) err
 
 	err := c.sigVerifierFunc(block, false)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to verify signatures of block attestation with id [%d] on channel [%s]", block.Header.Number, c.channelID)
 	}
 
 	c.lastBlockHeader = block.Header
