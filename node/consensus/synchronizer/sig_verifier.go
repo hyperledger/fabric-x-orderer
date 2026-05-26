@@ -35,7 +35,7 @@ type SigVerifierCreator struct {
 }
 
 // SigVerifierFromConfig creates a SigVerifier from the given configuration.
-func (svc *SigVerifierCreator) SigVerifierFromConfig(configuration *common.ConfigEnvelope, channel string) (SigVerifierFunc, error) {
+func (svc *SigVerifierCreator) SigVerifierFromConfig(configuration *common.ConfigEnvelope, channel string, configBlockNum uint64) (SigVerifierFunc, error) {
 	bundle, err := channelconfig.NewBundle(channel, configuration.Config, svc.BCCSP)
 	if err != nil {
 		return createErrorFunc(err), err
@@ -64,9 +64,10 @@ func (svc *SigVerifierCreator) SigVerifierFromConfig(configuration *common.Confi
 	// }
 
 	bsv := &BlockSigVerifier{
-		Policy:     policy,
-		Consenters: consenters,
-		Logger:     svc.Logger,
+		Policy:         policy,
+		Consenters:     consenters,
+		Logger:         svc.Logger,
+		ConfigBlockNum: configBlockNum,
 	}
 
 	return bsv.Verify, nil
@@ -81,9 +82,10 @@ type policy interface { // copied from common.policies to avoid circular import.
 
 // BlockSigVerifier can be used to verify signatures over blocks using the given policy.
 type BlockSigVerifier struct {
-	Policy     policy
-	Consenters []*common.Consenter
-	Logger     *flogging.FabricLogger
+	Policy         policy
+	Consenters     []*common.Consenter
+	Logger         *flogging.FabricLogger
+	ConfigBlockNum uint64
 }
 
 // Verify verifies a block's signatures using the verifier's policy.
@@ -110,6 +112,7 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 
 	var hdr state.Header
 	var availableCommonBlocksHeaderBytes [][]byte
+	var ordererBlockMetadata [][]byte
 	if verifyData {
 		proposalBytes := block.Data.Data[0]
 		proposal, err := state.BytesToProposal(proposalBytes)
@@ -121,8 +124,24 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 		}
 		// Pre-calculate the available common blocks block header bytes
 		availableCommonBlocksHeaderBytes = make([][]byte, 0, len(hdr.AvailableCommonBlocks))
-		for _, availableBlock := range hdr.AvailableCommonBlocks {
+		for i, availableBlock := range hdr.AvailableCommonBlocks {
+			if availableBlock.Header == nil {
+				return errors.Errorf("available common block header is nil at index %d", i)
+			}
 			availableCommonBlocksHeaderBytes = append(availableCommonBlocksHeaderBytes, protoutil.BlockHeaderBytes(availableBlock.GetHeader()))
+		}
+
+		// Pre-calculate orderer block metadata
+		ordererBlockMetadata = make([][]byte, 0, len(hdr.AvailableCommonBlocks))
+		lastConfigNum := v.ConfigBlockNum
+		for _, availableBlock := range hdr.AvailableCommonBlocks {
+			if protoutil.IsConfigBlock(availableBlock) {
+				lastConfigNum = availableBlock.Header.Number
+			}
+			ordererBlockMetadata = append(ordererBlockMetadata, protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
+				LastConfig:        &common.LastConfig{Index: lastConfigNum},
+				ConsenterMetadata: availableBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
+			}))
 		}
 	}
 	// TODO: shouldn't we check that the message contains the correct block header bytes and metadata?
@@ -178,7 +197,7 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 		}
 
 		if verifyData {
-			signatures, err := v.collectBlocksSignatures(msgs[1:], values[1:], availableCommonBlocksHeaderBytes, sig.ID)
+			signatures, err := v.collectBlocksSignatures(msgs[1:], values[1:], availableCommonBlocksHeaderBytes, ordererBlockMetadata, sig.ID)
 			if err != nil {
 				v.Logger.Warnf("failed to collect signatures for all blocks with signer id %d; err: %s", sig.ID, err)
 				continue
@@ -198,7 +217,6 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 			Data:      computedMsg.ASN1MarshalOrPanic(),
 			Signature: values[0],
 		})
-		v.Logger.Infof("Appended signature from ID %d to signature set for block ID %d", sig.ID, block.GetHeader().GetNumber())
 	}
 
 	if err := v.Policy.EvaluateSignedData(signatureSets[0]); err != nil {
@@ -225,9 +243,9 @@ func (v *BlockSigVerifier) searchConsenterIdentityByID(identifier uint32) *msppb
 	return nil
 }
 
-func (v *BlockSigVerifier) collectBlocksSignatures(msgs [][]byte, values [][]byte, blockHeaderBytes [][]byte, id uint64) ([]*protoutil.SignedData, error) {
-	if len(msgs) != len(values) || len(msgs) != len(blockHeaderBytes) {
-		return nil, errors.Errorf("the length of the msgs, values and blockHeaderBytes slices are not equal for signature id %d", id)
+func (v *BlockSigVerifier) collectBlocksSignatures(msgs, values, blockHeaderBytes, ordererBlockMetadata [][]byte, id uint64) ([]*protoutil.SignedData, error) {
+	if len(msgs) != len(values) || len(msgs) != len(blockHeaderBytes) || len(msgs) != len(ordererBlockMetadata) {
+		return nil, errors.Errorf("the length of the msgs, values, blockHeaderBytes and ordererBlockMetadata slices are not equal for signature id %d", id)
 	}
 	signatureSet := make([]*protoutil.SignedData, 0, len(msgs))
 	for i, msg := range msgs {
@@ -250,7 +268,7 @@ func (v *BlockSigVerifier) collectBlocksSignatures(msgs [][]byte, values [][]byt
 		computedMsg := &protoutil.MessageToSign{
 			IdentifierHeader:     signedMsg.IdentifierHeader,
 			BlockHeader:          blockHeaderBytes[i],
-			OrdererBlockMetadata: signedMsg.OrdererBlockMetadata, // TODO: calculate this
+			OrdererBlockMetadata: ordererBlockMetadata[i],
 		}
 		signatureSet = append(signatureSet, &protoutil.SignedData{
 			Identity:  signerIdentity,

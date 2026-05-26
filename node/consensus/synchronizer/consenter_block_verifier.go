@@ -94,7 +94,7 @@ func (*ConsenterBlockVerifierCreator) CreateBlockVerifier(
 		Logger: lg,
 		BCCSP:  cryptoProvider,
 	}
-	sigVerifierFunc, err := svc.SigVerifierFromConfig(configEnvelope, chdr.GetChannelId())
+	sigVerifierFunc, err := svc.SigVerifierFromConfig(configEnvelope, chdr.GetChannelId(), configBlock.Header.Number)
 	if err != nil {
 		return nil, errors.WithMessage(err, "error creating sig verifier function")
 	}
@@ -150,12 +150,17 @@ func (c *ConsenterBlockVerifier) UpdateConfig(configBlock *common.Block) error {
 		return errors.Wrap(err, "failed to extract config from block")
 	}
 
+	configBlockNum, err := blockOps.ConfigBlockNumFromBlock(configBlock)
+	if err != nil {
+		return errors.Wrap(err, "failed to extract config block number from block")
+	}
+
 	channelID := c.channelID
 	if channelID == "" {
 		return errors.New("channel ID is empty")
 	}
 
-	sigVerifierFunc, err := c.sigVerifierCreator.SigVerifierFromConfig(configEnvelope, channelID)
+	sigVerifierFunc, err := c.sigVerifierCreator.SigVerifierFromConfig(configEnvelope, channelID, configBlockNum)
 	if err != nil {
 		return errors.WithMessage(err, "error creating verifier function")
 	}

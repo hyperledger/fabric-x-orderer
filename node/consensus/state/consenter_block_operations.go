@@ -37,10 +37,9 @@ func (c *ConsenterConfigBlockOperations) IsConfigBlock(block *common.Block) bool
 	return lastConfigIndex == block.Header.Number
 }
 
-// ConfigFromBlock extracts the Fabric config envelope from a consenter decision block.
-// For consenter blocks, the config is embedded within the decision's AvailableCommonBlocks.
-// The last AvailableCommonBlock in a config decision is the Fabric config block.
-func (c *ConsenterConfigBlockOperations) ConfigFromBlock(block *common.Block) (*common.ConfigEnvelope, error) {
+// extractFabricConfigBlock is a helper function that extracts the embedded Fabric config block
+// from a consenter decision block. The last AvailableCommonBlock in a config decision is the Fabric config block.
+func (c *ConsenterConfigBlockOperations) extractFabricConfigBlock(block *common.Block) (*common.Block, error) {
 	if block == nil {
 		return nil, errors.New("block is nil")
 	}
@@ -72,7 +71,35 @@ func (c *ConsenterConfigBlockOperations) ConfigFromBlock(block *common.Block) (*
 
 	fabricConfigBlock := header.AvailableCommonBlocks[len(header.AvailableCommonBlocks)-1]
 
+	return fabricConfigBlock, nil
+}
+
+// ConfigFromBlock extracts the Fabric config envelope from a consenter decision block.
+// For consenter blocks, the config is embedded within the decision's AvailableCommonBlocks.
+// The last AvailableCommonBlock in a config decision is the Fabric config block.
+func (c *ConsenterConfigBlockOperations) ConfigFromBlock(block *common.Block) (*common.ConfigEnvelope, error) {
+	fabricConfigBlock, err := c.extractFabricConfigBlock(block)
+	if err != nil {
+		return nil, err
+	}
+
 	// Now extract config from the Fabric block using common block operations
 	commonOps := &utils.CommonConfigBlockOperations{}
 	return commonOps.ConfigFromBlock(fabricConfigBlock)
+}
+
+// ConfigBlockNumFromBlock extracts the Fabric config block number from a consenter decision block.
+// For consenter blocks, the config is embedded within the decision's AvailableCommonBlocks.
+// The last AvailableCommonBlock in a config decision is the Fabric config block.
+func (c *ConsenterConfigBlockOperations) ConfigBlockNumFromBlock(block *common.Block) (uint64, error) {
+	fabricConfigBlock, err := c.extractFabricConfigBlock(block)
+	if err != nil {
+		return 0, err
+	}
+
+	if fabricConfigBlock.Header == nil {
+		return 0, errors.New("fabric config block header is nil")
+	}
+
+	return fabricConfigBlock.Header.Number, nil
 }
