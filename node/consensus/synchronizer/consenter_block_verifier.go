@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/pkg/errors"
 )
 
@@ -68,8 +69,6 @@ func (*ConsenterBlockVerifierCreator) CreateBlockVerifier(
 		return nil, errors.New("last verified block header is nil")
 	}
 
-	// TODO verify config number / index against last block
-
 	configTx, err := protoutil.ExtractEnvelope(configBlock, 0)
 	if err != nil {
 		return nil, errors.WithMessage(err, "error extracting envelope")
@@ -95,6 +94,23 @@ func (*ConsenterBlockVerifierCreator) CreateBlockVerifier(
 	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
 	if err != nil {
 		return nil, errors.WithMessage(err, "error unmarshaling config envelope from payload data")
+	}
+
+	// check last block against the config block
+	_, ordInfo, _, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(configBlock)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to extract ordering info from last config block")
+	}
+	configBlockDecisionNum := ordInfo.DecisionNum
+	if lastBlock.Header.Number < uint64(configBlockDecisionNum) {
+		return nil, errors.Errorf("config block decision number %d is greater than last block decision number %d", configBlockDecisionNum, lastBlock.Header.Number)
+	}
+	lastBlockConfigDecisionNum, err := state.GetLastConfigIndexFromConsenterBlock(lastBlock)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to get last config index from last block")
+	}
+	if lastBlockConfigDecisionNum != uint64(configBlockDecisionNum) {
+		return nil, errors.Errorf("config block decision number %d is not equal to last block config index decision number %d", configBlockDecisionNum, lastBlockConfigDecisionNum)
 	}
 
 	svc := &SigVerifierCreator{
