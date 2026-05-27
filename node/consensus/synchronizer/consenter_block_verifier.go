@@ -33,7 +33,7 @@ type VerifierFactory interface {
 	) (deliverclient.CloneableUpdatableBlockVerifier, error)
 }
 
-// ConsenterBlockVerifierCreator creates a block verifier that verifies consenter blocks and can by used by the synchronizer
+// ConsenterBlockVerifierCreator creates a block verifier that verifies consenter blocks and can be used by the synchronizer
 type ConsenterBlockVerifierCreator struct{}
 
 // CreateBlockVerifier creates a block verifier that verifies consenter blocks and can be used by the synchronizer

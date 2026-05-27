@@ -134,7 +134,13 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 		// Pre-calculate orderer block metadata
 		ordererBlockMetadata = make([][]byte, 0, len(hdr.AvailableCommonBlocks))
 		lastConfigNum := v.ConfigBlockNum
-		for _, availableBlock := range hdr.AvailableCommonBlocks {
+		for i, availableBlock := range hdr.AvailableCommonBlocks {
+			if availableBlock.Metadata == nil {
+				return errors.Errorf("available common block metadata is nil at index %d", i)
+			}
+			if len(availableBlock.Metadata.Metadata) <= int(common.BlockMetadataIndex_ORDERER) {
+				return errors.Errorf("available common block metadata is missing ORDERER entry at index %d", i)
+			}
 			if protoutil.IsConfigBlock(availableBlock) {
 				lastConfigNum = availableBlock.Header.Number
 			}
