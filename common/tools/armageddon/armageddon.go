@@ -162,21 +162,21 @@ func (cli *CLI) configureCommands() {
 	commands["version"] = version
 
 	submit := cli.app.Command("submit", "Submit txs to routers and verify the submission")
-	cli.userConfigFile = submit.Flag("config", "The user configuration needed to connection with routers and assemblers").File()
+	cli.userConfigFile = submit.Flag("config", "The user configuration needed to connect with routers and assemblers").File()
 	cli.transactions = submit.Flag("transactions", "The number of transactions to be sent").Int()
-	cli.rate = submit.Flag("rate", "The rate specify the number of transactions per second to be sent").Int()
+	cli.rate = submit.Flag("rate", "The rate specifies the number of transactions per second to be sent").Int()
 	cli.txSize = submit.Flag("txSize", "The required transaction size in bytes").Default("512").Int()
 	commands["submit"] = submit
 
 	load := cli.app.Command("load", "Submit txs to routers and verify the routers have received the txs")
-	cli.loadUserConfigFile = load.Flag("config", "The user configuration needed to connection with routers").File()
+	cli.loadUserConfigFile = load.Flag("config", "The user configuration needed to connect with routers").File()
 	cli.loadTransactions = load.Flag("transactions", "The number of transactions to be sent").Int()
 	cli.loadRate = load.Flag("rate", "The rate specifies the number of transactions per second to be sent as one or more rate numbers separated by space").String()
 	cli.loadTxSize = load.Flag("txSize", "The required transaction size in bytes").Int()
 	commands["load"] = load
 
 	receive := cli.app.Command("receive", "Pull txs from some assembler and report statistics")
-	cli.receiveUserConfigFile = receive.Flag("config", "The user configuration needed to connection with assemblers").File()
+	cli.receiveUserConfigFile = receive.Flag("config", "The user configuration needed to connect with assemblers").File()
 	cli.receiveExpectedNumOfTxs = receive.Flag("expectedTxs", "The expected number of transactions the assembler should received").Default("-1").Int()
 	cli.receiveOutputDir = receive.Flag("output", "The output directory in which to place statistics file").Default(".").String()
 	cli.pullFromPartyId = receive.Flag("pullFromPartyId", "The party id of the assembler to pull blocks from").Int()
