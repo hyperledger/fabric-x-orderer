@@ -13,9 +13,12 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	fabmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	mspmock "github.com/hyperledger/fabric-x-orderer/common/msputils/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -121,6 +124,40 @@ func TestValidateBlockValidationPolicy(t *testing.T) {
 		require.ErrorContains(t, err, "unexpected identity in policy")
 	})
 }
+
+func TestValidateTLSCACertsConsistency(t *testing.T) {
+	tlsRoot := []byte("tls-root")
+
+	fakeMSP := &mspmock.MSP{}
+	fakeMSP.GetTLSRootCertsStub = func() [][]byte {
+		return [][]byte{tlsRoot}
+	}
+	fakeMSP.GetTLSIntermediateCertsStub = func() [][]byte {
+		return nil
+	}
+
+	partyOrgMap := map[uint32]channelconfig.OrdererOrg{
+		1: &testOrdererOrg{mspImpl: fakeMSP},
+	}
+
+	require.NoError(t, validateTLSCACertsConsistency([]*ordererpb.PartyConfig{
+		{PartyID: 1, TLSCACerts: [][]byte{tlsRoot}},
+	}, partyOrgMap))
+
+	err := validateTLSCACertsConsistency([]*ordererpb.PartyConfig{
+		{PartyID: 1, TLSCACerts: [][]byte{[]byte("other-cert")}},
+	}, partyOrgMap)
+	require.ErrorContains(t, err, "TLS CA certificates mismatch for party 1")
+}
+
+type testOrdererOrg struct {
+	mspImpl fabmsp.MSP
+}
+
+func (o *testOrdererOrg) Name() string        { return "" }
+func (o *testOrdererOrg) MSPID() string       { return "" }
+func (o *testOrdererOrg) MSP() fabmsp.MSP     { return o.mspImpl }
+func (o *testOrdererOrg) Endpoints() []string { return nil }
 
 func buildBlockValidationPolicy(consenters []*common.Consenter) *common.ConfigPolicy {
 	n := len(consenters)

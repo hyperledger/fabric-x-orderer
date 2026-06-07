@@ -524,6 +524,10 @@ func (c *ConfigUpdateBuilder) UpdatePartyTLSCACerts(t *testing.T, partyID types.
 	}
 
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+
+	org := fmt.Sprintf("org%d", partyID)
+	overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
+	overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -544,6 +548,20 @@ func (c *ConfigUpdateBuilder) AppendPartyTLSCACerts(t *testing.T, partyID types.
 	}
 
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+
+	org := fmt.Sprintf("org%d", partyID)
+	ordererCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "tls_root_certs").([]any)
+	for _, cert := range tlsCACerts {
+		ordererCerts = append(ordererCerts, cert)
+	}
+	overwriteNestedJSONValue(t, c.configData, ordererCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
+
+	applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs").([]any)
+	for _, cert := range tlsCACerts {
+		applicationCerts = append(applicationCerts, cert)
+	}
+	overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
+
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -562,6 +580,10 @@ func (c *ConfigUpdateBuilder) UpdatePartyCACerts(t *testing.T, partyID types.Par
 	}
 
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+
+	org := fmt.Sprintf("org%d", partyID)
+	overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "root_certs")
+	overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -582,6 +604,18 @@ func (c *ConfigUpdateBuilder) AppendPartyCACerts(t *testing.T, partyID types.Par
 	}
 
 	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	org := fmt.Sprintf("org%d", partyID)
+	ordererCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "root_certs").([]any)
+	for _, cert := range caCerts {
+		ordererCerts = append(ordererCerts, cert)
+	}
+	overwriteNestedJSONValue(t, c.configData, ordererCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "root_certs")
+
+	applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs").([]any)
+	for _, cert := range caCerts {
+		applicationCerts = append(applicationCerts, cert)
+	}
+	overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -622,7 +656,9 @@ func (c *ConfigUpdateBuilder) AppendMSPRootCerts(t *testing.T, partyID types.Par
 }
 
 func (c *ConfigUpdateBuilder) UpdateMSPAdminCerts(t *testing.T, partyID types.PartyID, adminCerts [][]byte) []byte {
-	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID), "values", "MSP", "value", "config", "admins")
+	org := fmt.Sprintf("org%d", partyID)
+	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "admins")
+	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "admins")
 	return c.createConfigUpdate(t, c.configData)
 }
 

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -389,6 +390,12 @@ func TestChangePartyCACertificates(t *testing.T) {
 		return partyID == partyToUpdate
 	})
 
+	// Save the original identity for later validation.
+	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
+	require.NoError(t, err)
+	oldSigner, oldCertBytes, err := testutil.LoadCryptoMaterialsFromDir(t, oldUC.MSPDir)
+	require.NoError(t, err)
+
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
 
@@ -626,25 +633,19 @@ func TestChangePartyCACertificates(t *testing.T) {
 	// 12.
 	configUpdateBuilder = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
-	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
-	require.NoError(t, err)
-	oldSigner, oldCertBytes, err := testutil.LoadCryptoMaterialsFromDir(t, oldUC.MSPDir)
-	require.NoError(t, err)
-
-	// Override the party's crypto materials with the new ones regenerated
-	dstDir := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg)
-	err = os.RemoveAll(dstDir)
-	require.NoError(t, err, "failed to remove directory %s", dstDir)
-	copyDir(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg), dstDir, copyAllPredicate, false)
-
 	// Set the new TLS CA cert and Sign CA cert to the config update builder
-	tlsCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
+	tlsCACertBytes, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdatePartyTLSCACerts(t, partyToUpdate, [][]byte{tlsCACertBytes})
 
-	signCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", "ca-cert.pem"))
+	signCACertBytes, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", "ca-cert.pem"))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdatePartyCACerts(t, partyToUpdate, [][]byte{signCACertBytes})
+
+	// Update the admin, since the old admin would become invalid once the old signing CA is removed.
+	newAdminCertBytes, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "admincerts", fmt.Sprintf("Admin@Org%d-cert.pem", partyToUpdate)))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateMSPAdminCerts(t, partyToUpdate, [][]byte{newAdminCertBytes})
 
 	// Submit a new config update
 	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
@@ -697,10 +698,6 @@ func TestChangePartyCACertificates(t *testing.T) {
 	broadcastClient.Stop()
 }
 
-func copyAllPredicate(_ string, d os.DirEntry) bool {
-	return true
-}
-
 func copyDir(src, dst string, pred copyPredicate, backUpOriginal bool) error {
 	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -744,6 +741,11 @@ func uniqueFileName(path string) string {
 type copyPredicate func(path string, d os.DirEntry) bool
 
 func copyNonCAFilesPredicate(path string, d os.DirEntry) bool {
+	slash := filepath.ToSlash(path)
+	if strings.Contains(slash, "/admincerts/") || strings.HasSuffix(slash, "/admincerts") ||
+		strings.Contains(slash, "/users/admin/") || strings.HasSuffix(slash, "/users/admin") {
+		return false
+	}
 	if d.IsDir() {
 		return false
 	}

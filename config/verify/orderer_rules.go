@@ -53,9 +53,8 @@ type DefaultOrdererRules struct{}
 //     and include both "broadcast" and "deliver" roles.
 //  6. ConsenterMapping must be consistent with the consenters defined in the shared config.
 //  7. Each consenter in the ConsenterMapping must have a matching organization.
-//  8. BlockValidationPolicy must be consistent with the current consenters.
-//
-// TODO: Validate that ca certificates in the sharedConfig are the same as in the ordererOrganization ca certificates.
+//  8. Party TLS CA certificates in SharedConfig must match the orderer organization MSP.
+//  9. BlockValidationPolicy must be consistent with the current consenters.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -127,17 +126,26 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		orgMap[org.MSPID()] = org
 	}
 
+	partyOrgMap := make(map[uint32]channelconfig.OrdererOrg, len(ordererConfig.Consenters()))
 	for _, consenter := range ordererConfig.Consenters() {
 		if consenter == nil {
 			return errors.New("consenter config is nil")
 		}
 
-		if _, exists := orgMap[consenter.MspId]; !exists {
+		org, exists := orgMap[consenter.MspId]
+		if !exists {
 			return errors.Errorf("missing orderer organization for party %d", consenter.Id)
 		}
+
+		partyOrgMap[consenter.Id] = org
 	}
 
 	// 8.
+	if err := validateTLSCACertsConsistency(sharedConfig.PartiesConfig, partyOrgMap); err != nil {
+		return errors.Wrap(err, "orderer organization CA certificates are inconsistent with shared config")
+	}
+
+	// 9.
 	config := bundle.ConfigtxValidator().ConfigProto()
 	ordererGroup := config.ChannelGroup.Groups["Orderer"]
 
@@ -574,6 +582,42 @@ func validateBlockValidationPolicy(policy *common.ConfigPolicy, consenters []*co
 
 	if len(expectedIdentities) != 0 {
 		return errors.New("missing identities in policy")
+	}
+
+	return nil
+}
+
+func validateTLSCACertsConsistency(parties []*ordererpb.PartyConfig, partyOrgMap map[uint32]channelconfig.OrdererOrg) error {
+	for _, party := range parties {
+		if party == nil {
+			return errors.New("party config is nil in shared config")
+		}
+
+		org, exists := partyOrgMap[party.PartyID]
+		if !exists {
+			return errors.Errorf("missing orderer organization for party %d", party.PartyID)
+		}
+
+		orgTLSCACerts := append(
+			org.MSP().GetTLSRootCerts(),
+			org.MSP().GetTLSIntermediateCerts()...,
+		)
+
+		if len(party.TLSCACerts) != len(orgTLSCACerts) {
+			return errors.Errorf("TLS CA certificates mismatch for party %d", party.PartyID)
+		}
+
+		certs := make(map[string]int)
+		for _, cert := range party.TLSCACerts {
+			certs[string(cert)]++
+		}
+
+		for _, cert := range orgTLSCACerts {
+			if certs[string(cert)] == 0 {
+				return errors.Errorf("TLS CA certificates mismatch for party %d", party.PartyID)
+			}
+			certs[string(cert)]--
+		}
 	}
 
 	return nil
