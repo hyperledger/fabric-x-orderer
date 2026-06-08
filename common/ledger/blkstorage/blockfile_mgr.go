@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -111,7 +110,7 @@ func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore
 		if blockfilesInfo, err = constructBlockfilesInfo(rootDir); err != nil {
 			panic(fmt.Sprintf("Could not build blockfilesInfo info from block files: %s", err))
 		}
-		logger.Debugf("Info constructed by scanning the blocks dir = %s", spew.Sdump(blockfilesInfo))
+		logger.Debugf("Info constructed by scanning the blocks dir = %+v", blockfilesInfo)
 	} else {
 		logger.Debug(`Syncing block information from block storage (if needed)`)
 		syncBlockfilesInfoFromFS(rootDir, blockfilesInfo)
