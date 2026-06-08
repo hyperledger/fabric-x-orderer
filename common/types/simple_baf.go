@@ -18,23 +18,25 @@ type SimpleBatchAttestationFragment struct {
 	seq     BatchSequence
 	digest  []byte
 
-	signer    PartyID
-	signature []byte
+	signer           PartyID
+	signature        []byte
+	primarySignature []byte
 
 	configSequence ConfigSequence
 	txCount        uint64
 }
 
 // NewSimpleBatchAttestationFragment creates a new, unsigned, SimpleBatchAttestationFragment.
-func NewSimpleBatchAttestationFragment(shard ShardID, primary PartyID, seq BatchSequence, digest []byte, signer PartyID, configSqn ConfigSequence, txCount uint64) *SimpleBatchAttestationFragment {
+func NewSimpleBatchAttestationFragment(shard ShardID, primary PartyID, seq BatchSequence, digest []byte, signer PartyID, configSqn ConfigSequence, txCount uint64, primarySignature []byte) *SimpleBatchAttestationFragment {
 	return &SimpleBatchAttestationFragment{
-		seq:            seq,
-		primary:        primary,
-		signer:         signer,
-		shard:          shard,
-		digest:         digest,
-		configSequence: configSqn,
-		txCount:        txCount,
+		seq:              seq,
+		primary:          primary,
+		signer:           signer,
+		shard:            shard,
+		digest:           digest,
+		configSequence:   configSqn,
+		txCount:          txCount,
+		primarySignature: primarySignature,
 	}
 }
 
@@ -74,6 +76,10 @@ func (s *SimpleBatchAttestationFragment) SetSignature(sig []byte) {
 	s.signature = sig
 }
 
+func (s *SimpleBatchAttestationFragment) PrimarySignature() []byte {
+	return s.primarySignature
+}
+
 func (s *SimpleBatchAttestationFragment) String() string {
 	return fmt.Sprintf("BAF: Signer: %d; %s; Config Seq: %d; TX Count: %d", s.signer, BatchIDToString(s), s.configSequence, s.txCount)
 }
@@ -87,9 +93,10 @@ type asn1BAF struct {
 	TXCount        *big.Int
 	Signer         int
 	Sig            []byte
+	PrimarySig     []byte
 }
 
-// Serialize marshals every field including the signature, using an auxiliary ASN1 struct and asn1.Marshal.
+// Serialize marshals every field including the signatures, using an auxiliary ASN1 struct and asn1.Marshal.
 func (s *SimpleBatchAttestationFragment) Serialize() []byte {
 	a := asn1BAF{
 		Shard:          int(s.shard),
@@ -100,6 +107,7 @@ func (s *SimpleBatchAttestationFragment) Serialize() []byte {
 		TXCount:        new(big.Int).SetUint64(uint64(s.txCount)),
 		Signer:         int(s.signer),
 		Sig:            s.signature,
+		PrimarySig:     s.primarySignature,
 	}
 	result, err := asn1.Marshal(a)
 	if err != nil {
@@ -108,7 +116,7 @@ func (s *SimpleBatchAttestationFragment) Serialize() []byte {
 	return result
 }
 
-// ToBeSigned marshals every field except the signature, using an auxiliary ASN1 struct and asn1.Marshal.
+// ToBeSigned marshals every field except the signatures, using an auxiliary ASN1 struct and asn1.Marshal.
 func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
 	a := asn1BAF{
 		Shard:          int(s.shard),
@@ -118,7 +126,8 @@ func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
 		ConfigSequence: new(big.Int).SetUint64(uint64(s.configSequence)),
 		TXCount:        new(big.Int).SetUint64(uint64(s.txCount)),
 		Signer:         int(s.signer),
-		Sig:            nil, // everything but the signature
+		Sig:            nil, // everything but the signatures
+		PrimarySig:     nil,
 	}
 	result, err := asn1.Marshal(a)
 	if err != nil {
@@ -127,7 +136,7 @@ func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
 	return result
 }
 
-// Deserialize unmarshalls every field including the signature, using an auxiliary ASN1 struct and asn1.Unmarshal.
+// Deserialize unmarshals every field including the signatures, using an auxiliary ASN1 struct and asn1.Unmarshal.
 func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
 	a := &asn1BAF{}
 	_, err := asn1.Unmarshal(bytes, a)
@@ -143,6 +152,12 @@ func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
 	s.txCount = uint64(a.TXCount.Uint64())
 	s.signer = PartyID(a.Signer)
 	s.signature = a.Sig
+	// Normalize empty slice to nil for primarySignature
+	if len(a.PrimarySig) == 0 {
+		s.primarySignature = nil
+	} else {
+		s.primarySignature = a.PrimarySig
+	}
 
 	return nil
 }

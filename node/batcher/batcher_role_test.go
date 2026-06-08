@@ -85,7 +85,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0, nil)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -116,7 +116,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 0)
+	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 0, nil)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -164,7 +164,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
+	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0, nil)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -250,7 +250,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0, nil)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -328,7 +328,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0, nil)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -392,7 +392,7 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return batchPuller.StopCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
+	batch = arma_types.NewSimpleBatch(0, 2, 0, reqs, 0, nil)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -562,7 +562,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
+	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0, nil)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -646,7 +646,7 @@ func TestResubmitPending(t *testing.T) {
 	stateProvider.GetLatestStateChanReturns(stateChan)
 	batcher.StateProvider = stateProvider
 
-	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0, nil)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -679,9 +679,9 @@ func TestResubmitPending(t *testing.T) {
 
 	ledger.RetrieveBatchByNumberReturns(batch)
 
-	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), 0, 0)
-	notMyBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID+1), 0, 0)
-	myBAFWithOtherPrimary := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary()+1, batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), 0, 0)
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), 0, 0, nil)
+	notMyBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID+1), 0, 0, nil)
+	myBAFWithOtherPrimary := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary()+1, batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), 0, 0, nil)
 
 	stateChan <- &state.State{
 		Shards: []state.ShardTerm{
@@ -740,7 +740,7 @@ func TestVerifyBatch(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 1)
 	reqs = append(reqs, req)
 
-	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0)
+	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0, nil)
 
 	batchPuller := &mocks.FakeBatchesPuller{}
 	batchChan := make(chan arma_types.Batch)
@@ -762,25 +762,25 @@ func TestVerifyBatch(t *testing.T) {
 		return ledger.AppendCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 2, 0, reqs, 0)
+	batch = arma_types.NewSimpleBatch(0, 2, 0, reqs, 0, nil)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(1, 1, 0, reqs, 0)
+	batch = arma_types.NewSimpleBatch(1, 1, 0, reqs, 0, nil)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 2, reqs, 0)
+	batch = arma_types.NewSimpleBatch(0, 1, 2, reqs, 0, nil)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 3
 	}, 10*time.Second, 10*time.Millisecond)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 0, nil, 0)
+	batch = arma_types.NewSimpleBatch(0, 1, 0, nil, 0, nil)
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 4
@@ -793,7 +793,7 @@ func TestVerifyBatch(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 	verifier.VerifyBatchedRequestsReturns(nil)
 
-	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 1) // config seq mismatch, log as warning but append anyway
+	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 1, nil) // config seq mismatch, log as warning but append anyway
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
@@ -802,8 +802,8 @@ func TestVerifyBatch(t *testing.T) {
 
 func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger *flogging.FabricLogger) *batcher.BatcherRole {
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64) arma_types.BatchAttestationFragment {
-		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, 0, txCount)
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64, primarySignature []byte) arma_types.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, batcherID, 0, txCount, nil)
 	})
 
 	batchersInfo := make([]config.BatcherInfo, len(batchers))

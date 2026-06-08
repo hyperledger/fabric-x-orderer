@@ -228,7 +228,7 @@ func createTestBatches(t *testing.T, shardCount int, batchNum int, primaryID typ
 		var batchesForShard []types.Batch
 		for seq := types.BatchSequence(0); seq < types.BatchSequence(batchNum); seq++ {
 			buff := generateRandomBytes(t, 1024)
-			batch := types.NewSimpleBatch(shardID, primaryID, seq, [][]byte{buff}, 0)
+			batch := types.NewSimpleBatch(shardID, primaryID, seq, [][]byte{buff}, 0, nil)
 			digestsSet[string(batch.Digest())] = true
 			batchesForShard = append(batchesForShard, batch)
 		}

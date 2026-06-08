@@ -664,7 +664,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	require.Equal(t, types.PartyID(1), baf.BAF.Primary())
 	require.Equal(t, types.BatchSequence(0), baf.BAF.Seq())
 
-	baf2 := types.NewSimpleBatchAttestationFragment(shardID, 1, 0, baf.BAF.Digest(), 2, 0, 0)
+	baf2 := types.NewSimpleBatchAttestationFragment(shardID, 1, 0, baf.BAF.Digest(), 2, 0, 0, nil)
 
 	for i := range numParties {
 		require.Equal(t, types.PartyID(1), batchers[i].GetPrimaryID())

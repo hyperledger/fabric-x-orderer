@@ -14,7 +14,7 @@ import (
 )
 
 func TestNewSimpleBatch(t *testing.T) {
-	b1 := types.NewSimpleBatch(2, 3, 1, nil, 4)
+	b1 := types.NewSimpleBatch(2, 3, 1, nil, 4, nil)
 	assert.NotNil(t, b1)
 	assert.Equal(t, types.BatchSequence(1), b1.Seq())
 	assert.Equal(t, types.ShardID(2), b1.Shard())
@@ -24,7 +24,7 @@ func TestNewSimpleBatch(t *testing.T) {
 	assert.Len(t, b1.Digest(), 32)
 	assert.Equal(t, "Sh,Pr,Sq,Dg: <2,3,1,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855>", types.BatchIDToString(b1))
 
-	b2 := types.NewSimpleBatch(2, 3, 1, [][]byte{{1, 2}, {3, 4}}, 5)
+	b2 := types.NewSimpleBatch(2, 3, 1, [][]byte{{1, 2}, {3, 4}}, 5, nil)
 	assert.NotNil(t, b2)
 	assert.Equal(t, types.BatchSequence(1), b2.Seq())
 	assert.Equal(t, types.ShardID(2), b2.Shard())

@@ -137,7 +137,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 				Pending: []types.BatchAttestationFragment{
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0, nil)
 						baf.SetSignature([]byte{}) // Set empty signature to match deserialization behavior
 						return baf
 					}(),
@@ -154,17 +154,17 @@ func TestStateSerializeDeserialize(t *testing.T) {
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 2}},
 				Pending: []types.BatchAttestationFragment{
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(2), []byte{4, 5, 6}, types.PartyID(3), 1, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(2), []byte{4, 5, 6}, types.PartyID(3), 1, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(3), types.BatchSequence(3), []byte{7, 8, 9}, types.PartyID(1), 2, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(3), types.BatchSequence(3), []byte{7, 8, 9}, types.PartyID(1), 2, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
@@ -181,7 +181,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 				Pending: []types.BatchAttestationFragment{
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(5), []byte{11, 22, 33}, types.PartyID(2), 5, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(5), []byte{11, 22, 33}, types.PartyID(2), 5, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
@@ -207,7 +207,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 				Pending: []types.BatchAttestationFragment{
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(10), []byte{44, 55, 66}, types.PartyID(2), 3, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(10), []byte{44, 55, 66}, types.PartyID(2), 3, 0, nil)
 						baf.SetSignature([]byte{111, 222, 233})
 						return baf
 					}(),
@@ -224,32 +224,32 @@ func TestStateSerializeDeserialize(t *testing.T) {
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 				Pending: []types.BatchAttestationFragment{
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1}, types.PartyID(2), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1}, types.PartyID(2), 0, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(2), []byte{2}, types.PartyID(3), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(2), []byte{2}, types.PartyID(3), 0, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(3), types.BatchSequence(3), []byte{3}, types.PartyID(1), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(3), types.BatchSequence(3), []byte{3}, types.PartyID(1), 0, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(4), []byte{4}, types.PartyID(2), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(4), []byte{4}, types.PartyID(2), 0, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(5), []byte{5}, types.PartyID(3), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(5), []byte{5}, types.PartyID(3), 0, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
 					func() types.BatchAttestationFragment {
-						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(3), types.BatchSequence(6), []byte{6}, types.PartyID(1), 0, 0)
+						baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(3), types.BatchSequence(6), []byte{6}, types.PartyID(1), 0, 0, nil)
 						baf.SetSignature([]byte{})
 						return baf
 					}(),
@@ -316,12 +316,12 @@ func TestStateString(t *testing.T) {
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 		AppContext: make([]byte, 64),
 		Pending: []types.BatchAttestationFragment{
-			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1}, types.PartyID(2), 0, 0),
-			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), []byte{2}, types.PartyID(2), 0, 0),
-			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), []byte{3}, types.PartyID(2), 0, 0),
-			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(4), []byte{4}, types.PartyID(2), 0, 0),
-			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(5), []byte{5}, types.PartyID(2), 0, 0),
-			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(6), []byte{6}, types.PartyID(2), 0, 0),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1}, types.PartyID(2), 0, 0, nil),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(2), []byte{2}, types.PartyID(2), 0, 0, nil),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(3), []byte{3}, types.PartyID(2), 0, 0, nil),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(4), []byte{4}, types.PartyID(2), 0, 0, nil),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(5), []byte{5}, types.PartyID(2), 0, 0, nil),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(6), []byte{6}, types.PartyID(2), 0, 0, nil),
 		},
 
 		Complaints: []consensus_state.Complaint{
@@ -392,7 +392,7 @@ func TestControlEventSerialization(t *testing.T) {
 	assert.Equal(t, ce, ce2)
 
 	// Serialization and deserialization of ControlEvent with BAF
-	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0)
+	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0, nil)
 	baf.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf}
 
@@ -472,7 +472,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 
 	// Update state with a valid BAF
-	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0)
+	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0, nil)
 	baf.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf}
 	expectedState.Pending = append(expectedState.Pending, baf)
@@ -485,7 +485,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 
 	// Handle BAF with invalid Shard
-	baf2 := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(3), 0, 0)
+	baf2 := types.NewSimpleBatchAttestationFragment(types.ShardID(2), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(3), 0, 0, nil)
 	baf2.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf2}
 
@@ -514,7 +514,7 @@ func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 
 	assert.Len(t, state.Complaints, 0)
 
-	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0))
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0, nil))
 
 	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 0, logger)
 
@@ -524,9 +524,9 @@ func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 
 	assert.Len(t, state.Pending, 0)
 
-	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 1, 0))
-	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 2, 0))
-	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 3, 0))
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 1, 0, nil))
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 2, 0, nil))
+	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 3, 0, nil))
 
 	state.Complaints = append(state.Complaints, consensus_state.Complaint{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2, ConfigSeq: 1})
 	state.Complaints = append(state.Complaints, consensus_state.Complaint{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2, ConfigSeq: 2})

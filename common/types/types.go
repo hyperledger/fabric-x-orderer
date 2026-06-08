@@ -58,6 +58,7 @@ type BatchAttestationFragment interface {
 	Shard() ShardID
 	Signer() PartyID
 	Signature() []byte
+	PrimarySignature() []byte
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error
@@ -70,6 +71,7 @@ type Batch interface {
 	BatchID
 	Requests() BatchedRequests
 	ConfigSequence() ConfigSequence
+	PrimarySignature() []byte
 }
 
 type AssemblerConsensusPosition struct {

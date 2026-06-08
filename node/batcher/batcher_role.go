@@ -79,7 +79,7 @@ type BAFSender interface {
 
 // BAFCreator creates a baf
 type BAFCreator interface {
-	CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte, txCount uint64) types.BatchAttestationFragment
+	CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte, txCount uint64, primarySignature []byte) types.BatchAttestationFragment
 }
 
 type BatchLedgerWriter interface {
@@ -341,13 +341,13 @@ func (b *BatcherRole) runPrimary() {
 			break
 		}
 
-		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest, uint64(len(currentBatch)))
+		baf := b.BAFCreator.CreateBAF(b.seq, b.ID, b.Shard, digest, uint64(len(currentBatch)), nil)
 
 		// After the batch is appended to the ledger the batcher sends the BAF to the consenters
 		// (this BAF is a declaration that the batch is stored in the ledger)
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
-		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch)
+		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch) // TODO add primary's signature to appended batch
 
 		sendBAFDone := make(chan struct{})
 		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
@@ -424,7 +424,7 @@ func (b *BatcherRole) runSecondary() {
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests)
-			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)))
+			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
 			ctx, sendBafCancel := context.WithCancel(b.stopCtx)
@@ -476,5 +476,6 @@ func (b *BatcherRole) verifyBatch(batch types.Batch) error {
 	if err := b.BatchedRequestsVerifier.VerifyBatchedRequests(batch.Requests()); err != nil {
 		return errors.Errorf("failed verifying requests for batch seq %d; err: %v", b.seq, err)
 	}
+	// TODO verify primary's signature
 	return nil
 }

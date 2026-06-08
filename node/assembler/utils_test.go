@@ -11,7 +11,7 @@ import (
 )
 
 func createTestBatch(shard types.ShardID, primary types.PartyID, seq types.BatchSequence, req []byte) types.Batch {
-	return types.NewSimpleBatch(shard, primary, seq, types.BatchedRequests{req}, 0)
+	return types.NewSimpleBatch(shard, primary, seq, types.BatchedRequests{req}, 0, nil)
 }
 
 // createTestBatchWithSize creates a simple batch including requests with given size
@@ -30,9 +30,9 @@ func createTestBatchWithSize(shard types.ShardID, primary types.PartyID, seq typ
 	for _, requestSize := range requestsBytesSize {
 		requests = append(requests, make([]byte, requestSize))
 	}
-	return types.NewSimpleBatch(shard, primary, seq, requests, 0)
+	return types.NewSimpleBatch(shard, primary, seq, requests, 0, nil)
 }
 
 func createTestBatchId(shard types.ShardID, primary types.PartyID, seq types.BatchSequence, req []byte) types.BatchID {
-	return types.NewSimpleBatch(shard, primary, seq, types.BatchedRequests{req}, 0)
+	return types.NewSimpleBatch(shard, primary, seq, types.BatchedRequests{req}, 0, nil)
 }

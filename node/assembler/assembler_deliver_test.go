@@ -64,7 +64,7 @@ func TestAssembler_SoftStopAndPull(t *testing.T) {
 	batchCount := 3
 	for i := 0; i < batchCount; i++ {
 		// send batch and decision from party 1 on shard 0
-		batch := types.NewSimpleBatch(0, 2, types.BatchSequence(i), types.BatchedRequests{[]byte{1}}, 0)
+		batch := types.NewSimpleBatch(0, 2, types.BatchSequence(i), types.BatchedRequests{[]byte{1}}, 0, nil)
 		batchersStubShard0[0].SetNextBatch(batch)
 		oba := obaCreator.Append(batch, types.DecisionNum(i+1), 0, 1)
 		consenterStub.SetNextDecision(oba)
@@ -118,7 +118,7 @@ func TestAssemblerDeliver_WithMTLS_success(t *testing.T) {
 	batchCount := 3
 	for i := 0; i < batchCount; i++ {
 		// send batch and decision from party 1 on shard 0
-		batch := types.NewSimpleBatch(0, 2, types.BatchSequence(i), types.BatchedRequests{[]byte{1}}, 0)
+		batch := types.NewSimpleBatch(0, 2, types.BatchSequence(i), types.BatchedRequests{[]byte{1}}, 0, nil)
 		batchersStubShard0[0].SetNextBatch(batch)
 		oba := obaCreator.Append(batch, types.DecisionNum(i+1), 0, 1)
 		consenterStub.SetNextDecision(oba)

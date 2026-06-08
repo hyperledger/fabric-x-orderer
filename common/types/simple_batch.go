@@ -7,22 +7,24 @@ SPDX-License-Identifier: Apache-2.0
 package types
 
 type SimpleBatch struct {
-	shard          ShardID
-	primary        PartyID
-	seq            BatchSequence
-	digest         []byte
-	requests       BatchedRequests
-	configSequence ConfigSequence
+	shard            ShardID
+	primary          PartyID
+	seq              BatchSequence
+	digest           []byte
+	requests         BatchedRequests
+	configSequence   ConfigSequence
+	primarySignature []byte
 }
 
-func NewSimpleBatch(shard ShardID, primary PartyID, seq BatchSequence, requests BatchedRequests, configSequence ConfigSequence) *SimpleBatch {
+func NewSimpleBatch(shard ShardID, primary PartyID, seq BatchSequence, requests BatchedRequests, configSequence ConfigSequence, primarySignature []byte) *SimpleBatch {
 	return &SimpleBatch{
-		seq:            seq,
-		shard:          shard,
-		primary:        primary,
-		requests:       requests,
-		digest:         requests.Digest(),
-		configSequence: configSequence,
+		seq:              seq,
+		shard:            shard,
+		primary:          primary,
+		requests:         requests,
+		digest:           requests.Digest(),
+		configSequence:   configSequence,
+		primarySignature: primarySignature,
 	}
 }
 
@@ -32,3 +34,4 @@ func (sb *SimpleBatch) Primary() PartyID               { return sb.primary }
 func (sb *SimpleBatch) Shard() ShardID                 { return sb.shard }
 func (sb *SimpleBatch) Seq() BatchSequence             { return sb.seq }
 func (sb *SimpleBatch) ConfigSequence() ConfigSequence { return sb.configSequence }
+func (sb *SimpleBatch) PrimarySignature() []byte       { return sb.primarySignature }

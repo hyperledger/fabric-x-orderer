@@ -537,7 +537,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 // It creates a BAF using the provided private key and batcher ID, submits it to the first consensus node,
 // and then polls all consensus node ledgers to verify they reach the expected height.
 func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, privateKey *ecdsa.PrivateKey, batcherID types.PartyID, configSeqToSend types.ConfigSequence, expectedBlockNumber uint64, expectedError string) {
-	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), batcherID, 1, digest123, 2, 0, configSeqToSend, 1)
+	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), batcherID, 1, digest123, 2, 0, configSeqToSend, 1, nil)
 	require.NoError(t, err)
 	controlEvent := &state.ControlEvent{BAF: baf}
 	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
