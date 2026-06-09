@@ -13,7 +13,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
@@ -223,7 +222,7 @@ func assertBlocksDirOnlyFileWithGenesisBlock(t *testing.T, ledgerDir string, gen
 
 func assertBlockStorePostReset(t *testing.T, store *BlockStore, originallyCommittedBlocks []*common.Block) {
 	bcInfo, _ := store.GetBlockchainInfo()
-	t.Logf("bcInfo = %s", spew.Sdump(bcInfo))
+	t.Logf("bcInfo = %+v", bcInfo)
 	require.True(
 		t, proto.Equal(
 			&common.BlockchainInfo{
