@@ -68,7 +68,9 @@ func (ac *AuthCommMgr) Remote(id uint64) (*RemoteContext, error) {
 }
 
 func (ac *AuthCommMgr) Configure(members []RemoteNode) {
-	ac.Logger.Infof("Configuring communication module with nodes:%v", members)
+	for _, node := range members {
+		ac.Logger.Infof("Configuring communication module with node - ID: %d, endpoint: %s", node.ID, node.Endpoint)
+	}
 
 	ac.Lock.Lock()
 	defer ac.Lock.Unlock()
