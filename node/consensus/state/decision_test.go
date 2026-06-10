@@ -679,6 +679,9 @@ func TestCreateBlockToAppendFromDecision(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			block := CreateBlockToAppendFromDecision(tt.blockNum, tt.proposal, tt.signatures, tt.prevHash, tt.lastConfig)
 			tt.validateBlock(t, block, tt.blockNum, tt.proposal, tt.signatures, tt.prevHash, tt.lastConfig)
+			index, err := GetLastConfigIndexFromConsenterBlock(block)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.lastConfig, index)
 		})
 	}
 }

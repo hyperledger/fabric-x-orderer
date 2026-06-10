@@ -13,9 +13,8 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/pkg/errors"
-
-	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 // BFTHeaderReceiver receives a stream of blocks from an orderer, where each block contains a header and metadata.
@@ -34,6 +33,7 @@ type BFTHeaderReceiver struct {
 	endpoint               string
 	client                 orderer.AtomicBroadcast_DeliverClient
 	updatableBlockVerifier UpdatableBlockVerifier
+	configBlockOps         utils.ConfigBlockOperations
 
 	// A block with Header & Metadata, without Data (i.e. lastHeader.Data==nil); except from config blocks, which are full.
 	lastHeader *common.Block
@@ -52,6 +52,7 @@ func NewBFTHeaderReceiver(
 	endpoint string,
 	client orderer.AtomicBroadcast_DeliverClient,
 	updatableBlockVerifier UpdatableBlockVerifier,
+	configBlockOps utils.ConfigBlockOperations,
 	previousReceiver *BFTHeaderReceiver,
 	logger *flogging.FabricLogger,
 ) *BFTHeaderReceiver {
@@ -61,6 +62,7 @@ func NewBFTHeaderReceiver(
 		endpoint:               endpoint,
 		client:                 client,
 		updatableBlockVerifier: updatableBlockVerifier.Clone(),
+		configBlockOps:         configBlockOps,
 		logger:                 logger,
 	}
 
@@ -112,7 +114,7 @@ func (hr *BFTHeaderReceiver) DeliverHeaders() {
 		case *orderer.DeliverResponse_Block:
 			blockNum := t.Block.Header.Number
 
-			if !protoutil.IsConfigBlock(t.Block) { // normal blocks with block.Data==nil
+			if !hr.configBlockOps.IsConfigBlock(t.Block) { // normal blocks with block.Data==nil
 				err := hr.updatableBlockVerifier.VerifyBlockAttestation(t.Block)
 				if err != nil {
 					hr.logger.Warningf("[%s][%s] Last block attestation verification failed, blockNum [%d], err: %s", hr.chainID, hr.endpoint, blockNum, err)

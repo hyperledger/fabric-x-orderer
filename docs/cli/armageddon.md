@@ -97,10 +97,10 @@ Submit txs to routers and verify the submission
 Flags:
   --help                       Show context-sensitive help (also try --help-long
                                and --help-man).
-  --config=CONFIG              The user configuration needed to connection with
+  --config=CONFIG              The user configuration needed to connect with
                                routers and assemblers
   --transactions=TRANSACTIONS  The number of transactions to be sent
-  --rate=RATE                  The rate specify the number of transactions per
+  --rate=RATE                  The rate specifies the number of transactions per
                                second to be sent
   --txSize=512                 The required transaction size in bytes
 ```
@@ -115,7 +115,7 @@ Submit txs to routers and verify the routers have received the txs
 Flags:
   --help                       Show context-sensitive help (also try --help-long
                                and --help-man).
-  --config=CONFIG              The user configuration needed to connection with
+  --config=CONFIG              The user configuration needed to connect with
                                routers
   --transactions=TRANSACTIONS  The number of transactions to be sent
   --rate=RATE                  The rate specifies the number of transactions
@@ -134,7 +134,7 @@ Pull txs from some assembler and report statistics
 Flags:
   --help            Show context-sensitive help (also try --help-long and
                     --help-man).
-  --config=CONFIG   The user configuration needed to connection with assemblers
+  --config=CONFIG   The user configuration needed to connect with assemblers
   --expectedTxs=-1  The expected number of transactions the assembler should
                     received
   --output="."      The output directory in which to place statistics file

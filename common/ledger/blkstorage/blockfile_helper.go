@@ -14,7 +14,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
@@ -81,7 +80,7 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 		latestFileNumber:   lastFileNum,
 		noBlockFiles:       lastFileNum == 0 && numBlocksInFile == 0,
 	}
-	logger.Debugf("blockfilesInfo constructed from file system = %s", spew.Sdump(blkfilesInfo))
+	logger.Debugf("blockfilesInfo constructed from file system = %+v", blkfilesInfo)
 	return blkfilesInfo, nil
 }
 

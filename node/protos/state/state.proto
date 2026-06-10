@@ -1,0 +1,36 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+package state;
+
+option go_package = "github.com/hyperledger/fabric-x-orderer/node/protos/state";
+
+// ShardTerm represents a shard and its term
+message ShardTerm {
+  uint32 shard = 1;
+  uint64 term = 2;
+}
+
+// Complaint represents a complaint about a batcher
+message Complaint {
+  uint64 config_seq = 1;
+  uint32 shard = 2;
+  uint64 term = 3;
+  uint32 signer = 4;
+  bytes signature = 5;
+  string reason = 6;
+}
+
+// State represents the state of the consensus
+message State {
+  uint32 number_of_parties = 1;
+  repeated ShardTerm shards = 2; // The different shards and their current terms
+  repeated bytes pending = 3;  // Pending batch attestation fragments received by consenters from batchers
+  repeated Complaint complaints = 4; // Complaints received by consenters from batchers
+  bytes app_context = 5; // Auxiliary data that may be served as context to the application
+}

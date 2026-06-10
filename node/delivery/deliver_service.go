@@ -14,16 +14,15 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
-	"github.com/hyperledger/fabric/common/deliver"
-	"github.com/hyperledger/fabric/common/policies"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"google.golang.org/protobuf/proto"
 )
 
 // DeliverService is a map of a channel name string to a ledger.
-// This is usefull in the batcher where each batcher holds a ledger for each respective primary.
-// Shard+Primary is called "partition".
 type DeliverService map[string]blockledger.Reader
 
 func (d DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -39,6 +38,7 @@ func (d DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) er
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
 			return time.Now().Add(time.Hour * 365 * 24)
 		},
+		ConfigBlockOps: &state.ConsenterConfigBlockOperations{},
 	}
 
 	return handler.Handle(context.Background(), &deliver.Server{

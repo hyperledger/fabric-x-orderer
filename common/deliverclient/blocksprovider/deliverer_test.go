@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 )
 
@@ -142,6 +143,7 @@ var _ = ginkgo.Describe("CFT-Deliverer", func() {
 			DoneC:                           make(chan struct{}),
 			Signer:                          fakeSigner,
 			DeliverStreamer:                 fakeDeliverStreamer,
+			ConfigBlockOps:                  &utils.CommonConfigBlockOperations{},
 			EndpointsExtractor:              fakeEndpointsExtractor,
 			Logger:                          flogging.MustGetLogger("blocksprovider"),
 			TLSCertHash:                     []byte("tls-cert-hash"),

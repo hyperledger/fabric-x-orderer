@@ -122,7 +122,9 @@ func newBlockPuller(
 		Dialer:              stdDialer,
 	}
 
-	logger.Infof("Built new block puller (target height detector) with endpoints: %+v", endpoints)
+	for _, endpoint := range endpoints {
+		logger.Infof("Built new block puller (target height detector) with endpoint: %s", endpoint.Endpoint)
+	}
 
 	return bp, nil
 }

@@ -12,16 +12,15 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
-	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/common/deliver"
-
-	"github.com/hyperledger/fabric/common/policies"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -46,6 +45,7 @@ func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverSe
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
 			return time.Now().Add(time.Hour * 365 * 24)
 		},
+		ConfigBlockOps: &utils.CommonConfigBlockOperations{},
 	}
 
 	return handler.Handle(stream.Context(), &deliver.Server{

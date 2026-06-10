@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
@@ -57,6 +58,7 @@ func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverS
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
 			return time.Now().Add(time.Hour * 365 * 24)
 		},
+		ConfigBlockOps: &utils.CommonConfigBlockOperations{},
 	}
 
 	policyChecker := func(env *common.Envelope, channelID string) error {

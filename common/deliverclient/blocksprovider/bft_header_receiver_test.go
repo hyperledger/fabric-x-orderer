@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider/fake"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
 func TestBftHeaderReceiver_NoBlocks_RecvError(t *testing.T) {
@@ -34,7 +35,7 @@ func TestBftHeaderReceiver_NoBlocks_RecvError(t *testing.T) {
 	streamClientMock.CloseSendReturns(nil)
 
 	hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
-		fakeBlockVerifier, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+		fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
 	assert.NotNil(t, hr)
 	assert.False(t, hr.IsStarted())
 	assert.False(t, hr.IsStopped())
@@ -63,7 +64,7 @@ func TestBftHeaderReceiver_BadStatus(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
-			fakeBlockVerifier, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+			fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
 		assert.NotNil(t, hr)
 
 		hr.DeliverHeaders() // it will get a bad status and exit
@@ -84,7 +85,7 @@ func TestBftHeaderReceiver_NilResponse(t *testing.T) {
 	streamClientMock.CloseSendReturns(nil)
 
 	hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
-		fakeBlockVerifier, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+		fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
 	assert.NotNil(t, hr)
 
 	hr.DeliverHeaders() // it will get a bad status and exit
@@ -101,7 +102,7 @@ func TestBftHeaderReceiver_WithBlocks_Renew(t *testing.T) {
 	fakeBlockVerifier.CloneReturns(fakeBlockVerifier)
 	streamClientMock := &fake.DeliverClient{}
 	hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
-		fakeBlockVerifier, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+		fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
 
 	seqCh := make(chan uint64)
 	streamClientMock.RecvCalls(
@@ -153,7 +154,7 @@ func TestBftHeaderReceiver_WithBlocks_Renew(t *testing.T) {
 	fakeBlockVerifier = &fake.UpdatableBlockVerifier{}
 	streamClientMock = &fake.DeliverClient{}
 	hr2 := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
-		fakeBlockVerifier, hr, flogging.MustGetLogger("test.BFTHeaderReceiver.2"))
+		fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, hr, flogging.MustGetLogger("test.BFTHeaderReceiver.2"))
 	assert.False(t, hr2.IsStarted())
 	assert.False(t, hr2.IsStopped())
 	bNum, bTime, err = hr2.LastBlockNum()
@@ -168,7 +169,7 @@ func TestBftHeaderReceiver_WithBlocks_StopOnVerificationFailure(t *testing.T) {
 	fakeBlockVerifier.CloneReturns(fakeBlockVerifier)
 	streamClientMock := &fake.DeliverClient{}
 	hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666",
-		streamClientMock, fakeBlockVerifier, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+		streamClientMock, fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
 
 	seqCh := make(chan uint64)
 	goodSig := uint32(1)
@@ -227,7 +228,7 @@ func TestBftHeaderReceiver_WithBlocks_ConfigVerification(t *testing.T) {
 	fakeBlockVerifier.CloneReturns(fakeBlockVerifier)
 	streamClientMock := &fake.DeliverClient{}
 	hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
-		fakeBlockVerifier, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+		fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
 
 	seqCh := make(chan uint64)
 	streamClientMock.RecvCalls(
@@ -291,7 +292,7 @@ func TestBftHeaderReceiver_VerifyOnce(t *testing.T) {
 	fakeBlockVerifier.CloneReturns(fakeBlockVerifier)
 	streamClientMock := &fake.DeliverClient{}
 	hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
-		fakeBlockVerifier, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+		fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
 
 	seqCh := make(chan uint64)
 	goodSig := uint32(1)

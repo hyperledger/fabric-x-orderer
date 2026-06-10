@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
@@ -73,7 +74,18 @@ func CreateSignerForUser(userMspDir string) (identity.SignerSerializer, error) {
 		return nil, fmt.Errorf("failed to get mspID from user msp dir: %s, err: %v", userMspDir, err)
 	}
 	keyPath := filepath.Join(userMspDir, "keystore", "priv_sk")
-	certPath := filepath.Join(userMspDir, "signcerts", "sign-cert.pem")
+	mspSignCertPath := filepath.Join(userMspDir, "signcerts")
+	var certPath string
+	files, err := os.ReadDir(mspSignCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading directory %s", mspSignCertPath)
+	}
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".pem") {
+			certPath = filepath.Join(mspSignCertPath, file.Name())
+			break
+		}
+	}
 	signer, err := NewTestSigner(keyPath, certPath, mspID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get default signing identity: %v", err)

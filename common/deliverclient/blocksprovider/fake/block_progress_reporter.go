@@ -84,6 +84,8 @@ func (fake *BlockProgressReporter) BlockProgressReturnsOnCall(i int, result1 uin
 func (fake *BlockProgressReporter) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.blockProgressMutex.RLock()
+	defer fake.blockProgressMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

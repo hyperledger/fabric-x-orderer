@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -93,6 +94,7 @@ type Handler struct {
 	TimeWindow          time.Duration
 	BindingInspector    Inspector
 	Metrics             *Metrics
+	ConfigBlockOps      utils.ConfigBlockOperations
 }
 
 //go:generate counterfeiter -o mock/receiver.go -fake-name Receiver . Receiver
@@ -140,7 +142,7 @@ func ExtractChannelHeaderCertHash(msg proto.Message) []byte {
 }
 
 // NewHandler creates an implementation of the Handler interface.
-func NewHandler(cm ChainManager, timeWindow time.Duration, mutualTLS bool, metrics *Metrics, expirationCheckDisabled bool) *Handler {
+func NewHandler(cm ChainManager, timeWindow time.Duration, mutualTLS bool, metrics *Metrics, expirationCheckDisabled bool, configBlockOps utils.ConfigBlockOperations) *Handler {
 	expirationCheck := crypto.ExpiresAt
 	if expirationCheckDisabled {
 		expirationCheck = noExpiration
@@ -151,6 +153,7 @@ func NewHandler(cm ChainManager, timeWindow time.Duration, mutualTLS bool, metri
 		BindingInspector:    InspectorFunc(NewBindingInspector(mutualTLS, ExtractChannelHeaderCertHash)),
 		Metrics:             metrics,
 		ExpirationCheckFunc: expirationCheck,
+		ConfigBlockOps:      configBlockOps,
 	}
 }
 
@@ -335,7 +338,7 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 		// Data blocks carry nil data for block attestations.
 		// Never mutate the block received from the iterator as it is from a cache.
 		block2send := block
-		if seekInfo.ContentType == ab.SeekInfo_HEADER_WITH_SIG && !protoutil.IsConfigBlock(block) {
+		if seekInfo.ContentType == ab.SeekInfo_HEADER_WITH_SIG && !h.ConfigBlockOps.IsConfigBlock(block) {
 			block2send = &cb.Block{
 				Header:   block.Header,
 				Metadata: block.Metadata,

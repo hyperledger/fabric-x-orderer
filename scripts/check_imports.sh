@@ -8,7 +8,7 @@ set -euo pipefail
 
 # Check that protoutil is not imported from fabric
 FABRIC_PROTOUTIL="github.com/hyperledger/fabric/protoutil"
-EXCLUDED="^vendor/|node/delivery/deliver_service.go|node/batcher/batcher_deliver_service.go|node/comm/util.go"
+EXCLUDED="^vendor/"
 
 CHECK=$(git diff --name-only --diff-filter=ACMRTUXB origin/main...HEAD || true)
 [[ -z "$CHECK" ]] && CHECK=$(git diff-tree --no-commit-id --name-only --diff-filter=ACMRTUXB -r HEAD^..HEAD)

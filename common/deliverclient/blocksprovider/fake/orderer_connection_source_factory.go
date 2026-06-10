@@ -92,6 +92,8 @@ func (fake *OrdererConnectionSourceFactory) CreateConnectionSourceReturnsOnCall(
 func (fake *OrdererConnectionSourceFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createConnectionSourceMutex.RLock()
+	defer fake.createConnectionSourceMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

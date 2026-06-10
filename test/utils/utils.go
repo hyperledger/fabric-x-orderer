@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -33,6 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -681,6 +683,9 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		m[uint64(i)] = 0
 	}
 
+	var blockVerificationAssistant *deliverclient.BlockVerificationAssistant
+	var err error
+
 	handler := func(block *common.Block) error {
 		if block == nil {
 			return errors.New("nil block")
@@ -724,7 +729,15 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 			return nil
 		}
 
-		if sigVerifier != nil && !isGenesisBlock {
+		if isGenesisBlock && sigVerifier != nil {
+			// create block verifier
+			blockVerificationAssistant, err = deliverclient.NewBlockVerificationAssistant(block, block, factory.GetDefault(), testutil.CreateLogger(t, int(partyID)))
+			if err != nil {
+				return errors.Wrap(err, "failed creating block verification assistant")
+			}
+		}
+
+		if !isGenesisBlock && sigVerifier != nil {
 			bhdr := &common.BlockHeader{Number: block.Header.Number, DataHash: block.Header.DataHash, PreviousHash: block.Header.PreviousHash}
 			sigsBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
 			md := &common.Metadata{}
@@ -757,6 +770,21 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 
 			if isConfigBlock {
 				log.Printf("configuration block %d partyID %d verified with %d signatures\n", block.Header.Number, partyID, verifiedSigns)
+			}
+
+			if blockVerificationAssistant == nil {
+				return errors.New("block verification assistant was never initialized, must start pulling from genesis block")
+			}
+			err = blockVerificationAssistant.VerifyBlock(block)
+			if err != nil {
+				return errors.Wrapf(err, "failed verifying block %d using the block verification assistant", block.Header.Number)
+			}
+
+			if isConfigBlock {
+				err = blockVerificationAssistant.UpdateConfig(block)
+				if err != nil {
+					return errors.Wrapf(err, "failed updating block verification assistant with config block %d", block.Header.Number)
+				}
 			}
 		}
 

@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
 )
 
@@ -144,6 +145,7 @@ func (*bftDelivererCreator) CreateBFTDeliverer(
 		Signer:                          signer,
 		DeliverStreamer:                 deliverStreamer,
 		CensorshipDetectorFactory:       censorshipDetectorFactory,
+		ConfigBlockOps:                  &state.ConsenterConfigBlockOperations{},
 		EndpointsExtractor:              endpointsExtractor,
 		Logger:                          logger,
 		InitialRetryInterval:            initialRetryInterval,

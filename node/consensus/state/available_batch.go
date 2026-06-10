@@ -99,7 +99,3 @@ func (ab *AvailableBatch) Deserialize(bytes []byte) error {
 func (ab *AvailableBatch) String() string {
 	return types.BatchIDToString(ab)
 }
-
-func NewAvailableBatchGenesis(genesisDigest []byte) *AvailableBatch {
-	return NewAvailableBatch(0, types.ShardIDConsensus, 0, genesisDigest)
-}

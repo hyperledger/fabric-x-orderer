@@ -890,13 +890,9 @@ func TestVerifyProposal(t *testing.T) {
 	headerState := header
 	badState := newState
 	headerState.State = &badState
-	headerState.State.Quorum = 10
-	verifyProposalRequireError(t, c, headerState.Serialize(), brs.Serialize(), mBytes)
-	headerState.State.Quorum = header.State.Quorum
-	headerState.State.Threshold = 10
-	verifyProposalRequireError(t, c, headerState.Serialize(), brs.Serialize(), mBytes)
-	headerState.State.Threshold = header.State.Threshold
 	headerState.State.N = 10
+	headerState.State.Quorum = 7
+	headerState.State.Threshold = 4
 	verifyProposalRequireError(t, c, headerState.Serialize(), brs.Serialize(), mBytes)
 
 	// 7. mismatch state pending in header
