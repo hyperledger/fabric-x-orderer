@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package synchronizer
 
 import (
+	"bytes"
 	"encoding/asn1"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
@@ -47,21 +48,13 @@ func (svc *SigVerifierCreator) SigVerifierFromConfig(configuration *common.Confi
 		return createErrorFunc(err), err
 	}
 
-	bftEnabled := bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
-	if !bftEnabled {
-		err := errors.New("consensus type is not BFT") // TODO: should I leave this?
-		return createErrorFunc(err), err
-	}
-
 	var consenters []*common.Consenter
-	// if bftEnabled {
 	cfg, ok := bundle.OrdererConfig()
 	if !ok {
 		err := errors.New("no orderer section in config block")
 		return createErrorFunc(err), err
 	}
 	consenters = cfg.Consenters()
-	// }
 
 	bsv := &BlockSigVerifier{
 		Policy:         policy,
@@ -88,20 +81,20 @@ type BlockSigVerifier struct {
 	ConfigBlockNum uint64
 }
 
-// Verify verifies a block's signatures using the verifier's policy.
-func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
-	sigsBytes := block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
+// Verify verifies a consenter block's signatures using the verifier's policy.
+func (v *BlockSigVerifier) Verify(consenterBlock *common.Block, verifyData bool) error {
+	sigsBytes := consenterBlock.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
 	sigs, err := state.BytesToDecisionSignatures(sigsBytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to deserialize signatures from metadata")
 	}
 
 	// Pre-calculate the header bytes for proposal signature
-	blockHeaderBytes := protoutil.BlockHeaderBytes(block.GetHeader())
+	blockHeaderBytes := protoutil.BlockHeaderBytes(consenterBlock.GetHeader())
 
 	// Pre-calculate orderer block metadata for proposal signature
-	proposalMetadata := block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
-	lastConfigIndex, err := state.GetLastConfigIndexFromConsenterBlock(block)
+	proposalMetadata := consenterBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]
+	lastConfigIndex, err := state.GetLastConfigIndexFromConsenterBlock(consenterBlock)
 	if err != nil {
 		return errors.Wrap(err, "failed to get last config index from consenter block")
 	}
@@ -114,7 +107,7 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 	var availableCommonBlocksHeaderBytes [][]byte
 	var ordererBlockMetadata [][]byte
 	if verifyData {
-		proposalBytes := block.Data.Data[0]
+		proposalBytes := consenterBlock.Data.Data[0]
 		proposal, err := state.BytesToProposal(proposalBytes)
 		if err != nil {
 			return errors.Wrap(err, "failed to deserialize proposal from block data")
@@ -150,7 +143,6 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 			}))
 		}
 	}
-	// TODO: shouldn't we check that the message contains the correct block header bytes and metadata?
 
 	signatureSets := make([][]*protoutil.SignedData, 0, len(hdr.AvailableCommonBlocks)+1)
 	for range len(hdr.AvailableCommonBlocks) + 1 {
@@ -218,21 +210,26 @@ func (v *BlockSigVerifier) Verify(block *common.Block, verifyData bool) error {
 			BlockHeader:          blockHeaderBytes,
 			OrdererBlockMetadata: proposalOrdererBlockMetadata,
 		}
+		marshaledComputedMsg := computedMsg.ASN1MarshalOrPanic()
+		if !bytes.Equal(marshaledComputedMsg, msgs[0]) {
+			v.Logger.Warnf("first signature msg with id %d does not match computed message", sig.ID)
+			continue
+		}
 		signatureSets[0] = append(signatureSets[0], &protoutil.SignedData{
 			Identity:  signerIdentity,
-			Data:      computedMsg.ASN1MarshalOrPanic(),
+			Data:      marshaledComputedMsg,
 			Signature: values[0],
 		})
 	}
 
 	if err := v.Policy.EvaluateSignedData(signatureSets[0]); err != nil {
-		return errors.Wrapf(err, "failed to evaluate signature set of the first (proposal) signature for block ID %d", block.GetHeader().GetNumber())
+		return errors.Wrapf(err, "failed to evaluate signature set of the first (proposal) signature for block ID %d", consenterBlock.GetHeader().GetNumber())
 	}
 
 	if verifyData {
 		for i := range len(hdr.AvailableCommonBlocks) {
 			if err := v.Policy.EvaluateSignedData(signatureSets[i+1]); err != nil {
-				return errors.Wrapf(err, "failed to evaluate signature set in index %d for block ID %d", i, block.GetHeader().GetNumber())
+				return errors.Wrapf(err, "failed to evaluate signature set in index %d for block ID %d", i, consenterBlock.GetHeader().GetNumber())
 			}
 		}
 	}
@@ -276,9 +273,13 @@ func (v *BlockSigVerifier) collectBlocksSignatures(msgs, values, blockHeaderByte
 			BlockHeader:          blockHeaderBytes[i],
 			OrdererBlockMetadata: ordererBlockMetadata[i],
 		}
+		marshaledComputedMsg := computedMsg.ASN1MarshalOrPanic()
+		if !bytes.Equal(marshaledComputedMsg, msg) {
+			return nil, errors.Errorf("signature msg in index %d with id %d does not match computed message", i, id)
+		}
 		signatureSet = append(signatureSet, &protoutil.SignedData{
 			Identity:  signerIdentity,
-			Data:      computedMsg.ASN1MarshalOrPanic(),
+			Data:      marshaledComputedMsg,
 			Signature: values[i],
 		})
 	}

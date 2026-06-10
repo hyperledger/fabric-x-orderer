@@ -157,23 +157,23 @@ func (c *ConsenterBlockVerifier) Clone() deliverclient.CloneableUpdatableBlockVe
 }
 
 // UpdateBlockHeader saves the last block header that was verified and handled successfully.
-func (c *ConsenterBlockVerifier) UpdateBlockHeader(block *common.Block) {
+func (c *ConsenterBlockVerifier) UpdateBlockHeader(consenterBlock *common.Block) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.lastBlockHeader = block.Header
+	c.lastBlockHeader = consenterBlock.Header
 }
 
 // UpdateConfig sets the config by which blocks are verified. It is assumed that this config block had already been
 // verified using the VerifyBlock method immediately prior to calling this method.
-// The configBlock parameter is a consenter decision block that contains an embedded Fabric config block.
-func (c *ConsenterBlockVerifier) UpdateConfig(configBlock *common.Block) error {
+// The consenterConfigBlock parameter is a consenter decision block that contains an embedded Fabric config block.
+func (c *ConsenterBlockVerifier) UpdateConfig(consenterConfigBlock *common.Block) error {
 	blockOps := &state.ConsenterConfigBlockOperations{}
-	configEnvelope, err := blockOps.ConfigFromBlock(configBlock)
+	configEnvelope, err := blockOps.ConfigFromBlock(consenterConfigBlock)
 	if err != nil {
 		return errors.Wrap(err, "failed to extract config from block")
 	}
 
-	configBlockNum, err := blockOps.ConfigBlockNumFromBlock(configBlock)
+	configBlockNum, err := blockOps.ConfigBlockNumFromBlock(consenterConfigBlock)
 	if err != nil {
 		return errors.Wrap(err, "failed to extract config block number from block")
 	}
@@ -190,103 +190,103 @@ func (c *ConsenterBlockVerifier) UpdateConfig(configBlock *common.Block) error {
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.lastBlockHeader = configBlock.Header
+	c.lastBlockHeader = consenterConfigBlock.Header
 	c.sigVerifierFunc = sigVerifierFunc
 
-	c.logger.Infof("Updated config successfully from consenter block %d", configBlock.Header.Number)
+	c.logger.Infof("Updated config successfully from consenter block %d", consenterConfigBlock.Header.Number)
 	return nil
 }
 
-// VerifyBlock checks block integrity and its relation to the chain, and verifies the signatures.
-func (c *ConsenterBlockVerifier) VerifyBlock(block *common.Block) error {
+// VerifyBlock checks consenter block integrity and its relation to the chain, and verifies the signatures.
+func (c *ConsenterBlockVerifier) VerifyBlock(consenterBlock *common.Block) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if err := c.verifyHeader(block); err != nil {
+	if err := c.verifyHeader(consenterBlock); err != nil {
 		return err
 	}
 
-	if err := c.verifyMetadata(block); err != nil {
+	if err := c.verifyMetadata(consenterBlock); err != nil {
 		return err
 	}
 
-	if block.Data == nil {
-		return errors.Errorf("block with id [%d] on channel [%s] does not have data", block.Header.Number, c.channelID)
+	if consenterBlock.Data == nil {
+		return errors.Errorf("block with id [%d] on channel [%s] does not have data", consenterBlock.Header.Number, c.channelID)
 	}
-	if len(block.Data.Data) == 0 {
-		return errors.Errorf("block with id [%d] on channel [%s] data length is zero", block.Header.Number, c.channelID)
+	if len(consenterBlock.Data.Data) == 0 {
+		return errors.Errorf("block with id [%d] on channel [%s] data length is zero", consenterBlock.Header.Number, c.channelID)
 	}
 	// TODO something like protoutil.VerifyTransactionsAreWellFormed that is called by the Fabric block verifier
 
 	// Verify that Header.DataHash is equal to the hash of block.Data
 	// This is to ensure that the header is consistent with the data carried by this block
-	dataHash := protoutil.ComputeBlockDataHash(block.Data)
-	if !bytes.Equal(dataHash, block.Header.DataHash) {
+	dataHash := protoutil.ComputeBlockDataHash(consenterBlock.Data)
+	if !bytes.Equal(dataHash, consenterBlock.Header.DataHash) {
 		return errors.Errorf("Header.DataHash is different from Hash(block.Data) for block with id [%d] on channel [%s]; Header: %s, Data: %s",
-			block.Header.Number, c.channelID, hex.EncodeToString(block.Header.DataHash), hex.EncodeToString(dataHash))
+			consenterBlock.Header.Number, c.channelID, hex.EncodeToString(consenterBlock.Header.DataHash), hex.EncodeToString(dataHash))
 	}
 
-	err := c.sigVerifierFunc(block, true)
+	err := c.sigVerifierFunc(consenterBlock, true)
 	if err != nil {
-		return errors.Wrapf(err, "failed to verify signatures of block with id [%d] on channel [%s]", block.Header.Number, c.channelID)
+		return errors.Wrapf(err, "failed to verify signatures of block with id [%d] on channel [%s]", consenterBlock.Header.Number, c.channelID)
 	}
 
-	c.lastBlockHeader = block.Header
+	c.lastBlockHeader = consenterBlock.Header
 
-	c.logger.Infof("verified block with id [%d] on channel [%s]", block.Header.Number, c.channelID)
+	c.logger.Infof("verified block with id [%d] on channel [%s]", consenterBlock.Header.Number, c.channelID)
 	return nil
 }
 
 // VerifyBlockAttestation does the same as VerifyBlock, except it assumes block.Data = nil. It therefore does not
 // compute the block.Data.Hash() and compare it to the block.Header.DataHash. This is used when the orderer
 // delivers a block with header & metadata only, as an attestation of block existence.
-func (c *ConsenterBlockVerifier) VerifyBlockAttestation(block *common.Block) error {
+func (c *ConsenterBlockVerifier) VerifyBlockAttestation(consenterBlock *common.Block) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if err := c.verifyHeader(block); err != nil {
+	if err := c.verifyHeader(consenterBlock); err != nil {
 		return err
 	}
 
-	if err := c.verifyMetadata(block); err != nil {
+	if err := c.verifyMetadata(consenterBlock); err != nil {
 		return err
 	}
 
-	err := c.sigVerifierFunc(block, false)
+	err := c.sigVerifierFunc(consenterBlock, false)
 	if err != nil {
-		return errors.Wrapf(err, "failed to verify signatures of block attestation with id [%d] on channel [%s]", block.Header.Number, c.channelID)
+		return errors.Wrapf(err, "failed to verify signatures of block attestation with id [%d] on channel [%s]", consenterBlock.Header.Number, c.channelID)
 	}
 
-	c.lastBlockHeader = block.Header
+	c.lastBlockHeader = consenterBlock.Header
 	return nil
 }
 
-func (c *ConsenterBlockVerifier) verifyMetadata(block *common.Block) error {
-	if block.Metadata == nil || len(block.Metadata.Metadata) < len(common.BlockMetadataIndex_name) {
-		return errors.Errorf("block with id [%d] on channel [%s] does not have metadata or contains too few entries", block.Header.Number, c.channelID)
+func (c *ConsenterBlockVerifier) verifyMetadata(consenterBlock *common.Block) error {
+	if consenterBlock.Metadata == nil || len(consenterBlock.Metadata.Metadata) < len(common.BlockMetadataIndex_name) {
+		return errors.Errorf("block with id [%d] on channel [%s] does not have metadata or contains too few entries", consenterBlock.Header.Number, c.channelID)
 	}
 
 	return nil
 }
 
-func (c *ConsenterBlockVerifier) verifyHeader(block *common.Block) error {
-	if block == nil {
+func (c *ConsenterBlockVerifier) verifyHeader(consenterBlock *common.Block) error {
+	if consenterBlock == nil {
 		return errors.Errorf("block must be different from nil, channel=%s", c.channelID)
 	}
-	if block.Header == nil {
+	if consenterBlock.Header == nil {
 		return errors.Errorf("invalid block, header must be different from nil, channel=%s", c.channelID)
 	}
 
 	expectedBlockNum := c.lastBlockHeader.Number + 1
-	if expectedBlockNum != block.Header.Number {
-		return errors.Errorf("expected block number is [%d] but actual block number inside block is [%d]", expectedBlockNum, block.Header.Number)
+	if expectedBlockNum != consenterBlock.Header.Number {
+		return errors.Errorf("expected block number is [%d] but actual block number inside block is [%d]", expectedBlockNum, consenterBlock.Header.Number)
 	}
 
 	lastBlockHeaderHash := protoutil.BlockHeaderHash(c.lastBlockHeader)
 
-	if !bytes.Equal(block.Header.PreviousHash, lastBlockHeaderHash) {
+	if !bytes.Equal(consenterBlock.Header.PreviousHash, lastBlockHeaderHash) {
 		return errors.Errorf("Header.PreviousHash of block [%d] is different from Hash(block.Header) of previous block, on channel [%s], received: %s, expected: %s",
-			block.Header.Number, c.channelID, hex.EncodeToString(block.Header.PreviousHash), hex.EncodeToString(lastBlockHeaderHash))
+			consenterBlock.Header.Number, c.channelID, hex.EncodeToString(consenterBlock.Header.PreviousHash), hex.EncodeToString(lastBlockHeaderHash))
 	}
 
 	return nil

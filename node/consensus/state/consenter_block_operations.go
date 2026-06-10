@@ -83,8 +83,11 @@ func (c *ConsenterConfigBlockOperations) ConfigFromBlock(block *common.Block) (*
 		return nil, err
 	}
 
-	// Now extract config from the Fabric block using common block operations
 	commonOps := &utils.CommonConfigBlockOperations{}
+	if !commonOps.IsConfigBlock(fabricConfigBlock) {
+		return nil, errors.New("Consenter decision block does not contain a config block")
+	}
+	// Now extract config from the Fabric block using common block operations
 	return commonOps.ConfigFromBlock(fabricConfigBlock)
 }
 
@@ -95,6 +98,11 @@ func (c *ConsenterConfigBlockOperations) ConfigBlockNumFromBlock(block *common.B
 	fabricConfigBlock, err := c.extractFabricConfigBlock(block)
 	if err != nil {
 		return 0, err
+	}
+
+	commonOps := &utils.CommonConfigBlockOperations{}
+	if !commonOps.IsConfigBlock(fabricConfigBlock) {
+		return 0, errors.New("Consenter decision block does not contain a config block")
 	}
 
 	if fabricConfigBlock.Header == nil {
