@@ -102,6 +102,8 @@ func (fake *VerifierFactory) CreateBlockVerifierReturnsOnCall(i int, result1 del
 func (fake *VerifierFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createBlockVerifierMutex.RLock()
+	defer fake.createBlockVerifierMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

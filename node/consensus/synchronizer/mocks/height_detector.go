@@ -185,6 +185,12 @@ func (fake *FakeHeightDetector) HeightsByEndpointsReturnsOnCall(i int, result1 m
 func (fake *FakeHeightDetector) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.closeMutex.RLock()
+	defer fake.closeMutex.RUnlock()
+	fake.genesisByEndpointsMutex.RLock()
+	defer fake.genesisByEndpointsMutex.RUnlock()
+	fake.heightsByEndpointsMutex.RLock()
+	defer fake.heightsByEndpointsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -158,12 +158,14 @@ func (m *BFTCensorshipMonitor) Monitor() {
 		m.logger.Debug("Stopping to monitor block and header fetching progress")
 	}()
 
+	m.mutex.Lock()
 	for i, ep := range m.fetchSources {
 		if i == m.blockSourceIndex {
 			continue
 		}
 		m.hdrRcvTrackers[ep.Address] = &headerReceiverTracker{}
 	}
+	m.mutex.Unlock()
 
 	for {
 		if err := m.launchHeaderReceivers(); err != nil {

@@ -13,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
-	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -61,29 +60,6 @@ func (a *ledgerInfoAdapter) LedgerHeight() (uint64, error) {
 
 func (a *ledgerInfoAdapter) GetCurrentBlockHash() ([]byte, error) {
 	return nil, errors.New("not implemented: never used in orderer")
-}
-
-//go:generate counterfeiter -o mocks/verifier_factory.go --fake-name VerifierFactory . VerifierFactory
-
-type VerifierFactory interface {
-	CreateBlockVerifier(
-		configBlock *cb.Block,
-		lastBlock *cb.Block,
-		cryptoProvider bccsp.BCCSP,
-		lg *flogging.FabricLogger,
-	) (deliverclient.CloneableUpdatableBlockVerifier, error)
-}
-
-type verifierCreator struct{}
-
-func (*verifierCreator) CreateBlockVerifier(
-	configBlock *cb.Block,
-	lastBlock *cb.Block,
-	cryptoProvider bccsp.BCCSP,
-	lg *flogging.FabricLogger,
-) (deliverclient.CloneableUpdatableBlockVerifier, error) {
-	updatableVerifier, err := deliverclient.NewBlockVerificationAssistant(configBlock, lastBlock, cryptoProvider, lg)
-	return updatableVerifier, err
 }
 
 //go:generate counterfeiter -o mocks/bft_deliverer_factory.go --fake-name BFTDelivererFactory . BFTDelivererFactory
