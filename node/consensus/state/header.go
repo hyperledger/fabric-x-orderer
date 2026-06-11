@@ -41,7 +41,7 @@ func (h *Header) Serialize() []byte {
 	if len(h.AvailableCommonBlocks) > 0 {
 		availableCommonBlocksBytes = make([][]byte, len(h.AvailableCommonBlocks))
 		for i, block := range h.AvailableCommonBlocks {
-			rawBlock, err := proto.Marshal(block)
+			rawBlock, err := proto.MarshalOptions{Deterministic: true}.Marshal(block)
 			if err != nil {
 				panic(fmt.Sprintf("failed to marshal available common block at index %d: %v", i, err))
 			}
