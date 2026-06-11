@@ -932,9 +932,9 @@ func reportLoadResults(transactions int, elapsed time.Duration, txSize int) {
 
 // manageStatistics manages a statistics queue and writes statistics to a timestamped CSV file for this run
 func manageStatistics(receiveOutputDir string, statisticChan <-chan Statistics, stopChan <-chan bool, startTime float64, expectedTxs int, pullFrom int, timeIntervalToSampleStat time.Duration) {
-	filePath := path.Join(receiveOutputDir, fmt.Sprintf("statistics_%s.csv", time.Now().Format("2006-01-02_150405")))
+	filePath := path.Join(receiveOutputDir, "statistics.csv")
 	logger.Infof("Statistics are written to: %v\n", filePath)
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open a csv file: %v", err)
 		os.Exit(3)

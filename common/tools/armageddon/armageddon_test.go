@@ -870,11 +870,10 @@ func TestLoadAndReceive_AssemblerFailsAndRecovers(t *testing.T) {
 	require.NotNil(t, assembler.RunInfo.Session, "Assembler process should be running")
 	// CSV writes every 1 second, so after 30 seconds we expect at least 25 non-zero rows (allowing some margin)
 	// Check that the last 25 rows have non-zero values (assembler was processing)
-	files, err := filepath.Glob(filepath.Join(dir, "statistics_*.csv"))
-	require.NoError(t, err)
-	require.NotEmpty(t, files, "Statistics CSV file should exist")
+	csvPath := filepath.Join(dir, "statistics.csv")
+	require.FileExists(t, csvPath, "Statistics CSV file should exist")
 
-	file, err := os.Open(files[0])
+	file, err := os.Open(csvPath)
 	require.NoError(t, err)
 	reader := csv.NewReader(file)
 	reader.FieldsPerRecord = -1
@@ -910,7 +909,7 @@ func TestLoadAndReceive_AssemblerFailsAndRecovers(t *testing.T) {
 
 	t.Log("Phase 2: Verifying assembler is DOWN and CSV shows zero rows")
 	// After 30 seconds down, the last ~25 rows should be zeros
-	file, err = os.Open(files[0])
+	file, err = os.Open(csvPath)
 	require.NoError(t, err)
 	reader = csv.NewReader(file)
 	reader.FieldsPerRecord = -1
@@ -945,7 +944,7 @@ func TestLoadAndReceive_AssemblerFailsAndRecovers(t *testing.T) {
 	t.Log("Phase 3: Verifying assembler is UP and processing blocks again")
 	require.NotNil(t, assembler.RunInfo.Session, "Assembler process should be running after restart")
 	// After 30 seconds up again, the last ~25 rows should be non-zeros
-	file, err = os.Open(files[0])
+	file, err = os.Open(csvPath)
 	require.NoError(t, err)
 	reader = csv.NewReader(file)
 	reader.FieldsPerRecord = -1
