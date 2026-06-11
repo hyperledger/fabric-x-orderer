@@ -7,99 +7,115 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
-	"bytes"
-	"encoding/binary"
+	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
+// Header represents the header of a proposal as part of a consensus decision.
+// It contains metadata about the decision, including the decision number,
+// previous hash, available common blocks, and the consensus state.
 type Header struct {
-	Num                          types.DecisionNum
-	PrevHash                     []byte
-	AvailableCommonBlocks        []*common.Block
-	State                        *State
+	// Num is the decision number for this header
+	Num types.DecisionNum
+	// PrevHash is the hash of the previous header
+	PrevHash []byte
+	// AvailableCommonBlocks contains the common blocks that are available at this decision
+	AvailableCommonBlocks []*common.Block
+	// State is the consensus state at this decision
+	State *State
+	// DecisionNumOfLastConfigBlock is the decision number of the last configuration block
 	DecisionNumOfLastConfigBlock types.DecisionNum
 }
 
-func (h *Header) Deserialize(bytes []byte) error {
-	if bytes == nil {
-		return errors.Errorf("nil bytes")
-	}
-	if len(bytes) < 8+8+4+4 { // at least header number (uint64) and config num (uint64) and raw state size (uint32) and number of available common blocks (uint32)
-		return errors.Errorf("len of bytes is just %d; expected at least 24", len(bytes))
-	}
-	h.Num = types.DecisionNum(binary.BigEndian.Uint64(bytes[0:8]))
-	h.DecisionNumOfLastConfigBlock = types.DecisionNum(binary.BigEndian.Uint64(bytes[8:16]))
-	rawStateSize := binary.BigEndian.Uint32(bytes[16:20])
-	availableCommonBlockCount := int(binary.BigEndian.Uint32(bytes[20:24]))
-	pos := 24
-	h.AvailableCommonBlocks = nil
-	if availableCommonBlockCount > 0 {
-		h.AvailableCommonBlocks = make([]*common.Block, availableCommonBlockCount)
-	}
-	for i := 0; i < availableCommonBlockCount; i++ {
-		rawBlockSize := int(binary.BigEndian.Uint32(bytes[pos : pos+4]))
-		pos += 4
-		rawBlock := bytes[pos : pos+rawBlockSize]
-		block := &common.Block{}
-		if err := proto.Unmarshal(rawBlock, block); err != nil {
-			return errors.Errorf("failed to unmarshal available common block; index: %d", i)
-		}
-		pos += rawBlockSize
-		h.AvailableCommonBlocks[i] = block
-	}
-	rawState := bytes[pos : pos+int(rawStateSize)]
-	if len(rawState) == 0 {
-		h.State = nil
-	} else {
-		h.State = &State{}
-		h.State.Deserialize(rawState, &BAFDeserialize{})
-	}
-	h.PrevHash = bytes[pos+int(rawStateSize):]
-	if len(h.PrevHash) == 0 {
-		h.PrevHash = nil
-	}
-
-	return nil
-}
-
+// Serialize converts the Header to a byte slice using protocol buffer serialization.
+// It marshals the Header into a deterministic protobuf format for consistent serialization.
+// The method panics if marshaling fails, as this indicates a programming error.
 func (h *Header) Serialize() []byte {
-	availableCommonBlocksBytes := availableCommonBlocksToBytes(h.AvailableCommonBlocks)
-	rawState := []byte{}
+	// Serialize available common blocks
+	var availableCommonBlocksBytes [][]byte
+	if len(h.AvailableCommonBlocks) > 0 {
+		availableCommonBlocksBytes = make([][]byte, len(h.AvailableCommonBlocks))
+		for i, block := range h.AvailableCommonBlocks {
+			rawBlock, err := proto.MarshalOptions{Deterministic: true}.Marshal(block)
+			if err != nil {
+				panic(fmt.Sprintf("failed to marshal available common block at index %d: %v", i, err))
+			}
+			availableCommonBlocksBytes[i] = rawBlock
+		}
+	}
+
+	// Serialize state
+	var rawState []byte
 	if h.State != nil {
 		rawState = h.State.Serialize()
 	}
 
-	buff := make([]byte, 8+8+4+len(availableCommonBlocksBytes)+len(rawState)+len(h.PrevHash))
+	// Convert Header to proto stateprotos.Header
+	protoHeader := &stateprotos.Header{
+		Num:                          uint64(h.Num),
+		DecisionNumOfLastConfigBlock: uint64(h.DecisionNumOfLastConfigBlock),
+		PrevHash:                     h.PrevHash,
+		AvailableCommonBlocks:        availableCommonBlocksBytes,
+		State:                        rawState,
+	}
 
-	binary.BigEndian.PutUint64(buff, uint64(h.Num))
-	binary.BigEndian.PutUint64(buff[8:16], uint64(h.DecisionNumOfLastConfigBlock))
-	binary.BigEndian.PutUint32(buff[16:20], uint32(len(rawState)))
-	copy(buff[20:], availableCommonBlocksBytes)
-	copy(buff[20+len(availableCommonBlocksBytes):], rawState)
-	copy(buff[20+len(availableCommonBlocksBytes)+len(rawState):], h.PrevHash)
+	buff, err := proto.MarshalOptions{Deterministic: true}.Marshal(protoHeader)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal header: %v", err))
+	}
 
 	return buff
 }
 
-func availableCommonBlocksToBytes(blocks []*common.Block) []byte {
-	blockBuff := bytes.Buffer{}
-	for _, b := range blocks {
-		rawBlock, err := proto.Marshal(b)
-		if err != nil {
-			panic(err)
-		}
-		rawBlockSize := make([]byte, 4)
-		binary.BigEndian.PutUint32(rawBlockSize, uint32(len(rawBlock))) // TODO check the size limit, I guess uint32 is enough
-		blockBuff.Write(rawBlockSize)
-		blockBuff.Write(rawBlock)
+// Deserialize populates the Header from a byte slice using protocol buffer deserialization.
+// It unmarshals the protobuf-encoded bytes and reconstructs the Header structure.
+// Returns an error if the input is nil, if unmarshaling fails, or if any nested
+// deserialization (blocks or state) fails.
+func (h *Header) Deserialize(rawBytes []byte) error {
+	if rawBytes == nil {
+		return errors.New("nil bytes")
 	}
-	bytes := blockBuff.Bytes()
-	buff := make([]byte, 4+len(bytes))
-	binary.BigEndian.PutUint32(buff[0:4], uint32(len(blocks)))
-	copy(buff[4:], bytes)
-	return buff
+
+	if len(rawBytes) == 0 {
+		return errors.New("empty bytes")
+	}
+
+	var protoHeader stateprotos.Header
+	if err := proto.Unmarshal(rawBytes, &protoHeader); err != nil {
+		return errors.Wrap(err, "failed to unmarshal header")
+	}
+
+	h.Num = types.DecisionNum(protoHeader.Num)
+	h.DecisionNumOfLastConfigBlock = types.DecisionNum(protoHeader.DecisionNumOfLastConfigBlock)
+	h.PrevHash = protoHeader.PrevHash
+
+	// Deserialize available common blocks
+	h.AvailableCommonBlocks = nil
+	if len(protoHeader.AvailableCommonBlocks) > 0 {
+		h.AvailableCommonBlocks = make([]*common.Block, len(protoHeader.AvailableCommonBlocks))
+		for i, rawBlock := range protoHeader.AvailableCommonBlocks {
+			block := &common.Block{}
+			if err := proto.Unmarshal(rawBlock, block); err != nil {
+				return errors.Wrapf(err, "failed to unmarshal available common block at index %d", i)
+			}
+			h.AvailableCommonBlocks[i] = block
+		}
+	}
+
+	// Deserialize state
+	if len(protoHeader.State) == 0 {
+		h.State = nil
+	} else {
+		h.State = &State{}
+		if err := h.State.Deserialize(protoHeader.State, &BAFDeserialize{}); err != nil {
+			return errors.Wrap(err, "failed to deserialize state")
+		}
+	}
+
+	return nil
 }

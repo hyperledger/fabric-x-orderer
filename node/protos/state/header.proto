@@ -1,0 +1,20 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+package state;
+
+option go_package = "github.com/hyperledger/fabric-x-orderer/node/protos/state";
+
+// Header represents the header of a proposal as part of a consensus decision
+message Header {
+  uint64 num = 1; // Decision number
+  uint64 decision_num_of_last_config_block = 2; // Decision number of the last config block
+  bytes prev_hash = 3; // Hash of the previous decision
+  repeated bytes available_common_blocks = 4; // Available common blocks (serialized)
+  bytes state = 5; // Serialized state
+}
