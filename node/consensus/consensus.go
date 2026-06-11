@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"reflect"
 	"sync"
 	"time"
 
@@ -90,6 +91,7 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
+	*comm.Egress
 	Logger       *flogging.FabricLogger
 	Config       *node_config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
@@ -133,6 +135,14 @@ func (c *Consensus) Start() error {
 	c.lock.Unlock()
 
 	return bft.Start() // start the bft without holding the lock to avoid deadlock
+}
+
+func (c *Consensus) StartWithoutBFT() {
+	c.lock.Lock()
+	c.status.SetState(node_utils.StateRunning)
+	c.softStopCh = make(chan struct{})
+	c.Metrics.Start()
+	c.lock.Unlock()
 }
 
 func (c *Consensus) StartConsensusService() {
@@ -226,7 +236,6 @@ func (c *Consensus) SoftStop() {
 
 	c.Logger.Infof("Soft stopping consensus node")
 	close(c.softStopCh)
-	c.BFT.Stop()
 	c.Synchronizer.Stop()
 	c.BADB.Close()
 	c.Metrics.Stop()
@@ -874,12 +883,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
 		lastBlockNum := configBlock.Header.Number
-		var err error
-		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.PartyID)
-		if err != nil {
-			c.Logger.Panicf("Failed extracting smartBFT config from config block: %v", err)
-		}
-		inLatestDecision = true
+		inLatestDecision, currentNodes, currentBFTConfig = c.calculateSmartBFTReconfig(configBlock)
 		c.Logger.Infof("Delivering config block number %d", lastBlockNum)
 		// if this is a new config block (with a larger number) then apply (soft stop)
 		if c.lastConfigBlockNum < lastBlockNum {
@@ -899,6 +903,18 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	}
 }
 
+func (c *Consensus) calculateSmartBFTReconfig(configBlock *common.Block) (inLatestDecision bool, currentNodes []uint64, currentConfig smartbft_types.Configuration) {
+	currentNodes, currentBFTConfig, err := c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.PartyID)
+	if err != nil {
+		c.Logger.Panicf("Failed extracting smartBFT config from config block: %v", err)
+	}
+	membershipDidNotChange := reflect.DeepEqual(currentNodes, c.CurrentNodes)
+	configDidNotChange := reflect.DeepEqual(currentBFTConfig, c.Config.BFTConfig)
+	noChangeDetected := membershipDidNotChange && configDidNotChange
+	c.Logger.Infof("Reconfig in latest decision %v, current nodes: %v, current config: %v", !noChangeDetected, currentNodes, currentBFTConfig)
+	return !noChangeDetected, currentNodes, currentBFTConfig
+}
+
 func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 	c.Logger.Infof("Processing new config block number %d", configBlock.Header.Number)
 
@@ -912,6 +928,7 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 	if isAdminOperationRequired {
 		c.Logger.Warnf("Pending admin action to apply new config")
 		c.lock.Lock()
+		c.BFT.Stop() // was not stopped during SoftStop
 		c.status.SetState(node_utils.StatePendingAdmin)
 		c.lock.Unlock()
 	}
@@ -977,15 +994,12 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	c.Storage.Close()
 	c.Net.Stop()
 	c.status.Set(node_utils.StateInitializing, newConfigSeq)
-	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{})
+	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{}, false)
 	c.lock.Unlock()
 
 	c.Logger.Infof("Initialize new consensus, config sequence: %d", newConfigSeq)
 	c.StartConsensusService()
-	err := c.Start()
-	if err != nil {
-		c.Logger.Panicf("consensus failed to restart dynamically, err: %v", err)
-	}
+	c.StartWithoutBFT()
 	c.Logger.Infof("Consensus started with new config sequence %d, listening on %s", newConfigSeq, c.Address())
 }
 
@@ -1194,12 +1208,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
 		lastBlockNum := configBlock.Header.Number
-		var err error
-		currentNodes, currentBFTConfig, err = c.ConfigApplier.ExtractSmartBFTConfigFromBlock(configBlock, c.PartyID)
-		if err != nil {
-			c.Logger.Panicf("Failed extracting smartBFT config from config block: %v", err)
-		}
-		inLatestDecision = true
+		inLatestDecision, currentNodes, currentBFTConfig = c.calculateSmartBFTReconfig(configBlock)
 		c.Logger.Infof("Delivering config block number %d", lastBlockNum)
 		// if this is a new config block (with a larger number) then apply (soft stop)
 		if c.lastConfigBlockNum < lastBlockNum {

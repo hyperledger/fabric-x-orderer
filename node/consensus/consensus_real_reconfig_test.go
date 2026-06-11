@@ -161,7 +161,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
 		defer cleanUp()
-		consenterToUpdate := types.PartyID(2)
+		consenterToUpdate := types.PartyID(5)
 		caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
 		caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
 		newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
@@ -346,7 +346,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	})
 
 	t.Run("config update with consenter's endpoint change", func(t *testing.T) {
-		consenterPartyToUpdate := types.PartyID(2)
+		consenterPartyToUpdate := types.PartyID(4)
 		consenterPartyToUpdateIndex := 0
 		for i, consenter := range consensusNodes {
 			if consenter.GetPartyID() == consenterPartyToUpdate {
