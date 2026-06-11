@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
@@ -247,7 +247,7 @@ func createStubConsenters(t *testing.T, dir string, parties []types.PartyID) []*
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
 		nodeConfig, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, fmt.Sprintf("ReadConfigConsenter%d", i), zap.DebugLevel))
 		require.NoError(t, err)
-		var partyConfig *protos.PartyConfig
+		var partyConfig *ordererpb.PartyConfig
 		for _, p := range nodeConfig.SharedConfig.PartiesConfig {
 			if types.PartyID(p.PartyID) == i {
 				partyConfig = p

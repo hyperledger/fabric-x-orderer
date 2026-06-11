@@ -18,13 +18,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -727,7 +727,7 @@ func (c *ConfigUpdateBuilder) UpdateOrgEndpoints(t *testing.T, partyID types.Par
 }
 
 type PartyConfig struct {
-	protos.PartyConfig
+	ordererpb.PartyConfig
 	AdminCerts [][]byte
 }
 
@@ -976,7 +976,7 @@ func ReadConfigEnvelopeFromConfigBlock(configBlock *common.Block) (*common.Confi
 	return configEnvelope, nil
 }
 
-func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID types.PartyID) *protos.PartyConfig {
+func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID types.PartyID) *ordererpb.PartyConfig {
 	sharedConfig := GetSharedConfig(t, configEnvelope)
 	partiesConfig := sharedConfig.GetPartiesConfig()
 	require.NotNil(t, partiesConfig)
@@ -990,7 +990,7 @@ func GetPartyConfig(t *testing.T, configEnvelope *common.ConfigEnvelope, partyID
 	return nil
 }
 
-func GetSharedConfig(t *testing.T, configEnvelope *common.ConfigEnvelope) *protos.SharedConfig {
+func GetSharedConfig(t *testing.T, configEnvelope *common.ConfigEnvelope) *ordererpb.SharedConfig {
 	require.NotNil(t, configEnvelope)
 
 	require.NotNil(t, configEnvelope.Config.GetChannelGroup().Groups["Orderer"].Values["ConsensusType"].GetValue())
@@ -999,7 +999,7 @@ func GetSharedConfig(t *testing.T, configEnvelope *common.ConfigEnvelope) *proto
 	err := proto.Unmarshal(configEnvelope.Config.GetChannelGroup().Groups["Orderer"].Values["ConsensusType"].GetValue(), &consensusType)
 	require.NoError(t, err)
 
-	sharedConfig := protos.SharedConfig{}
+	sharedConfig := ordererpb.SharedConfig{}
 	err = proto.Unmarshal(consensusType.GetMetadata(), &sharedConfig)
 	require.NoError(t, err)
 
@@ -1113,7 +1113,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	assemblerTlsCert, err := os.ReadFile(assemblerConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
 	require.NoError(t, err)
 
-	batchersConfig := make([]*protos.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
+	batchersConfig := make([]*ordererpb.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
 
 	for i := range addedPartyConfig.Parties[0].BatchersEndpoints {
 		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)))
@@ -1123,7 +1123,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 		batcherSignCert, err := os.ReadFile(filepath.Join(batcherNodeConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"))
 		require.NoError(t, err)
 
-		batchersConfig[i] = &protos.BatcherNodeConfig{
+		batchersConfig[i] = &ordererpb.BatcherNodeConfig{
 			ShardID:  uint32(i + 1),
 			Host:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 			Port:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
@@ -1142,21 +1142,21 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	require.NoError(t, err)
 
 	c.AddNewParty(t, &PartyConfig{
-		PartyConfig: protos.PartyConfig{
+		PartyConfig: ordererpb.PartyConfig{
 			CACerts:    [][]byte{caCert},
 			TLSCACerts: [][]byte{tlsCACert},
-			ConsenterConfig: &protos.ConsenterNodeConfig{
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				Host:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 				Port:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
 				SignCert: consenterSignCert,
 				TlsCert:  consenterTlsCert,
 			},
-			RouterConfig: &protos.RouterNodeConfig{
+			RouterConfig: &ordererpb.RouterNodeConfig{
 				Host:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 				Port:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
 				TlsCert: routerTlsCert,
 			},
-			AssemblerConfig: &protos.AssemblerNodeConfig{
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
 				Host:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
 				Port:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
 				TlsCert: assemblerTlsCert,

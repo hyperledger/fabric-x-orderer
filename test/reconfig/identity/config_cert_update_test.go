@@ -17,13 +17,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
-	"github.com/hyperledger/fabric-x-orderer/config/protos"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -207,7 +207,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	routerConfig, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
-	var updatedPartyConfig *protos.PartyConfig
+	var updatedPartyConfig *ordererpb.PartyConfig
 	for _, partyConfig := range routerConfig.SharedConfig.GetPartiesConfig() {
 		if partyConfig.PartyID == uint32(partyToUpdate) {
 			updatedPartyConfig = partyConfig
@@ -463,11 +463,11 @@ func TestChangePartyCACertificates(t *testing.T) {
 	ordererConfig, ok := routerNodeConfig.Bundle.OrdererConfig()
 	require.True(t, ok, "failed to extract orderer config from the last config block")
 
-	routerSharedConfig := protos.SharedConfig{}
+	routerSharedConfig := ordererpb.SharedConfig{}
 	err = proto.Unmarshal(ordererConfig.ConsensusMetadata(), &routerSharedConfig)
 	require.NoError(t, err)
 
-	var updatedPartyConfig *protos.PartyConfig
+	var updatedPartyConfig *ordererpb.PartyConfig
 	for _, partyConfig := range routerSharedConfig.GetPartiesConfig() {
 		if partyConfig.PartyID == uint32(partyToUpdate) {
 			updatedPartyConfig = partyConfig

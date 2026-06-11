@@ -13,8 +13,8 @@ import (
 	"strconv"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	config_protos "github.com/hyperledger/fabric-x-orderer/config/protos"
 )
 
 // NodeConfig represents the shared configuration of a node.
@@ -43,7 +43,7 @@ func IsPartyEvicted(partyID types.PartyID, newConfig *Configuration) (bool, erro
 
 // FindParty returns the PartyConfig associated with the given partyID from the shared configuration.
 // It returns nil if the party is not found and returns error if the provided configuration is nil or incomplete.
-func FindParty(partyID types.PartyID, config *Configuration) (*config_protos.PartyConfig, error) {
+func FindParty(partyID types.PartyID, config *Configuration) (*ordererpb.PartyConfig, error) {
 	if config == nil {
 		return nil, errors.New("the provided configuration is nil")
 	}
