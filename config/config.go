@@ -1002,9 +1002,12 @@ func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Bloc
 }
 
 func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {
-	cryptoProvider, err := factory.GetBCCSPFromOpts(
-		config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP,
-	)
+	opts := config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP
+	if opts == nil {
+		return nil, errors.New("BCCSP config is missing")
+	}
+
+	cryptoProvider, err := factory.GetBCCSPFromOpts(opts)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to initialize BCCSP from config")
 	}
