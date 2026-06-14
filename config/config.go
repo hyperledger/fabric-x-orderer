@@ -16,6 +16,7 @@ import (
 	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -255,6 +256,10 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
 	}
+	bccsp, err := config.GetBCCSP()
+	if err != nil {
+		panic(fmt.Sprintf("error launching router, failed extracting router config: %s", err))
+	}
 
 	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
@@ -296,6 +301,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
+		BCCSP:                               bccsp,
 		Operations: &operations.Operations{
 			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
 			TLS: operations.TLS{
@@ -427,6 +433,13 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
+	bccsp, err := config.GetBCCSP()
+	if err != nil {
+		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
+	}
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
+	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
 	}
@@ -492,6 +505,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
+		BCCSP:                               bccsp,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 	}
 	return consenterConfig
@@ -716,9 +730,9 @@ func (config *Configuration) ExtractConsenterInParty() nodeconfig.ConsenterInfo 
 }
 
 func (config *Configuration) extractBundleFromConfigBlock(configBlock *common.Block) channelconfig.Resources {
-	bccsp, err := (&factory.SWFactory{}).Get(config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+	bccsp, err := config.GetBCCSP()
 	if err != nil {
-		bccsp = factory.GetDefault()
+		panic(fmt.Sprintf("failed to extract bundle from config block: %s", err))
 	}
 	env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
 	if err != nil {
@@ -985,6 +999,16 @@ func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Bloc
 	}
 
 	return newConfig, nil
+}
+
+func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {
+	cryptoProvider, err := factory.GetBCCSPFromOpts(
+		config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+	}
+	return cryptoProvider, nil
 }
 
 func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {

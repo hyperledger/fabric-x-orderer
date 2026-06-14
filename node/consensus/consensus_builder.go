@@ -20,7 +20,6 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
@@ -118,7 +117,8 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.InitOperationSystem()
 	c.RequestVerifier = CreateConsensusRulesVerifier(nodeConfig)
 	c.ConfigUpdateProposer = configUpdateProposer
-	c.ConfigApplier = &DefaultConfigApplier{}
+	c.bccsp = nodeConfig.BCCSP
+	c.ConfigApplier = &DefaultConfigApplier{bccsp: c.bccsp}
 	c.ConfigRequestValidator = &configrequest.DefaultValidateConfigRequest{
 		ConfigUpdateProposer: configUpdateProposer,
 		Bundle:               nodeConfig.Bundle,
@@ -145,7 +145,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),
 		c.UpdateStateAndRuntimeConfig,          // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
 		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,
-		factory.GetDefault(),
+		c.bccsp,
 		&comm.PredicateDialer{Config: c.clientConfig()},
 	)
 	c.Logger.Info("Created a BFT Synchronizer")

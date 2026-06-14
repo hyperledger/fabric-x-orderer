@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -69,6 +70,7 @@ func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 		TLSPrivateKeyFile:  ckp.Key,
 		Bundle:             bundle,
 		PartyID:            types.PartyID(1),
+		BCCSP:              factory.GetDefault(),
 	}
 
 	configSubmitter := NewConfigSubmitter(conf, logger, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier)

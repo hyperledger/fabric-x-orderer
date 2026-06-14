@@ -12,6 +12,7 @@ import (
 	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -92,6 +93,7 @@ type RouterNodeConfig struct {
 	ClientSignatureVerificationRequired bool
 	// Bundle collects resources (e.g., policy manager, configTx validator, etc.) that are used by the router for validation of transactions
 	Bundle     channelconfig.Resources
+	BCCSP      bccsp.BCCSP
 	Operations *operations.Operations
 	Metrics    *operations.Metrics
 }
@@ -168,6 +170,7 @@ type ConsenterNodeConfig struct {
 	MonitoringInterval                  int32
 	ClientSignatureVerificationRequired bool
 	Bundle                              channelconfig.Resources
+	BCCSP                               bccsp.BCCSP
 	RequestMaxBytes                     uint64
 	Operations                          *operations.Operations
 	Metrics                             *operations.Metrics
