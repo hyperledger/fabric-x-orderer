@@ -455,7 +455,7 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		}
 		batch1 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
 			[]byte("tx1"), []byte("tx2"),
-		}, 0, []byte(""))
+		}, 0, []byte(""), nil)
 
 		al.Append(batch1, ordInfo1)
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
@@ -479,7 +479,7 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		}
 		batch2 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
 			[]byte("tx1"), []byte("tx2"),
-		}, 0, []byte(""))
+		}, 0, []byte(""), nil)
 
 		al.Append(batch2, ordInfo2)
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
@@ -702,7 +702,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		seq := seqArray[sIdx][pIdx]
 		seqArray[sIdx][pIdx] = seq + 1
 
-		fb := node_ledger.NewFabricBatchFromRequests(shard, party, types.BatchSequence(seq), batchedRequests, 0, nil)
+		fb := node_ledger.NewFabricBatchFromRequests(shard, party, types.BatchSequence(seq), batchedRequests, 0, nil, nil)
 		require.NotNil(t, fb)
 
 		transactionCount += len(batchedRequests)

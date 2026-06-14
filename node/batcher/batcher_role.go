@@ -83,7 +83,7 @@ type BAFCreator interface {
 }
 
 type BatchLedgerWriter interface {
-	Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests)
+	Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests, primarySignature []byte)
 }
 
 type BatchLedgeReader interface {
@@ -347,7 +347,7 @@ func (b *BatcherRole) runPrimary() {
 		// (this BAF is a declaration that the batch is stored in the ledger)
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
-		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch) // TODO add primary's signature to appended batch
+		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, baf.Signature())
 
 		sendBAFDone := make(chan struct{})
 		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
@@ -423,7 +423,7 @@ func (b *BatcherRole) runSecondary() {
 			// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
-			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests)
+			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests, batch.PrimarySignature())
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
