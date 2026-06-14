@@ -73,11 +73,11 @@ func (ot OperationType) String() string {
 }
 
 // Reconfigure configures the communicator of the RPC and resets the streams.
-func (s *RPC) Reconfigure(members []RemoteNode) {
-	s.lock.Lock()
+func (s *RPC) Reconfigure(comm *AuthCommMgr) {
+	s.lock.Lock() // TODO what about the other locks?
 	defer s.lock.Unlock()
 	s.StreamsByType = NewStreamsByType()
-	s.Comm.Configure(members)
+	s.Comm = comm
 }
 
 // SendConsensus passes the given ConsensusRequest message to the given destination node.

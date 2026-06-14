@@ -398,6 +398,7 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 }
 
 func configureComm(c *Consensus) {
+	selfID := getSelfID(c.Config.Consenters, c.PartyID)
 	var consenterConfigs []*common.Consenter
 	var remotesNodes []comm.RemoteNode
 	for _, node := range c.Config.Consenters {
@@ -423,8 +424,17 @@ func configureComm(c *Consensus) {
 			Id:       uint32(node.PartyID),
 		})
 	}
+	authCommMgr := &comm.AuthCommMgr{
+		Logger:         c.Logger,
+		Signer:         c.Signer,
+		SendBufferSize: 2000,
+		NodeIdentity:   selfID,
+		Connections:    comm.NewConnectionMgr(c.clientConfig()),
+	}
+	authCommMgr.Configure(remotesNodes)
+	c.AuthCommMgr = authCommMgr
 	c.ClusterService.ConfigureNodeCerts(consenterConfigs)
-	c.Egress.Reconfigure(c.CurrentNodes, remotesNodes)
+	c.Egress.Reconfigure(c.CurrentNodes, authCommMgr)
 }
 
 func setupComm(c *Consensus) {

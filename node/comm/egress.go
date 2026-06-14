@@ -67,9 +67,9 @@ func bftMsgToClusterMsg(message *protos.Message) *ab.ConsensusRequest {
 }
 
 // Reconfigure updates the list of nodes and reconfigures the RPC
-func (e *Egress) Reconfigure(nodes []uint64, members []RemoteNode) {
+func (e *Egress) Reconfigure(nodes []uint64, comm *AuthCommMgr) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	e.RPC.Reconfigure(members)
+	e.RPC.Reconfigure(comm)
 	e.NodeList = nodes
 }
