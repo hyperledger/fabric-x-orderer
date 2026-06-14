@@ -281,7 +281,8 @@ func (c *Complaint) String() string {
 }
 
 type ConfigRequest struct {
-	Envelope *common.Envelope
+	Envelope  *common.Envelope
+	ConfigSeq types.ConfigSequence
 }
 
 func (c *ConfigRequest) Bytes() []byte {
@@ -290,11 +291,24 @@ func (c *ConfigRequest) Bytes() []byte {
 		panic(fmt.Sprintf("failed to marshal envelope: %v", err))
 	}
 
-	return bytes
+	// Prepend ConfigSeq (8 bytes) to the envelope bytes
+	result := make([]byte, 8+len(bytes))
+	binary.BigEndian.PutUint64(result, uint64(c.ConfigSeq))
+	copy(result[8:], bytes)
+
+	return result
 }
 
 func (c *ConfigRequest) FromBytes(bytes []byte) error {
-	envelope, err := protoutil.UnmarshalEnvelope(bytes)
+	if len(bytes) < 8 {
+		return fmt.Errorf("input too small (%d < 8)", len(bytes))
+	}
+
+	// Extract ConfigSeq from first 8 bytes
+	c.ConfigSeq = types.ConfigSequence(binary.BigEndian.Uint64(bytes[0:8]))
+
+	// Unmarshal the envelope from remaining bytes
+	envelope, err := protoutil.UnmarshalEnvelope(bytes[8:])
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal envelope: %v", err)
 	}
@@ -305,7 +319,7 @@ func (c *ConfigRequest) FromBytes(bytes []byte) error {
 
 func (c *ConfigRequest) String() string {
 	// TODO: add more info to this string, at least the config sequence
-	return "Config Request"
+	return fmt.Sprintf("Config Request with config sequence %d", c.ConfigSeq)
 }
 
 type ControlEvent struct {
@@ -423,7 +437,7 @@ func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
 	extracted := ExtractBatchAttestationsFromPending(nextState, l)
-	configRequests := ExtractConfigRequests(ces)
+	configRequests := ExtractConfigRequests(filteredCEs)
 	return nextState, extracted, configRequests
 }
 
@@ -579,6 +593,13 @@ func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.Fabr
 				filteredEvents = append(filteredEvents, ce)
 			} else {
 				l.Debugf("filtering ce complaint with mismatch config seq (currently %d); %s", configSeq, ce.Complaint.String())
+			}
+		}
+		if ce.ConfigRequest != nil {
+			if ce.ConfigRequest.ConfigSeq == configSeq {
+				filteredEvents = append(filteredEvents, ce)
+			} else {
+				l.Debugf("filtering ce config request with mismatch config seq (currently %d); %s", configSeq, ce.ConfigRequest.String())
 			}
 		}
 	}

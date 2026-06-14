@@ -95,6 +95,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		// try to submit config with bad ctx (just any context without the router's certificate) and it should be rejected
 		_, err = consensusNodes[0].SubmitConfig(t.Context(), configReq)
@@ -114,6 +115,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		badConfigReq := &protos.Request{
 			Payload:   badEnv.Payload,
 			Signature: badEnv.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, badConfigReq)
 		require.Error(t, err)
@@ -124,11 +126,13 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// submit to consensus a config request from router, with parameter update
 		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 		defer cleanUp()
-		configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
+		configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.RequestComplainTimeout, (2*time.Minute).String()))
+		configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.LeaderHeartbeatTimeout, (2*time.Minute).String()))
 		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		// submit a good config update
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
@@ -161,7 +165,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
 		defer cleanUp()
-		consenterToUpdate := types.PartyID(2)
+		consenterToUpdate := types.PartyID(5)
 		caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
 		caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
 		newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
@@ -173,6 +177,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
@@ -235,6 +240,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
@@ -296,6 +302,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
@@ -346,7 +353,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	})
 
 	t.Run("config update with consenter's endpoint change", func(t *testing.T) {
-		consenterPartyToUpdate := types.PartyID(2)
+		consenterPartyToUpdate := types.PartyID(4)
 		consenterPartyToUpdateIndex := 0
 		for i, consenter := range consensusNodes {
 			if consenter.GetPartyID() == consenterPartyToUpdate {
@@ -382,6 +389,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 
 		// restart consensus nodes
@@ -475,6 +483,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
@@ -521,7 +530,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		consensusNodes = append(consensusNodes, newConsensusNode[0])
 
 		// wait for consenters to start before submitting a request
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second)
 
 		// send another simple request to verify the new consenter is participating
 		lastBlockNumber++

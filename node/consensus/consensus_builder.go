@@ -57,12 +57,12 @@ func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_co
 		PartyID: nodeConfig.PartyId,
 	}
 
-	c.configureConsensus(nodeConfig, config, lastConfigBlock, configUpdateProposer)
+	c.configureConsensus(nodeConfig, config, lastConfigBlock, configUpdateProposer, true)
 
 	return c
 }
 
-func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, configUpdateProposer policy.ConfigUpdateProposer) {
+func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, configUpdateProposer policy.ConfigUpdateProposer, configureBFT bool) {
 	if lastConfigBlock == nil {
 		c.Logger.Panicf("Error creating Consensus%d, last config block is nil", nodeConfig.PartyId)
 	}
@@ -126,8 +126,11 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.PrevHash = prevHash
 	c.fullConfig = config
 
-	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
-	setupComm(c)
+	if configureBFT {
+		c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
+		setupComm(c)
+	}
+	configureComm(c)
 
 	bftSynch := c.synchronizerFactory.CreateSynchronizer(
 		c.Logger,
@@ -394,17 +397,8 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 	return cc
 }
 
-func setupComm(c *Consensus) {
+func configureComm(c *Consensus) {
 	selfID := getSelfID(c.Config.Consenters, c.PartyID)
-	c.ClusterService = &comm.ClusterService{
-		Logger:                           c.Logger,
-		CertExpWarningThreshold:          time.Hour,
-		NodeIdentity:                     selfID,
-		StepLogger:                       c.Logger,
-		MinimumExpirationWarningInterval: time.Hour,
-		RequestHandler:                   c,
-	}
-
 	var consenterConfigs []*common.Consenter
 	var remotesNodes []comm.RemoteNode
 	for _, node := range c.Config.Consenters {
@@ -430,9 +424,31 @@ func setupComm(c *Consensus) {
 			Id:       uint32(node.PartyID),
 		})
 	}
-	c.ConfigureNodeCerts(consenterConfigs)
+	authCommMgr := &comm.AuthCommMgr{
+		Logger:         c.Logger,
+		Signer:         c.Signer,
+		SendBufferSize: 2000,
+		NodeIdentity:   selfID,
+		Connections:    comm.NewConnectionMgr(c.clientConfig()),
+	}
+	authCommMgr.Configure(remotesNodes)
+	c.AuthCommMgr = authCommMgr
+	c.ClusterService.ConfigureNodeCerts(consenterConfigs)
+	c.Egress.Reconfigure(c.CurrentNodes, authCommMgr)
+}
 
-	commAuth := &comm.AuthCommMgr{
+func setupComm(c *Consensus) {
+	selfID := getSelfID(c.Config.Consenters, c.PartyID)
+	c.ClusterService = &comm.ClusterService{
+		Logger:                           c.Logger,
+		CertExpWarningThreshold:          time.Hour,
+		NodeIdentity:                     selfID,
+		StepLogger:                       c.Logger,
+		MinimumExpirationWarningInterval: time.Hour,
+		RequestHandler:                   c,
+	}
+
+	authCommMgr := &comm.AuthCommMgr{
 		Logger:         c.Logger,
 		Signer:         c.Signer,
 		SendBufferSize: 2000,
@@ -440,18 +456,20 @@ func setupComm(c *Consensus) {
 		Connections:    comm.NewConnectionMgr(c.clientConfig()),
 	}
 
-	commAuth.Configure(remotesNodes)
-
-	c.BFT.Comm = &comm.Egress{
+	c.Egress = &comm.Egress{
 		NodeList: c.CurrentNodes,
 		Logger:   c.Logger,
 		RPC: &comm.RPC{
 			StreamsByType: comm.NewStreamsByType(),
 			Timeout:       time.Minute,
 			Logger:        c.Logger,
-			Comm:          commAuth,
+			Comm:          authCommMgr,
 		},
 	}
+
+	configureComm(c)
+
+	c.BFT.Comm = c
 }
 
 func getSelfID(consenterInfos []node_config.ConsenterInfo, partyID arma_types.PartyID) []byte {

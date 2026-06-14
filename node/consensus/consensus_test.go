@@ -317,6 +317,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		BADB:         db,
 		Net:          &consensus_mocks.FakeNetStopper{},
 		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
+		AuthCommMgr:  &consensus_mocks.FakeCommStopper{},
 		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
 		MainExitChan: make(chan struct{}),
 	}

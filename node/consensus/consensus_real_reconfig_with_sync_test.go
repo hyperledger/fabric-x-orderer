@@ -109,6 +109,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
@@ -171,6 +172,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 
 		_, err = activeConsenters[0].SubmitConfig(routerCtx, configReq)

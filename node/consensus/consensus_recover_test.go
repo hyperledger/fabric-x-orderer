@@ -640,9 +640,9 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 }
 
 // This test initializes a cluster of 4 consensus nodes and simulates failure and recovery of a non-leader node (ID=3) while all other nodes are in SoftStop mode.
-// Node (ID=3) fails after the first block is committed, and a second request is sent and committed by the remaining nodes while node (ID=3) is down.
+// Node (ID=3) fails after the first block is committed, and more requests are sent and committed by the remaining nodes while node (ID=3) is down.
 // All the rest of the nodes are then put in SoftStop mode, and node (ID=3) recovers.
-// After restarting the failed node, we check it synchronizes with the other nodes and commits the second block.
+// After restarting the failed node, we check it synchronizes with the other nodes and commits all blocks.
 func TestSyncFromSoftStoppedNodes(t *testing.T) {
 	t.Parallel()
 
@@ -659,14 +659,11 @@ func TestSyncFromSoftStoppedNodes(t *testing.T) {
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
 	require.NoError(t, err)
 
-	b := <-setup.listeners[0].c
-	require.Equal(t, uint64(1), b.Header.Number)
-	b1 := <-setup.listeners[1].c
-	require.Equal(t, uint64(1), b1.Header.Number)
-	b2 := <-setup.listeners[2].c
-	require.Equal(t, uint64(1), b2.Header.Number)
+	require.Eventually(t, func() bool {
+		return setup.consensusNodes[0].Storage.Height() == 2 && setup.consensusNodes[1].Storage.Height() == 2 && setup.consensusNodes[2].Storage.Height() == 2
+	}, 30*time.Second, 1*time.Second)
 
-	// Node 3 fails and submit the second request
+	// Node 3 fails and submit more requests
 	setup.consensusNodes[2].Stop()
 
 	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
@@ -674,15 +671,22 @@ func TestSyncFromSoftStoppedNodes(t *testing.T) {
 	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
 	require.NoError(t, err)
 
-	b = <-setup.listeners[0].c
-	require.Equal(t, uint64(2), b.Header.Number)
-	b1 = <-setup.listeners[1].c
-	require.Equal(t, uint64(2), b1.Header.Number)
+	require.Eventually(t, func() bool {
+		return setup.consensusNodes[0].Storage.Height() == 3 && setup.consensusNodes[1].Storage.Height() == 3
+	}, 30*time.Second, 1*time.Second)
 
-	b3 := <-setup.listeners[3].c
-	require.Equal(t, uint64(1), b3.Header.Number)
-	b3 = <-setup.listeners[3].c
-	require.Equal(t, uint64(2), b3.Header.Number)
+	require.Eventually(t, func() bool {
+		return setup.consensusNodes[3].Storage.Height() == 3
+	}, 30*time.Second, 1*time.Second)
+
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	require.NoError(t, err)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return setup.consensusNodes[0].Storage.Height() == 4 && setup.consensusNodes[1].Storage.Height() == 4 && setup.consensusNodes[3].Storage.Height() == 4
+	}, 30*time.Second, 1*time.Second)
 
 	// SoftStop all nodes except node 3
 	for i, c := range setup.consensusNodes {
@@ -695,8 +699,9 @@ func TestSyncFromSoftStoppedNodes(t *testing.T) {
 	recoverNodeReal(t, dir, 2, genesisBlock, setup)
 
 	// Verify node 3 synced correctly from other nodes during SoftStop
-	b2 = <-setup.listeners[2].c
-	require.Equal(t, uint64(2), b2.Header.Number)
+	require.Eventually(t, func() bool {
+		return setup.consensusNodes[2].Storage.Height() == 4
+	}, 60*time.Second, 1*time.Second)
 
 	for _, c := range setup.consensusNodes {
 		c.Stop()
