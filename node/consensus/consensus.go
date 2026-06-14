@@ -256,6 +256,7 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 	ri, _, err := c.verifyCE(rawCE)
 	if err != nil {
 		c.Logger.Errorf("Failed verifying control event %v: %v", ri, err)
+		return errors.Wrap(err, "failed verifying control event")
 	}
 	c.BFT.HandleRequest(sender, rawCE)
 	return nil
@@ -301,6 +302,10 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 
 	c.Logger.Infof("Received config request from router %s with config sequence %d", c.Config.Router.Endpoint, request.ConfigSeq)
 
+	if request.ConfigSeq != uint32(c.VerificationSequence()) {
+		return nil, errors.Errorf("config sequence mismatch: expected %d, got %d", c.VerificationSequence(), request.ConfigSeq)
+	}
+
 	configRequest, err := c.verifyAndClassifyRequest(request)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to verify and classify request")
@@ -308,13 +313,13 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 
 	ce := &state.ControlEvent{
 		ConfigRequest: &state.ConfigRequest{
-			ConfigSeq: arma_types.ConfigSequence(request.ConfigSeq),
 			Envelope: &common.Envelope{
 				Payload:   configRequest.Payload,
 				Signature: configRequest.Signature,
 			},
 		},
 	}
+
 	c.BFT.SubmitRequest(ce.Bytes())
 
 	return &protos.SubmitResponse{TraceId: request.TraceId}, nil
@@ -1055,7 +1060,7 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
 	case ce.BAF != nil:
 		return uint64(ce.BAF.ConfigSequence()), nil
 	case ce.ConfigRequest != nil:
-		return uint64(ce.ConfigRequest.ConfigSeq), nil
+		return uint64(ce.ConfigRequest.ConfigSequence()) - 1, nil
 	default:
 		return 0, errors.New("empty control event")
 
@@ -1084,8 +1089,9 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
-		if ce.ConfigRequest.ConfigSeq != configSeq {
-			return reqID, ce, errors.Errorf("mismatch config sequence; the config request's config seq is %d while the config seq should be %d", ce.ConfigRequest.ConfigSeq, configSeq)
+		reqConfigSeq := ce.ConfigRequest.ConfigSequence()
+		if reqConfigSeq != configSeq+1 {
+			return reqID, ce, errors.Errorf("mismatch config sequence; the config request's config seq is %d while the config seq should be %d", reqConfigSeq, configSeq+1)
 		}
 		err := c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {

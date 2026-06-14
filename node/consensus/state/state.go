@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -281,8 +282,25 @@ func (c *Complaint) String() string {
 }
 
 type ConfigRequest struct {
-	Envelope  *common.Envelope
-	ConfigSeq types.ConfigSequence
+	Envelope *common.Envelope
+}
+
+func (c *ConfigRequest) ConfigSequence() types.ConfigSequence {
+	payload, err := protoutil.UnmarshalPayload(c.Envelope.Payload)
+	if err != nil {
+		panic(fmt.Sprintf("failed to unmarshal payload: %v", err))
+	}
+
+	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
+	if err != nil {
+		panic(fmt.Sprintf("failed to unmarshal config envelope: %v", err))
+	}
+
+	if configEnvelope.Config == nil {
+		panic("config envelope has nil config")
+	}
+
+	return types.ConfigSequence(configEnvelope.Config.Sequence)
 }
 
 func (c *ConfigRequest) Bytes() []byte {
@@ -290,25 +308,12 @@ func (c *ConfigRequest) Bytes() []byte {
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal envelope: %v", err))
 	}
-
-	// Prepend ConfigSeq (8 bytes) to the envelope bytes
-	result := make([]byte, 8+len(bytes))
-	binary.BigEndian.PutUint64(result, uint64(c.ConfigSeq))
-	copy(result[8:], bytes)
-
-	return result
+	return bytes
 }
 
 func (c *ConfigRequest) FromBytes(bytes []byte) error {
-	if len(bytes) < 8 {
-		return fmt.Errorf("input too small (%d < 8)", len(bytes))
-	}
-
-	// Extract ConfigSeq from first 8 bytes
-	c.ConfigSeq = types.ConfigSequence(binary.BigEndian.Uint64(bytes[0:8]))
-
 	// Unmarshal the envelope from remaining bytes
-	envelope, err := protoutil.UnmarshalEnvelope(bytes[8:])
+	envelope, err := protoutil.UnmarshalEnvelope(bytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal envelope: %v", err)
 	}
@@ -318,8 +323,7 @@ func (c *ConfigRequest) FromBytes(bytes []byte) error {
 }
 
 func (c *ConfigRequest) String() string {
-	// TODO: add more info to this string, at least the config sequence
-	return fmt.Sprintf("Config Request with config sequence %d", c.ConfigSeq)
+	return fmt.Sprintf("Config Request with config sequence %d", c.ConfigSequence())
 }
 
 type ControlEvent struct {
@@ -596,10 +600,10 @@ func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.Fabr
 			}
 		}
 		if ce.ConfigRequest != nil {
-			if ce.ConfigRequest.ConfigSeq == configSeq {
+			if ce.ConfigRequest.ConfigSequence() == configSeq+1 {
 				filteredEvents = append(filteredEvents, ce)
 			} else {
-				l.Debugf("filtering ce config request with mismatch config seq (currently %d); %s", configSeq, ce.ConfigRequest.String())
+				l.Debugf("filtering ce config request with mismatch config seq (currently %d); %s; (should be +1)", configSeq, ce.ConfigRequest.String())
 			}
 		}
 	}
