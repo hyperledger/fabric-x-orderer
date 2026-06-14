@@ -94,6 +94,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		// try to submit config with bad ctx (just any context without the router's certificate) and it should be rejected
 		_, err = consensusNodes[0].SubmitConfig(t.Context(), configReq)
@@ -113,6 +114,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		badConfigReq := &protos.Request{
 			Payload:   badEnv.Payload,
 			Signature: badEnv.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, badConfigReq)
 		require.Error(t, err)
@@ -127,6 +129,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		// submit a good config update
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
@@ -166,6 +169,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
@@ -224,6 +228,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
@@ -280,6 +285,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
@@ -359,6 +365,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 
 		// restart consensus nodes
@@ -448,6 +455,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
 		}
 
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
