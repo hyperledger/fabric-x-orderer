@@ -68,7 +68,7 @@ func (r *naiveReplication) Stop() {
 
 func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests) {
 	for _, s := range r.subscribers {
-		s <- arma_types.NewSimpleBatch(0, partyID, batchSeq, batchedRequests, 0)
+		s <- arma_types.NewSimpleBatch(0, partyID, batchSeq, batchedRequests, 0, nil)
 	}
 }
 
@@ -208,8 +208,8 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64) arma_types.BatchAttestationFragment {
-		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0, txCount)
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64, primarySignature []byte) arma_types.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0, txCount, nil)
 	})
 
 	batchersInfo := make([]config.BatcherInfo, len(batchers))
@@ -375,8 +375,8 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 	}, striker)
 
 	bafCreator := &mocks.FakeBAFCreator{}
-	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64) arma_types.BatchAttestationFragment {
-		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0, txCount)
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64, primarySignature []byte) arma_types.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(shardID, primary, seq, digest, nodeID, 0, txCount, nil)
 	})
 
 	batchersInfo := make([]config.BatcherInfo, len(batchers))

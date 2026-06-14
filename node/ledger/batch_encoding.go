@@ -66,6 +66,12 @@ func (b *FabricBatch) ConfigSequence() types.ConfigSequence {
 	return types.ConfigSequence(binary.BigEndian.Uint64(buff[4:]))
 }
 
+// PrimarySignature returns nil for now.
+// TODO: Store and retrieve the primary signature from block metadata.
+func (b *FabricBatch) PrimarySignature() []byte {
+	return nil
+}
+
 func ordererMetadata(m [][]byte) []byte {
 	if len(m) <= int(BlockMetadataIndex_PartyShardConfigSequence) {
 		return nil

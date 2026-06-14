@@ -56,7 +56,7 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, txCount uint64, d
 	configBlock.Data = &common.BlockData{Data: [][]byte{configReq}}
 	batchedConfigReq := arma_types.BatchedRequests([][]byte{configReq})
 	configBlock.Header.DataHash = batchedConfigReq.Digest()
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(arma_types.NewSimpleBatch(arma_types.ShardIDConsensus, 0, 0, nil, 0), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(arma_types.NewSimpleBatch(arma_types.ShardIDConsensus, 0, 0, nil, 0, nil), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		return nil, errors.Errorf("Failed to invoke AssemblerBlockMetadataToBytes: %s", err)
 	}
@@ -144,7 +144,7 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 	}
 
 	// verify orderer metadata
-	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(arma_types.NewSimpleBatch(arma_types.ShardIDConsensus, 0, 0, nil, 0), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
+	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(arma_types.NewSimpleBatch(arma_types.ShardIDConsensus, 0, 0, nil, 0, nil), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
 	}
