@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -972,7 +971,6 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	}
 
 	// TODO: wait for acks from router, batcher and assembler in my party before reconfig
-	time.Sleep(1 * time.Second)
 	c.stopAndReconfigure(newConfig, lastBlock)
 	return false, nil
 }
