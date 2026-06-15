@@ -266,8 +266,7 @@ func TestConfigTXDisseminationWithVerification(t *testing.T) {
 
 	// Create the config transaction
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
 
 	requestBatchMaxBytes := uint64(1048576)
 	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, cfgutil.NewSmartBFTConfig(cfgutil.SmartBFTConfigName.RequestBatchMaxBytes, strconv.FormatUint(requestBatchMaxBytes, 10)))
@@ -471,8 +470,7 @@ func TestConfigTXDisseminationVerificationFailure(t *testing.T) {
 
 	// Create a well signed config transaction
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
 	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)
 	env := cfgutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3, 4}, submittingParty, configUpdatePbData)
@@ -487,8 +485,7 @@ func TestConfigTXDisseminationVerificationFailure(t *testing.T) {
 	require.ErrorContains(t, err, "INTERNAL_SERVER_ERROR, Info: request structure verification error: signature did not satisfy policy /Channel/Writers")
 
 	// Create a config tx signed by only one admin, no majority
-	configUpdateBuilder, cleanUp = cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
-	defer cleanUp()
+	configUpdateBuilder = cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
 	configUpdatePbData = configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)
 	env = cfgutil.CreateConfigTX(t, dir, []types.PartyID{1}, submittingParty, configUpdatePbData)

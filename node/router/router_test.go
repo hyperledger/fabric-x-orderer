@@ -609,8 +609,7 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 	// the envelope.Payload contains marshaled bytes of configUpdateEnvelope, which is an envelope with Header.Type = HeaderType_CONFIG_UPDATE, signed by majority of admins
 	// Create the config transaction
 	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
 
 	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	require.NotEmpty(t, configUpdatePbData)

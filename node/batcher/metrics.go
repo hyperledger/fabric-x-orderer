@@ -29,7 +29,7 @@ var (
 		LabelNames: []string{"party_id", "shard_id"},
 	}
 
-	memPoolSizeOOpts = metrics.GaugeOpts{
+	memPoolSizeOpts = metrics.GaugeOpts{
 		Namespace:  "batcher",
 		Name:       "mempool_size",
 		Help:       "The current size of the mempool.",
@@ -119,8 +119,8 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 	if err != nil {
 		logger.Panicf("failed to convert port to int: %v", err)
 	}
-	partyID := fmt.Sprintf("%d", batcherNodeConfig.PartyId)
-	shardID := fmt.Sprintf("%d", batcherNodeConfig.ShardId)
+	partyID := strconv.Itoa(int(batcherNodeConfig.PartyId))
+	shardID := strconv.Itoa(int(batcherNodeConfig.ShardId))
 
 	monitor := monitoring.NewMonitor(monitoring.Endpoint{Host: host, Port: portInt}, fmt.Sprintf("batcher_%s_%s", partyID, shardID))
 	p := monitor.Provider
@@ -156,7 +156,7 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 		batchedTxsTotal:     p.NewCounter(batchedTxsTotalOpts).With([]string{partyID, shardID}...),
 		routerTxsTotal:      p.NewCounter(routerTxsTotalOpts).With([]string{partyID, shardID}...),
 		complaintsTotal:     p.NewCounter(complaintsTotalOpts).With([]string{partyID, shardID}...),
-		memPoolSize:         p.NewGauge(memPoolSizeOOpts).With([]string{partyID, shardID}...),
+		memPoolSize:         p.NewGauge(memPoolSizeOpts).With([]string{partyID, shardID}...),
 		firstResendsTotal:   p.NewCounter(firstResendsTotalOpts).With([]string{partyID, shardID}...),
 	}
 }

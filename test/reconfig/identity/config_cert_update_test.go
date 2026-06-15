@@ -127,7 +127,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	})
 
 	// Create config update to change a party's certificates
-	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
@@ -382,7 +382,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	})
 
 	// 3.
-	configUpdateBuilder, _ := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	partyToUpdate := types.PartyID(1)
 	nonUpdatedParties := slices.DeleteFunc(slices.Clone(parties), func(partyID types.PartyID) bool {
@@ -528,7 +528,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
 	require.NoError(t, err)
 
-	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
+	configUpdateBuilder = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
 	// Update the router TLS certs in the config
 	newRouterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "tls-cert.pem"))
@@ -624,7 +624,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	})
 
 	// 12.
-	configUpdateBuilder, _ = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
+	configUpdateBuilder = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
 	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
 	require.NoError(t, err)

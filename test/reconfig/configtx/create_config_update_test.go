@@ -38,8 +38,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	// Create config update
-	configUpdateBuilder, cleanUp := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	defer cleanUp()
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 
 	newCACerts := [][]byte{[]byte("newCACert")}
 	newTLSCACerts := [][]byte{[]byte("newTLSCACert")}

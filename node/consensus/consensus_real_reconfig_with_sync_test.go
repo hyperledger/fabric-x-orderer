@@ -102,8 +102,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create config update to change batch creation timeout
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 		configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, configutil.NewBatchTimeoutsConfig(configutil.BatchTimeoutsConfigName.BatchCreationTimeout, "2s"))
 		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 		configReq := &protos.Request{
@@ -164,8 +163,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		configBlockStoreDir := t.TempDir()
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(configBlockStoreDir, "config.block"))
 		require.NoError(t, err)
-		configUpdateBuilder, cleanUp := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
-		defer cleanUp()
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(configBlockStoreDir, "config.block"))
 		configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, configutil.NewBatchSizeConfig(configutil.BatchSizeConfigName.MaxMessageCount, 15))
 		env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 		configReq := &protos.Request{
