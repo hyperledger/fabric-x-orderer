@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/pkg/errors"
 )
 
@@ -82,9 +83,7 @@ func (c *ConsenterSupportAdapter) Height() uint64 {
 // Implements synchronizer.ConsenterSupport.
 func (c *ConsenterSupportAdapter) ChannelID() string {
 	channelID := c.consensus.Config.Bundle.ConfigtxValidator().ChannelID()
-	// TODO remove the replacement once we harmonize the channel ID in the config with the one used in the consensus code (and everywhere else).
-	c.consensus.Logger.Debugf("Retrieving channel ID from config bundle: '%s',replacing with 'consensus'", channelID)
-	return "consensus"
+	return delivery.DecisionChannelName(channelID)
 }
 
 // Sequence returns the current configuration sequence number for the channel.

@@ -98,7 +98,10 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 		c.Logger.Panicf("Failed creating Batch attestation DB: %v", err)
 	}
 
-	c.DeliverService = delivery.DeliverService(map[string]blockledger.Reader{"consensus": consLedger})
+	channelID := nodeConfig.Bundle.ConfigtxValidator().ChannelID()
+	decisionChannelName := delivery.DecisionChannelName(channelID)
+	// TODO we don't need a map here
+	c.DeliverService = delivery.DeliverService(map[string]blockledger.Reader{decisionChannelName: consLedger})
 	c.Config = nodeConfig
 	c.Arma = &Consenter{
 		DB:              badb,

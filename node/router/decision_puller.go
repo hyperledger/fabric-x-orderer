@@ -20,5 +20,6 @@ type DecisionPuller interface {
 }
 
 func CreateConsensusDecisionReplicator(config *node_config.RouterNodeConfig, seekInfo *orderer.SeekInfo, logger *flogging.FabricLogger) DecisionPuller {
-	return delivery.NewConsensusDecisionReplicator(config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, logger, seekInfo)
+	channelID := config.Bundle.ConfigtxValidator().ChannelID()
+	return delivery.NewConsensusDecisionReplicator(channelID, config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, logger, seekInfo)
 }

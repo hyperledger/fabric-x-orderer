@@ -11,15 +11,16 @@ import (
 )
 
 type FakeConsensusBringerFactory struct {
-	CreateStub        func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) delivery.ConsensusBringer
+	CreateStub        func(string, []config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) delivery.ConsensusBringer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
-		arg1 []config.RawBytes
-		arg2 config.RawBytes
+		arg1 string
+		arg2 []config.RawBytes
 		arg3 config.RawBytes
-		arg4 string
-		arg5 ledger.AssemblerLedgerReaderWriter
-		arg6 *flogging.FabricLogger
+		arg4 config.RawBytes
+		arg5 string
+		arg6 ledger.AssemblerLedgerReaderWriter
+		arg7 *flogging.FabricLogger
 	}
 	createReturns struct {
 		result1 delivery.ConsensusBringer
@@ -31,28 +32,29 @@ type FakeConsensusBringerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConsensusBringerFactory) Create(arg1 []config.RawBytes, arg2 config.RawBytes, arg3 config.RawBytes, arg4 string, arg5 ledger.AssemblerLedgerReaderWriter, arg6 *flogging.FabricLogger) delivery.ConsensusBringer {
-	var arg1Copy []config.RawBytes
-	if arg1 != nil {
-		arg1Copy = make([]config.RawBytes, len(arg1))
-		copy(arg1Copy, arg1)
+func (fake *FakeConsensusBringerFactory) Create(arg1 string, arg2 []config.RawBytes, arg3 config.RawBytes, arg4 config.RawBytes, arg5 string, arg6 ledger.AssemblerLedgerReaderWriter, arg7 *flogging.FabricLogger) delivery.ConsensusBringer {
+	var arg2Copy []config.RawBytes
+	if arg2 != nil {
+		arg2Copy = make([]config.RawBytes, len(arg2))
+		copy(arg2Copy, arg2)
 	}
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
-		arg1 []config.RawBytes
-		arg2 config.RawBytes
+		arg1 string
+		arg2 []config.RawBytes
 		arg3 config.RawBytes
-		arg4 string
-		arg5 ledger.AssemblerLedgerReaderWriter
-		arg6 *flogging.FabricLogger
-	}{arg1Copy, arg2, arg3, arg4, arg5, arg6})
+		arg4 config.RawBytes
+		arg5 string
+		arg6 ledger.AssemblerLedgerReaderWriter
+		arg7 *flogging.FabricLogger
+	}{arg1, arg2Copy, arg3, arg4, arg5, arg6, arg7})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
-	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2, arg3, arg4, arg5, arg6})
+	fake.recordInvocation("Create", []interface{}{arg1, arg2Copy, arg3, arg4, arg5, arg6, arg7})
 	fake.createMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5, arg6)
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
 	}
 	if specificReturn {
 		return ret.result1
@@ -66,17 +68,17 @@ func (fake *FakeConsensusBringerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeConsensusBringerFactory) CreateCalls(stub func([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) delivery.ConsensusBringer) {
+func (fake *FakeConsensusBringerFactory) CreateCalls(stub func(string, []config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) delivery.ConsensusBringer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeConsensusBringerFactory) CreateArgsForCall(i int) ([]config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) {
+func (fake *FakeConsensusBringerFactory) CreateArgsForCall(i int) (string, []config.RawBytes, config.RawBytes, config.RawBytes, string, ledger.AssemblerLedgerReaderWriter, *flogging.FabricLogger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7
 }
 
 func (fake *FakeConsensusBringerFactory) CreateReturns(result1 delivery.ConsensusBringer) {

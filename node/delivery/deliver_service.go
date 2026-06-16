@@ -128,3 +128,8 @@ func (nbi *noopBindingInspector) Inspect(context.Context, proto.Message) error {
 	// TODO check the TLS binding
 	return nil
 }
+
+// DecisionChannelName returns the name of the channel used for consensus decision replication.
+func DecisionChannelName(channelID string) string {
+	return fmt.Sprintf("consensus-%s", channelID)
+}

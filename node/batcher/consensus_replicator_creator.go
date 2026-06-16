@@ -34,5 +34,7 @@ func (c *ConsensusDecisionReplicatorFactory) CreateDecisionConsensusReplicator(c
 	if endpoint == "" || len(tlsCAs) == 0 {
 		logger.Panicf("Failed finding endpoint and TLS CAs for party %d", config.PartyId)
 	}
-	return delivery.NewConsensusDecisionReplicator(tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, logger, delivery.NextSeekInfo(uint64(lastKnownDecisionNum)))
+
+	channelID := config.Bundle.ConfigtxValidator().ChannelID()
+	return delivery.NewConsensusDecisionReplicator(channelID, tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, logger, delivery.NextSeekInfo(uint64(lastKnownDecisionNum)))
 }

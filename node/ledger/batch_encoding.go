@@ -151,10 +151,12 @@ func NewFabricBatchFromBlock(block *common.Block) (*FabricBatch, error) {
 	return batch, nil
 }
 
+// TODO Channel-Names: include the config ChannelID suffix (e.g. "shard<shardID>party<partyID>-<channelID>") once supported.
 func ShardPartyToChannelName(shardID types.ShardID, partyID types.PartyID) string {
 	return fmt.Sprintf("shard%dparty%d", shardID, partyID)
 }
 
+// TODO Channel-Names: parse the config ChannelID suffix once channel names include it (e.g. "shard<shardID>party<partyID>-<channelID>").
 func ChannelNameToShardParty(channelName string) (types.ShardID, types.PartyID, error) {
 	s, ok := strings.CutPrefix(channelName, "shard")
 	if !ok {

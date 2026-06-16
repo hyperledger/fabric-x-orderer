@@ -32,17 +32,18 @@ type ConsensusBringer interface {
 
 //go:generate counterfeiter -o ./mocks/consensus_bringer_factory.go . ConsensusBringerFactory
 type ConsensusBringerFactory interface {
-	Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer
+	Create(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer
 }
 
 type DefaultConsensusBringerFactory struct{}
 
-func (f *DefaultConsensusBringerFactory) Create(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer {
-	return NewConsensusBAReplicator(tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, logger)
+func (f *DefaultConsensusBringerFactory) Create(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer {
+	return NewConsensusBAReplicator(channelID, tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, logger)
 }
 
 // ConsensusBAReplicator replicates decisions from consensus and allows the consumption of `core.BatchAttestation` objects.
 type ConsensusBAReplicator struct {
+	channelID       string
 	assemblerLedger ledger.AssemblerLedgerReaderWriter // TODO instead of using AssemblerLedgerReaderWriter define a more general interface to read the last block
 	tlsKey, tlsCert []byte
 	endpoint        string
@@ -52,9 +53,10 @@ type ConsensusBAReplicator struct {
 	ctxCancelFunc   context.CancelFunc
 }
 
-func NewConsensusBAReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) *ConsensusBAReplicator {
+func NewConsensusBAReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) *ConsensusBAReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	baReplicator := &ConsensusBAReplicator{
+		channelID:       channelID,
 		assemblerLedger: assemblerLedger,
 		cc:              clientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint:        endpoint,
@@ -82,8 +84,8 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
-			"consensus",
-			nil,
+			DecisionChannelName(cr.channelID),
+			nil, // sign deliver requests to consensus?
 			NextSeekInfo(uint64(position.DecisionNum)),
 			int32(0),
 			uint64(0),

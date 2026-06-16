@@ -129,6 +129,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		return batcherToPullFrom.Endpoint
 	}
 
+	// TODO Channel-Name should come from a combination of config channel-ID and shardID and partyID
 	channelName := ledger.ShardPartyToChannelName(shardID, primaryID)
 	br.logger.Infof("Assembler replicating from channel %s ", channelName)
 
@@ -250,6 +251,7 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom config.BatcherInfo, batchID types.BatchID, resultChan chan types.Batch, successErr error) {
 	br.logger.Infof("Assembler trying to pull a single batch from %s, batch-ID: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(batchID))
 
+	// TODO Channel-Name should come from a combination of config channel-ID and shardID and partyID
 	channelName := ledger.ShardPartyToChannelName(batchID.Shard(), batchID.Primary())
 	br.logger.Infof("Assembler replicating from channel %s ", channelName)
 
