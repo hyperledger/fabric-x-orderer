@@ -158,6 +158,10 @@ func (c *ConsenterBlockVerifier) Clone() deliverclient.CloneableUpdatableBlockVe
 
 // UpdateBlockHeader saves the last block header that was verified and handled successfully.
 func (c *ConsenterBlockVerifier) UpdateBlockHeader(consenterBlock *common.Block) {
+	if consenterBlock == nil || consenterBlock.Header == nil {
+		c.logger.Warn("consenter block is nil or has a nil header")
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.lastBlockHeader = consenterBlock.Header
