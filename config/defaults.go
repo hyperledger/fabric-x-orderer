@@ -69,6 +69,6 @@ var DefaultBatchingConfig = BatchingConfig{
 }
 
 var DefaultNodeLocalConfig = NodeLocalConfig{
-	OperationsConfig: &Operations{ListenAddress: "127.0.0.1", ListenPort: 0},
+	OperationsConfig: &Operations{ListenAddress: "127.0.0.1", ListenPort: 0, TLSConfig: &TLSConfigYaml{Enabled: false}},
 	MetricsConfig:    &Metrics{Provider: "prometheus", MetricsLogInterval: time.Second * 10},
 }

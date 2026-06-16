@@ -34,7 +34,7 @@ func (w *wrapListener) Close() error {
 	return w.closeErr
 }
 
-func GetAvailablePort(t *testing.T) (port string, ll net.Listener) {
+func GetAvailablePort(t testing.TB) (port string, ll net.Listener) {
 	addr := "127.0.0.1:0"
 	listenConfig := net.ListenConfig{}
 

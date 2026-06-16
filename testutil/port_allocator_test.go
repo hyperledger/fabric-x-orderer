@@ -38,13 +38,13 @@ type allocationResult struct {
 	listener *testListener
 }
 
-func scriptedAllocator(t *testing.T, results []allocationResult) func(t *testing.T) (string, net.Listener) {
+func scriptedAllocator(t testing.TB, results []allocationResult) func(t testing.TB) (string, net.Listener) {
 	t.Helper()
 
 	var lock sync.Mutex
 	idx := 0
 
-	return func(t *testing.T) (string, net.Listener) {
+	return func(t testing.TB) (string, net.Listener) {
 		t.Helper()
 
 		lock.Lock()

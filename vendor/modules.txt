@@ -183,20 +183,20 @@ github.com/hyperledger/fabric/common/cauthdsl
 github.com/hyperledger/fabric/common/channelconfig
 github.com/hyperledger/fabric/common/configtx
 github.com/hyperledger/fabric/common/crypto
+github.com/hyperledger/fabric/common/fabhttp
 github.com/hyperledger/fabric/common/genesis
 github.com/hyperledger/fabric/common/ledger
 github.com/hyperledger/fabric/common/ledger/blockledger
 github.com/hyperledger/fabric/common/policies
 github.com/hyperledger/fabric/common/policydsl
 github.com/hyperledger/fabric/common/util
-github.com/hyperledger/fabric/common/viperutil
-github.com/hyperledger/fabric/core/config
+github.com/hyperledger/fabric/core/middleware
+github.com/hyperledger/fabric/core/middleware/fakes
 github.com/hyperledger/fabric/internal/pkg/comm
 github.com/hyperledger/fabric/internal/pkg/identity
 github.com/hyperledger/fabric/msp
 github.com/hyperledger/fabric/msp/cache
 github.com/hyperledger/fabric/msp/mgmt
-github.com/hyperledger/fabric/orderer/common/localconfig
 github.com/hyperledger/fabric/protoutil
 # github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2
 ## explicit
@@ -226,6 +226,7 @@ github.com/hyperledger/fabric-lib-go/common/flogging/fabenc
 github.com/hyperledger/fabric-lib-go/common/metrics
 github.com/hyperledger/fabric-lib-go/common/metrics/disabled
 github.com/hyperledger/fabric-lib-go/common/metrics/metricsfakes
+github.com/hyperledger/fabric-lib-go/healthz
 # github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
 ## explicit; go 1.22.0
 github.com/hyperledger/fabric-protos-go-apiv2/common
@@ -423,6 +424,9 @@ github.com/syndtr/goleveldb/leveldb/opt
 github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
+# github.com/tedsuo/ifrit v0.0.0-20260418191334-846868129986
+## explicit; go 1.16
+github.com/tedsuo/ifrit
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr

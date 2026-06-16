@@ -17,14 +17,14 @@ import (
 // PortAllocator allocates a TCP port and returns both its numeric string and
 // the listener that currently holds it.
 type PortAllocator interface {
-	Allocate(t *testing.T) (port string, ll net.Listener)
+	Allocate(t testing.TB) (port string, ll net.Listener)
 }
 
 // DefaultPortAllocator preserves the current behavior by delegating every
 // allocation to GetAvailablePort.
 type DefaultPortAllocator struct{}
 
-func (a *DefaultPortAllocator) Allocate(t *testing.T) (string, net.Listener) {
+func (a *DefaultPortAllocator) Allocate(t testing.TB) (string, net.Listener) {
 	return GetAvailablePort(t)
 }
 
@@ -35,7 +35,7 @@ type TestScopedPortAllocator struct {
 	portsByTest   map[string][]string
 	ownerByPort   map[string]string
 	cleanupByTest map[string]bool
-	allocatePort  func(t *testing.T) (string, net.Listener)
+	allocatePort  func(t testing.TB) (string, net.Listener)
 	retryAttempts int
 }
 
@@ -49,7 +49,7 @@ func NewTestScopedPortAllocator() *TestScopedPortAllocator {
 	}
 }
 
-func (a *TestScopedPortAllocator) Allocate(t *testing.T) (string, net.Listener) {
+func (a *TestScopedPortAllocator) Allocate(t testing.TB) (string, net.Listener) {
 	testName := t.Name()
 
 	a.lock.Lock()
@@ -104,7 +104,7 @@ func SharedTestPortAllocator() *TestScopedPortAllocator {
 // AllocateLocalhostAddress reserves a unique port via the shared test port
 // allocator, closes the listener, and returns a localhost TCP
 // address using that port.
-func AllocateLocalhostAddress(t *testing.T) string {
+func AllocateLocalhostAddress(t testing.TB) string {
 	t.Helper()
 
 	port, ll := SharedTestPortAllocator().Allocate(t)
