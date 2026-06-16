@@ -100,6 +100,11 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
+	time.Sleep(10 * time.Second) // wait for the batcher to finish apply config before stopping
+	for _, b := range batchers {
+		b.Stop()
+	}
+
 	//// wait for the batchers initialized with the new AutoRemoveTimeout parameter
 	//for j := range parties {
 	//	require.Eventually(t, func() bool {
