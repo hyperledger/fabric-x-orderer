@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
+
 	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -69,6 +71,7 @@ type Batcher struct {
 	controlEventBroadcaster            *ControlEventBroadcaster
 	primaryAckConnector                *PrimaryAckConnector
 	primaryReqConnector                *PrimaryReqConnector
+	configAcker                        configack.ConfigAcker
 	Net                                Net
 	Ledger                             *node_ledger.BatchLedgerArray
 	config                             *node_config.BatcherNodeConfig
@@ -379,6 +382,18 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	if err != nil {
 		return true, errors.Errorf("could not decide if node restart is required, err: %v\n", err)
 	}
+
+	// send ack to the consenter node
+	go func() {
+		configSeq := newBatcherConfig.Bundle.ConfigtxValidator().Sequence()
+		resp, err := b.configAcker.SendConfigAckToConsensus(configSeq)
+		if err != nil {
+			b.logger.Warnf("Failed to send ack to the consenter node on config sequence %d", configSeq)
+		}
+		if resp.GetError() != "" {
+			b.logger.Warnf("Received bad ack response from consenter node on config sequence %d, response: %s", configSeq, resp.GetError())
+		}
+	}()
 
 	if isRestartRequired {
 		b.logger.Warnf("Batcher's identity was changed in the new configuration")

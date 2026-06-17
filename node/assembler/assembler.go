@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -42,6 +45,7 @@ type Assembler struct {
 	net                   Net
 	assemblerNodeConfig   *node_config.AssemblerNodeConfig
 	configuration         *config.Configuration
+	configAcker           configack.ConfigAcker
 	lastConfigBlockNumber uint64
 	metrics               *Metrics
 	ds                    *AssemblerDeliverService
@@ -138,12 +142,26 @@ func NewDefaultAssembler(
 		logger.Panicf("Failed creating assembler: %v", err)
 	}
 
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCA := range nodeConfig.Consenter.TLSCACerts {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
+	}
+
 	assembler := &Assembler{
 		logger:       logger,
 		ledger:       ledger,
 		mainExitChan: mainExitChan,
 		status:       utils.NodeStatus{},
 		metrics:      NewMetrics(nodeConfig, ledger.Metrics(), logger),
+		configAcker: configack.NewConfigAcker(&configack.ConnectionInfo{
+			TLSCert:           nodeConfig.TLSCertificateFile,
+			TLSKey:            nodeConfig.TLSPrivateKeyFile,
+			ConsensusEndpoint: nodeConfig.Consenter.Endpoint,
+			ConsensusRootCAs:  tlsCAsOfConsenter,
+			PartyID:           nodeConfig.PartyId,
+			NodeType:          protos.NodeType_NODE_TYPE_ASSEMBLER,
+			Shard:             0,
+		}, logger),
 	}
 
 	assembler.initLedger(configBlock)
@@ -328,6 +346,24 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 	if err != nil {
 		a.logger.Panicf("Failed to check if new configuration can be applied: %v", err)
 	}
+
+	// apply new config and restart assembler
+	newAssemblerNodeConfig := newConfiguration.ExtractAssemblerConfig(configBlock)
+
+	newConfigSeq := newAssemblerNodeConfig.Bundle.ConfigtxValidator().Sequence()
+
+	// send ack to the consenter node
+	go func() {
+		configSeq := newAssemblerNodeConfig.Bundle.ConfigtxValidator().Sequence()
+		resp, err := a.configAcker.SendConfigAckToConsensus(configSeq)
+		if err != nil {
+			a.logger.Warnf("Failed to send ack to the consenter node on config sequence %d", configSeq)
+		}
+		if resp.GetError() != "" {
+			a.logger.Warnf("Received bad ack response from consenter node on config sequence %d, response: %s", configSeq, resp.GetError())
+		}
+	}()
+
 	if adminRequired {
 		a.logger.Warnf("Pending admin action to apply new config. Assembler's deliver service remains available.")
 		a.lock.Lock()
@@ -336,10 +372,6 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 		return
 	}
 
-	// apply new config and restart assembler
-	newAssemblerNodeConfig := newConfiguration.ExtractAssemblerConfig(configBlock)
-
-	newConfigSeq := newAssemblerNodeConfig.Bundle.ConfigtxValidator().Sequence()
 	currentConfigSeq := a.assemblerNodeConfig.Bundle.ConfigtxValidator().Sequence()
 	a.logger.Infof("Applying new config with sequence %d (current: %d), assembler will be restarted dynamically", newConfigSeq, currentConfigSeq)
 

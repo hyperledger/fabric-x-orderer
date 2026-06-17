@@ -18,6 +18,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
+
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -64,6 +66,7 @@ type Router struct {
 	configSeq        uint32
 	verifier         *requestfilter.RulesVerifier
 	configSubmitter  ConfigurationSubmitter
+	configAcker      configack.ConfigAcker
 	shardRouters     map[types.ShardID]*ShardRouter
 	decisionPuller   DecisionPuller
 	metrics          *RouterMetrics
@@ -141,6 +144,21 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.verifier = createVerifier(rconfig)
 
 	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier)
+
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCA := range r.routerNodeConfig.Consenter.TLSCACerts {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
+	}
+	connInfo := &configack.ConnectionInfo{
+		TLSCert:           r.routerNodeConfig.TLSCertificateFile,
+		TLSKey:            r.routerNodeConfig.TLSPrivateKeyFile,
+		ConsensusEndpoint: r.routerNodeConfig.Consenter.Endpoint,
+		ConsensusRootCAs:  tlsCAsOfConsenter,
+		PartyID:           r.routerNodeConfig.PartyID,
+		NodeType:          protos.NodeType_NODE_TYPE_ROUTER,
+		Shard:             0,
+	}
+	r.configAcker = configack.NewConfigAcker(connInfo, r.logger)
 
 	// create shard routers
 	batcherEndpoints := make(map[types.ShardID]string)
@@ -707,15 +725,28 @@ func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to check if node config change requires restart: %v", err)
 	}
-	if requireRestart {
-		r.logger.Warnf("Router's identity was changed in the new configuration")
-		return true, nil
-	}
 
 	// extract the new router node config.
 	newRouterNodeConfig := newConfiguration.ExtractRouterConfig(configBlock)
 
 	newConfigSeq := newRouterNodeConfig.Bundle.ConfigtxValidator().Sequence()
+
+	// send ack to the consenter node
+	go func() {
+		resp, err := r.configAcker.SendConfigAckToConsensus(newConfigSeq)
+		if err != nil {
+			r.logger.Warnf("Failed to send ack to the consenter node on config sequence %d", newConfigSeq)
+		}
+		if resp.GetError() != "" {
+			r.logger.Warnf("Received bad ack response from consenter node on config sequence %d, response: %s", newConfigSeq, resp.GetError())
+		}
+	}()
+
+	if requireRestart {
+		r.logger.Warnf("Router's identity was changed in the new configuration")
+		return true, nil
+	}
+
 	r.logger.Infof("Applying new config with sequence %d (current: %d), router will be restarted dynamically", newConfigSeq, r.configSeq)
 
 	seekInfo := delivery.NextSeekInfo(uint64(getDecisionNumberFromConfigBlock(configBlock, r.logger)))
