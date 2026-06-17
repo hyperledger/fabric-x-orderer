@@ -163,3 +163,7 @@ func (sc *stubConsenter) ReplicateDecision() <-chan *state.Header {
 func (sc *stubConsenter) CreateDecisionConsensusReplicator(conf *config.BatcherNodeConfig, logger *flogging.FabricLogger, num types.DecisionNum) batcher.DecisionReplicator {
 	return sc
 }
+
+func (sc *stubConsenter) AckConfig(context.Context, *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+	return &protos.ConfigAckResponse{}, nil
+}

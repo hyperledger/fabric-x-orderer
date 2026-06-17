@@ -15,6 +15,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -117,6 +120,22 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 
 	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, b.config.ShardId, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
+
+	consenterEndpoint, tlsCAS := FindConsenterForBatcherParty(b.config, b.logger)
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCA := range tlsCAS {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
+	}
+	connInfo := &configack.ConnectionInfo{
+		TLSCert:           b.config.TLSCertificateFile,
+		TLSKey:            b.config.TLSPrivateKeyFile,
+		ConsensusEndpoint: consenterEndpoint,
+		ConsensusRootCAs:  tlsCAsOfConsenter,
+		PartyID:           b.config.PartyId,
+		NodeType:          protos.NodeType_NODE_TYPE_BATCHER,
+		Shard:             b.config.ShardId,
+	}
+	b.configAcker = configack.NewConfigAcker(connInfo, b.logger)
 
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),

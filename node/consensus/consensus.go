@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+
 	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
@@ -124,6 +126,7 @@ type Consensus struct {
 	ConfigApplier          ConfigApplier
 	ConfigRequestValidator configrequest.ConfigRequestValidator
 	ConfigRulesVerifier    verify.OrdererRules
+	ConfigAckHandler       *ConfigAckHandler
 }
 
 func (c *Consensus) Start() error {
@@ -869,6 +872,21 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 
 	c.Arma.Index(digests)
 	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.PrevHash, uint64(hdr.DecisionNumOfLastConfigBlock))
+
+	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
+		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
+		env, err := protoutil.GetEnvelopeFromBlock(configBlock.Data.Data[0])
+		if err != nil {
+			c.Logger.Panicf("failed to get envelope from config block: %s", err)
+		}
+		// TODO: replace factory.GetDefault()
+		bundle, err := policy.BuildBundleFromBlock(env, factory.GetDefault())
+		if err != nil {
+			c.Logger.Panicf("failed to build bundle from config block: %s", err)
+		}
+		c.ConfigAckHandler = NewConfigAckHandler(bundle.ConfigtxValidator().Sequence(), len(c.Config.Shards), c.Logger)
+	}
+
 	c.Storage.Append(block)
 
 	// update state
@@ -919,10 +937,13 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 	}
 
 	if isAdminOperationRequired {
-		c.Logger.Warnf("Pending admin action to apply new config")
 		c.lock.Lock()
 		c.status.SetState(node_utils.StatePendingAdmin)
 		c.lock.Unlock()
+		<-c.ConfigAckHandler.Done()
+		c.Logger.Warnf("The Router, Batchers, and Assembler have acknowledged the new configuration, is it safe to restart")
+		c.Logger.Warnf("Pending admin action to apply new config")
+
 	}
 }
 
@@ -1226,4 +1247,15 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 		CurrentConfig:    currentBFTConfig,
 		InLatestDecision: inLatestDecision,
 	}
+}
+
+// AckConfig handles ConfigAck RPC calls from party members (router, batchers, assembler).
+// It simply marks and logs the acknowledgments.
+func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	err := c.ConfigAckHandler.RecordAck(req)
+
+	return &protos.ConfigAckResponse{Error: err.Error()}, nil
 }
