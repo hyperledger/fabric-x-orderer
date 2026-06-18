@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -247,6 +248,7 @@ func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consente
 		Directory:          dir,
 		BFTConfig:          BFTConfig,
 		Bundle:             bundle,
+		BCCSP:              factory.GetDefault(),
 		RequestMaxBytes:    1000,
 		Metrics: &operations.Metrics{
 			Provider:           "disabled",

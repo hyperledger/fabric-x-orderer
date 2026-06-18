@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
@@ -49,6 +49,7 @@ type configSubmitter struct {
 	configUpdateProposer  policy.ConfigUpdateProposer
 	configRulesVerifier   verify.OrdererRules
 	partyID               types.PartyID
+	bccsp                 bccsp.BCCSP
 }
 
 func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
@@ -70,6 +71,7 @@ func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.Fabr
 		configUpdateProposer:  configUpdateProposer,
 		configRulesVerifier:   configRulesVerifier,
 		partyID:               conf.PartyID,
+		bccsp:                 conf.BCCSP,
 	}
 	return cs
 }
@@ -126,15 +128,14 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		return err
 	}
 
-	bccsp := factory.GetDefault()
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
-	if err = cs.configRulesVerifier.ValidateNewConfig(env, bccsp, cs.partyID); err != nil {
+	if err = cs.configRulesVerifier.ValidateNewConfig(env, cs.bccsp, cs.partyID); err != nil {
 		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
 		tr.responses <- feedback
 		return err
 	}
 
-	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env, bccsp); err != nil {
+	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env, cs.bccsp); err != nil {
 		feedback.err = fmt.Errorf("error in validating config transition rules: %w", err)
 		tr.responses <- feedback
 		return err

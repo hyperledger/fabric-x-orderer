@@ -8,7 +8,7 @@ package consensus
 
 import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
@@ -29,10 +29,12 @@ type ConfigApplier interface {
 	ExtractSmartBFTConfigFromBlock(configBlock *common.Block, selfID arma_types.PartyID) ([]uint64, smartbft_types.Configuration, error)
 }
 
-type DefaultConfigApplier struct{}
+type DefaultConfigApplier struct {
+	bccsp bccsp.BCCSP
+}
 
 func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configRequest *state.ConfigRequest) (*state.State, error) {
-	bundle, err := channelconfig.NewBundleFromEnvelope(configRequest.Envelope, factory.GetDefault())
+	bundle, err := channelconfig.NewBundleFromEnvelope(configRequest.Envelope, ca.bccsp)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,7 @@ func (ca *DefaultConfigApplier) ExtractSmartBFTConfigFromBlock(configBlock *comm
 	if err != nil {
 		return nil, smartbft_types.Configuration{}, errors.Wrap(err, "unable to extract config req env")
 	}
-	bundle, err := channelconfig.NewBundleFromEnvelope(configReqEnv, factory.GetDefault())
+	bundle, err := channelconfig.NewBundleFromEnvelope(configReqEnv, ca.bccsp)
 	if err != nil {
 		return nil, smartbft_types.Configuration{}, errors.Wrap(err, "unable to create bundle from the config req env")
 	}

@@ -146,6 +146,7 @@ func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 			RequestMaxBytes:                     1 << 10,
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,
+			BCCSP:                               factory.GetDefault(),
 			Consenter:                           node_config.ConsenterInfo{PartyID: types.PartyID(i + 1), Endpoint: consenterEndpoint[i], TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
 		}
 		configs = append(configs, config)
@@ -264,6 +265,7 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 			Directory:                           dir,
 			BFTConfig:                           BFTConfig,
 			Bundle:                              bundle,
+			BCCSP:                               factory.GetDefault(),
 			ClientSignatureVerificationRequired: false,
 			RequestMaxBytes:                     1000,
 			Operations: &operations.Operations{
