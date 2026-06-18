@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	common_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -40,6 +41,7 @@ type Assembler struct {
 	prefetcher            PrefetcherController
 	status                utils.NodeStatus
 	net                   Net
+	signer                identity.SignerSerializer
 	assemblerNodeConfig   *node_config.AssemblerNodeConfig
 	configuration         *config.Configuration
 	lastConfigBlockNumber uint64
@@ -122,6 +124,7 @@ func NewDefaultAssembler(
 	prefetcherFactory PrefetcherFactory,
 	batchBringerFactory BatchBringerFactory,
 	consensusBringerFactory delivery.ConsensusBringerFactory,
+	signer identity.SignerSerializer,
 ) *Assembler {
 	logger.Infof("Creating assembler, party: %d, address: %s", nodeConfig.PartyId, nodeConfig.ListenAddress)
 	if configBlock == nil {
@@ -144,6 +147,7 @@ func NewDefaultAssembler(
 		mainExitChan: mainExitChan,
 		status:       utils.NodeStatus{},
 		metrics:      NewMetrics(nodeConfig, ledger.Metrics(), logger),
+		signer:       signer,
 	}
 
 	assembler.initLedger(configBlock)
@@ -258,7 +262,7 @@ func (a *Assembler) initLedger(configBlock *common.Block) {
 	}
 }
 
-func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configuration *config.Configuration, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger) *Assembler {
+func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configuration *config.Configuration, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger, signer identity.SignerSerializer) *Assembler {
 	return NewDefaultAssembler(
 		logger,
 		nil,
@@ -271,6 +275,7 @@ func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configuration *co
 		&DefaultPrefetcherFactory{},
 		&DefaultBatchBringerFactory{},
 		&delivery.DefaultConsensusBringerFactory{},
+		signer,
 	)
 }
 

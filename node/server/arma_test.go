@@ -331,7 +331,10 @@ func TestLaunchArmaNode(t *testing.T) {
 		// Create the assembler and check genesis block was appended
 		conf := configuration.ExtractAssemblerConfig(genesisBlock)
 		conf.ListenAddress = "127.0.0.1:5020"
-		assembler := assembler.NewAssembler(conf, configuration, genesisBlock, make(chan struct{}), testLogger)
+		localmsp := msp.BuildLocalMSP(configuration.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configuration.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configuration.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := localmsp.GetDefaultSigningIdentity()
+		require.NoError(t, err)
+		assembler := assembler.NewAssembler(conf, configuration, genesisBlock, make(chan struct{}), testLogger, signer)
 		assembler.StartAssemblerService()
 		require.NotNil(t, assembler)
 		assembler.Stop()

@@ -286,6 +286,6 @@ func createRealAssemblerFromConfig(t *testing.T, partyID types.PartyID, fileStor
 	require.NotNil(t, signer)
 	assemblerLogger := testutil.CreateLogger(t, int(partyID))
 
-	assembler := assembler.NewAssembler(assemblerNodeConfig, configuration, lastConfigBlock, make(chan struct{}), assemblerLogger)
+	assembler := assembler.NewAssembler(assemblerNodeConfig, configuration, lastConfigBlock, make(chan struct{}), assemblerLogger, signer)
 	return assembler, lastConfigBlock, assemblerNodeConfig.Bundle
 }

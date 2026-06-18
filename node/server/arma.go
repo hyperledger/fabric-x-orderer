@@ -68,6 +68,12 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 
 		conf := configuration.ExtractAssemblerConfig(lastConfigBlock)
 
+		localmsp := msp.BuildLocalMSP(configuration.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, configuration.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPID, configuration.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP)
+		signer, err := localmsp.GetDefaultSigningIdentity()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
+		}
+
 		if err := configuration.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
 			panic(err)
 		}
@@ -79,7 +85,7 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
 		}
 
-		assembler := assembler.NewAssembler(conf, configuration, lastConfigBlock, stop, assemblerLogger)
+		assembler := assembler.NewAssembler(conf, configuration, lastConfigBlock, stop, assemblerLogger, signer)
 		assembler.StartAssemblerService()
 
 		utils.StopSignalListen(assembler, assemblerLogger, assembler.Address())
