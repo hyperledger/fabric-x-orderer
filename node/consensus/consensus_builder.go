@@ -117,8 +117,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.InitOperationSystem()
 	c.RequestVerifier = CreateConsensusRulesVerifier(nodeConfig)
 	c.ConfigUpdateProposer = configUpdateProposer
-	c.bccsp = nodeConfig.BCCSP
-	c.ConfigApplier = &DefaultConfigApplier{bccsp: c.bccsp}
+	c.ConfigApplier = &DefaultConfigApplier{bccsp: nodeConfig.BCCSP}
 	c.ConfigRequestValidator = &configrequest.DefaultValidateConfigRequest{
 		ConfigUpdateProposer: configUpdateProposer,
 		Bundle:               nodeConfig.Bundle,
@@ -145,7 +144,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),
 		c.UpdateStateAndRuntimeConfig,          // updateRuntimeConfig func(block *cb.Block) types.Reconfig,
 		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,
-		c.bccsp,
+		nodeConfig.BCCSP,
 		&comm.PredicateDialer{Config: c.clientConfig()},
 	)
 	c.Logger.Info("Created a BFT Synchronizer")

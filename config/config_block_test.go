@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
@@ -36,7 +37,7 @@ func TestReadGenesisBlock(t *testing.T) {
 	configBlock, err := protoutil.UnmarshalBlock(data)
 	require.NoError(t, err)
 	require.NotNil(t, block)
-	consensusMetaData, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock)
+	consensusMetaData, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock, factory.GetDefault())
 	require.NoError(t, err)
 
 	var sharedConfigFromBlock ordererpb.SharedConfig
@@ -69,7 +70,7 @@ func TestReadGenesisBlock_Errors(t *testing.T) {
 	configBlock.Data = nil
 
 	// expect error
-	c, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock)
+	c, err := config.ReadSharedConfigFromBootstrapConfigBlock(configBlock, factory.GetDefault())
 	require.EqualError(t, err, "block data is nil")
 	require.Nil(t, c)
 }

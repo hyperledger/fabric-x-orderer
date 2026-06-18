@@ -149,7 +149,12 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 			}
 		}
 
-		conf.SharedConfig, err = sharedConfigFromBlock(lastConfigBlock)
+		bccsp, err := conf.GetBCCSP()
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+		}
+
+		conf.SharedConfig, err = sharedConfigFromBlock(lastConfigBlock, bccsp)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to read the shared configuration from block, err: %v", err)
 		}
@@ -178,11 +183,11 @@ func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error)
 	return genesisBlock, nil
 }
 
-func sharedConfigFromBlock(block *common.Block) (*ordererpb.SharedConfig, error) {
+func sharedConfigFromBlock(block *common.Block, bccsp bccsp.BCCSP) (*ordererpb.SharedConfig, error) {
 	if block == nil {
 		return nil, errors.New("block is nil")
 	}
-	consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(block)
+	consensusMetaData, err := ReadSharedConfigFromBootstrapConfigBlock(block, bccsp)
 	if err != nil {
 		return nil, err
 	}
@@ -989,7 +994,12 @@ func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Bloc
 		return nil, errors.New("failed applying new config, current configuration is nil")
 	}
 
-	sharedConfig, err := sharedConfigFromBlock(block)
+	bccsp, err := config.GetBCCSP()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+	}
+
+	sharedConfig, err := sharedConfigFromBlock(block, bccsp)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
 	}

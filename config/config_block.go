@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package config
 
 import (
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -15,8 +15,8 @@ import (
 )
 
 // ReadSharedConfigFromBootstrapConfigBlock reads the shared configuration which is encoded in the consensus metadata in a block.
-func ReadSharedConfigFromBootstrapConfigBlock(configBlock *common.Block) ([]byte, error) {
-	consensusMetadata, err := ReadConsensusMetadataFromConfigBlock(configBlock)
+func ReadSharedConfigFromBootstrapConfigBlock(configBlock *common.Block, bccsp bccsp.BCCSP) ([]byte, error) {
+	consensusMetadata, err := ReadConsensusMetadataFromConfigBlock(configBlock, bccsp)
 	if err != nil {
 		return nil, err
 	}
@@ -40,12 +40,12 @@ func ReadChannelIdFromConfigBlock(configBlock *common.Block) (string, error) {
 	return chdr.ChannelId, nil
 }
 
-func ReadConsensusMetadataFromConfigBlock(configBlock *common.Block) ([]byte, error) {
+func ReadConsensusMetadataFromConfigBlock(configBlock *common.Block, bccsp bccsp.BCCSP) ([]byte, error) {
 	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
 	if err != nil {
 		return nil, err
 	}
-	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
 		return nil, err
 	}
