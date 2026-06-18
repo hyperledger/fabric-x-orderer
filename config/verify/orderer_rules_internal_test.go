@@ -148,6 +148,33 @@ func TestValidateTLSCACertsConsistency(t *testing.T) {
 		{PartyID: 1, TLSCACerts: [][]byte{[]byte("other-cert")}},
 	}, partyOrgMap)
 	require.ErrorContains(t, err, "TLS CA certificates mismatch for party 1")
+	require.ErrorContains(t, err, `certificate is missing from shared config: "tls-root"`)
+}
+
+func TestCertificateSetsEqual(t *testing.T) {
+	t.Run("same certificates in different order", func(t *testing.T) {
+		err := certificateSetsEqual(
+			[][]byte{[]byte("cert1"), []byte("cert2")},
+			[][]byte{[]byte("cert2"), []byte("cert1")},
+		)
+		require.NoError(t, err)
+	})
+
+	t.Run("certificate missing from shared config", func(t *testing.T) {
+		err := certificateSetsEqual(
+			[][]byte{[]byte("cert1")},
+			[][]byte{[]byte("cert1"), []byte("cert2")},
+		)
+		require.ErrorContains(t, err, `certificate is missing from shared config: "cert2"`)
+	})
+
+	t.Run("certificate missing from orderer organization MSP", func(t *testing.T) {
+		err := certificateSetsEqual(
+			[][]byte{[]byte("cert1"), []byte("cert2")},
+			[][]byte{[]byte("cert1")},
+		)
+		require.ErrorContains(t, err, `certificate is missing from orderer organization MSP: "cert2"`)
+	})
 }
 
 type testOrdererOrg struct {

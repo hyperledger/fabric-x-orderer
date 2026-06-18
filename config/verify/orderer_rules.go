@@ -142,7 +142,7 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 
 	// 8.
 	if err := validateTLSCACertsConsistency(sharedConfig.PartiesConfig, partyOrgMap); err != nil {
-		return errors.Wrap(err, "orderer organization CA certificates are inconsistent with shared config")
+		return errors.Wrap(err, "orderer organization TLS CA certificates are inconsistent with shared config")
 	}
 
 	// 9.
@@ -598,25 +598,34 @@ func validateTLSCACertsConsistency(parties []*ordererpb.PartyConfig, partyOrgMap
 			return errors.Errorf("missing orderer organization for party %d", party.PartyID)
 		}
 
-		orgTLSCACerts := append(
-			org.MSP().GetTLSRootCerts(),
-			org.MSP().GetTLSIntermediateCerts()...,
-		)
-
-		if len(party.TLSCACerts) != len(orgTLSCACerts) {
-			return errors.Errorf("TLS CA certificates mismatch for party %d", party.PartyID)
+		orgTLSCACerts := append([][]byte{}, org.MSP().GetTLSRootCerts()...)
+		orgTLSCACerts = append(orgTLSCACerts, org.MSP().GetTLSIntermediateCerts()...)
+		if err := certificateSetsEqual(party.TLSCACerts, orgTLSCACerts); err != nil {
+			return errors.Wrapf(err, "TLS CA certificates mismatch for party %d", party.PartyID)
 		}
+	}
 
-		certs := make(map[string]int)
-		for _, cert := range party.TLSCACerts {
-			certs[string(cert)]++
+	return nil
+}
+
+func certificateSetsEqual(sharedConfigCerts, orgCerts [][]byte) error {
+	sharedConfigCertSet := make(map[string]struct{}, len(sharedConfigCerts))
+	for _, cert := range sharedConfigCerts {
+		sharedConfigCertSet[string(cert)] = struct{}{}
+	}
+	orgCertSet := make(map[string]struct{}, len(orgCerts))
+	for _, cert := range orgCerts {
+		orgCertSet[string(cert)] = struct{}{}
+	}
+
+	for _, cert := range orgCerts {
+		if _, exists := sharedConfigCertSet[string(cert)]; !exists {
+			return errors.Errorf("certificate is missing from shared config: %q", string(cert))
 		}
-
-		for _, cert := range orgTLSCACerts {
-			if certs[string(cert)] == 0 {
-				return errors.Errorf("TLS CA certificates mismatch for party %d", party.PartyID)
-			}
-			certs[string(cert)]--
+	}
+	for _, cert := range sharedConfigCerts {
+		if _, exists := orgCertSet[string(cert)]; !exists {
+			return errors.Errorf("certificate is missing from orderer organization MSP: %q", string(cert))
 		}
 	}
 
