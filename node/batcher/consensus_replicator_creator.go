@@ -21,6 +21,11 @@ type ConsensusDecisionReplicatorCreator interface {
 type ConsensusDecisionReplicatorFactory struct{}
 
 func (c *ConsensusDecisionReplicatorFactory) CreateDecisionConsensusReplicator(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger, lastKnownDecisionNum types.DecisionNum) DecisionReplicator {
+	endpoint, tlsCAs := FindConsenterForBatcherParty(config, logger)
+	return delivery.NewConsensusDecisionReplicator(tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, logger, delivery.NextSeekInfo(uint64(lastKnownDecisionNum)))
+}
+
+func FindConsenterForBatcherParty(config *node_config.BatcherNodeConfig, logger *flogging.FabricLogger) (string, []node_config.RawBytes) {
 	var endpoint string
 	var tlsCAs []node_config.RawBytes
 	for i := 0; i < len(config.Consenters); i++ {
@@ -34,5 +39,6 @@ func (c *ConsensusDecisionReplicatorFactory) CreateDecisionConsensusReplicator(c
 	if endpoint == "" || len(tlsCAs) == 0 {
 		logger.Panicf("Failed finding endpoint and TLS CAs for party %d", config.PartyId)
 	}
-	return delivery.NewConsensusDecisionReplicator(tlsCAs, config.TLSPrivateKeyFile, config.TLSCertificateFile, endpoint, logger, delivery.NextSeekInfo(uint64(lastKnownDecisionNum)))
+
+	return endpoint, tlsCAs
 }
