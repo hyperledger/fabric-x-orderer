@@ -43,6 +43,8 @@ func TestValidateNewConfig(t *testing.T) {
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
 
+	bccsp := factory.GetDefault()
+
 	// update the batch timeout to an invalid value
 	updatePb := builder.UpdateBatchTimeouts(t, configutil.NewBatchTimeoutsConfig(configutil.BatchTimeoutsConfigName.BatchCreationTimeout, "0s"))
 	require.NotEmpty(t, updatePb)
@@ -50,7 +52,7 @@ func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	env := &common.Envelope{
@@ -82,7 +84,7 @@ func TestValidateNewConfig_BFTParams(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	env = &common.Envelope{
@@ -112,7 +114,7 @@ func TestValidateNewConfig_InvalidRequestMaxBytes(t *testing.T) {
 		Signature: updateEnv.Signature,
 	}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	env := &common.Envelope{
@@ -165,6 +167,8 @@ func TestValidateNewConfig_InvalidOrdererEndpoint(t *testing.T) {
 func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
 	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
 
+	bccsp := factory.GetDefault()
+
 	// create a valid config update first
 	cert := []byte("fake1-tls-cert")
 	updatePb := builder.UpdateConsensusTLSCert(t, types.PartyID(1), cert)
@@ -172,7 +176,7 @@ func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	env := &common.Envelope{
@@ -226,7 +230,7 @@ func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	nextEnv := &common.Envelope{
@@ -253,6 +257,8 @@ func TestValidateTransition_FailedRemoveTwoParties(t *testing.T) {
 	// create a config with 5 parties
 	dir, _, bundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 5)
 
+	bccsp := factory.GetDefault()
+
 	// remove two parties
 	builder.RemoveParty(t, 5)
 	builder.RemoveParty(t, 4)
@@ -261,7 +267,7 @@ func TestValidateTransition_FailedRemoveTwoParties(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, bundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, bundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	nextEnv := &common.Envelope{Payload: nextCfgEnv.Payload, Signature: nextCfgEnv.Signature}
@@ -277,6 +283,8 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 
 	// create a config with 3 parties
 	dir, _, bundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 3)
+
+	bccsp := factory.GetDefault()
 
 	// add two parties
 	_, netInfo1 := builder.PrepareAndAddNewParty(t, dir)
@@ -302,7 +310,7 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, bundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, bundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	nextEnv := &common.Envelope{Payload: nextCfgEnv.Payload, Signature: nextCfgEnv.Signature}
@@ -326,7 +334,7 @@ func TestValidateTransition_ModifyOneParty(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	nextEnv := &common.Envelope{
@@ -354,7 +362,7 @@ func TestValidateTransition_FailedModifyTwoParties(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	nextEnv := &common.Envelope{
@@ -393,7 +401,7 @@ func TestValidateTransition_FailedAddAndModify(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	nextEnv := &common.Envelope{
@@ -425,7 +433,7 @@ func TestValidateTransition_FailedRemoveAndModify(t *testing.T) {
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
 	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
 
-	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier)
+	nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
 	require.NoError(t, err)
 
 	nextEnv := &common.Envelope{

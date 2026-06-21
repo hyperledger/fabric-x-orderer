@@ -121,7 +121,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	feedback := Response{}
 	var err error
 
-	configRequest, err := cs.configUpdateProposer.ProposeConfigUpdate(tr.request, cs.bundle, cs.signer, cs.verifier)
+	configRequest, err := cs.configUpdateProposer.ProposeConfigUpdate(tr.request, cs.bundle, cs.signer, cs.verifier, cs.bccsp)
 	if err != nil {
 		feedback.err = fmt.Errorf("error in verification and proposing update: %s", err)
 		tr.responses <- feedback

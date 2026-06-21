@@ -1144,7 +1144,7 @@ func (c *Consensus) verifyAndClassifyRequest(request *protos.Request) (*protos.R
 		return nil, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
 	}
 
-	configRequest, err := c.ConfigUpdateProposer.ProposeConfigUpdate(request, c.Config.Bundle, c.Signer, c.RequestVerifier)
+	configRequest, err := c.ConfigUpdateProposer.ProposeConfigUpdate(request, c.Config.Bundle, c.Signer, c.RequestVerifier, c.Config.BCCSP)
 	if err != nil {
 		return nil, fmt.Errorf("propose config update error: %s", err)
 	}
