@@ -139,7 +139,9 @@ func TestBFTCensorshipMonitor_NoHeadersNoBlocks(t *testing.T) {
 			})
 
 			client.CloseSendCalls(func() error {
-				close(s.sourceStream[index])
+				s.closeOnce[index].Do(func() {
+					close(s.sourceStream[index])
+				})
 				return nil
 			})
 
@@ -212,7 +214,9 @@ func TestBFTCensorshipMonitor_CensorshipDetected(t *testing.T) {
 			})
 
 			client.CloseSendCalls(func() error {
-				close(s.sourceStream[index])
+				s.closeOnce[index].Do(func() {
+					close(s.sourceStream[index])
+				})
 				return nil
 			})
 
@@ -297,7 +301,9 @@ func TestBFTCensorshipMonitor_SuspicionsRemovedCensorshipDetected(t *testing.T) 
 			})
 
 			client.CloseSendCalls(func() error {
-				close(s.sourceStream[index])
+				s.closeOnce[index].Do(func() {
+					close(s.sourceStream[index])
+				})
 				return nil
 			})
 
@@ -406,7 +412,9 @@ func TestBFTCensorshipMonitor_SuspicionRemoved(t *testing.T) {
 			})
 
 			client.CloseSendCalls(func() error {
-				close(s.sourceStream[index])
+				s.closeOnce[index].Do(func() {
+					close(s.sourceStream[index])
+				})
 				return nil
 			})
 
@@ -516,7 +524,9 @@ func TestBFTCensorshipMonitor_FaultySourceIgnored(t *testing.T) {
 					return resp, nil
 				})
 				client.CloseSendCalls(func() error {
-					close(s.sourceStream[index])
+					s.closeOnce[index].Do(func() {
+						close(s.sourceStream[index])
+					})
 					return nil
 				})
 			}
@@ -643,7 +653,9 @@ func TestBFTCensorshipMonitor_FaultySourceRecovery(t *testing.T) {
 				return resp, nil
 			})
 			client.CloseSendCalls(func() error {
-				close(s.sourceStream[index])
+				s.closeOnce[index].Do(func() {
+					close(s.sourceStream[index])
+				})
 				return nil
 			})
 
@@ -714,6 +726,7 @@ type monitorTestSetup struct {
 	sources                    []*orderers.Endpoint
 	sourceIndex                int
 	sourceStream               []chan *orderer.DeliverResponse
+	closeOnce                  []sync.Once
 }
 
 func newMonitorTestSetup(t *testing.T, numSources int) *monitorTestSetup {
@@ -734,6 +747,7 @@ func newMonitorTestSetup(t *testing.T, numSources int) *monitorTestSetup {
 			Refreshed: make(chan struct{}),
 		})
 		s.sourceStream = append(s.sourceStream, make(chan *orderer.DeliverResponse))
+		s.closeOnce = append(s.closeOnce, sync.Once{})
 	}
 
 	return s
