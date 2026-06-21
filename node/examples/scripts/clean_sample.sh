@@ -7,7 +7,7 @@
 
 set -eux
 
-cd node/examples && docker-compose down
+cd node/examples && docker compose down
 docker stop "arma-config-vol"
 docker rm "arma-config-vol"
 
