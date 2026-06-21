@@ -488,6 +488,182 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 	})
 }
 
+func TestAssemblerLedger_AppendBlock(t *testing.T) {
+	t.Run("append single block", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		// Append genesis block
+		genesisBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendBlock(genesisBlock)
+		assert.Equal(t, uint64(1), al.GetTxCount())
+		assert.Equal(t, uint64(1), al.Ledger.Height())
+
+		// Create a regular block with transactions
+		block := &common.Block{
+			Header: &common.BlockHeader{
+				Number:       1,
+				PreviousHash: protoutil.BlockHeaderHash(genesisBlock.Header),
+				DataHash:     []byte("data-hash"),
+			},
+			Data: &common.BlockData{
+				Data: [][]byte{
+					[]byte("tx1"),
+					[]byte("tx2"),
+					[]byte("tx3"),
+				},
+			},
+		}
+		protoutil.InitBlockMetadata(block)
+
+		al.AppendBlock(block)
+		assert.Equal(t, uint64(4), al.GetTxCount()) // 1 from genesis + 3 from block
+		assert.Equal(t, uint64(2), al.Ledger.Height())
+
+		// Verify the block can be retrieved
+		retrievedBlock, err := al.Ledger.RetrieveBlockByNumber(1)
+		require.NoError(t, err)
+		assert.Equal(t, block.Header.Number, retrievedBlock.Header.Number)
+		assert.Equal(t, block.Header.DataHash, retrievedBlock.Header.DataHash)
+		assert.Equal(t, len(block.Data.Data), len(retrievedBlock.Data.Data))
+	})
+
+	t.Run("append multiple blocks", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		// Append genesis block
+		genesisBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendBlock(genesisBlock)
+
+		// Append multiple blocks
+		numBlocks := 5
+		previousHash := protoutil.BlockHeaderHash(genesisBlock.Header)
+
+		for i := 0; i < numBlocks; i++ {
+			block := &common.Block{
+				Header: &common.BlockHeader{
+					Number:       uint64(i + 1),
+					PreviousHash: previousHash,
+					DataHash:     []byte{byte(i)},
+				},
+				Data: &common.BlockData{
+					Data: [][]byte{
+						{byte(i), 1},
+						{byte(i), 2},
+					},
+				},
+			}
+			protoutil.InitBlockMetadata(block)
+
+			al.AppendBlock(block)
+			previousHash = protoutil.BlockHeaderHash(block.Header)
+		}
+
+		// Verify ledger state
+		assert.Equal(t, uint64(1+numBlocks*2), al.GetTxCount()) // 1 from genesis + 2*numBlocks from regular blocks
+		assert.Equal(t, uint64(1+numBlocks), al.Ledger.Height())
+
+		// Verify all blocks can be retrieved
+		for i := 0; i < numBlocks; i++ {
+			block, err := al.Ledger.RetrieveBlockByNumber(uint64(i + 1))
+			require.NoError(t, err)
+			assert.Equal(t, uint64(i+1), block.Header.Number)
+			assert.Equal(t, 2, len(block.Data.Data))
+		}
+	})
+
+	t.Run("append config block", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		// Append genesis block
+		genesisBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendBlock(genesisBlock)
+
+		// Append a config block
+		configBlock := prepareConfigBlock(1, genesisBlock)
+		al.AppendBlock(configBlock)
+
+		assert.Equal(t, uint64(2), al.GetTxCount()) // 1 from genesis + 1 from config
+		assert.Equal(t, uint64(2), al.Ledger.Height())
+
+		// Verify the config block
+		retrievedBlock, err := al.Ledger.RetrieveBlockByNumber(1)
+		require.NoError(t, err)
+		assert.True(t, protoutil.IsConfigBlock(retrievedBlock))
+	})
+
+	t.Run("append duplicate block panics", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		// Append genesis block
+		genesisBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendBlock(genesisBlock)
+
+		// Try to append the same block again - should panic
+		assert.Panics(t, func() {
+			al.AppendBlock(genesisBlock)
+		})
+
+		// Verify ledger state hasn't changed
+		assert.Equal(t, uint64(1), al.GetTxCount())
+		assert.Equal(t, uint64(1), al.Ledger.Height())
+	})
+
+	t.Run("metrics are updated correctly", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		// Append genesis block
+		genesisBlock := utils.EmptyGenesisBlock("arma")
+		al.AppendBlock(genesisBlock)
+
+		initialTxCount := al.GetTxCount()
+		initialHeight := al.Ledger.Height()
+
+		// Append a block with 3 transactions
+		block := &common.Block{
+			Header: &common.BlockHeader{
+				Number:       1,
+				PreviousHash: protoutil.BlockHeaderHash(genesisBlock.Header),
+				DataHash:     []byte("data-hash"),
+			},
+			Data: &common.BlockData{
+				Data: [][]byte{
+					[]byte("tx1"),
+					[]byte("tx2"),
+					[]byte("tx3"),
+				},
+			},
+		}
+		protoutil.InitBlockMetadata(block)
+
+		al.AppendBlock(block)
+
+		// Verify metrics - transaction count should increase by 3
+		assert.Equal(t, initialTxCount+3, al.GetTxCount())
+		// Verify ledger height increased by 1
+		assert.Equal(t, initialHeight+1, al.Ledger.Height())
+	})
+}
+
 func createAssemblerLedger(t *testing.T, tmpDir string, logger *flogging.FabricLogger) *node_ledger.AssemblerLedger {
 	al, err := node_ledger.NewAssemblerLedger(logger, tmpDir)
 	require.NoError(t, err)

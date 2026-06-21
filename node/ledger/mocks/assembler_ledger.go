@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -17,6 +18,11 @@ type FakeAssemblerLedgerReaderWriter struct {
 	appendArgsForCall []struct {
 		arg1 types.Batch
 		arg2 *state.OrderingInformation
+	}
+	AppendBlockStub        func(*common.Block)
+	appendBlockMutex       sync.RWMutex
+	appendBlockArgsForCall []struct {
+		arg1 *common.Block
 	}
 	AppendConfigStub        func(*state.OrderingInformation)
 	appendConfigMutex       sync.RWMutex
@@ -119,6 +125,38 @@ func (fake *FakeAssemblerLedgerReaderWriter) AppendArgsForCall(i int) (types.Bat
 	defer fake.appendMutex.RUnlock()
 	argsForCall := fake.appendArgsForCall[i]
 	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) AppendBlock(arg1 *common.Block) {
+	fake.appendBlockMutex.Lock()
+	fake.appendBlockArgsForCall = append(fake.appendBlockArgsForCall, struct {
+		arg1 *common.Block
+	}{arg1})
+	stub := fake.AppendBlockStub
+	fake.recordInvocation("AppendBlock", []interface{}{arg1})
+	fake.appendBlockMutex.Unlock()
+	if stub != nil {
+		fake.AppendBlockStub(arg1)
+	}
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) AppendBlockCallCount() int {
+	fake.appendBlockMutex.RLock()
+	defer fake.appendBlockMutex.RUnlock()
+	return len(fake.appendBlockArgsForCall)
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) AppendBlockCalls(stub func(*common.Block)) {
+	fake.appendBlockMutex.Lock()
+	defer fake.appendBlockMutex.Unlock()
+	fake.AppendBlockStub = stub
+}
+
+func (fake *FakeAssemblerLedgerReaderWriter) AppendBlockArgsForCall(i int) *common.Block {
+	fake.appendBlockMutex.RLock()
+	defer fake.appendBlockMutex.RUnlock()
+	argsForCall := fake.appendBlockArgsForCall[i]
+	return argsForCall.arg1
 }
 
 func (fake *FakeAssemblerLedgerReaderWriter) AppendConfig(arg1 *state.OrderingInformation) {
