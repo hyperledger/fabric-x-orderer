@@ -35,6 +35,7 @@ type AssemblerLedgerReaderWriter interface {
 	Metrics() *AssemblerLedgerMetrics
 	Append(batch types.Batch, orderingInfo *state.OrderingInformation)
 	AppendConfig(orderingInfo *state.OrderingInformation)
+	AppendBlock(block *common.Block)
 	LastOrderingInfo() (*state.OrderingInformation, error)
 	LedgerReader() blockledger.Reader
 	BatchFrontier(shards []types.ShardID, parties []types.PartyID, scanTimeout time.Duration) (BatchFrontier, error)
@@ -216,6 +217,23 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 	}
 
 	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(configBlock)))
+	l.metrics.BlocksCount.Add(1)
+}
+
+// AppendBlock appends a block to the ledger. It is used by the BFT synchronizer to append blocks pulled from other nodes.
+func (l *AssemblerLedger) AppendBlock(block *common.Block) {
+	t1 := time.Now()
+	defer func() {
+		l.Logger.Infof("Appended block %d of %d transactions to ledger in %v",
+			block.GetHeader().GetNumber(), len(block.GetData().GetData()), time.Since(t1))
+	}()
+
+	if err := l.Ledger.Append(block); err != nil {
+		panic(err)
+	}
+
+	l.metrics.TransactionCount.Add(float64(len(block.GetData().GetData())))
+	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(block)))
 	l.metrics.BlocksCount.Add(1)
 }
 
