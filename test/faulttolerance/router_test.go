@@ -11,11 +11,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -280,4 +282,54 @@ func TestRouterRestartRecover(t *testing.T) {
 		ErrString:        "cancelled pull from assembler: %d",
 		Signer:           signer,
 	})
+}
+
+// TestRunArmaNetworkAndGetRouterVersionInfo tests that the router's version info endpoint is up and returns the correct version information after the router is started.
+func TestRunArmaNetworkAndGetRouterVersionInfo(t *testing.T) {
+	// 1. compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Number of parties in the test
+	numOfParties := 1
+
+	t.Logf("Running test with %d parties and %d shards", numOfParties, 1)
+
+	// 2. Create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 3. Create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, 1, "none", "none")
+	defer netInfo.CleanUp()
+	numOfArmaNodes := len(netInfo)
+
+	// 4. Generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 5. Run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// 6. Query the router's version info endpoint and assert the version information.
+	router := armaNetwork.GetRouter(t, types.PartyID(1))
+	url := testutil.CaptureArmaNodeVersionInfoServiceURL(t, router)
+
+	re := regexp.MustCompile(`^\{\s*"CommitSHA"\s*:\s*"([^"]*)"\s*,\s*"Version"\s*:\s*"([^"]*)"\s*\}$`)
+
+	require.Eventually(t, func() bool {
+		val := testutil.FetchVersionInfoValue(t, re, url)
+		if val == nil {
+			return false
+		}
+		return val.CommitSHA == metadata.CommitSHA && val.Version == metadata.Version
+	}, 30*time.Second, 100*time.Millisecond)
 }
