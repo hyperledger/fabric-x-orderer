@@ -1,0 +1,156 @@
+# Copyright the Hyperledger Fabric contributors. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Chaos Test
+
+on:
+  schedule:
+    # Sunday-Thursday: 2-hour chaos test
+    - cron: '0 3 * * 0-4'
+    # Friday: Extended 5.5-hour chaos test
+    - cron: '0 3 * * 5'
+
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: 'Test duration in minutes'
+        required: true
+        default: '120'
+        type: string
+      tx_rate:
+        description: 'Transactions per second'
+        required: true
+        default: '1000'
+        type: string
+      tx_size:
+        description: 'Transaction size in bytes'
+        required: true
+        default: '300'
+        type: string
+      num_parties:
+        description: 'Number of parties (4, 7, or 10)'
+        required: true
+        default: '4'
+        type: choice
+        options:
+          - '4'
+          - '7'
+          - '10'
+      num_shards:
+        description: 'Number of shards (1, 2, or 4)'
+        required: true
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '4'
+      chaos_enabled:
+        description: 'Enable chaos testing'
+        required: true
+        default: true
+        type: boolean
+      chaos_initial_wait:
+        description: 'Wait before starting chaos (seconds)'
+        required: true
+        default: '300'
+        type: string
+      chaos_stop_duration:
+        description: 'How long to keep component down (seconds)'
+        required: true
+        default: '60'
+        type: string
+      chaos_restart_wait:
+        description: 'Wait after component restart (seconds)'
+        required: true
+        default: '60'
+        type: string
+
+env:
+  GOPATH: /opt/go
+  PATH: /opt/go/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+
+permissions:
+  contents: read
+
+jobs:
+  chaos-test:
+    name: Chaos Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout Fabric-X Code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build arma and armageddon binaries
+        run: make binary
+
+      - name: Determine test duration
+        id: duration
+        run: |
+          if [ -n "${{ inputs.duration_minutes }}" ]; then
+            echo "minutes=${{ inputs.duration_minutes }}" >> $GITHUB_OUTPUT
+            echo "Manual trigger: Using ${{ inputs.duration_minutes }} minutes"
+          else
+            DAY_OF_WEEK=$(date -u +%u)
+            if [ "$DAY_OF_WEEK" = "7" ]; then
+              DAY_OF_WEEK=0
+            fi
+
+            if [ "$DAY_OF_WEEK" = "5" ]; then
+              echo "minutes=330" >> $GITHUB_OUTPUT
+              echo "Friday: Using extended duration (330 minutes / 5.5 hours)"
+            else
+              echo "minutes=120" >> $GITHUB_OUTPUT
+              echo "Weekday: Using standard duration (120 minutes / 2 hours)"
+            fi
+          fi
+
+      - name: Run Chaos Test
+        env:
+          DURATION_MINUTES: ${{ steps.duration.outputs.minutes }}
+          TX_RATE: ${{ inputs.tx_rate || '1000' }}
+          TX_SIZE: ${{ inputs.tx_size || '300' }}
+          NUM_PARTIES: ${{ inputs.num_parties || '4' }}
+          NUM_SHARDS: ${{ inputs.num_shards || '2' }}
+          CHAOS_ENABLED: ${{ inputs.chaos_enabled != false }}
+          CHAOS_INITIAL_WAIT: ${{ inputs.chaos_initial_wait || '300' }}
+          CHAOS_STOP_DURATION: ${{ inputs.chaos_stop_duration || '60' }}
+          CHAOS_RESTART_WAIT: ${{ inputs.chaos_restart_wait || '60' }}
+        run: |
+          chmod +x test/chaos/*.sh
+          test/chaos/chaos-test.sh
+
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-test-summary-${{ github.run_number }}
+          path: test-results/summary/
+          retention-days: 30
+
+      - name: Upload statistics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-test-statistics-${{ github.run_number }}
+          path: test-results/statistics/
+          retention-days: 30
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-test-logs-${{ github.run_number }}
+          path: test-results/logs/
+          retention-days: 30
+          if-no-files-found: ignore
