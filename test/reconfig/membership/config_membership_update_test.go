@@ -1122,6 +1122,7 @@ func TestRemoveMultipleParties(t *testing.T) {
 		readyChan = make(chan string, numOfArmaNodes)
 		armaNetwork = testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 		testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+		time.Sleep(15 * time.Second) // wait for the network to stabilize, especially the last party's nodes
 	}
 	// After removing parties, verify that the remaining parties can still process transactions with the updated config
 	// Send transactions to all parties to ensure network is operational after all the config updates
