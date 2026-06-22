@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -212,6 +213,7 @@ func (at *assemblerTest) StartAssembler() {
 		prefetcherFactoryMock,
 		batchBringerFactoryMock,
 		consensusBringerFactoryMock,
+		&mocks.SignerSerializer{},
 	)
 
 	at.assembler.StartAssemblerService()

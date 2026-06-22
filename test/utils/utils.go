@@ -208,7 +208,7 @@ func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 		logger := testutil.CreateLogger(t, i+1)
 		loggers = append(loggers, logger)
 
-		assembler := assembler.NewAssembler(assemblerConf, &config.Configuration{}, genesisBlock, make(chan struct{}), logger)
+		assembler := assembler.NewAssembler(assemblerConf, &config.Configuration{}, genesisBlock, make(chan struct{}), logger, &mocks.SignerSerializer{})
 		assembler.StartAssemblerService()
 		assemblers = append(assemblers, assembler)
 
@@ -533,7 +533,7 @@ func RecoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 }
 
 func RecoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
-	assembler := assembler.NewAssembler(conf, &config.Configuration{}, lastConfigBlock, make(chan struct{}), logger)
+	assembler := assembler.NewAssembler(conf, &config.Configuration{}, lastConfigBlock, make(chan struct{}), logger, &mocks.SignerSerializer{})
 	assembler.StartAssemblerService()
 	return assembler
 }
