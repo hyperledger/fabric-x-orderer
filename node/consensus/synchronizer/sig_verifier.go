@@ -37,6 +37,10 @@ type SigVerifierCreator struct {
 
 // SigVerifierFromConfig creates a SigVerifier from the given configuration.
 func (svc *SigVerifierCreator) SigVerifierFromConfig(configuration *common.ConfigEnvelope, channel string, configBlockNum uint64) (SigVerifierFunc, error) {
+	if configuration == nil {
+		return createErrorFunc(errors.New("nil configuration")), errors.New("nil configuration")
+	}
+
 	bundle, err := channelconfig.NewBundle(channel, configuration.Config, svc.BCCSP)
 	if err != nil {
 		return createErrorFunc(err), err
@@ -83,6 +87,25 @@ type BlockSigVerifier struct {
 
 // Verify verifies a consenter block's signatures using the verifier's policy.
 func (v *BlockSigVerifier) Verify(consenterBlock *common.Block, verifyData bool) error {
+	if consenterBlock == nil {
+		return errors.New("consenter block is nil")
+	}
+	if consenterBlock.Header == nil {
+		return errors.New("consenter block header is nil")
+	}
+	if consenterBlock.Metadata == nil || consenterBlock.Metadata.Metadata == nil {
+		return errors.New("consenter block metadata is nil")
+	}
+	if len(consenterBlock.Metadata.Metadata) < len(common.BlockMetadataIndex_name) {
+		return errors.New("consenter block metadata len is less than expected")
+	}
+	if verifyData {
+		if consenterBlock.Data == nil || len(consenterBlock.Data.Data) == 0 {
+			return errors.New("consenter block data is nil or empty")
+		}
+	}
+
+	// Extract signatures from metadata
 	sigsBytes := consenterBlock.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES]
 	sigs, err := state.BytesToDecisionSignatures(sigsBytes)
 	if err != nil {
