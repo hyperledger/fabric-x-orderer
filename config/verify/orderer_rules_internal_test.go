@@ -140,15 +140,23 @@ func TestValidateTLSCACertsConsistency(t *testing.T) {
 		1: &testOrdererOrg{mspImpl: fakeMSP},
 	}
 
-	require.NoError(t, validateTLSCACertsConsistency([]*ordererpb.PartyConfig{
-		{PartyID: 1, TLSCACerts: [][]byte{tlsRoot}},
-	}, partyOrgMap))
+	require.NoError(t, validateTLSCACertsConsistency([]*ordererpb.PartyConfig{{PartyID: 1, TLSCACerts: [][]byte{tlsRoot}}}, partyOrgMap))
 
-	err := validateTLSCACertsConsistency([]*ordererpb.PartyConfig{
-		{PartyID: 1, TLSCACerts: [][]byte{[]byte("other-cert")}},
-	}, partyOrgMap)
+	err := validateTLSCACertsConsistency([]*ordererpb.PartyConfig{{PartyID: 1, TLSCACerts: [][]byte{[]byte("other-cert")}}}, partyOrgMap)
 	require.ErrorContains(t, err, "TLS CA certificates mismatch for party 1")
-	require.ErrorContains(t, err, `certificate is missing from shared config: "tls-root"`)
+	require.ErrorContains(t, err, `certificate exists in orderer organization MSP but is missing from shared config: "tls-root"`)
+
+	// verify error for empty org TLS CA list
+	emptyMSP := &mspmock.MSP{}
+	emptyMSP.GetTLSRootCertsStub = func() [][]byte {
+		return nil
+	}
+	emptyMSP.GetTLSIntermediateCertsStub = func() [][]byte {
+		return nil
+	}
+
+	err = validateTLSCACertsConsistency([]*ordererpb.PartyConfig{{PartyID: 1, TLSCACerts: [][]byte{tlsRoot}}}, map[uint32]channelconfig.OrdererOrg{1: &testOrdererOrg{mspImpl: emptyMSP}})
+	require.ErrorContains(t, err, "orderer organization for party 1 has no TLS root or intermediate CA certificates")
 }
 
 func TestCertificateSetsEqual(t *testing.T) {
@@ -165,7 +173,7 @@ func TestCertificateSetsEqual(t *testing.T) {
 			[][]byte{[]byte("cert1")},
 			[][]byte{[]byte("cert1"), []byte("cert2")},
 		)
-		require.ErrorContains(t, err, `certificate is missing from shared config: "cert2"`)
+		require.ErrorContains(t, err, `certificate exists in orderer organization MSP but is missing from shared config: "cert2"`)
 	})
 
 	t.Run("certificate missing from orderer organization MSP", func(t *testing.T) {
@@ -173,7 +181,7 @@ func TestCertificateSetsEqual(t *testing.T) {
 			[][]byte{[]byte("cert1"), []byte("cert2")},
 			[][]byte{[]byte("cert1")},
 		)
-		require.ErrorContains(t, err, `certificate is missing from orderer organization MSP: "cert2"`)
+		require.ErrorContains(t, err, `certificate exists in shared config but is missing from orderer organization MSP: "cert2"`)
 	})
 }
 

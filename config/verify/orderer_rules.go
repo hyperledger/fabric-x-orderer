@@ -600,6 +600,11 @@ func validateTLSCACertsConsistency(parties []*ordererpb.PartyConfig, partyOrgMap
 
 		orgTLSCACerts := append([][]byte{}, org.MSP().GetTLSRootCerts()...)
 		orgTLSCACerts = append(orgTLSCACerts, org.MSP().GetTLSIntermediateCerts()...)
+
+		if len(orgTLSCACerts) == 0 {
+			return errors.Errorf("orderer organization for party %d has no TLS root or intermediate CA certificates", party.PartyID)
+		}
+
 		if err := certificateSetsEqual(party.TLSCACerts, orgTLSCACerts); err != nil {
 			return errors.Wrapf(err, "TLS CA certificates mismatch for party %d", party.PartyID)
 		}
@@ -620,12 +625,12 @@ func certificateSetsEqual(sharedConfigCerts, orgCerts [][]byte) error {
 
 	for _, cert := range orgCerts {
 		if _, exists := sharedConfigCertSet[string(cert)]; !exists {
-			return errors.Errorf("certificate is missing from shared config: %q", string(cert))
+			return errors.Errorf("certificate exists in orderer organization MSP but is missing from shared config: %q", string(cert))
 		}
 	}
 	for _, cert := range sharedConfigCerts {
 		if _, exists := orgCertSet[string(cert)]; !exists {
-			return errors.Errorf("certificate is missing from orderer organization MSP: %q", string(cert))
+			return errors.Errorf("certificate exists in shared config but is missing from orderer organization MSP: %q", string(cert))
 		}
 	}
 
