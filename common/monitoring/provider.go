@@ -180,3 +180,15 @@ func GetMetricValue(m prometheus.Metric, logger *flogging.FabricLogger) float64 
 		return 0
 	}
 }
+
+func GetHistogramAverage(m prometheus.Metric, logger *flogging.FabricLogger) float64 {
+	gm := promgo.Metric{}
+	if err := m.Write(&gm); err != nil {
+		logger.Error(err)
+		return 0
+	}
+	if gm.Histogram == nil || gm.Histogram.GetSampleCount() == 0 {
+		return 0
+	}
+	return gm.Histogram.GetSampleSum() / float64(gm.Histogram.GetSampleCount())
+}
