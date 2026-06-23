@@ -204,8 +204,9 @@ var headersOverheadSize = func() int {
 	return len(envBytes) - size
 }()
 
-// PrepareEnvWithTimestamp prepares an envelope of size envSize, accounting for the overhead introduced by additional headers in the transaction.
-func PrepareEnvWithTimestamp(txNumber int, envSize int, sessionNumber []byte) *common.Envelope {
+// PrepareUnsignedEnvelope prepares an envelope of size envSize, accounting for the overhead introduced by additional headers in the transaction.
+// this method will be used for creating envelope for unsigned signing mode.
+func PrepareUnsignedEnvelope(txNumber int, envSize int, sessionNumber []byte) *common.Envelope {
 	var dataSize int
 
 	overheadSize := headersOverheadSize
@@ -220,6 +221,20 @@ func PrepareEnvWithTimestamp(txNumber int, envSize int, sessionNumber []byte) *c
 	}
 	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
 	return CreateStructuredEnvelope(data)
+}
+
+// PrepareSignedEnvelopeWithCertificate prepares an fully signed envelope.
+// this method will be used for creating signed envelope for full signing mode.
+func PrepareSignedEnvelopeWithCertificate(txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
+	data := PrepareTxWithTimestamp(txNumber, envSize, sessionNumber)
+	return CreateSignedStructuredEnvelope(data, signer, certBytes, org)
+}
+
+// TODO: implement the following method:
+// PrepareSignedEnvelopeWithCertificateID prepares an signed envelope using known certificates which are referenced by hash.
+// this method will be used for creating signed envelope for short signing mode.
+func PrepareSignedEnvelopeWithCertificateID(txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
+	return nil
 }
 
 func CreateSignedStructuredEnvelope(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {

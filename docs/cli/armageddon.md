@@ -122,6 +122,9 @@ Flags:
                                per second to be sent as one or more rate numbers
                                separated by space
   --txSize=TXSIZE              The required transaction size in bytes
+  --signedMode=SIGNEDMODE      Signing mode has three option: none = unsigned,
+                               full = sign including the full certificate,
+                               short = sign using known certificate
 ```
 
 

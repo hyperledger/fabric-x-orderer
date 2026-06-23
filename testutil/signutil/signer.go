@@ -69,7 +69,7 @@ func CreateTestSigner(t *testing.T, mspID, dir string) *TestSigner {
 }
 
 func CreateSignerForUser(userMspDir string) (identity.SignerSerializer, error) {
-	mspID, err := getMspIDfromDir(userMspDir)
+	mspID, err := GetMspIDfromDir(userMspDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mspID from user msp dir: %s, err: %v", userMspDir, err)
 	}
@@ -93,7 +93,23 @@ func CreateSignerForUser(userMspDir string) (identity.SignerSerializer, error) {
 	return signer, nil
 }
 
-func getMspIDfromDir(mspDir string) (string, error) {
+func LoadCryptoMaterialForSigner(mspDir string) (*crypto.ECDSASigner, []byte, error) {
+	keyBytes, err := os.ReadFile(filepath.Join(mspDir, "keystore", "priv_sk"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read private key file: %w", err)
+	}
+	privateKey, err := tx.CreateECDSAPrivateKey(keyBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create private key: %w", err)
+	}
+	certBytes, err := os.ReadFile(filepath.Join(mspDir, "signcerts", "sign-cert.pem"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read sign certificate: %w", err)
+	}
+	return (*crypto.ECDSASigner)(privateKey), certBytes, nil
+}
+
+func GetMspIDfromDir(mspDir string) (string, error) {
 	re := regexp.MustCompile(`/ordererOrganizations/([^/]+)/`)
 	matches := re.FindStringSubmatch(mspDir)
 	if matches == nil || len(matches) > 2 {

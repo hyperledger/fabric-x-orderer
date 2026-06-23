@@ -34,6 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -123,6 +124,7 @@ type CLI struct {
 	loadTransactions   *int
 	loadRate           *string
 	loadTxSize         *int
+	loadSignedMode     *string
 	// receive command flags
 	receiveUserConfigFile   **os.File
 	receiveExpectedNumOfTxs *int
@@ -173,6 +175,7 @@ func (cli *CLI) configureCommands() {
 	cli.loadTransactions = load.Flag("transactions", "The number of transactions to be sent").Int()
 	cli.loadRate = load.Flag("rate", "The rate specifies the number of transactions per second to be sent as one or more rate numbers separated by space").String()
 	cli.loadTxSize = load.Flag("txSize", "The required transaction size in bytes").Int()
+	cli.loadSignedMode = load.Flag("signedMode", "Signing mode has three option: none = unsigned, full = sign including the full certificate, short = sign using known certificate").String()
 	commands["load"] = load
 
 	receive := cli.app.Command("receive", "Pull txs from some assembler and report statistics")
@@ -219,7 +222,7 @@ func (cli *CLI) Run(args []string) {
 
 	// "load" command
 	case cli.commands["load"].FullCommand():
-		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize)
+		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize, cli.loadSignedMode)
 
 	// "receive" command
 	case cli.commands["receive"].FullCommand():
@@ -478,7 +481,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 }
 
 // load command makes txs and sends them to all routers
-func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int) {
+func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int, signedMode *string) {
 	rates := strings.Fields(*rate)
 	// check transaction size
 	txMinimumSize := 16 + 8 + 8
@@ -493,6 +496,9 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
 	}
+
+	logger.Infof("Load command uses signed transactions mode: %s", *signedMode)
+
 	convertedRates := make([]int, len(rates))
 	for i := 0; i < len(rates); i++ {
 		convertedRates[i], err = strconv.Atoi(rates[i])
@@ -504,13 +510,13 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	// send txs to the routers
 	for i := 0; i < len(rates); i++ {
 		start := time.Now()
-		SendTxsToAllAvailableRouters(userConfig, *transactions, convertedRates[i], *txSize, nil)
+		SendTxsToAllAvailableRouters(userConfig, *transactions, convertedRates[i], *txSize, nil, *signedMode)
 		elapsed := time.Since(start)
 		reportLoadResults(*transactions, elapsed, *txSize)
 	}
 }
 
-func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
+func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap, signedMode string) {
 	broadcastClient := NewBroadcastTxClient(userConfig)
 	err := broadcastClient.InitStreams()
 	if err != nil {
@@ -541,16 +547,56 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 		go ReceiveResponseFromRouter(userConfig, streamInfo)
 	}
 
-	for i := 0; i < numOfTxs; i++ {
-		env := tx.PrepareEnvWithTimestamp(i, txSize, sessionNumber)
+	var signer *crypto.ECDSASigner
+	var certBytes []byte
+	var org string
+	var env *common.Envelope
 
-		status := rl.GetToken()
-		if !status {
-			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
+	if signedMode == "full" || signedMode == "short" {
+		org, err = signutil.GetMspIDfromDir(userConfig.MSPDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to get mspID from user msp dir: %v", err)
 			os.Exit(3)
 		}
 
-		broadcastClient.SendTxToAllRouters(env)
+		signer, certBytes, err = signutil.LoadCryptoMaterialForSigner(userConfig.MSPDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load crypto materials: %v", err)
+			os.Exit(3)
+		}
+	}
+
+	switch signedMode {
+	case "full":
+		for i := 0; i < numOfTxs; i++ {
+			env = tx.PrepareSignedEnvelopeWithCertificate(i, txSize, sessionNumber, signer, certBytes, org)
+			status := rl.GetToken()
+			if !status {
+				fmt.Fprintf(os.Stderr, "failed to send tx %d in signed mode %s", i+1, signedMode)
+				os.Exit(3)
+			}
+			broadcastClient.SendTxToAllRouters(env)
+		}
+	case "short":
+		for i := 0; i < numOfTxs; i++ {
+			env = tx.PrepareSignedEnvelopeWithCertificateID(i, txSize, sessionNumber, signer, certBytes, org)
+			status := rl.GetToken()
+			if !status {
+				fmt.Fprintf(os.Stderr, "failed to send tx %d in signed mode %s", i+1, signedMode)
+				os.Exit(3)
+			}
+			broadcastClient.SendTxToAllRouters(env)
+		}
+	default:
+		for i := 0; i < numOfTxs; i++ {
+			env = tx.PrepareUnsignedEnvelope(i, txSize, sessionNumber)
+			status := rl.GetToken()
+			if !status {
+				fmt.Fprintf(os.Stderr, "failed to send tx %d in unsigned mode", i+1)
+				os.Exit(3)
+			}
+			broadcastClient.SendTxToAllRouters(env)
+		}
 	}
 	rl.Stop()
 
@@ -902,7 +948,7 @@ func calculateDelayOfTx(data []byte, acceptedTime time.Time) time.Duration {
 }
 
 func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	env := tx.PrepareEnvWithTimestamp(i, txSize, sessionNumber)
+	env := tx.PrepareUnsignedEnvelope(i, txSize, sessionNumber)
 	data, _ := tx.GetDataFromEnvelope(env)
 	if txsMap != nil {
 		logger.Debugf("Add tx %x to the map", data)
