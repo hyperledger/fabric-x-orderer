@@ -315,6 +315,7 @@ func (b *BatcherRole) runPrimary() {
 
 	var currentBatch types.BatchedRequests
 	var digest []byte
+	var batchToLedgerStart time.Time
 
 	for {
 		for {
@@ -329,12 +330,17 @@ func (b *BatcherRole) runPrimary() {
 				return
 			case <-ch:
 			}
+			mempoolStart := time.Now()
 			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
 			currentBatch = b.MemPool.NextRequests(ctx)
+			mempoolWaitLatency := time.Since(mempoolStart)
 			if len(currentBatch) == 0 {
 				cancel()
 				continue
 			}
+			b.Metrics.batchMempoolWaitLatency.Observe(mempoolWaitLatency.Seconds())
+			batchToLedgerStart = time.Now()
+
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
 			digest = currentBatch.Digest()
 			cancel()
@@ -348,7 +354,7 @@ func (b *BatcherRole) runPrimary() {
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, baf.Signature())
-
+		b.Metrics.batchMempoolToLedgerLatency.Observe(time.Since(batchToLedgerStart).Seconds())
 		sendBAFDone := make(chan struct{})
 		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
 		defer sendBafCancel()
@@ -397,8 +403,10 @@ func (b *BatcherRole) runSecondary() {
 		out := b.BatchPuller.PullBatches(b.primary)
 		for {
 			var batch types.Batch
+			var batchReceivedTime time.Time
 			select {
 			case batch = <-out:
+				batchReceivedTime = time.Now()
 			case newTerm := <-b.termChan:
 				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
 				b.BatchPuller.Stop()
@@ -424,6 +432,7 @@ func (b *BatcherRole) runSecondary() {
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests, batch.PrimarySignature())
+			b.Metrics.batchPullToLedgerLatency.Observe(time.Since(batchReceivedTime).Seconds())
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
