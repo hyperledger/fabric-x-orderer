@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -389,6 +390,12 @@ func TestChangePartyCACertificates(t *testing.T) {
 		return partyID == partyToUpdate
 	})
 
+	// Save the original identity for later validation
+	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
+	require.NoError(t, err)
+	oldSigner, oldCertBytes, err := testutil.LoadCryptoMaterialsFromDir(t, oldUC.MSPDir)
+	require.NoError(t, err)
+
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
 
@@ -561,6 +568,11 @@ func TestChangePartyCACertificates(t *testing.T) {
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateConsenterSignCert(t, partyToUpdate, newConsenterSignCertBytes)
 
+	// Update the admin cert in the config
+	newAdminCertBytes, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "admincerts", fmt.Sprintf("Admin@Org%d-cert.pem", partyToUpdate)))
+	require.NoError(t, err)
+	configUpdateBuilder.UpdateMSPAdminCerts(t, partyToUpdate, [][]byte{newAdminCertBytes})
+
 	// Submit config update
 	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
@@ -625,11 +637,6 @@ func TestChangePartyCACertificates(t *testing.T) {
 
 	// 12.
 	configUpdateBuilder = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
-
-	oldUC, err := testutil.GetUserConfig(dir, partyToUpdate)
-	require.NoError(t, err)
-	oldSigner, oldCertBytes, err := testutil.LoadCryptoMaterialsFromDir(t, oldUC.MSPDir)
-	require.NoError(t, err)
 
 	// Override the party's crypto materials with the new ones regenerated
 	dstDir := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg)
@@ -744,6 +751,11 @@ func uniqueFileName(path string) string {
 type copyPredicate func(path string, d os.DirEntry) bool
 
 func copyNonCAFilesPredicate(path string, d os.DirEntry) bool {
+	slash := filepath.ToSlash(path)
+	if strings.Contains(slash, "/admincerts/") || strings.HasSuffix(slash, "/admincerts") ||
+		strings.Contains(slash, "/users/admin/") || strings.HasSuffix(slash, "/users/admin") {
+		return false
+	}
 	if d.IsDir() {
 		return false
 	}

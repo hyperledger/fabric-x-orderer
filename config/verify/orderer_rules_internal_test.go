@@ -13,9 +13,12 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	fabmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	mspmock "github.com/hyperledger/fabric-x-orderer/common/msputils/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -121,6 +124,75 @@ func TestValidateBlockValidationPolicy(t *testing.T) {
 		require.ErrorContains(t, err, "unexpected identity in policy")
 	})
 }
+
+func TestValidateTLSCACertsConsistency(t *testing.T) {
+	tlsRoot := []byte("tls-root")
+
+	fakeMSP := &mspmock.MSP{}
+	fakeMSP.GetTLSRootCertsStub = func() [][]byte {
+		return [][]byte{tlsRoot}
+	}
+	fakeMSP.GetTLSIntermediateCertsStub = func() [][]byte {
+		return nil
+	}
+
+	partyOrgMap := map[uint32]channelconfig.OrdererOrg{
+		1: &testOrdererOrg{mspImpl: fakeMSP},
+	}
+
+	require.NoError(t, validateTLSCACertsConsistency([]*ordererpb.PartyConfig{{PartyID: 1, TLSCACerts: [][]byte{tlsRoot}}}, partyOrgMap))
+
+	err := validateTLSCACertsConsistency([]*ordererpb.PartyConfig{{PartyID: 1, TLSCACerts: [][]byte{[]byte("other-cert")}}}, partyOrgMap)
+	require.ErrorContains(t, err, "TLS CA certificates mismatch for party 1")
+	require.ErrorContains(t, err, `certificate exists in orderer organization MSP but is missing from shared config: "tls-root"`)
+
+	// verify error for empty org TLS CA list
+	emptyMSP := &mspmock.MSP{}
+	emptyMSP.GetTLSRootCertsStub = func() [][]byte {
+		return nil
+	}
+	emptyMSP.GetTLSIntermediateCertsStub = func() [][]byte {
+		return nil
+	}
+
+	err = validateTLSCACertsConsistency([]*ordererpb.PartyConfig{{PartyID: 1, TLSCACerts: [][]byte{tlsRoot}}}, map[uint32]channelconfig.OrdererOrg{1: &testOrdererOrg{mspImpl: emptyMSP}})
+	require.ErrorContains(t, err, "orderer organization for party 1 has no TLS root or intermediate CA certificates")
+}
+
+func TestCertificateSetsEqual(t *testing.T) {
+	t.Run("same certificates in different order", func(t *testing.T) {
+		err := certificateSetsEqual(
+			[][]byte{[]byte("cert1"), []byte("cert2")},
+			[][]byte{[]byte("cert2"), []byte("cert1")},
+		)
+		require.NoError(t, err)
+	})
+
+	t.Run("certificate missing from shared config", func(t *testing.T) {
+		err := certificateSetsEqual(
+			[][]byte{[]byte("cert1")},
+			[][]byte{[]byte("cert1"), []byte("cert2")},
+		)
+		require.ErrorContains(t, err, `certificate exists in orderer organization MSP but is missing from shared config: "cert2"`)
+	})
+
+	t.Run("certificate missing from orderer organization MSP", func(t *testing.T) {
+		err := certificateSetsEqual(
+			[][]byte{[]byte("cert1"), []byte("cert2")},
+			[][]byte{[]byte("cert1")},
+		)
+		require.ErrorContains(t, err, `certificate exists in shared config but is missing from orderer organization MSP: "cert2"`)
+	})
+}
+
+type testOrdererOrg struct {
+	mspImpl fabmsp.MSP
+}
+
+func (o *testOrdererOrg) Name() string        { return "" }
+func (o *testOrdererOrg) MSPID() string       { return "" }
+func (o *testOrdererOrg) MSP() fabmsp.MSP     { return o.mspImpl }
+func (o *testOrdererOrg) Endpoints() []string { return nil }
 
 func buildBlockValidationPolicy(consenters []*common.Consenter) *common.ConfigPolicy {
 	n := len(consenters)
