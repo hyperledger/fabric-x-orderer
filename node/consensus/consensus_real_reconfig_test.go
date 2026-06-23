@@ -132,18 +132,14 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
+		// wait for consensus nodes to apply new config and run again
+		configSeq++
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
 		// make sure the config block is committed
 		lastBlockNumber++
-		configSeq++
 		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-
-		// wait for consensus nodes to apply new config and run again
-		for _, consenter := range consensusNodes {
-			waitForRunningState(t, consenter, uint64(configSeq))
-		}
-
-		// wait for consenters to start before submitting a request
-		time.Sleep(10 * time.Second)
+		require.NotNil(t, lastConfigBlock)
 
 		// send another simple request
 		lastBlockNumber++
@@ -158,7 +154,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		err = configtxgen.WriteOutputBlock(lastConfigBlock, filepath.Join(newConfigBlockStoreDir, "config.block"))
 		require.NoError(t, err)
 		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(newConfigBlockStoreDir, "config.block"))
-		consenterToUpdate := types.PartyID(2)
+		consenterToUpdate := types.PartyID(4)
 		caCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "tlsca-cert.pem")
 		caPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "tlsca", "priv_sk")
 		newCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", consenterToUpdate), "orderers", fmt.Sprintf("party%d", consenterToUpdate), "consenter", "tls")
@@ -174,26 +170,25 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
-		// make sure the config block is committed and stop the consensus node
-		lastBlockNumber++
-		configSeq++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-
 		// wait for the updated consensus node to enter pending admin state and then stop the node
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == consenterToUpdate {
-				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				waitForPendingAdminState(t, consenter, uint64(configSeq))
 				consenter.Stop()
 				break
 			}
 		}
 
+		configSeq++
 		// wait for the rest of consensus nodes to apply new config and run again
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() != consenterToUpdate {
-				waitForRunningState(t, consenter, uint64(configSeq))
+		oldConsensusNodes := consensusNodes
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.PartyID != consenterToUpdate {
+				consensusNodes = append(consensusNodes, consensusNode)
 			}
 		}
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
 
 		// restart the updated consensus node
 		updatedConsensusNode, updatedConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{consenterToUpdate})
@@ -201,17 +196,15 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		waitForRunningState(t, updatedConsensusNode[0], uint64(configSeq))
 
 		// update consensus nodes list
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.Config.PartyId != consenterToUpdate {
-				consensusNodes = append(consensusNodes, consensusNode)
-			}
-		}
 		consensusNodes = append(consensusNodes, updatedConsensusNode[0])
 
-		// wait for consenters to start before submitting a request
-		time.Sleep(10 * time.Second)
+		// make sure the config block is committed and stop the consensus node
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
+
+		// wait for connections to be reestablished before submitting a request
+		time.Sleep(30 * time.Second)
 
 		// send another simple request
 		lastBlockNumber++
@@ -235,43 +228,39 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
-		// make sure the config block is committed
-		lastBlockNumber++
-		configSeq++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-
 		// wait for the removed consensus node to enter pending admin state and then stop the node
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == removedParty {
-				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				waitForPendingAdminState(t, consenter, uint64(configSeq))
 				consenter.Stop()
 				break
 			}
 		}
 
-		// wait for the rest of consensus nodes to apply new config and run again
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() != removedParty {
-				waitForRunningState(t, consenter, uint64(configSeq))
+		// update consensus nodes list
+		oldConsensusNodes := consensusNodes
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.PartyID != removedParty {
+				consensusNodes = append(consensusNodes, consensusNode)
 			}
 		}
-
 		parties = []types.PartyID{1, 2, 3, 4, 5}
+
+		configSeq++
+		// wait for the rest of consensus nodes to apply new config and run again
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
+		// make sure the config block is committed
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
 
 		// try to get the removed party
 		removedNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedParty), "local_config_consenter.yaml")
 		removedNodeConfigContent, removedNodeLastConfigBlock, err := config.ReadConfig(removedNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 		require.NoError(t, err)
 		require.Panics(t, func() { removedNodeConfigContent.ExtractConsenterConfig(removedNodeLastConfigBlock) })
-
-		// update consensus nodes list
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.Config.PartyId != removedParty {
-				consensusNodes = append(consensusNodes, consensusNode)
-			}
-		}
 
 		// send another simple request
 		lastBlockNumber++
@@ -295,44 +284,38 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
-		// make sure the config block is committed and stop the consensus node
-		lastBlockNumber++
-		configSeq++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
 		// wait for the removed consensus node to enter pending admin state and then stop the node
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == removedPartyLeader {
-				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				waitForPendingAdminState(t, consenter, uint64(configSeq))
 				consenter.Stop()
 				break
 			}
 		}
 
-		// wait for the rest of consensus nodes to apply new config and run again
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() != removedPartyLeader {
-				waitForRunningState(t, consenter, uint64(configSeq))
+		configSeq++
+		// update consensus nodes list
+		oldConsensusNodes := consensusNodes
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.PartyID != removedPartyLeader {
+				consensusNodes = append(consensusNodes, consensusNode)
 			}
 		}
-
 		parties = []types.PartyID{2, 3, 4, 5}
+		// wait for the rest of consensus nodes to apply new config and run again
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
+		// make sure the config block is committed and stop the consensus node
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
 
 		// try to get the removed party
 		removedLeaderNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", removedPartyLeader), "local_config_consenter.yaml")
 		removedLeaderNodeConfigContent, removedLeaderNodeLastConfigBlock, err := config.ReadConfig(removedLeaderNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
 		require.NoError(t, err)
 		require.Panics(t, func() { removedLeaderNodeConfigContent.ExtractConsenterConfig(removedLeaderNodeLastConfigBlock) })
-
-		// update consensus nodes list
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.Config.PartyId != removedPartyLeader {
-				consensusNodes = append(consensusNodes, consensusNode)
-			}
-		}
 
 		// send another simple request
 		lastBlockNumber++
@@ -341,7 +324,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	})
 
 	t.Run("config update with consenter's endpoint change", func(t *testing.T) {
-		consenterPartyToUpdate := types.PartyID(2)
+		consenterPartyToUpdate := types.PartyID(5)
 		consenterPartyToUpdateIndex := 0
 		for i, consenter := range consensusNodes {
 			if consenter.GetPartyID() == consenterPartyToUpdate {
@@ -397,12 +380,6 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
-		// make sure the config block is committed
-		lastBlockNumber++
-		configSeq++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
 		// update the node local config
 		localConfig, _, err := config.LoadLocalConfig(consenterNodeConfigPath)
 		require.NoError(t, err)
@@ -414,18 +391,29 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// wait for the updated consensus node to enter pending admin state and then stop the node
 		for _, consenter := range consensusNodes {
 			if consenter.GetPartyID() == consenterPartyToUpdate {
-				waitForPendingAdminState(t, consenter, uint64(configSeq-1))
+				waitForPendingAdminState(t, consenter, uint64(configSeq))
 				consenter.Stop()
 				break
 			}
 		}
 
-		// wait for the rest of consensus nodes to apply new config and run again
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() != consenterPartyToUpdate {
-				waitForRunningState(t, consenter, uint64(configSeq))
+		configSeq++
+		// update consensus nodes list
+		oldConsensusNodes := consensusNodes
+		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.PartyID != consenterPartyToUpdate {
+				consensusNodes = append(consensusNodes, consensusNode)
 			}
 		}
+
+		// wait for the rest of consensus nodes to apply new config and run again
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
+		// make sure the config block is committed
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
 
 		// restart the updated consensus node
 		updatedConsensusNode, updatedConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{consenterPartyToUpdate})
@@ -433,18 +421,10 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		waitForRunningState(t, updatedConsensusNode[0], uint64(configSeq))
 
 		// update consensus nodes list
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0, len(parties))
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.Config.PartyId != consenterPartyToUpdate {
-				consensusNodes = append(consensusNodes, consensusNode)
-			} else {
-				consensusNodes = append(consensusNodes, updatedConsensusNode[0])
-			}
-		}
+		consensusNodes = append(consensusNodes, updatedConsensusNode[0])
 
-		// wait for consenters to start before submitting a request
-		time.Sleep(10 * time.Second)
+		// wait for connections to be reestablished before submitting a request
+		time.Sleep(30 * time.Second)
 
 		// send another simple request
 		lastBlockNumber++
@@ -473,16 +453,14 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
+		// wait for existing consensus nodes to apply new config and run again
+		configSeq++
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
 		// make sure the config block is committed
 		lastBlockNumber++
-		configSeq++
 		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
 		require.NotNil(t, lastConfigBlock)
-
-		// wait for existing consensus nodes to apply new config and run again
-		for _, consenter := range consensusNodes {
-			waitForRunningState(t, consenter, uint64(configSeq))
-		}
 
 		// add the new party to the parties list
 		parties = append(parties, addedPartyID)
@@ -513,8 +491,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// add the new consensus node to the list
 		consensusNodes = append(consensusNodes, newConsensusNode[0])
 
-		// wait for consenters to start before submitting a request
-		time.Sleep(10 * time.Second)
+		// wait for connections to be reestablished before submitting a request
+		time.Sleep(30 * time.Second)
 
 		// send another simple request to verify the new consenter is participating
 		lastBlockNumber++
@@ -578,6 +556,15 @@ func makeSureConfigBlockCommitted(t *testing.T, consensusNodes []*consensus_node
 		require.True(t, header.Num == header.DecisionNumOfLastConfigBlock)
 	}
 	return lastConfigBlock
+}
+
+// waitForRunningStateMultiNodes polls the consensus node status until it reaches the Running state
+// with the expected configuration sequence number.
+func waitForRunningStateMultiNodes(t *testing.T, consensusNodes []*consensus_node.Consensus, configSeq uint64) {
+	for _, consensusNode := range consensusNodes {
+		waitForRunningState(t, consensusNode, configSeq)
+	}
+	time.Sleep(30 * time.Second) // wait after relaunch for connections to be reestablished
 }
 
 // waitForRunningState polls the consensus node status until it reaches the Running state

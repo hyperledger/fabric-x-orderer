@@ -501,6 +501,7 @@ func WaitForRelaunchByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nod
 		case err := <-errCh:
 			require.Fail(t, err.Error())
 		default:
+			time.Sleep(30 * time.Second) // wait after relaunch for connections to be reestablished
 			return
 		}
 	case <-time.After(180 * time.Second):
@@ -515,8 +516,6 @@ func WaitForRelaunchByType(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, nod
 
 func WaitForNetworkRelaunch(t *testing.T, netInfo map[NodeName]*ArmaNodeInfo, configSeq uint64) {
 	WaitForRelaunchByType(t, netInfo, []NodeType{Consensus, Assembler, Batcher, Router}, configSeq)
-
-	time.Sleep(time.Minute) // wait for consenters.
 }
 
 // WaitForRelaunchByTypeAndParty waits for specific nodes to relaunch with a new configuration sequence.
@@ -560,6 +559,7 @@ func WaitForRelaunchByTypeAndParty(t *testing.T, netInfo map[NodeName]*ArmaNodeI
 		case err := <-errCh:
 			require.Fail(t, err.Error())
 		default:
+			time.Sleep(30 * time.Second) // wait after relaunch for connections to be reestablished
 			return
 		}
 	case <-time.After(180 * time.Second):

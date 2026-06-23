@@ -113,18 +113,15 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
+		// Wait for all consensus nodes to apply new config
+		configSeq++
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
 		// Wait for config block to be committed
 		lastBlockNumber++
-		configSeq++
 		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
 		t.Logf(">>> Step 2: First config block committed at block %d, configSeq=%d", lastBlockNumber, configSeq)
 
-		// Wait for all consensus nodes to apply new config
-		for _, consenter := range consensusNodes {
-			waitForRunningState(t, consenter, uint64(configSeq))
-		}
-
-		time.Sleep(10 * time.Second)
 		t.Logf(">>> Step 2: All consenters applied first config update")
 	})
 
@@ -174,18 +171,16 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		_, err = activeConsenters[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
+		// Wait for active consensus nodes to apply new config
+		configSeq++
+		waitForRunningStateMultiNodes(t, activeConsenters, uint64(configSeq))
+
 		// Wait for config block to be committed by active consenters
 		lastBlockNumber++
-		configSeq++
 		lastConfigBlock = makeSureConfigBlockCommitted(t, activeConsenters, lastBlockNumber)
 		t.Logf(">>> Step 4: Second config block committed at block %d, configSeq=%d (consenter 2 missed this)", lastBlockNumber, configSeq)
 
-		// Wait for active consensus nodes to apply new config
-		for _, consenter := range activeConsenters {
-			waitForRunningState(t, consenter, uint64(configSeq))
-		}
-
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second) // wait for connections to be reestablished
 		t.Logf(">>> Step 4: Active consenters applied second config update")
 	})
 
