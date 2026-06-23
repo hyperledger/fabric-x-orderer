@@ -121,6 +121,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.ConfigRequestValidator = &configrequest.DefaultValidateConfigRequest{
 		ConfigUpdateProposer: configUpdateProposer,
 		Bundle:               nodeConfig.Bundle,
+		BCCSP:                nodeConfig.BCCSP,
 	}
 	c.ConfigRulesVerifier = &verify.DefaultOrdererRules{}
 	c.txCount = txCount

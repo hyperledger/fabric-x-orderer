@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
@@ -25,8 +24,8 @@ import (
 
 // ConfigUpdateProposer defines how to handle config update authorization and verification.
 type ConfigUpdateProposer interface {
-	ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error)
-	AuthorizeAndVerifyConfigUpdate(envelope *cb.Envelope, bundle channelconfig.Resources) (*cb.ConfigEnvelope, error)
+	ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier, bccsp bccsp.BCCSP) (*protos.Request, error)
+	AuthorizeAndVerifyConfigUpdate(envelope *cb.Envelope, bundle channelconfig.Resources, bccsp bccsp.BCCSP) (*cb.ConfigEnvelope, error)
 }
 
 type DefaultConfigUpdateProposer struct{}
@@ -36,11 +35,11 @@ type DefaultConfigUpdateProposer struct{}
 // It creates a signed envelope that wraps the config envelope and re-validate it. This Re-validation is mainly intended to apply the size filtering and it is a good sanity check.
 // When a config update is sent to the Router, ProposeConfigUpdate is called and the Router drops the signed envelope and forward the original request to the consensus.
 // The consensus nodes apply the same validation checks and the leader proposes the config transaction signed by himself.
-func (cp *DefaultConfigUpdateProposer) ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
+func (cp *DefaultConfigUpdateProposer) ProposeConfigUpdate(request *protos.Request, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier, bccsp bccsp.BCCSP) (*protos.Request, error) {
 	configEnvelope, err := cp.AuthorizeAndVerifyConfigUpdate(&cb.Envelope{
 		Payload:   request.Payload,
 		Signature: request.Signature,
-	}, bundle)
+	}, bundle, bccsp)
 	if err != nil {
 		return nil, fmt.Errorf("failed authorizing and verifying config update request, err: %s", err)
 	}
@@ -95,7 +94,7 @@ func BuildBundleFromBlock(configTX *cb.Envelope, bccsp bccsp.BCCSP) (*channelcon
 	return bundle, nil
 }
 
-func (cp *DefaultConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(envelope *cb.Envelope, bundle channelconfig.Resources) (*cb.ConfigEnvelope, error) {
+func (cp *DefaultConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(envelope *cb.Envelope, bundle channelconfig.Resources, bccsp bccsp.BCCSP) (*cb.ConfigEnvelope, error) {
 	// validates that all modified config has the corresponding modification policies satisfied by the signature set
 	configEnvelope, err := bundle.ConfigtxValidator().ProposeConfigUpdate(envelope)
 	if err != nil {
@@ -103,7 +102,7 @@ func (cp *DefaultConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(envelope *
 	}
 
 	// Apply validation checks of new bundle against old bundle
-	err = validateNewBundleAgainstOldBundle(configEnvelope, bundle)
+	err = validateNewBundleAgainstOldBundle(configEnvelope, bundle, bccsp)
 	if err != nil {
 		return nil, fmt.Errorf("error validating new bundle against old bundle to %s", bundle.ConfigtxValidator().ChannelID())
 	}
@@ -166,10 +165,9 @@ func checkResources(res channelconfig.Resources) error {
 	return nil
 }
 
-func validateNewBundleAgainstOldBundle(configEnvelope *cb.ConfigEnvelope, bundle channelconfig.Resources) error {
-	cryptoProvider := factory.GetDefault()
+func validateNewBundleAgainstOldBundle(configEnvelope *cb.ConfigEnvelope, bundle channelconfig.Resources, bccsp bccsp.BCCSP) error {
 	channelID := bundle.ConfigtxValidator().ChannelID()
-	newBundle, err := channelconfig.NewBundle(channelID, configEnvelope.Config, cryptoProvider)
+	newBundle, err := channelconfig.NewBundle(channelID, configEnvelope.Config, bccsp)
 	if err != nil {
 		return fmt.Errorf("error creating bundle %s", channelID)
 	}

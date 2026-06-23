@@ -4,6 +4,7 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
@@ -13,11 +14,12 @@ import (
 )
 
 type FakeConfigUpdateProposer struct {
-	AuthorizeAndVerifyConfigUpdateStub        func(*common.Envelope, channelconfig.Resources) (*common.ConfigEnvelope, error)
+	AuthorizeAndVerifyConfigUpdateStub        func(*common.Envelope, channelconfig.Resources, bccsp.BCCSP) (*common.ConfigEnvelope, error)
 	authorizeAndVerifyConfigUpdateMutex       sync.RWMutex
 	authorizeAndVerifyConfigUpdateArgsForCall []struct {
 		arg1 *common.Envelope
 		arg2 channelconfig.Resources
+		arg3 bccsp.BCCSP
 	}
 	authorizeAndVerifyConfigUpdateReturns struct {
 		result1 *common.ConfigEnvelope
@@ -27,13 +29,14 @@ type FakeConfigUpdateProposer struct {
 		result1 *common.ConfigEnvelope
 		result2 error
 	}
-	ProposeConfigUpdateStub        func(*comm.Request, channelconfig.Resources, identity.SignerSerializer, *requestfilter.RulesVerifier) (*comm.Request, error)
+	ProposeConfigUpdateStub        func(*comm.Request, channelconfig.Resources, identity.SignerSerializer, *requestfilter.RulesVerifier, bccsp.BCCSP) (*comm.Request, error)
 	proposeConfigUpdateMutex       sync.RWMutex
 	proposeConfigUpdateArgsForCall []struct {
 		arg1 *comm.Request
 		arg2 channelconfig.Resources
 		arg3 identity.SignerSerializer
 		arg4 *requestfilter.RulesVerifier
+		arg5 bccsp.BCCSP
 	}
 	proposeConfigUpdateReturns struct {
 		result1 *comm.Request
@@ -47,22 +50,24 @@ type FakeConfigUpdateProposer struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(arg1 *common.Envelope, arg2 channelconfig.Resources) (*common.ConfigEnvelope, error) {
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(arg1 *common.Envelope, arg2 channelconfig.Resources, arg3 bccsp.BCCSP) (*common.ConfigEnvelope, error) {
 	fake.authorizeAndVerifyConfigUpdateMutex.Lock()
 	ret, specificReturn := fake.authorizeAndVerifyConfigUpdateReturnsOnCall[len(fake.authorizeAndVerifyConfigUpdateArgsForCall)]
 	fake.authorizeAndVerifyConfigUpdateArgsForCall = append(fake.authorizeAndVerifyConfigUpdateArgsForCall, struct {
 		arg1 *common.Envelope
 		arg2 channelconfig.Resources
-	}{arg1, arg2})
-	fake.recordInvocation("AuthorizeAndVerifyConfigUpdate", []interface{}{arg1, arg2})
+		arg3 bccsp.BCCSP
+	}{arg1, arg2, arg3})
+	stub := fake.AuthorizeAndVerifyConfigUpdateStub
+	fakeReturns := fake.authorizeAndVerifyConfigUpdateReturns
+	fake.recordInvocation("AuthorizeAndVerifyConfigUpdate", []interface{}{arg1, arg2, arg3})
 	fake.authorizeAndVerifyConfigUpdateMutex.Unlock()
-	if fake.AuthorizeAndVerifyConfigUpdateStub != nil {
-		return fake.AuthorizeAndVerifyConfigUpdateStub(arg1, arg2)
+	if stub != nil {
+		return stub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.authorizeAndVerifyConfigUpdateReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -72,17 +77,17 @@ func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateCallCount() 
 	return len(fake.authorizeAndVerifyConfigUpdateArgsForCall)
 }
 
-func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateCalls(stub func(*common.Envelope, channelconfig.Resources) (*common.ConfigEnvelope, error)) {
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateCalls(stub func(*common.Envelope, channelconfig.Resources, bccsp.BCCSP) (*common.ConfigEnvelope, error)) {
 	fake.authorizeAndVerifyConfigUpdateMutex.Lock()
 	defer fake.authorizeAndVerifyConfigUpdateMutex.Unlock()
 	fake.AuthorizeAndVerifyConfigUpdateStub = stub
 }
 
-func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateArgsForCall(i int) (*common.Envelope, channelconfig.Resources) {
+func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateArgsForCall(i int) (*common.Envelope, channelconfig.Resources, bccsp.BCCSP) {
 	fake.authorizeAndVerifyConfigUpdateMutex.RLock()
 	defer fake.authorizeAndVerifyConfigUpdateMutex.RUnlock()
 	argsForCall := fake.authorizeAndVerifyConfigUpdateArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
 }
 
 func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateReturns(result1 *common.ConfigEnvelope, result2 error) {
@@ -111,7 +116,7 @@ func (fake *FakeConfigUpdateProposer) AuthorizeAndVerifyConfigUpdateReturnsOnCal
 	}{result1, result2}
 }
 
-func (fake *FakeConfigUpdateProposer) ProposeConfigUpdate(arg1 *comm.Request, arg2 channelconfig.Resources, arg3 identity.SignerSerializer, arg4 *requestfilter.RulesVerifier) (*comm.Request, error) {
+func (fake *FakeConfigUpdateProposer) ProposeConfigUpdate(arg1 *comm.Request, arg2 channelconfig.Resources, arg3 identity.SignerSerializer, arg4 *requestfilter.RulesVerifier, arg5 bccsp.BCCSP) (*comm.Request, error) {
 	fake.proposeConfigUpdateMutex.Lock()
 	ret, specificReturn := fake.proposeConfigUpdateReturnsOnCall[len(fake.proposeConfigUpdateArgsForCall)]
 	fake.proposeConfigUpdateArgsForCall = append(fake.proposeConfigUpdateArgsForCall, struct {
@@ -119,16 +124,18 @@ func (fake *FakeConfigUpdateProposer) ProposeConfigUpdate(arg1 *comm.Request, ar
 		arg2 channelconfig.Resources
 		arg3 identity.SignerSerializer
 		arg4 *requestfilter.RulesVerifier
-	}{arg1, arg2, arg3, arg4})
-	fake.recordInvocation("ProposeConfigUpdate", []interface{}{arg1, arg2, arg3, arg4})
+		arg5 bccsp.BCCSP
+	}{arg1, arg2, arg3, arg4, arg5})
+	stub := fake.ProposeConfigUpdateStub
+	fakeReturns := fake.proposeConfigUpdateReturns
+	fake.recordInvocation("ProposeConfigUpdate", []interface{}{arg1, arg2, arg3, arg4, arg5})
 	fake.proposeConfigUpdateMutex.Unlock()
-	if fake.ProposeConfigUpdateStub != nil {
-		return fake.ProposeConfigUpdateStub(arg1, arg2, arg3, arg4)
+	if stub != nil {
+		return stub(arg1, arg2, arg3, arg4, arg5)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.proposeConfigUpdateReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -138,17 +145,17 @@ func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateCallCount() int {
 	return len(fake.proposeConfigUpdateArgsForCall)
 }
 
-func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateCalls(stub func(*comm.Request, channelconfig.Resources, identity.SignerSerializer, *requestfilter.RulesVerifier) (*comm.Request, error)) {
+func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateCalls(stub func(*comm.Request, channelconfig.Resources, identity.SignerSerializer, *requestfilter.RulesVerifier, bccsp.BCCSP) (*comm.Request, error)) {
 	fake.proposeConfigUpdateMutex.Lock()
 	defer fake.proposeConfigUpdateMutex.Unlock()
 	fake.ProposeConfigUpdateStub = stub
 }
 
-func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateArgsForCall(i int) (*comm.Request, channelconfig.Resources, identity.SignerSerializer, *requestfilter.RulesVerifier) {
+func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateArgsForCall(i int) (*comm.Request, channelconfig.Resources, identity.SignerSerializer, *requestfilter.RulesVerifier, bccsp.BCCSP) {
 	fake.proposeConfigUpdateMutex.RLock()
 	defer fake.proposeConfigUpdateMutex.RUnlock()
 	argsForCall := fake.proposeConfigUpdateArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5
 }
 
 func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateReturns(result1 *comm.Request, result2 error) {
@@ -180,10 +187,6 @@ func (fake *FakeConfigUpdateProposer) ProposeConfigUpdateReturnsOnCall(i int, re
 func (fake *FakeConfigUpdateProposer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.authorizeAndVerifyConfigUpdateMutex.RLock()
-	defer fake.authorizeAndVerifyConfigUpdateMutex.RUnlock()
-	fake.proposeConfigUpdateMutex.RLock()
-	defer fake.proposeConfigUpdateMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

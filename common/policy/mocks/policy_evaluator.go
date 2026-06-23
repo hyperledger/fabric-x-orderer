@@ -46,15 +46,16 @@ func (fake *FakePolicyEvaluator) EvaluateIdentities(arg1 []msp.Identity) error {
 	fake.evaluateIdentitiesArgsForCall = append(fake.evaluateIdentitiesArgsForCall, struct {
 		arg1 []msp.Identity
 	}{arg1Copy})
+	stub := fake.EvaluateIdentitiesStub
+	fakeReturns := fake.evaluateIdentitiesReturns
 	fake.recordInvocation("EvaluateIdentities", []interface{}{arg1Copy})
 	fake.evaluateIdentitiesMutex.Unlock()
-	if fake.EvaluateIdentitiesStub != nil {
-		return fake.EvaluateIdentitiesStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.evaluateIdentitiesReturns
 	return fakeReturns.result1
 }
 
@@ -111,15 +112,16 @@ func (fake *FakePolicyEvaluator) EvaluateSignedData(arg1 []*protoutil.SignedData
 	fake.evaluateSignedDataArgsForCall = append(fake.evaluateSignedDataArgsForCall, struct {
 		arg1 []*protoutil.SignedData
 	}{arg1Copy})
+	stub := fake.EvaluateSignedDataStub
+	fakeReturns := fake.evaluateSignedDataReturns
 	fake.recordInvocation("EvaluateSignedData", []interface{}{arg1Copy})
 	fake.evaluateSignedDataMutex.Unlock()
-	if fake.EvaluateSignedDataStub != nil {
-		return fake.EvaluateSignedDataStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.evaluateSignedDataReturns
 	return fakeReturns.result1
 }
 
@@ -168,10 +170,6 @@ func (fake *FakePolicyEvaluator) EvaluateSignedDataReturnsOnCall(i int, result1 
 func (fake *FakePolicyEvaluator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.evaluateIdentitiesMutex.RLock()
-	defer fake.evaluateIdentitiesMutex.RUnlock()
-	fake.evaluateSignedDataMutex.RLock()
-	defer fake.evaluateSignedDataMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

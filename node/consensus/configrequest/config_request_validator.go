@@ -9,6 +9,7 @@ package configrequest
 import (
 	"fmt"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -24,6 +25,7 @@ type ConfigRequestValidator interface {
 type DefaultValidateConfigRequest struct {
 	ConfigUpdateProposer policy.ConfigUpdateProposer
 	Bundle               channelconfig.Resources
+	BCCSP                bccsp.BCCSP
 }
 
 //go:generate counterfeiter -o mocks/config_request_validator.go . ConfigRequestValidator
@@ -46,7 +48,7 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 	}
 
 	var expectedConfigEnvelope *common.ConfigEnvelope
-	expectedConfigEnvelope, err = vc.ConfigUpdateProposer.AuthorizeAndVerifyConfigUpdate(configEnvelope.LastUpdate, vc.Bundle)
+	expectedConfigEnvelope, err = vc.ConfigUpdateProposer.AuthorizeAndVerifyConfigUpdate(configEnvelope.LastUpdate, vc.Bundle, vc.BCCSP)
 	if err != nil {
 		return errors.Errorf("falied to propose a new config update")
 	}
