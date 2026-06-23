@@ -316,6 +316,7 @@ func createAndSubmitConfigRequest(node *consensus.Consensus, routerCert *x509.Ce
 	request := &protos.Request{
 		Payload:   envelope.Payload,
 		Signature: envelope.Signature,
+		ConfigSeq: 1,
 	}
 	ctx, err := createContextForSubmitConfig(routerCert)
 	if err != nil {

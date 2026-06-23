@@ -1060,7 +1060,14 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
 	case ce.BAF != nil:
 		return uint64(ce.BAF.ConfigSequence()), nil
 	case ce.ConfigRequest != nil:
-		return uint64(ce.ConfigRequest.ConfigSequence()) - 1, nil
+		configSeq, err := ce.ConfigRequest.ConfigSequence()
+		if err != nil {
+			return 0, err
+		}
+		if configSeq == 0 {
+			return 0, nil
+		}
+		return uint64(configSeq) - 1, nil
 	default:
 		return 0, errors.New("empty control event")
 
@@ -1089,11 +1096,14 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
-		reqConfigSeq := ce.ConfigRequest.ConfigSequence()
+		reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
+		if err != nil {
+			return reqID, ce, errors.Wrap(err, "failed getting config request's config seq")
+		}
 		if reqConfigSeq != configSeq+1 {
 			return reqID, ce, errors.Errorf("mismatch config sequence; the config request's config seq is %d while the config seq should be %d", reqConfigSeq, configSeq+1)
 		}
-		err := c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
+		err = c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}

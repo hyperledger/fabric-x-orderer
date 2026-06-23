@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -285,22 +286,22 @@ type ConfigRequest struct {
 	Envelope *common.Envelope
 }
 
-func (c *ConfigRequest) ConfigSequence() types.ConfigSequence {
+func (c *ConfigRequest) ConfigSequence() (types.ConfigSequence, error) {
 	payload, err := protoutil.UnmarshalPayload(c.Envelope.Payload)
 	if err != nil {
-		panic(fmt.Sprintf("failed to unmarshal payload: %v", err))
+		return 0, errors.Wrap(err, "failed to unmarshal payload")
 	}
 
 	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
 	if err != nil {
-		panic(fmt.Sprintf("failed to unmarshal config envelope: %v", err))
+		return 0, errors.Wrap(err, "failed to unmarshal config envelope")
 	}
 
 	if configEnvelope.Config == nil {
-		panic("config envelope has nil config")
+		return 0, errors.New("config envelope has nil config")
 	}
 
-	return types.ConfigSequence(configEnvelope.Config.Sequence)
+	return types.ConfigSequence(configEnvelope.Config.Sequence), nil
 }
 
 func (c *ConfigRequest) Bytes() []byte {
@@ -323,7 +324,11 @@ func (c *ConfigRequest) FromBytes(bytes []byte) error {
 }
 
 func (c *ConfigRequest) String() string {
-	return fmt.Sprintf("Config Request with config sequence %d", c.ConfigSequence())
+	configSeq, err := c.ConfigSequence()
+	if err != nil {
+		return fmt.Sprintf("Config Request with error: %v", err)
+	}
+	return fmt.Sprintf("Config Request with config sequence %d", configSeq)
 }
 
 type ControlEvent struct {
@@ -600,7 +605,12 @@ func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.Fabr
 			}
 		}
 		if ce.ConfigRequest != nil {
-			if ce.ConfigRequest.ConfigSequence() == configSeq+1 {
+			reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
+			if err != nil {
+				l.Errorf("failed to get config seq from config request: %s", err)
+				continue
+			}
+			if reqConfigSeq == configSeq+1 {
 				filteredEvents = append(filteredEvents, ce)
 			} else {
 				l.Debugf("filtering ce config request with mismatch config seq (currently %d); %s; (should be +1)", configSeq, ce.ConfigRequest.String())
