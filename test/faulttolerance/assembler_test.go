@@ -145,18 +145,17 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 	t.Logf("Finished pull and count: %d, %d", totalBlocks, totalTxs)
 }
 
-// TestStartAssemblerGetMetrics verifies that the assembler node correctly exposes
-// transaction and block count metrics via Prometheus.
-//
+// TestStartAssemblerGetResponseFromOperationEndpoints verifies that the assembler node responds correctly to operation endpoints INSECURED.
 // The test performs the following steps:
-// 1. Creates a test network configuration with 1 node
+// 1. Creates a test network configuration
 // 2. Generates network artifacts using armageddon CLI
 // 3. Builds and starts the arma node binary
 // 4. Sends a configurable number of transactions (10) using a rate-limited broadcast client
 // 5. Monitors Prometheus metrics to verify transaction count (totalTxNumber+1) and block count (2)
 // 6. Stops and restarts the monitored assembler node
 // 7. Verifies that the metrics remain accurate after the node restart
-func TestStartAssemblerGetMetrics(t *testing.T) {
+// 8. Checks the health check endpoint to ensure the assembler node is healthy
+func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
@@ -247,4 +246,14 @@ func TestStartAssemblerGetMetrics(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
+
+	// 8.
+	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, assemblerToMonitor)
+
+	pattern := `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
+	re := regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, re, url)
+	}, 30*time.Second, 100*time.Millisecond)
 }

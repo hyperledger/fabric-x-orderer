@@ -31,8 +31,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSubmitToRouterGetMetrics tests the end-to-end flow of submitting transactions to the router
-// and verifying that the metrics endpoint correctly reflects the number of incoming transactions.
+// TestSubmitToRouterGetResponseFromOperationEndpoints tests the end-to-end flow of submitting transactions to the router
+// and verifying that the correct response is received from the operation endpoints INSECURED.
 // The test performs the following steps:
 //  1. Compiles the arma binary.
 //  2. Creates a temporary directory for test artifacts.
@@ -40,9 +40,9 @@ import (
 //  4. Uses the armageddon CLI to generate config files for the network.
 //  5. Starts the arma nodes and waits for them to be ready.
 //  6. Sends a specified number of transactions to the router using a rate limiter.
-//  7. Queries the router's metrics endpoint and asserts that the number of incoming transactions
-//     matches the number sent, within a timeout period.
-func TestSubmitToRouterGetMetrics(t *testing.T) {
+//  7. Queries the router's metrics endpoint and asserts that the number of incoming transactions matches the number sent, within a timeout period.
+//  8. Queries the router's health check endpoint and asserts that the health status is "healthy" within a timeout period.
+func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	defer gexec.CleanupBuildArtifacts()
@@ -117,6 +117,16 @@ func TestSubmitToRouterGetMetrics(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 8. Query the router's health check endpoint and assert the health status.
+	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, routerToMonitor)
+
+	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
+	re = regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, re, url)
 	}, 30*time.Second, 100*time.Millisecond)
 }
 

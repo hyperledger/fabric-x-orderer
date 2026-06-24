@@ -149,9 +149,11 @@ func (b *Batcher) Run() {
 	if err := b.opsSystem.Start(); err != nil {
 		b.logger.Panicf("failed to start operations subsystem: %s", err)
 	}
+	RegisterHealthCheckers(b)
 
 	b.metrics.StartMetricsTracker()
 	b.logger.Infof("Prometheus serving on URL: %s", b.MonitoringServiceAddress())
+	b.logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(b.opsSystem, b.logger))
 }
 
 func (b *Batcher) GetStatus() string {

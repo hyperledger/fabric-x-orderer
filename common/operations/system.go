@@ -83,6 +83,10 @@ func PrometheusMetricsServiceURL(system *System, logger *flogging.FabricLogger) 
 	return operationServiceURL("metrics", system.Addr(), logger)
 }
 
+func HealthCheckServiceURL(system *System, logger *flogging.FabricLogger) string {
+	return operationServiceURL("healthz", system.Addr(), logger)
+}
+
 // NewOperationsSystem creates a new operations system with the provided configuration.
 func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 	o := Options{
@@ -117,6 +121,7 @@ func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 	}
 
 	system.initializeMetricsProvider()
+	system.initializeHealthCheckHandler()
 
 	return system
 }
@@ -146,4 +151,17 @@ func (s *System) initializeMetricsProvider() {
 	// 	//     '200':
 	// 	//        description: Ok.
 	s.RegisterHandler("/metrics", promhttp.Handler(), s.options.TLS.Enabled)
+}
+
+func (s *System) initializeHealthCheckHandler() {
+	s.healthHandler = healthz.NewHealthHandler()
+	// swagger:operation GET /healthz operations healthz
+	// ---
+	// summary: Retrieves all registered health checkers for the process.
+	// responses:
+	//     '200':
+	//        description: Ok.
+	//     '503':
+	//        description: Service unavailable.
+	s.RegisterHandler("/healthz", s.healthHandler, false)
 }

@@ -170,6 +170,8 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.metrics = NewRouterMetrics(rconfig, r.logger)
 	r.opsSystem = operations.NewOperationsSystem(*rconfig.Operations, *rconfig.Metrics)
 
+	RegisterHealthCheckers(r)
+
 	// initialize channels and once
 	r.stopChan = make(chan struct{})
 	r.drainChan = make(chan struct{})
@@ -184,6 +186,7 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 
 	r.metrics.StartMetricsTracker()
 	r.logger.Infof("Prometheus serving on URL: %s", r.MonitoringServiceAddress())
+	r.logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(r.opsSystem, r.logger))
 	r.logger.Infof("Router with PartyID: %d has been initialized from config with sequence: %d", rconfig.PartyID, r.configSeq)
 }
 
