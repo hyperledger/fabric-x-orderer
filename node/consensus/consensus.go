@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/asn1"
-	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -254,11 +253,10 @@ func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.
 
 func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
 	rawCE := req.Payload.Payload
-	var ce state.ControlEvent
-	bafd := &state.BAFDeserialize{}
-	if err := ce.FromBytes(rawCE, bafd.Deserialize); err != nil {
-		c.Logger.Errorf("Failed unmarshaling control event %s: %v", base64.StdEncoding.EncodeToString(rawCE), err)
-		return errors.Wrap(err, "failed unmarshaling control event")
+	ri, _, err := c.verifyCE(rawCE)
+	if err != nil {
+		c.Logger.Errorf("Failed verifying control event %v: %v", ri, err)
+		return errors.Wrap(err, "failed verifying control event")
 	}
 	c.BFT.HandleRequest(sender, rawCE)
 	return nil
@@ -302,7 +300,11 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 		return nil, errors.Wrap(err, "failed to validate router from context")
 	}
 
-	c.Logger.Infof("Received config request from router %s", c.Config.Router.Endpoint)
+	c.Logger.Infof("Received config request from router %s with config sequence %d", c.Config.Router.Endpoint, request.ConfigSeq)
+
+	if request.ConfigSeq != uint32(c.VerificationSequence()) {
+		return nil, errors.Errorf("config sequence mismatch: expected %d, got %d", c.VerificationSequence(), request.ConfigSeq)
+	}
 
 	configRequest, err := c.verifyAndClassifyRequest(request)
 	if err != nil {
@@ -310,11 +312,14 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 	}
 
 	ce := &state.ControlEvent{
-		ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{
-			Payload:   configRequest.Payload,
-			Signature: configRequest.Signature,
-		}},
+		ConfigRequest: &state.ConfigRequest{
+			Envelope: &common.Envelope{
+				Payload:   configRequest.Payload,
+				Signature: configRequest.Signature,
+			},
+		},
 	}
+
 	c.BFT.SubmitRequest(ce.Bytes())
 
 	return &protos.SubmitResponse{TraceId: request.TraceId}, nil
@@ -1055,7 +1060,14 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
 	case ce.BAF != nil:
 		return uint64(ce.BAF.ConfigSequence()), nil
 	case ce.ConfigRequest != nil:
-		return c.VerificationSequence(), nil
+		configSeq, err := ce.ConfigRequest.ConfigSequence()
+		if err != nil {
+			return 0, err
+		}
+		if configSeq == 0 {
+			return 0, nil
+		}
+		return uint64(configSeq) - 1, nil
 	default:
 		return 0, errors.New("empty control event")
 
@@ -1084,7 +1096,14 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
-		err := c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
+		reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
+		if err != nil {
+			return reqID, ce, errors.Wrap(err, "failed getting config request's config seq")
+		}
+		if reqConfigSeq != configSeq+1 {
+			return reqID, ce, errors.Errorf("mismatch config sequence; the config request's config seq is %d while the config seq should be %d", reqConfigSeq, configSeq+1)
+		}
+		err = c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}

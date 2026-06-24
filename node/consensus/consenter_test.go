@@ -16,7 +16,9 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestConsenter(t *testing.T) {
@@ -83,11 +85,17 @@ func TestConsenter(t *testing.T) {
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test ConfigRequest is returned by SimulateStateTransition
-	cr := &state.ConfigRequest{
-		Envelope: &common.Envelope{
-			Payload:   []byte("config-payload"),
-			Signature: []byte("config-signature"),
+
+	configEnvelope := &common.ConfigEnvelope{
+		Config: &common.Config{
+			Sequence: 1,
 		},
+		LastUpdate: nil,
+	}
+	configBytes, err := proto.Marshal(configEnvelope)
+	assert.NoError(t, err)
+	cr := &state.ConfigRequest{
+		Envelope: tx.CreateStructuredConfigUpdateEnvelope(configBytes),
 	}
 	events = [][]byte{(&state.ControlEvent{ConfigRequest: cr}).Bytes()}
 

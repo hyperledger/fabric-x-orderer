@@ -140,6 +140,7 @@ func CreateStructuredConfigUpdateRequest(data []byte) *protos.Request {
 	return &protos.Request{
 		Payload:   payloadBytes,
 		Signature: []byte("signature"),
+		ConfigSeq: 1,
 	}
 }
 
@@ -150,12 +151,6 @@ func CreateStructuredRequest(data []byte) *protos.Request {
 		Payload:   payloadBytes,
 		Signature: []byte("signature"),
 	}
-}
-
-func CreateStructuredRequestWithConfigSeq(data []byte, configSeq uint32) *protos.Request {
-	req := CreateStructuredRequest(data)
-	req.ConfigSeq = configSeq
-	return req
 }
 
 func GetDataFromEnvelope(env *common.Envelope) ([]byte, error) {

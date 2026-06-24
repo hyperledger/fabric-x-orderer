@@ -16,10 +16,12 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -284,16 +286,34 @@ type ConfigRequest struct {
 	Envelope *common.Envelope
 }
 
+func (c *ConfigRequest) ConfigSequence() (types.ConfigSequence, error) {
+	payload, err := protoutil.UnmarshalPayload(c.Envelope.Payload)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to unmarshal payload")
+	}
+
+	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to unmarshal config envelope")
+	}
+
+	if configEnvelope.Config == nil {
+		return 0, errors.New("config envelope has nil config")
+	}
+
+	return types.ConfigSequence(configEnvelope.Config.Sequence), nil
+}
+
 func (c *ConfigRequest) Bytes() []byte {
 	bytes, err := protoutil.Marshal(c.Envelope)
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal envelope: %v", err))
 	}
-
 	return bytes
 }
 
 func (c *ConfigRequest) FromBytes(bytes []byte) error {
+	// Unmarshal the envelope from remaining bytes
 	envelope, err := protoutil.UnmarshalEnvelope(bytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal envelope: %v", err)
@@ -304,8 +324,11 @@ func (c *ConfigRequest) FromBytes(bytes []byte) error {
 }
 
 func (c *ConfigRequest) String() string {
-	// TODO: add more info to this string, at least the config sequence
-	return "Config Request"
+	configSeq, err := c.ConfigSequence()
+	if err != nil {
+		return fmt.Sprintf("Config Request with error: %v", err)
+	}
+	return fmt.Sprintf("Config Request with config sequence %d", configSeq)
 }
 
 type ControlEvent struct {
@@ -423,7 +446,7 @@ func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence
 
 	// After applying rules, extract all batch attestations for which enough fragments have been collected.
 	extracted := ExtractBatchAttestationsFromPending(nextState, l)
-	configRequests := ExtractConfigRequests(ces)
+	configRequests := ExtractConfigRequests(filteredCEs)
 	return nextState, extracted, configRequests
 }
 
@@ -579,6 +602,18 @@ func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.Fabr
 				filteredEvents = append(filteredEvents, ce)
 			} else {
 				l.Debugf("filtering ce complaint with mismatch config seq (currently %d); %s", configSeq, ce.Complaint.String())
+			}
+		}
+		if ce.ConfigRequest != nil {
+			reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
+			if err != nil {
+				l.Errorf("failed to get config seq from config request: %s", err)
+				continue
+			}
+			if reqConfigSeq == configSeq+1 {
+				filteredEvents = append(filteredEvents, ce)
+			} else {
+				l.Debugf("filtering ce config request with mismatch config seq (currently %d); %s; (should be +1)", configSeq, ce.ConfigRequest.String())
 			}
 		}
 	}

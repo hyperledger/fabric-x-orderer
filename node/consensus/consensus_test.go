@@ -422,9 +422,13 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
 	configEnvelope := &common.ConfigEnvelope{
-		Config:     nil,
+		Config: &common.Config{
+			Sequence: 1,
+		},
 		LastUpdate: nil,
 	}
+	configBytes, err := proto.Marshal(configEnvelope)
+	assert.NoError(t, err)
 	configtxValidator.ProposeConfigUpdateReturns(configEnvelope, nil)
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
@@ -607,7 +611,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 5,
 			},
-			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: tx.CreateStructuredConfigUpdateEnvelope([]byte{1})}}},
+			ces:        []state.ControlEvent{{ConfigRequest: &state.ConfigRequest{Envelope: tx.CreateStructuredConfigUpdateEnvelope(configBytes)}}},
 			withConfig: true,
 		},
 		{
