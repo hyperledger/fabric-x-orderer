@@ -71,8 +71,8 @@ type Options struct {
 	Version string
 }
 
-func operationServiceURL(operationSubPath string, address string, logger *flogging.FabricLogger) string {
-	uRL, err := url.JoinPath("http://", address, operationSubPath)
+func operationServiceURL(scheme string, operationSubPath string, address string, logger *flogging.FabricLogger) string {
+	uRL, err := url.JoinPath(scheme, address, operationSubPath)
 	if err != nil {
 		logger.Panicf("failed to construct metrics URL: %s", err)
 	}
@@ -80,7 +80,10 @@ func operationServiceURL(operationSubPath string, address string, logger *floggi
 }
 
 func PrometheusMetricsServiceURL(system *System, logger *flogging.FabricLogger) string {
-	return operationServiceURL("metrics", system.Addr(), logger)
+	if system.options.TLS.Enabled {
+		return operationServiceURL("https://", "metrics", system.Addr(), logger)
+	}
+	return operationServiceURL("http://", "metrics", system.Addr(), logger)
 }
 
 func HealthCheckServiceURL(system *System, logger *flogging.FabricLogger) string {
@@ -94,7 +97,7 @@ func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 			Logger:        flogging.MustGetLogger("orderer.operations"),
 			ListenAddress: ops.ListenAddress,
 			TLS: fabhttp.TLS{
-				Enabled:            false, // TLS is not currently supported for the operations server --- IGNORE ---
+				Enabled:            ops.TLS.Enabled,
 				CertFile:           ops.TLS.Certificate,
 				KeyFile:            ops.TLS.PrivateKey,
 				ClientCertRequired: ops.TLS.ClientAuthRequired,
