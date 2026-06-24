@@ -46,7 +46,8 @@ func TestBatchLedgerPart(t *testing.T) {
 	batches := uint64(10)
 	for seq := uint64(0); seq < batches; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
-		part.Append(types.BatchSequence(seq), types.ConfigSequence(seq*10), batchedRequests)
+		primarySig := []byte(fmt.Sprintf("sig-%d", seq))
+		part.Append(types.BatchSequence(seq), types.ConfigSequence(seq*10), batchedRequests, primarySig)
 		require.Equal(t, seq+1, part.Height())
 		batch := part.RetrieveBatchByNumber(seq)
 		require.NotNil(t, batch)
@@ -55,6 +56,7 @@ func TestBatchLedgerPart(t *testing.T) {
 		require.Equal(t, types.ShardID(5), batch.Shard())
 		require.Equal(t, types.BatchSequence(seq), batch.Seq())
 		require.Equal(t, types.ConfigSequence(seq*10), batch.ConfigSequence())
+		require.Equal(t, primarySig, batch.PrimarySignature())
 		require.NotNil(t, batch.Digest())
 	}
 	require.Nil(t, part.RetrieveBatchByNumber(100))
@@ -84,7 +86,7 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 
 	for seq := uint64(0); seq < 10; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
-		part.Append(types.BatchSequence(seq), 0, batchedRequests)
+		part.Append(types.BatchSequence(seq), 0, batchedRequests, nil)
 	}
 
 	ledger := part.Ledger()

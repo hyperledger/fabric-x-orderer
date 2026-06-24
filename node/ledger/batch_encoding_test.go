@@ -177,7 +177,8 @@ func TestNewFabricBatchFromBlock(t *testing.T) {
 
 func TestNewFabricBatchFromRequests(t *testing.T) {
 	bReqs := types.BatchedRequests([][]byte{{0x08}, {0x09}})
-	fb := ledger.NewFabricBatchFromRequests(2, 3, 4, bReqs, 5, []byte{0x06})
+	primarySig := []byte{0x01, 0x02, 0x03}
+	fb := ledger.NewFabricBatchFromRequests(2, 3, 4, bReqs, 5, []byte{0x06}, primarySig)
 	require.NotNil(t, fb)
 	require.Equal(t, types.ShardID(2), fb.Shard())
 	require.Equal(t, types.PartyID(3), fb.Primary())
@@ -185,6 +186,7 @@ func TestNewFabricBatchFromRequests(t *testing.T) {
 	require.True(t, bytes.Equal(bReqs.Digest(), fb.Digest()))
 	require.Equal(t, types.ConfigSequence(5), fb.ConfigSequence())
 	require.Equal(t, bReqs, fb.Requests())
+	require.True(t, bytes.Equal(primarySig, fb.PrimarySignature()))
 
 	require.True(t, bytes.Equal([]byte{0x06}, fb.Header.GetPreviousHash()))
 

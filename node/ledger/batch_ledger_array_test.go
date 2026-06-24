@@ -49,7 +49,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests)
+			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, nil)
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -79,7 +79,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests)
+			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, nil)
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -116,7 +116,7 @@ func TestBatchLedgerArray(t *testing.T) {
 		batchedRequests = types.BatchedRequests{
 			[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 		}
-		a.Append(5, types.BatchSequence(seq), 0, batchedRequests)
+		a.Append(5, types.BatchSequence(seq), 0, batchedRequests, nil)
 		require.Equal(t, seq+1, a.Height(newParty))
 		batch := a.RetrieveBatchByNumber(newParty, seq)
 		require.NotNil(t, batch)
@@ -143,7 +143,7 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 	for _, pID := range parties {
 		part := a.Part(pID)
 		for seq := uint64(0); seq < 10; seq++ {
-			part.Append(types.BatchSequence(seq), 0, batchedRequests)
+			part.Append(types.BatchSequence(seq), 0, batchedRequests, nil)
 			require.Equal(t, seq+1, part.Height())
 			batch := part.RetrieveBatchByNumber(seq)
 			require.NotNil(t, batch)
@@ -173,10 +173,78 @@ func TestBatchLedgerArrayMissingPartyID(t *testing.T) {
 	require.Panics(t, func() { _ = a.Height(missing) })
 
 	require.Panics(t, func() {
-		a.Append(missing, types.BatchSequence(0), 0, types.BatchedRequests{[]byte("x")})
+		a.Append(missing, types.BatchSequence(0), 0, types.BatchedRequests{[]byte("x")}, nil)
 	})
 
 	require.Panics(t, func() { _ = a.RetrieveBatchByNumber(missing, 0) })
+
+	a.Close()
+}
+
+func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
+	dir := t.TempDir()
+	logger := flogging.MustGetLogger("test")
+
+	parties := []types.PartyID{1, 2, 3, 4}
+	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
+	require.NoError(t, err)
+	require.NotNil(t, a)
+
+	// Create a batch with a non-nil primary signature
+	primarySignature := []byte("test-primary-signature-data")
+	batchedRequests := types.BatchedRequests{[]byte("tx1"), []byte("tx2"), []byte("tx3")}
+	partyID := types.PartyID(1)
+	seq := uint64(0)
+
+	// Append batch with primary signature
+	a.Append(partyID, types.BatchSequence(seq), 0, batchedRequests, primarySignature)
+	require.Equal(t, uint64(1), a.Height(partyID))
+
+	// Retrieve the batch and verify the primary signature
+	batch := a.RetrieveBatchByNumber(partyID, seq)
+	require.NotNil(t, batch)
+	require.Equal(t, batchedRequests, batch.Requests())
+	require.Equal(t, partyID, batch.Primary())
+	require.NotNil(t, batch.Digest())
+
+	// Verify the primary signature is correctly stored and retrieved
+	retrievedSignature := batch.PrimarySignature()
+	require.NotNil(t, retrievedSignature)
+	require.Equal(t, primarySignature, retrievedSignature)
+
+	// Append another batch with a different signature
+	primarySignature2 := []byte("another-signature-12345")
+	batchedRequests2 := types.BatchedRequests{[]byte("tx4"), []byte("tx5")}
+	seq2 := uint64(1)
+
+	a.Append(partyID, types.BatchSequence(seq2), 0, batchedRequests2, primarySignature2)
+	require.Equal(t, uint64(2), a.Height(partyID))
+
+	// Retrieve the second batch and verify its signature
+	batch2 := a.RetrieveBatchByNumber(partyID, seq2)
+	require.NotNil(t, batch2)
+	require.Equal(t, batchedRequests2, batch2.Requests())
+	require.Equal(t, primarySignature2, batch2.PrimarySignature())
+
+	// Verify the first batch signature is still intact
+	batch1Again := a.RetrieveBatchByNumber(partyID, seq)
+	require.NotNil(t, batch1Again)
+	require.Equal(t, primarySignature, batch1Again.PrimarySignature())
+
+	// Close and reopen to verify persistence
+	a.Close()
+	a, err = NewBatchLedgerArray(1, 1, parties, dir, logger)
+	require.NoError(t, err)
+	require.NotNil(t, a)
+
+	// Verify signatures are persisted correctly
+	batchAfterReopen := a.RetrieveBatchByNumber(partyID, seq)
+	require.NotNil(t, batchAfterReopen)
+	require.Equal(t, primarySignature, batchAfterReopen.PrimarySignature())
+
+	batch2AfterReopen := a.RetrieveBatchByNumber(partyID, seq2)
+	require.NotNil(t, batch2AfterReopen)
+	require.Equal(t, primarySignature2, batch2AfterReopen.PrimarySignature())
 
 	a.Close()
 }

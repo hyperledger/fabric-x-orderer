@@ -23,7 +23,7 @@ func TestAssemblerBlockMetadataToFromBytes(t *testing.T) {
 		[]byte("tx1-1"), []byte("tx2"),
 	}
 
-	fb := node_ledger.NewFabricBatchFromRequests(2, 1, 3, batchedRequests, 0, []byte("bogus"))
+	fb := node_ledger.NewFabricBatchFromRequests(2, 1, 3, batchedRequests, 0, []byte("bogus"), nil)
 	assert.NotNil(t, fb)
 
 	oi := &state.OrderingInformation{

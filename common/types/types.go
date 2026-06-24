@@ -57,8 +57,8 @@ type BatchAttestationFragment interface {
 	Primary() PartyID
 	Shard() ShardID
 	Signer() PartyID
-	Signature() []byte
-	PrimarySignature() []byte
+	Signature() []byte        // Signature over the BAF by the creator of this BAF
+	PrimarySignature() []byte // Signature over the BAF by the primary who created the batch (empty when signer of BAF is the primary)
 	Digest() []byte
 	Serialize() []byte
 	Deserialize([]byte) error
