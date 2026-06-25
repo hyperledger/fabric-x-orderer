@@ -9,6 +9,7 @@ package configtx
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -77,7 +78,8 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 	submittingPartyID := 1
 	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, genesisBlockPath)
 
-	configUpdatePbData := configUpdateBuilder.UpdateBatchSizeConfig(t, configutil.NewBatchSizeConfig(configutil.BatchSizeConfigName.MaxMessageCount, 500))
+	requestBatchMaxBytes := uint64(1048576)
+	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.RequestBatchMaxBytes, strconv.FormatUint(requestBatchMaxBytes, 10)))
 	require.NotEmpty(t, configUpdatePbData)
 
 	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, submittingPartyID, configUpdatePbData)
@@ -86,6 +88,10 @@ func TestSubmitReceiveAndVerifySignaturesConfigBlock(t *testing.T) {
 	// Send the config tx
 	err = broadcastClient.SendTx(env)
 	require.NoError(t, err)
+
+	// Wait for the network to relaunch after the config transaction is processed
+	testutil.WaitForNetworkRelaunch(t, netInfo, 1)
+
 	totalBlocks := 2 // genesis + config block
 
 	// 7. Pulls and verifies blocks from assemblers, ensuring the configuration block's signatures are valid
