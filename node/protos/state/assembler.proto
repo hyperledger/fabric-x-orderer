@@ -13,11 +13,11 @@ option go_package = "github.com/hyperledger/fabric-x-orderer/node/protos/state";
 // AssemblerBlockMetadata represents metadata about a batch that is stored in the assembler's block metadata.
 // This metadata is stored in the ORDERER metadata index of Fabric blocks created by the assembler.
 message AssemblerBlockMetadata {
-  uint32 primary = 1;           // Primary party ID that created the batch
-  uint32 shard = 2;             // Shard ID where the batch was created
+  uint32 shard = 1;             // Shard ID where the batch was created
+  uint32 primary = 2;           // Primary party ID that created the batch
   uint64 sequence = 3;          // Batch sequence number within the shard created by the primary
   uint64 decision_num = 4;      // Consensus decision number that ordered this batch
   uint32 batch_index = 5;       // Index of this batch within the decision (0-based)
   uint32 batch_count = 6;       // Total number of batches in the decision
-  uint64 transaction_count = 7; // Number of transactions in this batch
+  uint64 transaction_count = 7; // Total (cumulative) number of transactions
 }

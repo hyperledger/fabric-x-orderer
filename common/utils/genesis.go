@@ -54,8 +54,8 @@ func EmptyGenesisBlockBytes(channelID string) []byte {
 // GenesisBlockMetadataBytes returns the serialized metadata for the genesis block using protobuf.
 func GenesisBlockMetadataBytes() []byte {
 	md := &stateprotos.AssemblerBlockMetadata{
-		Primary:          0,
 		Shard:            uint32(types.ShardIDConsensus),
+		Primary:          0,
 		Sequence:         0,
 		DecisionNum:      0,
 		BatchIndex:       0,
