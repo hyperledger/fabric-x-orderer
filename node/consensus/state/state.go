@@ -186,13 +186,9 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 	if len(ps.Complaints) > 0 {
 		s.Complaints = make([]Complaint, len(ps.Complaints))
 		for i, protoComplaint := range ps.Complaints {
-			if protoComplaint.Shard > math.MaxUint16 {
-				return fmt.Errorf("the Complaint Shard value %d at index %d exceeds uint16 maximum %d", protoComplaint.Shard, i, math.MaxUint16)
+			if err := s.Complaints[i].fromProto(protoComplaint); err != nil {
+				return fmt.Errorf("failed loading complaint at index %d: %v", i, err)
 			}
-			if protoComplaint.Signer > math.MaxUint16 {
-				return fmt.Errorf("the Complaint Signer value %d at index %d exceeds uint16 maximum %d", protoComplaint.Signer, i, math.MaxUint16)
-			}
-			s.Complaints[i].fromProto(protoComplaint)
 		}
 	}
 
@@ -269,13 +265,20 @@ func (c *Complaint) toProto() *stateprotos.Complaint {
 	}
 }
 
-func (c *Complaint) fromProto(pc *stateprotos.Complaint) {
-	c.ConfigSeq = types.ConfigSequence(pc.ConfigSeq)
-	c.Shard = types.ShardID(pc.Shard)
-	c.Term = pc.Term
-	c.Signer = types.PartyID(pc.Signer)
-	c.Signature = pc.Signature
-	c.Reason = pc.Reason
+func (c *Complaint) fromProto(pc *stateprotos.Complaint) error {
+	if pc.GetShard() > math.MaxUint16 {
+		return fmt.Errorf("the Complaint Shard value %d at exceeds uint16 maximum %d", pc.Shard, math.MaxUint16)
+	}
+	if pc.GetSigner() > math.MaxUint16 {
+		return fmt.Errorf("the Complaint Signer value %d at exceeds uint16 maximum %d", pc.Signer, math.MaxUint16)
+	}
+	c.ConfigSeq = types.ConfigSequence(pc.GetConfigSeq())
+	c.Shard = types.ShardID(pc.GetShard())
+	c.Term = pc.GetTerm()
+	c.Signer = types.PartyID(pc.GetSigner())
+	c.Signature = pc.GetSignature()
+	c.Reason = pc.GetReason()
+	return nil
 }
 
 func (c *Complaint) ToBeSigned() []byte {
@@ -454,7 +457,9 @@ func (ce *ControlEvent) fromProto(pe *stateprotos.ControlEvent, fragmentFromByte
 		ce.BAF = baf
 	case *stateprotos.ControlEvent_Complaint:
 		ce.Complaint = &Complaint{}
-		ce.Complaint.fromProto(event.Complaint)
+		if err := ce.Complaint.fromProto(event.Complaint); err != nil {
+			return err
+		}
 	case *stateprotos.ControlEvent_ConfigRequest:
 		ce.ConfigRequest = &ConfigRequest{}
 		if err := ce.ConfigRequest.fromProto(event.ConfigRequest); err != nil {
