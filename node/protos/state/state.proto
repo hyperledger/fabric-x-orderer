@@ -26,6 +26,20 @@ message Complaint {
   string reason = 6;
 }
 
+// ConfigRequest represents a configuration update request
+message ConfigRequest {
+  bytes envelope = 1;  // common.Envelope serialized
+}
+
+// ControlEvent represents a control event that can be one of several types
+message ControlEvent {
+  oneof event {
+    bytes baf = 1;                    // BatchAttestationFragment serialized
+    Complaint complaint = 2;          // Complaint from a batcher
+    ConfigRequest config_request = 3; // Configuration update request
+  }
+}
+
 // State represents the state of the consensus
 message State {
   uint32 number_of_parties = 1;
