@@ -7,24 +7,23 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
-	"encoding/binary"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
-
-	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
 
-// uint16 + uint16 + uint64 + uint64 + uint32 + uint32 + uint64
-const assemblerBlockMetadataSerializedSize = 2 + 2 + 8 + 8 + 4 + 4 + 8
-
+// AssemblerBlockMetadataToBytes serializes batch metadata to bytes using protobuf.
+// This metadata is stored in the ORDERER metadata index of Fabric blocks created by the assembler.
 func AssemblerBlockMetadataToBytes(batchID types.BatchID, orderingInfo *state.OrderingInformation, transactionCount uint64) ([]byte, error) {
 	if batchID == nil {
 		return nil, errors.Errorf("nil batchID")
@@ -33,44 +32,50 @@ func AssemblerBlockMetadataToBytes(batchID types.BatchID, orderingInfo *state.Or
 		return nil, errors.Errorf("nil orderingInfo")
 	}
 
-	buff := make([]byte, assemblerBlockMetadataSerializedSize)
-	var pos int
-	binary.BigEndian.PutUint16(buff[pos:], uint16(batchID.Primary()))
-	pos += 2
-	binary.BigEndian.PutUint16(buff[pos:], uint16(batchID.Shard()))
-	pos += 2
-	binary.BigEndian.PutUint64(buff[pos:], uint64(batchID.Seq()))
-	pos += 8
+	md := &stateprotos.AssemblerBlockMetadata{
+		Primary:          uint32(batchID.Primary()),
+		Shard:            uint32(batchID.Shard()),
+		Sequence:         uint64(batchID.Seq()),
+		DecisionNum:      uint64(orderingInfo.DecisionNum),
+		BatchIndex:       uint32(orderingInfo.BatchIndex),
+		BatchCount:       uint32(orderingInfo.BatchCount),
+		TransactionCount: transactionCount,
+	}
 
-	binary.BigEndian.PutUint64(buff[pos:], uint64(orderingInfo.DecisionNum))
-	pos += 8
-	binary.BigEndian.PutUint32(buff[pos:], uint32(orderingInfo.BatchIndex))
-	pos += 4
-	binary.BigEndian.PutUint32(buff[pos:], uint32(orderingInfo.BatchCount))
-	pos += 4
-	binary.BigEndian.PutUint64(buff[pos:], transactionCount)
-
-	return buff, nil
+	return proto.Marshal(md)
 }
 
+// AssemblerBlockMetadataFromBytes deserializes batch metadata from bytes using protobuf.
 func AssemblerBlockMetadataFromBytes(metadata []byte) (primary types.PartyID, shard types.ShardID, seq types.BatchSequence, num types.DecisionNum, batchIndex, batchCount uint32, transactionCount uint64, err error) {
 	if metadata == nil {
 		return 0, 0, 0, 0, 0, 0, 0, errors.Errorf("nil bytes")
 	}
-	if len(metadata) < assemblerBlockMetadataSerializedSize {
-		return 0, 0, 0, 0, 0, 0, 0, errors.Errorf("len of metadata %d smaller than expected size %d", len(metadata), assemblerBlockMetadataSerializedSize)
+
+	if len(metadata) == 0 {
+		return 0, 0, 0, 0, 0, 0, 0, errors.Errorf("empty bytes")
 	}
 
-	primary = types.PartyID(binary.BigEndian.Uint16(metadata[0:2]))
-	shard = types.ShardID(binary.BigEndian.Uint16(metadata[2:4]))
-	seq = types.BatchSequence(binary.BigEndian.Uint64(metadata[4:12]))
+	md := &stateprotos.AssemblerBlockMetadata{}
+	if err := proto.Unmarshal(metadata, md); err != nil {
+		return 0, 0, 0, 0, 0, 0, 0, errors.Wrap(err, "failed to unmarshal assembler block metadata")
+	}
 
-	num = types.DecisionNum(binary.BigEndian.Uint64(metadata[12:20]))
-	batchIndex = binary.BigEndian.Uint32(metadata[20:24])
-	batchCount = binary.BigEndian.Uint32(metadata[24:28])
-	transactionCount = binary.BigEndian.Uint64(metadata[28:36])
+	if md.Shard > math.MaxUint16 {
+		return 0, 0, 0, 0, 0, 0, 0, errors.Wrapf(err, "the shard value %d exceeds uint16 maximum %d", md.Shard, math.MaxUint16)
+	}
 
-	return primary, shard, seq, num, batchIndex, batchCount, transactionCount, err
+	if md.Primary > math.MaxUint16 {
+		return 0, 0, 0, 0, 0, 0, 0, errors.Wrapf(err, "the primary value %d exceeds uint16 maximum %d", md.Primary, math.MaxUint16)
+	}
+
+	return types.PartyID(md.Primary),
+		types.ShardID(md.Shard),
+		types.BatchSequence(md.Sequence),
+		types.DecisionNum(md.DecisionNum),
+		md.BatchIndex,
+		md.BatchCount,
+		md.TransactionCount,
+		nil
 }
 
 // AssemblerBatchIdOrderingInfoAndTxCountFromBlock returns the BatchID, the OrderingInformation and the transactions count that are encoded in the metadata

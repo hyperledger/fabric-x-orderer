@@ -50,6 +50,7 @@ import (
 	consensusMocks "github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/router"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
@@ -712,10 +713,12 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 		isConfigBlock := protoutil.IsConfigBlock(block)
 
 		if !isGenesisBlock {
-			shardIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][2:4]
-			shardID := types.ShardID(binary.BigEndian.Uint16(shardIDBytes))
-			primaryIDBytes := block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER][0:2]
-			primaryID := types.PartyID(binary.BigEndian.Uint16(primaryIDBytes))
+			primaryID, shardID, _, _, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(
+				block.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER],
+			)
+			if err != nil {
+				return errors.Wrap(err, "failed to parse assembler block metadata")
+			}
 
 			if pr, ok := primaryMap[shardID]; !ok {
 				primaryMap[shardID] = primaryID
