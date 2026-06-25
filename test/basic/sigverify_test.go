@@ -123,3 +123,74 @@ func TestSubmitReceiveAndVerifySignaturesAssemblerBlocks(t *testing.T) {
 		Signer:     signutil.CreateTestSigner(t, "org1", dir),
 	})
 }
+
+// TestSubmitTXWithVerification runs a network of Arma with clientSignatureVerificationRequired being true, i.e. the client signature on data transaction is required.
+// A data TX with a fake signature did not satisfy the policy /Channel/Writer and is rejected as a result, while a well signed data TX is submitted and eventually appear in a block.
+func TestSubmitTXWithVerification(t *testing.T) {
+	t.Log("Compile Arma")
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	t.Log("Generate the configuration with clientSignatureVerificationRequired = True")
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 2
+	parties := []types.PartyID{}
+	for partyID := 1; partyID <= numOfParties; partyID++ {
+		parties = append(parties, types.PartyID(partyID))
+	}
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+	numOfArmaNodes := len(netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	t.Log("Run Arma nodes")
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	t.Log("Create a signer")
+	submittingParty := 1
+	uc, err := testutil.GetUserConfig(dir, types.PartyID(submittingParty))
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	require.NotNil(t, signer)
+	require.NotNil(t, certBytes)
+
+	t.Log("Create a broadcast client")
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	t.Log("Send a data tx that is not well signed, i.e. signature did not satisfy the policy /Channel/Writers")
+	txContent := tx.PrepareTxWithTimestamp(2, 64, []byte("dataTX"))
+	env := tx.CreateStructuredEnvelope(txContent)
+	err = broadcastClient.SendTx(env)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "INTERNAL_SERVER_ERROR, Info: request structure verification error: signature did not satisfy policy /Channel/Writers")
+
+	t.Log("Send one more well signed data tx")
+	env = tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, fmt.Sprintf("org%d", submittingParty))
+	err = broadcastClient.SendTx(env)
+	require.NoError(t, err)
+
+	t.Log("Pull from assembler")
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    parties,
+		StartBlock: 0,
+		EndBlock:   uint64(2),
+		Blocks:     2, // genesis + block with one tx
+		ErrString:  "cancelled pull from assembler: %d",
+		Signer:     pullRequestSigner,
+	})
+}
