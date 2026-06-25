@@ -280,6 +280,62 @@ func TestLoadAndReceive(t *testing.T) {
 //  1. Create a config YAML file to be an input to armageddon
 //  2. Run armageddon generate command to create config files in a folder structure
 //  3. Run arma with the generated config files to run each of the nodes for all parties
+//  4. Run armageddon load command with --isSigned flag
+//  5. Run armageddon receive command to verify transactions are received
+//
+// This test verifies that the --isSigned flag works correctly with the load and receive commands.
+// It does NOT verify cryptographic signature correctness.
+func TestLoadAndReceiveSigned(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1. Create network config
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	defer netInfo.CleanUp()
+
+	// 2. Generate armageddon config files
+	armageddonCLI := armageddon.NewCLI()
+	armageddonCLI.Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// 3. Build and run arma nodes
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	readyChan := make(chan string, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	// 4. + 5. Run load and receive commands in parallel
+	userConfigPath := path.Join(dir, "config", "party1", "user_config.yaml")
+	rate := "100"
+	txs := "200"
+	txSize := "128"
+
+	var waitForLoadAndReceive sync.WaitGroup
+	waitForLoadAndReceive.Add(2)
+
+	go func() {
+		defer waitForLoadAndReceive.Done()
+		armageddonCLI.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize, "--isSigned"})
+	}()
+
+	go func() {
+		defer waitForLoadAndReceive.Done()
+		armageddonCLI.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", txs, "--output", dir})
+	}()
+
+	waitForLoadAndReceive.Wait()
+}
+
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files in a folder structure
+//  3. Run arma with the generated config files to run each of the nodes for all parties
 //  4. Run armageddon receive command to pull blocks from the assembler and report results (in a go routine)
 //  5. Run armageddon load command to send txs to all routers at a specified rate (in a go routine)
 //  6. Shutdown the router (the client tries to reconnect to the faulty router and txs are still sent to the available routers)

@@ -222,6 +222,58 @@ func PrepareEnvWithTimestamp(txNumber int, envSize int, sessionNumber []byte) *c
 	return CreateStructuredEnvelope(data)
 }
 
+func PrepareEnvWithTimestampAndSignatureChoice(txNumber int, envSize int, sessionNumber []byte, isSigned bool, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
+	if isSigned && signer == nil {
+		return nil
+	}
+
+	// Start with the existing unsigned estimate, then iteratively adjust based on the
+	// marshaled envelope size. This is especially important for signed envelopes where
+	// overhead depends on the creator cert and signature.
+	overheadSize := headersOverheadSize
+	if envSize < 186 {
+		overheadSize -= 2
+	}
+
+	dataSize := envSize
+	if envSize >= overheadSize {
+		dataSize = envSize - overheadSize
+	}
+
+	var env *common.Envelope
+	for i := 0; i < 5; i++ {
+		data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
+
+		if isSigned {
+			env = CreateSignedStructuredEnvelope(data, signer, certBytes, org)
+		} else {
+			env = CreateStructuredEnvelope(data)
+		}
+
+		if env == nil {
+			return nil
+		}
+
+		envBytes, err := proto.Marshal(env)
+		if err != nil {
+			return nil
+		}
+
+		delta := len(envBytes) - envSize
+		if delta == 0 {
+			return env
+		}
+
+		if dataSize-delta < 0 {
+			dataSize = 0
+		} else {
+			dataSize -= delta
+		}
+	}
+
+	return env
+}
+
 func CreateSignedStructuredEnvelope(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
 	payload := createSignedStructuredPayload(data, certBytes, org)
 	payloadBytes := deterministicMarshall(payload)

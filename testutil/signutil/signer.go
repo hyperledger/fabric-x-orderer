@@ -69,7 +69,7 @@ func CreateTestSigner(t *testing.T, mspID, dir string) *TestSigner {
 }
 
 func CreateSignerForUser(userMspDir string) (identity.SignerSerializer, error) {
-	mspID, err := getMspIDfromDir(userMspDir)
+	mspID, err := GetMspIDfromDir(userMspDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mspID from user msp dir: %s, err: %v", userMspDir, err)
 	}
@@ -93,7 +93,7 @@ func CreateSignerForUser(userMspDir string) (identity.SignerSerializer, error) {
 	return signer, nil
 }
 
-func getMspIDfromDir(mspDir string) (string, error) {
+func GetMspIDfromDir(mspDir string) (string, error) {
 	re := regexp.MustCompile(`/ordererOrganizations/([^/]+)/`)
 	matches := re.FindStringSubmatch(mspDir)
 	if matches == nil || len(matches) > 2 {

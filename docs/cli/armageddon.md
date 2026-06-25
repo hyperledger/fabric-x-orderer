@@ -122,6 +122,7 @@ Flags:
                                per second to be sent as one or more rate numbers
                                separated by space
   --txSize=TXSIZE              The required transaction size in bytes
+  --isSigned                   Whether to send signed transactions
 ```
 
 
