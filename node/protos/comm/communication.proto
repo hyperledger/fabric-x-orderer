@@ -41,6 +41,30 @@ message Event {
 service Consensus {
   rpc NotifyEvent(stream Event) returns (stream EventResponse);
   rpc SubmitConfig(Request) returns (SubmitResponse);
+  rpc AckConfig(ConfigAck) returns (ConfigAckResponse);
+}
+
+message ConfigAck {
+  // config_seq is the sequence number of the config block that was received
+  uint64 config_seq = 1;
+  
+  // node_type identifies the type of node sending the acknowledgment
+  NodeType node_type = 2;
+  
+  // shard is the shard of a batcher node
+  // For assembler and router, this can be 0
+  uint32 shard = 3;
+}
+
+message ConfigAckResponse {
+  // error contains an error message if the acknowledgment was not accepted
+  string error = 1;
+}
+
+enum NodeType {
+  ASSEMBLER = 0;
+  BATCHER = 1;
+  ROUTER = 2;
 }
 
 message Ack {
