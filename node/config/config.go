@@ -67,6 +67,13 @@ type ConsenterInfo struct {
 	TLSCACerts []RawBytes
 }
 
+type AssemblerInfo struct {
+	PartyID    types.PartyID
+	Endpoint   string
+	TLSCACerts []RawBytes
+	TLSCert    RawBytes
+}
+
 type RouterInfo struct {
 	PartyID    types.PartyID
 	Endpoint   string
