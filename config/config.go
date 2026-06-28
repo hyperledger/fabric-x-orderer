@@ -695,6 +695,26 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 	return consenters
 }
 
+func (config *Configuration) ExtractAssemblers() []nodeconfig.AssemblerInfo {
+	var assemblers []nodeconfig.AssemblerInfo
+	for _, party := range config.SharedConfig.PartiesConfig {
+		var tlsCACertsCollection []nodeconfig.RawBytes
+		for _, ca := range party.TLSCACerts {
+			tlsCACertsCollection = append(tlsCACertsCollection, ca)
+		}
+
+		assemblerInfo := nodeconfig.AssemblerInfo{
+			PartyID:    types.PartyID(party.PartyID),
+			Endpoint:   net.JoinHostPort(party.AssemblerConfig.Host, strconv.Itoa(int(party.AssemblerConfig.Port))),
+			TLSCACerts: tlsCACertsCollection,
+			TLSCert:    party.AssemblerConfig.TlsCert,
+		}
+		assemblers = append(assemblers, assemblerInfo)
+	}
+
+	return assemblers
+}
+
 func (config *Configuration) ExtractRouterInParty() nodeconfig.RouterInfo {
 	partyID := config.LocalConfig.NodeLocalConfig.PartyID
 	var party *ordererpb.PartyConfig
@@ -1045,6 +1065,33 @@ func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Pa
 		}
 		for _, cert := range consenter.TLSCACerts {
 			party2Endpoint[consenter.PartyID].RootCerts = append(party2Endpoint[consenter.PartyID].RootCerts, cert)
+		}
+	}
+
+	return party2Endpoint, nil
+}
+
+func ExtractAssemblerAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+	consensusMeta := ordererConfig.ConsensusMetadata()
+	sharedConfig := &ordererpb.SharedConfig{}
+	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
+	}
+
+	conf := &Configuration{
+		SharedConfig: sharedConfig,
+	}
+
+	aInfo := conf.ExtractAssemblers()
+
+	party2Endpoint := make(orderers.Party2Endpoint)
+
+	for _, assembler := range aInfo {
+		party2Endpoint[assembler.PartyID] = &orderers.Endpoint{
+			Address: assembler.Endpoint,
+		}
+		for _, cert := range assembler.TLSCACerts {
+			party2Endpoint[assembler.PartyID].RootCerts = append(party2Endpoint[assembler.PartyID].RootCerts, cert)
 		}
 	}
 
