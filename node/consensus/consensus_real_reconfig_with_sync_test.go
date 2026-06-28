@@ -82,7 +82,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 	// Step 1: Submit a normal transaction to verify the cluster is working
 	t.Run("initial normal transaction", func(t *testing.T) {
 		t.Logf(">>> Step 1: Submitting initial normal transaction")
-		sendSimpleRequest(t, consensusNodes, privateKey1, 1, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, privateKey1, privateKey2, 1, configSeq, lastBlockNumber, "")
 		t.Logf(">>> Step 1: Initial transaction committed at block %d", lastBlockNumber)
 	})
 
@@ -219,7 +219,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		// Submit first transaction to the cluster
 		t.Logf(">>> Step 6: Submitting first transaction to the cluster")
 		lastBlockNumber++
-		sendSimpleRequest(t, activeConsenters, privateKey1, 1, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, activeConsenters, privateKey1, privateKey2, 1, configSeq, lastBlockNumber, "")
 		t.Logf(">>> Step 6: First transaction committed at block %d", lastBlockNumber)
 
 		// Verify active consenters processed the transaction
@@ -234,7 +234,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		// Submit second transaction to verify continued advancement
 		t.Logf(">>> Step 6: Submitting second transaction to verify continued advancement")
 		lastBlockNumber++
-		sendSimpleRequest(t, activeConsenters, privateKey2, 2, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, activeConsenters, privateKey2, privateKey2, 2, configSeq, lastBlockNumber, "")
 		t.Logf(">>> Step 6: Second transaction committed at block %d", lastBlockNumber)
 
 		// Verify active consenters processed the second transaction

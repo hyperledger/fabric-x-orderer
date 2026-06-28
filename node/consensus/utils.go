@@ -28,6 +28,10 @@ func toBeSignedBAF(baf arma_types.BatchAttestationFragment) []byte {
 	return simpleBAF.ToBeSigned()
 }
 
+func duplicateBAFSetSigner(baf arma_types.BatchAttestationFragment, signer arma_types.PartyID) arma_types.BatchAttestationFragment {
+	return arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), signer, baf.ConfigSequence(), baf.TXCount(), baf.PrimarySignature())
+}
+
 func printEvent(event []byte) string {
 	var ce state.ControlEvent
 	bafd := &state.BAFDeserialize{}
