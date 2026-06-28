@@ -21,6 +21,26 @@ type OrderedBatchAttestationCreator struct {
 	headerHash []byte
 }
 
+// NewOrderedBatchAttestationCreatorWithGenesis seeds the hash chain from the provided genesis
+// block so that subsequent Append calls produce blocks whose PreviousHash matches the real
+// ledger (e.g. an armageddon-generated genesis block).
+func NewOrderedBatchAttestationCreatorWithGenesis(genesisBlock *common.Block) (*OrderedBatchAttestationCreator, *state.AvailableBatchOrdered) {
+	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())
+	ba := &state.AvailableBatchOrdered{
+		AvailableBatch: state.NewAvailableBatch(0, types.ShardIDConsensus, 0, []byte{}),
+		OrderingInformation: &state.OrderingInformation{
+			CommonBlock: &common.Block{Header: &common.BlockHeader{Number: 0, PreviousHash: nil, DataHash: genesisDigest}},
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		},
+	}
+	return &OrderedBatchAttestationCreator{
+		prevBa:     ba,
+		headerHash: protoutil.BlockHeaderHash(genesisBlock.Header),
+	}, ba
+}
+
 func NewOrderedBatchAttestationCreator() (*OrderedBatchAttestationCreator, *state.AvailableBatchOrdered) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	genesisDigest := protoutil.ComputeBlockDataHash(genesisBlock.GetData())

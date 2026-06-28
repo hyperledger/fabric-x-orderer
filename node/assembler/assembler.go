@@ -262,7 +262,8 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 			&AssemblerSupportAdapter{assembler: a},
 			factory.GetDefault(),
 			targetHeight,
-			configBlock)
+			configBlock,
+		)
 
 		err := synchronizer.Sync()
 		if err != nil {
