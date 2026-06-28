@@ -21,6 +21,7 @@ import (
 	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	synchronizer_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -52,6 +53,7 @@ type assemblerTest struct {
 	prefetcherMock                 *assembler_mocks.FakePrefetcherController
 	prefetchIndexMock              *assembler_mocks.FakePrefetchIndexer
 	consensusBringerMock           *delivery_mocks.FakeConsensusBringer
+	synchronizerFactoryMock        *synchronizer_mocks.FakeSynchronizerFactory
 }
 
 type dummyAssemblerStopper struct{}
@@ -83,7 +85,9 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		prefetcherMock:                 &assembler_mocks.FakePrefetcherController{},
 		prefetchIndexMock:              &assembler_mocks.FakePrefetchIndexer{},
 		consensusBringerMock:           &delivery_mocks.FakeConsensusBringer{},
+		synchronizerFactoryMock:        &synchronizer_mocks.FakeSynchronizerFactory{},
 	}
+	test.synchronizerFactoryMock.CreateSynchronizerReturns(&synchronizer_mocks.FakeSynchronizerWithStop{})
 	assemblerEndpoint := ""
 	consenterEndpoint := "consenter"
 
@@ -214,6 +218,7 @@ func (at *assemblerTest) StartAssembler() {
 		batchBringerFactoryMock,
 		consensusBringerFactoryMock,
 		&mocks.SignerSerializer{},
+		at.synchronizerFactoryMock,
 	)
 
 	at.assembler.StartAssemblerService()
@@ -269,7 +274,7 @@ func TestAssembler_StartAndThenStopShouldOnlyWriteGenesisBlockToLedger(t *testin
 	al.Close()
 }
 
-func TestAssembler_SkipNonGenesisConfigBlock(t *testing.T) {
+func TestAssembler_PanicNonGenesisConfigBlock(t *testing.T) {
 	// Arrange
 	shards := []types.ShardID{1, 2}
 	parties := []types.PartyID{1, 2, 3}
@@ -278,21 +283,9 @@ func TestAssembler_SkipNonGenesisConfigBlock(t *testing.T) {
 
 	test := setupAssemblerTest(t, shards, parties, parties[0], configBlock)
 
-	// Act
-	test.StartAssembler()
-	test.WaitAssemblerRunning(t)
-
-	test.StopAssembler()
-	test.WaitAssemblerStopped(t)
-
-	// Assert
-	al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
-	require.NoError(t, err)
-	require.Equal(t, uint64(0), al.Ledger.Height())
-	genesisBlock, err := al.Ledger.RetrieveBlockByNumber(blockNumber)
-	require.ErrorContains(t, err, "no such block number")
-	require.Nil(t, genesisBlock)
-	al.Close()
+	// Act & Assert: starting with a non-genesis config block and an empty ledger should panic
+	// because the assembler cannot operate without first syncing the missing blocks.
+	require.Panics(t, func() { test.StartAssembler() })
 }
 
 func TestAssembler_RestartWithoutAddingBatchesShouldWork(t *testing.T) {

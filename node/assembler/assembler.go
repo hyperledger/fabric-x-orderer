@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -19,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	common_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -60,6 +62,8 @@ func (a *Assembler) Deliver(server orderer.AtomicBroadcast_DeliverServer) error 
 
 // GetTxCount returns the number of transactions the assembler stored in the ledger. This method is used only in testing.
 func (a *Assembler) GetTxCount() uint64 {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
 	return a.collator.Ledger.(node_ledger.AssemblerLedgerReaderWriter).GetTxCount()
 }
 
@@ -125,6 +129,7 @@ func NewDefaultAssembler(
 	batchBringerFactory BatchBringerFactory,
 	consensusBringerFactory delivery.ConsensusBringerFactory,
 	signer identity.SignerSerializer,
+	synchronizerFactory synchronizer.SynchronizerFactory,
 ) *Assembler {
 	logger.Infof("Creating assembler, party: %d, address: %s", nodeConfig.PartyId, nodeConfig.ListenAddress)
 	if configBlock == nil {
@@ -142,15 +147,19 @@ func NewDefaultAssembler(
 	}
 
 	assembler := &Assembler{
-		logger:       logger,
-		ledger:       ledger,
-		mainExitChan: mainExitChan,
-		status:       utils.NodeStatus{},
-		metrics:      NewMetrics(nodeConfig, ledger.Metrics(), logger),
-		signer:       signer,
+		logger:              logger,
+		ledger:              ledger,
+		mainExitChan:        mainExitChan,
+		status:              utils.NodeStatus{},
+		metrics:             NewMetrics(nodeConfig, ledger.Metrics(), logger),
+		signer:              signer,
+		assemblerNodeConfig: nodeConfig,
+		configuration:       configuration,
 	}
 
-	assembler.initLedger(configBlock)
+	assembler.initLedger(configBlock, nodeConfig, synchronizerFactory)
+
+	// todo - take last config block from ledger and bootstrap the assembler with it
 
 	assembler.initFromConfig(net, nodeConfig, configuration, configBlock, prefetchIndexFactory, prefetcherFactory, batchBringerFactory, consensusBringerFactory)
 
@@ -225,11 +234,56 @@ func (a *Assembler) initFromConfig(
 	a.logger.Infof("Assembler initialized successfully with config sequence number: %d", configSequence)
 }
 
-func (a *Assembler) initLedger(configBlock *common.Block) {
-	var transactionCount, blocksCount uint64
-	height := a.ledger.LedgerReader().Height()
-	if height > 0 {
-		block, err := a.ledger.LedgerReader().RetrieveBlockByNumber(height - 1)
+func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_config.AssemblerNodeConfig, synchronizerFactory synchronizer.SynchronizerFactory) {
+	ledgerHeight := a.ledger.LedgerReader().Height()
+	configBlockNumber := configBlock.GetHeader().GetNumber()
+	a.logger.Infof("Initializing assembler ledger, current height: %d, config block number: %d", ledgerHeight, configBlockNumber)
+
+	if configBlockNumber == 0 && ledgerHeight == 0 {
+		// append config block only if it is the genesis block and the ledger is empty.
+		configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = common_utils.GenesisBlockMetadataBytes()
+		ordInfo := &state.OrderingInformation{
+			CommonBlock: configBlock,
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		}
+		a.ledger.AppendConfig(ordInfo)
+		a.logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(configBlock.GetHeader())))
+	} else if configBlockNumber > ledgerHeight {
+		// genesis block is block number 0, so if config block number is higher than ledger height, it means the assembler needs to sync to the config block before starting.
+		a.logger.Warnf("Config block number %d is higher than current ledger height %d, assembler will need to sync to the config block", configBlockNumber, ledgerHeight)
+		a.logger.Infof("Creating assembler synchronizer to sync to config block number %d, current ledger height is %d", configBlockNumber, ledgerHeight)
+		targetHeight := configBlockNumber + 1
+		synchronizer := synchronizerFactory.CreateSynchronizer(
+			a.logger,
+			uint64(nodeConfig.PartyId),
+			config.Cluster{SendBufferSize: 100, ClientCertificate: nodeConfig.TLSCertificateFile, ClientPrivateKey: nodeConfig.TLSPrivateKeyFile, ReplicationPolicy: "assemblerSync"},
+			&AssemblerSupportAdapter{assembler: a},
+			factory.GetDefault(),
+			targetHeight,
+			configBlock)
+
+		err := synchronizer.Sync()
+		if err != nil {
+			a.logger.Panicf("error while syncing to config block %v", err)
+		}
+	} else {
+		// todo - should panic?
+		a.logger.Infof("Assembler is starting with config block already in the ledger, config block number: %d, current ledger height: %d", configBlockNumber, ledgerHeight)
+	}
+
+	ledgerHeight = a.ledger.LedgerReader().Height()
+	if ledgerHeight == 0 {
+		a.logger.Panicf("Assembler ledger is empty after initialization, this should not happen")
+	}
+
+	// update metrics with current ledger state only if we didn't just append the genesis block
+	// (if we just appended genesis block, metrics were already updated in AppendConfig)
+	// This happens when the assembler is restarting with an existing ledger or after syncing
+	if ledgerHeight > 1 || configBlockNumber > 0 {
+		var transactionCount uint64
+		block, err := a.ledger.LedgerReader().RetrieveBlockByNumber(ledgerHeight - 1)
 		if err != nil {
 			a.logger.Panicf("error while fetching last block from ledger %v", err)
 		}
@@ -237,31 +291,11 @@ func (a *Assembler) initLedger(configBlock *common.Block) {
 		if err != nil {
 			a.logger.Panicf("error while fetching last block ordering info %v", err)
 		}
-
-		blocksCount = height
+		a.ledger.Metrics().TransactionCount.Add(float64(transactionCount))
+		a.ledger.Metrics().BlocksCount.Add(float64(ledgerHeight))
 	}
-	a.ledger.Metrics().TransactionCount.Add(float64(transactionCount))
-	a.ledger.Metrics().BlocksCount.Add(float64(blocksCount))
 
-	a.logger.Infof("Starting with ledger height: %d", a.ledger.LedgerReader().Height())
-
-	if a.ledger.LedgerReader().Height() == 0 {
-		// append config block only if it is the genesis block
-		blockNumber := configBlock.GetHeader().Number
-		if blockNumber == 0 {
-			configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = common_utils.GenesisBlockMetadataBytes()
-			ordInfo := &state.OrderingInformation{
-				CommonBlock: configBlock,
-				DecisionNum: 0,
-				BatchIndex:  0,
-				BatchCount:  1,
-			}
-			a.ledger.AppendConfig(ordInfo)
-			a.logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(configBlock.GetHeader())))
-		} else {
-			a.logger.Infof("Assembler started with non-genesis config block, block number: %d", blockNumber)
-		}
-	}
+	a.logger.Infof("Ledger was initialized, current ledger height: %d", ledgerHeight)
 }
 
 func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configuration *config.Configuration, configBlock *common.Block, mainExitChan chan struct{}, logger *flogging.FabricLogger, signer identity.SignerSerializer) *Assembler {
@@ -278,6 +312,7 @@ func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configuration *co
 		&DefaultBatchBringerFactory{},
 		&delivery.DefaultConsensusBringerFactory{},
 		signer,
+		&synchronizer.SynchronizerCreator{},
 	)
 }
 

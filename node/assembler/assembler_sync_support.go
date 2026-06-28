@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
 
 // AssemblerSupportAdapter adapts an Assembler to satisfy the
@@ -75,6 +76,12 @@ func (a *AssemblerSupportAdapter) Block(number uint64) *common.Block {
 		return nil
 	}
 	return block
+}
+
+// ClientConfig returns the TLS client configuration for the assembler, used by
+// the synchronizer to dial other assembler nodes.
+func (a *AssemblerSupportAdapter) ClientConfig() comm.ClientConfig {
+	return extractClientConfigFromAssemblerConfig(a.assembler.assemblerNodeConfig, a.assembler.configuration)
 }
 
 // LastConfigBlock returns the most recent config block at or before the given block,

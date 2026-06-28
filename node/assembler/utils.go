@@ -8,12 +8,15 @@ package assembler
 
 import (
 	"sort"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node/config"
+	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
-func partiesFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.PartyID {
+func partiesFromAssemblerConfig(config *node_config.AssemblerNodeConfig) []types.PartyID {
 	var parties []types.PartyID
 	for _, b := range config.Shards[0].Batchers {
 		parties = append(parties, types.PartyID(b.PartyID))
@@ -26,7 +29,7 @@ func partiesFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.Part
 	return parties
 }
 
-func shardsFromAssemblerConfig(config *config.AssemblerNodeConfig) []types.ShardID {
+func shardsFromAssemblerConfig(config *node_config.AssemblerNodeConfig) []types.ShardID {
 	shardIds := make([]types.ShardID, len(config.Shards))
 	for i, shard := range config.Shards {
 		shardIds[i] = shard.ShardId
@@ -50,4 +53,36 @@ func batchSizeBytes(batch types.Batch) int {
 		size += len(req)
 	}
 	return size
+}
+
+func extractClientConfigFromAssemblerConfig(assemblerNodeConfig *node_config.AssemblerNodeConfig, configuration *orderer_config.Configuration) comm.ClientConfig {
+	var tlsCAs [][]byte
+	assemblers := configuration.ExtractAssemblers()
+	for _, assemblerInfo := range assemblers {
+		for _, tlsCACert := range assemblerInfo.TLSCACerts {
+			tlsCAs = append(tlsCAs, tlsCACert)
+		}
+	}
+
+	cert := assemblerNodeConfig.TLSCertificateFile
+
+	tlsKey := assemblerNodeConfig.TLSPrivateKeyFile
+
+	cc := comm.ClientConfig{
+		AsyncConnect: true,
+		KaOpts: comm.KeepaliveOptions{
+			ClientInterval: time.Hour,
+			ClientTimeout:  time.Hour,
+		},
+		SecOpts: comm.SecureOptions{
+			Key:               tlsKey,
+			Certificate:       cert,
+			RequireClientCert: true,
+			UseTLS:            true,
+			ServerRootCAs:     tlsCAs,
+		},
+		DialTimeout: time.Second * 5,
+		BaOpts:      comm.DefaultBackoffOptions,
+	}
+	return cc
 }
