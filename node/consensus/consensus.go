@@ -89,6 +89,7 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
+	*comm.Egress
 	Logger       *flogging.FabricLogger
 	Config       *node_config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
@@ -141,6 +142,22 @@ func (c *Consensus) Start() error {
 	c.lock.Unlock()
 
 	return bft.Start() // start the bft without holding the lock to avoid deadlock
+}
+
+func (c *Consensus) StartWithoutBFT() {
+	c.lock.Lock()
+	c.status.SetState(node_utils.StateRunning)
+	c.softStopCh = make(chan struct{})
+	if err := c.opsSystem.Start(); err != nil {
+		c.Logger.Panicf("failed to start operations subsystem: %s", err)
+		panic(err)
+	}
+	RegisterHealthCheckers(c)
+
+	c.Logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(c.opsSystem, c.Logger))
+	c.Logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(c.opsSystem, c.Logger))
+	c.Metrics.StartMetricsTracker()
+	c.lock.Unlock()
 }
 
 func (c *Consensus) StartConsensusService() {
@@ -235,13 +252,17 @@ func (c *Consensus) SoftStop() {
 
 	c.Logger.Infof("Soft stopping consensus node")
 	close(c.softStopCh)
-	c.BFT.Stop()
 	c.Synchronizer.Stop()
 	c.BADB.Close()
 	c.Metrics.StopMetricsTracker()
 }
 
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
+	select {
+	case <-c.softStopCh:
+		return errors.New("consensus is soft-stopped")
+	default:
+	}
 	msg := &smartbftprotos.Message{}
 	if err := proto.Unmarshal(request.Payload, msg); err != nil {
 		c.Logger.Warnf("Malformed message: %v", err)
@@ -252,6 +273,11 @@ func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.
 }
 
 func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
+	select {
+	case <-c.softStopCh:
+		return errors.New("consensus is soft-stopped")
+	default:
+	}
 	rawCE := req.Payload.Payload
 	ri, _, err := c.verifyCE(rawCE)
 	if err != nil {
@@ -928,6 +954,7 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 		c.Logger.Warnf("Pending admin action to apply new config")
 		c.lock.Lock()
 		c.status.SetState(node_utils.StatePendingAdmin)
+		c.BFT.Stop() // was not stopped during SoftStop
 		c.lock.Unlock()
 	}
 }
@@ -992,15 +1019,12 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	c.Net.Stop()
 	c.opsSystem.Stop()
 	c.status.Set(node_utils.StateInitializing, newConfigSeq)
-	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{})
+	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{}, false)
 	c.lock.Unlock()
 
 	c.Logger.Infof("Initialize new consensus, config sequence: %d", newConfigSeq)
 	c.StartConsensusService()
-	err := c.Start()
-	if err != nil {
-		c.Logger.Panicf("consensus failed to restart dynamically, err: %v", err)
-	}
+	c.StartWithoutBFT()
 	c.Logger.Infof("Consensus started with new config sequence %d, listening on %s", newConfigSeq, c.Address())
 }
 
