@@ -47,13 +47,13 @@ func TestCreateOneConsensusNode(t *testing.T) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 	setup := setupConsensusTest(t, ca, 1, genesisBlock)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
 	require.Equal(t, uint64(1), b.Header.Number)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -64,7 +64,7 @@ func TestCreateOneConsensusNode(t *testing.T) {
 	err = recoverNode(t, setup, 0, ca, genesisBlock)
 	require.NoError(t, err)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -90,9 +90,9 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	time.Sleep(30 * time.Second)
 
 	var err error
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -102,9 +102,9 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 		return b.Header.Number == uint64(1) && b1.Header.Number == uint64(1) && b2.Header.Number == uint64(1)
 	}, 2*time.Minute, 1*time.Second)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -117,9 +117,9 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 	t.Log(">>> Stopping node PartyID=1")
 	setup.consensusNodes[0].Stop()
 
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -146,9 +146,9 @@ func TestCreateMultipleConsensusNodes(t *testing.T) {
 		return b.Header.Number == uint64(3)
 	}, 2*time.Minute, 1*time.Second)
 
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -189,11 +189,11 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 0, genesisBlock, setup)
 
 	var err error
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
@@ -211,11 +211,11 @@ func TestLeaderFailureAndRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 0, genesisBlock, setup)
 
 	//=====
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -261,9 +261,9 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 	// Recovery of the stopped node (ID=2)
 	recoverNodeReal(t, dir, 1, genesisBlock, setup)
 
-	err := createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err := createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
@@ -273,9 +273,9 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 	b3 := <-setup.listeners[3].c
 	require.Equal(t, uint64(1), b3.Header.Number)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -300,9 +300,9 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 1, genesisBlock, setup)
 	time.Sleep(10 * time.Second)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -321,9 +321,9 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 	// Node fails and recovers between blocks
 	setup.consensusNodes[1].Stop()
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -335,9 +335,9 @@ func TestNonLeaderNodeFailureRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 1, genesisBlock, setup)
 	time.Sleep(10 * time.Second)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 5)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 5)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 5)
+	err = createAndSubmitRequest(setup.consensusNodes[2], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 5)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -370,7 +370,7 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 
 	var err error
 	// Submit the first request and verify the first block is committed
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
@@ -389,11 +389,11 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 1, genesisBlock, setup)
 
 	// Submit and verify requests while node 3 remains down
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -401,11 +401,11 @@ func TestTwoNodeFailureRecovery(t *testing.T) {
 	b = <-setup.listeners[1].c
 	require.Equal(t, uint64(2), b.Header.Number)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -443,11 +443,11 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 1, genesisBlock, setup)
 	recoverNodeReal(t, dir, 2, genesisBlock, setup)
 	var err error
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
@@ -457,11 +457,11 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	b6 := <-setup.listeners[6].c
 	require.Equal(t, uint64(1), b6.Header.Number)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -484,11 +484,11 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	setup.consensusNodes[2].Stop()
 
 	// Commit a second request with remaining nodes
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -500,11 +500,11 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 
 	recoverNodeReal(t, dir, 1, genesisBlock, setup)
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
@@ -546,11 +546,11 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 
 	var err error
 	// Commit the first request
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
@@ -569,13 +569,13 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	setup.consensusNodes[2].Stop()
 
 	// Commit a second request with remaining nodes
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[3], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	b1 = <-setup.listeners[1].c
@@ -589,11 +589,11 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 2, genesisBlock, setup)
 
 	// Commit more requests
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 3)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 3)
 	require.NoError(t, err)
 
 	b1 = <-setup.listeners[1].c
@@ -611,11 +611,11 @@ func TestMultipleLeaderNodeFailureRecovery(t *testing.T) {
 	recoverNodeReal(t, dir, 0, genesisBlock, setup)
 
 	// Commit another request
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[5], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[1].sk, 2, 1, digest125, 1, 4)
+	err = createAndSubmitRequest(setup.consensusNodes[6], setup.batcherNodes[1].sk, 2, 1, digest125, 1, setup.batcherNodes[0].sk, 4)
 	require.NoError(t, err)
 
 	b1 = <-setup.listeners[1].c
@@ -654,9 +654,9 @@ func TestSyncFromSoftStoppedNodes(t *testing.T) {
 
 	var err error
 	// Commit the first request
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest123, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
@@ -669,9 +669,9 @@ func TestSyncFromSoftStoppedNodes(t *testing.T) {
 	// Node 3 fails and submit the second request
 	setup.consensusNodes[2].Stop()
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
-	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 2)
+	err = createAndSubmitRequest(setup.consensusNodes[1], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 2)
 	require.NoError(t, err)
 
 	b = <-setup.listeners[0].c
