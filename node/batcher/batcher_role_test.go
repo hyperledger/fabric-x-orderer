@@ -754,6 +754,10 @@ func TestVerifyBatch(t *testing.T) {
 	configSeqGet.ConfigSequenceReturns(0)
 	secondaryBatcher.ConfigSequenceGetter = configSeqGet
 
+	sigVerifier := &mocks.FakeSigVerifier{}
+	sigVerifier.VerifySignatureReturns(nil)
+	secondaryBatcher.SigVerifier = sigVerifier
+
 	secondaryBatcher.Start()
 	defer secondaryBatcher.Stop()
 
@@ -798,6 +802,16 @@ func TestVerifyBatch(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
+
+	sigVerifier.VerifySignatureReturns(errors.New(""))
+	batch = arma_types.NewSimpleBatch(0, 1, 2, reqs, 0, nil)
+	batchChan <- batch
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 6
+	}, 10*time.Second, 10*time.Millisecond)
+	sigVerifier.VerifySignatureReturns(nil)
+
+	require.Equal(t, 2, ledger.AppendCallCount())
 }
 
 func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger *flogging.FabricLogger) *batcher.BatcherRole {
@@ -832,6 +846,7 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 		BatchAcker:              &mocks.FakeBatchAcker{},
 		MemPool:                 &mocks.FakeMemPool{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
+		SigVerifier:             &mocks.FakeSigVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
 		Metrics: batcher.NewBatcherMetrics(&config.BatcherNodeConfig{
 			PartyId: batcherID,
