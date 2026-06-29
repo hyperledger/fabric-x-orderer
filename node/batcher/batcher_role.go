@@ -115,6 +115,7 @@ type BatcherRole struct {
 	BatchAcker              BatchAcker
 	Complainer              Complainer
 	BatchedRequestsVerifier BatchedRequestsVerifier
+	SigVerifier             SigVerifier
 	MemPool                 MemPool
 	BatchSequenceGap        types.BatchSequence
 	running                 sync.WaitGroup
@@ -476,6 +477,9 @@ func (b *BatcherRole) verifyBatch(batch types.Batch) error {
 	if err := b.BatchedRequestsVerifier.VerifyBatchedRequests(batch.Requests()); err != nil {
 		return errors.Errorf("failed verifying requests for batch seq %d; err: %v", b.seq, err)
 	}
-	// TODO verify primary's signature
+	primaryBAF := types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), batch.Primary(), batch.ConfigSequence(), uint64(len(batch.Requests())), nil)
+	if err := b.SigVerifier.VerifySignature(batch.Primary(), batch.Shard(), primaryBAF.ToBeSigned(), batch.PrimarySignature()); err != nil {
+		return errors.Wrapf(err, "failed verifying primary signature for batch seq %d", b.seq)
+	}
 	return nil
 }
