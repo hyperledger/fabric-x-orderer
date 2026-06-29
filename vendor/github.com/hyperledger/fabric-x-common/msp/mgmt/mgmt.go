@@ -11,9 +11,10 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric/msp"
-	"github.com/hyperledger/fabric/msp/cache"
 	"github.com/spf13/viper"
+
+	"github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/msp/cache"
 )
 
 // FIXME: AS SOON AS THE CHAIN MANAGEMENT CODE IS COMPLETE,
@@ -98,7 +99,7 @@ func loadLocalMSP(bccsp bccsp.BCCSP) msp.MSP {
 
 	newOpts, found := msp.Options[mspType]
 	if !found {
-		mspLogger.Panicf("msp type %s unknown", mspType)
+		mspLogger.Panicf("msp type " + mspType + " unknown")
 	}
 
 	mspInst, err := msp.New(newOpts, bccsp)

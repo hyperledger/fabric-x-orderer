@@ -196,7 +196,6 @@ github.com/hyperledger/fabric/internal/pkg/comm
 github.com/hyperledger/fabric/internal/pkg/identity
 github.com/hyperledger/fabric/msp
 github.com/hyperledger/fabric/msp/cache
-github.com/hyperledger/fabric/msp/mgmt
 github.com/hyperledger/fabric/protoutil
 # github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2
 ## explicit
@@ -256,6 +255,7 @@ github.com/hyperledger/fabric-x-common/common/viperutil
 github.com/hyperledger/fabric-x-common/core/config
 github.com/hyperledger/fabric-x-common/msp
 github.com/hyperledger/fabric-x-common/msp/cache
+github.com/hyperledger/fabric-x-common/msp/mgmt
 github.com/hyperledger/fabric-x-common/protolator
 github.com/hyperledger/fabric-x-common/protolator/protoext
 github.com/hyperledger/fabric-x-common/protolator/protoext/commonext
