@@ -1246,3 +1246,9 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 		InLatestDecision: inLatestDecision,
 	}
 }
+
+// AckConfig handles ConfigAck RPC calls from party members (router, batchers, assembler).
+// TODO: implement
+func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}

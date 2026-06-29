@@ -35,13 +35,14 @@ import (
 )
 
 type StubConsenter struct {
-	certificate []byte
-	key         []byte
-	server      *comm.GRPCServer // GRPCServer instance represents the consenter
-	txs         uint32           // Number of txs received from router
-	partyID     types.PartyID
-	decisions   chan *common.Block
-	logger      *flogging.FabricLogger
+	certificate      []byte
+	key              []byte
+	server           *comm.GRPCServer // GRPCServer instance represents the consenter
+	txs              uint32           // Number of txs received from router
+	partyID          types.PartyID
+	decisions        chan *common.Block
+	logger           *flogging.FabricLogger
+	AckConfigHandler func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error)
 }
 
 func NewStubConsenter(t *testing.T, ca tlsgen.CA, partyID types.PartyID) StubConsenter {
@@ -278,4 +279,11 @@ func (sc *StubConsenter) DeliverConfigDecisionFromBA(ba *state.AvailableBatchOrd
 	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
 	sc.decisions <- block
 	return nil
+}
+
+func (sc *StubConsenter) AckConfig(context context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+	if sc.AckConfigHandler != nil {
+		return sc.AckConfigHandler(req)
+	}
+	return &protos.ConfigAckResponse{}, nil
 }
