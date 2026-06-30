@@ -17,7 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/csp"
 
-	fabricmsp "github.com/hyperledger/fabric/msp"
+	fabricmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )

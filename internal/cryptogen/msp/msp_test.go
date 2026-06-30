@@ -13,7 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/ca"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/msp"
 
-	fabricmsp "github.com/hyperledger/fabric/msp"
+	fabricxmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -198,7 +198,7 @@ func TestExportConfig(t *testing.T) {
 		t.Fatalf("failed to read config file: [%s]", err)
 	}
 
-	config := &fabricmsp.Configuration{}
+	config := &fabricxmsp.Configuration{}
 	err = yaml.Unmarshal(configBytes, config)
 	if err != nil {
 		t.Fatalf("failed to unmarshal config: [%s]", err)
