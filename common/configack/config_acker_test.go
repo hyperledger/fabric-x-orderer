@@ -102,7 +102,7 @@ func TestSubmitConfigAck_StopCancelsRetries(t *testing.T) {
 	}()
 
 	// Give the acker time to attempt at least one connection.
-	time.Sleep(20 * time.Second)
+	time.Sleep(10 * time.Second)
 	configAcker.Stop()
 
 	select {

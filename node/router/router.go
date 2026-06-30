@@ -697,15 +697,15 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 	// send ack to the consensus node
 	env, err := protoutil.ExtractEnvelope(configBlock, 0)
 	if err != nil {
-		r.logger.Warnf("failed to extract envelope from new config block")
+		r.logger.Warnf("failed to extract envelope from new config block, err: %v", err)
 		return
 	}
 	bundle, err := channelconfig.NewBundleFromEnvelope(env, r.routerNodeConfig.BCCSP)
 	if err != nil {
-		r.logger.Warnf("failed to extract bundle from new config block")
+		r.logger.Warnf("failed to extract bundle from new config block, err: %v\n", err)
 		return
 	}
-	if err := r.configAcker.SubmitConfigAck(bundle.ConfigtxValidator().Sequence()); err != nil {
+	if err := r.configAcker.SubmitConfigAck(uint32(bundle.ConfigtxValidator().Sequence())); err != nil {
 		r.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", bundle.ConfigtxValidator().Sequence(), err)
 	}
 

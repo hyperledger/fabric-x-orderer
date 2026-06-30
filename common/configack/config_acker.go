@@ -24,7 +24,7 @@ const (
 
 type ConfigAcker interface {
 	Stop()
-	SubmitConfigAck(configSeq uint64) error
+	SubmitConfigAck(configSeq uint32) error
 }
 
 type configAcker struct {
@@ -69,7 +69,7 @@ func NewConfigAcker(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *co
 	return ca
 }
 
-func (ca *configAcker) SubmitConfigAck(configSeq uint64) error {
+func (ca *configAcker) SubmitConfigAck(configSeq uint32) error {
 	return ca.handleConfigAck(configSeq)
 }
 
@@ -80,7 +80,7 @@ func (ca *configAcker) Stop() {
 
 // handleConfigAck keeps trying to deliver a ConfigAck for configSeq until either the ack is successfully sent to the consenter,
 // or the config acker context is cancelled.
-func (ca *configAcker) handleConfigAck(configSeq uint64) error {
+func (ca *configAcker) handleConfigAck(configSeq uint32) error {
 	for {
 		conn, err := ca.connectToConsenterWithRetry()
 		if err != nil {
@@ -140,7 +140,7 @@ func (ca *configAcker) tryToConnect() (*grpc.ClientConn, error) {
 			Certificate:       ca.tlsCert,
 			RequireClientCert: true,
 		},
-		DialTimeout: time.Second * 20,
+		DialTimeout: time.Second * 5,
 	}
 
 	return cc.Dial(ca.consensusEndpoint)
@@ -150,7 +150,7 @@ func (ca *configAcker) tryToConnect() (*grpc.ClientConn, error) {
 // The RPC is bounded by a timeout derived from ca.ctx. If ca.ctx is cancelled, the RPC returns with an error.
 // The ConfigAckResponse is intentionally ignored because the response carries no
 // useful semantics for the router, batcher and assembler; only the RPC error is used.
-func (ca *configAcker) sendConfigAckToConsensus(conn *grpc.ClientConn, configSeq uint64) error {
+func (ca *configAcker) sendConfigAckToConsensus(conn *grpc.ClientConn, configSeq uint32) error {
 	ctx, cancel := context.WithTimeout(ca.ctx, 30*time.Second)
 	defer cancel()
 
@@ -163,6 +163,9 @@ func (ca *configAcker) sendConfigAckToConsensus(conn *grpc.ClientConn, configSeq
 	}
 
 	ca.logger.Infof("Sending ConfigAck for config sequence %d to consenter", configSeq)
-	_, err := client.AckConfig(ctx, configAckReq)
+	resp, err := client.AckConfig(ctx, configAckReq)
+	if resp.GetError() != "" {
+		ca.logger.Warnf("Received bad response from consensus on config ack: %v\n", resp.Error)
+	}
 	return err
 }
