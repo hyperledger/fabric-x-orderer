@@ -1278,7 +1278,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 }
 
 // AckConfig handles ConfigAck RPC calls from party members (router, batchers, assembler).
-// TODO: implement
+// TODO: implement the following: check the client cert, add the ack to the ack receiver handler and send a response back
 func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
-	return nil, fmt.Errorf("not implemented")
+	return &protos.ConfigAckResponse{}, nil
 }
