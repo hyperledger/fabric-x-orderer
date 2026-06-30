@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -285,7 +286,7 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, uc)
 
-	// 6. Send transactions to the routers.
+	// Send transactions to the routers.
 	totalTxNumber := 10
 	// rate limiter parameters
 	fillInterval := 10 * time.Millisecond
@@ -314,14 +315,10 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	parties := []types.PartyID{1}
-	for partyID := range numOfParties {
-		parties = append(parties, types.PartyID(partyID+1))
-	}
 	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
 	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig:       uc,
-		Parties:          parties,
+		Parties:          []types.PartyID{types.PartyID(1)},
 		StartBlock:       0,
 		EndBlock:         math.MaxUint64,
 		Transactions:     totalTxNumber,
@@ -351,8 +348,98 @@ func TestMTLSFromClientNotSpecifiedInLocalConfig(t *testing.T) {
 	// Attempt to pull blocks from assemblers and expect failure due to mTLS verification.
 	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
 		UserConfig: uc,
-		Parties:    parties,
+		Parties:    []types.PartyID{types.PartyID(1)},
 		ErrString:  "failed to create a gRPC client connection to assembler: %d",
 		Signer:     pullRequestSigner,
+	})
+}
+
+// TestMTLSFromApplicationClient tests that a router and assembler configured to use mTLS correctly accepts transactions
+// and delivery requests from a client whose certificate is specified in application local configuration.
+func TestMTLSFromApplicationClient(t *testing.T) {
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Number of parties in the test
+	numOfParties := 1
+	numOfShards := 1
+
+	t.Logf("Running test with %d parties and %d shards", numOfParties, numOfShards)
+
+	// create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
+	// create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
+
+	numOfArmaNodes := len(netInfo)
+
+	// generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	f, err := os.Open(path.Join(dir, "config", "peer1", "user_config.yaml"))
+	require.NoError(t, err)
+	uc, err := armageddon.ReadUserConfig(&f)
+	require.NoError(t, err)
+
+	// Send transactions to the routers.
+	totalTxNumber := 10
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	require.NoError(t, err)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	t.Cleanup(func() {
+		broadcastClient.Stop()
+	})
+
+	for i := range totalTxNumber {
+		status := rl.GetToken()
+		require.True(t, status, "failed to send tx %d", i+1)
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+	}
+
+	pullRequestSigner, err := signutil.CreateSignerForUser(filepath.Join(dir, "crypto", "peerOrganizations", "peer1"))
+	require.NoError(t, err)
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig:       uc,
+		Parties:          []types.PartyID{types.PartyID(1)},
+		StartBlock:       0,
+		EndBlock:         math.MaxUint64,
+		Transactions:     totalTxNumber,
+		NeedVerification: true,
+		ErrString:        "cancelled pull from assembler: %d",
+		Signer:           pullRequestSigner,
 	})
 }

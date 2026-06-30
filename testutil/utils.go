@@ -168,6 +168,7 @@ func CreateNetworkWithPortAllocator(t *testing.T, configPath string, numOfPartie
 		UseTLSRouter:    useTLSRouter,
 		UseTLSAssembler: useTLSAssembler,
 		MaxPartyID:      maxPartyID,
+		Peers:           []string{"peer1"},
 	}
 
 	err := utils.WriteToYAML(network, configPath)
