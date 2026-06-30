@@ -18,9 +18,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"go.yaml.in/yaml/v3"
 
@@ -144,6 +144,7 @@ func (c *ConfigParser) getFromEnv(key string) string {
 	}
 	envKey = strings.ToUpper(envKey)
 	envKey = strings.ReplaceAll(envKey, ".", "_")
+	envKey = strings.ReplaceAll(envKey, "-", "_")
 	return os.Getenv(envKey)
 }
 
