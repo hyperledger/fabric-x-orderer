@@ -133,7 +133,7 @@ github.com/go-logr/logr/funcr
 # github.com/go-task/slim-sprig/v3 v3.0.0
 ## explicit; go 1.20
 github.com/go-task/slim-sprig/v3
-# github.com/go-viper/mapstructure/v2 v2.4.0
+# github.com/go-viper/mapstructure/v2 v2.5.0
 ## explicit; go 1.18
 github.com/go-viper/mapstructure/v2
 github.com/go-viper/mapstructure/v2/internal/errors
@@ -157,7 +157,7 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6
+# github.com/google/pprof v0.0.0-20260402051712-545e8a4df936
 ## explicit; go 1.24.0
 github.com/google/pprof/profile
 # github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
@@ -212,8 +212,8 @@ github.com/hyperledger/fabric-config/protolator/protoext/ledger/rwsetext
 github.com/hyperledger/fabric-config/protolator/protoext/mspext
 github.com/hyperledger/fabric-config/protolator/protoext/ordererext
 github.com/hyperledger/fabric-config/protolator/protoext/peerext
-# github.com/hyperledger/fabric-lib-go v1.1.3
-## explicit; go 1.24.2
+# github.com/hyperledger/fabric-lib-go v1.1.5-0.20260607181445-fc4b05c5d38f
+## explicit; go 1.25.10
 github.com/hyperledger/fabric-lib-go/bccsp
 github.com/hyperledger/fabric-lib-go/bccsp/factory
 github.com/hyperledger/fabric-lib-go/bccsp/pkcs11
@@ -236,8 +236,8 @@ github.com/hyperledger/fabric-protos-go-apiv2/orderer
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft
 github.com/hyperledger/fabric-protos-go-apiv2/peer
-# github.com/hyperledger/fabric-x-common v0.2.4
-## explicit; go 1.25.5
+# github.com/hyperledger/fabric-x-common v0.2.6
+## explicit; go 1.26.3
 github.com/hyperledger/fabric-x-common/api/msppb
 github.com/hyperledger/fabric-x-common/api/ordererpb
 github.com/hyperledger/fabric-x-common/api/types
@@ -283,17 +283,14 @@ github.com/kr/pretty
 # github.com/kr/text v0.2.0
 ## explicit
 github.com/kr/text
-# github.com/miekg/pkcs11 v1.1.1
+# github.com/miekg/pkcs11 v1.1.2
 ## explicit; go 1.12
 github.com/miekg/pkcs11
-# github.com/mitchellh/mapstructure v1.5.0
-## explicit; go 1.14
-github.com/mitchellh/mapstructure
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-# github.com/onsi/ginkgo/v2 v2.27.2
-## explicit; go 1.23.0
+# github.com/onsi/ginkgo/v2 v2.28.3
+## explicit; go 1.25.0
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
 github.com/onsi/ginkgo/v2/formatter
@@ -316,8 +313,8 @@ github.com/onsi/ginkgo/v2/internal/reporters
 github.com/onsi/ginkgo/v2/internal/testingtproxy
 github.com/onsi/ginkgo/v2/reporters
 github.com/onsi/ginkgo/v2/types
-# github.com/onsi/gomega v1.38.2
-## explicit; go 1.23.0
+# github.com/onsi/gomega v1.40.0
+## explicit; go 1.24.0
 github.com/onsi/gomega
 github.com/onsi/gomega/format
 github.com/onsi/gomega/gbytes
@@ -430,7 +427,7 @@ github.com/tedsuo/ifrit
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
-# go.uber.org/zap v1.27.1
+# go.uber.org/zap v1.28.0
 ## explicit; go 1.19
 go.uber.org/zap
 go.uber.org/zap/buffer
@@ -448,15 +445,15 @@ go.yaml.in/yaml/v2
 # go.yaml.in/yaml/v3 v3.0.4
 ## explicit; go 1.16
 go.yaml.in/yaml/v3
-# golang.org/x/crypto v0.46.0
-## explicit; go 1.24.0
+# golang.org/x/crypto v0.51.0
+## explicit; go 1.25.0
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/hkdf
-# golang.org/x/mod v0.31.0
-## explicit; go 1.24.0
+# golang.org/x/mod v0.36.0
+## explicit; go 1.25.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.48.0
-## explicit; go 1.24.0
+# golang.org/x/net v0.54.0
+## explicit; go 1.25.0
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
@@ -465,20 +462,21 @@ golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/internal/httpcommon
+golang.org/x/net/internal/httpsfv
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
 # golang.org/x/sync v0.20.0
 ## explicit; go 1.25.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.39.0
-## explicit; go 1.24.0
+# golang.org/x/sys v0.44.0
+## explicit; go 1.25.0
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.33.0
-## explicit; go 1.24.0
+# golang.org/x/text v0.37.0
+## explicit; go 1.25.0
 golang.org/x/text/cases
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -501,8 +499,8 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/tools v0.40.0
-## explicit; go 1.24.0
+# golang.org/x/tools v0.45.0
+## explicit; go 1.25.0
 golang.org/x/tools/cover
 golang.org/x/tools/go/ast/edge
 golang.org/x/tools/go/ast/inspector
@@ -523,11 +521,11 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20260120174246-409b4a993575
-## explicit; go 1.24.0
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171
+## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.79.3
-## explicit; go 1.24.0
+# google.golang.org/grpc v1.81.1
+## explicit; go 1.25.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
 google.golang.org/grpc/backoff
@@ -566,6 +564,7 @@ google.golang.org/grpc/internal/grpclog
 google.golang.org/grpc/internal/grpcsync
 google.golang.org/grpc/internal/grpcutil
 google.golang.org/grpc/internal/idle
+google.golang.org/grpc/internal/mem
 google.golang.org/grpc/internal/metadata
 google.golang.org/grpc/internal/pretty
 google.golang.org/grpc/internal/proxyattributes
@@ -581,6 +580,7 @@ google.golang.org/grpc/internal/status
 google.golang.org/grpc/internal/syscall
 google.golang.org/grpc/internal/transport
 google.golang.org/grpc/internal/transport/networktype
+google.golang.org/grpc/internal/transport/readyreader
 google.golang.org/grpc/keepalive
 google.golang.org/grpc/mem
 google.golang.org/grpc/metadata
