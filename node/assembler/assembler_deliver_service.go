@@ -126,22 +126,11 @@ func (c *assemblerChain) PolicyManager() policies.Manager {
 }
 
 func (c *assemblerChain) Reader() blockledger.Reader {
-	return &delayedReader{Reader: c.ledger}
+	return c.ledger
 }
 
 func (c *assemblerChain) Errored() <-chan struct{} {
 	return c.errChan
-}
-
-type delayedReader struct {
-	blockledger.Reader
-}
-
-func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.Iterator, uint64) {
-	for d.Height() == 0 {
-		time.Sleep(time.Millisecond)
-	}
-	return d.Reader.Iterator(startType)
 }
 
 type assemblerSigFilter struct {
