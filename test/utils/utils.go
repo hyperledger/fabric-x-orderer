@@ -641,6 +641,10 @@ func PullFromAssemblers(t *testing.T, options *BlockPullerOptions) map[types.Par
 
 			require.True(t, err != nil && options.ErrString != "" || options.ErrString == "" && err == nil)
 
+			if err != nil {
+				t.Logf("Error received from pullFromAssembler: %v\n", err)
+			}
+
 			if len(options.ErrString) > 0 {
 				errString := fmt.Sprintf(options.ErrString, partyID)
 				require.ErrorContains(t, err, errString)
