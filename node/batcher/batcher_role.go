@@ -333,12 +333,14 @@ func (b *BatcherRole) runPrimary() {
 			mempoolStart := time.Now()
 			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
 			currentBatch = b.MemPool.NextRequests(ctx)
-			mempoolWaitLatency := time.Since(mempoolStart)
+
+			b.Metrics.batchMempoolWaitLatency.Observe(time.Since(mempoolStart).Seconds())
+
 			if len(currentBatch) == 0 {
 				cancel()
 				continue
 			}
-			b.Metrics.batchMempoolWaitLatency.Observe(mempoolWaitLatency.Seconds())
+
 			batchToLedgerStart = time.Now()
 
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
