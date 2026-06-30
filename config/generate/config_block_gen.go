@@ -8,6 +8,7 @@ package generate
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -68,13 +69,17 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	profile.Orderer.Arma.Path = sharedConfigPath
 
 	templateAppOrg := profile.Application.Organizations[0]
-	profile.Application.Organizations = make([]*configtxgen.Organization, len(sharedConfigYaml.PartiesConfig))
+	peers, err := buildPeerNames(filepath.Join(dir, "crypto", "peerOrganizations"))
+	if err != nil {
+		return nil, err
+	}
+	profile.Application.Organizations = make([]*configtxgen.Organization, len(peers))
 
-	for i := range sharedConfigYaml.PartiesConfig {
+	for i, peer := range peers {
 		org := &configtxgen.Organization{
-			Name:           fmt.Sprintf("org%d", i+1),
-			ID:             fmt.Sprintf("org%d", i+1),
-			MSPDir:         filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", i+1), "msp"),
+			Name:           peer,
+			ID:             peer,
+			MSPDir:         filepath.Join(dir, "crypto", "peerOrganizations", peer, "msp"),
 			MSPType:        templateAppOrg.MSPType,
 			Policies:       make(map[string]*configtxgen.Policy),
 			AnchorPeers:    templateAppOrg.AnchorPeers,
@@ -86,7 +91,7 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 		for key, policy := range templateAppOrg.Policies {
 			orgPolicy := &configtxgen.Policy{
 				Type: policy.Type,
-				Rule: strings.ReplaceAll(policy.Rule, "SampleOrg", fmt.Sprintf("org%d", i+1)),
+				Rule: strings.ReplaceAll(policy.Rule, "SampleOrg", peer),
 			}
 			org.Policies[key] = orgPolicy
 		}
@@ -124,6 +129,20 @@ func CreateProfile(dir string, sharedConfigYaml *config.SharedConfigYaml, shared
 	profile.Orderer.ConsenterMapping = consenterMapping
 
 	return profile, nil
+}
+
+func buildPeerNames(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	var peers []string
+	for _, e := range entries {
+		if e.IsDir() {
+			peers = append(peers, filepath.Base(filepath.Join(path, e.Name())))
+		}
+	}
+	return peers, nil
 }
 
 func buildOrdererEndpoints(id uint32, routerHost string, routerPort int, assemblerHost string, assemblerPort int) []*types.OrdererEndpoint {

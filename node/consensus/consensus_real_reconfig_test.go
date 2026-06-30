@@ -361,7 +361,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(oneMoreConfigBlockStoreDir, "config.block"))
 		configUpdatePbData := configUpdateBuilder.UpdateOrderingEndpoint(t, consenterPartyToUpdate, nodeIP, newPort)
-		env := configutil.CreateConfigTX(t, dir, parties[0:4], 1, configUpdatePbData)
+		env := configutil.CreateConfigTX(t, dir, parties[0:4], int(parties[0]), configUpdatePbData)
 		configReq := &protos.Request{
 			Payload:   env.Payload,
 			Signature: env.Signature,

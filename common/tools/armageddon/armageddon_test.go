@@ -611,6 +611,14 @@ func checkConfigDir(outputDir string) error {
 
 		partyDir := filepath.Join(configPath, party.Name())
 
+		if strings.HasPrefix(party.Name(), "peer") {
+			filePath := filepath.Join(partyDir, "user_config.yaml")
+			if !fileExists(filePath) {
+				return fmt.Errorf("missing file: %s\n", filePath)
+			}
+			continue
+		}
+
 		for _, file := range requiredPartyFiles {
 			filePath := filepath.Join(partyDir, file)
 			if !fileExists(filePath) {
