@@ -188,7 +188,7 @@ func TestSubmitTXWithVerification(t *testing.T) {
 		UserConfig: uc,
 		Parties:    parties,
 		StartBlock: 0,
-		EndBlock:   uint64(2),
+		EndBlock:   uint64(1),
 		Blocks:     2, // genesis + block with one tx
 		ErrString:  "cancelled pull from assembler: %d",
 		Signer:     pullRequestSigner,
