@@ -281,7 +281,7 @@ func (sc *StubConsenter) DeliverConfigDecisionFromBA(ba *state.AvailableBatchOrd
 	return nil
 }
 
-func (sc *StubConsenter) AckConfig(context context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+func (sc *StubConsenter) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
 	if sc.AckConfigHandler != nil {
 		return sc.AckConfigHandler(req)
 	}

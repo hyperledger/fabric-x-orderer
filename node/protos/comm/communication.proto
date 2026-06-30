@@ -46,7 +46,7 @@ service Consensus {
 
 message ConfigAck {
   // config_seq is the sequence number of the config block that was received
-  uint64 config_seq = 1;
+  uint32 config_seq = 1;
   
   // node_type identifies the type of node sending the acknowledgment
   NodeType node_type = 2;
