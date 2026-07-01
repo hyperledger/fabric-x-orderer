@@ -8,7 +8,9 @@ package batcher
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
 	"path/filepath"
@@ -24,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
@@ -118,6 +121,8 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, b.config.ShardId, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
+	b.sigVerifier = buildVerifier(batchers, b.config.ShardId, b.logger)
+
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),
 		BatchPuller:             batchPuller,
@@ -136,6 +141,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		BatchAcker:              b,
 		Complainer:              b,
 		BatchedRequestsVerifier: b.requestsInspectorVerifier,
+		SigVerifier:             b.sigVerifier,
 		BatchSequenceGap:        b.config.BatchSequenceGap,
 		Metrics:                 b.metrics,
 	}
@@ -251,4 +257,32 @@ func DefaultRequestID(req []byte) string {
 	// TODO maybe calculate the request ID differently
 	digest := sha256.Sum256(req)
 	return hex.EncodeToString(digest[:])
+}
+
+func buildVerifier(batchers []node_config.BatcherInfo, shardID types.ShardID, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
+	verifier := make(crypto.ECDSAVerifier)
+	for _, bi := range batchers {
+		pk := bi.PublicKey
+		if pk == nil {
+			logger.Panicf("Nil batcher public key (shard %d, party %d)", shardID, bi.PartyID)
+		}
+
+		pkDecoded, _ := pem.Decode(pk)
+		if pkDecoded == nil || pkDecoded.Bytes == nil {
+			logger.Panicf("Failed decoding batcher public key of batcher %d (shard %d) from PEM", bi.PartyID, shardID)
+		}
+
+		pkParsed, err := x509.ParsePKIXPublicKey(pkDecoded.Bytes)
+		if err != nil {
+			logger.Panicf("Failed parsing batcher public key (shard %d, party %d): %v", shardID, bi.PartyID, err)
+		}
+
+		ecdsaPK, ok := pkParsed.(*ecdsa.PublicKey)
+		if !ok {
+			logger.Panicf("Unsupported public key type %T for batcher (shard %d, party %d)", pkParsed, shardID, bi.PartyID)
+		}
+		verifier[crypto.ShardPartyKey{Shard: shardID, Party: types.PartyID(bi.PartyID)}] = *ecdsaPK
+	}
+
+	return verifier
 }

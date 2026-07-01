@@ -47,6 +47,13 @@ type Signer interface {
 	Sign([]byte) ([]byte, error)
 }
 
+// SigVerifier verifies signatures from batchers
+//
+//go:generate counterfeiter -o mocks/sig_verifier.go . SigVerifier
+type SigVerifier interface {
+	VerifySignature(id types.PartyID, shardID types.ShardID, msg, sig []byte) error
+}
+
 type Net interface {
 	Stop()
 	Address() string
@@ -69,6 +76,7 @@ type Batcher struct {
 	controlEventBroadcaster            *ControlEventBroadcaster
 	primaryAckConnector                *PrimaryAckConnector
 	primaryReqConnector                *PrimaryReqConnector
+	sigVerifier                        SigVerifier
 	Net                                Net
 	Ledger                             *node_ledger.BatchLedgerArray
 	config                             *node_config.BatcherNodeConfig
