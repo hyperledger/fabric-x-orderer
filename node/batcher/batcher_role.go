@@ -329,12 +329,17 @@ func (b *BatcherRole) runPrimary() {
 				return
 			case <-ch:
 			}
+			mempoolStart := time.Now()
 			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
 			currentBatch = b.MemPool.NextRequests(ctx)
+
+			b.Metrics.batchMempoolNextRequestsLatency.Observe(time.Since(mempoolStart).Seconds())
+
 			if len(currentBatch) == 0 {
 				cancel()
 				continue
 			}
+
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
 			digest = currentBatch.Digest()
 			cancel()
@@ -347,8 +352,9 @@ func (b *BatcherRole) runPrimary() {
 		// (this BAF is a declaration that the batch is stored in the ledger)
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
+		appendStart := time.Now()
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, baf.Signature())
-
+		b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 		sendBAFDone := make(chan struct{})
 		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
 		defer sendBafCancel()
@@ -397,8 +403,10 @@ func (b *BatcherRole) runSecondary() {
 		out := b.BatchPuller.PullBatches(b.primary)
 		for {
 			var batch types.Batch
+			var verifyStart time.Time
 			select {
 			case batch = <-out:
+				verifyStart = time.Now()
 			case newTerm := <-b.termChan:
 				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
 				b.BatchPuller.Stop()
@@ -415,6 +423,7 @@ func (b *BatcherRole) runSecondary() {
 				b.BatchPuller.Stop()
 				break // TODO maybe add backoff
 			}
+			b.Metrics.batchVerifyLatency.Observe(time.Since(verifyStart).Seconds())
 			b.Metrics.batchesPulledTotal.Add(1)
 			requests := batch.Requests()
 
@@ -423,7 +432,9 @@ func (b *BatcherRole) runSecondary() {
 			// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
+			appendStart := time.Now()
 			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests, batch.PrimarySignature())
+			b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
