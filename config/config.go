@@ -274,8 +274,8 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
 		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
 		}
 	}
 
@@ -314,7 +314,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
@@ -348,8 +348,8 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
 		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
 		}
 	}
 
@@ -399,7 +399,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
@@ -463,8 +463,8 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
 		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
 		}
 	}
 
@@ -501,7 +501,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
@@ -543,8 +543,8 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
 		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
+		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs == nil {
+			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
 		}
 	}
 
@@ -583,7 +583,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 				Certificate:        config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate,
 				PrivateKey:         config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey,
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
-				RootCAs:            config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs,
+				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
 		},
 		Metrics: &operations.Metrics{
