@@ -295,8 +295,16 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 }
 
 // helper function to create and submit a request with a certain config seq for testing
-func createAndSubmitRequestWithConfigSeq(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence, configSeq types.ConfigSequence) error {
-	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence, configSeq, 1, nil)
+func createAndSubmitRequestWithConfigSeq(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, primarySK *ecdsa.PrivateKey, sequence types.BatchSequence, configSeq types.ConfigSequence) error {
+	var primarySignature []byte
+	if id != primary {
+		primaryBAF, err := batcher.CreateBAF(crypto.ECDSASigner(*primarySK), primary, shard, digest, primary, sequence, configSeq, 1, nil)
+		if err != nil {
+			return err
+		}
+		primarySignature = primaryBAF.Signature()
+	}
+	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), id, shard, digest, primary, sequence, configSeq, 1, primarySignature)
 	if err != nil {
 		return err
 	}
@@ -306,8 +314,8 @@ func createAndSubmitRequestWithConfigSeq(node *consensus.Consensus, sk *ecdsa.Pr
 }
 
 // helper function to create and submit a request for testing
-func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, sequence types.BatchSequence) error {
-	return createAndSubmitRequestWithConfigSeq(node, sk, id, shard, digest, primary, sequence, 0)
+func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, primarySK *ecdsa.PrivateKey, sequence types.BatchSequence) error {
+	return createAndSubmitRequestWithConfigSeq(node, sk, id, shard, digest, primary, primarySK, sequence, 0)
 }
 
 // createAndSubmitConfigRequest creates and submits a config request control event for testing

@@ -1094,6 +1094,15 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if ce.BAF.ConfigSequence() != configSeq {
 			return reqID, ce, errors.Errorf("mismatch config sequence; the BAF's config seq is %d while the config seq should be %d", ce.BAF.ConfigSequence(), configSeq)
 		}
+		if ce.BAF.Primary() != ce.BAF.Signer() {
+			if len(ce.BAF.PrimarySignature()) == 0 {
+				return reqID, ce, errors.New("missing primary signature")
+			}
+			dupBAF := duplicateBAFSetSigner(ce.BAF, ce.BAF.Primary())
+			if err := c.SigVerifier.VerifySignature(ce.BAF.Primary(), ce.BAF.Shard(), toBeSignedBAF(dupBAF), ce.BAF.PrimarySignature()); err != nil {
+				return reqID, ce, errors.Wrap(err, "failed to verify primary signature")
+			}
+		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
 		reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
