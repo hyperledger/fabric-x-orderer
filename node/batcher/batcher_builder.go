@@ -264,20 +264,24 @@ func buildVerifier(batchers []node_config.BatcherInfo, shardID types.ShardID, lo
 	for _, bi := range batchers {
 		pk := bi.PublicKey
 		if pk == nil {
-			logger.Panicf("Nil batcher public key")
+			logger.Panicf("Nil batcher public key (shard %d, party %d)", shardID, bi.PartyID)
 		}
 
 		pkDecoded, _ := pem.Decode(pk)
 		if pkDecoded == nil || pkDecoded.Bytes == nil {
-			logger.Panicf("Failed decoding batcher public key")
+			logger.Panicf("Failed decoding batcher public key of batcher %d (shard %d) from PEM", bi.PartyID, shardID)
 		}
 
 		pkParsed, err := x509.ParsePKIXPublicKey(pkDecoded.Bytes)
 		if err != nil {
-			logger.Panicf("Failed parsing batcher public key: %v", err)
+			logger.Panicf("Failed parsing batcher public key (shard %d, party %d): %v", shardID, bi.PartyID, err)
 		}
 
-		verifier[crypto.ShardPartyKey{Shard: types.ShardID(shardID), Party: types.PartyID(bi.PartyID)}] = *pkParsed.(*ecdsa.PublicKey)
+		ecdsaPK, ok := pkParsed.(*ecdsa.PublicKey)
+		if !ok {
+			logger.Panicf("Unsupported public key type %T for batcher (shard %d, party %d)", pkParsed, shardID, bi.PartyID)
+		}
+		verifier[crypto.ShardPartyKey{Shard: shardID, Party: types.PartyID(bi.PartyID)}] = *ecdsaPK
 	}
 
 	return verifier
