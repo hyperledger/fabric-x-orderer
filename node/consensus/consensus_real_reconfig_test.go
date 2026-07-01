@@ -516,9 +516,16 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 // It creates a BAF using the provided private key and batcher ID, submits it to the first consensus node,
 // and then polls all consensus node ledgers to verify they reach the expected height.
 func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, privateKey *ecdsa.PrivateKey, primaryPrivateKey *ecdsa.PrivateKey, batcherID types.PartyID, configSeqToSend types.ConfigSequence, expectedBlockNumber uint64, expectedError string) {
-	primaryBAF, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(primaryPrivateKey), 2, 1, digest123, 2, 0, configSeqToSend, 1, nil)
-	require.NoError(t, err)
-	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), batcherID, 1, digest123, 2, 0, configSeqToSend, 1, primaryBAF.Signature())
+	primaryID := types.PartyID(2)
+	var primarySignature []byte
+	if batcherID != primaryID {
+		primaryBAF, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(primaryPrivateKey), primaryID, 1, digest123, primaryID, 0, configSeqToSend, 1, nil)
+		require.NoError(t, err)
+		primarySignature = primaryBAF.Signature()
+		require.NotNil(t, primarySignature, "primary sig is nil")
+		require.NotEmpty(t, primarySignature, "primary sig is empty")
+	}
+	baf, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(privateKey), batcherID, 1, digest123, primaryID, 0, configSeqToSend, 1, primarySignature)
 	require.NoError(t, err)
 	controlEvent := &state.ControlEvent{BAF: baf}
 	err = consensusNodes[0].SubmitRequest(controlEvent.Bytes())
@@ -526,7 +533,7 @@ func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus,
 		require.ErrorContains(t, err, expectedError)
 		return
 	}
-	require.NoError(t, err)
+	require.NoError(t, err, "failed to submit request with batcher ID %d and primary sig %v", batcherID, primarySignature)
 
 	// Poll each consensus node's ledger height until it reaches the expected height
 	// Height is always block number + 1
