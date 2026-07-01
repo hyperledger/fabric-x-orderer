@@ -134,9 +134,12 @@ func (c *Consensus) Start() error {
 	}
 	RegisterHealthCheckers(c)
 
+	c.Metrics.StartMetricsTracker()
+
 	c.Logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(c.opsSystem, c.Logger))
 	c.Logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(c.opsSystem, c.Logger))
-	c.Metrics.StartMetricsTracker()
+	c.Logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(c.opsSystem, c.Logger))
+
 	bft := c.BFT
 	c.lock.Unlock()
 

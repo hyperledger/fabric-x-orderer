@@ -187,6 +187,7 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.metrics.StartMetricsTracker()
 	r.logger.Infof("Prometheus serving on URL: %s", r.MonitoringServiceAddress())
 	r.logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(r.opsSystem, r.logger))
+	r.logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(r.opsSystem, r.logger))
 	r.logger.Infof("Router with PartyID: %d has been initialized from config with sequence: %d", rconfig.PartyID, r.configSeq)
 }
 
