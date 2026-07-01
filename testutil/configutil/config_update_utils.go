@@ -527,7 +527,7 @@ func (c *ConfigUpdateBuilder) UpdatePartyTLSCACerts(t *testing.T, partyID types.
 
 	org := fmt.Sprintf("org%d", partyID)
 	overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
-	overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
+	// overwriteNestedJSONValue(t, c.configData, tlsCACerts, "channel_group", "groups", "Application", "groups", "peer1", "values", "MSP", "value", "config", "tls_root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -556,11 +556,11 @@ func (c *ConfigUpdateBuilder) AppendPartyTLSCACerts(t *testing.T, partyID types.
 	}
 	overwriteNestedJSONValue(t, c.configData, ordererCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
 
-	applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs").([]any)
-	for _, cert := range tlsCACerts {
-		applicationCerts = append(applicationCerts, cert)
-	}
-	overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
+	// applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs").([]any)
+	// for _, cert := range tlsCACerts {
+	// 	applicationCerts = append(applicationCerts, cert)
+	// }
+	// overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "tls_root_certs")
 
 	return c.createConfigUpdate(t, c.configData)
 }
@@ -583,7 +583,7 @@ func (c *ConfigUpdateBuilder) UpdatePartyCACerts(t *testing.T, partyID types.Par
 
 	org := fmt.Sprintf("org%d", partyID)
 	overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "root_certs")
-	overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
+	// overwriteNestedJSONValue(t, c.configData, caCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -611,11 +611,11 @@ func (c *ConfigUpdateBuilder) AppendPartyCACerts(t *testing.T, partyID types.Par
 	}
 	overwriteNestedJSONValue(t, c.configData, ordererCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "root_certs")
 
-	applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs").([]any)
-	for _, cert := range caCerts {
-		applicationCerts = append(applicationCerts, cert)
-	}
-	overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
+	// applicationCerts := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs").([]any)
+	// for _, cert := range caCerts {
+	// 	applicationCerts = append(applicationCerts, cert)
+	// }
+	// overwriteNestedJSONValue(t, c.configData, applicationCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "root_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -658,7 +658,7 @@ func (c *ConfigUpdateBuilder) AppendMSPRootCerts(t *testing.T, partyID types.Par
 func (c *ConfigUpdateBuilder) UpdateMSPAdminCerts(t *testing.T, partyID types.PartyID, adminCerts [][]byte) []byte {
 	org := fmt.Sprintf("org%d", partyID)
 	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "admins")
-	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "admins")
+	// overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Application", "groups", org, "values", "MSP", "value", "config", "admins")
 	return c.createConfigUpdate(t, c.configData)
 }
 
