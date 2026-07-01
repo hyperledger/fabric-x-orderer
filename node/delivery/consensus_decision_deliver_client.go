@@ -10,13 +10,12 @@ import (
 	"context"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-orderer/node/comm"
-	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
 const (
@@ -25,6 +24,7 @@ const (
 
 // ConsensusDecisionReplicator replicates decisions from consensus and allows the consumption of those decisions.
 type ConsensusDecisionReplicator struct {
+	channelID       string
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
@@ -34,14 +34,15 @@ type ConsensusDecisionReplicator struct {
 	seekInfo        *orderer.SeekInfo
 }
 
-func NewConsensusDecisionReplicator(tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger *flogging.FabricLogger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
+func NewConsensusDecisionReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger *flogging.FabricLogger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	decisionReplicator := &ConsensusDecisionReplicator{
-		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
-		endpoint:      endpoint,
-		logger:        logger,
+		channelID:     channelID,
 		tlsKey:        tlsKey,
 		tlsCert:       tlsCert,
+		endpoint:      endpoint,
+		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
+		logger:        logger,
 		cancelCtx:     ctx,
 		ctxCancelFunc: cancelFunc,
 		seekInfo:      seekInfo,
@@ -57,7 +58,7 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
-			"consensus",
+			DecisionChannelName(cr.channelID),
 			nil,
 			cr.seekInfo,
 			int32(0),

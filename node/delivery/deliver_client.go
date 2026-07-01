@@ -62,6 +62,8 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 }
 
 func Pull(context context.Context, channel string, logger *flogging.FabricLogger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
+	// TODO channel is not really used correctly, it is more of a context for logging, we should consider refactoring
+
 	logger.Infof("Started pulling from: %s", channel)
 
 	select {

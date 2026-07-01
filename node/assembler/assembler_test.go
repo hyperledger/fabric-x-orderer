@@ -194,7 +194,7 @@ func (at *assemblerTest) StartAssembler() {
 	})
 
 	consensusBringerFactoryMock := &delivery_mocks.FakeConsensusBringerFactory{}
-	consensusBringerFactoryMock.CreateCalls(func(rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l *flogging.FabricLogger) delivery.ConsensusBringer {
+	consensusBringerFactoryMock.CreateCalls(func(channelID string, rb1 []config.RawBytes, rb2, rb3 config.RawBytes, s string, al node_ledger.AssemblerLedgerReaderWriter, l *flogging.FabricLogger) delivery.ConsensusBringer {
 		return at.consensusBringerMock
 	})
 	at.consensusBringerMock.ReplicateCalls(func() <-chan *state.AvailableBatchOrdered {
