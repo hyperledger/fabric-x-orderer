@@ -186,21 +186,8 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 	if len(ps.Complaints) > 0 {
 		s.Complaints = make([]Complaint, len(ps.Complaints))
 		for i, protoComplaint := range ps.Complaints {
-			if protoComplaint.Shard > math.MaxUint16 {
-				return fmt.Errorf("the Complaint Shard value %d at index %d exceeds uint16 maximum %d", protoComplaint.Shard, i, math.MaxUint16)
-			}
-			if protoComplaint.Signer > math.MaxUint16 {
-				return fmt.Errorf("the Complaint Signer value %d at index %d exceeds uint16 maximum %d", protoComplaint.Signer, i, math.MaxUint16)
-			}
-			s.Complaints[i] = Complaint{
-				ShardTerm: ShardTerm{
-					Shard: types.ShardID(protoComplaint.Shard),
-					Term:  protoComplaint.Term,
-				},
-				Signer:    types.PartyID(protoComplaint.Signer),
-				Signature: protoComplaint.Signature,
-				Reason:    protoComplaint.Reason,
-				ConfigSeq: types.ConfigSequence(protoComplaint.ConfigSeq),
+			if err := s.Complaints[i].fromProto(protoComplaint); err != nil {
+				return fmt.Errorf("failed loading complaint at index %d: %v", i, err)
 			}
 		}
 	}
@@ -267,6 +254,33 @@ func (c *Complaint) FromBytes(bytes []byte) error {
 	return nil
 }
 
+func (c *Complaint) toProto() *stateprotos.Complaint {
+	return &stateprotos.Complaint{
+		ConfigSeq: uint64(c.ConfigSeq),
+		Shard:     uint32(c.Shard),
+		Term:      c.Term,
+		Signer:    uint32(c.Signer),
+		Signature: c.Signature,
+		Reason:    c.Reason,
+	}
+}
+
+func (c *Complaint) fromProto(pc *stateprotos.Complaint) error {
+	if pc.GetShard() > math.MaxUint16 {
+		return fmt.Errorf("the Complaint Shard value %d at exceeds uint16 maximum %d", pc.Shard, math.MaxUint16)
+	}
+	if pc.GetSigner() > math.MaxUint16 {
+		return fmt.Errorf("the Complaint Signer value %d at exceeds uint16 maximum %d", pc.Signer, math.MaxUint16)
+	}
+	c.ConfigSeq = types.ConfigSequence(pc.GetConfigSeq())
+	c.Shard = types.ShardID(pc.GetShard())
+	c.Term = pc.GetTerm()
+	c.Signer = types.PartyID(pc.GetSigner())
+	c.Signature = pc.GetSignature()
+	c.Reason = pc.GetReason()
+	return nil
+}
+
 func (c *Complaint) ToBeSigned() []byte {
 	toBeSignedComplaint := Complaint{
 		ShardTerm: c.ShardTerm,
@@ -304,23 +318,40 @@ func (c *ConfigRequest) ConfigSequence() (types.ConfigSequence, error) {
 	return types.ConfigSequence(configEnvelope.Config.Sequence), nil
 }
 
-func (c *ConfigRequest) Bytes() []byte {
-	bytes, err := protoutil.Marshal(c.Envelope)
+func (c *ConfigRequest) toProto() *stateprotos.ConfigRequest {
+	envelopeBytes, err := protoutil.Marshal(c.Envelope)
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal envelope: %v", err))
+	}
+	return &stateprotos.ConfigRequest{
+		Envelope: envelopeBytes,
+	}
+}
+
+func (c *ConfigRequest) fromProto(pc *stateprotos.ConfigRequest) error {
+	envelope, err := protoutil.UnmarshalEnvelope(pc.Envelope)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal envelope: %v", err)
+	}
+	c.Envelope = envelope
+	return nil
+}
+
+func (c *ConfigRequest) Bytes() []byte {
+	protoConfigRequest := c.toProto()
+	bytes, err := proto.Marshal(protoConfigRequest)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal config request: %v", err))
 	}
 	return bytes
 }
 
 func (c *ConfigRequest) FromBytes(bytes []byte) error {
-	// Unmarshal the envelope from remaining bytes
-	envelope, err := protoutil.UnmarshalEnvelope(bytes)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal envelope: %v", err)
+	protoConfigRequest := &stateprotos.ConfigRequest{}
+	if err := proto.Unmarshal(bytes, protoConfigRequest); err != nil {
+		return fmt.Errorf("failed to unmarshal config request: %v", err)
 	}
-
-	c.Envelope = envelope
-	return nil
+	return c.fromProto(protoConfigRequest)
 }
 
 func (c *ConfigRequest) String() string {
@@ -393,46 +424,69 @@ func (ce *ControlEvent) SignerID() string {
 	}
 }
 
-func (ce *ControlEvent) Bytes() []byte {
-	var bytes []byte
+func (ce *ControlEvent) toProto() *stateprotos.ControlEvent {
+	protoEvent := &stateprotos.ControlEvent{}
+
 	switch {
 	case ce.BAF != nil:
-		rawBAF := ce.BAF.Serialize()
-		bytes = make([]byte, len(rawBAF)+1)
-		bytes[0] = 1
-		copy(bytes[1:], rawBAF)
+		protoEvent.Event = &stateprotos.ControlEvent_Baf{
+			Baf: ce.BAF.Serialize(),
+		}
 	case ce.Complaint != nil:
-		rawComplaint := ce.Complaint.Bytes()
-		bytes = make([]byte, len(rawComplaint)+1)
-		bytes[0] = 2
-		copy(bytes[1:], rawComplaint)
+		protoEvent.Event = &stateprotos.ControlEvent_Complaint{
+			Complaint: ce.Complaint.toProto(),
+		}
 	case ce.ConfigRequest != nil:
-		rawConfig := ce.ConfigRequest.Bytes()
-		bytes = make([]byte, len(rawConfig)+1)
-		bytes[0] = 3
-		copy(bytes[1:], rawConfig)
+		protoEvent.Event = &stateprotos.ControlEvent_ConfigRequest{
+			ConfigRequest: ce.ConfigRequest.toProto(),
+		}
 	default:
 		panic("empty control event")
 	}
 
+	return protoEvent
+}
+
+func (ce *ControlEvent) fromProto(pe *stateprotos.ControlEvent, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) error {
+	switch event := pe.Event.(type) {
+	case *stateprotos.ControlEvent_Baf:
+		baf, err := fragmentFromBytes(event.Baf)
+		if err != nil {
+			return err
+		}
+		ce.BAF = baf
+	case *stateprotos.ControlEvent_Complaint:
+		ce.Complaint = &Complaint{}
+		if err := ce.Complaint.fromProto(event.Complaint); err != nil {
+			return err
+		}
+	case *stateprotos.ControlEvent_ConfigRequest:
+		ce.ConfigRequest = &ConfigRequest{}
+		if err := ce.ConfigRequest.fromProto(event.ConfigRequest); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown control event type")
+	}
+
+	return nil
+}
+
+func (ce *ControlEvent) Bytes() []byte {
+	protoEvent := ce.toProto()
+	bytes, err := proto.Marshal(protoEvent)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal control event: %v", err))
+	}
 	return bytes
 }
 
 func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) error {
-	var err error
-	switch b := bytes[0]; b {
-	case 1:
-		ce.BAF, err = fragmentFromBytes(bytes[1:])
-		return err
-	case 2:
-		ce.Complaint = &Complaint{}
-		return ce.Complaint.FromBytes(bytes[1:])
-	case 3:
-		ce.ConfigRequest = &ConfigRequest{}
-		return ce.ConfigRequest.FromBytes(bytes[1:])
+	protoEvent := &stateprotos.ControlEvent{}
+	if err := proto.Unmarshal(bytes, protoEvent); err != nil {
+		return fmt.Errorf("failed to unmarshal control event: %v", err)
 	}
-
-	return fmt.Errorf("unknown prefix (%d)", bytes[0])
+	return ce.fromProto(protoEvent, fragmentFromBytes)
 }
 
 func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
