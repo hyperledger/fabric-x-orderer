@@ -290,18 +290,16 @@ func TestSubmitAndReceiveStatus(t *testing.T) {
 // 2. Generates network artifacts using armageddon CLI
 // 3. Builds and starts the arma node binary
 // 4. Sends a configurable number of transactions (10) using a rate-limited broadcast client
-// 5. Monitors Prometheus metrics to verify transaction count (totalTxNumber+1) and block count (2)
-// 6. Stops and restarts the monitored assembler node
-// 7. Verifies that the metrics remain accurate after the node restart
-// 8. Checks the health check endpoint to ensure the assembler node is healthy
+// 5. Monitors Prometheus metrics exposed by the batcher and consenter nodes
+// 6. Checks the health check endpoints of the batcher and consenter nodes
 func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
-	// 1. compile arma
+	// 1.
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
 	defer gexec.CleanupBuildArtifacts()
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
-	// 2. create network with 2 parties and 1 shard
+	// 2.
 	parties := 2
 	shards := 1
 
@@ -312,6 +310,7 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
+	// 3.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, parties, shards, "none", "none")
 	defer netInfo.CleanUp()
@@ -330,7 +329,7 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, uc)
 
-	// 2. Send To Routers
+	// 4.
 	totalTxNumber := 10
 	fillInterval := 10 * time.Millisecond
 	fillFrequency := 1000 / int(fillInterval.Milliseconds())
@@ -360,6 +359,8 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 	t.Log("Finished submit")
 	broadcastClient.Stop()
 
+	// 5.
+	// Verify secondary batcher metrics.
 	batcherToMonitor := armaNetwork.GetBatcher(t, types.PartyID(1), types.ShardID(1))
 	url := testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
 
@@ -370,13 +371,36 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 		return testutil.FetchPrometheusMetricValue(t, re, url) == totalTxNumber
 	}, 30*time.Second, 100*time.Millisecond)
 
-	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, batcherToMonitor)
-
-	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
+	pattern = fmt.Sprintf(`batcher_batch_verify_latency_seconds_count\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
 	re = regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.GetHealthCheckStatus(t, re, url)
+		return testutil.FetchPrometheusMetricValue(t, re, url) > 0
+	}, 30*time.Second, 100*time.Millisecond)
+
+	pattern = fmt.Sprintf(`batcher_batch_ledger_append_latency_seconds_count\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
+	re = regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, url) > 0
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// Verify primary batcher metrics.
+	batcherToMonitor = armaNetwork.GetBatcher(t, types.PartyID(2), types.ShardID(1))
+	url = testutil.CaptureArmaNodePrometheusServiceURL(t, batcherToMonitor)
+
+	pattern = fmt.Sprintf(`batcher_batch_mempool_next_requests_latency_seconds_count\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(2), types.ShardID(1))
+	re = regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, url) > 0
+	}, 30*time.Second, 100*time.Millisecond)
+
+	pattern = fmt.Sprintf(`batcher_batch_ledger_append_latency_seconds_count\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(2), types.ShardID(1))
+	re = regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, url) > 0
 	}, 30*time.Second, 100*time.Millisecond)
 
 	consenterToMonitor := armaNetwork.GetConsenter(t, 1)
@@ -387,6 +411,16 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return testutil.FetchPrometheusMetricValue(t, re, url) >= parties*shards
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 6.
+	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, batcherToMonitor)
+
+	pattern = `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
+	re = regexp.MustCompile(pattern)
+
+	require.Eventually(t, func() bool {
+		return testutil.GetHealthCheckStatus(t, re, url)
 	}, 30*time.Second, 100*time.Millisecond)
 
 	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, consenterToMonitor)

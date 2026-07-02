@@ -84,6 +84,18 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name:** "first_resends_total"  
   **Help:** "The total number of first resends performed."
 
+- **Namespace:** "batcher"  
+  **Name:** "batch_mempool_next_requests_latency_seconds"  
+  **Help:** "The latency for the primary to retrieve the next batch from the mempool."
+
+- **Namespace:** "batcher"
+  **Name:** "batch_verify_latency_seconds"
+  **Help:** "The latency from receiving a batch on the secondary until it is verified."
+
+- **Namespace:** "batcher"  
+  **Name:** "batch_ledger_append_latency_seconds"  
+  **Help:** "The latency to append a batch to the ledger."
+
 ---
 
 ### Consenter
