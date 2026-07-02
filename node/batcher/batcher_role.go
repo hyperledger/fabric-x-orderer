@@ -416,14 +416,17 @@ func (b *BatcherRole) runSecondary() {
 				b.BatchPuller.Stop()
 				return
 			}
-			if err := b.verifyBatch(batch); err != nil {
+			err := b.verifyBatch(batch)
+			b.Metrics.batchVerifyLatency.Observe(time.Since(verifyStart).Seconds())
+
+			if err != nil {
 				b.Logger.Warnf("Secondary batcher %d (shard %d) sending a complaint (primary %d); verify batch err: %v", b.ID, b.Shard, b.primary, err)
 				// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
 				b.Complainer.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; primary %d; term %d; verify batch err: %v", b.ID, b.Shard, b.primary, atomic.LoadUint64(&b.term), err))
 				b.BatchPuller.Stop()
 				break // TODO maybe add backoff
 			}
-			b.Metrics.batchVerifyLatency.Observe(time.Since(verifyStart).Seconds())
+
 			b.Metrics.batchesPulledTotal.Add(1)
 			requests := batch.Requests()
 
