@@ -278,9 +278,8 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	initialState, md, prevHash := initializeStateAndMetadata(t, initialState, ledger)
 
 	consenter := &node_consensus.Consenter{ // TODO should this be initialized as part of consensus node start?
-		DB:              db,
-		Logger:          l,
-		BAFDeserializer: &state.BAFDeserialize{},
+		DB:     db,
+		Logger: l,
 	}
 
 	bundle := &configMocks.FakeConfigResources{}
@@ -659,9 +658,8 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			}
 
 			consenter := &node_consensus.Consenter{
-				DB:              db,
-				Logger:          logger,
-				BAFDeserializer: &state.BAFDeserialize{},
+				DB:     db,
+				Logger: logger,
 			}
 
 			payloadBytes := []byte{1}
@@ -816,9 +814,8 @@ func TestVerifyProposal(t *testing.T) {
 	}
 
 	consenter := &node_consensus.Consenter{
-		DB:              db,
-		Logger:          logger,
-		BAFDeserializer: &state.BAFDeserialize{},
+		DB:     db,
+		Logger: logger,
 	}
 
 	bundle := &configMocks.FakeConfigResources{}
@@ -1035,9 +1032,8 @@ func TestSignProposal(t *testing.T) {
 	}
 
 	consenter := &node_consensus.Consenter{
-		DB:              db,
-		Logger:          logger,
-		BAFDeserializer: &state.BAFDeserialize{},
+		DB:     db,
+		Logger: logger,
 	}
 
 	ledger, err := ledger.NewConsensusLedger(dir)

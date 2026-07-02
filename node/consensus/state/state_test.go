@@ -129,7 +129,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			},
 		},
 		{
-			name: "state with single pending BAF using BAFDeserializer",
+			name: "state with single pending BAF",
 			state: consensus_state.State{
 				N:         4,
 				Threshold: 2,
@@ -146,7 +146,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			},
 		},
 		{
-			name: "state with multiple pending BAFs using BAFDeserializer",
+			name: "state with multiple pending BAFs",
 			state: consensus_state.State{
 				N:         4,
 				Threshold: 2,
@@ -173,7 +173,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			},
 		},
 		{
-			name: "state with pending BAFs and complaints using BAFDeserializer",
+			name: "state with pending BAFs and complaints",
 			state: consensus_state.State{
 				N:         4,
 				Threshold: 2,
@@ -199,7 +199,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			},
 		},
 		{
-			name: "state with pending BAFs with signatures using BAFDeserializer",
+			name: "state with pending BAFs with signatures",
 			state: consensus_state.State{
 				N:         4,
 				Threshold: 2,
@@ -216,7 +216,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			},
 		},
 		{
-			name: "state with many pending BAFs using BAFDeserializer",
+			name: "state with many pending BAFs",
 			state: consensus_state.State{
 				N:         4,
 				Threshold: 2,
@@ -272,8 +272,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 
 			// Deserialize
 			var deserialized consensus_state.State
-			bafd := &consensus_state.BAFDeserialize{}
-			err := deserialized.Deserialize(bytes, bafd)
+			err := deserialized.Deserialize(bytes)
 			assert.NoError(t, err, "deserialization should not fail")
 
 			// Compare
@@ -386,7 +385,7 @@ func TestControlEventSerialization(t *testing.T) {
 
 	var ce2 consensus_state.ControlEvent
 
-	err := ce2.FromBytes(ce.Bytes(), nil)
+	err := ce2.FromBytes(ce.Bytes())
 	assert.NoError(t, err)
 
 	assert.Equal(t, ce, ce2)
@@ -396,10 +395,8 @@ func TestControlEventSerialization(t *testing.T) {
 	baf.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf}
 
-	bafd := consensus_state.BAFDeserialize{}
-
 	ce2.Complaint = nil
-	err = ce2.FromBytes(ce.Bytes(), bafd.Deserialize)
+	err = ce2.FromBytes(ce.Bytes())
 	assert.NoError(t, err)
 
 	assert.Equal(t, ce, ce2)
@@ -414,7 +411,7 @@ func TestControlEventSerialization(t *testing.T) {
 	ce = consensus_state.ControlEvent{ConfigRequest: cr}
 
 	var ce3 consensus_state.ControlEvent
-	err = ce3.FromBytes(ce.Bytes(), bafd.Deserialize)
+	err = ce3.FromBytes(ce.Bytes())
 	assert.NoError(t, err)
 	assert.NotNil(t, ce3.ConfigRequest)
 	assert.Equal(t, cr.Envelope.Payload, ce3.ConfigRequest.Envelope.Payload)

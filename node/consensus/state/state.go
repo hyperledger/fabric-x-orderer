@@ -110,9 +110,9 @@ func (s *State) Serialize() []byte {
 		}
 	}
 
-	protoPending := make([][]byte, len(s.Pending))
+	protoPending := make([]*stateprotos.BatchAttestationFragment, len(s.Pending))
 	for i, baf := range s.Pending {
-		protoPending[i] = baf.Serialize()
+		protoPending[i] = baf.(*types.SimpleBatchAttestationFragment).ToProto()
 	}
 
 	protoState := &stateprotos.State{
@@ -131,7 +131,7 @@ func (s *State) Serialize() []byte {
 	return buff
 }
 
-func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
+func (s *State) Deserialize(rawBytes []byte) error {
 	var ps stateprotos.State
 	if err := proto.Unmarshal(rawBytes, &ps); err != nil {
 		return err
@@ -169,13 +169,10 @@ func (s *State) Deserialize(rawBytes []byte, bafd BAFDeserializer) error {
 
 	// Load pending
 	if len(ps.Pending) > 0 {
-		if bafd == nil {
-			return fmt.Errorf("no BAF deserializer provided and pending batch attestation fragments are present")
-		}
 		s.Pending = make([]types.BatchAttestationFragment, 0, len(ps.Pending))
-		for _, bafBytes := range ps.Pending {
-			baf, err := bafd.Deserialize(bafBytes)
-			if err != nil {
+		for _, bafProto := range ps.Pending {
+			baf := &types.SimpleBatchAttestationFragment{}
+			if err := baf.FromProto(bafProto); err != nil {
 				return fmt.Errorf("failed loading batch attestation fragment: %v", err)
 			}
 			s.Pending = append(s.Pending, baf)
@@ -429,8 +426,10 @@ func (ce *ControlEvent) toProto() *stateprotos.ControlEvent {
 
 	switch {
 	case ce.BAF != nil:
+		// Use ToProto() method from SimpleBatchAttestationFragment
+		bafProto := ce.BAF.(*types.SimpleBatchAttestationFragment)
 		protoEvent.Event = &stateprotos.ControlEvent_Baf{
-			Baf: ce.BAF.Serialize(),
+			Baf: bafProto.ToProto(),
 		}
 	case ce.Complaint != nil:
 		protoEvent.Event = &stateprotos.ControlEvent_Complaint{
@@ -447,11 +446,12 @@ func (ce *ControlEvent) toProto() *stateprotos.ControlEvent {
 	return protoEvent
 }
 
-func (ce *ControlEvent) fromProto(pe *stateprotos.ControlEvent, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) error {
+func (ce *ControlEvent) fromProto(pe *stateprotos.ControlEvent) error {
 	switch event := pe.Event.(type) {
 	case *stateprotos.ControlEvent_Baf:
-		baf, err := fragmentFromBytes(event.Baf)
-		if err != nil {
+		// Create SimpleBatchAttestationFragment and populate from protobuf
+		baf := &types.SimpleBatchAttestationFragment{}
+		if err := baf.FromProto(event.Baf); err != nil {
 			return err
 		}
 		ce.BAF = baf
@@ -481,12 +481,12 @@ func (ce *ControlEvent) Bytes() []byte {
 	return bytes
 }
 
-func (ce *ControlEvent) FromBytes(bytes []byte, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) error {
+func (ce *ControlEvent) FromBytes(bytes []byte) error {
 	protoEvent := &stateprotos.ControlEvent{}
 	if err := proto.Unmarshal(bytes, protoEvent); err != nil {
 		return fmt.Errorf("failed to unmarshal control event: %v", err)
 	}
-	return ce.fromProto(protoEvent, fragmentFromBytes)
+	return ce.fromProto(protoEvent)
 }
 
 func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {

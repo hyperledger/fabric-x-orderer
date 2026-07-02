@@ -34,8 +34,7 @@ func duplicateBAFSetSigner(baf arma_types.BatchAttestationFragment, signer arma_
 
 func printEvent(event []byte) string {
 	var ce state.ControlEvent
-	bafd := &state.BAFDeserialize{}
-	if err := ce.FromBytes(event, bafd.Deserialize); err != nil {
+	if err := ce.FromBytes(event); err != nil {
 		return fmt.Sprintf("error: %v", err)
 	}
 	return ce.String()

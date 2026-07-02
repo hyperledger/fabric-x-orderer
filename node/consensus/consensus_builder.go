@@ -104,9 +104,8 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.DeliverService = delivery.DeliverService(map[string]blockledger.Reader{decisionChannelName: consLedger})
 	c.Config = nodeConfig
 	c.Arma = &Consenter{
-		DB:              badb,
-		Logger:          c.Logger,
-		BAFDeserializer: &state.BAFDeserialize{},
+		DB:     badb,
+		Logger: c.Logger,
 	}
 	c.BADB = badb
 	c.State = initialState

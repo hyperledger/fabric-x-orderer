@@ -112,7 +112,7 @@ func (h *Header) Deserialize(rawBytes []byte) error {
 		h.State = nil
 	} else {
 		h.State = &State{}
-		if err := h.State.Deserialize(protoHeader.State, &BAFDeserialize{}); err != nil {
+		if err := h.State.Deserialize(protoHeader.State); err != nil {
 			return errors.Wrap(err, "failed to deserialize state")
 		}
 	}

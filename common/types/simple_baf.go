@@ -9,7 +9,11 @@ package types
 import (
 	"encoding/asn1"
 	"fmt"
+	"math"
 	"math/big"
+
+	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
+	"google.golang.org/protobuf/proto"
 )
 
 type SimpleBatchAttestationFragment struct {
@@ -96,20 +100,62 @@ type asn1BAF struct {
 	PrimarySig     []byte
 }
 
-// Serialize marshals every field including the signatures, using an auxiliary ASN1 struct and asn1.Marshal.
-func (s *SimpleBatchAttestationFragment) Serialize() []byte {
-	a := asn1BAF{
-		Shard:          int(s.shard),
-		Primary:        int(s.primary),
-		Seq:            new(big.Int).SetUint64(uint64(s.seq)),
-		Digest:         s.digest,
-		ConfigSequence: new(big.Int).SetUint64(uint64(s.configSequence)),
-		TXCount:        new(big.Int).SetUint64(uint64(s.txCount)),
-		Signer:         int(s.signer),
-		Sig:            s.signature,
-		PrimarySig:     s.primarySignature,
+// ToProto converts SimpleBatchAttestationFragment to protobuf message
+func (s *SimpleBatchAttestationFragment) ToProto() *stateprotos.BatchAttestationFragment {
+	return &stateprotos.BatchAttestationFragment{
+		Shard:            uint32(s.shard),
+		Primary:          uint32(s.primary),
+		Seq:              uint64(s.seq),
+		Digest:           s.digest,
+		ConfigSequence:   uint64(s.configSequence),
+		TxCount:          s.txCount,
+		Signer:           uint32(s.signer),
+		Signature:        s.signature,
+		PrimarySignature: s.primarySignature,
 	}
-	result, err := asn1.Marshal(a)
+}
+
+// FromProto populates SimpleBatchAttestationFragment from protobuf message
+func (s *SimpleBatchAttestationFragment) FromProto(pb *stateprotos.BatchAttestationFragment) error {
+	if pb.GetShard() > math.MaxUint16 {
+		return fmt.Errorf("the BAF Shard value %d exceeds uint16 maximum %d", pb.Shard, math.MaxUint16)
+	}
+	if pb.GetPrimary() > math.MaxUint16 {
+		return fmt.Errorf("the BAF Primary value %d exceeds uint16 maximum %d", pb.Primary, math.MaxUint16)
+	}
+	if pb.GetSigner() > math.MaxUint16 {
+		return fmt.Errorf("the BAF Signer value %d exceeds uint16 maximum %d", pb.Signer, math.MaxUint16)
+	}
+
+	s.shard = ShardID(pb.GetShard())
+	s.primary = PartyID(pb.GetPrimary())
+	s.seq = BatchSequence(pb.GetSeq())
+	s.digest = pb.GetDigest()
+	s.configSequence = ConfigSequence(pb.GetConfigSequence())
+	s.txCount = pb.GetTxCount()
+	s.signer = PartyID(pb.GetSigner())
+
+	// Normalize nil to empty slice for signature to maintain backward compatibility
+	if pb.GetSignature() == nil {
+		s.signature = []byte{}
+	} else {
+		s.signature = pb.GetSignature()
+	}
+
+	// Normalize empty slice to nil for primarySignature (original behavior)
+	if len(pb.GetPrimarySignature()) == 0 {
+		s.primarySignature = nil
+	} else {
+		s.primarySignature = pb.GetPrimarySignature()
+	}
+
+	return nil
+}
+
+// Serialize marshals every field including the signatures using protobuf.
+func (s *SimpleBatchAttestationFragment) Serialize() []byte {
+	pb := s.ToProto()
+	result, err := proto.Marshal(pb)
 	if err != nil {
 		panic(err)
 	}
@@ -136,28 +182,13 @@ func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
 	return result
 }
 
-// Deserialize unmarshals every field including the signatures, using an auxiliary ASN1 struct and asn1.Unmarshal.
+// Deserialize unmarshals every field including the signatures using protobuf.
 func (s *SimpleBatchAttestationFragment) Deserialize(bytes []byte) error {
-	a := &asn1BAF{}
-	_, err := asn1.Unmarshal(bytes, a)
+	pb := &stateprotos.BatchAttestationFragment{}
+	err := proto.Unmarshal(bytes, pb)
 	if err != nil {
 		return err
 	}
 
-	s.shard = ShardID(a.Shard)
-	s.primary = PartyID(a.Primary)
-	s.seq = BatchSequence(a.Seq.Uint64())
-	s.digest = a.Digest
-	s.configSequence = ConfigSequence(a.ConfigSequence.Uint64())
-	s.txCount = uint64(a.TXCount.Uint64())
-	s.signer = PartyID(a.Signer)
-	s.signature = a.Sig
-	// Normalize empty slice to nil for primarySignature
-	if len(a.PrimarySig) == 0 {
-		s.primarySignature = nil
-	} else {
-		s.primarySignature = a.PrimarySig
-	}
-
-	return nil
+	return s.FromProto(pb)
 }
