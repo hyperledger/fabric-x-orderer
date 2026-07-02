@@ -74,7 +74,7 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	setup.configs[0].Router = consensusNode.Config.Router
 
 	// Submit request (decision 1)
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	b := <-setup.listeners[0].c
@@ -111,10 +111,10 @@ func TestSubmitConfigConsensusNode(t *testing.T) {
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 	setup.consensusNodes[0].Config.Bundle = bundle
 
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 1)
 	require.ErrorContains(t, err, "mismatch config sequence")
 
-	err = createAndSubmitRequestWithConfigSeq(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 1, 1)
+	err = createAndSubmitRequestWithConfigSeq(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 1, 1)
 	require.NoError(t, err)
 
 	setup.consensusNodes[0].Stop()
@@ -173,7 +173,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	setup.configs[0].Router = consensusNode.Config.Router
 
 	// Submit request (decision 1)
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[0].sk, 1, 1, digest124, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 
 	for i := 0; i < parties; i++ {
@@ -182,7 +182,7 @@ func TestSubmitConfigConsensusMultiNodes(t *testing.T) {
 	}
 
 	// Submit config request (decision 2) and data request
-	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[1].sk, 2, 1, digest124, 1, 1)
+	err = createAndSubmitRequest(setup.consensusNodes[0], setup.batcherNodes[1].sk, 2, 1, digest124, 1, setup.batcherNodes[0].sk, 1)
 	require.NoError(t, err)
 	_, err = createAndSubmitConfigRequest(setup.consensusNodes[0], routerCert.TLSCert, payloadBytes)
 	require.NoError(t, err)
