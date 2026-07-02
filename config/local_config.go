@@ -228,12 +228,21 @@ func LoadLocalConfig(filePath string) (*LocalConfig, string, error) {
 		return nil, "", fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
 	}
 
+	// TODO: add validation for all parameters.
+	// Define mandatory parameters and optional parameters with default values.
+	// For optional parameters, if not set, fill in the default values. When completing the default values, emit a log message indicating that the default value is being used.
+	// For mandatory parameters, if not set, return an error.
+
 	if nodeLocalConfig.OperationsConfig == nil {
 		nodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
 	}
 
 	if nodeLocalConfig.MetricsConfig == nil {
 		nodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
+	}
+
+	if nodeLocalConfig.GeneralConfig.BCCSP == nil {
+		nodeLocalConfig.GeneralConfig.BCCSP = factory.GetDefaultOpts()
 	}
 
 	return &LocalConfig{
