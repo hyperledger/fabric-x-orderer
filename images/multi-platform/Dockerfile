@@ -29,7 +29,7 @@ RUN make binary
 ###########################################
 # Stage 2: Production runtime image
 ###########################################
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6 AS prod
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8 AS prod
 
 ARG VERSION=1.0
 ARG CREATED
