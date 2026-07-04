@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/asn1"
 	"math/big"
 	"os"
 	"strings"
@@ -1115,6 +1116,212 @@ func TestSignProposal(t *testing.T) {
 
 	_, err = c.VerifyConsenterSig(*sig, proposal)
 	require.NoError(t, err)
+}
+
+func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
+	require.NoError(t, err)
+
+	db, err := badb.NewBatchAttestationDB(dir, logger)
+	require.NoError(t, err)
+
+	numOfParties := 4
+	sks := make([]*ecdsa.PrivateKey, numOfParties)
+	verifier := make(crypto.ECDSAVerifier)
+
+	for i := 0; i < numOfParties; i++ {
+		sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.NoError(t, err)
+		sks[i] = sk
+
+		signer := crypto.ECDSASigner(*sk)
+		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
+			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+		}
+	}
+
+	initialAppContext := &common.BlockHeader{
+		Number:       10,
+		PreviousHash: nil,
+		DataHash:     nil,
+	}
+
+	initialState := state.State{
+		N:          4,
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  2,
+		Quorum:     3,
+		AppContext: protoutil.MarshalOrPanic(initialAppContext),
+	}
+
+	consenter := &node_consensus.Consenter{
+		DB:              db,
+		Logger:          logger,
+		BAFDeserializer: &state.BAFDeserialize{},
+	}
+
+	ledger, err := ledger.NewConsensusLedger(dir)
+	require.NoError(t, err)
+
+	genesisCommonBlock := &common.Block{Header: &common.BlockHeader{Number: 0}}
+	genesisProposal := smartbft_types.Proposal{
+		Header: (&state.Header{
+			AvailableCommonBlocks: []*common.Block{genesisCommonBlock},
+			State:                 &initialState,
+			Num:                   0,
+		}).Serialize(),
+		Metadata: nil,
+	}
+	ledger.Append(state.CreateBlockToAppendFromDecision(0, genesisProposal, nil, nil, 0))
+
+	c := &node_consensus.Consensus{
+		Arma:        consenter,
+		State:       &initialState,
+		Logger:      logger,
+		SigVerifier: verifier,
+		Signer:      crypto.ECDSASigner(*sks[0]),
+		Config: &nodeconfig.ConsenterNodeConfig{
+			PartyId:   1,
+			BFTConfig: smartbft_types.Configuration{SelfID: 1},
+		},
+		PartyID: 1,
+		Storage: ledger,
+	}
+
+	// Create a valid proposal for testing
+	dig := make([]byte, 32-3)
+	dig123 := append([]byte{1, 2, 3}, dig...)
+	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 0, nil)
+	require.NoError(t, err)
+	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0, 0, nil)
+	require.NoError(t, err)
+
+	ces := []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}}
+	reqs := make([][]byte, len(ces))
+	for i, ce := range ces {
+		reqs[i] = ce.Bytes()
+	}
+	brs := arma_types.BatchedRequests(reqs)
+
+	header := state.Header{}
+	header.Num = 0
+
+	latestBlockHeader := &common.BlockHeader{
+		Number:       initialAppContext.Number + 1,
+		DataHash:     baf123id1p1s1.Digest(),
+		PreviousHash: protoutil.BlockHeaderHash(initialAppContext),
+	}
+
+	newState := initialState
+	newState.AppContext = protoutil.MarshalOrPanic(latestBlockHeader)
+	header.State = &newState
+
+	proposal := smartbft_types.Proposal{
+		Payload: brs.Serialize(),
+		Header:  header.Serialize(),
+	}
+
+	t.Run("nil signature value", func(t *testing.T) {
+		invalidSig := smartbft_types.Signature{
+			Value: nil,
+			Msg:   []byte("some message"),
+			ID:    1,
+		}
+		_, err := c.VerifyConsenterSig(invalidSig, proposal)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "signature value is nil")
+	})
+
+	t.Run("nil signature msg", func(t *testing.T) {
+		// Create valid ASN.1 encoded array for values
+		validValues := [][]byte{[]byte("value1")}
+		validValuesBytes, err := asn1.Marshal(validValues)
+		require.NoError(t, err)
+
+		invalidSig := smartbft_types.Signature{
+			Value: validValuesBytes,
+			Msg:   nil,
+			ID:    1,
+		}
+		_, err = c.VerifyConsenterSig(invalidSig, proposal)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "signature msg is nil")
+	})
+
+	t.Run("empty values array after unmarshal", func(t *testing.T) {
+		// Create ASN.1 encoded empty array
+		emptyArray := [][]byte{}
+		emptyArrayBytes, err := asn1.Marshal(emptyArray)
+		require.NoError(t, err)
+
+		invalidSig := smartbft_types.Signature{
+			Value: emptyArrayBytes,
+			Msg:   []byte("some message"),
+			ID:    1,
+		}
+		_, err = c.VerifyConsenterSig(invalidSig, proposal)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "signature values array is empty")
+	})
+
+	t.Run("empty msgs array after unmarshal", func(t *testing.T) {
+		// Create ASN.1 encoded array with one element for values
+		validValues := [][]byte{[]byte("value1")}
+		validValuesBytes, err := asn1.Marshal(validValues)
+		require.NoError(t, err)
+
+		// Create ASN.1 encoded empty array for msgs
+		emptyArray := [][]byte{}
+		emptyArrayBytes, err := asn1.Marshal(emptyArray)
+		require.NoError(t, err)
+
+		invalidSig := smartbft_types.Signature{
+			Value: validValuesBytes,
+			Msg:   emptyArrayBytes,
+			ID:    1,
+		}
+		_, err = c.VerifyConsenterSig(invalidSig, proposal)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "signature msgs array is empty")
+	})
+
+	t.Run("invalid ASN.1 encoding in value", func(t *testing.T) {
+		invalidSig := smartbft_types.Signature{
+			Value: []byte("not valid asn1"),
+			Msg:   []byte("some message"),
+			ID:    1,
+		}
+		_, err := c.VerifyConsenterSig(invalidSig, proposal)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed unmarshaling signature value")
+	})
+
+	t.Run("invalid ASN.1 encoding in msg", func(t *testing.T) {
+		// Create valid ASN.1 encoded array for values
+		validValues := [][]byte{[]byte("value1")}
+		validValuesBytes, err := asn1.Marshal(validValues)
+		require.NoError(t, err)
+
+		invalidSig := smartbft_types.Signature{
+			Value: validValuesBytes,
+			Msg:   []byte("not valid asn1"),
+			ID:    1,
+		}
+		_, err = c.VerifyConsenterSig(invalidSig, proposal)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed unmarshaling signature msg")
+	})
+
+	t.Run("valid signature passes", func(t *testing.T) {
+		// Create a valid signature using SignProposal
+		validSig := c.SignProposal(proposal, nil)
+		require.NotNil(t, validSig)
+
+		_, err := c.VerifyConsenterSig(*validSig, proposal)
+		require.NoError(t, err)
+	})
 }
 
 func TestConsensusStartStop(t *testing.T) {

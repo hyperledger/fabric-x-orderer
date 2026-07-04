@@ -481,13 +481,34 @@ func (c *Consensus) VerifyRequest(req []byte) (smartbft_types.RequestInfo, error
 // It returns the auxiliary data in the signature
 // (from SmartBFT API)
 func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop smartbft_types.Proposal) ([]byte, error) {
+	// Validate signature.Value is not nil to prevent panic in asn1.Unmarshal
+	if signature.Value == nil {
+		return nil, errors.New("signature value is nil")
+	}
+
 	var values [][]byte
 	if _, err := asn1.Unmarshal(signature.Value, &values); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed unmarshaling signature value")
 	}
+
+	// Validate values array is not empty to prevent index out of bounds
+	if len(values) == 0 {
+		return nil, errors.New("signature values array is empty")
+	}
+
+	// Validate signature.Msg is not nil to prevent panic in asn1.Unmarshal
+	if signature.Msg == nil {
+		return nil, errors.New("signature msg is nil")
+	}
+
 	var msgs [][]byte
 	if _, err := asn1.Unmarshal(signature.Msg, &msgs); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed unmarshaling signature msg")
+	}
+
+	// Validate msgs array is not empty to prevent index out of bounds
+	if len(msgs) == 0 {
+		return nil, errors.New("signature msgs array is empty")
 	}
 
 	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
