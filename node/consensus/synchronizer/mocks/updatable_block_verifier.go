@@ -332,16 +332,6 @@ func (fake *UpdatableBlockVerifier) VerifyBlockAttestationReturnsOnCall(i int, r
 func (fake *UpdatableBlockVerifier) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.cloneMutex.RLock()
-	defer fake.cloneMutex.RUnlock()
-	fake.updateBlockHeaderMutex.RLock()
-	defer fake.updateBlockHeaderMutex.RUnlock()
-	fake.updateConfigMutex.RLock()
-	defer fake.updateConfigMutex.RUnlock()
-	fake.verifyBlockMutex.RLock()
-	defer fake.verifyBlockMutex.RUnlock()
-	fake.verifyBlockAttestationMutex.RLock()
-	defer fake.verifyBlockAttestationMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

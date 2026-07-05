@@ -146,6 +146,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 		&ConsenterSupportAdapter{consensus: c}, // support ConsenterSupport,
 		nodeConfig.BCCSP,
 		&comm.PredicateDialer{Config: c.clientConfig()},
+		lastConfigBlock, // lastConfigBlock is the config block that was used to join the cluster
 	)
 	c.Logger.Info("Created a BFT Synchronizer")
 

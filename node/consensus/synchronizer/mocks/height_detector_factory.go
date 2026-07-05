@@ -107,8 +107,6 @@ func (fake *FakeHeightDetectorFactory) CreateHeightDetectorReturnsOnCall(i int, 
 func (fake *FakeHeightDetectorFactory) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.createHeightDetectorMutex.RLock()
-	defer fake.createHeightDetectorMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
