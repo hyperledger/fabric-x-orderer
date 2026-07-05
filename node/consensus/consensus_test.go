@@ -1153,9 +1153,8 @@ func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
 	}
 
 	consenter := &node_consensus.Consenter{
-		DB:              db,
-		Logger:          logger,
-		BAFDeserializer: &state.BAFDeserialize{},
+		DB:     db,
+		Logger: logger,
 	}
 
 	ledger, err := ledger.NewConsensusLedger(dir)

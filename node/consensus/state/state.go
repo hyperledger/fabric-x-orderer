@@ -112,7 +112,11 @@ func (s *State) Serialize() []byte {
 
 	protoPending := make([]*stateprotos.BatchAttestationFragment, len(s.Pending))
 	for i, baf := range s.Pending {
-		protoPending[i] = baf.(*types.SimpleBatchAttestationFragment).ToProto()
+		simpleBAF, ok := baf.(*types.SimpleBatchAttestationFragment)
+		if !ok {
+			panic("unexpected type for BatchAttestationFragment")
+		}
+		protoPending[i] = simpleBAF.ToProto()
 	}
 
 	protoState := &stateprotos.State{
@@ -426,8 +430,10 @@ func (ce *ControlEvent) toProto() *stateprotos.ControlEvent {
 
 	switch {
 	case ce.BAF != nil:
-		// Use ToProto() method from SimpleBatchAttestationFragment
-		bafProto := ce.BAF.(*types.SimpleBatchAttestationFragment)
+		bafProto, ok := ce.BAF.(*types.SimpleBatchAttestationFragment)
+		if !ok {
+			panic("unexpected type for BAF")
+		}
 		protoEvent.Event = &stateprotos.ControlEvent_Baf{
 			Baf: bafProto.ToProto(),
 		}
@@ -447,20 +453,32 @@ func (ce *ControlEvent) toProto() *stateprotos.ControlEvent {
 }
 
 func (ce *ControlEvent) fromProto(pe *stateprotos.ControlEvent) error {
+	ce.BAF = nil
+	ce.Complaint = nil
+	ce.ConfigRequest = nil
+
 	switch event := pe.Event.(type) {
 	case *stateprotos.ControlEvent_Baf:
-		// Create SimpleBatchAttestationFragment and populate from protobuf
+		if event.Baf == nil {
+			return fmt.Errorf("BAF event payload is nil")
+		}
 		baf := &types.SimpleBatchAttestationFragment{}
 		if err := baf.FromProto(event.Baf); err != nil {
 			return err
 		}
 		ce.BAF = baf
 	case *stateprotos.ControlEvent_Complaint:
+		if event.Complaint == nil {
+			return fmt.Errorf("Complaint event payload is nil")
+		}
 		ce.Complaint = &Complaint{}
 		if err := ce.Complaint.fromProto(event.Complaint); err != nil {
 			return err
 		}
 	case *stateprotos.ControlEvent_ConfigRequest:
+		if event.ConfigRequest == nil {
+			return fmt.Errorf("ConfigRequest event payload is nil")
+		}
 		ce.ConfigRequest = &ConfigRequest{}
 		if err := ce.ConfigRequest.fromProto(event.ConfigRequest); err != nil {
 			return err

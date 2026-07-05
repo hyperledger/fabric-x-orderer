@@ -117,6 +117,9 @@ func (s *SimpleBatchAttestationFragment) ToProto() *stateprotos.BatchAttestation
 
 // FromProto populates SimpleBatchAttestationFragment from protobuf message
 func (s *SimpleBatchAttestationFragment) FromProto(pb *stateprotos.BatchAttestationFragment) error {
+	if pb == nil {
+		return fmt.Errorf("nil protobuf message")
+	}
 	if pb.GetShard() > math.MaxUint16 {
 		return fmt.Errorf("the BAF Shard value %d exceeds uint16 maximum %d", pb.Shard, math.MaxUint16)
 	}
