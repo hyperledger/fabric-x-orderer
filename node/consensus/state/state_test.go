@@ -627,7 +627,7 @@ func TestDetectEquivocation(t *testing.T) {
 				// Primary 1 (term 5 % 4 = 1) sends three different digests
 				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(10), []byte{1, 1, 1}, types.PartyID(2), 0, 0, nil),
 				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(10), []byte{2, 2, 2}, types.PartyID(3), 0, 0, nil),
-				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(10), []byte{3, 3, 3}, types.PartyID(0), 0, 0, nil),
+				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(10), []byte{3, 3, 3}, types.PartyID(4), 0, 0, nil),
 			},
 		}
 
@@ -716,25 +716,6 @@ func TestDetectEquivocation(t *testing.T) {
 		// Both terms should be incremented
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
 		assert.Equal(t, uint64(2), state.Shards[1].Term)
-	})
-
-	t.Run("equivocation only rotates current primary", func(t *testing.T) {
-		state := consensus_state.State{
-			N:         4,
-			Threshold: 2,
-			Quorum:    3,
-			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 2}}, // Current primary is 2 % 4 = 2
-			Pending: []types.BatchAttestationFragment{
-				// Primary 1 equivocated (but it's not the current primary)
-				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0, nil),
-				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{4, 5, 6}, types.PartyID(3), 0, 0, nil),
-			},
-		}
-
-		consensus_state.DetectEquivocation(&state, 0, logger)
-
-		// Term should not change because primary 1 is not the current primary (current is 2)
-		assert.Equal(t, uint64(2), state.Shards[0].Term)
 	})
 
 	t.Run("empty pending - no equivocation", func(t *testing.T) {

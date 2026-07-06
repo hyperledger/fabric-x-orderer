@@ -736,13 +736,9 @@ func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogg
 			// Rotate the primary in the affected shard
 			for i := range s.Shards {
 				if s.Shards[i].Shard == vote.shard {
-					term := s.Shards[i].Term
-					currentPrimary := types.PartyID(term % uint64(s.N))
-					if currentPrimary == vote.primary {
-						l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation at sequence %d",
-							vote.primary, s.Shards[i].Term, s.Shards[i].Term+1, s.Shards[i].Shard, vote.seq)
-						s.Shards[i].Term++
-					}
+					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation at sequence %d",
+						vote.primary, s.Shards[i].Term, s.Shards[i].Term+1, s.Shards[i].Shard, vote.seq)
+					s.Shards[i].Term++
 					break
 				}
 			}

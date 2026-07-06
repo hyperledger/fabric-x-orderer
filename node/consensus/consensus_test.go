@@ -682,7 +682,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			numPending: 1,
 		},
 		{
-			name: "equivocation detection - primary sends conflicting BAFs",
+			name: "equivocation detection - primary sends conflicting digests",
 			initialAppContext: &common.BlockHeader{
 				Number:       0,
 				PreviousHash: nil,
@@ -705,7 +705,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			// For equivocation test, we need to set the initial term so that primary 1 is the current primary
 			shards := []state.ShardTerm{{Shard: 1}, {Shard: 2}}
-			if strings.Contains(tst.name, "equivocation") {
+			if tst.name == "equivocation detection - primary sends conflicting digests" {
 				shards = []state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2}} // Term 1 % 4 = 1 (primary 1)
 			}
 
