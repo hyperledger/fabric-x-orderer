@@ -7,9 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
-	"crypto/ecdsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -200,35 +197,16 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 
 func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
 	verifier := make(crypto.ECDSAVerifier)
+
+	// Add consenter public keys
 	for _, ci := range consenterInfos {
-		pk, _ := pem.Decode(ci.PublicKey)
-		if pk == nil || pk.Bytes == nil {
-			logger.Panicf("Failed decoding consenter public key")
-		}
-
-		pk4, err := x509.ParsePKIXPublicKey(pk.Bytes)
-		if err != nil {
-			logger.Panicf("Failed parsing consenter public key: %v", err)
-		}
-
-		verifier[crypto.ShardPartyKey{Shard: arma_types.ShardIDConsensus, Party: arma_types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+		verifier.AddPublicKeyToVerifier(ci.PublicKey, "consenter", arma_types.ShardIDConsensus, arma_types.PartyID(ci.PartyID), logger)
 	}
 
+	// Add batcher public keys for each shard
 	for _, shard := range shardInfo {
 		for _, bi := range shard.Batchers {
-			pk := bi.PublicKey
-
-			pk3, _ := pem.Decode(pk)
-			if pk == nil {
-				logger.Panicf("Failed decoding batcher public key")
-			}
-
-			pk4, err := x509.ParsePKIXPublicKey(pk3.Bytes)
-			if err != nil {
-				logger.Panicf("Failed parsing batcher public key: %v", err)
-			}
-
-			verifier[crypto.ShardPartyKey{Shard: arma_types.ShardID(shard.ShardId), Party: arma_types.PartyID(bi.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+			verifier.AddPublicKeyToVerifier(bi.PublicKey, "batcher", arma_types.ShardID(shard.ShardId), arma_types.PartyID(bi.PartyID), logger)
 		}
 	}
 

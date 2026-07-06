@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
@@ -118,6 +119,8 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 	b.primaryAckConnector = CreatePrimaryAckConnector(b.primaryID, b.config.ShardId, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 1*time.Second, 100*time.Millisecond, 500*time.Millisecond)
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
+	b.sigVerifier = buildVerifier(batchers, b.config.ShardId, b.logger)
+
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),
 		BatchPuller:             batchPuller,
@@ -136,6 +139,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		BatchAcker:              b,
 		Complainer:              b,
 		BatchedRequestsVerifier: b.requestsInspectorVerifier,
+		SigVerifier:             b.sigVerifier,
 		BatchSequenceGap:        b.config.BatchSequenceGap,
 		Metrics:                 b.metrics,
 	}
@@ -251,4 +255,13 @@ func DefaultRequestID(req []byte) string {
 	// TODO maybe calculate the request ID differently
 	digest := sha256.Sum256(req)
 	return hex.EncodeToString(digest[:])
+}
+
+func buildVerifier(batchers []node_config.BatcherInfo, shardID types.ShardID, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
+	verifier := make(crypto.ECDSAVerifier)
+	for _, bi := range batchers {
+		verifier.AddPublicKeyToVerifier(bi.PublicKey, "batcher", shardID, types.PartyID(bi.PartyID), logger)
+	}
+
+	return verifier
 }
