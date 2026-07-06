@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -30,7 +31,7 @@ type Rule func(*State, types.ConfigSequence, *flogging.FabricLogger, ...ControlE
 var Rules = []Rule{
 	FilterPendingEventsWithDiffConfigSeq,
 	CollectAndDeduplicateEvents,
-	// DetectEquivocation, // TODO: false positive, lets find out why
+	DetectEquivocation,
 	PrimaryRotateDueToComplaints,
 	CleanupOldComplaints,
 	// CleanupOldAttestations, // TODO: fully test for byzantine failures
@@ -714,46 +715,66 @@ func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequen
 	s.Complaints = filteredComplaints
 }
 
-func DetectEquivocation(s *State, l *flogging.FabricLogger, _ ...ControlEvent) {
-	// We have a total of N parties per shard.
-	// We collect a quorum of signatures and then wait for f+1 identical ones.
-	// If we can't collect such, it means the primary equivocated.
+func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
+	// Since the primary signs the BAF, if we see multiple different digests
+	// for the same <seq, shard, primary> tuple, the primary has equivocated.
+	// In this case, we rotate the primary by incrementing the term.
 
 	// <seq, shard, primary> --> { digest -->  signer }
 	m := batchAttestationVotesByDigests(s)
 
-	// For each <seq, shard, primary> check if it has a digest with a quorum of votes.
+	// For each <seq, shard, primary> check if it has multiple different digests
+	for vote, digest2signers := range m {
+		// If there are multiple different digests for the same <seq, shard, primary>,
+		// the primary has equivocated
+		if len(digest2signers) > 1 {
+			l.Warnf("Detected equivocation: batch attestation sequence %d in shard %d from primary %d "+
+				"has %d different digests (%v). Primary has sent conflicting batches.",
+				vote.seq, vote.shard, vote.primary,
+				len(digest2signers), getDigestSummary(digest2signers))
 
-	for batchAttestation, digest2signers := range m {
-
-		var foundThreshold bool
-
-		var totalSigners int
-
-		for _, signers := range digest2signers {
-			totalSigners += len(signers)
-			if len(signers) >= int(s.Threshold) {
-				foundThreshold = true
-				break
+			// Rotate the primary in the affected shard
+			for i := range s.Shards {
+				if s.Shards[i].Shard == vote.shard {
+					term := s.Shards[i].Term
+					currentPrimary := types.PartyID(term % uint64(s.N))
+					if currentPrimary == vote.primary {
+						l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation at sequence %d",
+							vote.primary, s.Shards[i].Term, s.Shards[i].Term+1, s.Shards[i].Shard, vote.seq)
+						s.Shards[i].Term++
+					}
+					break
+				}
 			}
 		}
+	}
+}
 
-		if totalSigners >= int(s.Quorum) && !foundThreshold {
-			l.Warnf("batch attestation sequence %d in shard %d of primary %d"+
-				" has more than %d distinct signers but no threshold of signers signed on the same digest (%v)",
-				batchAttestation.seq, batchAttestation.shard, batchAttestation.primary, totalSigners, digest2signers)
-
-			for _, shard := range s.Shards {
-				term := shard.Term
-				currentPrimary := types.PartyID(term % uint64(s.N))
-				if currentPrimary == batchAttestation.primary {
-					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation for sequence %d in shard %d",
-						batchAttestation.primary, shard.Term, shard.Term+1, shard.Shard, batchAttestation.seq, batchAttestation.shard)
-					shard.Term++
-				}
-			} // for all shards
-		} // equivocation detected
-	} // for all <seq, shard, primary>
+// getDigestSummary returns a summary of digests for logging purposes
+func getDigestSummary(digest2signers map[string][]types.PartyID) string {
+	var summary strings.Builder
+	summary.WriteString("[")
+	count := 0
+	for digest, signers := range digest2signers {
+		if count > 0 {
+			summary.WriteString(", ")
+		}
+		hexDigest := hex.EncodeToString([]byte(digest))
+		// Truncate to 8 characters if longer, otherwise use full length
+		if len(hexDigest) > 8 {
+			hexDigest = hexDigest[:8]
+		}
+		fmt.Fprintf(&summary, "digest=%s (signers=%d)", hexDigest, len(signers))
+		count++
+		if count >= 3 { // Limit to first 3 digests for brevity
+			if len(digest2signers) > 3 {
+				fmt.Fprintf(&summary, ", ... and %d more", len(digest2signers)-3)
+			}
+			break
+		}
+	}
+	summary.WriteString("]")
+	return summary.String()
 }
 
 func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[string][]types.PartyID {
@@ -823,6 +844,8 @@ func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []t
 
 	l.Debugf("Pending attestations count changed from %d to %d", oldPendingCount, newPendingCount)
 	s.Pending = newPending
+
+	// TODO explicit digest selection: consider adding logic to explicitly choose the digest with the most signatures when equivocation is detected
 
 	return extracted
 }
