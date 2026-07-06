@@ -16,6 +16,19 @@ message ShardTerm {
   uint64 term = 2;
 }
 
+// BatchAttestationFragment represents a batch attestation fragment
+message BatchAttestationFragment {
+  uint32 shard = 1;
+  uint32 primary = 2;
+  uint64 seq = 3;
+  bytes digest = 4;
+  uint64 config_sequence = 5;
+  uint64 tx_count = 6;
+  uint32 signer = 7;
+  bytes signature = 8;
+  bytes primary_signature = 9;
+}
+
 // Complaint represents a complaint about a batcher
 message Complaint {
   uint64 config_seq = 1;
@@ -34,7 +47,7 @@ message ConfigRequest {
 // ControlEvent represents a control event that can be one of several types
 message ControlEvent {
   oneof event {
-    bytes baf = 1;                    // BatchAttestationFragment serialized
+    BatchAttestationFragment baf = 1; // BatchAttestationFragment from a batcher
     Complaint complaint = 2;          // Complaint from a batcher
     ConfigRequest config_request = 3; // Configuration update request
   }
@@ -44,7 +57,7 @@ message ControlEvent {
 message State {
   uint32 number_of_parties = 1;
   repeated ShardTerm shards = 2; // The different shards and their current terms
-  repeated bytes pending = 3;  // Pending batch attestation fragments received by consenters from batchers
+  repeated BatchAttestationFragment pending = 3;  // Pending batch attestation fragments received by consenters from batchers
   repeated Complaint complaints = 4; // Complaints received by consenters from batchers
   bytes app_context = 5; // Auxiliary data that may be served as context to the application
 }

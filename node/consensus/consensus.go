@@ -677,8 +677,7 @@ func (c *Consensus) Sign(msg []byte) []byte {
 // (from SmartBFT API)
 func (c *Consensus) RequestID(req []byte) smartbft_types.RequestInfo {
 	var ce state.ControlEvent
-	bafd := &state.BAFDeserialize{}
-	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
+	if err := ce.FromBytes(req); err != nil {
 		return smartbft_types.RequestInfo{}
 	}
 
@@ -1070,8 +1069,7 @@ func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
 
 func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
 	ce := &state.ControlEvent{}
-	bafd := &state.BAFDeserialize{}
-	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
+	if err := ce.FromBytes(req); err != nil {
 		return 0, err
 	}
 
@@ -1097,8 +1095,7 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
 
 func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
 	ce := &state.ControlEvent{}
-	bafd := &state.BAFDeserialize{}
-	if err := ce.FromBytes(req, bafd.Deserialize); err != nil {
+	if err := ce.FromBytes(req); err != nil {
 		return smartbft_types.RequestInfo{}, nil, err
 	}
 

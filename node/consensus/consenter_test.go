@@ -106,9 +106,8 @@ func TestConsenter(t *testing.T) {
 
 func createConsenter(logger *flogging.FabricLogger) *consensus.Consenter {
 	consenter := &consensus.Consenter{
-		Logger:          logger,
-		DB:              &mocks.FakeBatchAttestationDB{},
-		BAFDeserializer: &state.BAFDeserialize{},
+		Logger: logger,
+		DB:     &mocks.FakeBatchAttestationDB{},
 	}
 
 	return consenter

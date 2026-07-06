@@ -70,8 +70,7 @@ func (sc *stubConsenter) NotifyEvent(stream protos.Consensus_NotifyEventServer) 
 		}
 
 		var ce state.ControlEvent
-		bafd := &state.BAFDeserialize{}
-		ce.FromBytes(event.Payload, bafd.Deserialize)
+		ce.FromBytes(event.Payload)
 
 		sc.receivedEventsLock.Lock()
 		if ce.Complaint != nil {

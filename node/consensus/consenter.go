@@ -24,13 +24,12 @@ type BatchAttestationDB interface {
 }
 
 type Consenter struct {
-	Logger          *flogging.FabricLogger
-	DB              BatchAttestationDB
-	BAFDeserializer state.BAFDeserializer
+	Logger *flogging.FabricLogger
+	DB     BatchAttestationDB
 }
 
 func (c *Consenter) SimulateStateTransition(prevState *state.State, configSeq types.ConfigSequence, requests [][]byte) (*state.State, [][]types.BatchAttestationFragment, []*state.ConfigRequest) {
-	controlEvents, err := requestsToControlEvents(requests, c.BAFDeserializer.Deserialize)
+	controlEvents, err := requestsToControlEvents(requests)
 	if err != nil {
 		panic(err)
 	}
@@ -114,11 +113,11 @@ func indexBAFs(batchAttestationFragments []types.BatchAttestationFragment) map[s
 	return index
 }
 
-func requestsToControlEvents(requests [][]byte, fragmentFromBytes func([]byte) (types.BatchAttestationFragment, error)) ([]state.ControlEvent, error) {
+func requestsToControlEvents(requests [][]byte) ([]state.ControlEvent, error) {
 	events := make([]state.ControlEvent, 0, len(requests))
 	for i := 0; i < len(requests); i++ {
 		ce := state.ControlEvent{}
-		if err := ce.FromBytes(requests[i], fragmentFromBytes); err != nil {
+		if err := ce.FromBytes(requests[i]); err != nil {
 			return nil, err
 		}
 		events = append(events, ce)
