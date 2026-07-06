@@ -10,8 +10,10 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/msputils/mock"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/test/mocks"
@@ -357,6 +360,112 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 	// verify that local config is kept and shared config is changed
 	require.Equal(t, newPort, newConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.Port)
 	require.Equal(t, newConfig.LocalConfig, fullConfig.LocalConfig)
+}
+
+func TestExtractAssemblers(t *testing.T) {
+	dir := t.TempDir()
+	numOfParties := 4
+	numOfShards := 2
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	testLogger := testutil.CreateLoggerForModule(t, "TestExtractAssemblers", zap.DebugLevel)
+
+	// choose local config for party1
+	localConfigPathAssembler := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathAssembler, filepath.Join(dir, "storage"), "", 0)
+
+	fullConfig, genesisBlock, err := config.ReadConfig(localConfigPathAssembler, testLogger)
+	require.NoError(t, err)
+	require.NotNil(t, genesisBlock)
+
+	// Extract assemblers from the config
+	assemblers := fullConfig.ExtractAssemblers()
+
+	// Verify the number of assemblers matches the number of parties
+	require.Equal(t, len(assemblers), numOfParties)
+
+	// Verify each assembler matches the shared config
+	for idx, assembler := range assemblers {
+		sharedPartyConfig := fullConfig.SharedConfig.PartiesConfig[idx]
+
+		// Check PartyID matches
+		require.Equal(t, assembler.PartyID, types.PartyID(sharedPartyConfig.PartyID))
+
+		// Check Endpoint matches (Host:Port)
+		expectedEndpoint := net.JoinHostPort(sharedPartyConfig.AssemblerConfig.Host, strconv.Itoa(int(sharedPartyConfig.AssemblerConfig.Port)))
+		require.Equal(t, assembler.Endpoint, expectedEndpoint)
+
+		// Check TLSCACerts count matches
+		require.Equal(t, len(assembler.TLSCACerts), len(sharedPartyConfig.TLSCACerts))
+
+		// Check TLSCert is not empty
+		require.NotEmpty(t, assembler.TLSCert)
+		require.Equal(t, len(assembler.TLSCert), len(sharedPartyConfig.AssemblerConfig.TlsCert))
+	}
+}
+
+func TestExtractAssemblerAddresses(t *testing.T) {
+	dir := t.TempDir()
+	numOfParties := 4
+	numOfShards := 2
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	// Load the genesis block and extract the bundle
+	genesisBlockPath := filepath.Join(dir, "bootstrap/bootstrap.block")
+	data, err := os.ReadFile(genesisBlockPath)
+	require.NoError(t, err)
+	genesisBlock, err := protoutil.UnmarshalBlock(data)
+	require.NoError(t, err)
+
+	env, err := protoutil.ExtractEnvelope(genesisBlock, 0)
+	require.NoError(t, err)
+	bundle, err := channelconfig.NewBundleFromEnvelope(env, factory.GetDefault())
+	require.NoError(t, err)
+
+	// Get the orderer config from the bundle
+	ordererConfig, ok := bundle.OrdererConfig()
+	require.True(t, ok, "orderer config should exist in bundle")
+
+	// Load the full config to compare with
+	testLogger := testutil.CreateLoggerForModule(t, "TestExtractAssemblerAddresses", zap.DebugLevel)
+	localConfigPathAssembler := filepath.Join(dir, "config", "party1", "local_config_assembler.yaml")
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathAssembler, filepath.Join(dir, "storage"), "", 0)
+	fullConfig, _, err := config.ReadConfig(localConfigPathAssembler, testLogger)
+	require.NoError(t, err)
+
+	// Call ExtractAssemblerAddresses
+	party2Endpoint, err := config.ExtractAssemblerAddresses(ordererConfig)
+	require.NoError(t, err)
+
+	// Verify the returned map has the correct number of assemblers
+	require.Equal(t, len(party2Endpoint), numOfParties)
+
+	// Verify each assembler address entry matches the shared config
+	for _, sharedPartyConfig := range fullConfig.SharedConfig.PartiesConfig {
+		partyID := types.PartyID(sharedPartyConfig.PartyID)
+		endpoint, ok := party2Endpoint[partyID]
+		require.True(t, ok, "party %d should exist in party2Endpoint map", partyID)
+		require.NotNil(t, endpoint)
+
+		// Verify endpoint address matches (Host:Port)
+		expectedEndpoint := net.JoinHostPort(sharedPartyConfig.AssemblerConfig.Host, strconv.Itoa(int(sharedPartyConfig.AssemblerConfig.Port)))
+		require.Equal(t, endpoint.Address, expectedEndpoint)
+
+		// Verify TLS root certs count matches
+		require.Equal(t, len(endpoint.RootCerts), len(sharedPartyConfig.TLSCACerts))
+
+		// Verify each root cert is present
+		for i, rootCert := range endpoint.RootCerts {
+			require.NotEmpty(t, rootCert)
+			require.Equal(t, len(rootCert), len(sharedPartyConfig.TLSCACerts[i]))
+		}
+	}
 }
 
 func ChangeExpirationTimeOfCert(t *testing.T, cert []byte, caCert []byte, caPrivateKey []byte) ([]byte, error) {

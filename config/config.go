@@ -708,9 +708,13 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 	return consenters
 }
 
+// ExtractAssemblers extracts the assemblers from the configuration and returns a slice of AssemblerInfo.
 func (config *Configuration) ExtractAssemblers() []nodeconfig.AssemblerInfo {
 	var assemblers []nodeconfig.AssemblerInfo
 	for _, party := range config.SharedConfig.PartiesConfig {
+		if party.AssemblerConfig == nil {
+			continue
+		}
 		var tlsCACertsCollection []nodeconfig.RawBytes
 		for _, ca := range party.TLSCACerts {
 			tlsCACertsCollection = append(tlsCACertsCollection, ca)
@@ -1057,15 +1061,19 @@ func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {
 	return cryptoProvider, nil
 }
 
-func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+func extractConfigFromChannelConfig(ordererConfig channelconfig.Orderer) (*Configuration, error) {
 	consensusMeta := ordererConfig.ConsensusMetadata()
 	sharedConfig := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
 	}
+	return &Configuration{SharedConfig: sharedConfig}, nil
+}
 
-	conf := &Configuration{
-		SharedConfig: sharedConfig,
+func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+	conf, err := extractConfigFromChannelConfig(ordererConfig)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to extract config from channel config")
 	}
 
 	cInfo := conf.ExtractConsenters()
@@ -1084,15 +1092,11 @@ func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Pa
 	return party2Endpoint, nil
 }
 
+// ExtractAssemblerAddresses extracts the assembler addresses from the orderer configuration and returns a mapping of party IDs to their corresponding endpoints.
 func ExtractAssemblerAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
-	consensusMeta := ordererConfig.ConsensusMetadata()
-	sharedConfig := &ordererpb.SharedConfig{}
-	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
-	}
-
-	conf := &Configuration{
-		SharedConfig: sharedConfig,
+	conf, err := extractConfigFromChannelConfig(ordererConfig)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to extract config from channel config")
 	}
 
 	aInfo := conf.ExtractAssemblers()
