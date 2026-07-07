@@ -173,7 +173,7 @@ func (at *assemblerTest) StartAssembler() {
 	prefetchIndexerFactory := &assembler.DefaultPrefetchIndexerFactory{}
 
 	prefetcherFactoryMock := &assembler_mocks.FakePrefetcherFactory{}
-	prefetcherFactoryMock.CreateCalls(func(si []types.ShardID, pi1 []types.PartyID, pi2 assembler.PrefetchIndexer, bb assembler.BatchBringer, l *flogging.FabricLogger) assembler.PrefetcherController {
+	prefetcherFactoryMock.CreateCalls(func(si []types.ShardID, pi1 []types.PartyID, pi2 assembler.PrefetchIndexer, bb assembler.BatchBringer, m *assembler.Metrics, l *flogging.FabricLogger) assembler.PrefetcherController {
 		return at.prefetcherMock
 	})
 

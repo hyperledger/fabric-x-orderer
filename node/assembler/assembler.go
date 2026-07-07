@@ -218,7 +218,7 @@ func (a *Assembler) initFromConfig(
 	index := prefetchIndexFactory.Create(shardIds, partyIds, a.logger, nodeConfig.PrefetchEvictionTtl, nodeConfig.PrefetchBufferMemoryBytes, nodeConfig.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{}, nodeConfig.PopWaitMonitorTimeout)
 	br := batchBringerFactory.Create(batchFrontier, nodeConfig, a.logger)
 
-	a.prefetcher = prefetcherFactory.Create(shardIds, partyIds, index, br, a.logger)
+	a.prefetcher = prefetcherFactory.Create(shardIds, partyIds, index, br, a.metrics, a.logger)
 
 	channelID := nodeConfig.Bundle.ConfigtxValidator().ChannelID()
 	baReplicator := consensusBringerFactory.Create(channelID, nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, a.ledger, a.logger)
@@ -230,6 +230,7 @@ func (a *Assembler) initFromConfig(
 		Ledger:                            a.ledger,
 		ShardCount:                        len(nodeConfig.Shards),
 		ConfigProcessor:                   a,
+		Metrics:                           a.metrics,
 	}
 
 	a.ds = NewAssemblerDeliverService(a.ledger.LedgerReader(), a.logger, nodeConfig, a.metrics.deliverMetrics)

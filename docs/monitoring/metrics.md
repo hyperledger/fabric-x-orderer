@@ -44,6 +44,17 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name:** "blocks_count_total"  
   **Help:** "The total number of blocks committed to the ledger."
 
+- **Namespace:** "assembler"  
+  **Name:** "batch_fetch_latency_seconds"
+  **Help:** "The latency to fetch a requested batch from the batcher."
+
+- **Namespace:** "assembler"  
+  **Name:** "ba_to_batch_latency_seconds"
+  **Help:** "The latency from receiving a batch attestation until the matching batch is available."
+
+- **Namespace:** "assembler"  
+  **Name:** "batch_ledger_append_latency_seconds"
+  **Help:** "The latency to append a batch to the ledger."
 ---
 
 ### Batcher
@@ -88,7 +99,7 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name:** "batch_mempool_next_requests_latency_seconds"  
   **Help:** "The latency for the primary to retrieve the next batch from the mempool."
 
-- **Namespace:** "batcher"
+- **Namespace:** "batcher"  
   **Name:** "batch_verify_latency_seconds"
   **Help:** "The latency from receiving a batch on the secondary until it is verified."
 

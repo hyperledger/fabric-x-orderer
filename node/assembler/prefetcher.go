@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -23,13 +24,13 @@ type PrefetcherController interface {
 
 //go:generate counterfeiter -o ./mocks/prefetcher_factory.go . PrefetcherFactory
 type PrefetcherFactory interface {
-	Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger *flogging.FabricLogger) PrefetcherController
+	Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, metrics *Metrics, logger *flogging.FabricLogger) PrefetcherController
 }
 
 type DefaultPrefetcherFactory struct{}
 
-func (f *DefaultPrefetcherFactory) Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, logger *flogging.FabricLogger) PrefetcherController {
-	return NewPrefetcher(shards, parties, prefetchIndex, batchFetcher, logger)
+func (f *DefaultPrefetcherFactory) Create(shards []types.ShardID, parties []types.PartyID, prefetchIndex PrefetchIndexer, batchFetcher BatchBringer, metrics *Metrics, logger *flogging.FabricLogger) PrefetcherController {
+	return NewPrefetcher(shards, parties, prefetchIndex, batchFetcher, metrics, logger)
 }
 
 type Prefetcher struct {
@@ -40,6 +41,7 @@ type Prefetcher struct {
 	parties             []types.PartyID
 	cancellationContext context.Context
 	cancelContextFunc   context.CancelFunc
+	metrics             *Metrics
 	// in order to wait for all the go routines to finish
 	wg sync.WaitGroup
 }
@@ -49,6 +51,7 @@ func NewPrefetcher(
 	parties []types.PartyID,
 	prefetchIndex PrefetchIndexer,
 	batchFetcher BatchBringer,
+	metrics *Metrics,
 	logger *flogging.FabricLogger,
 ) *Prefetcher {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -60,6 +63,7 @@ func NewPrefetcher(
 		parties:             parties,
 		cancellationContext: ctx,
 		cancelContextFunc:   cancel,
+		metrics:             metrics,
 	}
 	return p
 }
@@ -114,7 +118,10 @@ func (p *Prefetcher) handleBatchRequests() {
 			return
 		case batchId := <-p.prefetchIndex.Requests():
 			go func(batchId types.BatchID) {
+				fetchStart := time.Now()
 				batch, err := p.batchFetcher.GetBatch(batchId)
+				p.metrics.batchFetchLatency.Observe(time.Since(fetchStart).Seconds())
+
 				if err != nil {
 					if errors.Is(err, context.Canceled) {
 						p.logger.Infof("fetch canceled")
