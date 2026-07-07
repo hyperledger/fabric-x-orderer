@@ -267,6 +267,9 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 	}
 
 	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
+	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
@@ -341,6 +344,9 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	}
 
 	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
+	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
@@ -438,24 +444,28 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
+
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
+
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
 	}
+
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
 		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
 	}
+
 	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
 		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
 	}
 
 	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
+	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
@@ -536,6 +546,9 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 	}
 
 	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
+	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
+		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
+	}
 	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
 		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
 			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
