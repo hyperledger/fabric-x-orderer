@@ -80,21 +80,21 @@ func (ca *ConfigAckHandler) Stop() {
 
 // AddAck records an acknowledgment from a party member.
 func (ca *ConfigAckHandler) AddAck(request *protos.ConfigAck) error {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
-
 	clientID := ClientID{
 		NodeType: request.NodeType,
 		Shard:    types.ShardID(request.Shard),
 	}
 
+	ca.lock.Lock()
 	if uint64(request.ConfigSeq) != ca.acks[clientID]+1 {
+		ca.lock.Unlock()
 		ca.logger.Warnf("config ack has been received on sequence %d but the last acknowledged sequence is %d", request.ConfigSeq, ca.acks[clientID])
 		return fmt.Errorf("config ack has been received on sequence %d but the last acknowledged sequence is %d", request.ConfigSeq, ca.acks[clientID])
 	}
 
 	ca.acks[clientID] = uint64(request.ConfigSeq)
 	ca.logger.Infof("config ack has been received on sequence %d", request.ConfigSeq)
+	ca.lock.Unlock()
 
 	ca.signalChan <- struct{}{}
 	return nil

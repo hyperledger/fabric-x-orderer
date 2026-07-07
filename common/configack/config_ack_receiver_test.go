@@ -50,7 +50,7 @@ func TestAddAck_DuplicateRejected(t *testing.T) {
 	require.ErrorContains(t, err, "config ack has been received on sequence 1 but the last acknowledged sequence is 1")
 }
 
-// TestAddAck_DuplicateRejected verifies that ack with out-of-sequence number is rejected
+// TestAddAck_OutOfOrderRejected verifies that ack with out-of-sequence number is rejected
 func TestAddAck_OutOfOrderRejected(t *testing.T) {
 	shards := []types.ShardID{1, 2}
 	h := NewConfigAckHandler(testutil.CreateLogger(t, 0), shards)

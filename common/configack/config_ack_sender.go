@@ -18,12 +18,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// TODO: take minRetryInterval + maxRetryInterval + DialTimeout from config
-const (
-	minRetryInterval = 50 * time.Millisecond
-	maxRetryInterval = 10 * time.Second
-)
-
 type ConfigAcker interface {
 	Stop()
 	SubmitConfigAck(configSeq uint32) error
@@ -41,6 +35,10 @@ type configAcker struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	minRetryInterval time.Duration
+	maxRetryInterval time.Duration
+	DialTimeout      time.Duration
 }
 
 type ConnectionInfo struct {
@@ -67,6 +65,9 @@ func NewConfigAcker(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *co
 		shard:             connInfo.Shard,
 		ctx:               ctx,
 		cancel:            cancel,
+		minRetryInterval:  50 * time.Millisecond, // TODO: take from config
+		maxRetryInterval:  10 * time.Second,      // TODO: take from config
+		DialTimeout:       5 * time.Second,       // TODO: take from config
 	}
 	return ca
 }
@@ -106,20 +107,20 @@ func (ca *configAcker) handleConfigAck(configSeq uint32) error {
 		return nil
 	}
 
-	interval := minRetryInterval
+	interval := ca.minRetryInterval
 	numOfRetries := 1
 
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("sending config ack to consensus aborted, because context is done and configAcker stopped")
+			return fmt.Errorf("sending config ack to consensus aborted: %w", ctx.Err())
 		case <-time.After(interval):
 			ca.logger.Debugf("Retry attempt #%d", numOfRetries)
 			numOfRetries++
 
 			err := ca.tryToHandleConfigAck(ctx, configSeq)
 			if err != nil {
-				interval = min(interval*2, maxRetryInterval)
+				interval = min(interval*2, ca.maxRetryInterval)
 				ca.logger.Errorf("Sending config ack to consensus failed: %v, trying again in: %s", err, interval)
 				continue
 			}
@@ -161,7 +162,7 @@ func (ca *configAcker) connectToConsenter() (*grpc.ClientConn, error) {
 			Certificate:       ca.tlsCert,
 			RequireClientCert: true,
 		},
-		DialTimeout: time.Second * 5,
+		DialTimeout: ca.DialTimeout,
 	}
 
 	return cc.Dial(ca.consensusEndpoint)
@@ -185,7 +186,7 @@ func (ca *configAcker) sendConfigAckToConsensus(ctx context.Context, conn *grpc.
 	ca.logger.Infof("Sending ConfigAck for config sequence %d to consenter", configSeq)
 	resp, err := client.AckConfig(ctx, configAckReq)
 	if resp != nil && resp.GetError() != "" {
-		ca.logger.Warnf("Received bad response from consensus on config ack: %v\n", resp.Error)
+		ca.logger.Warnf("Received bad response from consensus on config ack: %s", resp.GetError())
 	}
 	return err
 }

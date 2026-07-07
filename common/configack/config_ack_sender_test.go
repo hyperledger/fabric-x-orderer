@@ -78,9 +78,13 @@ func TestSubmitConfigAck_RetriesOnSendFailure(t *testing.T) {
 func TestSubmitConfigAck_RetriesOnConnectFailure(t *testing.T) {
 	stubConsenter, configAcker := createTestSetupForConfigAcker(t, protos.NodeType_ROUTER, 0)
 
+	configAcker.DialTimeout = 2 * time.Second
+	configAcker.minRetryInterval = 2 * time.Millisecond
+	configAcker.maxRetryInterval = 2 * time.Second
+
 	// Start the server after a short delay
 	go func() {
-		time.AfterFunc(20*time.Second, func() {
+		time.AfterFunc(10*time.Second, func() {
 			stubConsenter.Start()
 		})
 	}()
@@ -108,7 +112,7 @@ func TestSubmitConfigAck_StopCancelsRetries(t *testing.T) {
 	select {
 	case err := <-done:
 		require.Error(t, err)
-		require.ErrorContains(t, err, "sending config ack to consensus aborted, because context is done and configAcker stopped")
+		require.ErrorContains(t, err, "sending config ack to consensus aborted")
 	case <-time.After(5 * time.Second):
 		t.Fatal("SubmitConfigAck did not return after Stop was called")
 	}
