@@ -70,6 +70,7 @@ func (svc *SigVerifierCreator) SigVerifierFromConfig(configuration *common.Confi
 	return bsv.Verify, nil
 }
 
+//go:generate counterfeiter -o mocks/policy.go . policy
 type policy interface { // copied from common.policies to avoid circular import.
 	// EvaluateSignedData takes a set of SignedData and evaluates whether
 	// 1) the signatures are valid over the related message
