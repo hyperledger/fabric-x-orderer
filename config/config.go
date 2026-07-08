@@ -708,6 +708,30 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 	return consenters
 }
 
+// ExtractAssemblers extracts the assemblers from the configuration and returns a slice of AssemblerInfo.
+func (config *Configuration) ExtractAssemblers() []nodeconfig.AssemblerInfo {
+	var assemblers []nodeconfig.AssemblerInfo
+	for _, party := range config.SharedConfig.PartiesConfig {
+		if party.AssemblerConfig == nil {
+			continue
+		}
+		var tlsCACertsCollection []nodeconfig.RawBytes
+		for _, ca := range party.TLSCACerts {
+			tlsCACertsCollection = append(tlsCACertsCollection, ca)
+		}
+
+		assemblerInfo := nodeconfig.AssemblerInfo{
+			PartyID:    types.PartyID(party.PartyID),
+			Endpoint:   net.JoinHostPort(party.AssemblerConfig.Host, strconv.Itoa(int(party.AssemblerConfig.Port))),
+			TLSCACerts: tlsCACertsCollection,
+			TLSCert:    party.AssemblerConfig.TlsCert,
+		}
+		assemblers = append(assemblers, assemblerInfo)
+	}
+
+	return assemblers
+}
+
 func (config *Configuration) ExtractRouterInParty() nodeconfig.RouterInfo {
 	partyID := config.LocalConfig.NodeLocalConfig.PartyID
 	var party *ordererpb.PartyConfig
@@ -1037,15 +1061,19 @@ func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {
 	return cryptoProvider, nil
 }
 
-func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+func extractConfigFromChannelConfig(ordererConfig channelconfig.Orderer) (*Configuration, error) {
 	consensusMeta := ordererConfig.ConsensusMetadata()
 	sharedConfig := &ordererpb.SharedConfig{}
 	if err := proto.Unmarshal(consensusMeta, sharedConfig); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal consensus metadata")
 	}
+	return &Configuration{SharedConfig: sharedConfig}, nil
+}
 
-	conf := &Configuration{
-		SharedConfig: sharedConfig,
+func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+	conf, err := extractConfigFromChannelConfig(ordererConfig)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to extract config from channel config")
 	}
 
 	cInfo := conf.ExtractConsenters()
@@ -1058,6 +1086,29 @@ func ExtractConsenterAddresses(ordererConfig channelconfig.Orderer) (orderers.Pa
 		}
 		for _, cert := range consenter.TLSCACerts {
 			party2Endpoint[consenter.PartyID].RootCerts = append(party2Endpoint[consenter.PartyID].RootCerts, cert)
+		}
+	}
+
+	return party2Endpoint, nil
+}
+
+// ExtractAssemblerAddresses extracts the assembler addresses from the orderer configuration and returns a mapping of party IDs to their corresponding endpoints.
+func ExtractAssemblerAddresses(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
+	conf, err := extractConfigFromChannelConfig(ordererConfig)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to extract config from channel config")
+	}
+
+	aInfo := conf.ExtractAssemblers()
+
+	party2Endpoint := make(orderers.Party2Endpoint)
+
+	for _, assembler := range aInfo {
+		party2Endpoint[assembler.PartyID] = &orderers.Endpoint{
+			Address: assembler.Endpoint,
+		}
+		for _, cert := range assembler.TLSCACerts {
+			party2Endpoint[assembler.PartyID].RootCerts = append(party2Endpoint[assembler.PartyID].RootCerts, cert)
 		}
 	}
 
