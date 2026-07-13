@@ -35,8 +35,8 @@ import (
 // 3. Add party 6, then remove party 2
 // 4. Add party 7, then remove party 3
 // 5. Add party 8, then remove party 4
-// 6. Add party 9
-// Final state: parties 5,6,7,8,9 (complete replacement of all original parties plus one additional)
+// 6. Add party 9, then remove party 5
+// Final state: parties 6,7,8,9 (complete replacement of all original parties)
 func TestConsensusFullReplacement(t *testing.T) {
 	// Start with parties 1,2,3,4 only
 	initialParties := []types.PartyID{1, 2, 3, 4}
@@ -702,9 +702,86 @@ func TestConsensusFullReplacement(t *testing.T) {
 		sendSimpleRequest(t, consensusNodes, privateKey5, privateKey6, 5, 6, configSeq, lastBlockNumber, "")
 	})
 
-	// Final verification - we should have 5 parties: 5,6,7,8,9 (complete replacement of original parties 1,2,3,4 plus one additional)
+	// Step 10: Remove party 5
+	t.Run("Remove party 5", func(t *testing.T) {
+		t.Logf(">>> Removing party 5 from parties: %v", activeParties)
+
+		configBlockStoreDir := t.TempDir()
+		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
+		require.NoError(t, err)
+
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		configUpdatePbData := configUpdateBuilder.RemoveParty(t, 5)
+
+		// Sign with parties 6,7,8 (majority of remaining parties)
+		env := configutil.CreateConfigTX(t, dir, []types.PartyID{6, 7, 8}, 6, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
+		}
+
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
+
+		// Wait for party 5 to enter pending admin state and stop it
+		for _, consenter := range consensusNodes {
+			if consenter.GetPartyID() == 5 {
+				waitForPendingAdminState(t, consenter, uint64(configSeq))
+				consenter.Stop()
+				break
+			}
+		}
+
+		// Update consensus nodes list (remove party 5)
+		oldConsensusNodes := consensusNodes
+		consensusNodes = make([]*consensus_node.Consensus, 0)
+		for _, consensusNode := range oldConsensusNodes {
+			if consensusNode.PartyID != 5 {
+				consensusNodes = append(consensusNodes, consensusNode)
+			}
+		}
+
+		// Update active parties list
+		activeParties = []types.PartyID{6, 7, 8, 9}
+
+		configSeq++
+		// Wait for the rest of consensus nodes to apply new config
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
+		// Config block will be at the next block number
+		lastBlockNumber++
+		t.Logf(">>> Checking for config block at block number %d", lastBlockNumber)
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
+
+		t.Logf(">>> Successfully removed party 5. Active parties: %v", activeParties)
+
+		// Send a simple request to verify remaining parties are in sync
+		privateKey6, err := loadBatcherPrivateKey(t, dir, 6)
+		require.NoError(t, err)
+		privateKey7, err := loadBatcherPrivateKey(t, dir, 7)
+		require.NoError(t, err)
+		lastBlockNumber++ // Increment before the request
+		t.Logf(">>> Sending sync request after removing party 5 at block %d", lastBlockNumber)
+		sendSimpleRequest(t, consensusNodes, privateKey6, privateKey7, 6, 7, configSeq, lastBlockNumber, "")
+
+		// Update router context to party 6's certificate for the next step
+		routerCertBytes6, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org6/orderers/party6/router/tls/tls-cert.pem"))
+		require.NoError(t, err)
+		block6, _ := pem.Decode(routerCertBytes6)
+		require.NotNil(t, block6)
+		require.Equal(t, "CERTIFICATE", block6.Type)
+		routerCert6, err := x509.ParseCertificate(block6.Bytes)
+		require.NoError(t, err)
+		routerCtx, err = createContextForSubmitConfig(routerCert6)
+		require.NoError(t, err)
+	})
+
+	// Final verification - we should have 4 parties: 6,7,8,9 (complete replacement of all original parties)
 	// Verify against the actual consensusNodes slice, not the manually tracked activeParties
-	require.Equal(t, 5, len(consensusNodes), "Final consensus node count mismatch")
+	require.Equal(t, 4, len(consensusNodes), "Final consensus node count mismatch")
 
 	// Extract actual party IDs from consensusNodes
 	actualPartyIDs := make([]types.PartyID, 0, len(consensusNodes))
@@ -712,7 +789,6 @@ func TestConsensusFullReplacement(t *testing.T) {
 		actualPartyIDs = append(actualPartyIDs, node.GetPartyID())
 	}
 
-	require.Contains(t, actualPartyIDs, types.PartyID(5), "Party 5 should be present")
 	require.Contains(t, actualPartyIDs, types.PartyID(6), "Party 6 should be present")
 	require.Contains(t, actualPartyIDs, types.PartyID(7), "Party 7 should be present")
 	require.Contains(t, actualPartyIDs, types.PartyID(8), "Party 8 should be present")
@@ -721,8 +797,9 @@ func TestConsensusFullReplacement(t *testing.T) {
 	require.NotContains(t, actualPartyIDs, types.PartyID(2), "Party 2 should be removed")
 	require.NotContains(t, actualPartyIDs, types.PartyID(3), "Party 3 should be removed")
 	require.NotContains(t, actualPartyIDs, types.PartyID(4), "Party 4 should be removed")
+	require.NotContains(t, actualPartyIDs, types.PartyID(5), "Party 5 should be removed")
 
-	t.Logf(">>> Complete replacement and expansion! Started with parties 1,2,3,4 and ended with parties %v (all original parties replaced, plus one additional)", actualPartyIDs)
+	t.Logf(">>> Complete replacement! Started with parties 1,2,3,4 and ended with parties %v", actualPartyIDs)
 
 	// Cleanup
 	for _, consensusNode := range consensusNodes {
