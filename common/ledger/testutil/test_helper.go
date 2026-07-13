@@ -10,20 +10,18 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil/fakes"
-	arma_testutil "github.com/hyperledger/fabric-x-orderer/testutil/fabric"
-
-	"github.com/hyperledger/fabric/common/genesis"
-
 	"github.com/hyperledger/fabric-lib-go/bccsp/sw"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	pb "github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/hyperledger/fabric-x-common/common/crypto"
+	"github.com/hyperledger/fabric-x-common/common/genesis"
 	msp "github.com/hyperledger/fabric-x-common/msp"
 	mspmgmt "github.com/hyperledger/fabric-x-common/msp/mgmt"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	xcommon_configtxgen "github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
-	"github.com/hyperledger/fabric/common/crypto"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil/fakes"
+	arma_testutil "github.com/hyperledger/fabric-x-orderer/testutil/fabric"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
