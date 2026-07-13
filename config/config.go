@@ -46,10 +46,6 @@ type Configuration struct {
 
 // ReadConfig reads the configurations from the config file and returns it. The configuration includes both local and shared.
 func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configuration, *common.Block, error) {
-	if configFilePath == "" {
-		return nil, nil, errors.New("path to the configuration file is empty")
-	}
-
 	var err error
 	var nodeRole string
 	conf := &Configuration{
@@ -62,22 +58,14 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 		return nil, nil, err
 	}
 
-	if conf.LocalConfig.NodeLocalConfig.FileStore == nil || conf.LocalConfig.NodeLocalConfig.FileStore.Path == "" {
-		return nil, nil, errors.New("path to the FileStore is missing in local config")
-	}
-
 	var lastConfigBlock *common.Block
 	var configStore *configstore.Store
 
 	switch conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method {
 	case "yaml":
-		if conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File != "" {
-			conf.SharedConfig, _, err = LoadSharedConfig(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
-			if err != nil {
-				return nil, nil, errors.Wrapf(err, "failed to read the shared configuration from: %s", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
-			}
-		} else {
-			return nil, nil, errors.Wrapf(err, "failed to read shared config, path is empty")
+		conf.SharedConfig, _, err = LoadSharedConfig(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to read the shared configuration from: %s", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
 		}
 	case "block":
 		logger.Infof("reading shared config from block for %s node", nodeRole)
@@ -167,10 +155,6 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 }
 
 func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error) {
-	if conf.NodeLocalConfig.GeneralConfig.Bootstrap.File == "" {
-		return nil, errors.Errorf("failed to read a config block, path is empty")
-	}
-
 	blockPath := conf.NodeLocalConfig.GeneralConfig.Bootstrap.File
 	data, err := os.ReadFile(blockPath)
 	if err != nil {
@@ -252,34 +236,9 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 }
 
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
-	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
-	}
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
 		panic(fmt.Sprintf("error launching router, failed extracting router config: %s", err))
-	}
-
-	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
-		}
 	}
 
 	// use shards to get every party's RootCAs
@@ -332,31 +291,6 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
-	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
-	}
-
-	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
-		}
 	}
 
 	// use shards to get every party's RootCAs
@@ -450,34 +384,6 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
 	}
 
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
-	}
-
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
-
-	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
-	}
-
-	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
-		}
-	}
-
 	// TODO: avoid duplications in clientRootCAs
 	shards := config.ExtractShards()
 	consenters := config.ExtractConsenters()
@@ -502,7 +408,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		TLSCertificateFile: config.LocalConfig.TLSConfig.Certificate,
 		ClientRootCAs:      trustedRoots,
 		SigningPrivateKey:  signingPrivateKey,
-		WALDir:             DefaultConsenterNodeConfigParams(config.LocalConfig.NodeLocalConfig.FileStore.Path).WALDir,
+		WALDir:             config.LocalConfig.NodeLocalConfig.ConsensusParams.WALDir,
 		BFTConfig:          BFTConfig,
 		Operations: &operations.Operations{
 			ListenAddress: net.JoinHostPort(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenPort))),
@@ -535,32 +441,6 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 			break
 		}
 	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress == "" {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.ListenAddress = config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress
-	}
-	if config.LocalConfig.NodeLocalConfig.MetricsConfig == nil {
-		config.LocalConfig.NodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
-	}
-
-	// if TLS is enabled for the operations server and certificate, private key or root CAs are not provided, use the ones from the general TLS config
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig == nil {
-		config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig = DefaultNodeLocalConfig.OperationsConfig.TLSConfig
-	}
-	if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Enabled {
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.Certificate = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey == "" {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.PrivateKey = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.PrivateKey
-		}
-		if config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs == nil {
-			config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.RootCAs = config.LocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.RootCAs
-		}
-	}
-
 	// use shards to get every party's RootCAs
 	shards := config.ExtractShards()
 	orderingServiceTrustedRootCAs := node_utils.TLSCAcertsFromShards(shards)
@@ -1050,10 +930,6 @@ func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Bloc
 
 func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {
 	opts := config.LocalConfig.NodeLocalConfig.GeneralConfig.BCCSP
-	if opts == nil {
-		return nil, errors.New("BCCSP config is missing")
-	}
-
 	cryptoProvider, err := factory.GetBCCSPFromOpts(opts)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to initialize BCCSP from config")

@@ -211,10 +211,12 @@ func LoadLocalConfig(filePath string) (*LocalConfig, string, error) {
 		return nil, "", fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
 	}
 
-	role, err := validateNodeLocalConfigParams(nodeLocalConfig)
+	role, err := validateLocalConfig(nodeLocalConfig)
 	if err != nil {
 		return nil, "", err
 	}
+
+	applyLocalConfigDefaults(nodeLocalConfig, role)
 
 	tlsConfig, err := loadTLSCryptoConfig(&nodeLocalConfig.GeneralConfig.TLSConfig)
 	if err != nil {
@@ -226,23 +228,6 @@ func LoadLocalConfig(filePath string) (*LocalConfig, string, error) {
 	clusterConfig, err = loadClusterCryptoConfig(&nodeLocalConfig.GeneralConfig.Cluster)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
-	}
-
-	// TODO: add validation for all parameters.
-	// Define mandatory parameters and optional parameters with default values.
-	// For optional parameters, if not set, fill in the default values. When completing the default values, emit a log message indicating that the default value is being used.
-	// For mandatory parameters, if not set, return an error.
-
-	if nodeLocalConfig.OperationsConfig == nil {
-		nodeLocalConfig.OperationsConfig = DefaultNodeLocalConfig.OperationsConfig
-	}
-
-	if nodeLocalConfig.MetricsConfig == nil {
-		nodeLocalConfig.MetricsConfig = DefaultNodeLocalConfig.MetricsConfig
-	}
-
-	if nodeLocalConfig.GeneralConfig.BCCSP == nil {
-		nodeLocalConfig.GeneralConfig.BCCSP = factory.GetDefaultOpts()
 	}
 
 	return &LocalConfig{
@@ -265,34 +250,96 @@ func LoadLocalConfigYaml(filePath string) (*NodeLocalConfig, error) {
 	return nodeLocalConfig, nil
 }
 
-func validateNodeLocalConfigParams(nodeLocalConfig *NodeLocalConfig) (string, error) {
-	var nonNilRoles []string
+func validateLocalConfig(nodeLocalConfig *NodeLocalConfig) (string, error) {
+	if nodeLocalConfig.PartyID == 0 {
+		return "", fmt.Errorf("node local config is not valid, party ID is missing")
+	}
+
+	if nodeLocalConfig.GeneralConfig == nil {
+		return "", fmt.Errorf("node local config is not valid, general config is missing")
+	}
+
+	generalConfig := nodeLocalConfig.GeneralConfig
+
+	if generalConfig.ListenAddress == "" {
+		return "", fmt.Errorf("node local config is not valid, listen address is missing")
+	}
+
+	if generalConfig.ListenPort == 0 {
+		return "", fmt.Errorf("node local config is not valid, listen port is missing")
+	}
+
+	if generalConfig.TLSConfig.PrivateKey == "" {
+		return "", fmt.Errorf("node local config is not valid, TLS private key is missing")
+	}
+
+	if generalConfig.TLSConfig.Certificate == "" {
+		return "", fmt.Errorf("node local config is not valid, TLS certificate is missing")
+	}
+
+	if generalConfig.Bootstrap.Method == "" {
+		return "", fmt.Errorf("node local config is not valid, bootstrap method is missing")
+	}
+
+	if generalConfig.Bootstrap.Method != "block" && generalConfig.Bootstrap.Method != "yaml" {
+		return "", fmt.Errorf("node local config is not valid, unsupported bootstrap method: %s", generalConfig.Bootstrap.Method)
+	}
+
+	if generalConfig.Bootstrap.File == "" {
+		return "", fmt.Errorf("node local config is not valid, bootstrap file is missing")
+	}
+
+	if generalConfig.LocalMSPDir == "" {
+		return "", fmt.Errorf("node local config is not valid, local MSP directory is missing")
+	}
+
+	if generalConfig.LocalMSPID == "" {
+		return "", fmt.Errorf("node local config is not valid, local MSP ID is missing")
+	}
+
+	if (generalConfig.Cluster.ClientCertificate == "") != (generalConfig.Cluster.ClientPrivateKey == "") {
+		return "", fmt.Errorf("node local config is not valid, cluster client certificate and private key must be configured together")
+	}
+
+	if nodeLocalConfig.FileStore == nil {
+		return "", fmt.Errorf("node local config is not valid, file store config is missing")
+	}
+
+	if nodeLocalConfig.FileStore.Path == "" {
+		return "", fmt.Errorf("node local config is not valid, file store path is missing")
+	}
+
+	return detectNodeRole(nodeLocalConfig)
+}
+
+func detectNodeRole(nodeLocalConfig *NodeLocalConfig) (string, error) {
+	var roles []string
 
 	if nodeLocalConfig.RouterParams != nil && !isEmptyRouterParams(nodeLocalConfig.RouterParams) {
-		nonNilRoles = append(nonNilRoles, RouterStr)
+		roles = append(roles, RouterStr)
 	}
 
 	if nodeLocalConfig.BatcherParams != nil && !isEmptyBatcherParams(nodeLocalConfig.BatcherParams) {
-		nonNilRoles = append(nonNilRoles, BatcherStr)
+		roles = append(roles, BatcherStr)
 	}
 
 	if nodeLocalConfig.ConsensusParams != nil && !isEmptyConsensusParams(nodeLocalConfig.ConsensusParams) {
-		nonNilRoles = append(nonNilRoles, ConsensusStr)
+		roles = append(roles, ConsensusStr)
 	}
 
 	if nodeLocalConfig.AssemblerParams != nil && !isEmptyAssemblerParams(nodeLocalConfig.AssemblerParams) {
-		nonNilRoles = append(nonNilRoles, AssemblerStr)
+		roles = append(roles, AssemblerStr)
 	}
 
-	if len(nonNilRoles) == 0 {
+	if len(roles) == 0 {
 		return "", fmt.Errorf("node local config is not valid, node params are missing")
 	}
 
-	if len(nonNilRoles) > 1 {
-		return "", fmt.Errorf("node local config is not valid, multiple params were set: %v", nonNilRoles)
+	if len(roles) > 1 {
+		return "", fmt.Errorf("node local config is not valid, multiple params were set: %v", roles)
 	}
 
-	return nonNilRoles[0], nil
+	return roles[0], nil
 }
 
 func isEmptyRouterParams(routerParams *RouterParams) bool {
@@ -374,4 +421,55 @@ func loadClusterCryptoConfig(cluster *ClusterYaml) (*Cluster, error) {
 		ClientPrivateKey:  clientPrivateKey,
 		ReplicationPolicy: cluster.ReplicationPolicy,
 	}, nil
+}
+
+func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
+	generalConfig := nodeLocalConfig.GeneralConfig
+
+	// Operations defaults.
+	if nodeLocalConfig.OperationsConfig == nil {
+		defaultOperations := *DefaultNodeLocalConfig.OperationsConfig
+		defaultTLSConfig := *DefaultNodeLocalConfig.OperationsConfig.TLSConfig
+		defaultOperations.TLSConfig = &defaultTLSConfig
+		nodeLocalConfig.OperationsConfig = &defaultOperations
+	}
+
+	operationsConfig := nodeLocalConfig.OperationsConfig
+
+	if operationsConfig.ListenAddress == "" {
+		operationsConfig.ListenAddress = generalConfig.ListenAddress
+	}
+
+	if operationsConfig.TLSConfig == nil {
+		defaultTLSConfig := *DefaultNodeLocalConfig.OperationsConfig.TLSConfig
+		operationsConfig.TLSConfig = &defaultTLSConfig
+	}
+
+	if operationsConfig.TLSConfig.Enabled {
+		if operationsConfig.TLSConfig.Certificate == "" {
+			operationsConfig.TLSConfig.Certificate = generalConfig.TLSConfig.Certificate
+		}
+		if operationsConfig.TLSConfig.PrivateKey == "" {
+			operationsConfig.TLSConfig.PrivateKey = generalConfig.TLSConfig.PrivateKey
+		}
+		if operationsConfig.TLSConfig.RootCAs == nil {
+			operationsConfig.TLSConfig.RootCAs = generalConfig.TLSConfig.RootCAs
+		}
+	}
+
+	// Metrics defaults.
+	if nodeLocalConfig.MetricsConfig == nil {
+		defaultMetrics := *DefaultNodeLocalConfig.MetricsConfig
+		nodeLocalConfig.MetricsConfig = &defaultMetrics
+	}
+
+	// Crypto defaults.
+	if generalConfig.BCCSP == nil {
+		generalConfig.BCCSP = factory.GetDefaultOpts()
+	}
+
+	// Consensus defaults.
+	if role == ConsensusStr && nodeLocalConfig.ConsensusParams.WALDir == "" {
+		nodeLocalConfig.ConsensusParams.WALDir = DefaultConsenterNodeConfigParams(nodeLocalConfig.FileStore.Path).WALDir
+	}
 }

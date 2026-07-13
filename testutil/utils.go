@@ -64,6 +64,9 @@ func (n NodeType) String() string {
 func EditDirectoryInNodeConfigYAML(t *testing.T, path string, storagePath string, bootstrapFilePath string, monitoringListenPort uint32) {
 	nodeConfig := ReadNodeConfigFromYaml(t, path)
 	nodeConfig.FileStore.Path = storagePath
+	if nodeConfig.ConsensusParams != nil {
+		nodeConfig.ConsensusParams.WALDir = config.DefaultConsenterNodeConfigParams(storagePath).WALDir
+	}
 	if nodeConfig.OperationsConfig == nil {
 		nodeConfig.OperationsConfig = config.DefaultNodeLocalConfig.OperationsConfig
 	}
