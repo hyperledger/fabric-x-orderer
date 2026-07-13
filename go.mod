@@ -1,6 +1,6 @@
 module github.com/hyperledger/fabric-x-orderer
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/hyperledger/fabric-x-common v0.2.6
