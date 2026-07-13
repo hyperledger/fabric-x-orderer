@@ -54,6 +54,7 @@ type BFTSynchronizer struct {
 	VerifierFactory     VerifierFactory
 	BFTDelivererFactory BFTDelivererFactory
 	Logger              *flogging.FabricLogger
+	JoinConfigBlock     *common.Block // JoinConfigBlock is the config block that was used to join the cluster.
 
 	mutex    sync.Mutex
 	syncBuff *SyncBuffer
@@ -242,18 +243,32 @@ func (s *BFTSynchronizer) computeTargetHeight(heights []uint64) uint64 {
 
 // createBFTDeliverer creates and initializes the BFT block deliverer.
 func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_types.PartyID) (BFTBlockDeliverer, error) {
-	lastBlock := s.Support.Block(startHeight - 1)
-	lastConfigBlock, err := s.Support.LastConfigBlock(lastBlock)
+	lastDecision := s.Support.Block(startHeight - 1)
+	ledgerLastConfigBlock, err := s.Support.LastConfigBlock(lastDecision)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve last config block")
 	}
-	blockOps := &utils.CommonConfigBlockOperations{}
-	lastConfigEnv, err := blockOps.ConfigFromBlock(lastConfigBlock)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to retrieve last config envelope")
+	if s.JoinConfigBlock == nil {
+		return nil, errors.New("join config block is nil")
 	}
 
-	updatableVerifier, err := s.VerifierFactory.CreateBlockVerifier(lastConfigBlock, lastBlock, s.CryptoProvider, s.Logger)
+	s.Logger.Infof("Creating BFTDeliverer, last decision in ledger: %d, last config block in ledger: %d, join config block: %d", lastDecision.Header.Number, ledgerLastConfigBlock.Header.Number, s.JoinConfigBlock.Header.Number)
+
+	var delivererInitializationBlock *common.Block
+	if s.JoinConfigBlock.Header.Number > ledgerLastConfigBlock.Header.Number {
+		delivererInitializationBlock = s.JoinConfigBlock
+	} else {
+		s.Logger.Warnf("Join config block is not more recent than last config block in consensusledger")
+		delivererInitializationBlock = ledgerLastConfigBlock
+	}
+
+	blockOps := &utils.CommonConfigBlockOperations{}
+	currentConfigEnv, err := blockOps.ConfigFromBlock(delivererInitializationBlock)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to retrieve envelope from config block")
+	}
+
+	updatableVerifier, err := s.VerifierFactory.CreateBlockVerifier(ledgerLastConfigBlock, lastDecision, s.CryptoProvider, s.Logger)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create BlockVerificationAssistant")
 	}
@@ -296,7 +311,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	)
 
 	s.Logger.Infof("Created a BFTDeliverer on channel: %s", s.Support.ChannelID())
-	bftDeliverer.Initialize(lastConfigEnv.GetConfig(), myParty)
+	bftDeliverer.Initialize(currentConfigEnv.GetConfig(), myParty)
 
 	return bftDeliverer, nil
 }

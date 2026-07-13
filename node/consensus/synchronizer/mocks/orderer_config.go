@@ -585,24 +585,6 @@ func (fake *OrdererConfig) OrganizationsReturnsOnCall(i int, result1 map[string]
 func (fake *OrdererConfig) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.batchSizeMutex.RLock()
-	defer fake.batchSizeMutex.RUnlock()
-	fake.batchTimeoutMutex.RLock()
-	defer fake.batchTimeoutMutex.RUnlock()
-	fake.capabilitiesMutex.RLock()
-	defer fake.capabilitiesMutex.RUnlock()
-	fake.consensusMetadataMutex.RLock()
-	defer fake.consensusMetadataMutex.RUnlock()
-	fake.consensusStateMutex.RLock()
-	defer fake.consensusStateMutex.RUnlock()
-	fake.consensusTypeMutex.RLock()
-	defer fake.consensusTypeMutex.RUnlock()
-	fake.consentersMutex.RLock()
-	defer fake.consentersMutex.RUnlock()
-	fake.maxChannelsCountMutex.RLock()
-	defer fake.maxChannelsCountMutex.RUnlock()
-	fake.organizationsMutex.RLock()
-	defer fake.organizationsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

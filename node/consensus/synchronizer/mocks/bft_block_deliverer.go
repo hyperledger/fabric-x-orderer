@@ -112,12 +112,6 @@ func (fake *BFTBlockDeliverer) StopCalls(stub func()) {
 func (fake *BFTBlockDeliverer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.deliverBlocksMutex.RLock()
-	defer fake.deliverBlocksMutex.RUnlock()
-	fake.initializeMutex.RLock()
-	defer fake.initializeMutex.RUnlock()
-	fake.stopMutex.RLock()
-	defer fake.stopMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

@@ -706,28 +706,6 @@ func (fake *FakeConsenterSupport) WriteConfigBlockArgsForCall(i int) *common.Blo
 func (fake *FakeConsenterSupport) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.blockMutex.RLock()
-	defer fake.blockMutex.RUnlock()
-	fake.channelIDMutex.RLock()
-	defer fake.channelIDMutex.RUnlock()
-	fake.heightMutex.RLock()
-	defer fake.heightMutex.RUnlock()
-	fake.lastConfigBlockMutex.RLock()
-	defer fake.lastConfigBlockMutex.RUnlock()
-	fake.sequenceMutex.RLock()
-	defer fake.sequenceMutex.RUnlock()
-	fake.serializeMutex.RLock()
-	defer fake.serializeMutex.RUnlock()
-	fake.sharedConfigMutex.RLock()
-	defer fake.sharedConfigMutex.RUnlock()
-	fake.signMutex.RLock()
-	defer fake.signMutex.RUnlock()
-	fake.signatureVerifierMutex.RLock()
-	defer fake.signatureVerifierMutex.RUnlock()
-	fake.writeBlockSyncMutex.RLock()
-	defer fake.writeBlockSyncMutex.RUnlock()
-	fake.writeConfigBlockMutex.RLock()
-	defer fake.writeConfigBlockMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

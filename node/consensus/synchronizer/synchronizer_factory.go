@@ -77,6 +77,7 @@ type SynchronizerFactory interface {
 		support ConsenterSupport,
 		bccsp bccsp.BCCSP,
 		clusterDialer *comm.PredicateDialer,
+		joinConfigBlock *cb.Block,
 	) SynchronizerWithStop
 }
 
@@ -93,8 +94,9 @@ func (*SynchronizerCreator) CreateSynchronizer(
 	support ConsenterSupport,
 	bccsp bccsp.BCCSP,
 	clusterDialer *comm.PredicateDialer,
+	joinConfigBlock *cb.Block,
 ) SynchronizerWithStop {
-	return newSynchronizer(logger, selfID, localConfigCluster, rtc, blockToDecision, pruneCommittedRequests, updateRuntimeConfig, support, bccsp, clusterDialer)
+	return newSynchronizer(logger, selfID, localConfigCluster, rtc, blockToDecision, pruneCommittedRequests, updateRuntimeConfig, support, bccsp, clusterDialer, joinConfigBlock)
 }
 
 // newSynchronizer creates a new synchronizer
@@ -109,6 +111,7 @@ func newSynchronizer(
 	support ConsenterSupport,
 	bccsp bccsp.BCCSP,
 	clusterDialer *comm.PredicateDialer,
+	joinConfigBlock *cb.Block,
 ) SynchronizerWithStop {
 	switch localConfigCluster.ReplicationPolicy {
 	case "consensus", "":
@@ -129,6 +132,7 @@ func newSynchronizer(
 			VerifierFactory:     &ConsenterBlockVerifierCreator{},
 			BFTDelivererFactory: &bftDelivererCreator{},
 			Logger:              logger,
+			JoinConfigBlock:     joinConfigBlock,
 		}
 
 	default:

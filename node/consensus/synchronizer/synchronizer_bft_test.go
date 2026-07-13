@@ -107,6 +107,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    b42,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -158,6 +159,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    b42,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -206,6 +208,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    b42,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -266,6 +269,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    b42,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -401,6 +405,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
 			BFTDelivererFactory: fakeBFTDelivererFactory,
+			JoinConfigBlock:     genesisBlock,
 			Logger:              flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -522,6 +527,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    genesisBlock1,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -604,6 +610,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    genesisBlock,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -681,6 +688,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    goodConfigBlock,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -765,6 +773,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    genesisBlock,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -896,6 +905,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
 			BFTDelivererFactory: fakeBFTDelivererFactory,
+			JoinConfigBlock:     b42,
 			Logger:              flogging.MustGetLogger("test.smartbft"),
 		}
 
@@ -1048,6 +1058,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
 			BFTDelivererFactory: fakeBFTDelivererFactory,
+			JoinConfigBlock:     b42,
 			Logger:              flogging.MustGetLogger("test.smartbft"),
 		}
 		require.NotNil(t, bftSynchronizer)
@@ -1211,6 +1222,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
 			BFTDelivererFactory: fakeBFTDelivererFactory,
+			JoinConfigBlock:     b42,
 			Logger:              flogging.MustGetLogger("test.smartbft"),
 		}
 		require.NotNil(t, bftSynchronizer)
@@ -1330,6 +1342,7 @@ func TestBFTSynchronizer_Stop(t *testing.T) {
 			Support:            fakeCS,
 			LocalConfigCluster: config.Cluster{},
 			BlockPullerFactory: bpf,
+			JoinConfigBlock:    goodConfigBlock,
 			Logger:             flogging.MustGetLogger("test.smartbft"),
 		}
 
