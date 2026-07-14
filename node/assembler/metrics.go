@@ -26,7 +26,7 @@ var (
 	batchFetchLatencyOpts = metrics.HistogramOpts{
 		Namespace:  "assembler",
 		Name:       "batch_fetch_latency_seconds",
-		Help:       "The latency to fetch a requested batch from the batcher.",
+		Help:       "The latency to fetch a requested batch from the batchers in the shard.",
 		LabelNames: []string{"party_id"},
 		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
 	}
