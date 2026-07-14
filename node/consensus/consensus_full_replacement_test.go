@@ -36,7 +36,8 @@ import (
 // 4. Add party 7, then remove party 3
 // 5. Add party 8, then remove party 4
 // 6. Add party 9, then remove party 5
-// Final state: parties 6,7,8,9 (complete replacement of all original parties)
+// 7. Add party 10
+// Final state: parties 6,7,8,9,10
 func TestConsensusFullReplacement(t *testing.T) {
 	// Start with parties 1,2,3,4 only
 	initialParties := []types.PartyID{1, 2, 3, 4}
@@ -779,9 +780,75 @@ func TestConsensusFullReplacement(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// Final verification - we should have 4 parties: 6,7,8,9 (complete replacement of all original parties)
+	// Step 11: Add party 10
+	t.Run("Add party 10", func(t *testing.T) {
+		t.Logf(">>> Adding party 10 to parties: %v", activeParties)
+
+		configBlockStoreDir := t.TempDir()
+		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
+		require.NoError(t, err)
+
+		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+		require.NotNil(t, addedNetInfo)
+		require.Equal(t, types.PartyID(10), addedPartyID, "Expected to add party 10")
+
+		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
+		// Sign with parties 6,7,8 (majority of current parties)
+		env := configutil.CreateConfigTX(t, dir, []types.PartyID{6, 7, 8}, 6, configUpdatePbData)
+		configReq := &protos.Request{
+			Payload:   env.Payload,
+			Signature: env.Signature,
+			ConfigSeq: uint32(configSeq),
+		}
+
+		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+		require.NoError(t, err)
+
+		configSeq++
+		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+
+		lastBlockNumber++
+		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+		require.NotNil(t, lastConfigBlock)
+
+		activeParties = append(activeParties, addedPartyID)
+
+		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
+		require.NoError(t, err)
+
+		for _, netNode := range addedNetInfo {
+			netNode.ConfigBlockPath = newConfigBlockPath
+		}
+
+		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
+
+		for _, nodeInfo := range addedNetInfo {
+			nodeInfo.Close()
+		}
+
+		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
+		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
+		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
+
+		consensusNodes = append(consensusNodes, newConsensusNode[0])
+		time.Sleep(30 * time.Second)
+
+		t.Logf(">>> Successfully added party %d. Active parties: %v", addedPartyID, activeParties)
+
+		lastBlockNumber++
+		privateKey6, err := loadBatcherPrivateKey(t, dir, 6)
+		require.NoError(t, err)
+		privateKey7, err := loadBatcherPrivateKey(t, dir, 7)
+		require.NoError(t, err)
+		sendSimpleRequest(t, consensusNodes, privateKey6, privateKey7, 6, 7, configSeq, lastBlockNumber, "")
+	})
+
+	// Final verification - we should have 5 parties: 6,7,8,9,10
 	// Verify against the actual consensusNodes slice, not the manually tracked activeParties
-	require.Equal(t, 4, len(consensusNodes), "Final consensus node count mismatch")
+	require.Equal(t, 5, len(consensusNodes), "Final consensus node count mismatch")
 
 	// Extract actual party IDs from consensusNodes
 	actualPartyIDs := make([]types.PartyID, 0, len(consensusNodes))
@@ -793,6 +860,7 @@ func TestConsensusFullReplacement(t *testing.T) {
 	require.Contains(t, actualPartyIDs, types.PartyID(7), "Party 7 should be present")
 	require.Contains(t, actualPartyIDs, types.PartyID(8), "Party 8 should be present")
 	require.Contains(t, actualPartyIDs, types.PartyID(9), "Party 9 should be present")
+	require.Contains(t, actualPartyIDs, types.PartyID(10), "Party 10 should be present")
 	require.NotContains(t, actualPartyIDs, types.PartyID(1), "Party 1 should be removed")
 	require.NotContains(t, actualPartyIDs, types.PartyID(2), "Party 2 should be removed")
 	require.NotContains(t, actualPartyIDs, types.PartyID(3), "Party 3 should be removed")
