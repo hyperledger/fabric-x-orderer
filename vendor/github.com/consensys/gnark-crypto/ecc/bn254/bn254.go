@@ -71,7 +71,7 @@ var LoopCounter [66]int8
 // endomorphisms ϕ₁ and ϕ₂ for <G1Affine> and <G2Affine>. lambda is such that <r, ϕ-λ> lies above
 // <r> in the ring Z[ϕ]. More concretely it's the associated eigenvalue
 // of ϕ₁ (resp ϕ₂) restricted to <G1Affine> (resp <G2Affine>)
-// see https://www.cosic.esat.kuleuven.be/nessie/reports/phase2/GLV.pdf
+// see https://link.springer.com/content/pdf/10.1007/3-540-36492-7_3
 var thirdRootOneG1 fp.Element
 var thirdRootOneG2 fp.Element
 var lambdaGLV big.Int
@@ -79,6 +79,13 @@ var lambdaGLV big.Int
 // glvBasis stores R-linearly independent vectors (a,b), (c,d)
 // in ker((u,v) → u+vλ[r]), and their determinant
 var glvBasis ecc.Lattice
+var glsBasis ecc.Lattice4
+
+// g1ScalarMulChoose and g2ScalarmulChoose indicate the bitlength of the scalar
+// in scalar multiplication from which it is more efficient to use the GLV
+// decomposition. It is computed from the GLV basis and considers the overhead
+// for the GLV decomposition. It is heuristic and may change in the future.
+var g1ScalarMulChoose, g2ScalarMulChoose int
 
 // ψ o π o ψ⁻¹, where ψ:E → E' is the degree 6 iso defined over 𝔽p¹²
 var endo struct {
@@ -133,6 +140,8 @@ func init() {
 	lambdaGLV.SetString("4407920970296243842393367215006156084916469457145843978461", 10) // (36x₀³+18x₀²+6x₀+1)
 	_r := fr.Modulus()
 	ecc.PrecomputeLattice(_r, &lambdaGLV, &glvBasis)
+	g1ScalarMulChoose = fr.Bits/16 + max(glvBasis.V1[0].BitLen(), glvBasis.V1[1].BitLen(), glvBasis.V2[0].BitLen(), glvBasis.V2[1].BitLen())
+	g2ScalarMulChoose = fr.Bits/32 + max(glvBasis.V1[0].BitLen(), glvBasis.V1[1].BitLen(), glvBasis.V2[0].BitLen(), glvBasis.V2[1].BitLen())
 
 	endo.u.A0.SetString("21575463638280843010398324269430826099269044274347216827212613867836435027261")
 	endo.u.A1.SetString("10307601595873709700152284273816112264069230130616436755625194854815875713954")
@@ -145,6 +154,53 @@ func init() {
 
 	xGen.SetString("4965661367192848881", 10)
 
+	initGLSBasis()
+}
+
+func initGLSBasis() {
+	// LLL-reduced basis (rows) from:
+	//
+	// 	 v1 = [r,                   0,          0,          0]
+	// 	 v2 = [-lambdaGLV,   	    1,          0,          0]
+	// 	 v3 = [-lambdaGLS,   	    0,          1,          0]
+	// 	 v4 = [lambdaGLV*lambdaGLS, -lambdaGLS, -lambdaGLV, 1]
+	//
+	// to:
+	//   v1 = [2x₀,    x₀,     x₀+1,   -x₀  ]
+	//   v2 = [-x₀,    x₀,     x₀,     2x₀+1]
+	//   v3 = [-x₀-1,  x₀,     -x₀,    -2x₀ ]
+	//   v4 = [2x₀+1,  x₀+1,   -x₀,    x₀   ]
+	setBasis := func(dst *big.Int, s string) {
+		if _, ok := dst.SetString(s, 10); !ok {
+			panic("invalid GLS basis constant")
+		}
+	}
+
+	// v1 = (2x₀, x₀, x₀+1, -x₀)
+	setBasis(&glsBasis.V[0][0], "9931322734385697762")
+	setBasis(&glsBasis.V[0][1], "4965661367192848881")
+	setBasis(&glsBasis.V[0][2], "4965661367192848882")
+	setBasis(&glsBasis.V[0][3], "-4965661367192848881")
+
+	// v2 = (-x₀, x₀, x₀, 2x₀+1)
+	setBasis(&glsBasis.V[1][0], "-4965661367192848881")
+	setBasis(&glsBasis.V[1][1], "4965661367192848881")
+	setBasis(&glsBasis.V[1][2], "4965661367192848881")
+	setBasis(&glsBasis.V[1][3], "9931322734385697763")
+
+	// v3 = (-x₀-1, x₀, -x₀, -2x₀)
+	setBasis(&glsBasis.V[2][0], "-4965661367192848882")
+	setBasis(&glsBasis.V[2][1], "4965661367192848881")
+	setBasis(&glsBasis.V[2][2], "-4965661367192848881")
+	setBasis(&glsBasis.V[2][3], "-9931322734385697762")
+
+	// v4 = (2x₀+1, x₀+1, -x₀, x₀)
+	setBasis(&glsBasis.V[3][0], "9931322734385697763")
+	setBasis(&glsBasis.V[3][1], "4965661367192848882")
+	setBasis(&glsBasis.V[3][2], "-4965661367192848881")
+	setBasis(&glsBasis.V[3][3], "4965661367192848881")
+
+	ecc.PrecomputeLattice4(&glsBasis)
 }
 
 // Generators return the generators of the r-torsion group, resp. in ker(pi-id), ker(Tr)

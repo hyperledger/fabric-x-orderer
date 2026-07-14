@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package msp
 
 import (
-	"github.com/IBM/idemix"
+	idemixmsp "github.com/IBM/idemix/msp"
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"google.golang.org/protobuf/proto"
@@ -15,11 +15,17 @@ import (
 )
 
 type idemixSigningIdentityWrapper struct {
-	*idemix.IdemixSigningIdentity
+	*idemixmsp.IdemixSigningIdentity
 }
 
 func (i *idemixSigningIdentityWrapper) GetPublicVersion() Identity {
-	return &idemixIdentityWrapper{Idemixidentity: i.IdemixSigningIdentity.GetPublicVersion().(*idemix.Idemixidentity)}
+	idemixID, ok := i.IdemixSigningIdentity.GetPublicVersion().(*idemixmsp.Idemixidentity)
+	if !ok {
+		// Return nil identity if type assertion fails - caller should handle nil check
+		mspLogger.Error("identity is not idemix: type assertion failed")
+		return nil
+	}
+	return &idemixIdentityWrapper{Idemixidentity: idemixID}
 }
 
 func (i *idemixSigningIdentityWrapper) GetIdentifier() *IdentityIdentifier {
@@ -43,7 +49,7 @@ func (*idemixSigningIdentityWrapper) GetCertificatePEM() ([]byte, error) {
 }
 
 type idemixIdentityWrapper struct {
-	*idemix.Idemixidentity
+	*idemixmsp.Idemixidentity
 }
 
 func (i *idemixIdentityWrapper) GetIdentifier() *IdentityIdentifier {
@@ -82,7 +88,7 @@ func (i *idemixIdentityWrapper) GetOrganizationalUnits() []*OUIdentifier {
 }
 
 type idemixMSPWrapper struct {
-	*idemix.Idemixmsp
+	*idemixmsp.Idemixmsp
 }
 
 func (i *idemixMSPWrapper) deserializeIdentityInternal(serializedIdentity []byte) (Identity, error) {
@@ -90,8 +96,12 @@ func (i *idemixMSPWrapper) deserializeIdentityInternal(serializedIdentity []byte
 	if err != nil {
 		return nil, err
 	}
+	idemixID, ok := id.(*idemixmsp.Idemixidentity)
+	if !ok {
+		return nil, errors.New("identity is not idemix: type assertion failed")
+	}
 
-	return &idemixIdentityWrapper{id.(*idemix.Idemixidentity)}, nil
+	return &idemixIdentityWrapper{idemixID}, nil
 }
 
 func (i *idemixMSPWrapper) DeserializeIdentity(identity *msppb.Identity) (Identity, error) { //nolint:ireturn
@@ -104,8 +114,12 @@ func (i *idemixMSPWrapper) DeserializeIdentity(identity *msppb.Identity) (Identi
 	if err != nil {
 		return nil, err
 	}
+	idemixID, ok := id.(*idemixmsp.Idemixidentity)
+	if !ok {
+		return nil, errors.New("identity is not idemix: type assertion failed")
+	}
 
-	return &idemixIdentityWrapper{id.(*idemix.Idemixidentity)}, nil
+	return &idemixIdentityWrapper{idemixID}, nil
 }
 
 // GetKnownDeserializedIdentity returns a known identity matching the given IdentityIdentifier.
@@ -136,8 +150,12 @@ func (i *idemixMSPWrapper) GetDefaultSigningIdentity() (SigningIdentity, error) 
 	if err != nil {
 		return nil, err
 	}
+	idemixID, ok := id.(*idemixmsp.IdemixSigningIdentity)
+	if !ok {
+		return nil, errors.New("identity is not idemix: type assertion failed")
+	}
 
-	return &idemixSigningIdentityWrapper{id.(*idemix.IdemixSigningIdentity)}, nil
+	return &idemixSigningIdentityWrapper{idemixID}, nil
 }
 
 func (i *idemixMSPWrapper) Validate(id Identity) error {

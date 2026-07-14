@@ -16,8 +16,8 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/IBM/idemix/common/flogging"
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"google.golang.org/protobuf/proto"
 
