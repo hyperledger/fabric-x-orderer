@@ -20,7 +20,7 @@ type Ledger interface {
 	GetBlockByNumber(blockNumber uint64) (*common.Block, error)
 	// GetBlocksIterator returns an iterator that starts from `startBlockNumber`(inclusive).
 	// The iterator is a blocking iterator i.e., it blocks till the next block gets available in the ledger
-	// // ResultsIterator yields QueryResult values.
+	// ResultsIterator yields QueryResult values.
 	GetBlocksIterator(startBlockNumber uint64) (ResultsIterator, error)
 	// Close closes the ledger
 	Close()

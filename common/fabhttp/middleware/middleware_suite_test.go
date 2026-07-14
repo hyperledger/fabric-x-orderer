@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package middleware_test
 
 import (
+	"net/http"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -16,4 +17,11 @@ import (
 func TestMiddleware(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Middleware Suite")
+}
+
+//go:generate counterfeiter -o fakes/http_handler.go --fake-name HTTPHandler . httpHandler
+
+//lint:ignore U1000 used to generate mock
+type httpHandler interface {
+	http.Handler
 }
