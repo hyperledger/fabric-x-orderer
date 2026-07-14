@@ -176,10 +176,6 @@ github.com/hyperledger-labs/SmartBFT/smartbftprotos
 # github.com/hyperledger/aries-bbs-go v0.0.0-20240528084656-761671ea73bc
 ## explicit; go 1.20
 github.com/hyperledger/aries-bbs-go/bbs
-# github.com/hyperledger/fabric v1.4.0-rc1.0.20250510200036-435a7f1a780a
-## explicit; go 1.24.2
-github.com/hyperledger/fabric/core/middleware
-github.com/hyperledger/fabric/core/middleware/fakes
 # github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2
 ## explicit
 github.com/hyperledger/fabric-amcl/amcl
