@@ -7,9 +7,9 @@ package handlers
 
 import (
 	"crypto/ecdsa"
+	"errors"
 
 	"github.com/IBM/idemix/bccsp/types"
-	"github.com/pkg/errors"
 )
 
 type Signer struct {
@@ -173,5 +173,6 @@ func (v *Verifier) Verify(k types.Key, signature, digest []byte, opts types.Sign
 	if err != nil {
 		return false, err
 	}
+
 	return true, nil
 }
