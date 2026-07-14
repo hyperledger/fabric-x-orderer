@@ -56,9 +56,10 @@ func (fake *BlockStoreProvider) Close() {
 	fake.closeMutex.Lock()
 	fake.closeArgsForCall = append(fake.closeArgsForCall, struct {
 	}{})
+	stub := fake.CloseStub
 	fake.recordInvocation("Close", []interface{}{})
 	fake.closeMutex.Unlock()
-	if fake.CloseStub != nil {
+	if stub != nil {
 		fake.CloseStub()
 	}
 }
@@ -81,15 +82,16 @@ func (fake *BlockStoreProvider) Drop(arg1 string) error {
 	fake.dropArgsForCall = append(fake.dropArgsForCall, struct {
 		arg1 string
 	}{arg1})
+	stub := fake.DropStub
+	fakeReturns := fake.dropReturns
 	fake.recordInvocation("Drop", []interface{}{arg1})
 	fake.dropMutex.Unlock()
-	if fake.DropStub != nil {
-		return fake.DropStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.dropReturns
 	return fakeReturns.result1
 }
 
@@ -140,15 +142,16 @@ func (fake *BlockStoreProvider) List() ([]string, error) {
 	ret, specificReturn := fake.listReturnsOnCall[len(fake.listArgsForCall)]
 	fake.listArgsForCall = append(fake.listArgsForCall, struct {
 	}{})
+	stub := fake.ListStub
+	fakeReturns := fake.listReturns
 	fake.recordInvocation("List", []interface{}{})
 	fake.listMutex.Unlock()
-	if fake.ListStub != nil {
-		return fake.ListStub()
+	if stub != nil {
+		return stub()
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.listReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -196,15 +199,16 @@ func (fake *BlockStoreProvider) Open(arg1 string) (*blkstorage.BlockStore, error
 	fake.openArgsForCall = append(fake.openArgsForCall, struct {
 		arg1 string
 	}{arg1})
+	stub := fake.OpenStub
+	fakeReturns := fake.openReturns
 	fake.recordInvocation("Open", []interface{}{arg1})
 	fake.openMutex.Unlock()
-	if fake.OpenStub != nil {
-		return fake.OpenStub(arg1)
+	if stub != nil {
+		return stub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
 	}
-	fakeReturns := fake.openReturns
 	return fakeReturns.result1, fakeReturns.result2
 }
 
@@ -256,14 +260,6 @@ func (fake *BlockStoreProvider) OpenReturnsOnCall(i int, result1 *blkstorage.Blo
 func (fake *BlockStoreProvider) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.closeMutex.RLock()
-	defer fake.closeMutex.RUnlock()
-	fake.dropMutex.RLock()
-	defer fake.dropMutex.RUnlock()
-	fake.listMutex.RLock()
-	defer fake.listMutex.RUnlock()
-	fake.openMutex.RLock()
-	defer fake.openMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

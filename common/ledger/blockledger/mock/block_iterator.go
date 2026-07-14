@@ -4,9 +4,8 @@ package mock
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 )
 
 type BlockIterator struct {
@@ -113,10 +112,6 @@ func (fake *BlockIterator) NextReturnsOnCall(i int, result1 *common.Block, resul
 func (fake *BlockIterator) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.closeMutex.RLock()
-	defer fake.closeMutex.RUnlock()
-	fake.nextMutex.RLock()
-	defer fake.nextMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

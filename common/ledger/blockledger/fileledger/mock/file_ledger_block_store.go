@@ -338,16 +338,6 @@ func (fake *FileLedgerBlockStore) ShutdownCalls(stub func()) {
 func (fake *FileLedgerBlockStore) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.addBlockMutex.RLock()
-	defer fake.addBlockMutex.RUnlock()
-	fake.getBlockchainInfoMutex.RLock()
-	defer fake.getBlockchainInfoMutex.RUnlock()
-	fake.retrieveBlockByNumberMutex.RLock()
-	defer fake.retrieveBlockByNumberMutex.RUnlock()
-	fake.retrieveBlocksMutex.RLock()
-	defer fake.retrieveBlocksMutex.RUnlock()
-	fake.shutdownMutex.RLock()
-	defer fake.shutdownMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
