@@ -378,8 +378,15 @@ func (m *BFTCensorshipMonitor) launchHeaderReceivers() error {
 		hrRcvMon.retryDeadline = time.Time{}
 
 		m.logger.Debugf("[%s] Created a header receiver to: %s", m.chainID, ep.Address)
-		go hrRcvMon.headerReceiver.DeliverHeaders()
-		m.logger.Debugf("[%s] Launched a header receiver to: %s", m.chainID, ep.Address)
+	}
+
+	// Launch all header receivers after creating them
+	for _, ep := range hRcvToCreate {
+		hrRcvMon := m.hdrRcvTrackers[ep.Address]
+		if hrRcvMon.headerReceiver != nil {
+			go hrRcvMon.headerReceiver.DeliverHeaders()
+			m.logger.Debugf("[%s] Launched a header receiver to: %s", m.chainID, ep.Address)
+		}
 	}
 
 	m.logger.Debugf("Exit: number of endpoints: %d", numEP)

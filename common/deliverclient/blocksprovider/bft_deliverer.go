@@ -190,6 +190,9 @@ func (d *BFTDeliverer) DeliverBlocks() {
 			break
 		}
 
+		// Clone the block verifier before it is used by fetch blocks
+		clonedBlockVerifier := d.UpdatableBlockVerifier.Clone()
+
 		// Start a block fetcher; a buffered channel so that the fetcher goroutine can send an error and exit w/o
 		// waiting for it to be consumed. A block receiver is created within.
 		d.fetchErrorsC = make(chan error, 1)
@@ -198,7 +201,7 @@ func (d *BFTDeliverer) DeliverBlocks() {
 
 		// Create and start a censorship monitor.
 		d.censorshipMonitor = d.CensorshipDetectorFactory.Create(
-			d.ChannelID, d.UpdatableBlockVerifier, d.requester, d, d.fetchSources, d.fetchSourceIndex, timeoutConfig, d.ConfigBlockOps,
+			d.ChannelID, clonedBlockVerifier, d.requester, d, d.fetchSources, d.fetchSourceIndex, timeoutConfig, d.ConfigBlockOps,
 		)
 		go d.censorshipMonitor.Monitor()
 

@@ -237,7 +237,7 @@ func (c *ConsenterBlockVerifier) VerifyBlock(consenterBlock *common.Block) error
 
 	c.lastBlockHeader = consenterBlock.Header
 
-	c.logger.Infof("verified block with id [%d] on channel [%s]", consenterBlock.Header.Number, c.channelID)
+	c.logger.Infof("verified consenter block number [%d] on channel [%s]", consenterBlock.Header.Number, c.channelID)
 	return nil
 }
 
