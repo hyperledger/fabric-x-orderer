@@ -977,6 +977,12 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		require.True(t, bTime.After(startTime))
 
 		t.Log("Recv() returns a single config block, num: 7")
+		// The config carries a higher sequence than the one used at Initialize, so it is treated as newer
+		// and does refresh the orderer connection-source.
+		newerConfig := &common.Config{
+			Sequence:     setup.channelConfig.GetSequence() + 1,
+			ChannelGroup: setup.channelConfig.GetChannelGroup(),
+		}
 		env := &common.Envelope{
 			Payload: protoutil.MarshalOrPanic(&common.Payload{
 				Header: &common.Header{
@@ -986,7 +992,7 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 					}),
 				},
 				Data: protoutil.MarshalOrPanic(&common.ConfigEnvelope{
-					Config: setup.channelConfig, // it must be a legal config that can produce a new bundle
+					Config: newerConfig, // it must be a legal config that can produce a new bundle
 				}),
 			}),
 		}
@@ -1042,6 +1048,127 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 
 		t.Log("updated orderer source")
 		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(Equal(2))
+
+		setup.stop()
+	})
+
+	t.Run("Stale config block does not update connection-source", func(t *testing.T) {
+		setup := newBFTDelivererTestSetup(t)
+		setup.initialize(t)
+		// Initialize applies the boot config once.
+		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(Equal(1))
+
+		setup.start()
+		setup.gWithT.Eventually(setup.fakeLedgerInfo.LedgerHeightCallCount, eventuallyTO).Should(Equal(1))
+
+		t.Log("Recv() returns a config block whose sequence is not newer than the boot config")
+		// Same sequence as the boot config => stale => must be ignored for endpoint refresh.
+		staleConfig := &common.Config{
+			Sequence:     setup.channelConfig.GetSequence(),
+			ChannelGroup: setup.channelConfig.GetChannelGroup(),
+		}
+		env := &common.Envelope{
+			Payload: protoutil.MarshalOrPanic(&common.Payload{
+				Header: &common.Header{
+					ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
+						Type:      int32(common.HeaderType_CONFIG),
+						ChannelId: "test-chain",
+					}),
+				},
+				Data: protoutil.MarshalOrPanic(&common.ConfigEnvelope{
+					Config: staleConfig,
+				}),
+			}),
+		}
+
+		configBlock := &common.Block{
+			Header: &common.BlockHeader{Number: 7},
+			Data: &common.BlockData{
+				Data: [][]byte{protoutil.MarshalOrPanic(env)},
+			},
+		}
+
+		setup.recvStepC <- &orderer.DeliverResponse{
+			Type: &orderer.DeliverResponse_Block{
+				Block: configBlock,
+			},
+		}
+
+		t.Log("the block is received, handled, and the verifier config is updated")
+		setup.gWithT.Eventually(setup.fakeBlockHandler.HandleBlockCallCount, eventuallyTO).Should(Equal(1))
+		setup.gWithT.Eventually(setup.fakeUpdatableBlockVerifier.UpdateConfigCallCount, eventuallyTO).Should(Equal(1))
+
+		t.Log("block progress advances")
+		require.Eventually(t, func() bool {
+			bNum, _ := setup.d.BlockProgress()
+			return uint64(7) == bNum
+		}, eventuallyTO, 100*time.Millisecond)
+
+		t.Log("but the orderer connection-source is NOT updated for the stale config")
+		setup.gWithT.Consistently(setup.fakeOrdererConnectionSource.Update2CallCount, time.Second).Should(Equal(1))
+
+		setup.stop()
+	})
+
+	t.Run("Config blocks refresh connection-source only when sequence advances", func(t *testing.T) {
+		setup := newBFTDelivererTestSetup(t)
+		setup.initialize(t)
+		// Initialize applies the boot config once.
+		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(Equal(1))
+
+		setup.start()
+		setup.gWithT.Eventually(setup.fakeLedgerInfo.LedgerHeightCallCount, eventuallyTO).Should(Equal(1))
+
+		bootSeq := setup.channelConfig.GetSequence()
+
+		// Helper: build and deliver a config block carrying a given sequence.
+		sendConfigBlock := func(blockNum, seq uint64) {
+			cfg := &common.Config{
+				Sequence:     seq,
+				ChannelGroup: setup.channelConfig.GetChannelGroup(),
+			}
+			env := &common.Envelope{
+				Payload: protoutil.MarshalOrPanic(&common.Payload{
+					Header: &common.Header{
+						ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
+							Type:      int32(common.HeaderType_CONFIG),
+							ChannelId: "test-chain",
+						}),
+					},
+					Data: protoutil.MarshalOrPanic(&common.ConfigEnvelope{Config: cfg}),
+				}),
+			}
+			setup.recvStepC <- &orderer.DeliverResponse{
+				Type: &orderer.DeliverResponse_Block{
+					Block: &common.Block{
+						Header: &common.BlockHeader{Number: blockNum},
+						Data:   &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(env)}},
+					},
+				},
+			}
+		}
+
+		t.Log("config block with sequence boot+2 is newer => refreshes connection-source")
+		sendConfigBlock(7, bootSeq+2)
+		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(Equal(2))
+		setup.gWithT.Eventually(setup.fakeBlockHandler.HandleBlockCallCount, eventuallyTO).Should(Equal(1))
+
+		t.Log("config block with sequence boot+1 is now stale (< last applied) => handled but NOT refreshed")
+		sendConfigBlock(8, bootSeq+1)
+		setup.gWithT.Eventually(setup.fakeBlockHandler.HandleBlockCallCount, eventuallyTO).Should(Equal(2))
+		setup.gWithT.Eventually(setup.fakeUpdatableBlockVerifier.UpdateConfigCallCount, eventuallyTO).Should(Equal(2))
+		// Update2 must still be 2: the intermediate/replayed config was rejected against the running max.
+		setup.gWithT.Consistently(setup.fakeOrdererConnectionSource.Update2CallCount, time.Second).Should(Equal(2))
+
+		t.Log("config block with sequence boot+3 advances again => refreshes connection-source")
+		sendConfigBlock(9, bootSeq+3)
+		setup.gWithT.Eventually(setup.fakeOrdererConnectionSource.Update2CallCount, eventuallyTO).Should(Equal(3))
+
+		t.Log("block progress advances to the last block")
+		require.Eventually(t, func() bool {
+			bNum, _ := setup.d.BlockProgress()
+			return uint64(9) == bNum
+		}, eventuallyTO, 100*time.Millisecond)
 
 		setup.stop()
 	})

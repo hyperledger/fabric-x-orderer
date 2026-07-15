@@ -102,6 +102,7 @@ type BFTDeliverer struct {
 	lastBlockTime                  time.Time     // last block time
 	fetchFailureCounter            int           // counts the number of consecutive failures to fetch a block
 	fetchFailureTotalSleepDuration time.Duration // the cumulative sleep time from when fetchFailureCounter goes 0->1
+	lastConfigSequence             uint64        // sequence of the newest config applied to the orderer endpoints
 
 	fetchSources     []*orderers.Endpoint
 	fetchSourceIndex int
@@ -138,6 +139,7 @@ func (d *BFTDeliverer) Initialize(channelConfig *common.Config, selfParty types.
 	}
 	ordererSource.Update2(extractedEndpoints)
 	d.orderers = ordererSource
+	d.lastConfigSequence = channelConfig.GetSequence()
 }
 
 func (d *BFTDeliverer) BlockProgress() (uint64, time.Time) {
@@ -419,6 +421,17 @@ func (d *BFTDeliverer) onBlockProcessingSuccess(blockNum uint64, channelConfig *
 	d.lastBlockTime = time.Now()
 
 	if channelConfig != nil {
+		seq := channelConfig.GetSequence()
+		if seq <= d.lastConfigSequence {
+			// This is a stale config block replayed while catching up. Applying its (older) endpoints would
+			// clobber the current set with an obsolete membership, so skip the refresh.
+			d.Logger.Debugf("Ignoring stale config block for endpoint refresh: sequence %d <= last applied %d", seq, d.lastConfigSequence)
+			return
+		}
+		// Update the last config sequence, extract the orderer config, and update the endpoints.
+
+		d.lastConfigSequence = seq
+
 		ordererConfig, err := extractOrdererConfig(d.ChannelID, channelConfig, d.CryptoProvider)
 		if err != nil {
 			d.Logger.Panicf("Failed to extract orderer config: %s", err)
@@ -431,6 +444,7 @@ func (d *BFTDeliverer) onBlockProcessingSuccess(blockNum uint64, channelConfig *
 		d.Logger.Debugf("Extracted orderer addresses: %+v", extractedEndpoints)
 		d.orderers.Update2(extractedEndpoints)
 		d.Logger.Debugf("Updated OrdererConnectionSource")
+
 	}
 
 	d.Logger.Debug("onBlockProcessingSuccess: exit")
