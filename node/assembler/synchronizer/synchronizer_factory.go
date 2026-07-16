@@ -43,7 +43,6 @@ type SynchronizerWithStop interface {
 
 //go:generate counterfeiter -o mocks/synchronizer_factory.go . SynchronizerFactory
 type SynchronizerFactory interface {
-	// CreateSynchronizer creates a new Assembler Synchronizer.
 	CreateSynchronizer(
 		logger *flogging.FabricLogger,
 		selfID uint64,
@@ -52,12 +51,13 @@ type SynchronizerFactory interface {
 		bccsp bccsp.BCCSP,
 		targetHeight uint64,
 		bootConfigBlock *cb.Block,
+		verifierFactory VerifierFactory,
 	) SynchronizerWithStop
 }
 
 type SynchronizerCreator struct{}
 
-func (*SynchronizerCreator) CreateSynchronizer(
+func (c *SynchronizerCreator) CreateSynchronizer(
 	logger *flogging.FabricLogger,
 	selfID uint64,
 	localConfigCluster config.Cluster,
@@ -65,11 +65,12 @@ func (*SynchronizerCreator) CreateSynchronizer(
 	bccsp bccsp.BCCSP,
 	targetHeight uint64,
 	bootConfigBlock *cb.Block,
+	verifierFactory VerifierFactory,
 ) SynchronizerWithStop {
-	return newSynchronizer(logger, selfID, localConfigCluster, support, bccsp, targetHeight, bootConfigBlock)
+	return newSynchronizer(logger, selfID, localConfigCluster, support, bccsp, targetHeight, bootConfigBlock, verifierFactory)
 }
 
-// newSynchronizer creates a new synchronizer
+// newSynchronizer creates a new synchronizer.
 func newSynchronizer(
 	logger *flogging.FabricLogger,
 	selfID uint64,
@@ -78,6 +79,7 @@ func newSynchronizer(
 	bccsp bccsp.BCCSP,
 	targetHeight uint64,
 	bootConfigBlock *cb.Block,
+	verifierFactory VerifierFactory,
 ) SynchronizerWithStop {
 	switch localConfigCluster.ReplicationPolicy {
 	case "assemblerSync":
@@ -90,7 +92,7 @@ func newSynchronizer(
 			ClusterDialer:       &comm.PredicateDialer{Config: support.ClientConfig()},
 			LocalConfigCluster:  localConfigCluster,
 			BlockPullerFactory:  &GenesisFetcherCreator{},
-			VerifierFactory:     &noopVerifierCreator{}, // TODO replace with real verifier
+			VerifierFactory:     verifierFactory,
 			BFTDelivererFactory: &bftDelivererCreator{},
 			Logger:              logger,
 			JoinConfigBlock:     bootConfigBlock,

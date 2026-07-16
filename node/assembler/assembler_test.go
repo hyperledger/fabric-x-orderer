@@ -222,6 +222,7 @@ func (at *assemblerTest) StartAssembler() {
 		consensusBringerFactoryMock,
 		&mocks.SignerSerializer{},
 		at.synchronizerFactoryMock,
+		&synchronizer_mocks.VerifierFactory{},
 	)
 
 	at.assembler.StartAssemblerService()
@@ -427,7 +428,7 @@ func TestAssembler_InitLedgerSyncsWhenConfigBlockAheadOfLedger(t *testing.T) {
 	// The fake synchronizer simulates pulling and committing the missing blocks (0..configBlockNumber)
 	// to the ledger via the support adapter, so that after Sync() the ledger reaches the target height.
 	var fakeSync *synchronizer_mocks.FakeSynchronizerWithStop
-	test.synchronizerFactoryMock.CreateSynchronizerCalls(func(_ *flogging.FabricLogger, _ uint64, _ orderer_config.Cluster, support synchronizer.AssemblerSupport, _ bccsp.BCCSP, _ uint64, bootConfigBlock *common.Block) synchronizer.SynchronizerWithStop {
+	test.synchronizerFactoryMock.CreateSynchronizerCalls(func(_ *flogging.FabricLogger, _ uint64, _ orderer_config.Cluster, support synchronizer.AssemblerSupport, _ bccsp.BCCSP, _ uint64, bootConfigBlock *common.Block, _ synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop {
 		fakeSync = &synchronizer_mocks.FakeSynchronizerWithStop{}
 		fakeSync.SyncCalls(func() error {
 			genesis := utils.EmptyGenesisBlock("arma")
@@ -446,7 +447,7 @@ func TestAssembler_InitLedgerSyncsWhenConfigBlockAheadOfLedger(t *testing.T) {
 
 	// Assert: exactly one synchronizer was created with the expected parameters, and Sync() ran once.
 	require.Equal(t, 1, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
-	_, selfID, cluster, support, _, targetHeight, passedConfigBlock := test.synchronizerFactoryMock.CreateSynchronizerArgsForCall(0)
+	_, selfID, cluster, support, _, targetHeight, passedConfigBlock, _ := test.synchronizerFactoryMock.CreateSynchronizerArgsForCall(0)
 	require.Equal(t, uint64(test.party), selfID)
 	require.Equal(t, configBlockNumber+1, targetHeight)
 	require.Equal(t, configBlock, passedConfigBlock)
