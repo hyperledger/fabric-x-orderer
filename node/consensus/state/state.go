@@ -726,7 +726,12 @@ func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogg
 	// and their digest was added to the BatchAttestationDB.
 
 	// <seq, shard, primary> --> { digest -->  signer }
-	m := batchAttestationVotesByDigests(s)
+	// Only count BAFs where Signer != Primary: a BAF where the signer claims to be
+	// the primary (Signer == Primary) is self-signed and can be forged by any node to
+	// manufacture false equivocation evidence.  Genuine attestations from secondaries
+	// always have Signer != Primary (the primary's own participation is captured by the
+	// empty PrimarySignature field, not by it re-broadcasting its own BAF as a voter).
+	m := batchAttestationVotesByDigestsExcludingSelfSigned(s)
 
 	// Sort votes for deterministic processing: by shard, then primary, then seq.
 	votes := make([]batchAttestationVote, 0, len(m))
@@ -801,6 +806,33 @@ func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[strin
 	m := make(map[batchAttestationVote]map[string][]types.PartyID)
 
 	for _, baf := range s.Pending {
+		currentVote := batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary()}
+
+		digests2signers, exists := m[currentVote]
+		if !exists {
+			digests2signers = make(map[string][]types.PartyID)
+			m[currentVote] = digests2signers
+		}
+
+		hexDigest := hex.EncodeToString(baf.Digest())
+		digests2signers[hexDigest] = append(digests2signers[hexDigest], baf.Signer())
+	}
+	return m
+}
+
+// batchAttestationVotesByDigestsExcludingSelfSigned is like batchAttestationVotesByDigests
+// but skips BAFs where Signer() == Primary().  Such self-signed BAFs cannot serve as
+// secondary attestations and are filtered here to prevent a non-primary from
+// manufacturing equivocation evidence by sending two BAFs with the same Primary() == Signer()
+// but different digests.
+func batchAttestationVotesByDigestsExcludingSelfSigned(s *State) map[batchAttestationVote]map[string][]types.PartyID {
+	m := make(map[batchAttestationVote]map[string][]types.PartyID)
+
+	for _, baf := range s.Pending {
+		if baf.Signer() == baf.Primary() {
+			continue
+		}
+
 		currentVote := batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary()}
 
 		digests2signers, exists := m[currentVote]

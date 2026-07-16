@@ -732,4 +732,49 @@ func TestDetectEquivocation(t *testing.T) {
 		// Term should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
 	})
+
+	t.Run("no rotation when signer equals primary - self-signed BAFs ignored", func(t *testing.T) {
+		// A non-primary node can try to force a term rotation by sending two BAFs where
+		// Primary() == Signer() == self with different digests.  Because the primary would
+		// never re-broadcast its own batch as a secondary voter, such BAFs are filtered out
+		// and must not trigger equivocation detection.
+		state := consensus_state.State{
+			N:         4,
+			Threshold: 2,
+			Quorum:    3,
+			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+			Pending: []types.BatchAttestationFragment{
+				// Both BAFs claim Primary==Signer==2: self-signed, ignored for equivocation.
+				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0, nil),
+				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(2), types.BatchSequence(1), []byte{4, 5, 6}, types.PartyID(2), 0, 0, nil),
+			},
+		}
+
+		consensus_state.DetectEquivocation(&state, 0, logger)
+
+		// Term must not change: self-signed BAFs cannot be used as equivocation evidence.
+		assert.Equal(t, uint64(1), state.Shards[0].Term)
+	})
+
+	t.Run("rotation still triggered when secondaries sign conflicting digests from the same primary", func(t *testing.T) {
+		// Genuine equivocation: two different secondaries received different batches from
+		// the same primary and both signed their BAF (Signer != Primary).
+		state := consensus_state.State{
+			N:         4,
+			Threshold: 2,
+			Quorum:    3,
+			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+			Pending: []types.BatchAttestationFragment{
+				// Signer 2 attests digest {1,2,3} for primary 1.
+				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0, nil),
+				// Signer 3 attests a different digest {4,5,6} for the same primary 1 / seq 1.
+				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{4, 5, 6}, types.PartyID(3), 0, 0, nil),
+			},
+		}
+
+		consensus_state.DetectEquivocation(&state, 0, logger)
+
+		// Equivocation is detected: term must be incremented.
+		assert.Equal(t, uint64(2), state.Shards[0].Term)
+	})
 }
