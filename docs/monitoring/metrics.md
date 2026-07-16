@@ -45,11 +45,11 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Help:** "The total number of blocks committed to the ledger."
 
 - **Namespace:** "assembler"  
-  **Name:** "batch_fetch_latency_seconds"
-  **Help:** "The latency to fetch a requested batch from the batchers in the shard."
+  **Name:** "batch_unary_fetch_latency_seconds"
+  **Help:** "The latency to unary fetch a requested batch from the batchers in the shard."
 
 - **Namespace:** "assembler"  
-  **Name:** "ba_to_batch_latency_seconds"
+  **Name:** "attestation_to_batch_collation_latency_seconds"
   **Help:** "The latency from receiving a batch attestation until the matching batch is available."
 
 - **Namespace:** "assembler"  

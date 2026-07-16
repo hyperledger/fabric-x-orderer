@@ -120,7 +120,7 @@ func (p *Prefetcher) handleBatchRequests() {
 			go func(batchId types.BatchID) {
 				fetchStart := time.Now()
 				batch, err := p.batchFetcher.GetBatch(batchId)
-				p.metrics.batchFetchLatency.Observe(time.Since(fetchStart).Seconds())
+				p.metrics.batchUnaryFetchLatency.Observe(time.Since(fetchStart).Seconds())
 
 				if err != nil {
 					if errors.Is(err, context.Canceled) {

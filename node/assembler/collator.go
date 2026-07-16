@@ -91,7 +91,7 @@ func (c *Collator) processOrderedBatchAttestations() {
 		}
 		baToBatchStart := time.Now()
 		batch, err := c.collateAttestationWithBatch(oba.BatchAttestation())
-		c.Metrics.baToBatchLatency.Observe(time.Since(baToBatchStart).Seconds())
+		c.Metrics.attestationToBatchCollationLatency.Observe(time.Since(baToBatchStart).Seconds())
 
 		if err != nil {
 			if errors.Is(err, utils.ErrOperationCancelled) {
