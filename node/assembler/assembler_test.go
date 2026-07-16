@@ -8,9 +8,11 @@ package assembler_test
 
 import (
 	"crypto/rand"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -21,6 +23,8 @@ import (
 	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer"
+	synchronizer_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -52,6 +56,7 @@ type assemblerTest struct {
 	prefetcherMock                 *assembler_mocks.FakePrefetcherController
 	prefetchIndexMock              *assembler_mocks.FakePrefetchIndexer
 	consensusBringerMock           *delivery_mocks.FakeConsensusBringer
+	synchronizerFactoryMock        *synchronizer_mocks.FakeSynchronizerFactory
 }
 
 type dummyAssemblerStopper struct{}
@@ -83,7 +88,9 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		prefetcherMock:                 &assembler_mocks.FakePrefetcherController{},
 		prefetchIndexMock:              &assembler_mocks.FakePrefetchIndexer{},
 		consensusBringerMock:           &delivery_mocks.FakeConsensusBringer{},
+		synchronizerFactoryMock:        &synchronizer_mocks.FakeSynchronizerFactory{},
 	}
+	test.synchronizerFactoryMock.CreateSynchronizerReturns(&synchronizer_mocks.FakeSynchronizerWithStop{})
 	assemblerEndpoint := ""
 	consenterEndpoint := "consenter"
 
@@ -214,6 +221,7 @@ func (at *assemblerTest) StartAssembler() {
 		batchBringerFactoryMock,
 		consensusBringerFactoryMock,
 		&mocks.SignerSerializer{},
+		at.synchronizerFactoryMock,
 	)
 
 	at.assembler.StartAssemblerService()
@@ -266,32 +274,6 @@ func TestAssembler_StartAndThenStopShouldOnlyWriteGenesisBlockToLedger(t *testin
 	genesisBlock, err := al.Ledger.RetrieveBlockByNumber(0)
 	require.NoError(t, err)
 	require.True(t, protoutil.IsConfigBlock(genesisBlock))
-	al.Close()
-}
-
-func TestAssembler_SkipNonGenesisConfigBlock(t *testing.T) {
-	// Arrange
-	shards := []types.ShardID{1, 2}
-	parties := []types.PartyID{1, 2, 3}
-	var blockNumber uint64 = 7
-	configBlock := tx.CreateConfigBlock(blockNumber, []byte("config block data"))
-
-	test := setupAssemblerTest(t, shards, parties, parties[0], configBlock)
-
-	// Act
-	test.StartAssembler()
-	test.WaitAssemblerRunning(t)
-
-	test.StopAssembler()
-	test.WaitAssemblerStopped(t)
-
-	// Assert
-	al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
-	require.NoError(t, err)
-	require.Equal(t, uint64(0), al.Ledger.Height())
-	genesisBlock, err := al.Ledger.RetrieveBlockByNumber(blockNumber)
-	require.ErrorContains(t, err, "no such block number")
-	require.Nil(t, genesisBlock)
 	al.Close()
 }
 
@@ -402,4 +384,152 @@ func TestAssemblerStatusStop(t *testing.T) {
 	test.StopAssembler()
 	test.WaitAssemblerStopped(t)
 	require.Equal(t, test.assembler.GetStatus().ConfigSequenceNumber, uint64(0))
+}
+
+// Scenario:
+// 1. An assembler is started with a genesis config block (block number 0) and an empty ledger.
+// 2. initLedger appends the genesis block directly to the ledger.
+// 3. No synchronizer is created, and the ledger height is exactly 1.
+func TestAssembler_InitLedgerGenesisBlockDoesNotSync(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
+
+	// Act
+	test.StartAssembler()
+	test.WaitAssemblerRunning(t)
+	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
+
+	// Assert: no synchronizer is created for the genesis path, and only the genesis block is written.
+	require.Equal(t, 0, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+
+	al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), al.Ledger.Height())
+	al.Close()
+}
+
+// Scenario:
+// 1. An assembler is started with a config block whose number is ahead of the empty ledger's height.
+// 2. initLedger creates a synchronizer with the expected arguments (self id, target height, config block, cluster config).
+// 3. The synchronizer's Sync() commits the missing blocks (genesis and the config block) to the ledger.
+// 4. The ledger is populated up to the target height.
+func TestAssembler_InitLedgerSyncsWhenConfigBlockAheadOfLedger(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	var configBlockNumber uint64 = 1
+	configBlock := tx.CreateConfigBlock(configBlockNumber, []byte("config block data"))
+	test := setupAssemblerTest(t, shards, parties, parties[0], configBlock)
+
+	// The fake synchronizer simulates pulling and committing the missing blocks (0..configBlockNumber)
+	// to the ledger via the support adapter, so that after Sync() the ledger reaches the target height.
+	var fakeSync *synchronizer_mocks.FakeSynchronizerWithStop
+	test.synchronizerFactoryMock.CreateSynchronizerCalls(func(_ *flogging.FabricLogger, _ uint64, _ orderer_config.Cluster, support synchronizer.AssemblerSupport, _ bccsp.BCCSP, _ uint64, bootConfigBlock *common.Block) synchronizer.SynchronizerWithStop {
+		fakeSync = &synchronizer_mocks.FakeSynchronizerWithStop{}
+		fakeSync.SyncCalls(func() error {
+			genesis := utils.EmptyGenesisBlock("arma")
+			support.WriteConfigBlock(genesis)
+			// chain the config block to the genesis block so the ledger accepts it.
+			bootConfigBlock.Header.PreviousHash = protoutil.BlockHeaderHash(genesis.Header)
+			support.WriteConfigBlock(bootConfigBlock)
+			return nil
+		})
+		return fakeSync
+	})
+
+	// Act
+	test.StartAssembler()
+	test.WaitAssemblerRunning(t)
+
+	// Assert: exactly one synchronizer was created with the expected parameters, and Sync() ran once.
+	require.Equal(t, 1, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+	_, selfID, cluster, support, _, targetHeight, passedConfigBlock := test.synchronizerFactoryMock.CreateSynchronizerArgsForCall(0)
+	require.Equal(t, uint64(test.party), selfID)
+	require.Equal(t, configBlockNumber+1, targetHeight)
+	require.Equal(t, configBlock, passedConfigBlock)
+	require.NotNil(t, support)
+	require.Equal(t, "assemblerSync", cluster.ReplicationPolicy)
+	require.Equal(t, 100, cluster.SendBufferSize)
+	require.Equal(t, []byte(test.nodeConfig.TLSCertificateFile), cluster.ClientCertificate)
+	require.Equal(t, []byte(test.nodeConfig.TLSPrivateKeyFile), cluster.ClientPrivateKey)
+	require.NotNil(t, fakeSync)
+	require.Equal(t, 1, fakeSync.SyncCallCount())
+
+	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
+
+	// Assert: the ledger was populated by the synchronizer up to the target height.
+	al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
+	require.NoError(t, err)
+	require.Equal(t, configBlockNumber+1, al.Ledger.Height())
+	al.Close()
+}
+
+// Scenario:
+// 1. An assembler is started with a config block whose number is ahead of the empty ledger's height.
+// 2. initLedger creates a synchronizer and runs Sync(), which returns an error.
+// 3. Assembler initialization aborts with a panic.
+func TestAssembler_InitLedgerPanicsWhenSyncFails(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	configBlock := tx.CreateConfigBlock(7, []byte("config block data"))
+	test := setupAssemblerTest(t, shards, parties, parties[0], configBlock)
+
+	fakeSync := &synchronizer_mocks.FakeSynchronizerWithStop{}
+	fakeSync.SyncReturns(errors.New("failed to reach quorum"))
+	test.synchronizerFactoryMock.CreateSynchronizerReturns(fakeSync)
+
+	// Act & Assert
+	require.Panics(t, func() { test.StartAssembler() })
+	require.Equal(t, 1, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+	require.Equal(t, 1, fakeSync.SyncCallCount())
+}
+
+// Scenario:
+// 1. An assembler is started with a config block whose number is ahead of the empty ledger's height.
+// 2. initLedger creates a synchronizer and runs Sync(), which returns successfully but writes no block.
+// 3. initLedger detects the ledger is still empty and panics rather than starting with an empty ledger.
+func TestAssembler_InitLedgerPanicsWhenLedgerEmptyAfterSync(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	configBlock := tx.CreateConfigBlock(7, []byte("config block data"))
+	test := setupAssemblerTest(t, shards, parties, parties[0], configBlock)
+	// The default fake synchronizer returns nil from Sync() without writing any block.
+
+	// Act & Assert
+	require.Panics(t, func() { test.StartAssembler() })
+	require.Equal(t, 1, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+}
+
+// TestAssembler_InitLedgerDoesNotSyncWhenConfigBlockAlreadyInLedger
+// Scenario:
+// 1. An assembler is started with a genesis config block, writing it to the ledger (height becomes 1).
+// 2. The assembler is stopped and then restarted with the same genesis config block, whose number is now below the ledger height.
+// 3. initLedger takes neither the genesis nor the sync path, and the assembler restarts without creating a synchronizer.
+func TestAssembler_InitLedgerDoesNotSyncWhenConfigBlockAlreadyInLedger(t *testing.T) {
+	// Arrange
+	shards := []types.ShardID{1, 2}
+	parties := []types.PartyID{1, 2, 3}
+	test := setupAssemblerTest(t, shards, parties, parties[0], utils.EmptyGenesisBlock("arma"))
+
+	// First start writes the genesis block, bringing the ledger height to 1.
+	test.StartAssembler()
+	test.WaitAssemblerRunning(t)
+	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
+
+	// Act: restart with the same genesis config block (number 0), now below the ledger height (1).
+	test.StartAssembler()
+	test.WaitAssemblerRunning(t)
+
+	// Assert: no synchronizer was created across either start.
+	require.Equal(t, 0, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+
+	test.StopAssembler()
+	test.WaitAssemblerStopped(t)
 }
