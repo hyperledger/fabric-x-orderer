@@ -90,6 +90,14 @@ unit-tests: unit-tests-other unit-tests-consensus unit-tests-batcher
 unit-tests-consensus:
 	go test -race -timeout 30m ./node/consensus/...
 
+.PHONY: unit-tests-consensus-without-full-replacement
+unit-tests-consensus-without-full-replacement:
+	go test -race -timeout 20m -skip "^TestConsensusFullReplacement$$" ./node/consensus/...
+
+.PHONY: unit-tests-consensus-full-replacement
+unit-tests-consensus-full-replacement:
+	go test -race -timeout 20m -run "^TestConsensusFullReplacement$$" ./node/consensus/...
+
 .PHONY: unit-tests-batcher
 unit-tests-batcher:
 	go test -race -timeout 15m ./node/batcher/...
