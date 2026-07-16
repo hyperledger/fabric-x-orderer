@@ -158,12 +158,16 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
 
 	// 1.
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "TLS", "TLS")
-	defer netInfo.CleanUp()
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
 
 	// 2.
 	armageddonCLI := armageddon.NewCLI()
@@ -181,7 +185,9 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	readyChan := make(chan string, nodesNumber)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
 
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, nodesNumber, 10)
 
@@ -194,10 +200,7 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 
 	capacity := rate / fillFrequency
 	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter")
-		os.Exit(3)
-	}
+	require.NoError(t, err)
 
 	uc, err := testutil.GetUserConfig(dir, 1)
 	require.NoError(t, err)
@@ -207,10 +210,7 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 
 	for i := range totalTxNumber {
 		status := rl.GetToken()
-		if !status {
-			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-			os.Exit(3)
-		}
+		require.Truef(t, status, "failed to send tx %d", i+1)
 		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
 		env := tx.CreateStructuredEnvelope(txContent)
 		err = broadcastClient.SendTx(env)
@@ -218,8 +218,8 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	}
 
 	// 5.
-	assemblerToMonitor := armaNetwork.GetAssembler(t, types.PartyID(1))
-	url := testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
+	assemblerToTest := armaNetwork.GetAssembler(t, types.PartyID(1))
+	prometheusURL := testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToTest)
 
 	txsCountPattern := fmt.Sprintf(`assembler_ledger_transaction_count_total\{party_id="%d"\} \d+`, types.PartyID(1))
 	txsCountRe := regexp.MustCompile(txsCountPattern)
@@ -228,32 +228,30 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	blocksCountRe := regexp.MustCompile(blocksCountPattern)
 
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, txsCountRe, url) == totalTxNumber+1
+		return testutil.FetchPrometheusMetricValue(t, txsCountRe, prometheusURL) == totalTxNumber+1
 	}, 30*time.Second, 100*time.Millisecond)
 
-	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
+	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, prometheusURL), 2)
 
 	// 6.
-	assemblerToMonitor.StopArmaNode()
-	assemblerToMonitor.RestartArmaNode(t, readyChan)
+	assemblerToTest.StopArmaNode()
+	assemblerToTest.RestartArmaNode(t, readyChan)
 
 	// 7.
 	testutil.WaitReady(t, readyChan, 1, 10)
-	url = testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToMonitor)
+	prometheusURL = testutil.CaptureArmaNodePrometheusServiceURL(t, assemblerToTest)
 
 	require.Eventually(t, func() bool {
-		return testutil.FetchPrometheusMetricValue(t, txsCountRe, url) == totalTxNumber+1
+		return testutil.FetchPrometheusMetricValue(t, txsCountRe, prometheusURL) == totalTxNumber+1
 	}, 30*time.Second, 100*time.Millisecond)
 
-	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, url), 2)
+	require.GreaterOrEqual(t, testutil.FetchPrometheusMetricValue(t, blocksCountRe, prometheusURL), 2)
 
 	// 8.
-	url = testutil.CaptureArmaNodeHealthCheckServiceURL(t, assemblerToMonitor)
-
-	pattern := `^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`
-	re := regexp.MustCompile(pattern)
+	healthCheckURL := testutil.CaptureArmaNodeHealthCheckServiceURL(t, assemblerToTest)
+	healthCheckRe := regexp.MustCompile(`^\{\s*"status"\s*:\s*"([^"]+)"(?:\s*,\s*"time"\s*:\s*"[^"]*")?\s*\}$`)
 
 	require.Eventually(t, func() bool {
-		return testutil.GetHealthCheckStatus(t, re, url)
+		return testutil.GetHealthCheckStatus(t, healthCheckRe, healthCheckURL)
 	}, 30*time.Second, 100*time.Millisecond)
 }
