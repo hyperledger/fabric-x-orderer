@@ -29,15 +29,9 @@ import (
 )
 
 // TestConsensusFullReplacement tests the consensus behavior when parties are replaced.
-// Starting with parties 1,2,3,4, the test performs the following sequence:
-// 1. Send a simple request to verify initial state
-// 2. Add party 5, then remove party 1
-// 3. Add party 6, then remove party 2
-// 4. Add party 7, then remove party 3
-// 5. Add party 8, then remove party 4
-// 6. Add party 9, then remove party 5
-// 7. Add party 10
-// Final state: parties 6,7,8,9,10
+// Starting with parties 1,2,3,4, the test loops 6 times.
+// Each iteration i (1..6) adds party i+4 and then removes party i.
+// Final state: parties 7,8,9,10
 func TestConsensusFullReplacement(t *testing.T) {
 	// Start with parties 1,2,3,4 only
 	initialParties := []types.PartyID{1, 2, 3, 4}
@@ -63,30 +57,12 @@ func TestConsensusFullReplacement(t *testing.T) {
 	consensusNodes, servers, _ := createConsensusNodesAndGRPCServers(t, dir, initialParties)
 	startConsensusNodesAndRegisterGRPCServers(t, initialParties, consensusNodes, servers)
 
-	// Load private keys for batchers of initial parties
-	privateKey1, err := loadBatcherPrivateKey(t, dir, 1)
-	require.NoError(t, err)
-	privateKey2, err := loadBatcherPrivateKey(t, dir, 2)
-	require.NoError(t, err)
-	privateKey3, err := loadBatcherPrivateKey(t, dir, 3)
-	require.NoError(t, err)
-	privateKey4, err := loadBatcherPrivateKey(t, dir, 4)
-	require.NoError(t, err)
-	var privateKey5 *ecdsa.PrivateKey
-
 	t.Logf(">>> Initial setup complete with parties: %v", initialParties)
 
 	lastBlockNumber := uint64(0) // Start with genesis block
 	configSeq := types.ConfigSequence(0)
-	activeParties := []types.PartyID{1, 2, 3, 4}
 
-	// Initial simple request to verify the network is working
-	lastBlockNumber++ // Increment to 1 for the first request
-	t.Logf(">>> Sending initial request with parties: %v at block %d", activeParties, lastBlockNumber)
-	sendSimpleRequest(t, consensusNodes, privateKey1, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
-	t.Logf(">>> Initial request committed at block %d", lastBlockNumber)
-
-	// Create router context for config submissions
+	// Initial router context uses party 1's certificate
 	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
 	require.NoError(t, err)
 	block, _ := pem.Decode(routerCertBytes)
@@ -99,779 +75,193 @@ func TestConsensusFullReplacement(t *testing.T) {
 
 	var lastConfigBlock *common.Block
 
-	// Step 1: Add party 5
-	t.Run("Add party 5", func(t *testing.T) {
-		t.Logf(">>> Adding party 5 to parties: %v", activeParties)
+	// Initial simple request to verify the network is working
+	lastBlockNumber++
+	t.Logf(">>> Sending initial request with parties: %v at block %d", initialParties, lastBlockNumber)
+	pk1, err := loadBatcherPrivateKey(t, dir, 1)
+	require.NoError(t, err)
+	pk2, err := loadBatcherPrivateKey(t, dir, 2)
+	require.NoError(t, err)
+	sendSimpleRequest(t, consensusNodes, pk1, pk2, 1, 2, configSeq, lastBlockNumber, "")
+	t.Logf(">>> Initial request committed at block %d", lastBlockNumber)
 
-		// Create config update to add party 5
-		configBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+	// Each iteration i (1-based) adds party i+4 and removes party i.
+	// After 6 iterations the active set goes from {1,2,3,4} to {7,8,9,10}.
+	for i := 1; i <= 6; i++ {
+		newParty := types.PartyID(i + 4)
+		removeParty := types.PartyID(i)
 
-		// Add the new party to the configuration
-		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
-		require.NotNil(t, addedNetInfo)
-		require.Equal(t, types.PartyID(5), addedPartyID, "Expected to add party 5")
-		t.Logf(">>> Added party ID: %d", addedPartyID)
+		// Active parties at the start of this iteration: i, i+1, i+2, i+3.
+		// signerA/B/C are the first three — a majority used to sign the add TX.
+		signerA := types.PartyID(i)
+		signerB := types.PartyID(i + 1)
+		signerC := types.PartyID(i + 2)
 
-		// Create and sign the config transaction
-		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
-		// Use parties 1,2,3 for signing (majority of 4)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, 1, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
+		// ── Add new party ──────────────────────────────────────────────────────
+		t.Run(fmt.Sprintf("Add party %d", newParty), func(t *testing.T) {
+			t.Logf(">>> Adding party %d", newParty)
 
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		// Wait for existing consensus nodes to apply new config
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		// Config block will be at the next block number
-		lastBlockNumber++
-		t.Logf(">>> Checking for config block at block number %d", lastBlockNumber)
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		// Add the added party to active parties
-		activeParties = append(activeParties, addedPartyID)
-
-		// Write the last config block to a file so the new party can read it
-		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
-		require.NoError(t, err)
-
-		// Update the config block path in the net info of the added party
-		for _, netNode := range addedNetInfo {
-			netNode.ConfigBlockPath = newConfigBlockPath
-		}
-
-		// Update file store and monitoring port for the new party
-		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
-
-		// Close the listeners allocated by ExtendNetwork
-		for _, nodeInfo := range addedNetInfo {
-			nodeInfo.Close()
-		}
-
-		// Start the new consensus node
-		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
-		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
-		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
-
-		// Add the new consensus node to the list
-		consensusNodes = append(consensusNodes, newConsensusNode[0])
-
-		// Wait for connections to be reestablished
-		time.Sleep(30 * time.Second)
-
-		t.Logf(">>> Successfully added party %d. Active parties: %v", addedPartyID, activeParties)
-
-		// Send a simple request to verify all parties are in sync
-		lastBlockNumber++ // Increment before the request
-		t.Logf(">>> Sending sync request after adding party %d at block %d", addedPartyID, lastBlockNumber)
-		sendSimpleRequest(t, consensusNodes, privateKey1, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
-	})
-
-	// Step 2: Remove party 1
-	t.Run("Remove party 1", func(t *testing.T) {
-		t.Logf(">>> Removing party 1 from parties: %v", activeParties)
-		require.NotNil(t, lastConfigBlock, "lastConfigBlock should not be nil")
-
-		// Create config update to remove party 1
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		configUpdatePbData := configUpdateBuilder.RemoveParty(t, 1)
-
-		// Sign with parties 2,3,4 (majority of remaining parties)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{2, 3, 4}, 2, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		// Wait for party 1 to enter pending admin state and stop it
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() == 1 {
-				waitForPendingAdminState(t, consenter, uint64(configSeq))
-				consenter.Stop()
-				break
+			var configBlockPath string
+			if lastConfigBlock == nil {
+				// First iteration: use the bootstrap block produced by armageddon
+				configBlockPath = filepath.Join(dir, "bootstrap", "bootstrap.block")
+			} else {
+				configBlockStoreDir := t.TempDir()
+				configBlockPath = filepath.Join(configBlockStoreDir, "config.block")
+				require.NoError(t, configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath))
 			}
-		}
 
-		// Update consensus nodes list (remove party 1)
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0)
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.PartyID != 1 {
-				consensusNodes = append(consensusNodes, consensusNode)
+			configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+			addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+			require.NotNil(t, addedNetInfo)
+			require.Equal(t, newParty, addedPartyID, "Unexpected added party ID")
+
+			configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
+			env := configutil.CreateConfigTX(t, dir, []types.PartyID{signerA, signerB, signerC}, int(signerA), configUpdatePbData)
+			configReq := &protos.Request{
+				Payload:   env.Payload,
+				Signature: env.Signature,
+				ConfigSeq: uint32(configSeq),
 			}
-		}
 
-		// Update active parties list
-		activeParties = []types.PartyID{2, 3, 4, 5}
+			_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+			require.NoError(t, err)
 
-		configSeq++
-		// Wait for the rest of consensus nodes to apply new config
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+			configSeq++
+			waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
 
-		// Config block will be at the next block number
-		lastBlockNumber++
-		t.Logf(">>> Checking for config block at block number %d", lastBlockNumber)
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
+			lastBlockNumber++
+			t.Logf(">>> Checking for config block at block number %d", lastBlockNumber)
+			lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+			require.NotNil(t, lastConfigBlock)
 
-		t.Logf(">>> Successfully removed party 1. Active parties: %v", activeParties)
+			// Write new config block so the joining node can bootstrap from it
+			newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
+			require.NoError(t, configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath))
 
-		// Send a simple request to verify remaining parties are in sync
-		// Use party 2's private key since party 1 is removed
-		lastBlockNumber++ // Increment before the request
-		t.Logf(">>> Sending sync request after removing party 1 at block %d", lastBlockNumber)
-		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey3, 2, 3, configSeq, lastBlockNumber, "")
-
-		// Create new router context using party 2's certificate since party 1 is removed
-		routerCertBytes2, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org2/orderers/party2/router/tls/tls-cert.pem"))
-		require.NoError(t, err)
-		block2, _ := pem.Decode(routerCertBytes2)
-		require.NotNil(t, block2)
-		require.Equal(t, "CERTIFICATE", block2.Type)
-		routerCert2, err := x509.ParseCertificate(block2.Bytes)
-		require.NoError(t, err)
-		routerCtx, err = createContextForSubmitConfig(routerCert2)
-		require.NoError(t, err)
-	})
-
-	// Step 3: Add party 6
-	t.Run("Add party 6", func(t *testing.T) {
-		t.Logf(">>> Adding party 6 to parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
-		require.NotNil(t, addedNetInfo)
-		require.Equal(t, types.PartyID(6), addedPartyID, "Expected to add party 6")
-
-		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{2, 3, 4}, 2, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		activeParties = append(activeParties, addedPartyID)
-
-		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
-		require.NoError(t, err)
-
-		for _, netNode := range addedNetInfo {
-			netNode.ConfigBlockPath = newConfigBlockPath
-		}
-
-		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
-
-		for _, nodeInfo := range addedNetInfo {
-			nodeInfo.Close()
-		}
-
-		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
-		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
-		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
-
-		consensusNodes = append(consensusNodes, newConsensusNode[0])
-		time.Sleep(30 * time.Second)
-
-		t.Logf(">>> Successfully added party %d. Active parties: %v", addedPartyID, activeParties)
-
-		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey3, 2, 3, configSeq, lastBlockNumber, "")
-	})
-
-	// Step 4: Remove party 2
-	t.Run("Remove party 2", func(t *testing.T) {
-		t.Logf(">>> Removing party 2 from parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		configUpdatePbData := configUpdateBuilder.RemoveParty(t, 2)
-
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{3, 4, 5}, 3, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() == 2 {
-				waitForPendingAdminState(t, consenter, uint64(configSeq))
-				consenter.Stop()
-				break
+			for _, netNode := range addedNetInfo {
+				netNode.ConfigBlockPath = newConfigBlockPath
 			}
-		}
-
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0)
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.PartyID != 2 {
-				consensusNodes = append(consensusNodes, consensusNode)
+			updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
+			for _, nodeInfo := range addedNetInfo {
+				nodeInfo.Close()
 			}
-		}
 
-		activeParties = []types.PartyID{3, 4, 5, 6}
+			newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
+			startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
+			waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
 
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+			consensusNodes = append(consensusNodes, newConsensusNode[0])
+			time.Sleep(30 * time.Second)
 
-		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
+			t.Logf(">>> Successfully added party %d", addedPartyID)
 
-		t.Logf(">>> Successfully removed party 2. Active parties: %v", activeParties)
+			// Verify with a simple request using two of the current signers
+			pkA, loadErr := loadBatcherPrivateKey(t, dir, signerA)
+			require.NoError(t, loadErr)
+			pkB, loadErr := loadBatcherPrivateKey(t, dir, signerB)
+			require.NoError(t, loadErr)
+			lastBlockNumber++
+			t.Logf(">>> Sending sync request after adding party %d at block %d", addedPartyID, lastBlockNumber)
+			sendSimpleRequest(t, consensusNodes, pkA, pkB, signerA, signerB, configSeq, lastBlockNumber, "")
+		})
 
-		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey3, privateKey4, 3, 4, configSeq, lastBlockNumber, "")
+		// ── Remove old party ───────────────────────────────────────────────────
+		t.Run(fmt.Sprintf("Remove party %d", removeParty), func(t *testing.T) {
+			t.Logf(">>> Removing party %d", removeParty)
+			require.NotNil(t, lastConfigBlock, "lastConfigBlock should not be nil before removal")
 
-		// Create new router context using party 3's certificate for next steps
-		routerCertBytes3, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org3/orderers/party3/router/tls/tls-cert.pem"))
-		require.NoError(t, err)
-		block3, _ := pem.Decode(routerCertBytes3)
-		require.NotNil(t, block3)
-		require.Equal(t, "CERTIFICATE", block3.Type)
-		routerCert3, err := x509.ParseCertificate(block3.Bytes)
-		require.NoError(t, err)
-		routerCtx, err = createContextForSubmitConfig(routerCert3)
-		require.NoError(t, err)
-	})
+			configBlockStoreDir := t.TempDir()
+			configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
+			require.NoError(t, configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath))
 
-	// Step 5: Add party 7
-	t.Run("Add party 7", func(t *testing.T) {
-		t.Logf(">>> Adding party 7 to parties: %v", activeParties)
+			configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+			configUpdatePbData := configUpdateBuilder.RemoveParty(t, removeParty)
 
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
-		require.NotNil(t, addedNetInfo)
-		require.Equal(t, types.PartyID(7), addedPartyID, "Expected to add party 7")
-
-		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{3, 4, 5}, 3, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		activeParties = append(activeParties, addedPartyID)
-
-		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
-		require.NoError(t, err)
-
-		for _, netNode := range addedNetInfo {
-			netNode.ConfigBlockPath = newConfigBlockPath
-		}
-
-		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
-
-		for _, nodeInfo := range addedNetInfo {
-			nodeInfo.Close()
-		}
-
-		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
-		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
-		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
-
-		consensusNodes = append(consensusNodes, newConsensusNode[0])
-		time.Sleep(30 * time.Second)
-
-		t.Logf(">>> Successfully added party %d. Active parties: %v", addedPartyID, activeParties)
-
-		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey3, privateKey4, 3, 4, configSeq, lastBlockNumber, "")
-	})
-
-	// Step 6: Remove party 3
-	t.Run("Remove party 3", func(t *testing.T) {
-		t.Logf(">>> Removing party 3 from parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		configUpdatePbData := configUpdateBuilder.RemoveParty(t, 3)
-
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{4, 5, 6}, 4, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() == 3 {
-				waitForPendingAdminState(t, consenter, uint64(configSeq))
-				consenter.Stop()
-				break
+			// Sign with signerB, signerC, and newParty (the three that remain after removal)
+			env := configutil.CreateConfigTX(t, dir, []types.PartyID{signerB, signerC, newParty}, int(signerB), configUpdatePbData)
+			configReq := &protos.Request{
+				Payload:   env.Payload,
+				Signature: env.Signature,
+				ConfigSeq: uint32(configSeq),
 			}
-		}
 
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0)
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.PartyID != 3 {
-				consensusNodes = append(consensusNodes, consensusNode)
+			_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+			require.NoError(t, err)
+
+			// Wait for the removed party to enter pending-admin state, then stop it
+			for _, consenter := range consensusNodes {
+				if consenter.GetPartyID() == removeParty {
+					waitForPendingAdminState(t, consenter, uint64(configSeq))
+					consenter.Stop()
+					break
+				}
 			}
-		}
 
-		activeParties = []types.PartyID{4, 5, 6, 7}
-
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		t.Logf(">>> Successfully removed party 3. Active parties: %v", activeParties)
-
-		lastBlockNumber++
-		privateKey5, err = loadBatcherPrivateKey(t, dir, 5)
-		require.NoError(t, err)
-		sendSimpleRequest(t, consensusNodes, privateKey4, privateKey5, 4, 5, configSeq, lastBlockNumber, "")
-	})
-
-	// Step 7: Add party 8
-	t.Run("Add party 8", func(t *testing.T) {
-		t.Logf(">>> Adding party 8 to parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
-		require.NotNil(t, addedNetInfo)
-		require.Equal(t, types.PartyID(8), addedPartyID, "Expected to add party 8")
-
-		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{4, 5, 6}, 4, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		// Create new router context using party 4's certificate
-		routerCertBytes4, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org4/orderers/party4/router/tls/tls-cert.pem"))
-		require.NoError(t, err)
-		block4, _ := pem.Decode(routerCertBytes4)
-		require.NotNil(t, block4)
-		require.Equal(t, "CERTIFICATE", block4.Type)
-		routerCert4, err := x509.ParseCertificate(block4.Bytes)
-		require.NoError(t, err)
-		routerCtx, err = createContextForSubmitConfig(routerCert4)
-		require.NoError(t, err)
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		activeParties = append(activeParties, addedPartyID)
-
-		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
-		require.NoError(t, err)
-
-		for _, netNode := range addedNetInfo {
-			netNode.ConfigBlockPath = newConfigBlockPath
-		}
-
-		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
-
-		for _, nodeInfo := range addedNetInfo {
-			nodeInfo.Close()
-		}
-
-		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
-		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
-		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
-
-		consensusNodes = append(consensusNodes, newConsensusNode[0])
-		time.Sleep(30 * time.Second)
-
-		t.Logf(">>> Successfully added party %d. Active parties: %v", addedPartyID, activeParties)
-
-		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey4, privateKey5, 4, 5, configSeq, lastBlockNumber, "")
-	})
-
-	// Step 8: Remove party 4
-	t.Run("Remove party 4", func(t *testing.T) {
-		t.Logf(">>> Removing party 4 from parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		configUpdatePbData := configUpdateBuilder.RemoveParty(t, 4)
-
-		// Sign with parties 5,6,7 (majority of remaining parties)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{5, 6, 7}, 5, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		// Wait for party 4 to enter pending admin state and stop it
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() == 4 {
-				waitForPendingAdminState(t, consenter, uint64(configSeq))
-				consenter.Stop()
-				break
+			// Remove the stopped node from the slice
+			filtered := make([]*consensus_node.Consensus, 0, len(consensusNodes)-1)
+			for _, cn := range consensusNodes {
+				if cn.PartyID != removeParty {
+					filtered = append(filtered, cn)
+				}
 			}
-		}
+			consensusNodes = filtered
 
-		// Update consensus nodes list (remove party 4)
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0)
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.PartyID != 4 {
-				consensusNodes = append(consensusNodes, consensusNode)
-			}
-		}
+			configSeq++
+			waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
 
-		// Update active parties list
-		activeParties = []types.PartyID{5, 6, 7, 8}
+			lastBlockNumber++
+			t.Logf(">>> Checking for config block at block number %d", lastBlockNumber)
+			lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
+			require.NotNil(t, lastConfigBlock)
 
-		configSeq++
-		// Wait for the rest of consensus nodes to apply new config
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
+			t.Logf(">>> Successfully removed party %d", removeParty)
 
-		// Config block will be at the next block number
-		lastBlockNumber++
-		t.Logf(">>> Checking for config block at block number %d", lastBlockNumber)
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
+			// Verify with two of the remaining parties
+			pkB, loadErr := loadBatcherPrivateKey(t, dir, signerB)
+			require.NoError(t, loadErr)
+			pkC, loadErr := loadBatcherPrivateKey(t, dir, signerC)
+			require.NoError(t, loadErr)
+			lastBlockNumber++
+			t.Logf(">>> Sending sync request after removing party %d at block %d", removeParty, lastBlockNumber)
+			sendSimpleRequest(t, consensusNodes, pkB, pkC, signerB, signerC, configSeq, lastBlockNumber, "")
 
-		t.Logf(">>> Successfully removed party 4. Active parties: %v", activeParties)
+			// Update router context to signerB's certificate for the next iteration
+			certPath := filepath.Join(dir, fmt.Sprintf(
+				"crypto/ordererOrganizations/org%d/orderers/party%d/router/tls/tls-cert.pem",
+				signerB, signerB,
+			))
+			certBytes, readErr := os.ReadFile(certPath)
+			require.NoError(t, readErr)
+			blk, _ := pem.Decode(certBytes)
+			require.NotNil(t, blk)
+			cert, parseErr := x509.ParseCertificate(blk.Bytes)
+			require.NoError(t, parseErr)
+			routerCtx, err = createContextForSubmitConfig(cert)
+			require.NoError(t, err)
+		})
+	}
 
-		// Send a simple request to verify remaining parties are in sync
-		// Use party 5's private key since party 4 is removed
-		lastBlockNumber++ // Increment before the request
-		t.Logf(">>> Sending sync request after removing party 4 at block %d", lastBlockNumber)
-		sendSimpleRequest(t, consensusNodes, privateKey5, privateKey5, 5, 5, configSeq, lastBlockNumber, "")
-	})
+	// Final verification: active set should be {7,8,9,10}
+	require.Equal(t, 4, len(consensusNodes), "Final consensus node count mismatch")
 
-	// Step 9: Add party 9
-	t.Run("Add party 9", func(t *testing.T) {
-		t.Logf(">>> Adding party 9 to parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
-		require.NotNil(t, addedNetInfo)
-		require.Equal(t, types.PartyID(9), addedPartyID, "Expected to add party 9")
-
-		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
-		// Sign with parties 5,6,7 (majority of current parties)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{5, 6, 7}, 5, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		// Create new router context using party 5's certificate
-		routerCertBytes5, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org5/orderers/party5/router/tls/tls-cert.pem"))
-		require.NoError(t, err)
-		block5, _ := pem.Decode(routerCertBytes5)
-		require.NotNil(t, block5)
-		require.Equal(t, "CERTIFICATE", block5.Type)
-		routerCert5, err := x509.ParseCertificate(block5.Bytes)
-		require.NoError(t, err)
-		routerCtx, err = createContextForSubmitConfig(routerCert5)
-		require.NoError(t, err)
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		activeParties = append(activeParties, addedPartyID)
-
-		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
-		require.NoError(t, err)
-
-		for _, netNode := range addedNetInfo {
-			netNode.ConfigBlockPath = newConfigBlockPath
-		}
-
-		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
-
-		for _, nodeInfo := range addedNetInfo {
-			nodeInfo.Close()
-		}
-
-		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
-		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
-		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
-
-		consensusNodes = append(consensusNodes, newConsensusNode[0])
-		time.Sleep(30 * time.Second)
-
-		t.Logf(">>> Successfully added party %d. Active parties: %v", addedPartyID, activeParties)
-
-		lastBlockNumber++
-		privateKey6, err := loadBatcherPrivateKey(t, dir, 6)
-		require.NoError(t, err)
-		sendSimpleRequest(t, consensusNodes, privateKey5, privateKey6, 5, 6, configSeq, lastBlockNumber, "")
-	})
-
-	// Step 10: Remove party 5
-	t.Run("Remove party 5", func(t *testing.T) {
-		t.Logf(">>> Removing party 5 from parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		configUpdatePbData := configUpdateBuilder.RemoveParty(t, 5)
-
-		// Sign with parties 6,7,8 (majority of remaining parties)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{6, 7, 8}, 6, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		// Wait for party 5 to enter pending admin state and stop it
-		for _, consenter := range consensusNodes {
-			if consenter.GetPartyID() == 5 {
-				waitForPendingAdminState(t, consenter, uint64(configSeq))
-				consenter.Stop()
-				break
-			}
-		}
-
-		// Update consensus nodes list (remove party 5)
-		oldConsensusNodes := consensusNodes
-		consensusNodes = make([]*consensus_node.Consensus, 0)
-		for _, consensusNode := range oldConsensusNodes {
-			if consensusNode.PartyID != 5 {
-				consensusNodes = append(consensusNodes, consensusNode)
-			}
-		}
-
-		// Update active parties list
-		activeParties = []types.PartyID{6, 7, 8, 9}
-
-		configSeq++
-		// Wait for the rest of consensus nodes to apply new config
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		// Config block will be at the next block number
-		lastBlockNumber++
-		t.Logf(">>> Checking for config block at block number %d", lastBlockNumber)
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		t.Logf(">>> Successfully removed party 5. Active parties: %v", activeParties)
-
-		// Send a simple request to verify remaining parties are in sync
-		privateKey6, err := loadBatcherPrivateKey(t, dir, 6)
-		require.NoError(t, err)
-		privateKey7, err := loadBatcherPrivateKey(t, dir, 7)
-		require.NoError(t, err)
-		lastBlockNumber++ // Increment before the request
-		t.Logf(">>> Sending sync request after removing party 5 at block %d", lastBlockNumber)
-		sendSimpleRequest(t, consensusNodes, privateKey6, privateKey7, 6, 7, configSeq, lastBlockNumber, "")
-
-		// Update router context to party 6's certificate for the next step
-		routerCertBytes6, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org6/orderers/party6/router/tls/tls-cert.pem"))
-		require.NoError(t, err)
-		block6, _ := pem.Decode(routerCertBytes6)
-		require.NotNil(t, block6)
-		require.Equal(t, "CERTIFICATE", block6.Type)
-		routerCert6, err := x509.ParseCertificate(block6.Bytes)
-		require.NoError(t, err)
-		routerCtx, err = createContextForSubmitConfig(routerCert6)
-		require.NoError(t, err)
-	})
-
-	// Step 11: Add party 10
-	t.Run("Add party 10", func(t *testing.T) {
-		t.Logf(">>> Adding party 10 to parties: %v", activeParties)
-
-		configBlockStoreDir := t.TempDir()
-		configBlockPath := filepath.Join(configBlockStoreDir, "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
-		require.NoError(t, err)
-
-		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
-		require.NotNil(t, addedNetInfo)
-		require.Equal(t, types.PartyID(10), addedPartyID, "Expected to add party 10")
-
-		configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
-		// Sign with parties 6,7,8 (majority of current parties)
-		env := configutil.CreateConfigTX(t, dir, []types.PartyID{6, 7, 8}, 6, configUpdatePbData)
-		configReq := &protos.Request{
-			Payload:   env.Payload,
-			Signature: env.Signature,
-			ConfigSeq: uint32(configSeq),
-		}
-
-		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
-		require.NoError(t, err)
-
-		configSeq++
-		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
-
-		lastBlockNumber++
-		lastConfigBlock = makeSureConfigBlockCommitted(t, consensusNodes, lastBlockNumber)
-		require.NotNil(t, lastConfigBlock)
-
-		activeParties = append(activeParties, addedPartyID)
-
-		newConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
-		err = configtxgen.WriteOutputBlock(lastConfigBlock, newConfigBlockPath)
-		require.NoError(t, err)
-
-		for _, netNode := range addedNetInfo {
-			netNode.ConfigBlockPath = newConfigBlockPath
-		}
-
-		updateFileStoreAndMonitoringPort(t, dir, addedNetInfo)
-
-		for _, nodeInfo := range addedNetInfo {
-			nodeInfo.Close()
-		}
-
-		newConsensusNode, newConsensusNodeServer, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{addedPartyID})
-		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{addedPartyID}, newConsensusNode, newConsensusNodeServer)
-		waitForRunningState(t, newConsensusNode[0], uint64(configSeq))
-
-		consensusNodes = append(consensusNodes, newConsensusNode[0])
-		time.Sleep(30 * time.Second)
-
-		t.Logf(">>> Successfully added party %d. Active parties: %v", addedPartyID, activeParties)
-
-		lastBlockNumber++
-		privateKey6, err := loadBatcherPrivateKey(t, dir, 6)
-		require.NoError(t, err)
-		privateKey7, err := loadBatcherPrivateKey(t, dir, 7)
-		require.NoError(t, err)
-		sendSimpleRequest(t, consensusNodes, privateKey6, privateKey7, 6, 7, configSeq, lastBlockNumber, "")
-	})
-
-	// Final verification - we should have 5 parties: 6,7,8,9,10
-	// Verify against the actual consensusNodes slice, not the manually tracked activeParties
-	require.Equal(t, 5, len(consensusNodes), "Final consensus node count mismatch")
-
-	// Extract actual party IDs from consensusNodes
 	actualPartyIDs := make([]types.PartyID, 0, len(consensusNodes))
 	for _, node := range consensusNodes {
 		actualPartyIDs = append(actualPartyIDs, node.GetPartyID())
 	}
 
-	require.Contains(t, actualPartyIDs, types.PartyID(6), "Party 6 should be present")
-	require.Contains(t, actualPartyIDs, types.PartyID(7), "Party 7 should be present")
-	require.Contains(t, actualPartyIDs, types.PartyID(8), "Party 8 should be present")
-	require.Contains(t, actualPartyIDs, types.PartyID(9), "Party 9 should be present")
-	require.Contains(t, actualPartyIDs, types.PartyID(10), "Party 10 should be present")
-	require.NotContains(t, actualPartyIDs, types.PartyID(1), "Party 1 should be removed")
-	require.NotContains(t, actualPartyIDs, types.PartyID(2), "Party 2 should be removed")
-	require.NotContains(t, actualPartyIDs, types.PartyID(3), "Party 3 should be removed")
-	require.NotContains(t, actualPartyIDs, types.PartyID(4), "Party 4 should be removed")
-	require.NotContains(t, actualPartyIDs, types.PartyID(5), "Party 5 should be removed")
+	for _, expected := range []types.PartyID{7, 8, 9, 10} {
+		require.Contains(t, actualPartyIDs, expected, "Party %d should be present", expected)
+	}
+	for _, removed := range []types.PartyID{1, 2, 3, 4, 5, 6} {
+		require.NotContains(t, actualPartyIDs, removed, "Party %d should have been removed", removed)
+	}
 
 	t.Logf(">>> Complete replacement! Started with parties 1,2,3,4 and ended with parties %v", actualPartyIDs)
 
 	// Cleanup
-	for _, consensusNode := range consensusNodes {
-		consensusNode.Stop()
+	for _, cn := range consensusNodes {
+		cn.Stop()
 	}
 }
 
