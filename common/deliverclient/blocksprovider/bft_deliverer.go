@@ -190,7 +190,7 @@ func (d *BFTDeliverer) DeliverBlocks() {
 			break
 		}
 
-		// Clone the block verifier before it is used by fetch blocks
+		// Clone the block verifier so the censorship monitor (and its header receivers) doesn't share verifier state with the block fetcher.
 		clonedBlockVerifier := d.UpdatableBlockVerifier.Clone()
 
 		// Start a block fetcher; a buffered channel so that the fetcher goroutine can send an error and exit w/o
