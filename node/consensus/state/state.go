@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -720,11 +721,34 @@ func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogg
 	// for the same <seq, shard, primary> tuple, the primary has equivocated.
 	// In this case, we rotate the primary by incrementing the term.
 
+	// Note: This rule applies only on pending BAFs (and incoming BAFs for this round).
+	// It does not include BAFs that reached the threshold of f+1 in previous rounds
+	// and their digest was added to the BatchAttestationDB.
+
 	// <seq, shard, primary> --> { digest -->  signer }
 	m := batchAttestationVotesByDigests(s)
 
+	// Sort votes for deterministic processing: by shard, then primary, then seq.
+	votes := make([]batchAttestationVote, 0, len(m))
+	for vote := range m {
+		votes = append(votes, vote)
+	}
+	slices.SortFunc(votes, func(a, b batchAttestationVote) int {
+		if c := cmp.Compare(a.shard, b.shard); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.primary, b.primary); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.seq, b.seq)
+	})
+
+	// Track which shards have already been rotated to ensure at most one rotation per shard.
+	rotatedShards := make(map[types.ShardID]struct{})
+
 	// For each <seq, shard, primary> check if it has multiple different digests
-	for vote, digest2signers := range m {
+	for _, vote := range votes {
+		digest2signers := m[vote]
 		// If there are multiple different digests for the same <seq, shard, primary>,
 		// the primary has equivocated
 		if len(digest2signers) > 1 {
@@ -733,12 +757,18 @@ func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogg
 				vote.seq, vote.shard, vote.primary,
 				len(digest2signers), getDigestSummary(digest2signers))
 
-			// Rotate the primary in the affected shard
+			// Rotate the primary in the affected shard at most once per DetectEquivocation call.
+			if _, alreadyRotated := rotatedShards[vote.shard]; alreadyRotated {
+				l.Warnf("Skipping additional rotation for shard %d (already rotated once this round)", vote.shard)
+				continue
+			}
+
 			for i := range s.Shards {
 				if s.Shards[i].Shard == vote.shard {
 					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation at sequence %d",
 						vote.primary, s.Shards[i].Term, s.Shards[i].Term+1, s.Shards[i].Shard, vote.seq)
 					s.Shards[i].Term++
+					rotatedShards[vote.shard] = struct{}{}
 					break
 				}
 			}
@@ -746,28 +776,22 @@ func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogg
 	}
 }
 
-// getDigestSummary returns a summary of digests for logging purposes
+// getDigestSummary returns a summary of digests for logging purposes.
+// digest2signers is keyed by hex-encoded digest strings.
 func getDigestSummary(digest2signers map[string][]types.PartyID) string {
+	hexDigests := make([]string, 0, len(digest2signers))
+	for hexDigest := range digest2signers {
+		hexDigests = append(hexDigests, hexDigest)
+	}
+	slices.Sort(hexDigests)
+
 	var summary strings.Builder
 	summary.WriteString("[")
-	count := 0
-	for digest, signers := range digest2signers {
-		if count > 0 {
+	for i, hexDigest := range hexDigests {
+		if i > 0 {
 			summary.WriteString(", ")
 		}
-		hexDigest := hex.EncodeToString([]byte(digest))
-		// Truncate to 8 characters if longer, otherwise use full length
-		if len(hexDigest) > 8 {
-			hexDigest = hexDigest[:8]
-		}
-		fmt.Fprintf(&summary, "digest=%s (signers=%d)", hexDigest, len(signers))
-		count++
-		if count >= 3 { // Limit to first 3 digests for brevity
-			if len(digest2signers) > 3 {
-				fmt.Fprintf(&summary, ", ... and %d more", len(digest2signers)-3)
-			}
-			break
-		}
+		fmt.Fprintf(&summary, "digest=%s (signers=%d)", hexDigest, len(digest2signers[hexDigest]))
 	}
 	summary.WriteString("]")
 	return summary.String()
@@ -785,7 +809,8 @@ func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[strin
 			m[currentVote] = digests2signers
 		}
 
-		digests2signers[string(baf.Digest())] = append(digests2signers[string(baf.Digest())], baf.Signer())
+		hexDigest := hex.EncodeToString(baf.Digest())
+		digests2signers[hexDigest] = append(digests2signers[hexDigest], baf.Signer())
 	}
 	return m
 }
