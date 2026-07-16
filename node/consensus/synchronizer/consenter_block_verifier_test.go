@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/block"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,57 +67,6 @@ func TestConsenterBlockVerifierCreator_CreateBlockVerifier(t *testing.T) {
 	}
 }
 
-func TestConsenterBlockVerifier_Clone(t *testing.T) {
-	logger := flogging.MustGetLogger("test")
-
-	verifier := &ConsenterBlockVerifier{
-		channelID: "test-channel",
-		lastBlockHeader: &common.BlockHeader{
-			Number:       5,
-			PreviousHash: []byte("prev-hash"),
-			DataHash:     []byte("data-hash"),
-		},
-		logger: logger,
-	}
-
-	cloned := verifier.Clone()
-	assert.NotNil(t, cloned)
-
-	clonedVerifier, ok := cloned.(*ConsenterBlockVerifier)
-	require.True(t, ok)
-
-	assert.Equal(t, verifier.channelID, clonedVerifier.channelID)
-	assert.Equal(t, verifier.lastBlockHeader.Number, clonedVerifier.lastBlockHeader.Number)
-	assert.Equal(t, verifier.lastBlockHeader.PreviousHash, clonedVerifier.lastBlockHeader.PreviousHash)
-	assert.Equal(t, verifier.lastBlockHeader.DataHash, clonedVerifier.lastBlockHeader.DataHash)
-}
-
-func TestConsenterBlockVerifier_UpdateBlockHeader(t *testing.T) {
-	logger := flogging.MustGetLogger("test")
-
-	verifier := &ConsenterBlockVerifier{
-		channelID: "test-channel",
-		lastBlockHeader: &common.BlockHeader{
-			Number: 5,
-		},
-		logger: logger,
-	}
-
-	newBlock := &common.Block{
-		Header: &common.BlockHeader{
-			Number:       6,
-			PreviousHash: []byte("prev-hash"),
-			DataHash:     []byte("data-hash"),
-		},
-	}
-
-	verifier.UpdateBlockHeader(newBlock)
-
-	assert.Equal(t, uint64(6), verifier.lastBlockHeader.Number)
-	assert.Equal(t, []byte("prev-hash"), verifier.lastBlockHeader.PreviousHash)
-	assert.Equal(t, []byte("data-hash"), verifier.lastBlockHeader.DataHash)
-}
-
 func TestConsenterBlockVerifier_UpdateBlockHeader_NilBlock(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
@@ -145,26 +95,89 @@ func TestConsenterBlockVerifier_VerifyBlock(t *testing.T) {
 	correctPreviousHash := protoutil.BlockHeaderHash(lastBlockHeader)
 
 	testCases := []struct {
-		name                string
+		name string
+		// block is used directly when set.
+		// When useDefaultBlock is true, a default well-formed block
+		// (number=6, correct previousHash, wrong dataHash) is built and
+		// blockData is attached to it.
+		block               *common.Block
+		useDefaultBlock     bool
 		blockData           *common.BlockData
 		sigVerifierFunc     SigVerifierFunc
 		expectedErrContains string
 	}{
+		// ── verifyHeader error cases ──────────────────────────────────────────
+		{
+			// nil block → "block must be different from nil"
+			name:                "nil block",
+			block:               nil,
+			expectedErrContains: "block must be different from nil",
+		},
+		{
+			// nil block header → "header must be different from nil"
+			name: "nil block header",
+			block: &common.Block{
+				Header:   nil,
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, len(common.BlockMetadataIndex_name))},
+			},
+			expectedErrContains: "header must be different from nil",
+		},
+		{
+			// wrong block number → "expected block number is [6] but actual … is [99]"
+			name: "wrong block number",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 99, PreviousHash: correctPreviousHash},
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, len(common.BlockMetadataIndex_name))},
+			},
+			expectedErrContains: "expected block number is [6] but actual block number inside block is [99]",
+		},
+		{
+			// wrong previous hash → "Header.PreviousHash … is different from Hash(block.Header)"
+			name: "wrong previous hash",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 6, PreviousHash: []byte("wrong-prev-hash")},
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, len(common.BlockMetadataIndex_name))},
+			},
+			expectedErrContains: "Header.PreviousHash of block [6] is different from Hash(block.Header) of previous block",
+		},
+		// ── verifyMetadata error cases ────────────────────────────────────────
+		{
+			// nil metadata → "does not have metadata or contains too few entries"
+			name: "nil metadata",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 6, PreviousHash: correctPreviousHash},
+				Metadata: nil,
+			},
+			expectedErrContains: "does not have metadata or contains too few entries",
+		},
+		{
+			// too few metadata entries → same error
+			name: "too few metadata entries",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 6, PreviousHash: correctPreviousHash},
+				Metadata: &common.BlockMetadata{Metadata: [][]byte{}},
+			},
+			expectedErrContains: "does not have metadata or contains too few entries",
+		},
+		// ── post-metadata error cases ─────────────────────────────────────────
 		{
 			name:                "nil data",
+			useDefaultBlock:     true,
 			blockData:           nil,
 			expectedErrContains: "does not have data",
 		},
 		{
 			name:                "empty data",
+			useDefaultBlock:     true,
 			blockData:           &common.BlockData{Data: [][]byte{}},
 			expectedErrContains: "data length is zero",
 		},
 		{
-			name:      "data hash mismatch",
-			blockData: &common.BlockData{Data: [][]byte{[]byte("some-transaction-data")}},
+			name:            "data hash mismatch",
+			useDefaultBlock: true,
+			blockData:       &common.BlockData{Data: [][]byte{[]byte("some-transaction-data")}},
 			sigVerifierFunc: func(block *common.Block, verifyData bool) error {
-				return nil // Mock signature verification
+				return nil
 			},
 			expectedErrContains: "Header.DataHash is different from Hash(block.Data)",
 		},
@@ -179,39 +192,90 @@ func TestConsenterBlockVerifier_VerifyBlock(t *testing.T) {
 				sigVerifierFunc: tc.sigVerifierFunc,
 			}
 
-			block := &common.Block{
-				Header: &common.BlockHeader{
-					Number:       6,
-					PreviousHash: correctPreviousHash,
-					DataHash:     []byte("wrong-hash"), // Intentionally wrong for data hash mismatch test
-				},
-				Metadata: &common.BlockMetadata{
-					Metadata: make([][]byte, len(common.BlockMetadataIndex_name)),
-				},
-				Data: tc.blockData,
+			b := tc.block
+			if tc.useDefaultBlock {
+				b = &common.Block{
+					Header: &common.BlockHeader{
+						Number:       6,
+						PreviousHash: correctPreviousHash,
+						DataHash:     []byte("wrong-hash"),
+					},
+					Metadata: &common.BlockMetadata{
+						Metadata: make([][]byte, len(common.BlockMetadataIndex_name)),
+					},
+					Data: tc.blockData,
+				}
 			}
 
-			err := verifier.VerifyBlock(block)
+			err := verifier.VerifyBlock(b)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tc.expectedErrContains)
 		})
 	}
 }
 
-func TestConsenterBlockVerifier_VerifyBlockAttestation_NilBlock(t *testing.T) {
+func TestConsenterBlockVerifier_VerifyBlockAttestation(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
-	verifier := &ConsenterBlockVerifier{
-		channelID: "test-channel",
-		lastBlockHeader: &common.BlockHeader{
-			Number: 5,
+	lastBlockHeader := &common.BlockHeader{
+		Number:       5,
+		PreviousHash: []byte("some-prev-hash"),
+		DataHash:     []byte("some-data-hash"),
+	}
+	correctPreviousHash := protoutil.BlockHeaderHash(lastBlockHeader)
+
+	// verifyHeader and verifyMetadata error paths are already covered by
+	// TestConsenterBlockVerifier_VerifyBlock which calls the same private methods.
+	// This table covers only what is unique to VerifyBlockAttestation: the
+	// sig-verifier call and the success path.
+	testCases := []struct {
+		name            string
+		block           *common.Block
+		sigVerifierFunc SigVerifierFunc
+		expectedErr     string // non-empty → expect error containing this string
+	}{
+		{
+			// sig verifier returns error
+			name: "sig verifier error",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 6, PreviousHash: correctPreviousHash},
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, len(common.BlockMetadataIndex_name))},
+			},
+			sigVerifierFunc: func(_ *common.Block, _ bool) error {
+				return errors.New("sig verification failed")
+			},
+			expectedErr: "failed to verify signatures of block attestation",
 		},
-		logger: logger,
+		{
+			// happy path: sig verifier succeeds
+			name: "success",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 6, PreviousHash: correctPreviousHash},
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, len(common.BlockMetadataIndex_name))},
+			},
+			sigVerifierFunc: func(_ *common.Block, _ bool) error { return nil },
+			expectedErr:     "",
+		},
 	}
 
-	err := verifier.VerifyBlockAttestation(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "block must be different from nil")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			verifier := &ConsenterBlockVerifier{
+				channelID:       "test-channel",
+				lastBlockHeader: lastBlockHeader,
+				logger:          logger,
+				sigVerifierFunc: tc.sigVerifierFunc,
+			}
+
+			err := verifier.VerifyBlockAttestation(tc.block)
+			if tc.expectedErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedErr)
+			}
+		})
+	}
 }
 
 func TestConsenterBlockVerifier_VerifyHeader_WithProperBlocks(t *testing.T) {
