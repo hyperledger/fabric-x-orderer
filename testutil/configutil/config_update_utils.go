@@ -930,7 +930,7 @@ type PartyConfig struct {
 }
 
 // AddNewParty adds a new party to the config with the given configuration and returns the config update bytes
-func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) []byte {
+func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, knownCerts [][]byte) []byte {
 	sharedConfig := getNestedJSONValue(t, c.configData, sharedConfigPath...)
 	maxPartyID := sharedConfig.(map[string]any)["MaxPartyID"].(float64)
 	partiesConfig := sharedConfig.(map[string]any)["PartiesConfig"].([]any)
@@ -1024,6 +1024,7 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) [
 	overwriteNestedJSONValue(t, newOrg, orgName, "policies", "Writers", "policy", "value", "identities", "principal", "msp_identifier")
 	overwriteNestedJSONValue(t, newOrg, newParty.CACerts, "values", "MSP", "value", "config", "root_certs")
 	overwriteNestedJSONValue(t, newOrg, newParty.TLSCACerts, "values", "MSP", "value", "config", "tls_root_certs")
+	overwriteNestedJSONValue(t, newOrg, knownCerts, "values", "MSP", "value", "config", "known_certs")
 	overwriteNestedJSONValue(t, newOrg, newParty.AdminCerts, "values", "MSP", "value", "config", "admins")
 	orgs[orgName] = newOrg
 
@@ -1335,6 +1336,23 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	require.NoError(t, err)
 	adminCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts", fmt.Sprintf("Admin@Org%d-cert.pem", addedPartyId)))
 	require.NoError(t, err)
+	knownCerts := [][]byte{}
+	knownCertsDir := filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "knowncerts")
+	if _, err := os.Stat(knownCertsDir); err == nil {
+		files, err := os.ReadDir(knownCertsDir)
+		require.NoError(t, err)
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			certPath := filepath.Join(knownCertsDir, file.Name())
+			certBytes, err := os.ReadFile(certPath)
+			require.NoError(t, err)
+			knownCerts = append(knownCerts, certBytes)
+		}
+	} else if !os.IsNotExist(err) {
+		require.NoError(t, err)
+	}
 
 	c.AddNewParty(t, &PartyConfig{
 		PartyConfig: ordererpb.PartyConfig{
@@ -1359,7 +1377,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 			BatchersConfig: batchersConfig,
 		},
 		AdminCerts: [][]byte{adminCert},
-	})
+	}, knownCerts)
 
 	return addedPartyId, addedNetInfo
 }

@@ -82,7 +82,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 			},
 		},
 		AdminCerts: [][]byte{[]byte("newAdminCert")},
-	})
+	}, [][]byte{[]byte("newKnownCerts")})
 
 	configUpdateBuilder.UpdateBatcherSignCert(t, types.PartyID(1), types.ShardID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdateConsenterSignCert(t, types.PartyID(1), []byte("newSignCert"))
