@@ -9,6 +9,7 @@ package consensus_test
 import (
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -161,7 +162,8 @@ func updateFileStoreAndMonitoringPort(t *testing.T, dir string, netInfo testutil
 		default:
 			continue
 		}
-		storagePath := t.TempDir()
+		storagePath := filepath.Join(dir, fmt.Sprintf("%03d", nodeInfo.PartyId))
+		require.NoError(t, os.MkdirAll(storagePath, 0o755))
 		monitoringPort := uint32(nodeInfo.MonitoringListener.Addr().(*net.TCPAddr).Port)
 		testutil.EditDirectoryInNodeConfigYAML(t, nodeConfigPath, storagePath, nodeInfo.ConfigBlockPath, monitoringPort)
 	}

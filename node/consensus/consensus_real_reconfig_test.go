@@ -82,8 +82,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err, "failed to create private key")
 	lastBlockNumber := uint64(1)
 	configSeq := types.ConfigSequence(0)
-	sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq+1, lastBlockNumber, "mismatch config sequence")
-	sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq, lastBlockNumber, "")
+	sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq+1, lastBlockNumber, "mismatch config sequence")
+	sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
 
 	var routerCtx context.Context
 	t.Run("reject config update", func(t *testing.T) {
@@ -146,9 +146,9 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// send another simple request
 		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq, lastBlockNumber, "")
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq+1, lastBlockNumber, "mismatch config sequence")
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq-1, lastBlockNumber, "mismatch config sequence")
+		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq+1, lastBlockNumber, "mismatch config sequence")
+		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq-1, lastBlockNumber, "mismatch config sequence")
 	})
 
 	t.Run("config update with consenter's certificate change", func(t *testing.T) {
@@ -212,7 +212,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// send another simple request
 		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
 	})
 
 	t.Run("config update with consenter removal", func(t *testing.T) {
@@ -269,7 +269,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// send another simple request
 		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
 	})
 
 	t.Run("config update with leader consenter removal", func(t *testing.T) {
@@ -325,8 +325,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// send another simple request
 		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, configSeq, lastBlockNumber, "key does not exist")
-		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey2, 2, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "key does not exist")
+		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey2, 2, 2, configSeq, lastBlockNumber, "")
 	})
 
 	t.Run("config update with consenter's endpoint change", func(t *testing.T) {
@@ -435,7 +435,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// send another simple request
 		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey2, 2, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey2, 2, 2, configSeq, lastBlockNumber, "")
 	})
 
 	t.Run("config update with consenter addition", func(t *testing.T) {
@@ -504,7 +504,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// send another simple request to verify the new consenter is participating
 		lastBlockNumber++
-		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey2, 2, configSeq, lastBlockNumber, "")
+		sendSimpleRequest(t, consensusNodes, privateKey2, privateKey2, 2, 2, configSeq, lastBlockNumber, "")
 	})
 
 	for _, consensusNode := range consensusNodes {
@@ -515,8 +515,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 // sendSimpleRequest submits a simple BAF request to the consensus nodes and verifies the result.
 // It creates a BAF using the provided private key and batcher ID, submits it to the first consensus node,
 // and then polls all consensus node ledgers to verify they reach the expected height.
-func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, privateKey *ecdsa.PrivateKey, primaryPrivateKey *ecdsa.PrivateKey, batcherID types.PartyID, configSeqToSend types.ConfigSequence, expectedBlockNumber uint64, expectedError string) {
-	primaryID := types.PartyID(2)
+func sendSimpleRequest(t *testing.T, consensusNodes []*consensus_node.Consensus, privateKey, primaryPrivateKey *ecdsa.PrivateKey, batcherID, primaryID types.PartyID, configSeqToSend types.ConfigSequence, expectedBlockNumber uint64, expectedError string) {
 	var primarySignature []byte
 	if batcherID != primaryID {
 		primaryBAF, err := batcher_node.CreateBAF((*crypto.ECDSASigner)(primaryPrivateKey), primaryID, 1, digest123, primaryID, 0, configSeqToSend, 1, nil)

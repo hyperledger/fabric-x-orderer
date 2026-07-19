@@ -86,9 +86,17 @@ check-imports:
 .PHONY: unit-tests
 unit-tests: unit-tests-other unit-tests-consensus unit-tests-batcher
 
+.PHONY: unit-tests-consensus-all
+unit-tests-consensus-all:
+	go test -race -timeout 30m ./node/consensus/...
+
 .PHONY: unit-tests-consensus
 unit-tests-consensus:
-	go test -race -timeout 20m ./node/consensus/...
+	go test -race -timeout 20m -skip "^TestConsensusFullReplacement$$" ./node/consensus/...
+
+.PHONY: unit-tests-consensus-full-replacement
+unit-tests-consensus-full-replacement:
+	go test -race -timeout 20m -run "^TestConsensusFullReplacement$$" ./node/consensus/...
 
 .PHONY: unit-tests-batcher
 unit-tests-batcher:
