@@ -8,10 +8,14 @@ package assembler_test
 
 import (
 	"testing"
+	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -42,12 +46,25 @@ func setupPrefetcherTest(t *testing.T, shards []types.ShardID, parties []types.P
 	vars.batchFetcherMock.ReplicateCalls(func(shard types.ShardID) <-chan types.Batch {
 		return vars.shardToReplicationChan[shard]
 	})
+
+	cfg := &config.AssemblerNodeConfig{
+		PartyId: 1,
+		Metrics: &operations.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: time.Second,
+		},
+	}
+	logger := testutil.CreateLogger(t, 1)
+
+	metrics := assembler.NewMetrics(cfg, &node_ledger.AssemblerLedgerMetrics{}, logger)
+
 	vars.prefetcher = assembler.NewPrefetcher(
 		vars.shards,
 		vars.parties,
 		vars.prefetchIndexMock,
 		vars.batchFetcherMock,
-		testutil.CreateLogger(t, 1),
+		metrics,
+		logger,
 	)
 	return vars
 }

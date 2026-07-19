@@ -15,11 +15,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -266,6 +268,15 @@ func createCollator(t *testing.T, shardCount int, ConfigProcessor assembler.Conf
 
 	ordBARep := make(naiveOrderedBatchAttestationReplicator)
 
+	metricsCfg := &config.AssemblerNodeConfig{
+		PartyId: 1,
+		Metrics: &operations.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: time.Second,
+		},
+	}
+	metrics := assembler.NewMetrics(metricsCfg, &node_ledger.AssemblerLedgerMetrics{}, logger)
+
 	collator := &assembler.Collator{
 		Shards:                            shards,
 		Logger:                            testutil.CreateLogger(t, 0),
@@ -274,6 +285,7 @@ func createCollator(t *testing.T, shardCount int, ConfigProcessor assembler.Conf
 		OrderedBatchAttestationReplicator: ordBARep,
 		Index:                             index,
 		ConfigProcessor:                   ConfigProcessor,
+		Metrics:                           metrics,
 	}
 	return index, ledger, ordBARep, collator
 }

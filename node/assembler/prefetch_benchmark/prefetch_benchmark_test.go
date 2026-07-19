@@ -13,9 +13,12 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/require"
@@ -132,11 +135,22 @@ func createPrefetcherBenchmarkSetup(
 		time.Second,
 	)
 	test.prefetchIndex = prefetchIndex
+
+	metricsCfg := &config.AssemblerNodeConfig{
+		PartyId: 1,
+		Metrics: &operations.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: time.Second,
+		},
+	}
+	metrics := assembler.NewMetrics(metricsCfg, &node_ledger.AssemblerLedgerMetrics{}, logger)
+
 	test.prefetcher = assembler.NewPrefetcher(
 		params.shards,
 		params.parties,
 		prefetchIndex,
 		test.batchFetcherMock,
+		metrics,
 		testutil.CreateLoggerForModule(t, "Assembler Prefetcher", logLevel),
 	)
 	return test

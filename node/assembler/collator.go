@@ -50,6 +50,7 @@ type Collator struct {
 	Shards                            []types.ShardID
 	runningWG                         sync.WaitGroup
 	ConfigProcessor                   ConfigProcessor
+	Metrics                           *Metrics
 }
 
 // Run starts a go routine which processes incoming ordered batch attestations from consensus
@@ -88,8 +89,10 @@ func (c *Collator) processOrderedBatchAttestations() {
 
 			continue // skip collating for BA's with config blocks
 		}
-
+		baToBatchStart := time.Now()
 		batch, err := c.collateAttestationWithBatch(oba.BatchAttestation())
+		c.Metrics.attestationToBatchCollationLatency.Observe(time.Since(baToBatchStart).Seconds())
+
 		if err != nil {
 			if errors.Is(err, utils.ErrOperationCancelled) {
 				c.Logger.Warnf("Collating Attestation with batch %v was cancelled.", oba.BatchAttestation())
@@ -97,7 +100,10 @@ func (c *Collator) processOrderedBatchAttestations() {
 			}
 			c.Logger.Panicf("Something went wrong while fetching the batch %v", oba.BatchAttestation())
 		}
+
+		appendStart := time.Now()
 		c.Ledger.Append(batch, oba.OrderingInformation)
+		c.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 	}
 	c.Logger.Infof("Finished processing incoming OrderedBatchAttestations from consensus")
 }

@@ -10,14 +10,15 @@ import (
 )
 
 type FakePrefetcherFactory struct {
-	CreateStub        func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *flogging.FabricLogger) assembler.PrefetcherController
+	CreateStub        func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *assembler.Metrics, *flogging.FabricLogger) assembler.PrefetcherController
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 []types.ShardID
 		arg2 []types.PartyID
 		arg3 assembler.PrefetchIndexer
 		arg4 assembler.BatchBringer
-		arg5 *flogging.FabricLogger
+		arg5 *assembler.Metrics
+		arg6 *flogging.FabricLogger
 	}
 	createReturns struct {
 		result1 assembler.PrefetcherController
@@ -29,7 +30,7 @@ type FakePrefetcherFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakePrefetcherFactory) Create(arg1 []types.ShardID, arg2 []types.PartyID, arg3 assembler.PrefetchIndexer, arg4 assembler.BatchBringer, arg5 *flogging.FabricLogger) assembler.PrefetcherController {
+func (fake *FakePrefetcherFactory) Create(arg1 []types.ShardID, arg2 []types.PartyID, arg3 assembler.PrefetchIndexer, arg4 assembler.BatchBringer, arg5 *assembler.Metrics, arg6 *flogging.FabricLogger) assembler.PrefetcherController {
 	var arg1Copy []types.ShardID
 	if arg1 != nil {
 		arg1Copy = make([]types.ShardID, len(arg1))
@@ -47,14 +48,15 @@ func (fake *FakePrefetcherFactory) Create(arg1 []types.ShardID, arg2 []types.Par
 		arg2 []types.PartyID
 		arg3 assembler.PrefetchIndexer
 		arg4 assembler.BatchBringer
-		arg5 *flogging.FabricLogger
-	}{arg1Copy, arg2Copy, arg3, arg4, arg5})
+		arg5 *assembler.Metrics
+		arg6 *flogging.FabricLogger
+	}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
-	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2Copy, arg3, arg4, arg5})
+	fake.recordInvocation("Create", []interface{}{arg1Copy, arg2Copy, arg3, arg4, arg5, arg6})
 	fake.createMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5)
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6)
 	}
 	if specificReturn {
 		return ret.result1
@@ -68,17 +70,17 @@ func (fake *FakePrefetcherFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakePrefetcherFactory) CreateCalls(stub func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *flogging.FabricLogger) assembler.PrefetcherController) {
+func (fake *FakePrefetcherFactory) CreateCalls(stub func([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *assembler.Metrics, *flogging.FabricLogger) assembler.PrefetcherController) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakePrefetcherFactory) CreateArgsForCall(i int) ([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *flogging.FabricLogger) {
+func (fake *FakePrefetcherFactory) CreateArgsForCall(i int) ([]types.ShardID, []types.PartyID, assembler.PrefetchIndexer, assembler.BatchBringer, *assembler.Metrics, *flogging.FabricLogger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6
 }
 
 func (fake *FakePrefetcherFactory) CreateReturns(result1 assembler.PrefetcherController) {
