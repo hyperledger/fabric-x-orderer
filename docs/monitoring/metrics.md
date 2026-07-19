@@ -55,6 +55,11 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 - **Namespace:** "assembler"  
   **Name:** "batch_ledger_append_latency_seconds"
   **Help:** "The latency to append a batch to the ledger."
+
+- **Namespace:** "assembler"  
+  **Name:** "prefetch_index_size_bytes"
+  **Help:** "The current size of the assembler prefetch index for a shard in bytes."
+
 ---
 
 ### Batcher
