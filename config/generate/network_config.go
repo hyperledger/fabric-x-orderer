@@ -20,6 +20,7 @@ type Network struct {
 	UseTLSRouter    string        `yaml:"UseTLSRouter"`
 	UseTLSAssembler string        `yaml:"UseTLSAssembler"`
 	MaxPartyID      types.PartyID `yaml:"MaxPartyID"`
+	Peers           []string      `yaml:"Peers"`
 }
 
 type Party struct {

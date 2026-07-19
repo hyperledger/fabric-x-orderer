@@ -118,6 +118,34 @@ func createNetworkCryptoMaterial(dir string, network *genconfig.Network) error {
 	// collect all node IPs as they are includes as SANs when generating TLS certificates.
 	nodesIPs := getNodeIPs(network)
 
+	peersTLSCAs, peersSignCAs, err := createCAsPerPeer(dir, network)
+	if err != nil {
+		return err
+	}
+
+	// create crypto material for each peer and write the crypto into files
+	for _, peer := range network.Peers {
+		// choose a TLS CA and a signing CA of the peer
+		signCA := peersSignCAs[peer]
+		tlsCA := peersTLSCAs[peer]
+
+		// signing crypto to admin of the organization
+		err = createAdminSignCertAndPrivateKeyForPeer(signCA, dir, peer)
+		if err != nil {
+			return err
+		}
+		// create TLS and signing crypto for the peer
+		err = createTLSCertKeyPairForPeer(tlsCA, dir, peer, nodesIPs)
+		if err != nil {
+			return err
+		}
+		// create signing crypto for the peer
+		err = createSignCertAndPrivateKeyForPeer(signCA, dir, peer, nodesIPs)
+		if err != nil {
+			return err
+		}
+	}
+
 	// create crypto material for each party's nodes and write the crypto into files
 	for _, party := range network.Parties {
 		// choose a TLS CA and a signing CA of the party
@@ -268,6 +296,42 @@ func createCAsPerParty(dir string, network *genconfig.Network) (map[types.PartyI
 	return partiesTLSCAs, partiesSignCAs, nil
 }
 
+// createCAsPerPeer creates a TLS CA and a signing CA for each peer and write the ca's certificates into files.
+func createCAsPerPeer(dir string, network *genconfig.Network) (map[string]*ca.CA, map[string]*ca.CA, error) {
+	peersTLSCAs := make(map[string]*ca.CA)
+	peersSignCAs := make(map[string]*ca.CA)
+
+	for _, peer := range network.Peers {
+		// create a TLS CA for the peer
+		pathToTLSCACert := filepath.Join(dir, "crypto", "peerOrganizations", peer, "tlsca")
+		tlsCA, err := ca.NewCA(pathToTLSCACert, "tlsCA", "tlsca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
+		if err != nil {
+			return nil, nil, fmt.Errorf("err: %s, failed creating a TLS CA for peer %s", err, peer)
+		}
+		err = copyPEMFiles(pathToTLSCACert, filepath.Join(dir, "crypto", "peerOrganizations", peer, "msp", "tlscacerts"))
+		if err != nil {
+			return nil, nil, err
+		}
+
+		peersTLSCAs[peer] = tlsCA
+
+		// create a Signing CA for the peer
+		pathToSignCACert := filepath.Join(dir, "crypto", "peerOrganizations", peer, "ca")
+		signCA, err := ca.NewCA(pathToSignCACert, "signCA", "ca", "US", "California", "San Francisco", "ARMA", "addr", "12345", "ecdsa")
+		if err != nil {
+			return nil, nil, fmt.Errorf("err: %s, failed creating a signing CA for peer %s", err, peer)
+		}
+		err = copyPEMFiles(pathToSignCACert, filepath.Join(dir, "crypto", "peerOrganizations", peer, "msp", "cacerts"))
+		if err != nil {
+			return nil, nil, err
+		}
+
+		peersSignCAs[peer] = signCA
+	}
+
+	return peersTLSCAs, peersSignCAs, nil
+}
+
 // createTLSCertKeyPairForNode creates a TLS cert,key pair signed by a corresponding CA for an Arma node and write them into files.
 func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role string, partyID types.PartyID, nodesIPs []string) error {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -284,6 +348,31 @@ func createTLSCertKeyPairForNode(ca *ca.CA, dir string, endpoint string, role st
 		x509.ExtKeyUsageServerAuth,
 	})
 	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "tls", "key.pem"), "PRIVATE KEY", privateKeyBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// createTLSCertKeyPairForPeer creates a TLS cert,key pair signed by a corresponding CA for a peer and write them into files.
+func createTLSCertKeyPairForPeer(ca *ca.CA, dir string, peer string, nodesIPs []string) error {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed creating private key for %s", err, peer)
+	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for %s", err, peer)
+	}
+
+	_, err = ca.SignCertificate(filepath.Join(dir, "crypto", "peerOrganizations", peer, "tls"), "tls", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageCertSign|x509.KeyUsageCRLSign, []x509.ExtKeyUsage{
+		x509.ExtKeyUsageClientAuth,
+		x509.ExtKeyUsageServerAuth,
+	})
+	if err != nil {
+		return err
+	}
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "peerOrganizations", peer, "tls", "key.pem"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -326,6 +415,28 @@ func createSignCertAndPrivateKeyForNode(ca *ca.CA, dir string, endpoint string, 
 
 	ca.SignCertificate(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "signcerts"), "sign", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyID), "orderers", fmt.Sprintf("party%d", partyID), role, "msp", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// createSignCertAndPrivateKeyForPeer creates a signed certificate with a corresponding private key used for signing and write them into files.
+func createSignCertAndPrivateKeyForPeer(ca *ca.CA, dir string, peer string, nodesIPs []string) error {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed creating private key for %s", err, peer)
+	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for %s", err, peer)
+	}
+
+	_, err = ca.SignCertificate(filepath.Join(dir, "crypto", "peerOrganizations", peer, "signcerts"), "sign", nil, nodesIPs, GetPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	if err != nil {
+		return err
+	}
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "peerOrganizations", peer, "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -376,16 +487,45 @@ func createAdminSignCertAndPrivateKey(ca *ca.CA, dir string, partyID types.Party
 	return nil
 }
 
+// createAdminSignCertAndPrivateKeyForPeer creates for admin of a peer a signed certificate with a corresponding private key.
+func createAdminSignCertAndPrivateKeyForPeer(ca *ca.CA, dir string, peer string) error {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed creating private key for admin of org %s", err, peer)
+	}
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("err: %s, failed marshaling private key for admin of org %s", err, peer)
+	}
+
+	_, err = ca.SignCertificate(filepath.Join(dir, "crypto", "peerOrganizations", peer, "msp", "admincerts"), fmt.Sprintf("Admin@%s", peer), []string{msp.ADMINOU}, nil, GetPublicKey(privateKey), x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	if err != nil {
+		return err
+	}
+	err = utils.WritePEMToFile(filepath.Join(dir, "crypto", "peerOrganizations", peer, "msp", "admincerts", "keystore", "priv_sk"), "PRIVATE KEY", privateKeyBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // generateNetworkCryptoConfigFolderStructure creates folders where the crypto material is written to.
 func generateNetworkCryptoConfigFolderStructure(dir string, network *genconfig.Network) error {
 	var folders []string
 
-	rootDir := filepath.Join(dir, "crypto", "ordererOrganizations")
-	folders = append(folders, rootDir)
+	ordererRootDir := filepath.Join(dir, "crypto", "ordererOrganizations")
+	folders = append(folders, ordererRootDir)
+	peerRootDir := filepath.Join(dir, "crypto", "peerOrganizations")
+	folders = append(folders, peerRootDir)
 
 	for _, p := range network.Parties {
-		folders = generateOrdererOrg(rootDir, folders, int(p.ID), len(p.BatchersEndpoints))
+		folders = generateOrdererOrg(ordererRootDir, folders, int(p.ID), len(p.BatchersEndpoints))
 	}
+
+	for _, peer := range network.Peers {
+		folders = generatePeerOrg(peerRootDir, folders, peer)
+	}
+
 	for _, folder := range folders {
 		err := os.MkdirAll(folder, 0o755)
 		if err != nil {
@@ -393,6 +533,21 @@ func generateNetworkCryptoConfigFolderStructure(dir string, network *genconfig.N
 		}
 	}
 	return nil
+}
+
+// generatePeerOrg generates folders for a peer organization.
+func generatePeerOrg(rootDir string, folders []string, peerID string) []string {
+	orgDir := filepath.Join(rootDir, peerID)
+	folders = append(folders, orgDir)
+	folders = append(folders, filepath.Join(orgDir, "tls"))
+	folders = append(folders, filepath.Join(orgDir, signcerts))
+	folders = append(folders, filepath.Join(orgDir, keystore))
+	folders = append(folders, filepath.Join(orgDir, "msp", cacerts))
+	folders = append(folders, filepath.Join(orgDir, "msp", tlscacerts))
+	folders = append(folders, filepath.Join(orgDir, "msp", admincerts))
+	folders = append(folders, filepath.Join(orgDir, "msp", admincerts, keystore))
+
+	return folders
 }
 
 // generateOrdererOrg generates folders for an orderer organization.

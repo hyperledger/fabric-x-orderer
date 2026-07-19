@@ -94,10 +94,10 @@ func CreateSignerForUser(userMspDir string) (identity.SignerSerializer, error) {
 }
 
 func getMspIDfromDir(mspDir string) (string, error) {
-	re := regexp.MustCompile(`/ordererOrganizations/([^/]+)/`)
+	re := regexp.MustCompile(`/(orderer|peer)Organizations/([^/]+)(/|$)`)
 	matches := re.FindStringSubmatch(mspDir)
-	if matches == nil || len(matches) > 2 {
+	if len(matches) < 4 {
 		return "", fmt.Errorf("failed to extract mspID from path: %s", mspDir)
 	}
-	return matches[1], nil
+	return matches[2], nil
 }

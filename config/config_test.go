@@ -74,7 +74,7 @@ func TestExtractAppTrustedRootsFromConfigBlock(t *testing.T) {
 		require.NoError(t, err)
 
 		res := config.ExtractAppTrustedRootsFromConfigBlock(bundle)
-		require.Equal(t, len(res), 4)
+		require.Equal(t, len(res), 1)
 	})
 }
 
