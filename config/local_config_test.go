@@ -141,10 +141,10 @@ func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 
 	consenterLocalConfigLoaded, role, err = config.LoadLocalConfig(configPath)
 
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "node local config is not valid, node params are missing")
-	require.Equal(t, role, "")
-	require.Nil(t, consenterLocalConfigLoaded)
+	require.NoError(t, err)
+	require.Equal(t, role, config.ConsensusStr)
+	require.NotNil(t, consenterLocalConfigLoaded)
+	require.Equal(t, config.DefaultConsenterNodeConfigParams(consenterLocalConfig.FileStore.Path).WALDir, consenterLocalConfigLoaded.NodeLocalConfig.ConsensusParams.WALDir)
 
 	// Override consenter params - nil params
 	networkLocalConfig.PartiesLocalConfig[0].ConsenterLocalConfig.ConsensusParams = nil

@@ -126,14 +126,6 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 
 	r.status.Set(node_utils.StateInitializing, configSeq)
 
-	if rconfig.NumOfConnectionsForBatcher == 0 {
-		rconfig.NumOfConnectionsForBatcher = config.DefaultRouterParams.NumberOfConnectionsPerBatcher
-	}
-
-	if rconfig.NumOfgRPCStreamsPerConnection == 0 {
-		rconfig.NumOfgRPCStreamsPerConnection = config.DefaultRouterParams.NumberOfStreamsPerConnection
-	}
-
 	r.configuration = configuration
 	r.routerNodeConfig = rconfig
 	r.configSeq = uint32(configSeq)

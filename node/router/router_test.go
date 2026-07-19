@@ -977,6 +977,8 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		ClientAuthRequired:                  clientAuthRequired,
 		Shards:                              shards,
 		Consenter:                           stubConsenterInfo,
+		NumOfConnectionsForBatcher:          fabricx_config.DefaultRouterParams.NumberOfConnectionsPerBatcher,
+		NumOfgRPCStreamsPerConnection:       fabricx_config.DefaultRouterParams.NumberOfStreamsPerConnection,
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,

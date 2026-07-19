@@ -315,19 +315,19 @@ func validateLocalConfig(nodeLocalConfig *NodeLocalConfig) (string, error) {
 func detectNodeRole(nodeLocalConfig *NodeLocalConfig) (string, error) {
 	var roles []string
 
-	if nodeLocalConfig.RouterParams != nil && !isEmptyRouterParams(nodeLocalConfig.RouterParams) {
+	if nodeLocalConfig.RouterParams != nil {
 		roles = append(roles, RouterStr)
 	}
 
-	if nodeLocalConfig.BatcherParams != nil && !isEmptyBatcherParams(nodeLocalConfig.BatcherParams) {
+	if nodeLocalConfig.BatcherParams != nil {
 		roles = append(roles, BatcherStr)
 	}
 
-	if nodeLocalConfig.ConsensusParams != nil && !isEmptyConsensusParams(nodeLocalConfig.ConsensusParams) {
+	if nodeLocalConfig.ConsensusParams != nil {
 		roles = append(roles, ConsensusStr)
 	}
 
-	if nodeLocalConfig.AssemblerParams != nil && !isEmptyAssemblerParams(nodeLocalConfig.AssemblerParams) {
+	if nodeLocalConfig.AssemblerParams != nil {
 		roles = append(roles, AssemblerStr)
 	}
 
@@ -340,22 +340,6 @@ func detectNodeRole(nodeLocalConfig *NodeLocalConfig) (string, error) {
 	}
 
 	return roles[0], nil
-}
-
-func isEmptyRouterParams(routerParams *RouterParams) bool {
-	return routerParams != nil && *routerParams == RouterParams{}
-}
-
-func isEmptyBatcherParams(batcherParams *BatcherParams) bool {
-	return batcherParams != nil && *batcherParams == BatcherParams{}
-}
-
-func isEmptyConsensusParams(consensusParams *ConsensusParams) bool {
-	return consensusParams != nil && *consensusParams == ConsensusParams{}
-}
-
-func isEmptyAssemblerParams(assemblerParams *AssemblerParams) bool {
-	return assemblerParams != nil && *assemblerParams == AssemblerParams{}
 }
 
 func loadTLSCryptoConfig(tlsConfig *TLSConfigYaml) (*TLSConfig, error) {
@@ -424,9 +408,19 @@ func loadClusterCryptoConfig(cluster *ClusterYaml) (*Cluster, error) {
 }
 
 func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
+	applyGeneralDefaults(nodeLocalConfig)
+	applyNodeDefaults(nodeLocalConfig, role)
+}
+
+func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig) {
 	generalConfig := nodeLocalConfig.GeneralConfig
 
-	// Operations defaults.
+	// Use the default BCCSP options when no crypto provider configuration is specified.
+	if generalConfig.BCCSP == nil {
+		generalConfig.BCCSP = factory.GetDefaultOpts()
+	}
+
+	// Use the default operations configuration when none is provided.
 	if nodeLocalConfig.OperationsConfig == nil {
 		defaultOperations := *DefaultNodeLocalConfig.OperationsConfig
 		defaultTLSConfig := *DefaultNodeLocalConfig.OperationsConfig.TLSConfig
@@ -436,6 +430,7 @@ func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
 
 	operationsConfig := nodeLocalConfig.OperationsConfig
 
+	// Use the general listen address when no dedicated operations address is provided.
 	if operationsConfig.ListenAddress == "" {
 		operationsConfig.ListenAddress = generalConfig.ListenAddress
 	}
@@ -445,6 +440,8 @@ func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
 		operationsConfig.TLSConfig = &defaultTLSConfig
 	}
 
+	// If TLS is enabled for the operations server and the certificate, private key,
+	// or root CAs are not provided, use the ones from the general TLS config.
 	if operationsConfig.TLSConfig.Enabled {
 		if operationsConfig.TLSConfig.Certificate == "" {
 			operationsConfig.TLSConfig.Certificate = generalConfig.TLSConfig.Certificate
@@ -457,19 +454,58 @@ func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
 		}
 	}
 
-	// Metrics defaults.
+	// Use the default metrics configuration when none is provided.
 	if nodeLocalConfig.MetricsConfig == nil {
 		defaultMetrics := *DefaultNodeLocalConfig.MetricsConfig
 		nodeLocalConfig.MetricsConfig = &defaultMetrics
 	}
+}
 
-	// Crypto defaults.
-	if generalConfig.BCCSP == nil {
-		generalConfig.BCCSP = factory.GetDefaultOpts()
-	}
+// applyNodeDefaults applies default values to unset node-specific parameters.
+func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
+	switch role {
+	case RouterStr:
+		if nodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher == 0 {
+			nodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher = DefaultRouterParams.NumberOfConnectionsPerBatcher
+		}
+		if nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection == 0 {
+			nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection = DefaultRouterParams.NumberOfStreamsPerConnection
+		}
 
-	// Consensus defaults.
-	if role == ConsensusStr && nodeLocalConfig.ConsensusParams.WALDir == "" {
-		nodeLocalConfig.ConsensusParams.WALDir = DefaultConsenterNodeConfigParams(nodeLocalConfig.FileStore.Path).WALDir
+	case BatcherStr:
+		if nodeLocalConfig.BatcherParams.BatchSequenceGap == 0 {
+			nodeLocalConfig.BatcherParams.BatchSequenceGap = DefaultBatcherParams.BatchSequenceGap
+		}
+		if nodeLocalConfig.BatcherParams.MemPoolMaxSize == 0 {
+			nodeLocalConfig.BatcherParams.MemPoolMaxSize = DefaultBatcherParams.MemPoolMaxSize
+		}
+		if nodeLocalConfig.BatcherParams.SubmitTimeout == 0 {
+			nodeLocalConfig.BatcherParams.SubmitTimeout = DefaultBatcherParams.SubmitTimeout
+		}
+
+	case ConsensusStr:
+		if nodeLocalConfig.ConsensusParams.WALDir == "" {
+			nodeLocalConfig.ConsensusParams.WALDir = DefaultConsenterNodeConfigParams(nodeLocalConfig.FileStore.Path).WALDir
+		}
+
+	case AssemblerStr:
+		if nodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes == 0 {
+			nodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes = DefaultAssemblerParams.PrefetchBufferMemoryBytes
+		}
+		if nodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout == 0 {
+			nodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout = DefaultAssemblerParams.RestartLedgerScanTimeout
+		}
+		if nodeLocalConfig.AssemblerParams.PrefetchEvictionTtl == 0 {
+			nodeLocalConfig.AssemblerParams.PrefetchEvictionTtl = DefaultAssemblerParams.PrefetchEvictionTtl
+		}
+		if nodeLocalConfig.AssemblerParams.PopWaitMonitorTimeout == 0 {
+			nodeLocalConfig.AssemblerParams.PopWaitMonitorTimeout = DefaultAssemblerParams.PopWaitMonitorTimeout
+		}
+		if nodeLocalConfig.AssemblerParams.ReplicationChannelSize == 0 {
+			nodeLocalConfig.AssemblerParams.ReplicationChannelSize = DefaultAssemblerParams.ReplicationChannelSize
+		}
+		if nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize == 0 {
+			nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize = DefaultAssemblerParams.BatchRequestsChannelSize
+		}
 	}
 }
