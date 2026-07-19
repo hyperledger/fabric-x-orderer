@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/hyperledger/fabric-x-orderer/common/fabhttp"
-	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
+	"github.com/hyperledger/fabric-x-orderer/common/metadata"
 )
 
 // Logger defines the logging interface for the operations system.
@@ -92,6 +92,10 @@ func LogSpecServiceURL(system *System, logger *flogging.FabricLogger) string {
 	return operationServiceURL("logspec", system.Addr(), logger)
 }
 
+func VersionInfoServiceURL(system *System, logger *flogging.FabricLogger) string {
+	return operationServiceURL("version", system.Addr(), logger)
+}
+
 // NewOperationsSystem creates a new operations system with the provided configuration.
 func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 	o := Options{
@@ -128,6 +132,7 @@ func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 	system.initializeMetricsProvider()
 	system.initializeHealthCheckHandler()
 	system.initializeLoggingHandler()
+	system.initializeVersionInfoHandler()
 
 	return system
 }
@@ -148,14 +153,11 @@ func (s *System) RegisterChecker(component string, checker healthz.HealthChecker
 }
 
 func (s *System) initializeMetricsProvider() {
-	// case "prometheus":
-	// 	// s.Provider = provider
-	// 	s.versionGauge = versionGauge(s.Provider)
-	// 	// swagger:operation GET /metrics operations metrics
-	// 	// ---
-	// 	// responses:
-	// 	//     '200':
-	// 	//        description: Ok.
+	// swagger:operation GET /metrics operations metrics
+	// ---
+	// responses:
+	//     '200':
+	//        description: Ok.
 	s.RegisterHandler("/metrics", promhttp.Handler(), s.options.TLS.Enabled)
 }
 
@@ -200,4 +202,18 @@ func (s *System) initializeLoggingHandler() {
 	// consumes:
 	//   - application/json
 	s.RegisterHandler("/logspec", httpadmin.NewSpecHandler(), s.options.TLS.Enabled)
+}
+
+func (s *System) initializeVersionInfoHandler() {
+	versionInfo := &VersionInfoHandler{
+		CommitSHA: metadata.CommitSHA,
+		Version:   metadata.Version,
+	}
+	// swagger:operation GET /version operations version
+	// ---
+	// summary: Returns the orderer version and the commit SHA on which the release was created.
+	// responses:
+	//     '200':
+	//        description: Ok.
+	s.RegisterHandler("/version", versionInfo, false)
 }

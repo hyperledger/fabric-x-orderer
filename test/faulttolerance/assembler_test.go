@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
@@ -155,6 +156,7 @@ func TestSubmitStopThenRestartAssembler(t *testing.T) {
 // 6. Stops and restarts the monitored assembler node
 // 7. Verifies that the metrics remain accurate after the node restart
 // 8. Checks the health check endpoint to ensure the assembler node is healthy
+// 9. Queries the assembler's version info endpoint and asserts that the version information matches the expected values from metadata.
 func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
@@ -253,5 +255,20 @@ func TestStartAssemblerGetResponseFromOperationEndpoints(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return testutil.GetHealthCheckStatus(t, healthCheckRe, healthCheckURL)
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 9. Query the assembler's version info endpoint and assert the version information.
+	assembler := armaNetwork.GetAssembler(t, types.PartyID(1))
+	assemblerVersionInfoURL := testutil.CaptureArmaNodeVersionInfoServiceURL(t, assembler)
+
+	assemblerVersionInfoRe := regexp.MustCompile(`^\{\s*"CommitSHA"\s*:\s*"([^"]*)"\s*,\s*"Version"\s*:\s*"([^"]*)"\s*\}$`)
+
+	require.Eventually(t, func() bool {
+		val := testutil.FetchVersionInfoValue(t, assemblerVersionInfoRe, assemblerVersionInfoURL)
+		if val == nil {
+			return false
+		}
+		t.Logf("Fetched version info: CommitSHA=%s, Version=%s", val.CommitSHA, val.Version)
+		return val.CommitSHA == metadata.CommitSHA && val.Version == metadata.Version
 	}, 30*time.Second, 100*time.Millisecond)
 }

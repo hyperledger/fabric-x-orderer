@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	config "github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
@@ -127,6 +128,20 @@ func TestSubmitToRouterGetResponseFromOperationEndpoints(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return testutil.GetHealthCheckStatus(t, healthCheckRe, healthCheckUrl)
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// 9. Query the router's version info endpoint and assert the commit SHA and version.
+	versionInfoUrl := testutil.CaptureArmaNodeVersionInfoServiceURL(t, routerToTest)
+
+	versionInfoRe := regexp.MustCompile(`^\{\s*"CommitSHA"\s*:\s*"([^"]*)"\s*,\s*"Version"\s*:\s*"([^"]*)"\s*\}$`)
+
+	require.Eventually(t, func() bool {
+		val := testutil.FetchVersionInfoValue(t, versionInfoRe, versionInfoUrl)
+		if val == nil {
+			return false
+		}
+		t.Logf("Fetched version info: CommitSHA=%s, Version=%s", val.CommitSHA, val.Version)
+		return val.CommitSHA == metadata.CommitSHA && val.Version == metadata.Version
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
