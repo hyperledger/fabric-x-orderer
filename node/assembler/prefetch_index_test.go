@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -37,17 +40,26 @@ func setupPrefetchIndexTest(t *testing.T) *prefetchIndexTestVars {
 		partitionToRequestsChan:                 make(map[assembler.ShardPrimary]chan types.BatchID),
 	}
 	partitionPrefetchIndexerFactory := &mocks.FakePartitionPrefetchIndexerFactory{}
-	partitionPrefetchIndexerFactory.CreateCalls(func(sp assembler.ShardPrimary, l *flogging.FabricLogger, d time.Duration, i int, tf assembler.TimerFactory, bcf assembler.BatchCacheFactory, requestsChan chan types.BatchID, popWaitMonitorTimeout time.Duration) assembler.PartitionPrefetchIndexer {
+	partitionPrefetchIndexerFactory.CreateCalls(func(sp assembler.ShardPrimary, l *flogging.FabricLogger, d time.Duration, i int, tf assembler.TimerFactory, bcf assembler.BatchCacheFactory, requestsChan chan types.BatchID, popWaitMonitorTimeout time.Duration, metrics *assembler.Metrics) assembler.PartitionPrefetchIndexer {
 		mock := &mocks.FakePartitionPrefetchIndexer{}
 		vars.partitionToPartitionPrefetchIndexerMock[sp] = mock
 		vars.partitionToRequestsChan[sp] = requestsChan
 		return mock
 	})
 
+	logger := testutil.CreateLogger(t, 1)
+	metrics := assembler.NewMetrics(&config.AssemblerNodeConfig{
+		PartyId: 1,
+		Metrics: &operations.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: time.Second,
+		},
+	}, &node_ledger.AssemblerLedgerMetrics{}, logger)
+
 	prefetchIndex := assembler.NewPrefetchIndex(
 		shards,
 		parties,
-		testutil.CreateLogger(t, 1),
+		logger,
 		time.Nanosecond,
 		-1,
 		1000,
@@ -55,6 +67,7 @@ func setupPrefetchIndexTest(t *testing.T) *prefetchIndexTestVars {
 		nil,
 		partitionPrefetchIndexerFactory,
 		time.Second,
+		metrics,
 	)
 	vars.prefetchIndex = prefetchIndex
 	return vars
@@ -120,7 +133,7 @@ func TestPrefetchIndex_Requests(t *testing.T) {
 // batchPerCall - should give the batch id that is given to the partition indexer method as a parameter
 func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 	t *testing.T,
-	indexerOp func(assembler.PrefetchIndexer, types.Batch),
+	indexerOp func(assembler.PrefetchIndexer, types.Batch, *mocks.FakePartitionPrefetchIndexer),
 	callsCount func(*mocks.FakePartitionPrefetchIndexer) int,
 	batchPerCall func(*mocks.FakePartitionPrefetchIndexer, int) types.BatchID,
 ) {
@@ -134,8 +147,8 @@ func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 		batch2PartitionIndexer := test.partitionToPartitionPrefetchIndexerMock[assembler.ShardPrimaryFromBatch(batch2)]
 
 		// Act
-		indexerOp(test.prefetchIndex, batch1)
-		indexerOp(test.prefetchIndex, batch2)
+		indexerOp(test.prefetchIndex, batch1, batch1PartitionIndexer)
+		indexerOp(test.prefetchIndex, batch2, batch2PartitionIndexer)
 
 		// Assert
 		require.Equal(t, 1, callsCount(batch1PartitionIndexer))
@@ -148,7 +161,10 @@ func checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 func TestPrefetchIndex_PopOrWait(t *testing.T) {
 	checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 		t,
-		func(pi assembler.PrefetchIndexer, b types.Batch) { pi.PopOrWait(b) },
+		func(pi assembler.PrefetchIndexer, b types.Batch, mock *mocks.FakePartitionPrefetchIndexer) {
+			mock.PopOrWaitReturns(b, nil)
+			pi.PopOrWait(b)
+		},
 		func(fppi *mocks.FakePartitionPrefetchIndexer) int {
 			return fppi.PopOrWaitCallCount()
 		},
@@ -204,7 +220,7 @@ func runTestsForPutOps(
 ) {
 	checkCorrectPartitionIndexerCalledWithCorrectBatchId(
 		t,
-		func(pi assembler.PrefetchIndexer, b types.Batch) { putOp(pi, b) },
+		func(pi assembler.PrefetchIndexer, b types.Batch, _ *mocks.FakePartitionPrefetchIndexer) { putOp(pi, b) },
 		func(fppi *mocks.FakePartitionPrefetchIndexer) int {
 			return callsCount(fppi)
 		},
