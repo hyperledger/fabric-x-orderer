@@ -710,13 +710,9 @@ func TestBlockSigVerifier_VerifyWithData_InvalidSignatureInputs(t *testing.T) {
 		}
 
 		valuesBytes, err := asn1.Marshal(allValues)
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 		msgsBytes, err := asn1.Marshal(allMsgs)
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 		return smartbft_types.Signature{ID: uint64(signerID), Value: valuesBytes, Msg: msgsBytes}
 	}
 
@@ -1081,9 +1077,7 @@ func TestBlockSigVerifier_VerifyWithData_MockedPolicy(t *testing.T) {
 		idHeaderBytes := protoutil.MarshalOrPanic(&common.IdentifierHeader{Identifier: signerID})
 
 		lastConfigIndex, err := state.GetLastConfigIndexFromConsenterBlock(consenterBlock)
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 		proposalOrdererBlockMetadata := protoutil.MarshalOrPanic(&common.OrdererBlockMetadata{
 			LastConfig:        &common.LastConfig{Index: lastConfigIndex},
 			ConsenterMetadata: consenterBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER],
@@ -1105,13 +1099,9 @@ func TestBlockSigVerifier_VerifyWithData_MockedPolicy(t *testing.T) {
 		}
 
 		valuesBytes, err := asn1.Marshal([][]byte{{10, 11, 12}, {13, 14, 15}})
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 		msgsBytes, err := asn1.Marshal([][]byte{proposalMsg.ASN1MarshalOrPanic(), commonBlockMsg.ASN1MarshalOrPanic()})
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 		return smartbft_types.Signature{ID: uint64(signerID), Value: valuesBytes, Msg: msgsBytes}
 	}
 
