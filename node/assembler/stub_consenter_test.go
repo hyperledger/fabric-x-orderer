@@ -143,6 +143,44 @@ func (sc *stubConsenter) Broadcast(stream orderer.AtomicBroadcast_BroadcastServe
 	return fmt.Errorf("not implemented")
 }
 
+func (sc *stubConsenter) SetNextConfigDecision(ba *state.AvailableBatchOrdered, st *state.State) {
+	proposal := smartbft_types.Proposal{
+		Header: (&state.Header{
+			Num:                          ba.OrderingInformation.DecisionNum,
+			DecisionNumOfLastConfigBlock: ba.OrderingInformation.DecisionNum,
+			AvailableCommonBlocks:        []*common.Block{ba.OrderingInformation.CommonBlock},
+			State:                        st,
+		}).Serialize(),
+	}
+
+	// Dummy compound signatures
+	sigs := [][]byte{{1}, {2}}
+	sigBytes, err := asn1.Marshal(sigs)
+	if err != nil {
+		panic("failed to marshal fake signature: " + err.Error())
+	}
+	proposalMsg := &protoutil.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(protoutil.NewIdentifierHeaderOrPanic(1)),
+	}
+	msg := &protoutil.MessageToSign{
+		IdentifierHeader: protoutil.MarshalOrPanic(protoutil.NewIdentifierHeaderOrPanic(1)),
+	}
+	msgs := [][]byte{proposalMsg.ASN1MarshalOrPanic(), msg.ASN1MarshalOrPanic()}
+	msgsBytes, err := asn1.Marshal(msgs)
+	if err != nil {
+		panic("failed to marshal fake signature msgs: " + err.Error())
+	}
+	signatures := []smartbft_types.Signature{{Value: sigBytes, Msg: msgsBytes}}
+	bytes := state.ProposalToBytes(proposal)
+	block := &common.Block{
+		Header: ba.OrderingInformation.CommonBlock.Header,
+		Data:   &common.BlockData{Data: [][]byte{bytes}},
+	}
+	protoutil.InitBlockMetadata(block)
+	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
+	sc.decisions <- block
+}
+
 func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 	proposal := smartbft_types.Proposal{
 		Header: (&state.Header{
