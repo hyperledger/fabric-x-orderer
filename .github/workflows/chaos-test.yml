@@ -79,6 +79,7 @@ jobs:
     name: Chaos Test
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    if: github.repository == 'hyperledger/fabric-x-orderer' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout Fabric-X Code
