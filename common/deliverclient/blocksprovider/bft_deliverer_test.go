@@ -352,6 +352,30 @@ func TestBFTDeliverer_NoBlocks(t *testing.T) {
 	setup.stop()
 }
 
+func TestBFTDeliverer_ClonesVerifierForCensorshipMonitor(t *testing.T) {
+	setup := newBFTDelivererTestSetup(t)
+	setup.initialize(t)
+
+	// Set up Clone() to return a distinct fake instance so we can verify identity.
+	clonedVerifier := &fake.UpdatableBlockVerifier{}
+	setup.fakeUpdatableBlockVerifier.CloneReturns(clonedVerifier)
+
+	setup.start()
+
+	t.Log("Waits for the censorship monitor to be created")
+	setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(1))
+
+	t.Log("Clone() was called exactly once on the shared verifier")
+	require.Equal(t, 1, setup.fakeUpdatableBlockVerifier.CloneCallCount())
+
+	t.Log("The censorship monitor received the cloned verifier, not the shared one")
+	_, verifierPassedToMonitor, _, _, _, _, _, _ := setup.fakeCensorshipMonFactory.CreateArgsForCall(0)
+	require.Same(t, clonedVerifier, verifierPassedToMonitor,
+		"censorship monitor should receive the cloned verifier, not the shared instance")
+
+	setup.stop()
+}
+
 func TestBFTDeliverer_FatalErrors(t *testing.T) {
 	t.Run("Ledger height returns an error", func(t *testing.T) {
 		setup := newBFTDelivererTestSetup(t)
