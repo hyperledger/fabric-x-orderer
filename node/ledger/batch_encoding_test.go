@@ -18,17 +18,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShardPartyToChannelName(t *testing.T) {
-	s := ledger.ShardPartyToChannelName(2, 3)
-	require.Equal(t, "shard2party3", s)
+func TestShardPartyChannelIDToChannelName(t *testing.T) {
+	require.Equal(t, "shard2party3-arma", ledger.ShardPartyChannelIDToChannelName(2, 3, "arma"))
+	require.Equal(t, "shard2party3-my-channel", ledger.ShardPartyChannelIDToChannelName(2, 3, "my-channel"))
 }
 
-func TestChannelNameToShardParty(t *testing.T) {
+func TestChannelNameToShardPartyChannelID(t *testing.T) {
 	t.Run("good", func(t *testing.T) {
-		shardID, partyID, err := ledger.ChannelNameToShardParty("shard2party3")
+		shardID, partyID, channelID, err := ledger.ChannelNameToShardPartyChannelID("shard2party3-arma")
 		require.NoError(t, err)
 		require.Equal(t, types.ShardID(2), shardID)
 		require.Equal(t, types.PartyID(3), partyID)
+		require.Equal(t, "arma", channelID)
+	})
+
+	t.Run("good with dashes in channelID", func(t *testing.T) {
+		shardID, partyID, channelID, err := ledger.ChannelNameToShardPartyChannelID("shard2party3-my-channel")
+		require.NoError(t, err)
+		require.Equal(t, types.ShardID(2), shardID)
+		require.Equal(t, types.PartyID(3), partyID)
+		require.Equal(t, "my-channel", channelID)
+	})
+
+	t.Run("round trip", func(t *testing.T) {
+		name := ledger.ShardPartyChannelIDToChannelName(7, 4, "arma")
+		shardID, partyID, channelID, err := ledger.ChannelNameToShardPartyChannelID(name)
+		require.NoError(t, err)
+		require.Equal(t, types.ShardID(7), shardID)
+		require.Equal(t, types.PartyID(4), partyID)
+		require.Equal(t, "arma", channelID)
 	})
 
 	t.Run("bad", func(t *testing.T) {
@@ -51,26 +69,55 @@ func TestChannelNameToShardParty(t *testing.T) {
 				expErr: "channel name does not contain 'party': shard2x",
 			},
 			{
+				in:     "shard2.5party3-arma",
+				expErr: "cannot extract 'shardID' from channel name: shard2.5party3-arma, err: strconv.ParseUint: parsing \"2.5\": invalid syntax",
+			},
+			{
+				in:     "shard-1party3-arma",
+				expErr: "cannot extract 'shardID' from channel name: shard-1party3-arma, err: strconv.ParseUint: parsing \"-1\": invalid syntax",
+			},
+			{
+				in:     "shard65536party3-arma",
+				expErr: "cannot extract 'shardID' from channel name: shard65536party3-arma, err: strconv.ParseUint: parsing \"65536\": value out of range",
+			},
+			{
+				in:     "shard2party3",
+				expErr: "channel name does not contain the '-<channelID>' suffix: shard2party3",
+			},
+			{
 				in:     "shard2party",
-				expErr: "cannot extract 'partyID' from channel name: shard2party, err: strconv.Atoi: parsing \"\": invalid syntax",
+				expErr: "channel name does not contain the '-<channelID>' suffix: shard2party",
 			},
 			{
-				in:     "shard2party3x",
-				expErr: "cannot extract 'partyID' from channel name: shard2party3x, err: strconv.Atoi: parsing \"3x\": invalid syntax",
+				in:     "shard2party3x-arma",
+				expErr: "cannot extract 'partyID' from channel name: shard2party3x-arma, err: strconv.ParseUint: parsing \"3x\": invalid syntax",
 			},
 			{
-				in:     "shard2party3.5",
-				expErr: "cannot extract 'partyID' from channel name: shard2party3.5, err: strconv.Atoi: parsing \"3.5\": invalid syntax",
+				in:     "shard2party-arma",
+				expErr: "cannot extract 'partyID' from channel name: shard2party-arma, err: strconv.ParseUint: parsing \"\": invalid syntax",
 			},
 			{
-				in:     "shard2.5party3",
-				expErr: "cannot extract 'shardID' from channel name: shard2.5party3, err: strconv.Atoi: parsing \"2.5\": invalid syntax",
+				in:     "shard2party65536-arma",
+				expErr: "cannot extract 'partyID' from channel name: shard2party65536-arma, err: strconv.ParseUint: parsing \"65536\": value out of range",
+			},
+			{
+				in:     "shard2party3-",
+				expErr: "cannot extract 'channelID' from channel name: shard2party3-, err: channel ID illegal, cannot be empty",
+			},
+			{
+				in:     "shard2party3-Arma",
+				expErr: "cannot extract 'channelID' from channel name: shard2party3-Arma, err: 'Arma' contains illegal characters",
+			},
+			{
+				in:     "shard2party3-9arma",
+				expErr: "cannot extract 'channelID' from channel name: shard2party3-9arma, err: '9arma' contains illegal characters",
 			},
 		} {
-			shardID, partyID, err := ledger.ChannelNameToShardParty(tc.in)
+			shardID, partyID, channelID, err := ledger.ChannelNameToShardPartyChannelID(tc.in)
 			require.EqualError(t, err, tc.expErr)
 			require.Equal(t, types.ShardID(0), shardID)
 			require.Equal(t, types.PartyID(0), partyID)
+			require.Equal(t, "", channelID)
 		}
 	})
 }

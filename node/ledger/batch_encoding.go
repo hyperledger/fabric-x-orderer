@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/pkg/errors"
 )
 
@@ -151,32 +152,45 @@ func NewFabricBatchFromBlock(block *common.Block) (*FabricBatch, error) {
 	return batch, nil
 }
 
-// TODO Channel-Names: include the config ChannelID suffix (e.g. "shard<shardID>party<partyID>-<channelID>") once supported.
-func ShardPartyToChannelName(shardID types.ShardID, partyID types.PartyID) string {
-	return fmt.Sprintf("shard%dparty%d", shardID, partyID)
+// ShardPartyChannelIDToChannelName builds the channel name of the form
+// "shard<shardID>party<partyID>-<channelID>".
+func ShardPartyChannelIDToChannelName(shardID types.ShardID, partyID types.PartyID, channelID string) string {
+	return fmt.Sprintf("shard%dparty%d-%s", shardID, partyID, channelID)
 }
 
-// TODO Channel-Names: parse the config ChannelID suffix once channel names include it (e.g. "shard<shardID>party<partyID>-<channelID>").
-func ChannelNameToShardParty(channelName string) (types.ShardID, types.PartyID, error) {
+// ChannelNameToShardPartyChannelID parses the ShardID, PartyID and ChannelID out of a channel name of
+// the form "shard<shardID>party<partyID>-<channelID>". The "-<channelID>" suffix is mandatory.
+func ChannelNameToShardPartyChannelID(channelName string) (types.ShardID, types.PartyID, string, error) {
 	s, ok := strings.CutPrefix(channelName, "shard")
 	if !ok {
-		return 0, 0, errors.Errorf("channel name does not start with 'shard': %s", channelName)
+		return 0, 0, "", errors.Errorf("channel name does not start with 'shard': %s", channelName)
 	}
 
-	shard, party, found := strings.Cut(s, "party")
+	shard, rest, found := strings.Cut(s, "party")
 	if !found {
-		return 0, 0, errors.Errorf("channel name does not contain 'party': %s", channelName)
+		return 0, 0, "", errors.Errorf("channel name does not contain 'party': %s", channelName)
 	}
 
-	shardID, err := strconv.Atoi(shard)
+	// ShardID and PartyID are uint16, so parse directly into 16 bits to reject overflow and negatives.
+	shardID, err := strconv.ParseUint(shard, 10, 16)
 	if err != nil {
-		return 0, 0, errors.Errorf("cannot extract 'shardID' from channel name: %s, err: %s", channelName, err)
+		return 0, 0, "", errors.Errorf("cannot extract 'shardID' from channel name: %s, err: %s", channelName, err)
 	}
 
-	partyID, err := strconv.Atoi(party)
+	// The remainder is "<partyID>-<channelID>"; the channelID itself may contain further '-'.
+	partyStr, channelID, found := strings.Cut(rest, "-")
+	if !found {
+		return 0, 0, "", errors.Errorf("channel name does not contain the '-<channelID>' suffix: %s", channelName)
+	}
+
+	partyID, err := strconv.ParseUint(partyStr, 10, 16)
 	if err != nil {
-		return 0, 0, errors.Errorf("cannot extract 'partyID' from channel name: %s, err: %s", channelName, err)
+		return 0, 0, "", errors.Errorf("cannot extract 'partyID' from channel name: %s, err: %s", channelName, err)
 	}
 
-	return types.ShardID(shardID), types.PartyID(partyID), nil
+	if err := configtx.ValidateChannelID(channelID); err != nil {
+		return 0, 0, "", errors.Errorf("cannot extract 'channelID' from channel name: %s, err: %s", channelName, err)
+	}
+
+	return types.ShardID(shardID), types.PartyID(partyID), channelID, nil
 }

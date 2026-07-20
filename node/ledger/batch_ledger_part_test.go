@@ -31,13 +31,13 @@ func TestBatchLedgerPart(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	part, err := newBatchLedgerPart(provider, 5, 1, 2, logger)
+	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger)
 	require.NoError(t, err)
 	require.NotNil(t, part)
 	require.Equal(t, uint64(0), part.Height())
 	require.Nil(t, part.RetrieveBatchByNumber(0))
 
-	part, err = newBatchLedgerPart(provider, 5, 1, 2, logger) // no problem reopening the same part
+	part, err = newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger) // no problem reopening the same part
 	require.NoError(t, err)
 	require.NotNil(t, part)
 	require.Equal(t, uint64(0), part.Height())
@@ -61,7 +61,7 @@ func TestBatchLedgerPart(t *testing.T) {
 	}
 	require.Nil(t, part.RetrieveBatchByNumber(100))
 
-	part, err = newBatchLedgerPart(provider, 5, 1, 2, logger) // no problem reopening the same part without loosing its content
+	part, err = newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger) // no problem reopening the same part without loosing its content
 	require.NoError(t, err)
 	require.NotNil(t, part)
 	require.Equal(t, batches, part.Height())
@@ -80,7 +80,7 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	part, err := newBatchLedgerPart(provider, 1, 1, 2, logger)
+	part, err := newBatchLedgerPart(provider, 1, 1, 2, "test-channel", logger)
 	require.NoError(t, err)
 	require.NotNil(t, part)
 

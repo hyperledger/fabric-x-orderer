@@ -66,7 +66,7 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 	}
 
 	logger := flogging.MustGetLogger(fmt.Sprintf("stub-batcher-S%d-P%d", shardID, partyID))
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(shardID, partyID, parties, t.TempDir(), logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(shardID, partyID, parties, "arma", t.TempDir(), logger)
 	if err != nil {
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}

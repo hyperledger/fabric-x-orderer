@@ -87,13 +87,17 @@ type chainManager struct {
 }
 
 func (c *chainManager) GetChain(chainID string) deliver.Chain {
-	shardID, partyID, err := ledger.ChannelNameToShardParty(chainID)
+	shardID, partyID, channelID, err := ledger.ChannelNameToShardPartyChannelID(chainID)
 	if err != nil {
-		c.logger.Errorf("Failed to parse channel name to ShardID and PartyID: %s", err)
+		c.logger.Errorf("Failed to parse channel name to ShardID, PartyID and ChannelID: %s", err)
 		return nil
 	}
 	if shardID != c.ledgerArray.ShardID() {
 		c.logger.Errorf("Requested shard does not match this shard: requested=%d, this=%d", shardID, c.ledgerArray.ShardID())
+		return nil
+	}
+	if channelID != c.ledgerArray.ChannelID() {
+		c.logger.Errorf("Requested channel does not match this channel: requested=%s, this=%s", channelID, c.ledgerArray.ChannelID())
 		return nil
 	}
 	if ledger := c.ledgerArray.Part(partyID); ledger == nil {

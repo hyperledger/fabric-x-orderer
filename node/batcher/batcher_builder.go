@@ -70,7 +70,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(b.config.ShardId, b.config.PartyId, parties, b.config.Directory, b.logger)
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(b.config.ShardId, b.config.PartyId, parties, b.config.GetChannelID(), b.config.Directory, b.logger)
 	if err != nil {
 		b.logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
