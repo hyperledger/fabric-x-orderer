@@ -85,6 +85,13 @@ func TestConsensus(t *testing.T) {
 	baf125id2p1s2, err := batcher.CreateBAF(crypto.ECDSASigner(*sk2), 2, 1, dig125, 1, 2, 0, 0, baf125id1p1s2.Signature())
 	assert.NoError(t, err)
 
+	// Create equivocating BAFs - primary 1 sends different digest for same sequence in shard 1
+	dig126 := append([]byte{1, 2, 6}, dig...)
+	baf126id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk1), 1, 1, dig126, 1, 1, 0, 0, nil)
+	assert.NoError(t, err)
+	baf126id4p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk4), 4, 1, dig126, 1, 1, 0, 0, baf126id1p1s1.Signature())
+	assert.NoError(t, err)
+
 	for _, tst := range []struct {
 		name                string
 		expectedSequences   [][]arma_types.BatchSequence
@@ -141,6 +148,26 @@ func TestConsensus(t *testing.T) {
 				{expectCommits: big.NewInt(4)},
 				{ControlEvent: &state.ControlEvent{BAF: baf123id1p1s1}},
 				{ControlEvent: &state.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id1p2s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf124id2p2s1}},
+				{waitForCommit: &struct{}{}},
+			},
+		},
+		{
+			name:                "equivocation detection - conflicting BAFs",
+			expectedSequences:   [][]arma_types.BatchSequence{{1, 1}}, // Both batches with seq 1 are included despite equivocation
+			expectedDecisionNum: []uint64{1},
+			commitEvent:         new(sync.WaitGroup),
+			events: []scheduleEvent{
+				{expectCommits: big.NewInt(4)},
+				// BAFs with digest 123 for sequence 1 in shard 1 and primary 1
+				{ControlEvent: &state.ControlEvent{BAF: baf123id2p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf123id3p1s1}},
+				// Primary 1 equivocates by sending BAF with different digest 126 for SAME sequence 1 in shard 1
+				// This should trigger equivocation detection and primary rotation (term 0 -> 1)
+				{ControlEvent: &state.ControlEvent{BAF: baf126id1p1s1}},
+				{ControlEvent: &state.ControlEvent{BAF: baf126id4p1s1}},
+				// After rotation, new primary (2) can make progress with sequence 1 in shard 2
 				{ControlEvent: &state.ControlEvent{BAF: baf124id1p2s1}},
 				{ControlEvent: &state.ControlEvent{BAF: baf124id2p2s1}},
 				{waitForCommit: &struct{}{}},
@@ -509,6 +536,15 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	baf125id1p1s3, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig125, 1, 3, 0, 0, nil)
 	assert.NoError(t, err)
 
+	// Create equivocating BAFs - primary 1 sends different digest for same sequence in shard 1
+	dig126 := append([]byte{1, 2, 6}, dig...)
+	baf126id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig126, 1, 1, 0, 0, nil)
+	assert.NoError(t, err)
+	baf126id3p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[2]), 3, 1, dig126, 1, 1, 0, 0, baf126id1p1s1.Signature())
+	assert.NoError(t, err)
+	baf126id4p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[3]), 4, 1, dig126, 1, 1, 0, 0, baf126id1p1s1.Signature())
+	assert.NoError(t, err)
+
 	for _, tst := range []struct {
 		name                   string
 		initialAppContext      *common.BlockHeader
@@ -645,11 +681,37 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			ces:        []state.ControlEvent{{BAF: baf124id3p1s2}, {BAF: baf124id4p1s2noSig}},
 			numPending: 1,
 		},
+		{
+			name: "equivocation detection - primary sends conflicting digests",
+			initialAppContext: &common.BlockHeader{
+				Number:       0,
+				PreviousHash: nil,
+				DataHash:     nil,
+			},
+			metadata: &smartbftprotos.ViewMetadata{
+				LatestSequence: 0,
+			},
+			// Primary 1 sends two different digests (123 and 126) for same sequence 1 in shard 1
+			// This should trigger equivocation detection and primary rotation
+			// Even though equivocation is detected, the batch with digest 123 has threshold signatures
+			// so it will be included as an available block
+			// Initial term is 1 (so primary 1 is current), after equivocation it becomes 2
+			ces:                    []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf126id3p1s1}, {BAF: baf126id4p1s1}},
+			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1}, // Batch 123 has threshold
+			numPending:             0,                                                    // No pending after extraction
+			newTermForShard1:       2,                                                    // Term incremented from 1 to 2 due to equivocation
+		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
+			// For equivocation test, we need to set the initial term so that primary 1 is the current primary
+			shards := []state.ShardTerm{{Shard: 1}, {Shard: 2}}
+			if tst.name == "equivocation detection - primary sends conflicting digests" {
+				shards = []state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2}} // Term 1 % 4 = 1 (primary 1)
+			}
+
 			initialState := &state.State{
 				N:          4,
-				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
+				Shards:     shards,
 				Threshold:  2,
 				Quorum:     3,
 				AppContext: protoutil.MarshalOrPanic(tst.initialAppContext),

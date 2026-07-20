@@ -7,12 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -30,7 +32,7 @@ type Rule func(*State, types.ConfigSequence, *flogging.FabricLogger, ...ControlE
 var Rules = []Rule{
 	FilterPendingEventsWithDiffConfigSeq,
 	CollectAndDeduplicateEvents,
-	// DetectEquivocation, // TODO: false positive, lets find out why
+	DetectEquivocation,
 	PrimaryRotateDueToComplaints,
 	CleanupOldComplaints,
 	// CleanupOldAttestations, // TODO: fully test for byzantine failures
@@ -714,46 +716,90 @@ func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequen
 	s.Complaints = filteredComplaints
 }
 
-func DetectEquivocation(s *State, l *flogging.FabricLogger, _ ...ControlEvent) {
-	// We have a total of N parties per shard.
-	// We collect a quorum of signatures and then wait for f+1 identical ones.
-	// If we can't collect such, it means the primary equivocated.
+func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
+	// Since the primary signs the BAF, if we see multiple different digests
+	// for the same <seq, shard, primary> tuple, the primary has equivocated.
+	// In this case, we rotate the primary by incrementing the term.
+
+	// Note: This rule applies only on pending BAFs (and incoming BAFs for this round).
+	// It does not include BAFs that reached the threshold of f+1 in previous rounds
+	// and their digest was added to the BatchAttestationDB.
 
 	// <seq, shard, primary> --> { digest -->  signer }
-	m := batchAttestationVotesByDigests(s)
+	// Only count BAFs where Signer != Primary: a BAF where the signer claims to be
+	// the primary (Signer == Primary) is self-signed and can be forged by any node to
+	// manufacture false equivocation evidence.  Genuine attestations from secondaries
+	// always have Signer != Primary (the primary's own participation is captured by the
+	// empty PrimarySignature field, not by it re-broadcasting its own BAF as a voter).
+	m := batchAttestationVotesByDigestsExcludingSelfSigned(s)
 
-	// For each <seq, shard, primary> check if it has a digest with a quorum of votes.
+	// Sort votes for deterministic processing: by shard, then primary, then seq.
+	votes := make([]batchAttestationVote, 0, len(m))
+	for vote := range m {
+		votes = append(votes, vote)
+	}
+	slices.SortFunc(votes, func(a, b batchAttestationVote) int {
+		if c := cmp.Compare(a.shard, b.shard); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.primary, b.primary); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.seq, b.seq)
+	})
 
-	for batchAttestation, digest2signers := range m {
+	// Track which shards have already been rotated to ensure at most one rotation per shard.
+	rotatedShards := make(map[types.ShardID]struct{})
 
-		var foundThreshold bool
+	// For each <seq, shard, primary> check if it has multiple different digests
+	for _, vote := range votes {
+		digest2signers := m[vote]
+		// If there are multiple different digests for the same <seq, shard, primary>,
+		// the primary has equivocated
+		if len(digest2signers) > 1 {
+			l.Warnf("Detected equivocation: batch attestation sequence %d in shard %d from primary %d "+
+				"has %d different digests (%v). Primary has sent conflicting batches.",
+				vote.seq, vote.shard, vote.primary,
+				len(digest2signers), getDigestSummary(digest2signers))
 
-		var totalSigners int
+			// Rotate the primary in the affected shard at most once per DetectEquivocation call.
+			if _, alreadyRotated := rotatedShards[vote.shard]; alreadyRotated {
+				l.Warnf("Skipping additional rotation for shard %d (already rotated once this round)", vote.shard)
+				continue
+			}
 
-		for _, signers := range digest2signers {
-			totalSigners += len(signers)
-			if len(signers) >= int(s.Threshold) {
-				foundThreshold = true
-				break
+			for i := range s.Shards {
+				if s.Shards[i].Shard == vote.shard {
+					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation at sequence %d",
+						vote.primary, s.Shards[i].Term, s.Shards[i].Term+1, s.Shards[i].Shard, vote.seq)
+					s.Shards[i].Term++
+					rotatedShards[vote.shard] = struct{}{}
+					break
+				}
 			}
 		}
+	}
+}
 
-		if totalSigners >= int(s.Quorum) && !foundThreshold {
-			l.Warnf("batch attestation sequence %d in shard %d of primary %d"+
-				" has more than %d distinct signers but no threshold of signers signed on the same digest (%v)",
-				batchAttestation.seq, batchAttestation.shard, batchAttestation.primary, totalSigners, digest2signers)
+// getDigestSummary returns a summary of digests for logging purposes.
+// digest2signers is keyed by hex-encoded digest strings.
+func getDigestSummary(digest2signers map[string][]types.PartyID) string {
+	hexDigests := make([]string, 0, len(digest2signers))
+	for hexDigest := range digest2signers {
+		hexDigests = append(hexDigests, hexDigest)
+	}
+	slices.Sort(hexDigests)
 
-			for _, shard := range s.Shards {
-				term := shard.Term
-				currentPrimary := types.PartyID(term % uint64(s.N))
-				if currentPrimary == batchAttestation.primary {
-					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation for sequence %d in shard %d",
-						batchAttestation.primary, shard.Term, shard.Term+1, shard.Shard, batchAttestation.seq, batchAttestation.shard)
-					shard.Term++
-				}
-			} // for all shards
-		} // equivocation detected
-	} // for all <seq, shard, primary>
+	var summary strings.Builder
+	summary.WriteString("[")
+	for i, hexDigest := range hexDigests {
+		if i > 0 {
+			summary.WriteString(", ")
+		}
+		fmt.Fprintf(&summary, "digest=%s (signers=%d)", hexDigest, len(digest2signers[hexDigest]))
+	}
+	summary.WriteString("]")
+	return summary.String()
 }
 
 func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[string][]types.PartyID {
@@ -768,7 +814,35 @@ func batchAttestationVotesByDigests(s *State) map[batchAttestationVote]map[strin
 			m[currentVote] = digests2signers
 		}
 
-		digests2signers[string(baf.Digest())] = append(digests2signers[string(baf.Digest())], baf.Signer())
+		hexDigest := hex.EncodeToString(baf.Digest())
+		digests2signers[hexDigest] = append(digests2signers[hexDigest], baf.Signer())
+	}
+	return m
+}
+
+// batchAttestationVotesByDigestsExcludingSelfSigned is like batchAttestationVotesByDigests
+// but skips BAFs where Signer() == Primary().  Such self-signed BAFs cannot serve as
+// secondary attestations and are filtered here to prevent a non-primary from
+// manufacturing equivocation evidence by sending two BAFs with the same Primary() == Signer()
+// but different digests.
+func batchAttestationVotesByDigestsExcludingSelfSigned(s *State) map[batchAttestationVote]map[string][]types.PartyID {
+	m := make(map[batchAttestationVote]map[string][]types.PartyID)
+
+	for _, baf := range s.Pending {
+		if baf.Signer() == baf.Primary() {
+			continue
+		}
+
+		currentVote := batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary()}
+
+		digests2signers, exists := m[currentVote]
+		if !exists {
+			digests2signers = make(map[string][]types.PartyID)
+			m[currentVote] = digests2signers
+		}
+
+		hexDigest := hex.EncodeToString(baf.Digest())
+		digests2signers[hexDigest] = append(digests2signers[hexDigest], baf.Signer())
 	}
 	return m
 }
@@ -823,6 +897,8 @@ func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []t
 
 	l.Debugf("Pending attestations count changed from %d to %d", oldPendingCount, newPendingCount)
 	s.Pending = newPending
+
+	// TODO explicit digest selection: consider adding logic to explicitly choose the digest with the most signatures when equivocation is detected
 
 	return extracted
 }
