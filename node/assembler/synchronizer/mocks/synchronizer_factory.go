@@ -7,12 +7,13 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	synchronizera "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer"
 )
 
 type FakeSynchronizerFactory struct {
-	CreateSynchronizerStub        func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop
+	CreateSynchronizerStub        func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizera.VerifierFactory) synchronizer.SynchronizerWithStop
 	createSynchronizerMutex       sync.RWMutex
 	createSynchronizerArgsForCall []struct {
 		arg1 *flogging.FabricLogger
@@ -22,7 +23,7 @@ type FakeSynchronizerFactory struct {
 		arg5 bccsp.BCCSP
 		arg6 uint64
 		arg7 *common.Block
-		arg8 synchronizer.VerifierFactory
+		arg8 synchronizera.VerifierFactory
 	}
 	createSynchronizerReturns struct {
 		result1 synchronizer.SynchronizerWithStop
@@ -34,7 +35,7 @@ type FakeSynchronizerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeSynchronizerFactory) CreateSynchronizer(arg1 *flogging.FabricLogger, arg2 uint64, arg3 config.Cluster, arg4 synchronizer.AssemblerSupport, arg5 bccsp.BCCSP, arg6 uint64, arg7 *common.Block, arg8 synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop {
+func (fake *FakeSynchronizerFactory) CreateSynchronizer(arg1 *flogging.FabricLogger, arg2 uint64, arg3 config.Cluster, arg4 synchronizer.AssemblerSupport, arg5 bccsp.BCCSP, arg6 uint64, arg7 *common.Block, arg8 synchronizera.VerifierFactory) synchronizer.SynchronizerWithStop {
 	fake.createSynchronizerMutex.Lock()
 	ret, specificReturn := fake.createSynchronizerReturnsOnCall[len(fake.createSynchronizerArgsForCall)]
 	fake.createSynchronizerArgsForCall = append(fake.createSynchronizerArgsForCall, struct {
@@ -45,7 +46,7 @@ func (fake *FakeSynchronizerFactory) CreateSynchronizer(arg1 *flogging.FabricLog
 		arg5 bccsp.BCCSP
 		arg6 uint64
 		arg7 *common.Block
-		arg8 synchronizer.VerifierFactory
+		arg8 synchronizera.VerifierFactory
 	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8})
 	stub := fake.CreateSynchronizerStub
 	fakeReturns := fake.createSynchronizerReturns
@@ -66,13 +67,13 @@ func (fake *FakeSynchronizerFactory) CreateSynchronizerCallCount() int {
 	return len(fake.createSynchronizerArgsForCall)
 }
 
-func (fake *FakeSynchronizerFactory) CreateSynchronizerCalls(stub func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop) {
+func (fake *FakeSynchronizerFactory) CreateSynchronizerCalls(stub func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizera.VerifierFactory) synchronizer.SynchronizerWithStop) {
 	fake.createSynchronizerMutex.Lock()
 	defer fake.createSynchronizerMutex.Unlock()
 	fake.CreateSynchronizerStub = stub
 }
 
-func (fake *FakeSynchronizerFactory) CreateSynchronizerArgsForCall(i int) (*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizer.VerifierFactory) {
+func (fake *FakeSynchronizerFactory) CreateSynchronizerArgsForCall(i int) (*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizera.VerifierFactory) {
 	fake.createSynchronizerMutex.RLock()
 	defer fake.createSynchronizerMutex.RUnlock()
 	argsForCall := fake.createSynchronizerArgsForCall[i]

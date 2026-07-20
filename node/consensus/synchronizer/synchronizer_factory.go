@@ -15,8 +15,10 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 )
 
 //go:generate counterfeiter -o mocks/consenter_support.go . ConsenterSupport
@@ -55,13 +57,13 @@ type ConsenterSupport interface {
 	WriteConfigBlock(block *cb.Block)
 }
 
-type BFTConfigGetter interface {
-	BFTConfig() (types.Configuration, []uint64)
-}
-
 type SynchronizerWithStop interface {
 	api.Synchronizer
 	Stop()
+}
+
+type BFTConfigGetter interface {
+	BFTConfig() (types.Configuration, []uint64)
 }
 
 type SynchronizerFactory interface {
@@ -130,7 +132,7 @@ func newSynchronizer(
 			LocalConfigCluster:  localConfigCluster,
 			BlockPullerFactory:  &HeightDetectorCreator{},
 			VerifierFactory:     &ConsenterBlockVerifierCreator{},
-			BFTDelivererFactory: &bftDelivererCreator{},
+			BFTDelivererFactory: &commonsync.BFTDelivererCreator{ConfigBlockOps: &state.ConsenterConfigBlockOperations{}},
 			Logger:              logger,
 			JoinConfigBlock:     joinConfigBlock,
 		}

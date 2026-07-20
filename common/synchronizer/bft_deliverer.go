@@ -15,55 +15,17 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
-	"github.com/pkg/errors"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 )
 
-type worker struct {
-	work      [][]byte
-	f         func([]byte)
-	workerNum int
-	id        int
-}
-
-func (w *worker) doWork() {
-	// sanity check
-	if w.workerNum == 0 {
-		panic("worker number is not defined")
-	}
-
-	if w.f == nil {
-		panic("worker function is not defined")
-	}
-
-	if len(w.work) == 0 {
-		panic("work is not defined")
-	}
-
-	for i, datum := range w.work {
-		if i%w.workerNum != w.id {
-			continue
-		}
-
-		w.f(datum)
-	}
-}
-
-// ledgerInfoAdapter translates from blocksprovider.LedgerInfo in to calls to ConsenterSupport.
-type ledgerInfoAdapter struct {
-	support ConsenterSupport
-}
-
-func (a *ledgerInfoAdapter) LedgerHeight() (uint64, error) {
-	return a.support.Height(), nil
-}
-
-func (a *ledgerInfoAdapter) GetCurrentBlockHash() ([]byte, error) {
-	return nil, errors.New("not implemented: never used in orderer")
+//go:generate counterfeiter -o mocks/bft_block_deliverer.go --fake-name BFTBlockDeliverer . BFTBlockDeliverer
+type BFTBlockDeliverer interface {
+	Stop()
+	DeliverBlocks()
+	Initialize(channelConfig *cb.Config, selfPartyID types.PartyID)
 }
 
 //go:generate counterfeiter -o mocks/bft_deliverer_factory.go --fake-name BFTDelivererFactory . BFTDelivererFactory
-
 type BFTDelivererFactory interface {
 	CreateBFTDeliverer(
 		channelID string,
@@ -84,12 +46,19 @@ type BFTDelivererFactory interface {
 		blockCensorshipTimeout time.Duration,
 		maxRetryDuration time.Duration,
 		maxRetryDurationExceededHandler blocksprovider.MaxRetryDurationExceededHandler,
+		tlsCertHash []byte,
 	) BFTBlockDeliverer
 }
 
-type bftDelivererCreator struct{}
+// BFTDelivererCreator creates a blocksprovider.BFTDeliverer. ConfigBlockOps supplies
+// the block-type-specific config operations, which differ between the assembler
+// (utils.CommonConfigBlockOperations) and the consensus node
+// (state.ConsenterConfigBlockOperations).
+type BFTDelivererCreator struct {
+	ConfigBlockOps utils.ConfigBlockOperations
+}
 
-func (*bftDelivererCreator) CreateBFTDeliverer(
+func (c *BFTDelivererCreator) CreateBFTDeliverer(
 	channelID string,
 	blockHandler blocksprovider.BlockHandler,
 	ledger blocksprovider.LedgerInfo,
@@ -108,6 +77,7 @@ func (*bftDelivererCreator) CreateBFTDeliverer(
 	blockCensorshipTimeout time.Duration,
 	maxRetryDuration time.Duration,
 	maxRetryDurationExceededHandler blocksprovider.MaxRetryDurationExceededHandler,
+	tlsCertHash []byte,
 ) BFTBlockDeliverer {
 	bftDeliverer := &blocksprovider.BFTDeliverer{
 		ChannelID:                       channelID,
@@ -121,7 +91,7 @@ func (*bftDelivererCreator) CreateBFTDeliverer(
 		Signer:                          signer,
 		DeliverStreamer:                 deliverStreamer,
 		CensorshipDetectorFactory:       censorshipDetectorFactory,
-		ConfigBlockOps:                  &state.ConsenterConfigBlockOperations{},
+		ConfigBlockOps:                  c.ConfigBlockOps,
 		EndpointsExtractor:              endpointsExtractor,
 		Logger:                          logger,
 		InitialRetryInterval:            initialRetryInterval,
@@ -129,13 +99,7 @@ func (*bftDelivererCreator) CreateBFTDeliverer(
 		BlockCensorshipTimeout:          blockCensorshipTimeout,
 		MaxRetryDuration:                maxRetryDuration,
 		MaxRetryDurationExceededHandler: maxRetryDurationExceededHandler,
+		TLSCertHash:                     tlsCertHash,
 	}
 	return bftDeliverer
-}
-
-//go:generate counterfeiter -o mocks/bft_block_deliverer.go --fake-name BFTBlockDeliverer . BFTBlockDeliverer
-type BFTBlockDeliverer interface {
-	Stop()
-	DeliverBlocks()
-	Initialize(channelConfig *cb.Config, selfPartyID types.PartyID)
 }

@@ -18,6 +18,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
+	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
+	commonsyncmocks "github.com/hyperledger/fabric-x-orderer/common/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	orderer_config "github.com/hyperledger/fabric-x-orderer/config"
@@ -222,7 +224,7 @@ func (at *assemblerTest) StartAssembler() {
 		consensusBringerFactoryMock,
 		&mocks.SignerSerializer{},
 		at.synchronizerFactoryMock,
-		&synchronizer_mocks.VerifierFactory{},
+		&commonsyncmocks.VerifierFactory{},
 	)
 
 	at.assembler.StartAssemblerService()
@@ -428,7 +430,7 @@ func TestAssembler_InitLedgerSyncsWhenConfigBlockAheadOfLedger(t *testing.T) {
 	// The fake synchronizer simulates pulling and committing the missing blocks (0..configBlockNumber)
 	// to the ledger via the support adapter, so that after Sync() the ledger reaches the target height.
 	var fakeSync *synchronizer_mocks.FakeSynchronizerWithStop
-	test.synchronizerFactoryMock.CreateSynchronizerCalls(func(_ *flogging.FabricLogger, _ uint64, _ orderer_config.Cluster, support synchronizer.AssemblerSupport, _ bccsp.BCCSP, _ uint64, bootConfigBlock *common.Block, _ synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop {
+	test.synchronizerFactoryMock.CreateSynchronizerCalls(func(_ *flogging.FabricLogger, _ uint64, _ orderer_config.Cluster, support synchronizer.AssemblerSupport, _ bccsp.BCCSP, _ uint64, bootConfigBlock *common.Block, _ commonsync.VerifierFactory) synchronizer.SynchronizerWithStop {
 		fakeSync = &synchronizer_mocks.FakeSynchronizerWithStop{}
 		fakeSync.SyncCalls(func() error {
 			genesis := utils.EmptyGenesisBlock("arma")

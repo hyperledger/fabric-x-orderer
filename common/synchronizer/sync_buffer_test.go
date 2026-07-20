@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
+	"github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
