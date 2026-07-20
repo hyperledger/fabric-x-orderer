@@ -155,9 +155,18 @@ func (s *System) RegisterChecker(component string, checker healthz.HealthChecker
 func (s *System) initializeMetricsProvider() {
 	// swagger:operation GET /metrics operations metrics
 	// ---
+	// summary: Retrieves the Prometheus metrics for the process.
+	// description: >-
+	//   The response format is content-negotiated via the Accept header.
+	//   Defaults to the Prometheus text exposition format
+	//   (text/plain; version=0.0.4); clients may request the Prometheus
+	//   protobuf format instead.
+	// produces:
+	//   - text/plain
+	//   - application/vnd.google.protobuf
 	// responses:
 	//     '200':
-	//        description: Ok.
+	//        description: Prometheus metrics, in the negotiated exposition format.
 	s.RegisterHandler("/metrics", promhttp.Handler(), s.options.TLS.Enabled)
 }
 
@@ -166,41 +175,75 @@ func (s *System) initializeHealthCheckHandler() {
 	// swagger:operation GET /healthz operations healthz
 	// ---
 	// summary: Retrieves all registered health checkers for the process.
+	// produces:
+	//   - application/json
 	// responses:
 	//     '200':
-	//        description: Ok.
+	//        description: All health checks passed.
+	//        schema:
+	//          type: object
+	//          properties:
+	//            status: { type: string }
+	//            time:   { type: string, format: date-time }
+	//     '408':
+	//        description: The health checks did not complete before the timeout.
 	//     '503':
-	//        description: Service unavailable.
+	//        description: One or more health checks failed.
+	//        schema:
+	//          type: object
+	//          properties:
+	//            status: { type: string }
+	//            time:   { type: string, format: date-time }
+	//            failed_checks:
+	//              type: array
+	//              items:
+	//                type: object
+	//                properties:
+	//                  component: { type: string }
+	//                  reason:    { type: string }
+	//     '405':
+	//        description: Method not allowed.
 	s.RegisterHandler("/healthz", s.healthHandler, false)
 }
 
 func (s *System) initializeLoggingHandler() {
 	// swagger:operation GET /logspec operations logspecget
 	// ---
-	// summary: Retrieves the active logging spec for a peer or orderer.
+	// summary: Retrieves the active logging spec for the orderer.
+	// produces:
+	//   - application/json
 	// responses:
 	//     '200':
 	//        description: Ok.
+	//        schema:
+	//          type: object
+	//          properties:
+	//            spec: { type: string }
 
 	// swagger:operation PUT /logspec operations logspecput
 	// ---
-	// summary: Updates the active logging spec for a peer or orderer.
-	//
+	// summary: Updates the active logging spec for the orderer.
+	// consumes:
+	//   - application/json
+	// produces:
+	//   - application/json
 	// parameters:
-	// in: body
-	//   required: true
+	//   - name: logspec
+	//     in: body
+	//     required: true
+	//     schema:
+	//       type: object
+	//       properties:
+	//         spec: { type: string }
 	// responses:
 	//     '204':
 	//        description: No content.
 	//     '400':
 	//        description: Bad request.
-	//   schema:
-	//     type: object
-	//     properties:
-	//       spec:
-	//         type: string
-	// consumes:
-	//   - application/json
+	//        schema:
+	//          type: object
+	//          properties:
+	//            error: { type: string }
 	s.RegisterHandler("/logspec", httpadmin.NewSpecHandler(), s.options.TLS.Enabled)
 }
 
@@ -212,8 +255,21 @@ func (s *System) initializeVersionInfoHandler() {
 	// swagger:operation GET /version operations version
 	// ---
 	// summary: Returns the orderer version and the commit SHA on which the release was created.
+	// produces:
+	//   - application/json
 	// responses:
 	//     '200':
 	//        description: Ok.
+	//        schema:
+	//          type: object
+	//          properties:
+	//            CommitSHA: { type: string }
+	//            Version:   { type: string }
+	//     '400':
+	//        description: Bad request (returned for any non-GET method).
+	//        schema:
+	//          type: object
+	//          properties:
+	//            Error: { type: string }
 	s.RegisterHandler("/version", versionInfo, false)
 }
