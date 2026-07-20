@@ -139,6 +139,7 @@ func NewDefaultAssembler(
 	consensusBringerFactory delivery.ConsensusBringerFactory,
 	signer identity.SignerSerializer,
 	synchronizerFactory synchronizer.SynchronizerFactory,
+	verifierFactory synchronizer.VerifierFactory,
 ) *Assembler {
 	logger.Infof("Creating assembler, party: %d, address: %s", nodeConfig.PartyId, nodeConfig.ListenAddress)
 	if configBlock == nil {
@@ -147,6 +148,10 @@ func NewDefaultAssembler(
 	}
 	if configBlock.Header == nil {
 		logger.Panicf("Error creating Assembler%d, config block header is nil", nodeConfig.PartyId)
+		return nil
+	}
+	if verifierFactory == nil {
+		logger.Panicf("Error creating Assembler%d, verifier factory is nil", nodeConfig.PartyId)
 		return nil
 	}
 
@@ -166,7 +171,7 @@ func NewDefaultAssembler(
 		configuration:       configuration,
 	}
 
-	assembler.initLedger(configBlock, nodeConfig, synchronizerFactory)
+	assembler.initLedger(configBlock, nodeConfig, synchronizerFactory, verifierFactory)
 
 	// todo - take last config block from ledger and bootstrap the assembler with it
 
@@ -247,7 +252,7 @@ func (a *Assembler) initFromConfig(
 	a.logger.Infof("Assembler initialized successfully with config sequence number: %d", configSequence)
 }
 
-func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_config.AssemblerNodeConfig, synchronizerFactory synchronizer.SynchronizerFactory) {
+func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_config.AssemblerNodeConfig, synchronizerFactory synchronizer.SynchronizerFactory, verifierFactory synchronizer.VerifierFactory) {
 	ledgerHeight := a.ledger.LedgerReader().Height()
 	configBlockNumber := configBlock.GetHeader().GetNumber()
 	a.logger.Infof("Initializing assembler ledger, current height: %d, config block number: %d", ledgerHeight, configBlockNumber)
@@ -274,6 +279,7 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 			factory.GetDefault(),
 			targetHeight,
 			configBlock,
+			verifierFactory,
 		)
 
 		defer synchronizer.Stop()
@@ -324,6 +330,7 @@ func NewAssembler(nodeConfig *node_config.AssemblerNodeConfig, configuration *co
 		&delivery.DefaultConsensusBringerFactory{},
 		signer,
 		&synchronizer.SynchronizerCreator{},
+		&synchronizer.AssemblerBlockVerifierCreator{},
 	)
 }
 

@@ -21,10 +21,13 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	top_config "github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer"
+	"github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -637,11 +640,33 @@ func createJoiningAssembler(
 
 	// syncConfigBlock.Number > 0 causes initLedger to enter the sync path. The block must carry
 	// a real config envelope so the BFT synchronizer can extract assembler addresses and TLS creds.
-	return assembler.NewAssembler(
-		assemblerNodeConfig, configuration, syncConfigBlock,
-		make(chan struct{}),
+	//
+	// A permissive block verifier is injected so these tests exercise synchronization mechanics
+	// (genesis agreement, catch-up, source availability) with stub-produced blocks, which do not
+	// carry real BFT signatures or well-formed transaction envelopes. Block-verification crypto is
+	// covered separately by the deliverclient BlockVerificationAssistant tests.
+	//
+	// The mock verifier accepts every block (all Verify* methods return the zero-value nil error)
+	// and returns itself from Clone, since the synchronizer clones the verifier before use.
+	blockVerifier := &mocks.BlockVerifier{}
+	blockVerifier.CloneReturns(blockVerifier)
+	verifierFactory := &mocks.VerifierFactory{}
+	verifierFactory.CreateBlockVerifierReturns(blockVerifier, nil)
+	return assembler.NewDefaultAssembler(
 		testutil.CreateLogger(t, int(partyID)),
+		nil,
+		assemblerNodeConfig,
+		configuration,
+		syncConfigBlock,
+		make(chan struct{}),
+		&node_ledger.DefaultAssemblerLedgerFactory{},
+		&assembler.DefaultPrefetchIndexerFactory{},
+		&assembler.DefaultPrefetcherFactory{},
+		&assembler.DefaultBatchBringerFactory{},
+		&delivery.DefaultConsensusBringerFactory{},
 		signer,
+		&synchronizer.SynchronizerCreator{},
+		verifierFactory,
 	)
 }
 

@@ -12,7 +12,7 @@ import (
 )
 
 type FakeSynchronizerFactory struct {
-	CreateSynchronizerStub        func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block) synchronizer.SynchronizerWithStop
+	CreateSynchronizerStub        func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop
 	createSynchronizerMutex       sync.RWMutex
 	createSynchronizerArgsForCall []struct {
 		arg1 *flogging.FabricLogger
@@ -22,6 +22,7 @@ type FakeSynchronizerFactory struct {
 		arg5 bccsp.BCCSP
 		arg6 uint64
 		arg7 *common.Block
+		arg8 synchronizer.VerifierFactory
 	}
 	createSynchronizerReturns struct {
 		result1 synchronizer.SynchronizerWithStop
@@ -33,7 +34,7 @@ type FakeSynchronizerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeSynchronizerFactory) CreateSynchronizer(arg1 *flogging.FabricLogger, arg2 uint64, arg3 config.Cluster, arg4 synchronizer.AssemblerSupport, arg5 bccsp.BCCSP, arg6 uint64, arg7 *common.Block) synchronizer.SynchronizerWithStop {
+func (fake *FakeSynchronizerFactory) CreateSynchronizer(arg1 *flogging.FabricLogger, arg2 uint64, arg3 config.Cluster, arg4 synchronizer.AssemblerSupport, arg5 bccsp.BCCSP, arg6 uint64, arg7 *common.Block, arg8 synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop {
 	fake.createSynchronizerMutex.Lock()
 	ret, specificReturn := fake.createSynchronizerReturnsOnCall[len(fake.createSynchronizerArgsForCall)]
 	fake.createSynchronizerArgsForCall = append(fake.createSynchronizerArgsForCall, struct {
@@ -44,13 +45,14 @@ func (fake *FakeSynchronizerFactory) CreateSynchronizer(arg1 *flogging.FabricLog
 		arg5 bccsp.BCCSP
 		arg6 uint64
 		arg7 *common.Block
-	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7})
+		arg8 synchronizer.VerifierFactory
+	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8})
 	stub := fake.CreateSynchronizerStub
 	fakeReturns := fake.createSynchronizerReturns
-	fake.recordInvocation("CreateSynchronizer", []interface{}{arg1, arg2, arg3, arg4, arg5, arg6, arg7})
+	fake.recordInvocation("CreateSynchronizer", []interface{}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8})
 	fake.createSynchronizerMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
 	}
 	if specificReturn {
 		return ret.result1
@@ -64,17 +66,17 @@ func (fake *FakeSynchronizerFactory) CreateSynchronizerCallCount() int {
 	return len(fake.createSynchronizerArgsForCall)
 }
 
-func (fake *FakeSynchronizerFactory) CreateSynchronizerCalls(stub func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block) synchronizer.SynchronizerWithStop) {
+func (fake *FakeSynchronizerFactory) CreateSynchronizerCalls(stub func(*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizer.VerifierFactory) synchronizer.SynchronizerWithStop) {
 	fake.createSynchronizerMutex.Lock()
 	defer fake.createSynchronizerMutex.Unlock()
 	fake.CreateSynchronizerStub = stub
 }
 
-func (fake *FakeSynchronizerFactory) CreateSynchronizerArgsForCall(i int) (*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block) {
+func (fake *FakeSynchronizerFactory) CreateSynchronizerArgsForCall(i int) (*flogging.FabricLogger, uint64, config.Cluster, synchronizer.AssemblerSupport, bccsp.BCCSP, uint64, *common.Block, synchronizer.VerifierFactory) {
 	fake.createSynchronizerMutex.RLock()
 	defer fake.createSynchronizerMutex.RUnlock()
 	argsForCall := fake.createSynchronizerArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8
 }
 
 func (fake *FakeSynchronizerFactory) CreateSynchronizerReturns(result1 synchronizer.SynchronizerWithStop) {

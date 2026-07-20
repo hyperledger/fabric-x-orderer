@@ -11,7 +11,10 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
+	"github.com/pkg/errors"
 )
+
+//go:generate counterfeiter -o mocks/block_verifier.go --fake-name BlockVerifier github.com/hyperledger/fabric-x-orderer/common/deliverclient.CloneableUpdatableBlockVerifier
 
 //go:generate counterfeiter -o mocks/verifier_factory.go --fake-name VerifierFactory . VerifierFactory
 type VerifierFactory interface {
@@ -23,41 +26,17 @@ type VerifierFactory interface {
 	) (deliverclient.CloneableUpdatableBlockVerifier, error)
 }
 
-// noopVerifierCreator creates a block verifier that does not actually verify blocks, which can be used in tests or when block verification is not needed.
-type noopVerifierCreator struct{}
+type AssemblerBlockVerifierCreator struct{}
 
-func (*noopVerifierCreator) CreateBlockVerifier(
+func (*AssemblerBlockVerifierCreator) CreateBlockVerifier(
 	configBlock *common.Block,
 	lastBlock *common.Block,
 	cryptoProvider bccsp.BCCSP,
 	lg *flogging.FabricLogger,
 ) (deliverclient.CloneableUpdatableBlockVerifier, error) {
-	return &noopBlockVerifier{}, nil
-}
-
-// noopBlockVerifier is a block verifier that does not actually verify blocks, which can be used in tests or when block verification is not needed.
-type noopBlockVerifier struct{}
-
-// VerifyBlock checks block integrity and its relation to the chain, and verifies the signatures.
-func (*noopBlockVerifier) VerifyBlock(block *common.Block) error {
-	// TODO
-	return nil
-}
-
-func (*noopBlockVerifier) VerifyBlockAttestation(block *common.Block) error {
-	// TODO
-	return nil
-}
-
-func (*noopBlockVerifier) UpdateConfig(configBlock *common.Block) error {
-	// TODO
-	return nil
-}
-
-func (*noopBlockVerifier) UpdateBlockHeader(block *common.Block) {
-	// TODO
-}
-
-func (*noopBlockVerifier) Clone() deliverclient.CloneableUpdatableBlockVerifier {
-	return &noopBlockVerifier{}
+	verifier, err := deliverclient.NewBlockVerificationAssistant(configBlock, lastBlock, cryptoProvider, lg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create assembler block verifier")
+	}
+	return verifier, nil
 }
