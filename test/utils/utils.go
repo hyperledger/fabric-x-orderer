@@ -144,6 +144,8 @@ func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 				Batchers: batcherInfos,
 			}},
 			UseTLS:                              true,
+			NumOfConnectionsForBatcher:          config.DefaultRouterParams.NumberOfConnectionsPerBatcher,
+			NumOfgRPCStreamsPerConnection:       config.DefaultRouterParams.NumberOfStreamsPerConnection,
 			RequestMaxBytes:                     1 << 10,
 			ClientSignatureVerificationRequired: false,
 			Bundle:                              bundle,

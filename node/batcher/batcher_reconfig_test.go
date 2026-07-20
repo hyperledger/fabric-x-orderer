@@ -297,6 +297,7 @@ func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID, numO
 		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
+		localConfig.NodeLocalConfig.ConsensusParams.WALDir = config.DefaultConsenterNodeConfigParams(fileStoreDir).WALDir
 		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 		require.NoError(t, err)
 	}

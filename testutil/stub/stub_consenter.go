@@ -85,6 +85,7 @@ func NewStubConsenterFromConfig(t *testing.T, configStoreDir string, nodeConfigP
 	require.NoError(t, err)
 
 	localConfig.NodeLocalConfig.FileStore.Path = configStoreDir
+	localConfig.NodeLocalConfig.ConsensusParams.WALDir = config.DefaultConsenterNodeConfigParams(configStoreDir).WALDir
 	utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 
 	configContent, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsensus", zap.DebugLevel))
