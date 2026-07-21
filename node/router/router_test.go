@@ -983,7 +983,7 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
 		Operations: &operations.Operations{
-			ListenAddress: "127.0.0.1:0",
+			ListenAddress: testutil.AllocateLocalhostAddress(t),
 		},
 		Metrics: &operations.Metrics{Provider: generate.DefaultMetricsProviderType, MetricsLogInterval: 1 * time.Second},
 	}

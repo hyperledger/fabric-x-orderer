@@ -255,7 +255,7 @@ func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consente
 			MetricsLogInterval: 10 * time.Second,
 		},
 		Operations: &operations.Operations{
-			ListenAddress: "127.0.0.1:0",
+			ListenAddress: testutil.AllocateLocalhostAddress(t),
 		},
 	}
 }
