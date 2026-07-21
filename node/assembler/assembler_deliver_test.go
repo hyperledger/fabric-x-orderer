@@ -16,6 +16,7 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
@@ -78,7 +79,7 @@ func TestAssembler_SoftStopAndPull(t *testing.T) {
 	assembler.SoftStop()
 	// wait for SoftStop to finish and pull from assembler
 
-	err = createDeliveryClientAndPull(t, assemblerEndpoint, [][]byte{ca.CertBytes()}, ca, batchCount, "TLS")
+	err = createDeliveryClientAndPull(t, assemblerEndpoint, [][]byte{ca.CertBytes()}, ca, batchCount, "TLS", nil)
 	require.NoError(t, err)
 }
 
@@ -129,7 +130,7 @@ func TestAssemblerDeliver_WithMTLS_success(t *testing.T) {
 		}, 10*time.Second, 100*time.Millisecond)
 	}
 
-	err = createDeliveryClientAndPull(t, assemblerEndpoint, [][]byte{ca.CertBytes()}, ca, batchCount, "mTLS")
+	err = createDeliveryClientAndPull(t, assemblerEndpoint, [][]byte{ca.CertBytes()}, ca, batchCount, "mTLS", nil)
 	require.NoError(t, err)
 }
 
@@ -289,7 +290,9 @@ func createAssemblerClientConn(t *testing.T, assemblerEndpoint string, assembler
 }
 
 // createDeliveryClientAndPull connects to the delivery service in the assembler and tries to pull a number of blocks.
-func createDeliveryClientAndPull(t *testing.T, assemblerEndpoint string, assemblerRootCAs [][]byte, ca tlsgen.CA, numBlocksToPull int, tls string) error {
+// If signer is non-nil, the seek request is signed with it (required when the assembler enforces a real
+// ChannelReaders policy); pass nil when the assembler uses a permissive/mock policy.
+func createDeliveryClientAndPull(t *testing.T, assemblerEndpoint string, assemblerRootCAs [][]byte, ca tlsgen.CA, numBlocksToPull int, tls string, signer identity.SignerSerializer) error {
 	ckp, err := ca.NewClientCertKeyPair()
 	require.NoError(t, err)
 
@@ -314,7 +317,7 @@ func createDeliveryClientAndPull(t *testing.T, assemblerEndpoint string, assembl
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
 		"arma",
-		nil,
+		signer,
 		delivery.NextSeekInfo(1),
 		int32(0),
 		uint64(0),

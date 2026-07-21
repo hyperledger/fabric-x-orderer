@@ -76,6 +76,21 @@ func TestSendConfigUpdate(t *testing.T) {
 		status := testSetup.routerNode.GetStatus()
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
 	}, 20*time.Second, 100*time.Millisecond)
+
+	// make sure the restarted router is connected to the batcher before submitting requests.
+	require.Eventually(t, func() bool {
+		return testSetup.routerNode.IsAllStreamsOK()
+	}, 20*time.Second, 100*time.Millisecond)
+
+	// submit a request to the router
+	clientConn, err := testSetup.CreateRouterClient()
+	require.NoError(t, err)
+	require.NotNil(t, clientConn)
+	defer clientConn.Close()
+
+	requestMaxBytes := int(testSetup.sharedConfig.GetBatchingConfig().GetRequestMaxBytes())
+	err = submitRequestToRouter(clientConn, requestMaxBytes/2)
+	require.NoError(t, err)
 }
 
 // Scenario:
