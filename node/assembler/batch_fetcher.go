@@ -234,7 +234,7 @@ func (br *BatchFetcher) GetBatch(batchID types.BatchID) (types.Batch, error) {
 			return nil, context.Canceled
 		case fb := <-res:
 			count++
-			if types.BatchIDEqual(fb, batchID) {
+			if fb != nil && types.BatchIDEqual(fb, batchID) {
 				br.logger.Infof("Found batch %s", types.BatchIDToString(fb))
 				cancelFunc(successErr)
 				return fb, nil
@@ -298,6 +298,21 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		resultChan <- nil
 		return
 	}
+
+	// Verify that the block's Header.DataHash is actually the hash of the received block data.
+	if err := comm.VerifyBlockHash(0, []*common.Block{block}); err != nil {
+		br.logger.Warnf("Assembler pulled from %s a batch whose data hash does not verify: %s", batcherToPullFrom.Endpoint, err)
+		resultChan <- nil
+		return
+	}
+
+	// compare the batchID (including the hash, shard, primary) of the received batch with the requested batchID
+	if !types.BatchIDEqual(fb, batchID) {
+		br.logger.Warnf("Assembler pulled from %s a batch with a different batchID than requested. requested: %s, pulled: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(batchID), types.BatchIDToString(fb))
+		resultChan <- nil
+		return
+	}
+
 	br.logger.Infof("Assembler pulled from %s batch: %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
 	resultChan <- fb
 }
