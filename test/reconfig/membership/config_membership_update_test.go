@@ -658,31 +658,36 @@ func TestAddNewParty(t *testing.T) {
 	})
 }
 
-// TestReplacePartiesPartially verifies that an arma network can dynamically replace parties
-// by removing one party and adding multiple new parties in successive configuration updates.
+// TestPartiesFullReplacement verifies that an arma network can dynamically replace parties
+// by removing one party and adding a new party in successive configuration updates, continuing
+// till we reach 7, 8, 9, and 10 parties setup.
 // Scenario:
-//  1. Run an arma network of 5 parties, single shard.
+//  1. Run an arma network of 4 parties, single shard.
 //  2. Send txs and pull blocks to ensure network is operational.
-//  3. Send a config tx that removes party 5.
-//  4. Wait for the removed party to enter pending admin state and then stop the party, wait for the rest of the network to restart dynamically.
-//  5. Clean the removed party from the network information, the shared config yaml and the crypto dir.
-//  6. Pull the last config block from assembler so that block is written to a temporary directory, this block will be the bootstrap block of the first added party.
-//  7. Send successive config updates that add a party:
-//     Iteratively (2 times):
+//  3. Repeatedly remove a party and send a config tx that removes it, continuing through
+//     multiple replacement rounds rather than stopping after the first few parties.
+//  4. For each removal, wait for the removed party to enter pending admin state, stop it,
+//     and wait for the remaining parties to restart dynamically.
+//  5. For each removal, remove the party from the network info, shared_config.yaml, and the crypto dir.
+//  6. After each removal, pull the latest config block from an assembler; this becomes the bootstrap
+//     block for the next added party.
+//  7. Send successive config updates that add a replacement party:
 //     - Send a config tx that adds a new party.
 //     - Wait for dynamic restart of all nodes.
-//     - Pull the last config block from assembler so that block is written to a temporal directory, this block will be the bootstrap block of the next added party.
+//     - Pull the last config block from assembler so that block is written to a temporary directory;
+//     this block will be the bootstrap block for the next added party.
 //     - Add the new party to the network and start the party.
-//     - Updates user configurations across all parties to include new endpoints and TLS certificates of the added parties.
-//  8. Send more txs and pull blocks to verify the network is operational again, after all accumulated configuration changes.
-func TestReplacePartiesPartially(t *testing.T) {
+//     - Update user configurations across all parties to include the new endpoints and TLS certificates.
+//  8. Send more txs and pull blocks to verify the network is operational again after all accumulated
+//     configuration changes.
+func TestPartiesFullReplacement(t *testing.T) {
 	// 1.
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() { os.RemoveAll(dir) })
 
 	configPath := filepath.Join(dir, "config.yaml")
-	numOfParties := 5
+	numOfParties := 4
 	numOfShards := 1
 	submittingPartyID := types.PartyID(1)
 
@@ -701,16 +706,16 @@ func TestReplacePartiesPartially(t *testing.T) {
 	require.NoError(t, err)
 
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	defer gexec.CleanupBuildArtifacts()
+	t.Cleanup(func() { gexec.CleanupBuildArtifacts() })
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
 	// Start Arma nodes
 	numOfArmaNodes := len(netInfo)
 	readyChan := make(chan string, numOfArmaNodes)
-	defer netInfo.CleanUp()
+	t.Cleanup(func() { netInfo.CleanUp() })
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Cleanup(func() { armaNetwork.Stop() })
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
 	parties := make([]types.PartyID, 0, numOfParties)
@@ -756,88 +761,94 @@ func TestReplacePartiesPartially(t *testing.T) {
 
 	// 3.
 	configBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
-	builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-	partyToRemove := types.PartyID(5)
-	remainingParties := make([]types.PartyID, 0, numOfParties-1)
-	for i := 1; i <= numOfParties; i++ {
-		if types.PartyID(i) != partyToRemove {
-			remainingParties = append(remainingParties, types.PartyID(i))
-		}
-	}
-	builder.RemoveParty(t, partyToRemove)
+	var configSeq uint64
 
-	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
-
-	// Send the config tx
-	env := configutil.CreateConfigTX(t, dir, parties, int(submittingPartyID), builder.ConfigUpdatePBData(t))
-	require.NotNil(t, env)
-	configSeq := uint64(1)
-
-	err = broadcastClient.SendTxTo(env, submittingPartyID)
-	require.NoError(t, err)
-	totalTxNumber++ // for the config update transaction
-
-	// 4.
-	t.Logf("Wait for the removed party %d to enter pending admin state", partyToRemove)
-	testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToRemove})
-
-	t.Logf("Wait for arma nodes to restart dynamically after removal of party %d", partyToRemove)
-	testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, remainingParties, configSeq)
-
-	t.Logf("Stop the removed party %d", partyToRemove)
-	armaNetwork.StopParties([]types.PartyID{partyToRemove})
-	// 5.
-	// Remove the removed party from the network info and parties list
-	maps.DeleteFunc(netInfo, func(nodeName testutil.NodeName, _ *testutil.ArmaNodeInfo) bool {
-		return nodeName.PartyID == partyToRemove
-	})
-
-	// Remove the removed party from the list of parties
-	parties = slices.DeleteFunc(parties, func(partyID types.PartyID) bool {
-		return partyID == partyToRemove
-	})
-
-	// Remove the removed party from the shared config
-	sharedConfig := config.SharedConfigYaml{}
-	err = utils.ReadFromYAML(&sharedConfig, filepath.Join(dir, "bootstrap", "shared_config.yaml"))
-	require.NoError(t, err, "failed to load shared config")
-	sharedConfig.PartiesConfig = slices.DeleteFunc(sharedConfig.PartiesConfig, func(partyConfig config.PartyConfig) bool {
-		return partyConfig.PartyID == partyToRemove
-	})
-	err = utils.WriteToYAML(sharedConfig, filepath.Join(dir, "bootstrap", "shared_config.yaml"))
-	require.NoError(t, err, "failed to write updated shared config")
-
-	// Remove the crypto materials of the removed party
-	err = os.RemoveAll(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyToRemove)))
-	require.NoError(t, err)
-
-	// 6.
-	t.Log("Get the config block from an assembler ledger and write it to a temp location")
-	submittingPartyID = parties[0]
-	configBlockStoreDir := t.TempDir()
-	configBlockPath = filepath.Join(configBlockStoreDir, fmt.Sprintf("config_%d.block", configSeq))
-
-	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
-		UserConfig:   uc,
-		Parties:      parties,
-		Transactions: totalTxNumber,
-		Timeout:      120,
-		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
-		Status:       &statusUnknown,
-		Signer:       pullRequestSigner,
-		BlockHandler: &exportConfigBlockToFile{configSeq: configSeq, path: configBlockPath},
-	})
-
-	t.Logf("Verify the config block %d file was created", configSeq)
-	require.FileExists(t, configBlockPath, "Config block file should exist after pulling from assembler")
-	t.Logf("Config block successfully written to: %s", configBlockPath)
-
-	broadcastClient.Stop()
-
-	// 7.
-	for range 2 {
-		// Create config update to add a new party
+	for range numOfParties + 2 {
+		partyToRemove := parties[0] // always remove the first party in the list
+		t.Logf("Send config tx that removes party %d", partyToRemove)
 		builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		builder.RemoveParty(t, partyToRemove)
+
+		broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+		// Send the config tx
+		env := configutil.CreateConfigTX(t, dir, parties, int(submittingPartyID), builder.ConfigUpdatePBData(t))
+		require.NotNil(t, env)
+		configSeq++
+
+		err = broadcastClient.SendTxTo(env, submittingPartyID)
+		require.NoError(t, err)
+		totalTxNumber++ // for the config update transaction
+
+		// 4.
+		t.Logf("Wait for the removed party %d to enter pending admin state", partyToRemove)
+		testutil.WaitForPendingAdminByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, []types.PartyID{partyToRemove})
+
+		remainingParties := make([]types.PartyID, 0, len(parties)-1)
+		for _, partyID := range parties {
+			if partyID != partyToRemove {
+				remainingParties = append(remainingParties, partyID)
+			}
+		}
+
+		t.Logf("Wait for arma nodes to restart dynamically after removal of party %d", partyToRemove)
+		testutil.WaitForRelaunchByTypeAndParty(t, netInfo, []testutil.NodeType{testutil.Consensus, testutil.Assembler, testutil.Batcher, testutil.Router}, remainingParties, configSeq)
+
+		t.Logf("Stop the removed party %d", partyToRemove)
+		armaNetwork.StopParties([]types.PartyID{partyToRemove})
+		// 5.
+		// Remove the removed party from the network info and parties list
+		maps.DeleteFunc(netInfo, func(nodeName testutil.NodeName, _ *testutil.ArmaNodeInfo) bool {
+			return nodeName.PartyID == partyToRemove
+		})
+
+		// Remove the removed party from the list of parties
+		parties = slices.DeleteFunc(parties, func(partyID types.PartyID) bool {
+			return partyID == partyToRemove
+		})
+
+		// Remove the removed party from the shared config
+		sharedConfig := config.SharedConfigYaml{}
+		err = utils.ReadFromYAML(&sharedConfig, filepath.Join(dir, "bootstrap", "shared_config.yaml"))
+		require.NoError(t, err, "failed to load shared config")
+		sharedConfig.PartiesConfig = slices.DeleteFunc(sharedConfig.PartiesConfig, func(partyConfig config.PartyConfig) bool {
+			return partyConfig.PartyID == partyToRemove
+		})
+		err = utils.WriteToYAML(sharedConfig, filepath.Join(dir, "bootstrap", "shared_config.yaml"))
+		require.NoError(t, err, "failed to write updated shared config")
+
+		// Remove the crypto materials of the removed party
+		err = os.RemoveAll(filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyToRemove)))
+		require.NoError(t, err)
+
+		// 6.
+		t.Log("Get the config block from an assembler ledger and write it to a temp location")
+		submittingPartyID = parties[0]
+		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
+		require.NoError(t, err)
+		configBlockStoreDir := t.TempDir()
+		configBlockPath = filepath.Join(configBlockStoreDir, fmt.Sprintf("config_%d.block", configSeq))
+
+		test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+			UserConfig:   uc,
+			Parties:      parties,
+			Transactions: totalTxNumber,
+			Timeout:      120,
+			ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+			Status:       &statusUnknown,
+			Signer:       pullRequestSigner,
+			BlockHandler: &exportConfigBlockToFile{configSeq: configSeq, path: configBlockPath},
+		})
+
+		t.Logf("Verify the config block %d file was created", configSeq)
+		require.FileExists(t, configBlockPath, "Config block file should exist after pulling from assembler")
+		t.Logf("Config block successfully written to: %s", configBlockPath)
+
+		broadcastClient.Stop()
+
+		// 7.
+		// Create config update to add a new party
+		builder = configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
 		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
 
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
