@@ -17,6 +17,8 @@
 # vscode project settings
 /.vscode/*
 
+/.private/*
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
