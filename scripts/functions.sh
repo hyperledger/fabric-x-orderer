@@ -14,6 +14,7 @@ function filterExcludedAndGeneratedFiles {
         '^build/'
         '(^|/)ci\.properties$'
         '(^|/)\.git/'
+        '(^|/)\.gitignore$'
         '\.gen\.go$'
         '(^|/)go.mod$'
         '(^|/)go.sum$'
