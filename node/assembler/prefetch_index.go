@@ -133,11 +133,7 @@ func (pi *PrefetchIndex) Put(batch types.Batch) error {
 		pi.logger.Debugf("PrefetchIndex Put %s in %v", BatchToString(batch), time.Since(t1))
 	}()
 	partitionIndex := pi.partitionToIndex[ShardPrimaryFromBatch(batch)]
-	err := partitionIndex.Put(batch)
-	if err == nil {
-		pi.metrics.updatePrefetchIndexSize(batch.Shard(), batchSizeBytes(batch))
-	}
-	return err
+	return partitionIndex.Put(batch)
 }
 
 func (pi *PrefetchIndex) PutForce(batch types.Batch) error {
@@ -146,11 +142,7 @@ func (pi *PrefetchIndex) PutForce(batch types.Batch) error {
 		pi.logger.Debugf("PrefetchIndex PutForce with force %s in %v", BatchToString(batch), time.Since(t1))
 	}()
 	partitionIndex := pi.partitionToIndex[ShardPrimaryFromBatch(batch)]
-	err := partitionIndex.PutForce(batch)
-	if err == nil {
-		pi.metrics.updatePrefetchIndexSize(batch.Shard(), batchSizeBytes(batch))
-	}
-	return err
+	return partitionIndex.PutForce(batch)
 }
 
 func (pi *PrefetchIndex) Requests() <-chan types.BatchID {

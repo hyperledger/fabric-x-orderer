@@ -294,7 +294,7 @@ func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch types.Batch) error {
 
 		_, err := pi.removeUnsafe(batch)
 		if err != nil {
-			pi.logger.Errorf("there was unexpected error which removing a batch with expired TTL: %v", err)
+			pi.logger.Errorf("unexpected error while removing a batch with expired TTL: %v", err)
 			return
 		}
 
@@ -337,7 +337,11 @@ func (pi *PartitionPrefetchIndex) Put(batch types.Batch) error {
 		}
 	}
 
-	return pi.saveOrdinaryBatch(batch)
+	if err := pi.saveOrdinaryBatch(batch); err != nil {
+		return err
+	}
+	pi.metrics.updatePrefetchIndexSize(pi.partition.Shard, batchSize)
+	return nil
 }
 
 func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
@@ -354,6 +358,7 @@ func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
 	if err != nil {
 		return err
 	}
+	bs.metrics.updatePrefetchIndexSize(bs.partition.Shard, batchSize)
 	// Wake up the PopOrWait goroutine
 	bs.stateCond.Broadcast()
 
