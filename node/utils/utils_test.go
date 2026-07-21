@@ -8,8 +8,11 @@ package utils_test
 
 import (
 	"encoding/json"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
@@ -114,4 +117,37 @@ func TestNodeStateStringAndMarshal(t *testing.T) {
 	b, err = json.Marshal(sStatus)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"state":"running","config_sequence_number":42}`, string(b))
+}
+
+// mockStopper records invocations of Stop by sending on a channel.
+type mockStopper struct {
+	stopped chan struct{}
+}
+
+func newMockStopper() *mockStopper {
+	return &mockStopper{stopped: make(chan struct{}, 1)}
+}
+
+func (m *mockStopper) Stop() {
+	m.stopped <- struct{}{}
+}
+
+func TestStopSignalListen(t *testing.T) {
+	stopper := newMockStopper()
+	logger := flogging.MustGetLogger("test.signal_listener")
+
+	utils.StopSignalListen(stopper, logger, "127.0.0.1:0")
+
+	// wait for a short time to ensure the signal listener is set up before sending the signal
+	time.Sleep(200 * time.Millisecond)
+
+	// Send SIGTERM to the current process; the listener should invoke Stop.
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+
+	select {
+	case <-stopper.stopped:
+		// Stop was called as expected.
+	case <-time.After(10 * time.Second):
+		t.Fatal("expected Stop to be called after SIGTERM, but it was not")
+	}
 }
