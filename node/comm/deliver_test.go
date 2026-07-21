@@ -272,7 +272,7 @@ func (ds *deliverServer) resurrect() {
 	ds.done = make(chan struct{})
 	ds.srv.Stop()
 	// And re-create the gRPC server on that port
-	ds.srv, err = comm.NewGRPCServer(fmt.Sprintf("127.0.0.1:%d", ds.port()), comm.ServerConfig{})
+	ds.srv, err = comm.NewGRPCServer(net.JoinHostPort("127.0.0.1", strconv.Itoa(ds.port())), comm.ServerConfig{})
 	require.NoError(ds.t, err)
 	orderer.RegisterAtomicBroadcastServer(ds.srv.Server(), ds)
 	go ds.srv.Start()

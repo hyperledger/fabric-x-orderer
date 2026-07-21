@@ -9,6 +9,7 @@ package arma
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -537,10 +538,10 @@ func CreateNetworkWithDefaultPorts(t *testing.T, path string, offset int) {
 
 		party := genconfig.Party{
 			ID:                types.PartyID(i + 1),
-			AssemblerEndpoint: "127.0.0.1:" + strconv.Itoa(assemblerPort),
-			ConsenterEndpoint: "127.0.0.1:" + strconv.Itoa(consenterPort),
-			RouterEndpoint:    "127.0.0.1:" + strconv.Itoa(routerPort),
-			BatchersEndpoints: []string{"127.0.0.1:" + strconv.Itoa(batcher1Port), "127.0.0.1:" + strconv.Itoa(batcher2Port)},
+			AssemblerEndpoint: net.JoinHostPort("127.0.0.1", strconv.Itoa(assemblerPort)),
+			ConsenterEndpoint: net.JoinHostPort("127.0.0.1", strconv.Itoa(consenterPort)),
+			RouterEndpoint:    net.JoinHostPort("127.0.0.1", strconv.Itoa(routerPort)),
+			BatchersEndpoints: []string{net.JoinHostPort("127.0.0.1", strconv.Itoa(batcher1Port)), net.JoinHostPort("127.0.0.1", strconv.Itoa(batcher2Port))},
 		}
 
 		parties = append(parties, party)

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -284,7 +285,7 @@ func TestRemoveStoppedPartyThenRestart(t *testing.T) {
 
 	observedPrimaryIdByRemovedParty := types.PartyID(uint64(1)%uint64(numOfParties) + 1)
 	primaryBatcher := armaNetwork.GetBatcher(t, observedPrimaryIdByRemovedParty, types.ShardID(1))
-	primaryBatcherEndpoint := fmt.Sprintf("%s:%d", primaryBatcher.Listener.Addr().(*net.TCPAddr).IP.String(), primaryBatcher.Listener.Addr().(*net.TCPAddr).Port)
+	primaryBatcherEndpoint := net.JoinHostPort(primaryBatcher.Listener.Addr().(*net.TCPAddr).IP.String(), strconv.Itoa(primaryBatcher.Listener.Addr().(*net.TCPAddr).Port))
 	removedBatcher := armaNetwork.GetBatcher(t, partyToRemove, types.ShardID(1))
 
 	// Verify that the removed party's batcher fails to connect to the primary batcher of its shard (as seen from its own stale view).

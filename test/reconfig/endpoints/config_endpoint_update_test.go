@@ -8,6 +8,7 @@ package endpoints
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -186,7 +187,7 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	testutil.WaitReady(t, readyChan, 1, 10)
 
 	// Update the user config with the new router endpoint
-	userConfig.RouterEndpoints[partyToUpdate-1] = fmt.Sprintf("%s:%d", routerIP, newPort)
+	userConfig.RouterEndpoints[partyToUpdate-1] = net.JoinHostPort(routerIP, strconv.Itoa(newPort))
 	broadcastClient = client.NewBroadcastTxClient(userConfig, 10*time.Second)
 
 	t.Log("Send transactions again and verify they are processed")
