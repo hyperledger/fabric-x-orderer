@@ -60,8 +60,7 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 	stopCtx, bp.stopPuller = context.WithCancel(context.Background())
 
 	primary := bp.findPrimary(bp.config.ShardId, from)
-	// TODO Channel-Name should come from a combination of config channel-ID and shardID and partyID
-	channelName := node_ledger.ShardPartyToChannelName(bp.config.ShardId, primary.PartyID)
+	channelName := node_ledger.ShardPartyChannelIDToChannelName(bp.config.ShardId, primary.PartyID, bp.config.GetChannelID())
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
 		seq := bp.ledger.Height(from)
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(

@@ -71,3 +71,7 @@ func (rfc *RouterNodeConfig) GetChannelID() string {
 func (rfc *RouterNodeConfig) GetPolicyManager() policies.Manager {
 	return rfc.Bundle.PolicyManager()
 }
+
+func (c *AssemblerNodeConfig) GetChannelID() string {
+	return c.Bundle.ConfigtxValidator().ChannelID()
+}

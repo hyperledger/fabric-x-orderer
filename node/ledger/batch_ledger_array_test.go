@@ -21,13 +21,13 @@ func TestNewBatchLedgerArray(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
 	list, err := a.List()
 	require.NoError(t, err)
-	require.Equal(t, []string{"shard1party1", "shard1party2", "shard1party3", "shard1party4"}, list)
+	require.Equal(t, []string{"shard1party1-test-channel", "shard1party2-test-channel", "shard1party3-test-channel", "shard1party4-test-channel"}, list)
 
 	a.Close()
 }
@@ -38,7 +38,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	t.Log("Open, write & read")
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 3, parties, dir, logger)
+	a, err := NewBatchLedgerArray(1, 3, parties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -61,7 +61,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	t.Log("Close, reopen write and read")
 	a.Close()
-	a, err = NewBatchLedgerArray(1, 3, parties, dir, logger)
+	a, err = NewBatchLedgerArray(1, 3, parties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -91,14 +91,14 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	list, err := a.List()
 	require.NoError(t, err)
-	require.Equal(t, []string{"shard1party1", "shard1party2", "shard1party3", "shard1party4"}, list)
+	require.Equal(t, []string{"shard1party1-test-channel", "shard1party2-test-channel", "shard1party3-test-channel", "shard1party4-test-channel"}, list)
 
 	t.Log("Close, reopen and read with new and old parties")
 	a.Close()
 	oldParties := parties
 	newParty := types.PartyID(5)
 	newParties := []types.PartyID{1, 2, 3, newParty}
-	a, err = NewBatchLedgerArray(1, 3, newParties, dir, logger)
+	a, err = NewBatchLedgerArray(1, 3, newParties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -127,7 +127,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	list, err = a.List()
 	require.NoError(t, err)
-	require.Equal(t, []string{"shard1party1", "shard1party2", "shard1party3", "shard1party4", "shard1party5"}, list)
+	require.Equal(t, []string{"shard1party1-test-channel", "shard1party2-test-channel", "shard1party3-test-channel", "shard1party4-test-channel", "shard1party5-test-channel"}, list)
 }
 
 func TestBatchLedgerArrayPart(t *testing.T) {
@@ -135,7 +135,7 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -159,7 +159,7 @@ func TestBatchLedgerArrayMissingPartyID(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -186,7 +186,7 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -233,7 +233,7 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 
 	// Close and reopen to verify persistence
 	a.Close()
-	a, err = NewBatchLedgerArray(1, 1, parties, dir, logger)
+	a, err = NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
 	require.NoError(t, err)
 	require.NotNil(t, a)
 

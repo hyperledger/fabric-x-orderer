@@ -20,12 +20,13 @@ import (
 type BatchLedgerArray struct {
 	shardID     types.ShardID                      // The shard this array belongs to.
 	partyID     types.PartyID                      // The party that operates this object.
+	channelID   string                             // The channel this array belongs to.
 	ledgerParts map[types.PartyID]*BatchLedgerPart // A BatchLedgerPart for each party in the system.
 	provider    *blkstorage.BlockStoreProvider
 	logger      *flogging.FabricLogger
 }
 
-func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, batchLedgerDir string, logger *flogging.FabricLogger) (*BatchLedgerArray, error) {
+func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, channelID string, batchLedgerDir string, logger *flogging.FabricLogger) (*BatchLedgerArray, error) {
 	if !slices.Contains(parties, partyID) {
 		return nil, errors.Errorf("partyID %d not in parties %v", partyID, parties)
 	}
@@ -50,7 +51,7 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 	}
 
 	for _, primaryPartyID := range parties {
-		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, logger)
+		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, channelID, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -63,14 +64,14 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		return nil, err
 	}
 	for _, name := range names {
-		_, primaryPartyID, err := ChannelNameToShardParty(name)
+		_, primaryPartyID, _, err := ChannelNameToShardPartyChannelID(name)
 		if err != nil {
 			return nil, err
 		}
 		if ledgerPartsMap[primaryPartyID] != nil {
 			continue
 		}
-		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, logger)
+		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, channelID, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -82,6 +83,7 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 	return &BatchLedgerArray{
 		shardID:     shardID,
 		partyID:     partyID,
+		channelID:   channelID,
 		ledgerParts: ledgerPartsMap,
 		provider:    provider,
 		logger:      logger,
@@ -90,6 +92,10 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 
 func (bla *BatchLedgerArray) ShardID() types.ShardID {
 	return bla.shardID
+}
+
+func (bla *BatchLedgerArray) ChannelID() string {
+	return bla.channelID
 }
 
 func (bla *BatchLedgerArray) Height(partyID types.PartyID) uint64 {
