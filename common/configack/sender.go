@@ -18,12 +18,12 @@ import (
 	"google.golang.org/grpc"
 )
 
-type ConfigAcker interface {
+type Sender interface {
 	Stop()
 	SubmitConfigAck(configSeq uint32) error
 }
 
-type configAcker struct {
+type sender struct {
 	consensusEndpoint string
 	consensusRootCAs  [][]byte
 	tlsCert           []byte
@@ -51,10 +51,10 @@ type ConnectionInfo struct {
 	Shard             types.ShardID
 }
 
-func NewConfigAcker(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *configAcker {
+func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ca := &configAcker{
+	s := &sender{
 		consensusEndpoint: connInfo.ConsensusEndpoint,
 		consensusRootCAs:  connInfo.ConsensusRootCAs,
 		tlsCert:           connInfo.TLSCert,
@@ -69,23 +69,14 @@ func NewConfigAcker(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *co
 		maxRetryInterval:  10 * time.Second,      // TODO: take from config
 		DialTimeout:       5 * time.Second,       // TODO: take from config
 	}
-	return ca
+	return s
 }
 
-func (ca *configAcker) SubmitConfigAck(configSeq uint32) error {
-	return ca.handleConfigAck(configSeq)
-}
-
-func (ca *configAcker) Stop() {
-	ca.logger.Infof("config acker is stopping")
-	ca.cancel()
-}
-
-// handleConfigAck attempts to deliver a ConfigAck for the given configSeq to the consenter.
+// SubmitConfigAck attempts to deliver a ConfigAck for the given configSeq to the consenter.
 //
 // The whole delivery process is bounded by a single timeout context derived from ca.ctx.
 // This timeout covers all retry attempts together. Therefore, once the timeout expires,
-// handleConfigAck stops retrying and returns an error.
+// SubmitConfigAck stops retrying and returns an error.
 //
 // Each retry attempt consists of:
 //   - connect to the consenter
@@ -97,17 +88,17 @@ func (ca *configAcker) Stop() {
 //
 // The function returns nil once the ConfigAck is successfully sent. It returns an error
 // if the total timeout expires or if ca.ctx is cancelled, for example when the
-// configAcker is stopped.
-func (ca *configAcker) handleConfigAck(configSeq uint32) error {
-	ctx, cancel := context.WithTimeout(ca.ctx, 60*time.Second)
+// sender is stopped.
+func (s *sender) SubmitConfigAck(configSeq uint32) error {
+	ctx, cancel := context.WithTimeout(s.ctx, 60*time.Second)
 	defer cancel()
 
-	err := ca.tryToHandleConfigAck(ctx, configSeq)
+	err := s.submitWithRetry(ctx, configSeq)
 	if err == nil {
 		return nil
 	}
 
-	interval := ca.minRetryInterval
+	interval := s.minRetryInterval
 	numOfRetries := 1
 
 	for {
@@ -115,40 +106,45 @@ func (ca *configAcker) handleConfigAck(configSeq uint32) error {
 		case <-ctx.Done():
 			return fmt.Errorf("sending config ack to consensus aborted: %w", ctx.Err())
 		case <-time.After(interval):
-			ca.logger.Debugf("Retry attempt #%d", numOfRetries)
+			s.logger.Debugf("Retry attempt #%d", numOfRetries)
 			numOfRetries++
 
-			err := ca.tryToHandleConfigAck(ctx, configSeq)
+			err := s.submitWithRetry(ctx, configSeq)
 			if err != nil {
-				interval = min(interval*2, ca.maxRetryInterval)
-				ca.logger.Errorf("Sending config ack to consensus failed: %v, trying again in: %s", err, interval)
+				interval = min(interval*2, s.maxRetryInterval)
+				s.logger.Errorf("Sending config ack to consensus failed: %v, trying again in: %s", err, interval)
 				continue
 			}
 
-			ca.logger.Infof("config ack was successfully sent to consensus")
+			s.logger.Infof("config ack was successfully sent to consensus")
 			return nil
 		}
 	}
 }
 
-func (ca *configAcker) tryToHandleConfigAck(ctx context.Context, configSeq uint32) error {
-	conn, err := ca.connectToConsenter()
+func (s *sender) Stop() {
+	s.logger.Infof("config acker is stopping")
+	s.cancel()
+}
+
+func (s *sender) submitWithRetry(ctx context.Context, configSeq uint32) error {
+	conn, err := s.connectToConsenter()
 	if err != nil {
-		ca.logger.Errorf("failed to connect to consensus, err: %v\n", err)
+		s.logger.Errorf("failed to connect to consensus, err: %v\n", err)
 		return err
 	}
 	defer conn.Close()
 
-	err = ca.sendConfigAckToConsensus(ctx, conn, configSeq)
+	err = s.sendConfigAckToConsensus(ctx, conn, configSeq)
 	if err != nil {
-		ca.logger.Errorf("failed to send config ack to consensus, err: %v\n", err)
+		s.logger.Errorf("failed to send config ack to consensus, err: %v\n", err)
 		return err
 	}
 
 	return nil
 }
 
-func (ca *configAcker) connectToConsenter() (*grpc.ClientConn, error) {
+func (s *sender) connectToConsenter() (*grpc.ClientConn, error) {
 	cc := comm.ClientConfig{
 		AsyncConnect: false,
 		KaOpts: comm.KeepaliveOptions{
@@ -157,15 +153,15 @@ func (ca *configAcker) connectToConsenter() (*grpc.ClientConn, error) {
 		},
 		SecOpts: comm.SecureOptions{
 			UseTLS:            true,
-			ServerRootCAs:     ca.consensusRootCAs,
-			Key:               ca.tlsKey,
-			Certificate:       ca.tlsCert,
+			ServerRootCAs:     s.consensusRootCAs,
+			Key:               s.tlsKey,
+			Certificate:       s.tlsCert,
 			RequireClientCert: true,
 		},
-		DialTimeout: ca.DialTimeout,
+		DialTimeout: s.DialTimeout,
 	}
 
-	return cc.Dial(ca.consensusEndpoint)
+	return cc.Dial(s.consensusEndpoint)
 }
 
 // sendConfigAckToConsensus sends a single ConfigAck RPC attempt over the given connection.
@@ -174,19 +170,19 @@ func (ca *configAcker) connectToConsenter() (*grpc.ClientConn, error) {
 // visibility. The response error is not returned to the caller because the client
 // does not take any recovery action based on this response; only the RPC error is
 // used to decide whether the ConfigAck should be retried.
-func (ca *configAcker) sendConfigAckToConsensus(ctx context.Context, conn *grpc.ClientConn, configSeq uint32) error {
+func (s *sender) sendConfigAckToConsensus(ctx context.Context, conn *grpc.ClientConn, configSeq uint32) error {
 	client := protos.NewConsensusClient(conn)
 
 	configAckReq := &protos.ConfigAck{
 		ConfigSeq: configSeq,
-		NodeType:  ca.nodeType,
-		Shard:     uint32(ca.shard),
+		NodeType:  s.nodeType,
+		Shard:     uint32(s.shard),
 	}
 
-	ca.logger.Infof("Sending ConfigAck for config sequence %d to consenter", configSeq)
+	s.logger.Infof("Sending ConfigAck for config sequence %d to consenter", configSeq)
 	resp, err := client.AckConfig(ctx, configAckReq)
 	if resp != nil && resp.GetError() != "" {
-		ca.logger.Warnf("Received bad response from consensus on config ack: %s", resp.GetError())
+		s.logger.Warnf("Received bad response from consensus on config ack: %s", resp.GetError())
 	}
 	return err
 }

@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createTestSetupForConfigAcker(t *testing.T, nodeType protos.NodeType, shard types.ShardID) (stub.StubConsenter, *configAcker) {
+func createTestSetupForConfigAcker(t *testing.T, nodeType protos.NodeType, shard types.ShardID) (stub.StubConsenter, *sender) {
 	logger := testutil.CreateLogger(t, 0)
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -30,7 +30,7 @@ func createTestSetupForConfigAcker(t *testing.T, nodeType protos.NodeType, shard
 
 	sc := stub.NewStubConsenter(t, ca, types.PartyID(1))
 
-	return sc, NewConfigAcker(&ConnectionInfo{
+	return sc, NewSender(&ConnectionInfo{
 		TLSCert:           clientPair.Cert,
 		TLSKey:            clientPair.Key,
 		ConsensusEndpoint: sc.GetConsenterEndpoint(),

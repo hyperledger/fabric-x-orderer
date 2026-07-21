@@ -20,10 +20,10 @@ import (
 // TestAddAck_Success verifies that a valid sequential ack is accepted.
 func TestAddAck_Success(t *testing.T) {
 	shards := []types.ShardID{1, 2}
-	h := NewConfigAckHandler(testutil.CreateLogger(t, 0), shards)
-	defer h.Stop()
+	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
+	defer r.Stop()
 
-	err := h.AddAck(&protos.ConfigAck{
+	err := r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_ROUTER,
 	})
@@ -33,16 +33,16 @@ func TestAddAck_Success(t *testing.T) {
 // TestAddAck_DuplicateRejected verifies that re-sending the same sequence number is rejected
 func TestAddAck_DuplicateRejected(t *testing.T) {
 	shards := []types.ShardID{1, 2}
-	h := NewConfigAckHandler(testutil.CreateLogger(t, 0), shards)
-	defer h.Stop()
+	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
+	defer r.Stop()
 
-	err := h.AddAck(&protos.ConfigAck{
+	err := r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_ROUTER,
 	})
 	require.NoError(t, err)
 
-	err = h.AddAck(&protos.ConfigAck{
+	err = r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_ROUTER,
 	})
@@ -53,16 +53,16 @@ func TestAddAck_DuplicateRejected(t *testing.T) {
 // TestAddAck_OutOfOrderRejected verifies that ack with out-of-sequence number is rejected
 func TestAddAck_OutOfOrderRejected(t *testing.T) {
 	shards := []types.ShardID{1, 2}
-	h := NewConfigAckHandler(testutil.CreateLogger(t, 0), shards)
-	defer h.Stop()
+	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
+	defer r.Stop()
 
-	err := h.AddAck(&protos.ConfigAck{
+	err := r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_ROUTER,
 	})
 	require.NoError(t, err)
 
-	err = h.AddAck(&protos.ConfigAck{
+	err = r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 3,
 		NodeType:  protos.NodeType_ROUTER,
 	})
@@ -74,14 +74,14 @@ func TestAddAck_OutOfOrderRejected(t *testing.T) {
 // clients do not cause races.
 func TestAddAck_Concurrent(t *testing.T) {
 	shards := []types.ShardID{1, 2}
-	h := NewConfigAckHandler(testutil.CreateLogger(t, 0), shards)
-	defer h.Stop()
+	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
+	defer r.Stop()
 
 	var wg sync.WaitGroup
 
 	sendAck := func(nodeType protos.NodeType, shard uint32) {
 		defer wg.Done()
-		_ = h.AddAck(&protos.ConfigAck{
+		_ = r.AddAck(&protos.ConfigAck{
 			ConfigSeq: 1,
 			NodeType:  nodeType,
 			Shard:     shard,
@@ -100,37 +100,37 @@ func TestAddAck_Concurrent(t *testing.T) {
 // clients have already acked the requested sequence before the call.
 func TestExpectAck_AllAcknowledged(t *testing.T) {
 	shards := []types.ShardID{1, 2}
-	h := NewConfigAckHandler(testutil.CreateLogger(t, 0), shards)
-	defer h.Stop()
+	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
+	defer r.Stop()
 
 	// send ack from all clients (Router, Assembler, Batchers) at seq=1.
-	err := h.AddAck(&protos.ConfigAck{
+	err := r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_ROUTER,
 	})
 	require.NoError(t, err)
 
-	err = h.AddAck(&protos.ConfigAck{
+	err = r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_BATCHER,
 		Shard:     1,
 	})
 	require.NoError(t, err)
 
-	err = h.AddAck(&protos.ConfigAck{
+	err = r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_BATCHER,
 		Shard:     2,
 	})
 	require.NoError(t, err)
 
-	err = h.AddAck(&protos.ConfigAck{
+	err = r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_ASSEMBLER,
 	})
 	require.NoError(t, err)
 
-	res := h.ExpectAck(1)
+	res := r.WaitForAllAcks(1)
 	require.True(t, res)
 }
 
@@ -138,19 +138,19 @@ func TestExpectAck_AllAcknowledged(t *testing.T) {
 // is blocked causes it to return false.
 func TestExpectAck_StopReturnsFalse(t *testing.T) {
 	shards := []types.ShardID{1, 2}
-	h := NewConfigAckHandler(testutil.CreateLogger(t, 0), shards)
-	defer h.Stop()
+	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
+	defer r.Stop()
 
 	result := make(chan bool, 1)
-	go func() { result <- h.ExpectAck(1) }()
+	go func() { result <- r.WaitForAllAcks(1) }()
 
-	err := h.AddAck(&protos.ConfigAck{
+	err := r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
 		NodeType:  protos.NodeType_ROUTER,
 	})
 	require.NoError(t, err)
 
-	h.Stop()
+	r.Stop()
 
 	select {
 	case res := <-result:
