@@ -16,11 +16,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
@@ -62,6 +64,13 @@ func TestSendConfigUpdate(t *testing.T) {
 		status := testSetup.assemblerNode.GetStatus()
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
 	}, 10*time.Second, 100*time.Millisecond)
+
+	// pull a block from the restarted assembler, to be sure the assembler's network service
+	// is fully up after the dynamic restart (and thus stops cleanly).
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	err = createDeliveryClientAndPull(t, testSetup.assemblerNode.Address(), nil, ca, 1, "none", testSetup.signer)
+	require.NoError(t, err)
 }
 
 // Scenario:
@@ -186,6 +195,7 @@ type reconfigTestSetup struct {
 	batcherFileStore   string
 	genesisBlock       *common.Block
 	bundle             channelconfig.Resources
+	signer             identity.SignerSerializer
 	netInfo            map[testutil.NodeName]*testutil.ArmaNodeInfo
 }
 
@@ -252,7 +262,7 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 	assemblerFileStore := t.TempDir()
 	assemblerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), "local_config_assembler.yaml")
 	assemblerListener := netInfo[testutil.NodeName{PartyID: partyId, NodeType: testutil.Assembler}].Listener
-	assemblerNode, genesisBlock, assemblerBundle := createRealAssemblerFromConfig(t, partyId, assemblerFileStore, assemblerNodeConfigPath)
+	assemblerNode, genesisBlock, assemblerBundle, signer := createRealAssemblerFromConfig(t, partyId, assemblerFileStore, assemblerNodeConfigPath)
 
 	return &reconfigTestSetup{
 		stubConsenter:      stubConsenter,
@@ -264,11 +274,12 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 		assemblerListener:  assemblerListener,
 		genesisBlock:       genesisBlock,
 		bundle:             assemblerBundle,
+		signer:             signer,
 		netInfo:            netInfo,
 	}
 }
 
-func createRealAssemblerFromConfig(t *testing.T, partyID types.PartyID, fileStoreDir string, nodeConfigPath string) (*assembler.Assembler, *common.Block, channelconfig.Resources) {
+func createRealAssemblerFromConfig(t *testing.T, partyID types.PartyID, fileStoreDir string, nodeConfigPath string) (*assembler.Assembler, *common.Block, channelconfig.Resources, identity.SignerSerializer) {
 	if fileStoreDir != "" {
 		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
 		require.NoError(t, err)
@@ -287,5 +298,5 @@ func createRealAssemblerFromConfig(t *testing.T, partyID types.PartyID, fileStor
 	assemblerLogger := testutil.CreateLogger(t, int(partyID))
 
 	assembler := assembler.NewAssembler(assemblerNodeConfig, configuration, lastConfigBlock, make(chan struct{}), assemblerLogger, signer)
-	return assembler, lastConfigBlock, assemblerNodeConfig.Bundle
+	return assembler, lastConfigBlock, assemblerNodeConfig.Bundle, signer
 }
