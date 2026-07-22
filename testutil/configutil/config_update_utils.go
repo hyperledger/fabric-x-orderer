@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -916,8 +918,8 @@ func (c *ConfigUpdateBuilder) UpdateOrgEndpoints(t *testing.T, partyID types.Par
 	// Update OrdererAddresses
 	org := fmt.Sprintf("org%d", partyID)
 	addresses := []string{
-		fmt.Sprintf("id=%d,broadcast,%s:%d", partyID, broadcastHost, broadcastPort),
-		fmt.Sprintf("id=%d,deliver,%s:%d", partyID, deliverHost, deliverPort),
+		fmt.Sprintf("id=%d,broadcast,%s", partyID, net.JoinHostPort(broadcastHost, strconv.Itoa(broadcastPort))),
+		fmt.Sprintf("id=%d,deliver,%s", partyID, net.JoinHostPort(deliverHost, strconv.Itoa(deliverPort))),
 	}
 
 	overwriteNestedJSONValue(t, c.configData, addresses, "channel_group", "groups", "Orderer", "groups", org, "values", "Endpoints", "value", "addresses")
@@ -1012,8 +1014,8 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig) [
 
 	// Update endpoints
 	addresses := []string{
-		fmt.Sprintf("id=%d,broadcast,%s:%d", int(maxPartyID), newParty.RouterConfig.Host, newParty.RouterConfig.Port),
-		fmt.Sprintf("id=%d,deliver,%s:%d", int(maxPartyID), newParty.AssemblerConfig.Host, newParty.AssemblerConfig.Port),
+		fmt.Sprintf("id=%d,broadcast,%s", int(maxPartyID), net.JoinHostPort(newParty.RouterConfig.Host, strconv.Itoa(int(newParty.RouterConfig.Port)))),
+		fmt.Sprintf("id=%d,deliver,%s", int(maxPartyID), net.JoinHostPort(newParty.AssemblerConfig.Host, strconv.Itoa(int(newParty.AssemblerConfig.Port)))),
 	}
 	overwriteNestedJSONValue(t, newOrg, addresses, "values", "Endpoints", "value", "addresses")
 
