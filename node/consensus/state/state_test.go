@@ -778,3 +778,77 @@ func TestDetectEquivocation(t *testing.T) {
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
 	})
 }
+
+// TestExtractBatchAttestationsFromPending_EquivocationDigestLeak demonstrates the bug where,
+// when a primary equivocates, a below-threshold (under-attested) digest's fragment is extracted
+// alongside the digest that actually reached the signature threshold.
+//
+// ExtractBatchAttestationsFromPending decides to extract a <seq, shard, primary> group when at
+// least one of its digests reaches threshold, but then copies every pending BAF for that key
+// regardless of digest. Downstream, aggregateFragments groups these by <seq, shard> and consensus
+// collapses each group to ba[0] (see node/consensus/consensus.go). Because the under-attested
+// fragment is placed first in Pending here, it would become ba[0] and the committed block's
+// DataHash would come from a digest that never reached a threshold of signatures.
+//
+// Desired behaviour (this test asserts it, so it FAILS before the fix): only fragments belonging
+// to threshold-reaching digests are extracted.
+func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+
+	underAttestedDigest := []byte{9, 9, 9}
+	thresholdDigest := []byte{1, 2, 3}
+	primary := types.PartyID(1)
+	shardID := types.ShardID(1)
+	seq := types.BatchSequence(1)
+
+	state := consensus_state.State{
+		N:         4,
+		Threshold: 2,
+		Quorum:    3,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+		Pending: []types.BatchAttestationFragment{
+			// Equivocating digest with a single signer (below the threshold of 2).
+			// Placed first so it would become ba[0] downstream.
+			types.NewSimpleBatchAttestationFragment(shardID, primary, seq, underAttestedDigest, types.PartyID(4), 0, 1, nil),
+			// Legitimate digest reaching threshold (2 distinct signers).
+			types.NewSimpleBatchAttestationFragment(shardID, primary, seq, thresholdDigest, types.PartyID(2), 0, 1, nil),
+			types.NewSimpleBatchAttestationFragment(shardID, primary, seq, thresholdDigest, types.PartyID(3), 0, 1, nil),
+		},
+	}
+
+	consensus_state.DetectEquivocation(&state, 0, logger)
+	// Equivocation is detected: term must be incremented.
+	assert.Equal(t, uint64(2), state.Shards[0].Term)
+
+	extracted := consensus_state.ExtractBatchAttestationsFromPending(&state, logger)
+
+	// Only the threshold-reaching digest should be extracted; the under-attested digest must not leak.
+	for _, baf := range extracted {
+		assert.Equal(t, thresholdDigest, baf.Digest(),
+			"extracted a fragment for under-attested digest %x; only threshold-reaching digests should be extracted", baf.Digest())
+	}
+	assert.Len(t, extracted, 2, "expected exactly the two threshold-digest fragments to be extracted")
+
+	thresholdDigest2 := []byte{4, 5, 6}
+	state2 := consensus_state.State{
+		N:         4,
+		Threshold: 2,
+		Quorum:    3,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+		Pending: []types.BatchAttestationFragment{
+			// Legitimate digest reaching threshold (2 distinct signers).
+			types.NewSimpleBatchAttestationFragment(shardID, primary, seq, thresholdDigest, types.PartyID(1), 0, 1, nil),
+			types.NewSimpleBatchAttestationFragment(shardID, primary, seq, thresholdDigest, types.PartyID(4), 0, 1, nil),
+			// Another legitimate digest reaching threshold (2 distinct signers).
+			types.NewSimpleBatchAttestationFragment(shardID, primary, seq, thresholdDigest2, types.PartyID(2), 0, 1, nil),
+			types.NewSimpleBatchAttestationFragment(shardID, primary, seq, thresholdDigest2, types.PartyID(3), 0, 1, nil),
+		},
+	}
+
+	consensus_state.DetectEquivocation(&state2, 0, logger)
+	// Equivocation is detected: term must be incremented.
+	assert.Equal(t, uint64(2), state.Shards[0].Term)
+
+	extracted2 := consensus_state.ExtractBatchAttestationsFromPending(&state2, logger)
+	assert.Len(t, extracted2, 4, "expected all fragments to be extracted")
+}
