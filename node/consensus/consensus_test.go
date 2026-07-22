@@ -155,7 +155,7 @@ func TestConsensus(t *testing.T) {
 		},
 		{
 			name:                "equivocation detection - conflicting BAFs",
-			expectedSequences:   [][]arma_types.BatchSequence{{1, 1}}, // Both batches with seq 1 are included despite equivocation
+			expectedSequences:   [][]arma_types.BatchSequence{{1, 1, 1}}, // shard 1 equivocation yields one block per threshold digest (123 and 126), plus shard 2's batch (124) - all seq 1
 			expectedDecisionNum: []uint64{1},
 			commitEvent:         new(sync.WaitGroup),
 			events: []scheduleEvent{
@@ -691,15 +691,15 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			// Primary 1 sends two different digests (123 and 126) for same sequence 1 in shard 1
-			// This should trigger equivocation detection and primary rotation
-			// Even though equivocation is detected, the batch with digest 123 has threshold signatures
-			// so it will be included as an available block
+			// Primary 1 sends two different digests (123 and 126) for same sequence 1 in shard 1.
+			// This triggers equivocation detection and primary rotation. Both digests reach the
+			// signature threshold (123: signers 1,2; 126: signers 3,4), so each is extracted and
+			// becomes its own available block (one block per threshold digest, in pending order).
 			// Initial term is 1 (so primary 1 is current), after equivocation it becomes 2
 			ces:                    []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf126id3p1s1}, {BAF: baf126id4p1s1}},
-			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1}, // Batch 123 has threshold
-			numPending:             0,                                                    // No pending after extraction
-			newTermForShard1:       2,                                                    // Term incremented from 1 to 2 due to equivocation
+			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1, baf126id3p1s1}, // both digests reach threshold -> one block each
+			numPending:             0,                                                                   // No pending after extraction
+			newTermForShard1:       2,                                                                   // Term incremented from 1 to 2 due to equivocation
 		},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
