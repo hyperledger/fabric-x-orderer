@@ -279,11 +279,13 @@ func createStubConsenters(t *testing.T, dir string, parties []types.PartyID) []*
 }
 
 func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID, numOfShards int) {
+	configLogger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
+
 	for _, i := range parties {
 		for j := 1; j <= numOfShards; j++ {
 			fileStoreDir := t.TempDir()
 			nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), fmt.Sprintf("local_config_batcher%d.yaml", j))
-			localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+			localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, configLogger)
 			require.NoError(t, err)
 			localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
 			err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
@@ -294,7 +296,7 @@ func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID, numO
 	for _, i := range parties {
 		fileStoreDir := t.TempDir()
 		nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, configLogger)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
 		localConfig.NodeLocalConfig.ConsensusParams.WALDir = config.DefaultConsenterNodeConfigParams(fileStoreDir).WALDir

@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestLocalConfigLoadSingleYaml(t *testing.T) {
@@ -49,9 +50,10 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 	require.NotNil(t, networkLocalConfig)
 
 	// 3.
+	logger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
 	for i := 1; i <= len(networkLocalConfig.PartiesLocalConfig); i++ {
 		configPath := path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_router.yaml")
-		routerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
+		routerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath, logger)
 		require.NoError(t, err)
 		require.NotNil(t, routerLocalConfigLoaded)
 		require.NotNil(t, routerLocalConfigLoaded.NodeLocalConfig)
@@ -63,7 +65,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 
 		for j := 1; j <= len(networkLocalConfig.PartiesLocalConfig[i-1].BatchersLocalConfig); j++ {
 			configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), fmt.Sprintf("local_config_batcher%d.yaml", j))
-			batcherLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
+			batcherLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath, logger)
 			require.NoError(t, err)
 			require.NotNil(t, batcherLocalConfigLoaded.NodeLocalConfig)
 			require.NotNil(t, batcherLocalConfigLoaded.TLSConfig)
@@ -72,7 +74,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		}
 
 		configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_consenter.yaml")
-		consenterLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
+		consenterLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath, logger)
 		require.NoError(t, err)
 		require.NotNil(t, consenterLocalConfigLoaded.NodeLocalConfig)
 		require.NotNil(t, consenterLocalConfigLoaded.TLSConfig)
@@ -80,7 +82,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.Equal(t, role, config.ConsensusStr)
 
 		configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_assembler.yaml")
-		assemblerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
+		assemblerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath, logger)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLocalConfigLoaded.NodeLocalConfig)
 		require.NotNil(t, assemblerLocalConfigLoaded.TLSConfig)
@@ -126,7 +128,8 @@ func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 	err = utils.WriteToYAML(consenterLocalConfig, configPath)
 	require.NoError(t, err)
 
-	consenterLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath)
+	logger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
+	consenterLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath, logger)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "node local config is not valid, multiple params were set: [Router Consensus]")
 	require.Equal(t, role, "")
@@ -139,7 +142,7 @@ func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 	err = utils.WriteToYAML(consenterLocalConfig, configPath)
 	require.NoError(t, err)
 
-	consenterLocalConfigLoaded, role, err = config.LoadLocalConfig(configPath)
+	consenterLocalConfigLoaded, role, err = config.LoadLocalConfig(configPath, logger)
 
 	require.NoError(t, err)
 	require.Equal(t, role, config.ConsensusStr)
@@ -153,10 +156,45 @@ func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 	err = utils.WriteToYAML(consenterLocalConfig, configPath)
 	require.NoError(t, err)
 
-	consenterLocalConfigLoaded, role, err = config.LoadLocalConfig(configPath)
+	consenterLocalConfigLoaded, role, err = config.LoadLocalConfig(configPath, logger)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "node local config is not valid, node params are missing")
 	require.Equal(t, role, "")
 	require.Nil(t, consenterLocalConfigLoaded)
+}
+
+func TestLoadLocalConfigAppliesGeneralDefaults(t *testing.T) {
+	dir := t.TempDir()
+	require.DirExists(t, dir)
+
+	networkConfig := testutil.GenerateNetworkConfig(t, "mTLS", "mTLS")
+	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	require.NoError(t, err)
+
+	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)
+	require.NoError(t, err)
+	require.NotNil(t, networkLocalConfig)
+
+	localConfig := networkLocalConfig.PartiesLocalConfig[0].ConsenterLocalConfig
+	localConfig.GeneralConfig.LogSpec = ""
+	localConfig.GeneralConfig.Cluster.SendBufferSize = 0
+	localConfig.GeneralConfig.Cluster.ReplicationPolicy = ""
+	localConfig.GeneralConfig.Cluster.ClientCertificate = ""
+	localConfig.GeneralConfig.Cluster.ClientPrivateKey = ""
+
+	configPath := path.Join(dir, "config", "party1", "local_config_consenter.yaml")
+	err = utils.WriteToYAML(localConfig, configPath)
+	require.NoError(t, err)
+
+	logger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
+	loadedConfig, role, err := config.LoadLocalConfig(configPath, logger)
+	require.NoError(t, err)
+	require.Equal(t, role, config.ConsensusStr)
+
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.LogSpec, loadedConfig.NodeLocalConfig.GeneralConfig.LogSpec)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.SendBufferSize, loadedConfig.ClusterConfig.SendBufferSize)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy, loadedConfig.ClusterConfig.ReplicationPolicy)
+	require.Equal(t, loadedConfig.TLSConfig.Certificate, loadedConfig.ClusterConfig.ClientCertificate)
+	require.Equal(t, loadedConfig.TLSConfig.PrivateKey, loadedConfig.ClusterConfig.ClientPrivateKey)
 }

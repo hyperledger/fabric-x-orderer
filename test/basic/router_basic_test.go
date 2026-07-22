@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // TestSubmitToRouterGetResponseFromOperationEndpoints tests the end-to-end flow of submitting transactions to the router
@@ -171,15 +172,16 @@ func TestVerifySignedTxsByRouterSingleParty(t *testing.T) {
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
+	configLogger := testutil.CreateLoggerForModule(t, "LoadLocalConfigRouter", zap.DebugLevel)
 	configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", types.PartyID(1)))
-	conf, _, err := config.LoadLocalConfig(configFilePath)
+	conf, _, err := config.LoadLocalConfig(configFilePath, configLogger)
 	require.NoError(t, err)
 
 	// Modify the router configuration to require client signature verification.
 	conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
 	utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
 
-	conf, _, err = config.LoadLocalConfig(configFilePath)
+	conf, _, err = config.LoadLocalConfig(configFilePath, configLogger)
 	require.NoError(t, err)
 	require.True(t, conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired)
 

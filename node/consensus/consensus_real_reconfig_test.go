@@ -346,7 +346,8 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// get the current endpoint
 		consenterNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", consenterPartyToUpdate), "local_config_consenter.yaml")
-		cfg, lcb, err := config.ReadConfig(consenterNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigConsenter", zap.DebugLevel))
+		configLogger := testutil.CreateLoggerForModule(t, "ConsenterConfig", zap.DebugLevel)
+		cfg, lcb, err := config.ReadConfig(consenterNodeConfigPath, configLogger)
 		require.NoError(t, err)
 		consenterConfig := cfg.ExtractConsenterConfig(lcb)
 		nodeIP := strings.Split(consenterConfig.Consenters[consenterPartyToUpdateIndex].Endpoint, ":")[0]
@@ -388,7 +389,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		// update the node local config
-		localConfig, _, err := config.LoadLocalConfig(consenterNodeConfigPath)
+		localConfig, _, err := config.LoadLocalConfig(consenterNodeConfigPath, configLogger)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.GeneralConfig.ListenAddress = nodeIP
 		localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)
