@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package configack
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -47,27 +48,30 @@ func TestAddAck_DuplicateRejected(t *testing.T) {
 		NodeType:  protos.NodeType_ROUTER,
 	})
 	require.Error(t, err)
-	require.ErrorContains(t, err, "config ack has been received on sequence 1 but the last acknowledged sequence is 1")
+	require.ErrorContains(t, err, "config ack has been received from router on sequence 1 but the last acknowledged sequence is 1")
 }
 
-// TestAddAck_OutOfOrderRejected verifies that ack with out-of-sequence number is rejected
-func TestAddAck_OutOfOrderRejected(t *testing.T) {
+// TestAddAck_IllegalValues verifies that ack from illegal shard or unknown node is rejected
+func TestAddAck_IllegalValues(t *testing.T) {
 	shards := []types.ShardID{1, 2}
 	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
 	defer r.Stop()
 
 	err := r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,
-		NodeType:  protos.NodeType_ROUTER,
-	})
-	require.NoError(t, err)
-
-	err = r.AddAck(&protos.ConfigAck{
-		ConfigSeq: 3,
-		NodeType:  protos.NodeType_ROUTER,
+		NodeType:  protos.NodeType(3),
 	})
 	require.Error(t, err)
-	require.ErrorContains(t, err, "config ack has been received on sequence 3 but the last acknowledged sequence is 1")
+	require.ErrorContains(t, err, "unknown node type")
+
+	err = r.AddAck(&protos.ConfigAck{
+		ConfigSeq: 1,
+		NodeType:  protos.NodeType_BATCHER,
+		Shard:     3,
+	})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "config ack received from unknown client: batcher, shard=3")
 }
 
 // TestAddAck_Concurrent verifies that concurrent AddAck calls from different
@@ -97,7 +101,7 @@ func TestAddAck_Concurrent(t *testing.T) {
 }
 
 // TestExpectAck_AllAcknowledged verifies that ExpectAck returns true when all
-// clients have already acked the requested sequence before the call.
+// clients have already acknowledged the requested sequence before the call.
 func TestExpectAck_AllAcknowledged(t *testing.T) {
 	shards := []types.ShardID{1, 2}
 	r := NewReceiver(testutil.CreateLogger(t, 0), shards)
@@ -130,7 +134,9 @@ func TestExpectAck_AllAcknowledged(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	res := r.WaitForAllAcks(1)
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancelFunc()
+	res := r.WaitForAllAcks(timeoutCtx, 1)
 	require.True(t, res)
 }
 
@@ -142,7 +148,9 @@ func TestExpectAck_StopReturnsFalse(t *testing.T) {
 	defer r.Stop()
 
 	result := make(chan bool, 1)
-	go func() { result <- r.WaitForAllAcks(1) }()
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancelFunc()
+	go func() { result <- r.WaitForAllAcks(timeoutCtx, 1) }()
 
 	err := r.AddAck(&protos.ConfigAck{
 		ConfigSeq: 1,

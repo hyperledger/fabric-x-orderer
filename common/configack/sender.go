@@ -100,6 +100,7 @@ func (s *sender) SubmitConfigAck(configSeq uint32) error {
 
 	interval := s.minRetryInterval
 	numOfRetries := 1
+	s.logger.Warningf("Sending config ack to consensus on sequence %d failed: %v, trying again in: %s", configSeq, err, interval)
 
 	for {
 		select {
@@ -112,11 +113,11 @@ func (s *sender) SubmitConfigAck(configSeq uint32) error {
 			err := s.submitWithRetry(ctx, configSeq)
 			if err != nil {
 				interval = min(interval*2, s.maxRetryInterval)
-				s.logger.Errorf("Sending config ack to consensus failed: %v, trying again in: %s", err, interval)
+				s.logger.Warningf("Sending config ack to consensus on sequence %d failed: %v, trying again in: %s", configSeq, err, interval)
 				continue
 			}
 
-			s.logger.Infof("config ack was successfully sent to consensus")
+			s.logger.Infof("config ack was successfully sent to consensus on config sequence %d", configSeq)
 			return nil
 		}
 	}
@@ -137,7 +138,7 @@ func (s *sender) submitWithRetry(ctx context.Context, configSeq uint32) error {
 
 	err = s.sendConfigAckToConsensus(ctx, conn, configSeq)
 	if err != nil {
-		s.logger.Errorf("failed to send config ack to consensus, err: %v\n", err)
+		s.logger.Errorf("failed to send config ack to consensus on config sequence %d, err: %v\n", configSeq, err)
 		return err
 	}
 
@@ -182,7 +183,7 @@ func (s *sender) sendConfigAckToConsensus(ctx context.Context, conn *grpc.Client
 	s.logger.Infof("Sending ConfigAck for config sequence %d to consenter", configSeq)
 	resp, err := client.AckConfig(ctx, configAckReq)
 	if resp != nil && resp.GetError() != "" {
-		s.logger.Warnf("Received bad response from consensus on config ack: %s", resp.GetError())
+		s.logger.Warnf("Received bad response from consensus on config ack on config sequence %d: %s", configSeq, resp.GetError())
 	}
 	return err
 }

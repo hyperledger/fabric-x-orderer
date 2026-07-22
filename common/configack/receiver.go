@@ -17,16 +17,29 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
-type ClientID struct {
+type ClientRole struct {
 	NodeType protos.NodeType
 	Shard    types.ShardID
 }
 
+func (c *ClientRole) String() string {
+	switch c.NodeType {
+	case protos.NodeType_ROUTER:
+		return "router"
+	case protos.NodeType_ASSEMBLER:
+		return "assembler"
+	case protos.NodeType_BATCHER:
+		return fmt.Sprintf("batcher, shard=%d", c.Shard)
+	default:
+		return fmt.Sprintf("node_type=%s shard=%d", c.NodeType.String(), c.Shard)
+	}
+}
+
 // Receiver handle ConfigAck messages from party members (router, batchers, assembler)
 type Receiver struct {
-	acks   map[ClientID]uint64
-	logger *flogging.FabricLogger
 	lock   sync.Mutex
+	acks   map[ClientRole]uint64 // acks maps each client role to the latest config sequence it has acknowledged
+	logger *flogging.FabricLogger
 
 	signalChan chan struct{}
 	ctx        context.Context
@@ -38,7 +51,7 @@ func NewReceiver(logger *flogging.FabricLogger, shards []types.ShardID) *Receive
 	ctx, cancel := context.WithCancel(context.Background())
 
 	receiver := &Receiver{
-		acks:       make(map[ClientID]uint64),
+		acks:       make(map[ClientRole]uint64),
 		logger:     logger,
 		ctx:        ctx,
 		cancel:     cancel,
@@ -53,20 +66,20 @@ func NewReceiver(logger *flogging.FabricLogger, shards []types.ShardID) *Receive
 
 func (r *Receiver) initClients(shards []types.ShardID) {
 	// Router
-	r.acks[ClientID{
+	r.acks[ClientRole{
 		NodeType: protos.NodeType_ROUTER,
 		Shard:    0,
 	}] = 0
 
 	// Assembler
-	r.acks[ClientID{
+	r.acks[ClientRole{
 		NodeType: protos.NodeType_ASSEMBLER,
 		Shard:    0,
 	}] = 0
 
 	// Batchers
 	for _, shardID := range shards {
-		r.acks[ClientID{
+		r.acks[ClientRole{
 			NodeType: protos.NodeType_BATCHER,
 			Shard:    shardID,
 		}] = 0
@@ -80,31 +93,49 @@ func (r *Receiver) Stop() {
 
 // AddAck records an acknowledgment from a party member.
 func (r *Receiver) AddAck(request *protos.ConfigAck) error {
-	clientID := ClientID{
+	if request == nil {
+		return fmt.Errorf("config ack request is nil")
+	}
+
+	clientRole := ClientRole{
 		NodeType: request.NodeType,
 		Shard:    types.ShardID(request.Shard),
 	}
 
-	r.lock.Lock()
-	if uint64(request.ConfigSeq) != r.acks[clientID]+1 {
-		r.lock.Unlock()
-		r.logger.Warnf("config ack has been received on sequence %d but the last acknowledged sequence is %d", request.ConfigSeq, r.acks[clientID])
-		return fmt.Errorf("config ack has been received on sequence %d but the last acknowledged sequence is %d", request.ConfigSeq, r.acks[clientID])
+	if clientRole.NodeType != protos.NodeType_ROUTER && clientRole.NodeType != protos.NodeType_BATCHER && clientRole.NodeType != protos.NodeType_ASSEMBLER {
+		return fmt.Errorf("unknown node type: %s", clientRole.NodeType)
 	}
 
-	r.acks[clientID] = uint64(request.ConfigSeq)
-	r.logger.Infof("config ack has been received on sequence %d", request.ConfigSeq)
+	r.lock.Lock()
+	lastSeq, exists := r.acks[clientRole]
+	if !exists {
+		r.lock.Unlock()
+		r.logger.Warnf("config ack received from unknown client: %s", clientRole.String())
+		return fmt.Errorf("config ack received from unknown client: %s", clientRole.String())
+	}
+
+	if uint64(request.ConfigSeq) <= lastSeq {
+		r.lock.Unlock()
+		r.logger.Warnf("config ack has been received from %s on sequence %d but the last acknowledged sequence is %d", clientRole.String(), request.ConfigSeq, r.acks[clientRole])
+		return fmt.Errorf("config ack has been received from %s on sequence %d but the last acknowledged sequence is %d", clientRole.String(), request.ConfigSeq, r.acks[clientRole])
+	}
+
+	r.acks[clientRole] = uint64(request.ConfigSeq)
+	r.logger.Infof("config ack has been received on sequence %d from %s", request.ConfigSeq, clientRole.String())
 	r.lock.Unlock()
 
 	r.signalChan <- struct{}{}
 	return nil
 }
 
-func (r *Receiver) WaitForAllAcks(configSeq uint64) bool {
+func (r *Receiver) WaitForAllAcks(timeoutCtx context.Context, configSeq uint64) bool {
 	for {
 		select {
 		case <-r.ctx.Done():
 			r.logger.Infof("config ack handler is stopped")
+			return false
+		case <-timeoutCtx.Done():
+			r.logger.Infof("waiting for acknowledgments from all nodes timed out")
 			return false
 		case <-r.signalChan:
 			r.lock.Lock()
