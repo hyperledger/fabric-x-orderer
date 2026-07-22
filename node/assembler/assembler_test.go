@@ -121,7 +121,7 @@ func setupAssemblerTest(t *testing.T, shards []types.ShardID, parties []types.Pa
 		BatchRequestsChannelSize:  1000,
 		Shards:                    shardsInfo,
 		Operations: &operations.Operations{
-			ListenAddress: "127.0.0.1:0",
+			ListenAddress: testutil.AllocateLocalhostAddress(t),
 		},
 		Metrics: &operations.Metrics{
 			Provider:           "disabled",

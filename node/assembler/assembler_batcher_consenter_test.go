@@ -321,7 +321,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		UseTLS:                    true,
 		ClientAuthRequired:        ClientAuthRequired,
 		Operations: &operations.Operations{
-			ListenAddress: "127.0.0.1:0",
+			ListenAddress: testutil.AllocateLocalhostAddress(t),
 		},
 		Metrics: &operations.Metrics{
 			Provider:           "disabled",
