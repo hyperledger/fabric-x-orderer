@@ -169,13 +169,14 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 
 	// Verify the config stored in the router's config store is updated
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyToUpdate), "local_config_router.yaml")
-	cfg, _, err := config.ReadConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel))
+	configLogger := testutil.CreateLoggerForModule(t, "RouterConfig", zap.DebugLevel)
+	cfg, _, err := config.ReadConfig(routerNodeConfigPath, configLogger)
 	require.NoError(t, err)
 	require.True(t, cfg.SharedConfig.GetPartiesConfig()[partyToUpdate-1].RouterConfig.Host == routerIP &&
 		cfg.SharedConfig.GetPartiesConfig()[partyToUpdate-1].RouterConfig.Port == uint32(newPort), "Shared config was not updated with the new router endpoint")
 
 	// Update the router node local config with the new endpoint to allow it to start
-	localConfig, _, err := config.LoadLocalConfig(routerNodeConfigPath)
+	localConfig, _, err := config.LoadLocalConfig(routerNodeConfigPath, configLogger)
 	require.NoError(t, err)
 	localConfig.NodeLocalConfig.GeneralConfig.ListenAddress = routerIP
 	localConfig.NodeLocalConfig.GeneralConfig.ListenPort = uint32(newPort)

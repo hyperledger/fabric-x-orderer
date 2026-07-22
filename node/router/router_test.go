@@ -49,6 +49,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 )
@@ -583,7 +584,7 @@ func TestRouterSendConfigUpdateToConsenterStub(t *testing.T) {
 
 	routerNodeInfo := netInfo[testutil.NodeName{PartyID: types.PartyID(1), NodeType: testutil.Router}]
 	routerNodeConfigPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
-	localConfig, _, err := fabricx_config.LoadLocalConfig(routerNodeConfigPath)
+	localConfig, _, err := fabricx_config.LoadLocalConfig(routerNodeConfigPath, testutil.CreateLoggerForModule(t, "LoadLocalConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
 	localConfig.NodeLocalConfig.FileStore.Path = configStoreDir

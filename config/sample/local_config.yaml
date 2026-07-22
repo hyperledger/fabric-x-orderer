@@ -239,8 +239,8 @@ Router:
 # Consensus specific parameters
 Consensus:
   # WALDir specifies the location at which Write Ahead Logs for SmartBFT are
-  # stored. Each channel will have its own subdir named after channel ID.
-  WALDir: /var/dec-trust/production/orderer/smartbft/wal
+  # stored. If not set, it defaults to <FileStore.Location>/wal.
+  WALDir:
 
 # Batcher specific parameters
 Batcher:

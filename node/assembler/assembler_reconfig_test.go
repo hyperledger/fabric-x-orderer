@@ -280,15 +280,16 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 }
 
 func createRealAssemblerFromConfig(t *testing.T, partyID types.PartyID, fileStoreDir string, nodeConfigPath string) (*assembler.Assembler, *common.Block, channelconfig.Resources, identity.SignerSerializer) {
+	configLogger := testutil.CreateLoggerForModule(t, fmt.Sprintf("AssemblerConfig%d", partyID), zap.DebugLevel)
 	if fileStoreDir != "" {
-		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, configLogger)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
 		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 		require.NoError(t, err)
 	}
 
-	configuration, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, fmt.Sprintf("ReadConfigAssembler%d", partyID), zap.DebugLevel))
+	configuration, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, configLogger)
 	require.NoError(t, err)
 	assemblerNodeConfig := configuration.ExtractAssemblerConfig(lastConfigBlock)
 	require.NotNil(t, assemblerNodeConfig)

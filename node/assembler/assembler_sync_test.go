@@ -547,17 +547,17 @@ func createSourceAssemblerWithStubs(
 	}
 
 	nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), "local_config_assembler.yaml")
-
+	configLogger := testutil.CreateLoggerForModule(t, fmt.Sprintf("AssemblerConfig%d", partyID), zap.DebugLevel)
 	// Point the file store to a fresh, empty ledger directory.
 	fileStoreDir := t.TempDir()
-	localConfig, _, err := top_config.LoadLocalConfig(nodeConfigPath)
+	localConfig, _, err := top_config.LoadLocalConfig(nodeConfigPath, configLogger)
 	require.NoError(t, err)
 	localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
 	require.NoError(t, utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath))
 
 	configuration, lastConfigBlock, err := top_config.ReadConfig(
 		nodeConfigPath,
-		testutil.CreateLoggerForModule(t, fmt.Sprintf("ReadConfigSource%d", partyID), zap.DebugLevel),
+		configLogger,
 	)
 	require.NoError(t, err)
 
@@ -611,14 +611,15 @@ func createJoiningAssembler(
 	if joiningLedgerDir == "" {
 		joiningLedgerDir = t.TempDir()
 	}
-	localConfig, _, err := top_config.LoadLocalConfig(nodeConfigPath)
+	configLogger := testutil.CreateLoggerForModule(t, fmt.Sprintf("ConfigJoining%d", partyID), zap.DebugLevel)
+	localConfig, _, err := top_config.LoadLocalConfig(nodeConfigPath, configLogger)
 	require.NoError(t, err)
 	localConfig.NodeLocalConfig.FileStore.Path = joiningLedgerDir
 	require.NoError(t, utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath))
 
 	configuration, lastConfigBlock, err := top_config.ReadConfig(
 		nodeConfigPath,
-		testutil.CreateLoggerForModule(t, fmt.Sprintf("ReadConfigJoining%d", partyID), zap.DebugLevel),
+		configLogger,
 	)
 	require.NoError(t, err)
 

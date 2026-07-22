@@ -81,13 +81,14 @@ func NewStubBatcherFromConfig(t *testing.T, configStoreDir string, nodeConfigPat
 		listener.Close()
 	}
 
-	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+	configLogger := testutil.CreateLoggerForModule(t, "BatcherConfig", zap.DebugLevel)
+	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, configLogger)
 	require.NoError(t, err)
 
 	localConfig.NodeLocalConfig.FileStore.Path = configStoreDir
 	utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 
-	config, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigBatcher", zap.DebugLevel))
+	config, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, configLogger)
 	require.NoError(t, err)
 
 	batcherConfig := config.ExtractBatcherConfig(lastConfigBlock)

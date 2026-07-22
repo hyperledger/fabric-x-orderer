@@ -53,7 +53,7 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 		SharedConfig: &ordererpb.SharedConfig{},
 	}
 
-	conf.LocalConfig, nodeRole, err = LoadLocalConfig(configFilePath)
+	conf.LocalConfig, nodeRole, err = LoadLocalConfig(configFilePath, logger)
 	if err != nil {
 		return nil, nil, err
 	}

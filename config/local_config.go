@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -205,7 +206,7 @@ type Cluster struct {
 }
 
 // LoadLocalConfig reads the local config yaml and certs and returns the local configuration.
-func LoadLocalConfig(filePath string) (*LocalConfig, string, error) {
+func LoadLocalConfig(filePath string, logger *flogging.FabricLogger) (*LocalConfig, string, error) {
 	nodeLocalConfig, err := LoadLocalConfigYaml(filePath)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot load local node configuration, failed reading config yaml, err: %s", err)
@@ -216,7 +217,7 @@ func LoadLocalConfig(filePath string) (*LocalConfig, string, error) {
 		return nil, "", err
 	}
 
-	applyLocalConfigDefaults(nodeLocalConfig, role)
+	applyLocalConfigDefaults(nodeLocalConfig, role, logger)
 
 	tlsConfig, err := loadTLSCryptoConfig(&nodeLocalConfig.GeneralConfig.TLSConfig)
 	if err != nil {
@@ -407,17 +408,39 @@ func loadClusterCryptoConfig(cluster *ClusterYaml) (*Cluster, error) {
 	}, nil
 }
 
-func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
-	applyGeneralDefaults(nodeLocalConfig)
-	applyNodeDefaults(nodeLocalConfig, role)
+func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *flogging.FabricLogger) {
+	applyGeneralDefaults(nodeLocalConfig, logger)
+	applyNodeDefaults(nodeLocalConfig, role, logger)
 }
 
-func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig) {
+func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.FabricLogger) {
 	generalConfig := nodeLocalConfig.GeneralConfig
-
 	// Use the default BCCSP options when no crypto provider configuration is specified.
 	if generalConfig.BCCSP == nil {
 		generalConfig.BCCSP = factory.GetDefaultOpts()
+		logger.Info("General.BCCSP is not set, using default configuration")
+	}
+
+	if generalConfig.LogSpec == "" {
+		generalConfig.LogSpec = DefaultNodeLocalConfig.GeneralConfig.LogSpec
+		logger.Infof("General.LogSpec is not set, using default value: %s", generalConfig.LogSpec)
+	}
+
+	if generalConfig.Cluster.SendBufferSize == 0 {
+		generalConfig.Cluster.SendBufferSize = DefaultNodeLocalConfig.GeneralConfig.Cluster.SendBufferSize
+		logger.Infof("General.Cluster.SendBufferSize is not set, using default value: %d", generalConfig.Cluster.SendBufferSize)
+	}
+
+	if generalConfig.Cluster.ReplicationPolicy == "" {
+		generalConfig.Cluster.ReplicationPolicy = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy
+		logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", generalConfig.Cluster.ReplicationPolicy)
+	}
+
+	if generalConfig.Cluster.ClientCertificate == "" &&
+		generalConfig.Cluster.ClientPrivateKey == "" {
+		generalConfig.Cluster.ClientCertificate = generalConfig.TLSConfig.Certificate
+		generalConfig.Cluster.ClientPrivateKey = generalConfig.TLSConfig.PrivateKey
+		logger.Info("General.Cluster client TLS credentials are not set, using General.TLS credentials")
 	}
 
 	// Use the default operations configuration when none is provided.
@@ -426,6 +449,7 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig) {
 		defaultTLSConfig := *DefaultNodeLocalConfig.OperationsConfig.TLSConfig
 		defaultOperations.TLSConfig = &defaultTLSConfig
 		nodeLocalConfig.OperationsConfig = &defaultOperations
+		logger.Info("Operations configuration is not set, using default configuration")
 	}
 
 	operationsConfig := nodeLocalConfig.OperationsConfig
@@ -433,11 +457,13 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig) {
 	// Use the general listen address when no dedicated operations address is provided.
 	if operationsConfig.ListenAddress == "" {
 		operationsConfig.ListenAddress = generalConfig.ListenAddress
+		logger.Infof("Operations.ListenAddress is not set, using General.ListenAddress: %s", operationsConfig.ListenAddress)
 	}
 
 	if operationsConfig.TLSConfig == nil {
 		defaultTLSConfig := *DefaultNodeLocalConfig.OperationsConfig.TLSConfig
 		operationsConfig.TLSConfig = &defaultTLSConfig
+		logger.Info("Operations.TLS is not set, using default configuration")
 	}
 
 	// If TLS is enabled for the operations server and the certificate, private key,
@@ -445,12 +471,15 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig) {
 	if operationsConfig.TLSConfig.Enabled {
 		if operationsConfig.TLSConfig.Certificate == "" {
 			operationsConfig.TLSConfig.Certificate = generalConfig.TLSConfig.Certificate
+			logger.Info("Operations.TLS.Certificate is not set, using General.TLS.Certificate")
 		}
 		if operationsConfig.TLSConfig.PrivateKey == "" {
 			operationsConfig.TLSConfig.PrivateKey = generalConfig.TLSConfig.PrivateKey
+			logger.Info("Operations.TLS.PrivateKey is not set, using General.TLS.PrivateKey")
 		}
 		if operationsConfig.TLSConfig.RootCAs == nil {
 			operationsConfig.TLSConfig.RootCAs = generalConfig.TLSConfig.RootCAs
+			logger.Info("Operations.TLS.RootCAs is not set, using General.TLS.RootCAs")
 		}
 	}
 
@@ -458,54 +487,75 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig) {
 	if nodeLocalConfig.MetricsConfig == nil {
 		defaultMetrics := *DefaultNodeLocalConfig.MetricsConfig
 		nodeLocalConfig.MetricsConfig = &defaultMetrics
+		logger.Info("Metrics configuration is not set, using default configuration")
 	}
 }
 
 // applyNodeDefaults applies default values to unset node-specific parameters.
-func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string) {
+func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *flogging.FabricLogger) {
 	switch role {
 	case RouterStr:
 		if nodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher == 0 {
 			nodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher = DefaultRouterParams.NumberOfConnectionsPerBatcher
+			logger.Infof("Router.NumberOfConnectionsPerBatcher is not set, using default value: %d", nodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher)
 		}
+
 		if nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection == 0 {
 			nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection = DefaultRouterParams.NumberOfStreamsPerConnection
+			logger.Infof("Router.NumberOfStreamsPerConnection is not set, using default value: %d", nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection)
 		}
 
 	case BatcherStr:
 		if nodeLocalConfig.BatcherParams.BatchSequenceGap == 0 {
 			nodeLocalConfig.BatcherParams.BatchSequenceGap = DefaultBatcherParams.BatchSequenceGap
+			logger.Infof("Batcher.BatchSequenceGap is not set, using default value: %d", nodeLocalConfig.BatcherParams.BatchSequenceGap)
 		}
+
 		if nodeLocalConfig.BatcherParams.MemPoolMaxSize == 0 {
 			nodeLocalConfig.BatcherParams.MemPoolMaxSize = DefaultBatcherParams.MemPoolMaxSize
+			logger.Infof("Batcher.MemPoolMaxSize is not set, using default value: %d", nodeLocalConfig.BatcherParams.MemPoolMaxSize)
 		}
+
 		if nodeLocalConfig.BatcherParams.SubmitTimeout == 0 {
 			nodeLocalConfig.BatcherParams.SubmitTimeout = DefaultBatcherParams.SubmitTimeout
+			logger.Infof("Batcher.SubmitTimeout is not set, using default value: %s", nodeLocalConfig.BatcherParams.SubmitTimeout)
 		}
 
 	case ConsensusStr:
 		if nodeLocalConfig.ConsensusParams.WALDir == "" {
 			nodeLocalConfig.ConsensusParams.WALDir = DefaultConsenterNodeConfigParams(nodeLocalConfig.FileStore.Path).WALDir
+			logger.Infof("Consensus.WALDir is not set, using default value: %s", nodeLocalConfig.ConsensusParams.WALDir)
 		}
 
 	case AssemblerStr:
 		if nodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes == 0 {
 			nodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes = DefaultAssemblerParams.PrefetchBufferMemoryBytes
+			logger.Infof("Assembler.PrefetchBufferMemoryBytes is not set, using default value: %d", nodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes)
 		}
+
 		if nodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout == 0 {
 			nodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout = DefaultAssemblerParams.RestartLedgerScanTimeout
+			logger.Infof("Assembler.RestartLedgerScanTimeout is not set, using default value: %s", nodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout)
 		}
+
 		if nodeLocalConfig.AssemblerParams.PrefetchEvictionTtl == 0 {
 			nodeLocalConfig.AssemblerParams.PrefetchEvictionTtl = DefaultAssemblerParams.PrefetchEvictionTtl
+			logger.Infof("Assembler.PrefetchEvictionTtl is not set, using default value: %s", nodeLocalConfig.AssemblerParams.PrefetchEvictionTtl)
 		}
+
 		if nodeLocalConfig.AssemblerParams.PopWaitMonitorTimeout == 0 {
 			nodeLocalConfig.AssemblerParams.PopWaitMonitorTimeout = DefaultAssemblerParams.PopWaitMonitorTimeout
+			logger.Infof("Assembler.PopWaitMonitorTimeout is not set, using default value: %s", nodeLocalConfig.AssemblerParams.PopWaitMonitorTimeout)
 		}
+
 		if nodeLocalConfig.AssemblerParams.ReplicationChannelSize == 0 {
 			nodeLocalConfig.AssemblerParams.ReplicationChannelSize = DefaultAssemblerParams.ReplicationChannelSize
+			logger.Infof("Assembler.ReplicationChannelSize is not set, using default value: %d", nodeLocalConfig.AssemblerParams.ReplicationChannelSize)
 		}
+
 		if nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize == 0 {
 			nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize = DefaultAssemblerParams.BatchRequestsChannelSize
+			logger.Infof("Assembler.BatchRequestsChannelSize is not set, using default value: %d", nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize)
 		}
 	}
 }

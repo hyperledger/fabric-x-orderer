@@ -415,15 +415,16 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 }
 
 func createRealRouterFromConfig(t *testing.T, partyID types.PartyID, fileStoreDir string, nodeConfigPath string) (*router.Router, *common.Block, channelconfig.Resources) {
+	configLogger := testutil.CreateLoggerForModule(t, fmt.Sprintf("RouterConfig%d", partyID), zap.DebugLevel)
 	if fileStoreDir != "" {
-		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath)
+		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, configLogger)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
 		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 		require.NoError(t, err)
 	}
 
-	config, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, fmt.Sprintf("ReadConfigRouter%d", partyID), zap.DebugLevel))
+	config, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, configLogger)
 	require.NoError(t, err)
 	routerConfig := config.ExtractRouterConfig(lastConfigBlock)
 	require.NotNil(t, routerConfig)

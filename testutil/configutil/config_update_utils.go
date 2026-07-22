@@ -35,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -1296,16 +1297,17 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
 	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)
 	addedOrg := fmt.Sprintf("org%d", addedPartyId)
+	logger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
 
-	consenterConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_consenter.yaml"))
+	consenterConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_consenter.yaml"), logger)
 	require.NoError(t, err)
 	consenterTlsCert, err := os.ReadFile(consenterConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
 	require.NoError(t, err)
-	routerLocalConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_router.yaml"))
+	routerLocalConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_router.yaml"), logger)
 	require.NoError(t, err)
 	routerTlsCert, err := os.ReadFile(routerLocalConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
 	require.NoError(t, err)
-	assemblerConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_assembler.yaml"))
+	assemblerConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, "local_config_assembler.yaml"), logger)
 	require.NoError(t, err)
 	assemblerTlsCert, err := os.ReadFile(assemblerConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
 	require.NoError(t, err)
@@ -1313,7 +1315,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	batchersConfig := make([]*ordererpb.BatcherNodeConfig, len(addedPartyConfig.Parties[0].BatchersEndpoints))
 
 	for i := range addedPartyConfig.Parties[0].BatchersEndpoints {
-		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)))
+		batcherNodeConfig, _, err := config.LoadLocalConfig(filepath.Join(dir, "config", addedPartyDir, fmt.Sprintf("local_config_batcher%d.yaml", i+1)), logger)
 		require.NoError(t, err)
 		batcherTlsCert, err := os.ReadFile(batcherNodeConfig.NodeLocalConfig.GeneralConfig.TLSConfig.Certificate)
 		require.NoError(t, err)

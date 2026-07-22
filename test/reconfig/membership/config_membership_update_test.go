@@ -691,7 +691,7 @@ func TestReplacePartiesPartially(t *testing.T) {
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", types.PartyID(submittingPartyID)))
-	conf, _, err := config.LoadLocalConfig(configFilePath)
+	conf, _, err := config.LoadLocalConfig(configFilePath, testutil.CreateLoggerForModule(t, "LoadLocalConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
 	// Modify the router configuration to require client signature verification.
@@ -1014,7 +1014,7 @@ func TestRemoveMultipleParties(t *testing.T) {
 		fmt.Sprintf("party%d", types.PartyID(submittingPartyID)),
 		"local_config_router.yaml",
 	)
-	conf, _, err := config.LoadLocalConfig(configFilePath)
+	conf, _, err := config.LoadLocalConfig(configFilePath, testutil.CreateLoggerForModule(t, "LoadLocalConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
 	// Modify the router configuration to require client signature verification.
@@ -1181,7 +1181,7 @@ func TestJoinMultipleParties(t *testing.T) {
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", types.PartyID(submittingPartyID)))
-	conf, _, err := config.LoadLocalConfig(configFilePath)
+	conf, _, err := config.LoadLocalConfig(configFilePath, testutil.CreateLoggerForModule(t, "LoadLocalConfigRouter", zap.DebugLevel))
 	require.NoError(t, err)
 
 	// Modify the router configuration to require client signature verification.

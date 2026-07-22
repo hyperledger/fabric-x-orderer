@@ -852,7 +852,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 }
 
 func BuildVerifier(configDir string, partyID types.PartyID, logger *flogging.FabricLogger) *crypto.ECDSAVerifier {
-	localConfig, _, err := config.LoadLocalConfig(filepath.Join(configDir, fmt.Sprintf("config/party%d/local_config_consenter.yaml", int(partyID))))
+	localConfig, _, err := config.LoadLocalConfig(filepath.Join(configDir, fmt.Sprintf("config/party%d/local_config_consenter.yaml", int(partyID))), logger)
 	if err != nil {
 		logger.Panicf("Failed loading local config: %v", err)
 	}

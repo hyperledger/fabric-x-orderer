@@ -27,6 +27,7 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // TestVerifySignedTxsByBatcherSingleParty verifies that a single-party batcher network correctly processes
@@ -57,9 +58,10 @@ func TestVerifySignedTxsByBatcherSingleParty(t *testing.T) {
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
+	configLogger := testutil.CreateLoggerForModule(t, "LoadLocalConfigBatcher", zap.DebugLevel)
 	for shardID := range shardsNumber {
 		configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_batcher%d.yaml", types.PartyID(1), types.ShardID(shardID+1)))
-		conf, _, err := config.LoadLocalConfig(configFilePath)
+		conf, _, err := config.LoadLocalConfig(configFilePath, configLogger)
 		require.NoError(t, err)
 
 		// Modify the batcher configuration to require client signature verification.
@@ -171,9 +173,10 @@ func TestVerifySignedTxsByBatcherForwardRequest(t *testing.T) {
 	// 4. Generate the config files in the temporary directory using the armageddon generate command.
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
+	configLogger := testutil.CreateLoggerForModule(t, "LoadLocalConfigBatcher", zap.DebugLevel)
 	for partyID := range numOfParties {
 		configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_batcher%d.yaml", partyID+1, types.ShardID(1)))
-		conf, _, err := config.LoadLocalConfig(configFilePath)
+		conf, _, err := config.LoadLocalConfig(configFilePath, configLogger)
 		require.NoError(t, err)
 
 		// Modify the batcher configuration to require client signature verification.

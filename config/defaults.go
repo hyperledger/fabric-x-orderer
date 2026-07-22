@@ -13,6 +13,27 @@ import (
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 )
 
+var DefaultNodeLocalConfig = NodeLocalConfig{
+	GeneralConfig: &GeneralConfig{
+		LogSpec: "info",
+		Cluster: ClusterYaml{
+			SendBufferSize:    100,
+			ReplicationPolicy: "consensus",
+		},
+	},
+	OperationsConfig: &Operations{
+		ListenAddress: "127.0.0.1",
+		ListenPort:    0,
+		TLSConfig: &TLSConfigYaml{
+			Enabled: false,
+		},
+	},
+	MetricsConfig: &Metrics{
+		Provider:           "prometheus",
+		MetricsLogInterval: 10 * time.Second,
+	},
+}
+
 var DefaultRouterParams = RouterParams{
 	NumberOfConnectionsPerBatcher: 10,
 	NumberOfStreamsPerConnection:  5,
@@ -66,9 +87,4 @@ var DefaultBatchingConfig = BatchingConfig{
 		PreferredMaxBytes: 0,
 	},
 	RequestMaxBytes: 1024 * 1024,
-}
-
-var DefaultNodeLocalConfig = NodeLocalConfig{
-	OperationsConfig: &Operations{ListenAddress: "127.0.0.1", ListenPort: 0, TLSConfig: &TLSConfigYaml{Enabled: false}},
-	MetricsConfig:    &Metrics{Provider: "prometheus", MetricsLogInterval: time.Second * 10},
 }
