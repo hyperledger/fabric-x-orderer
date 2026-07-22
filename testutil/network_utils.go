@@ -9,6 +9,7 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net"
@@ -57,8 +58,23 @@ func GetAvailablePort(t testing.TB) (port string, ll net.Listener) {
 
 // FetchPrometheusMetricValue fetches the value of a Prometheus metric from the specified URL using the provided regular expression.
 // It returns the metric value as an integer. If the metric is not found or cannot be converted to an integer, it returns -1.
-func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int {
-	client := &http.Client{Timeout: 5 * time.Second}
+func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string, tlsOpts ...func(config *tls.Config)) int {
+	require.NotEmpty(t, url, "URL cannot be empty")
+	require.NotNil(t, re, "Regular expression cannot be nil")
+
+	tlsClientConfig := &tls.Config{}
+
+	for _, opt := range tlsOpts {
+		opt(tlsClientConfig)
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsClientConfig
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   10 * time.Second,
+	}
 	resp, err := client.Get(url)
 	require.NoError(t, err)
 
@@ -87,8 +103,20 @@ func FetchPrometheusMetricValue(t *testing.T, re *regexp.Regexp, url string) int
 	return -1
 }
 
-func FetchVersionInfoValue(t *testing.T, re *regexp.Regexp, url string) *operations.VersionInfoHandler {
-	client := &http.Client{Timeout: 5 * time.Second}
+func FetchVersionInfoValue(t *testing.T, re *regexp.Regexp, url string, tlsOpts ...func(config *tls.Config)) *operations.VersionInfoHandler {
+	tlsClientConfig := &tls.Config{}
+
+	for _, opt := range tlsOpts {
+		opt(tlsClientConfig)
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsClientConfig
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Second,
+	}
 	resp, err := client.Get(url)
 	require.NoError(t, err)
 
@@ -152,8 +180,20 @@ func CaptureArmaNodeLogSpecServiceURL(t *testing.T, armaNodeInfo *ArmaNodeInfo) 
 
 // FetchLogSpecValue fetches the log specification value from the specified URL using the provided regular expression.
 // It returns a pointer to a LogSpec struct if the value is successfully retrieved and parsed, or nil if an error occurs.
-func FetchLogSpecValue(t *testing.T, re *regexp.Regexp, url string) *httpadmin.LogSpec {
-	client := &http.Client{Timeout: 5 * time.Second}
+func FetchLogSpecValue(t *testing.T, re *regexp.Regexp, url string, tlsOpts ...func(config *tls.Config)) *httpadmin.LogSpec {
+	tlsClientConfig := &tls.Config{}
+
+	for _, opt := range tlsOpts {
+		opt(tlsClientConfig)
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsClientConfig
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Second,
+	}
 	resp, err := client.Get(url)
 	require.NoError(t, err)
 
@@ -179,11 +219,29 @@ func FetchLogSpecValue(t *testing.T, re *regexp.Regexp, url string) *httpadmin.L
 
 // GetHealthCheckStatus retrieves the health status from the given health check endpoint URL using the provided regular expression.
 // It returns true if the status is "OK", false if the status is "Unavailable", and fails the test for any unexpected response.
-func GetHealthCheckStatus(t *testing.T, re *regexp.Regexp, url string) bool {
-	resp, err := http.Get(url)
+func GetHealthCheckStatus(t *testing.T, re *regexp.Regexp, url string, tlsOpts ...func(config *tls.Config)) bool {
+	tlsClientConfig := &tls.Config{}
+
+	for _, opt := range tlsOpts {
+		opt(tlsClientConfig)
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsClientConfig
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Second,
+	}
+	resp, err := client.Get(url)
 	require.NoError(t, err)
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 

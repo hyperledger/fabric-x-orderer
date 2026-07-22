@@ -72,8 +72,8 @@ type Options struct {
 	Version string
 }
 
-func operationServiceURL(operationSubPath string, address string, logger *flogging.FabricLogger) string {
-	uRL, err := url.JoinPath("http://", address, operationSubPath)
+func operationServiceURL(scheme string, operationSubPath string, address string, logger *flogging.FabricLogger) string {
+	uRL, err := url.JoinPath(scheme, address, operationSubPath)
 	if err != nil {
 		logger.Panicf("failed to construct metrics URL: %s", err)
 	}
@@ -81,19 +81,31 @@ func operationServiceURL(operationSubPath string, address string, logger *floggi
 }
 
 func PrometheusMetricsServiceURL(system *System, logger *flogging.FabricLogger) string {
-	return operationServiceURL("metrics", system.Addr(), logger)
+	if system.options.TLS.Enabled {
+		return operationServiceURL("https://", "metrics", system.Addr(), logger)
+	}
+	return operationServiceURL("http://", "metrics", system.Addr(), logger)
 }
 
 func HealthCheckServiceURL(system *System, logger *flogging.FabricLogger) string {
-	return operationServiceURL("healthz", system.Addr(), logger)
+	if system.options.TLS.Enabled {
+		return operationServiceURL("https://", "healthz", system.Addr(), logger)
+	}
+	return operationServiceURL("http://", "healthz", system.Addr(), logger)
 }
 
 func LogSpecServiceURL(system *System, logger *flogging.FabricLogger) string {
-	return operationServiceURL("logspec", system.Addr(), logger)
+	if system.options.TLS.Enabled {
+		return operationServiceURL("https://", "logspec", system.Addr(), logger)
+	}
+	return operationServiceURL("http://", "logspec", system.Addr(), logger)
 }
 
 func VersionInfoServiceURL(system *System, logger *flogging.FabricLogger) string {
-	return operationServiceURL("version", system.Addr(), logger)
+	if system.options.TLS.Enabled {
+		return operationServiceURL("https://", "version", system.Addr(), logger)
+	}
+	return operationServiceURL("http://", "version", system.Addr(), logger)
 }
 
 // NewOperationsSystem creates a new operations system with the provided configuration.
@@ -103,7 +115,7 @@ func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 			Logger:        flogging.MustGetLogger("orderer.operations"),
 			ListenAddress: ops.ListenAddress,
 			TLS: fabhttp.TLS{
-				Enabled:            false, // TLS is not currently supported for the operations server --- IGNORE ---
+				Enabled:            ops.TLS.Enabled,
 				CertFile:           ops.TLS.Certificate,
 				KeyFile:            ops.TLS.PrivateKey,
 				ClientCertRequired: ops.TLS.ClientAuthRequired,

@@ -481,6 +481,9 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.Fab
 			operationsConfig.TLSConfig.RootCAs = generalConfig.TLSConfig.RootCAs
 			logger.Info("Operations.TLS.RootCAs is not set, using General.TLS.RootCAs")
 		}
+		if operationsConfig.TLSConfig.ClientAuthRequired && len(operationsConfig.TLSConfig.ClientRootCAs) == 0 {
+			panic("operations server requires client authentication but no client root CAs are provided")
+		}
 	}
 
 	// Use the default metrics configuration when none is provided.
