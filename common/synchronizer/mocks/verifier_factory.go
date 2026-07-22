@@ -8,7 +8,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
-	"github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer"
+	"github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 )
 
 type VerifierFactory struct {

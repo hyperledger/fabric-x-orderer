@@ -7,12 +7,13 @@ SPDX-License-Identifier: Apache-2.0
 package synchronizer
 
 import (
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 )
@@ -31,10 +32,6 @@ type AssemblerSupport interface {
 	ClientConfig() comm.ClientConfig
 }
 
-type BFTConfigGetter interface {
-	BFTConfig() (types.Configuration, []uint64)
-}
-
 //go:generate counterfeiter -o mocks/synchronizer_with_stop.go . SynchronizerWithStop
 type SynchronizerWithStop interface {
 	Sync() error
@@ -51,7 +48,7 @@ type SynchronizerFactory interface {
 		bccsp bccsp.BCCSP,
 		targetHeight uint64,
 		bootConfigBlock *cb.Block,
-		verifierFactory VerifierFactory,
+		verifierFactory commonsync.VerifierFactory,
 	) SynchronizerWithStop
 }
 
@@ -65,7 +62,7 @@ func (c *SynchronizerCreator) CreateSynchronizer(
 	bccsp bccsp.BCCSP,
 	targetHeight uint64,
 	bootConfigBlock *cb.Block,
-	verifierFactory VerifierFactory,
+	verifierFactory commonsync.VerifierFactory,
 ) SynchronizerWithStop {
 	return newSynchronizer(logger, selfID, localConfigCluster, support, bccsp, targetHeight, bootConfigBlock, verifierFactory)
 }
@@ -79,7 +76,7 @@ func newSynchronizer(
 	bccsp bccsp.BCCSP,
 	targetHeight uint64,
 	bootConfigBlock *cb.Block,
-	verifierFactory VerifierFactory,
+	verifierFactory commonsync.VerifierFactory,
 ) SynchronizerWithStop {
 	switch localConfigCluster.ReplicationPolicy {
 	case "assemblerSync":
@@ -93,7 +90,7 @@ func newSynchronizer(
 			LocalConfigCluster:  localConfigCluster,
 			BlockPullerFactory:  &GenesisFetcherCreator{},
 			VerifierFactory:     verifierFactory,
-			BFTDelivererFactory: &bftDelivererCreator{},
+			BFTDelivererFactory: &commonsync.BFTDelivererCreator{ConfigBlockOps: &utils.CommonConfigBlockOperations{}},
 			Logger:              logger,
 			JoinConfigBlock:     bootConfigBlock,
 		}

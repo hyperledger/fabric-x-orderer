@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
+	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	common_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/synchronizer"
@@ -139,7 +140,7 @@ func NewDefaultAssembler(
 	consensusBringerFactory delivery.ConsensusBringerFactory,
 	signer identity.SignerSerializer,
 	synchronizerFactory synchronizer.SynchronizerFactory,
-	verifierFactory synchronizer.VerifierFactory,
+	verifierFactory commonsync.VerifierFactory,
 ) *Assembler {
 	logger.Infof("Creating assembler, party: %d, address: %s", nodeConfig.PartyId, nodeConfig.ListenAddress)
 	if configBlock == nil {
@@ -252,7 +253,7 @@ func (a *Assembler) initFromConfig(
 	a.logger.Infof("Assembler initialized successfully with config sequence number: %d", configSequence)
 }
 
-func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_config.AssemblerNodeConfig, synchronizerFactory synchronizer.SynchronizerFactory, verifierFactory synchronizer.VerifierFactory) {
+func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_config.AssemblerNodeConfig, synchronizerFactory synchronizer.SynchronizerFactory, verifierFactory commonsync.VerifierFactory) {
 	ledgerHeight := a.ledger.LedgerReader().Height()
 	configBlockNumber := configBlock.GetHeader().GetNumber()
 	a.logger.Infof("Initializing assembler ledger, current height: %d, config block number: %d", ledgerHeight, configBlockNumber)

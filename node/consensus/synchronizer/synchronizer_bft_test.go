@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
+	commonsyncmocks "github.com/hyperledger/fabric-x-orderer/common/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
@@ -356,12 +357,12 @@ func TestBFTSynchronizer(t *testing.T) {
 		})
 		fakeCS.SharedConfigReturns(fakeOrdererConfig)
 
-		fakeVerifierFactory := &mocks.VerifierFactory{}
+		fakeVerifierFactory := &commonsyncmocks.VerifierFactory{}
 		fakeVerifier := &mocks.UpdatableBlockVerifier{}
 		fakeVerifierFactory.CreateBlockVerifierReturns(fakeVerifier, nil)
 
-		fakeBFTDelivererFactory := &mocks.BFTDelivererFactory{}
-		fakeBFTDeliverer := &mocks.BFTBlockDeliverer{}
+		fakeBFTDelivererFactory := &commonsyncmocks.BFTDelivererFactory{}
+		fakeBFTDeliverer := &commonsyncmocks.BFTBlockDeliverer{}
 		fakeBFTDelivererFactory.CreateBFTDelivererReturns(fakeBFTDeliverer)
 
 		decision := &types.SyncResponse{
@@ -857,12 +858,12 @@ func TestBFTSynchronizer(t *testing.T) {
 		})
 		fakeCS.SharedConfigReturns(fakeOrdererConfig)
 
-		fakeVerifierFactory := &mocks.VerifierFactory{}
+		fakeVerifierFactory := &commonsyncmocks.VerifierFactory{}
 		fakeVerifier := &mocks.UpdatableBlockVerifier{}
 		fakeVerifierFactory.CreateBlockVerifierReturns(fakeVerifier, nil)
 
-		fakeBFTDelivererFactory := &mocks.BFTDelivererFactory{}
-		fakeBFTDeliverer := &mocks.BFTBlockDeliverer{}
+		fakeBFTDelivererFactory := &commonsyncmocks.BFTDelivererFactory{}
+		fakeBFTDeliverer := &commonsyncmocks.BFTBlockDeliverer{}
 		fakeBFTDelivererFactory.CreateBFTDelivererReturns(fakeBFTDeliverer)
 
 		decision := &types.SyncResponse{
@@ -1004,12 +1005,12 @@ func TestBFTSynchronizer(t *testing.T) {
 		})
 		fakeCS.SharedConfigReturns(fakeOrdererConfig)
 
-		fakeVerifierFactory := &mocks.VerifierFactory{}
+		fakeVerifierFactory := &commonsyncmocks.VerifierFactory{}
 		fakeVerifier := &mocks.UpdatableBlockVerifier{}
 		fakeVerifierFactory.CreateBlockVerifierReturns(fakeVerifier, nil)
 
-		fakeBFTDelivererFactory := &mocks.BFTDelivererFactory{}
-		fakeBFTDeliverer := &mocks.BFTBlockDeliverer{}
+		fakeBFTDelivererFactory := &commonsyncmocks.BFTDelivererFactory{}
+		fakeBFTDeliverer := &commonsyncmocks.BFTBlockDeliverer{}
 		fakeBFTDelivererFactory.CreateBFTDelivererReturns(fakeBFTDeliverer)
 
 		decision := &types.SyncResponse{
@@ -1180,12 +1181,12 @@ func TestBFTSynchronizer(t *testing.T) {
 		})
 		fakeCS.SharedConfigReturns(fakeOrdererConfig)
 
-		fakeVerifierFactory := &mocks.VerifierFactory{}
+		fakeVerifierFactory := &commonsyncmocks.VerifierFactory{}
 		fakeVerifier := &mocks.UpdatableBlockVerifier{}
 		fakeVerifierFactory.CreateBlockVerifierReturns(fakeVerifier, nil)
 
-		fakeBFTDelivererFactory := &mocks.BFTDelivererFactory{}
-		fakeBFTDeliverer := &mocks.BFTBlockDeliverer{}
+		fakeBFTDelivererFactory := &commonsyncmocks.BFTDelivererFactory{}
+		fakeBFTDeliverer := &commonsyncmocks.BFTBlockDeliverer{}
 		fakeBFTDelivererFactory.CreateBFTDelivererReturns(fakeBFTDeliverer)
 
 		decision := &types.SyncResponse{

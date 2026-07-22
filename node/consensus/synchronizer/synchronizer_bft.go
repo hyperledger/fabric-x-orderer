@@ -7,9 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package synchronizer
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -20,25 +17,16 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
-
-// ConsenterEndpointsExtractor implements blocksprovider.EndpointsExtractor
-type ConsenterEndpointsExtractor struct{}
-
-// ExtractEndpoints extracts consenter endpoints from the given orderer configuration
-func (e *ConsenterEndpointsExtractor) ExtractEndpoints(ordererConfig channelconfig.Orderer) (orderers.Party2Endpoint, error) {
-	return config.ExtractConsenterAddresses(ordererConfig)
-}
 
 type BFTSynchronizer struct {
 	lastReconfig        smartbft_types.Reconfig
@@ -51,13 +39,13 @@ type BFTSynchronizer struct {
 	ClusterDialer       *comm.PredicateDialer
 	LocalConfigCluster  config.Cluster
 	BlockPullerFactory  HeightDetectorFactory
-	VerifierFactory     VerifierFactory
-	BFTDelivererFactory BFTDelivererFactory
+	VerifierFactory     commonsync.VerifierFactory
+	BFTDelivererFactory commonsync.BFTDelivererFactory
 	Logger              *flogging.FabricLogger
 	JoinConfigBlock     *common.Block // JoinConfigBlock is the config block that was used to join the cluster.
 
 	mutex    sync.Mutex
-	syncBuff *SyncBuffer
+	syncBuff *commonsync.SyncBuffer
 }
 
 func (s *BFTSynchronizer) Sync() smartbft_types.SyncResponse {
@@ -126,7 +114,7 @@ func (s *BFTSynchronizer) Stop() {
 }
 
 // Buffer return the internal SyncBuffer for testability.
-func (s *BFTSynchronizer) Buffer() *SyncBuffer {
+func (s *BFTSynchronizer) Buffer() *commonsync.SyncBuffer {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -160,7 +148,7 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	// === Create a buffer to accept the blocks delivered from the BFTDeliverer.
 	capacityBlocks := uint(100) // TODO max(uint(s.LocalConfigCluster.ReplicationBufferSize)/uint(s.Support.SharedConfig().BatchSize().AbsoluteMaxBytes), 100)
 	s.mutex.Lock()
-	s.syncBuff = NewSyncBuffer(capacityBlocks)
+	s.syncBuff = commonsync.NewSyncBuffer(capacityBlocks)
 	s.mutex.Unlock()
 
 	// === Create the BFT block deliverer and start a go-routine that fetches block and inserts them into the syncBuffer.
@@ -242,7 +230,7 @@ func (s *BFTSynchronizer) computeTargetHeight(heights []uint64) uint64 {
 }
 
 // createBFTDeliverer creates and initializes the BFT block deliverer.
-func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_types.PartyID) (BFTBlockDeliverer, error) {
+func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_types.PartyID) (commonsync.BFTBlockDeliverer, error) {
 	lastDecision := s.Support.Block(startHeight - 1)
 	ledgerLastConfigBlock, err := s.Support.LastConfigBlock(lastDecision)
 	if err != nil {
@@ -289,7 +277,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	bftDeliverer := s.BFTDelivererFactory.CreateBFTDeliverer(
 		s.Support.ChannelID(),
 		s.syncBuff,
-		&ledgerInfoAdapter{s.Support},
+		commonsync.NewLedgerInfoAdapter(s.Support),
 		updatableVerifier,
 		blocksprovider.DialerAdapter{ClientConfig: clientConfig},
 		&orderers.ConnectionSourceFactory{}, // no overrides in the orderer
@@ -298,7 +286,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 		s.Support,
 		blocksprovider.DeliverAdapter{},
 		&blocksprovider.BFTCensorshipMonitorFactory{},
-		&ConsenterEndpointsExtractor{},
+		&commonsync.EndpointsExtractor{Extract: config.ExtractConsenterAddresses},
 		flogging.MustGetLogger("orderer.blocksprovider").With("channel", s.Support.ChannelID()),
 		minRetryInterval,
 		maxRetryInterval,
@@ -308,6 +296,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 			s.syncBuff.Stop()
 			return true // In the orderer we must limit the time we try to do Synch()
 		},
+		nil, // tlsCertHash: the consensus deliverer does not set a TLS cert hash
 	)
 
 	s.Logger.Infof("Created a BFTDeliverer on channel: %s", s.Support.ChannelID())
@@ -333,45 +322,8 @@ func (s *BFTSynchronizer) fetchGenesisBlock() (*common.Block, error) {
 
 	s.Logger.Infof("Received genesis blocks from %d endpoints: %v", len(genesisByEndpoint), slices.Collect(maps.Keys(genesisByEndpoint)))
 
-	// Calculate required matches
 	clusterSize := len(s.Support.SharedConfig().Consenters())
-	f, requiredMatches, _ := utils.ComputeFTQ(uint16(clusterSize))
-	s.Logger.Infof("Cluster size: %d, F: %d, required matches: %d", clusterSize, f, requiredMatches)
-
-	// Count occurrences of each genesis block by hash
-	blockCounts := make(map[string]int)
-	blockByHash := make(map[string]*common.Block)
-	endpointToHash := []string{}
-	for endpoint, block := range genesisByEndpoint {
-		if block == nil {
-			s.Logger.Warnf("Nil genesis block from endpoint: %s", endpoint)
-			continue
-		}
-
-		blockBytes, err := proto.Marshal(block)
-		if err != nil {
-			s.Logger.Warnf("Cannot marshal genesis block from endpoint: %s; err: %s", endpoint, err)
-			continue
-		}
-
-		blockHash := sha256.Sum256(blockBytes)
-		blockHashStr := hex.EncodeToString(blockHash[:])
-
-		blockCounts[blockHashStr]++
-		blockByHash[blockHashStr] = block
-		endpointToHash = append(endpointToHash, fmt.Sprintf("[EP: %s, H: %s]", endpoint, blockHashStr))
-	}
-
-	// Find a block that appears at least F+1 times
-	for blockHash, count := range blockCounts {
-		if count >= int(requiredMatches) {
-			genesisBlock := blockByHash[blockHash]
-			s.Logger.Infof("Found genesis block with %d matching copies (required: %d)", count, requiredMatches)
-			return genesisBlock, nil
-		}
-	}
-
-	return nil, errors.Errorf("could not find genesis block with at least %d matching copies: %+v", requiredMatches, endpointToHash)
+	return commonsync.SelectGenesisBlock(s.Logger, genesisByEndpoint, clusterSize)
 }
 
 func (s *BFTSynchronizer) getBlocksFromSyncBuffer(startHeight, targetHeight uint64) (*common.Block, error) {

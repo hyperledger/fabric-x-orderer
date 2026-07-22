@@ -22,17 +22,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-//go:generate counterfeiter -o mocks/verifier_factory.go --fake-name VerifierFactory . VerifierFactory
-
-type VerifierFactory interface {
-	CreateBlockVerifier(
-		configBlock *common.Block,
-		lastBlock *common.Block,
-		cryptoProvider bccsp.BCCSP,
-		lg *flogging.FabricLogger,
-	) (deliverclient.CloneableUpdatableBlockVerifier, error)
-}
-
 // ConsenterBlockVerifierCreator creates a block verifier that verifies consenter blocks and can be used by the synchronizer
 type ConsenterBlockVerifierCreator struct{}
 

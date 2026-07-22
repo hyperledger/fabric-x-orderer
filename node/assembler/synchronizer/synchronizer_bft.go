@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package synchronizer
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"maps"
@@ -24,12 +22,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/orderers"
+	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
 
 // AssemblerBFTSynchronizer brings the local assembler ledger up to TargetHeight by pulling
@@ -68,16 +66,16 @@ type AssemblerBFTSynchronizer struct {
 	// BlockPullerFactory creates the genesis fetcher used during the genesis bootstrap phase.
 	BlockPullerFactory GenesisFetcherFactory
 	// VerifierFactory creates the block verifier used to validate delivered blocks.
-	VerifierFactory VerifierFactory
+	VerifierFactory commonsync.VerifierFactory
 	// BFTDelivererFactory creates the BFT block deliverer used during the delivery phase.
-	BFTDelivererFactory BFTDelivererFactory
+	BFTDelivererFactory commonsync.BFTDelivererFactory
 	// JoinConfigBlock is the bootstrap config block supplied by the assembler. It provides the
 	// live orderer endpoint list used to seed the BFT deliverer and may be distinct from the
 	// ledger's last config block, which is used for block verification.
 	JoinConfigBlock *common.Block
 
 	mutex      sync.Mutex
-	syncBuffer *SyncBuffer
+	syncBuffer *commonsync.SyncBuffer
 }
 
 func (a *AssemblerBFTSynchronizer) Sync() error {
@@ -96,7 +94,7 @@ func (a *AssemblerBFTSynchronizer) Stop() {
 }
 
 // Buffer return the internal SyncBuffer for testability.
-func (s *AssemblerBFTSynchronizer) Buffer() *SyncBuffer {
+func (s *AssemblerBFTSynchronizer) Buffer() *commonsync.SyncBuffer {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -136,7 +134,7 @@ func (a *AssemblerBFTSynchronizer) synchronize() error {
 
 	capacityBlocks := uint(100)
 	a.mutex.Lock()
-	a.syncBuffer = NewSyncBuffer(capacityBlocks)
+	a.syncBuffer = commonsync.NewSyncBuffer(capacityBlocks)
 	a.mutex.Unlock()
 
 	// Create the BFT block deliverer
@@ -196,7 +194,7 @@ func (a *AssemblerBFTSynchronizer) getBlocksFromSyncBuffer(startHeight, targetHe
 }
 
 // createBFTDeliverer creates and initializes the BFT block deliverer.
-func (a *AssemblerBFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_types.PartyID) (BFTBlockDeliverer, error) {
+func (a *AssemblerBFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_types.PartyID) (commonsync.BFTBlockDeliverer, error) {
 	if startHeight == 0 {
 		return nil, errors.New("cannot create BFT deliverer from empty ledger (startHeight=0)")
 	}
@@ -255,7 +253,7 @@ func (a *AssemblerBFTSynchronizer) createBFTDeliverer(startHeight uint64, myPart
 	bftDeliverer := a.BFTDelivererFactory.CreateBFTDeliverer(
 		a.Support.ChannelID(),
 		a.syncBuffer,
-		&ledgerInfoAdapter{a.Support},
+		commonsync.NewLedgerInfoAdapter(a.Support),
 		updatableVerifier,
 		blocksprovider.DialerAdapter{ClientConfig: clientConfig},
 		&orderers.ConnectionSourceFactory{}, // no overrides in the orderer
@@ -264,7 +262,7 @@ func (a *AssemblerBFTSynchronizer) createBFTDeliverer(startHeight uint64, myPart
 		a.Support,
 		blocksprovider.DeliverAdapter{},
 		&blocksprovider.BFTCensorshipMonitorFactory{},
-		&AssemblerEndpointsExtractor{},
+		&commonsync.EndpointsExtractor{Extract: config.ExtractAssemblerAddresses},
 		flogging.MustGetLogger("orderer.blocksprovider").With("channel", a.Support.ChannelID()),
 		minRetryInterval,
 		maxRetryInterval,
@@ -300,43 +298,6 @@ func (a *AssemblerBFTSynchronizer) fetchGenesisBlock() (*common.Block, error) {
 
 	a.Logger.Infof("Received genesis blocks from %d endpoints: %v", len(genesisByEndpoint), slices.Collect(maps.Keys(genesisByEndpoint)))
 
-	// Calculate required matches
 	clusterSize := len(a.Support.SharedConfig().Consenters())
-	f, requiredMatches, _ := utils.ComputeFTQ(uint16(clusterSize))
-	a.Logger.Infof("Cluster size: %d, F: %d, required matches: %d", clusterSize, f, requiredMatches)
-
-	// Count occurrences of each genesis block by hash
-	blockCounts := make(map[string]int)
-	blockByHash := make(map[string]*common.Block)
-	endpointToHash := []string{}
-	for endpoint, block := range genesisByEndpoint {
-		if block == nil {
-			a.Logger.Warnf("Nil genesis block from endpoint: %s", endpoint)
-			continue
-		}
-
-		blockBytes, err := proto.Marshal(block)
-		if err != nil {
-			a.Logger.Warnf("Cannot marshal genesis block from endpoint: %s; err: %s", endpoint, err)
-			continue
-		}
-
-		blockHash := sha256.Sum256(blockBytes)
-		blockHashStr := hex.EncodeToString(blockHash[:])
-
-		blockCounts[blockHashStr]++
-		blockByHash[blockHashStr] = block
-		endpointToHash = append(endpointToHash, fmt.Sprintf("[EP: %s, H: %s]", endpoint, blockHashStr))
-	}
-
-	// Find a block that appears at least F+1 times
-	for blockHash, count := range blockCounts {
-		if count >= int(requiredMatches) {
-			genesisBlock := blockByHash[blockHash]
-			a.Logger.Infof("Found genesis block with %d matching copies (required: %d)", count, requiredMatches)
-			return genesisBlock, nil
-		}
-	}
-
-	return nil, errors.Errorf("could not find genesis block with at least %d matching copies: %+v", requiredMatches, endpointToHash)
+	return commonsync.SelectGenesisBlock(a.Logger, genesisByEndpoint, clusterSize)
 }

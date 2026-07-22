@@ -16,6 +16,7 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	commonsyncmocks "github.com/hyperledger/fabric-x-orderer/common/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -651,7 +652,7 @@ func createJoiningAssembler(
 	// and returns itself from Clone, since the synchronizer clones the verifier before use.
 	blockVerifier := &mocks.BlockVerifier{}
 	blockVerifier.CloneReturns(blockVerifier)
-	verifierFactory := &mocks.VerifierFactory{}
+	verifierFactory := &commonsyncmocks.VerifierFactory{}
 	verifierFactory.CreateBlockVerifierReturns(blockVerifier, nil)
 	return assembler.NewDefaultAssembler(
 		testutil.CreateLogger(t, int(partyID)),

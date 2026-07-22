@@ -14,18 +14,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-//go:generate counterfeiter -o mocks/block_verifier.go --fake-name BlockVerifier github.com/hyperledger/fabric-x-orderer/common/deliverclient.CloneableUpdatableBlockVerifier
-
-//go:generate counterfeiter -o mocks/verifier_factory.go --fake-name VerifierFactory . VerifierFactory
-type VerifierFactory interface {
-	CreateBlockVerifier(
-		configBlock *common.Block,
-		lastBlock *common.Block,
-		cryptoProvider bccsp.BCCSP,
-		lg *flogging.FabricLogger,
-	) (deliverclient.CloneableUpdatableBlockVerifier, error)
-}
-
 type AssemblerBlockVerifierCreator struct{}
 
 func (*AssemblerBlockVerifierCreator) CreateBlockVerifier(
