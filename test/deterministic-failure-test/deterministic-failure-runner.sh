@@ -3,26 +3,26 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Chaos runner - stops and starts components in sequential order
+# Failure runner - stops and starts components in sequential order
 
 TEST_DIR=$1
 NUM_PARTIES=$2
 NUM_SHARDS=$3
 
 # Read timing configuration from environment or use defaults
-INITIAL_WAIT=${CHAOS_INITIAL_WAIT:-300}
-STOP_WAIT=${CHAOS_STOP_DURATION:-60}
-START_WAIT=${CHAOS_RESTART_WAIT:-60}
+INITIAL_WAIT=${FAILURE_RUNNER_INITIAL_WAIT:-300}
+STOP_WAIT=${FAILURE_RUNNER_STOP_DURATION:-60}
+START_WAIT=${FAILURE_RUNNER_RESTART_WAIT:-60}
 
 # Get PID directory and working directory
 PID_DIR="${TEST_DIR}/pids"
 WORK_DIR=$(cat ${PID_DIR}/work_dir.txt 2>/dev/null || pwd)
 
-# Create a stop signal file that monitor-completion.sh will create when done
-STOP_SIGNAL="${TEST_DIR}/chaos_stop_signal"
+# Stop signal file created by monitor-completion.sh when the test ends
+STOP_SIGNAL="${TEST_DIR}/failure_runner_stop_signal"
 
 echo "=========================================="
-echo "Chaos Runner Started"
+echo "Failure Runner Started"
 echo "=========================================="
 echo "Configuration:"
 echo "  Initial wait: ${INITIAL_WAIT}s"
@@ -96,12 +96,12 @@ kill_and_restart() {
   sleep $START_WAIT
 }
 
-# Main chaos loop - run until stop signal is received
+# Main failure loop - run until stop signal is received
 while true; do
   # Check if we should stop (test completed)
   if [ -f "${STOP_SIGNAL}" ]; then
     echo "=========================================="
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stop signal received - chaos runner exiting"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stop signal received - failure runner exiting"
     echo "=========================================="
     break
   fi
@@ -109,12 +109,12 @@ while true; do
   for party in $(seq 1 $NUM_PARTIES); do
     # Check stop signal before each party
     if [ -f "${STOP_SIGNAL}" ]; then
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stop signal received - exiting chaos loop"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stop signal received - exiting failure loop"
       break 2
     fi
     
     echo "----------------------------------------------------"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — starting chaos sequence"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — starting failure sequence"
     echo "----------------------------------------------------"
     
     # 1. Assembler
@@ -139,10 +139,10 @@ while true; do
         "batcher${party}-${shard}.log"
     done
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — chaos sequence DONE"
-    # Signal monitor that party ${party} chaos cycle is complete
-    touch "${TEST_DIR}/chaos_party${party}_done"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — failure sequence DONE"
+    # Signal monitor that party ${party} failure cycle is complete
+    touch "${TEST_DIR}/failure_runner_party${party}_done"
   done
 done
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Chaos runner finished"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failure runner finished"

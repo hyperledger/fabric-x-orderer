@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Main chaos test orchestration script
+# Main deterministic failure test orchestration script
 
 # Exit on error
 set -e
@@ -18,16 +18,16 @@ TX_RATE=${TX_RATE:-1000}
 TX_SIZE=${TX_SIZE:-300}
 NUM_PARTIES=${NUM_PARTIES:-4}
 NUM_SHARDS=${NUM_SHARDS:-2}
-CHAOS_ENABLED=${CHAOS_ENABLED:-true}
+FAILURE_RUNNER_ENABLED=${FAILURE_RUNNER_ENABLED:-true}
 
 # Export variables so child processes (like collect-results.sh) can access them
-export DURATION TX_RATE TX_SIZE NUM_PARTIES NUM_SHARDS CHAOS_ENABLED
+export DURATION TX_RATE TX_SIZE NUM_PARTIES NUM_SHARDS FAILURE_RUNNER_ENABLED
 
 # Calculate total transactions
 TOTAL_TXS=$((DURATION * 60 * TX_RATE))
 
 echo "=========================================="
-echo "Chaos Test Configuration"
+echo "Deterministic Failure Test Configuration"
 echo "=========================================="
 echo "Duration: ${DURATION} minutes"
 echo "TX Rate: ${TX_RATE} tx/s"
@@ -35,11 +35,11 @@ echo "TX Size: ${TX_SIZE} bytes"
 echo "Total TXs: ${TOTAL_TXS}"
 echo "Parties: ${NUM_PARTIES}"
 echo "Shards: ${NUM_SHARDS}"
-echo "Chaos Enabled: ${CHAOS_ENABLED}"
+echo "Failure Runner Enabled: ${FAILURE_RUNNER_ENABLED}"
 echo "=========================================="
 
 # Create temp directory for test
-TEST_DIR=$(mktemp -d -t chaos-test-XXXXXX)
+TEST_DIR=$(mktemp -d -t deterministic-failure-test-XXXXXX)
 echo "Test directory: ${TEST_DIR}"
 
 # Generate config YAML
@@ -154,31 +154,31 @@ echo "Starting loader..."
 LOADER_PID=$!
 echo "Started loader (PID: ${LOADER_PID})"
 
-# Start chaos runner (if enabled)
-if [ "$CHAOS_ENABLED" = "true" ]; then
-  echo "Starting chaos runner..."
-  # Write marker so monitor-completion.sh knows chaos mode is active
-  touch "${TEST_DIR}/chaos_enabled"
-  "${SCRIPT_DIR}/chaos-runner.sh" "${TEST_DIR}" "${NUM_PARTIES}" "${NUM_SHARDS}" &
-  CHAOS_PID=$!
-  echo "Started chaos runner (PID: ${CHAOS_PID})"
+# Start failure runner (if enabled)
+if [ "$FAILURE_RUNNER_ENABLED" = "true" ]; then
+  echo "Starting failure runner..."
+  # Write marker so monitor-completion.sh knows failure runner mode is active
+  touch "${TEST_DIR}/failure_runner_enabled"
+  "${SCRIPT_DIR}/deterministic-failure-runner.sh" "${TEST_DIR}" "${NUM_PARTIES}" "${NUM_SHARDS}" &
+  FAILURE_RUNNER_PID=$!
+  echo "Started failure runner (PID: ${FAILURE_RUNNER_PID})"
 fi
 
 # Monitor completion (with duration timeout)
 echo "Monitoring test completion..."
 "${SCRIPT_DIR}/monitor-completion.sh" "${NUM_PARTIES}" "${TOTAL_TXS}" "${TEST_DIR}" "${DURATION}"
 
-# Wait a bit for chaos runner to see the stop signal and exit gracefully
-if [ "$CHAOS_ENABLED" = "true" ] && [ -n "$CHAOS_PID" ]; then
-  echo "Waiting for chaos runner to stop gracefully..."
+# Wait a bit for failure runner to see the stop signal and exit gracefully
+if [ "$FAILURE_RUNNER_ENABLED" = "true" ] && [ -n "$FAILURE_RUNNER_PID" ]; then
+  echo "Waiting for failure runner to stop gracefully..."
   sleep 5
 
   # Check if it's still running and force kill if needed
-  if kill -0 ${CHAOS_PID} 2>/dev/null; then
-    echo "Force stopping chaos runner..."
-    kill ${CHAOS_PID} 2>/dev/null || true
+  if kill -0 ${FAILURE_RUNNER_PID} 2>/dev/null; then
+    echo "Force stopping failure runner..."
+    kill ${FAILURE_RUNNER_PID} 2>/dev/null || true
   else
-    echo "Chaos runner stopped gracefully"
+    echo "Failure runner stopped gracefully"
   fi
 fi
 
@@ -192,5 +192,5 @@ pkill -f "arma " || true
 pkill -f "armageddon" || true
 
 echo "=========================================="
-echo "✅ Chaos test completed successfully!"
+echo "✅ Deterministic failure test completed successfully!"
 echo "=========================================="

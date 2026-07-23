@@ -83,20 +83,19 @@ get_current_stats() {
   echo "=========================================="
 }
 
-# Determine if chaos mode is active by checking for the chaos stop signal path
-# (chaos-runner.sh is only started when CHAOS_ENABLED=true, and it creates party done files)
-CHAOS_MODE=false
-# We detect chaos mode by checking if the chaos runner is running (its stop signal file
-# path exists means chaos was enabled - we use a marker written by chaos-test.sh)
-if [ -f "${TEST_DIR}/chaos_enabled" ]; then
-  CHAOS_MODE=true
+# Determine if failure runner mode is active
+# (deterministic-failure-runner.sh is only started when FAILURE_RUNNER_ENABLED=true)
+FAILURE_RUNNER_MODE=false
+# We detect failure runner mode via a marker written by deterministic-failure-test.sh
+if [ -f "${TEST_DIR}/failure_runner_enabled" ]; then
+  FAILURE_RUNNER_MODE=true
 fi
 
 # Monitor with timeout
 echo "Monitoring test progress..."
 LAST_STATS_TIME=$START_TIME
 # Track which party cycles we have already printed stats for
-LAST_CHAOS_PARTY=0
+LAST_FAILURE_RUNNER_PARTY=0
 
 while true; do
   CURRENT_TIME=$(date +%s)
@@ -135,21 +134,21 @@ while true; do
     break
   fi
 
-  if [ "$CHAOS_MODE" = "true" ]; then
-    # In chaos mode: print stats after each party's full chaos cycle completes
+  if [ "$FAILURE_RUNNER_MODE" = "true" ]; then
+    # In failure runner mode: print stats after each party's full failure cycle completes
     for party in $(seq 1 $NUM_PARTIES); do
-      SIGNAL_FILE="${TEST_DIR}/chaos_party${party}_done"
+      SIGNAL_FILE="${TEST_DIR}/failure_runner_party${party}_done"
       if [ -f "$SIGNAL_FILE" ]; then
         echo ""
         echo "=========================================="
-        echo "🔥 Party ${party} chaos cycle complete"
+        echo "🔥 Party ${party} failure cycle complete"
         echo "=========================================="
         get_current_stats
         rm -f "$SIGNAL_FILE"
       fi
     done
   else
-    # No chaos: print stats every 5 minutes
+    # No failure runner: print stats every 5 minutes
     if [ $((CURRENT_TIME - LAST_STATS_TIME)) -ge 300 ]; then
       get_current_stats
       LAST_STATS_TIME=$CURRENT_TIME
@@ -188,9 +187,9 @@ done
 
 echo "=========================================="
 
-# Signal chaos runner and other processes to stop
+# Signal failure runner and other processes to stop
 if [ -n "$TEST_DIR" ]; then
-  STOP_SIGNAL="${TEST_DIR}/chaos_stop_signal"
+  STOP_SIGNAL="${TEST_DIR}/failure_runner_stop_signal"
   touch "${STOP_SIGNAL}"
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Created stop signal: ${STOP_SIGNAL}"
 fi

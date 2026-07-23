@@ -17,7 +17,6 @@ echo "=========================================="
 rm -rf test-results
 mkdir -p test-results/logs
 mkdir -p test-results/statistics
-mkdir -p test-results/summary
 
 # Extract statistics BEFORE compressing/moving logs
 echo "Extracting statistics from logs..."
@@ -81,9 +80,9 @@ done
 
 # Create summary report
 echo "Creating summary report..."
-cat > test-results/summary/summary.txt <<EOF
+cat > test-results/summary.txt <<EOF
 ========================================
-Chaos Test Summary
+Deterministic Failure Test Summary
 ========================================
 Date: $(date)
 Duration: ${DURATION} minutes
@@ -92,7 +91,7 @@ TX Size: ${TX_SIZE} bytes
 Total TXs Expected: $((DURATION * 60 * TX_RATE))
 Parties: ${NUM_PARTIES}
 Shards: ${NUM_SHARDS}
-Chaos Enabled: ${CHAOS_ENABLED}
+Failure Runner Enabled: ${FAILURE_RUNNER_ENABLED}
 
 ========================================
 Loader Results
@@ -101,14 +100,14 @@ EOF
 
 # Use pre-extracted statistics
 if [ "$LOADER_STATUS" = "completed" ]; then
-  echo "✅ Loader completed" >> test-results/summary/summary.txt
-  echo "Sent: ${SENT:-unknown} transactions" >> test-results/summary/summary.txt
+  echo "✅ Loader completed" >> test-results/summary.txt
+  echo "Sent: ${SENT:-unknown} transactions" >> test-results/summary.txt
 else
-  echo "⏰ Loader stopped by timeout" >> test-results/summary/summary.txt
-  echo "Sent: ${SENT:-0} transactions (incomplete)" >> test-results/summary/summary.txt
+  echo "⏰ Loader stopped by timeout" >> test-results/summary.txt
+  echo "Sent: ${SENT:-0} transactions (incomplete)" >> test-results/summary.txt
 fi
 
-cat >> test-results/summary/summary.txt <<EOF
+cat >> test-results/summary.txt <<EOF
 
 ========================================
 Receiver Results
@@ -118,13 +117,13 @@ EOF
 # Use pre-extracted receiver statistics
 TOTAL_RECEIVED=0
 for i in $(seq 1 $NUM_PARTIES); do
-  echo "Party ${i}:" >> test-results/summary/summary.txt
+  echo "Party ${i}:" >> test-results/summary.txt
   
   RECEIVED="${RECEIVER_STATS[$i]}"
   STATUS="${RECEIVER_STATUS[$i]}"
   
   if [ "$STATUS" = "completed" ]; then
-    echo "  ✅ Completed - Received: ${RECEIVED} txs" >> test-results/summary/summary.txt
+    echo "  ✅ Completed - Received: ${RECEIVED} txs" >> test-results/summary.txt
     if [ -n "$RECEIVED" ] && [ "$RECEIVED" != "unknown" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
       TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
     fi
@@ -132,15 +131,15 @@ for i in $(seq 1 $NUM_PARTIES); do
     # Get block count from CSV
     if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
       BLOCKS=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
-      echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs in ${BLOCKS} blocks" >> test-results/summary/summary.txt
+      echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs in ${BLOCKS} blocks" >> test-results/summary.txt
     else
-      echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs" >> test-results/summary/summary.txt
+      echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs" >> test-results/summary.txt
     fi
     if [ -n "$RECEIVED" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
       TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
     fi
   else
-    echo "  ❌ No statistics available" >> test-results/summary/summary.txt
+    echo "  ❌ No statistics available" >> test-results/summary.txt
   fi
 done
 
@@ -155,7 +154,7 @@ if [ -n "$SENT" ] && [ "$SENT" -gt 0 ]; then
   fi
 fi
 
-cat >> test-results/summary/summary.txt <<EOF
+cat >> test-results/summary.txt <<EOF
 
 ========================================
 Overall Statistics
@@ -167,16 +166,16 @@ Success Rate: ${PARTY_SUCCESS_RATE}%
 EOF
 
 # Create a simple pass/fail indicator
-echo "" >> test-results/summary/summary.txt
-echo "========================================" >> test-results/summary/summary.txt
-echo "Test Status" >> test-results/summary/summary.txt
-echo "========================================" >> test-results/summary/summary.txt
+echo "" >> test-results/summary.txt
+echo "========================================" >> test-results/summary.txt
+echo "Test Status" >> test-results/summary.txt
+echo "========================================" >> test-results/summary.txt
 
 if [ -n "$SENT" ] && [ "$SENT" -gt 0 ] && [ "${REPRESENTATIVE_RECEIVED:-0}" -gt 0 ] 2>/dev/null; then
-  echo "✅ PASSED - Test ran for ${DURATION} minutes" >> test-results/summary/summary.txt
-  echo "   Sent: ${SENT} txs, each party received: ${REPRESENTATIVE_RECEIVED} txs (${PARTY_SUCCESS_RATE}%)" >> test-results/summary/summary.txt
+  echo "✅ PASSED - Test ran for ${DURATION} minutes" >> test-results/summary.txt
+  echo "   Sent: ${SENT} txs, each party received: ${REPRESENTATIVE_RECEIVED} txs (${PARTY_SUCCESS_RATE}%)" >> test-results/summary.txt
 else
-  echo "❌ FAILED - No transactions processed" >> test-results/summary/summary.txt
+  echo "❌ FAILED - No transactions processed" >> test-results/summary.txt
 fi
 
 echo "=========================================="
@@ -184,4 +183,4 @@ echo "✅ Results collected in test-results/"
 echo "=========================================="
 
 # Display summary
-cat test-results/summary/summary.txt
+cat test-results/summary.txt
