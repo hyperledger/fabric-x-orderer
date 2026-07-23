@@ -17,20 +17,27 @@ import (
 	"testing"
 	"time"
 
+	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	protosorderer "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/msputils/mock"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
+	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -465,6 +472,205 @@ func TestExtractAssemblerAddresses(t *testing.T) {
 			require.NotEmpty(t, rootCert)
 			require.Equal(t, len(rootCert), len(sharedPartyConfig.TLSCACerts[i]))
 		}
+	}
+}
+
+// rejoinTestEnv holds the shared setup for the node-rejoin block-selection test. Each node role
+// (router, batcher, assembler, consensus) discovers its last stored config block from a different kind of
+// local storage, but they all read it through config.ReadConfig and must boot from the more
+// advanced of the stored block and the bootstrap block. This env factors out the common network
+// generation and the config-block/bootstrap/read helpers shared across node roles and scenarios.
+type rejoinTestEnv struct {
+	dir          string
+	genesisBlock *common.Block
+	logger       *flogging.FabricLogger
+}
+
+// newRejoinTestEnv generates a fresh network once and returns an env that all node roles share.
+func newRejoinTestEnv(t *testing.T) *rejoinTestEnv {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "mTLS", "mTLS")
+	t.Cleanup(netInfo.CleanUp)
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	// genesisBlock is a valid config block, used as the template for both stored and bootstrap blocks.
+	genesisData, err := os.ReadFile(filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	require.NoError(t, err)
+	genesisBlock, err := protoutil.UnmarshalBlock(genesisData)
+	require.NoError(t, err)
+
+	return &rejoinTestEnv{
+		dir:          dir,
+		genesisBlock: genesisBlock,
+		logger:       testutil.CreateLoggerForModule(t, "ReadConfigRejoin", zap.DebugLevel),
+	}
+}
+
+// configBlockOfNumber returns a clone of the genesis config block with the given sequence number.
+func (e *rejoinTestEnv) configBlockOfNumber(number uint64) *common.Block {
+	block := proto.Clone(e.genesisBlock).(*common.Block)
+	block.Header.Number = number
+	return block
+}
+
+// writeBootstrapBlock writes a config block with the given number to a file and returns its path.
+func (e *rejoinTestEnv) writeBootstrapBlock(t *testing.T, name string, number uint64) string {
+	path := filepath.Join(e.dir, "bootstrap", name)
+	require.NoError(t, os.WriteFile(path, protoutil.MarshalOrPanic(e.configBlockOfNumber(number)), 0o644))
+	return path
+}
+
+// readSelectedConfigBlock points the given node's local config at the storage path and bootstrap
+// file, reads the configuration, and returns the config block that was selected.
+func (e *rejoinTestEnv) readSelectedConfigBlock(t *testing.T, localConfigFile, storagePath, bootstrapPath string) *common.Block {
+	localConfigPath := filepath.Join(e.dir, "config", "party1", localConfigFile)
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPath, storagePath, bootstrapPath, 0)
+	_, block, err := config.ReadConfig(localConfigPath, e.logger)
+	require.NoError(t, err)
+	require.NotNil(t, block)
+	return block
+}
+
+// rejoinScenario describes one stored-vs-bootstrap block-selection case, shared by all node roles.
+type rejoinScenario struct {
+	name                string
+	subdir              string
+	seed                bool     // whether the node's storage is pre-seeded with a stored config block
+	storedNumber        uint64   // sequence number of the pre-seeded stored config block
+	bootstrap           uint64   // sequence number of the bootstrap config block
+	expected            uint64   // sequence number of the block that must be selected
+	expectedStoreBlocks []uint64 // exact set of block numbers expected in a config-store node's (router/batcher) store afterwards
+}
+
+// rejoinNode describes one node role: which local config it reads and how to seed/verify its storage.
+type rejoinNode struct {
+	name            string
+	localConfigFile string
+	seed            func(t *testing.T, storagePath string, storedNumber uint64)
+	verify          func(t *testing.T, storagePath string, s rejoinScenario) // optional, nil if none
+}
+
+// TestReadConfigRejoinBlock verifies how each node role selects between its last stored config block
+// and the bootstrap block: it must always boot from the more advanced block (by sequence number).
+// The network is created once and every scenario (empty / ahead / behind / equal) is exercised
+// against all node roles — router, batcher, assembler, and consensus — which each store their last
+// config block differently. Router and batcher additionally persist the selected block to their
+// config store (when the bootstrap is a rejoin-block ahead of the stored one), so they also assert
+// on store state.
+func TestReadConfigRejoinBlock(t *testing.T) {
+	e := newRejoinTestEnv(t)
+
+	// --- router / batcher: config store ---
+	// Router and batcher nodes both persist config blocks in a configstore.Store (see ReadConfig),
+	// so they share the same seed and verify logic.
+	seedConfigStore := func(t *testing.T, storagePath string, storedNumber uint64) {
+		store, err := configstore.NewStore(storagePath)
+		require.NoError(t, err)
+		require.NoError(t, store.Add(e.configBlockOfNumber(storedNumber)))
+	}
+	verifyConfigStore := func(t *testing.T, storagePath string, s rejoinScenario) {
+		store, err := configstore.NewStore(storagePath)
+		require.NoError(t, err)
+		last, err := store.Last()
+		require.NoError(t, err)
+		// The selected (more advanced) block must be the last block in the store.
+		require.Equal(t, s.expected, last.Header.Number)
+		// The store must hold exactly the expected set: a behind/equal bootstrap is never persisted.
+		nums, err := store.ListBlockNumbers()
+		require.NoError(t, err)
+		require.ElementsMatch(t, s.expectedStoreBlocks, nums)
+	}
+
+	// --- assembler: block ledger ---
+	// ledgerConfigBlock returns a clone of the genesis config block with the given sequence number,
+	// a LAST_CONFIG metadata entry pointing at itself, and a previous-hash chained to prevBlock (nil
+	// for a genesis block). This keeps the block valid for the assembler ledger, which validates the
+	// block number and previous-hash chain on append.
+	ledgerConfigBlock := func(number uint64, prevBlock *common.Block) *common.Block {
+		block := e.configBlockOfNumber(number)
+		// Reset the metadata to empty slots so the last-config index is read from the LAST_CONFIG entry
+		// we set below. GetLastConfigIndexFromBlock reads the SIGNATURES metadata first and only falls
+		// back to LAST_CONFIG when SIGNATURES is empty, so the cloned genesis SIGNATURES must be cleared.
+		block.Metadata = &common.BlockMetadata{Metadata: [][]byte{{}, {}, {}, {}, {}}}
+		block.Metadata.Metadata[common.BlockMetadataIndex_LAST_CONFIG] = protoutil.MarshalOrPanic(&common.Metadata{
+			Value: protoutil.MarshalOrPanic(&common.LastConfig{Index: number}),
+		})
+		if prevBlock != nil {
+			block.Header.PreviousHash = protoutil.BlockHeaderHash(prevBlock.Header)
+		} else {
+			block.Header.PreviousHash = nil
+		}
+		return block
+	}
+	// seedAssemblerLedger appends config blocks 0..storedNumber to a fresh assembler ledger at
+	// storagePath, so that GetLastConfigBlockFromAssemblerLedger returns the block numbered storedNumber.
+	seedAssemblerLedger := func(t *testing.T, storagePath string, storedNumber uint64) {
+		al, err := node_ledger.NewAssemblerLedger(e.logger, storagePath)
+		require.NoError(t, err)
+		defer al.Close()
+		al.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, e.logger), "party1", e.logger)
+		var prev *common.Block
+		for n := uint64(0); n <= storedNumber; n++ {
+			block := ledgerConfigBlock(n, prev)
+			al.AppendBlock(block)
+			prev = block
+		}
+	}
+
+	// --- consensus: decision ledger ---
+	// seedConsensusLedger appends a single decision block (number 0) to a fresh consensus ledger at
+	// storagePath. The decision is its own last config decision and carries a config block numbered
+	// storedNumber as its last available common block, so GetLastConfigBlockFromConsensusLedger
+	// returns exactly that config block.
+	seedConsensusLedger := func(t *testing.T, storagePath string, storedNumber uint64) {
+		cl, err := node_ledger.NewConsensusLedger(storagePath)
+		require.NoError(t, err)
+		defer cl.Close()
+
+		header := &state.Header{
+			Num:                          0,
+			DecisionNumOfLastConfigBlock: 0,
+			AvailableCommonBlocks:        []*common.Block{e.configBlockOfNumber(storedNumber)},
+		}
+		proposal := smartbft_types.Proposal{Header: header.Serialize()}
+		decisionBlock := state.CreateBlockToAppendFromDecision(0, proposal, nil, nil, 0)
+		cl.Append(decisionBlock)
+	}
+
+	nodes := []rejoinNode{
+		{name: "router", localConfigFile: "local_config_router.yaml", seed: seedConfigStore, verify: verifyConfigStore},
+		{name: "batcher", localConfigFile: "local_config_batcher1.yaml", seed: seedConfigStore, verify: verifyConfigStore},
+		{name: "assembler", localConfigFile: "local_config_assembler.yaml", seed: seedAssemblerLedger},
+		{name: "consensus", localConfigFile: "local_config_consenter.yaml", seed: seedConsensusLedger},
+	}
+
+	scenarios := []rejoinScenario{
+		{name: "empty storage, bootstrap taken", subdir: "empty", seed: false, storedNumber: 0, bootstrap: 0, expected: 0, expectedStoreBlocks: []uint64{0}},
+		{name: "bootstrap ahead of stored, bootstrap taken", subdir: "ahead", seed: true, storedNumber: 3, bootstrap: 5, expected: 5, expectedStoreBlocks: []uint64{3, 5}},
+		{name: "bootstrap behind stored, stored kept", subdir: "behind", seed: true, storedNumber: 5, bootstrap: 3, expected: 5, expectedStoreBlocks: []uint64{5}},
+		{name: "bootstrap equal to stored, stored kept", subdir: "equal", seed: true, storedNumber: 5, bootstrap: 5, expected: 5, expectedStoreBlocks: []uint64{5}},
+	}
+
+	for _, s := range scenarios {
+		t.Run(s.name, func(t *testing.T) {
+			for _, n := range nodes {
+				t.Run(n.name, func(t *testing.T) {
+					storagePath := filepath.Join(e.dir, "storage", n.name, s.subdir)
+					if s.seed {
+						n.seed(t, storagePath, s.storedNumber)
+					}
+					bootstrapPath := e.writeBootstrapBlock(t, n.name+"_"+s.subdir+"_bootstrap.block", s.bootstrap)
+
+					block := e.readSelectedConfigBlock(t, n.localConfigFile, storagePath, bootstrapPath)
+					require.Equal(t, s.expected, block.Header.Number)
+
+					if n.verify != nil {
+						n.verify(t, storagePath, s)
+					}
+				})
+			}
+		})
 	}
 }
 
