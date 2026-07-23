@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -66,6 +67,7 @@ type Router struct {
 	configSubmitter  ConfigurationSubmitter
 	shardRouters     map[types.ShardID]*ShardRouter
 	decisionPuller   DecisionPuller
+	configAcker      configack.Sender
 	metrics          *RouterMetrics
 	stopChan         chan struct{}
 	stopOnce         sync.Once
@@ -133,6 +135,21 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.verifier = createVerifier(rconfig)
 
 	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier)
+
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCA := range r.routerNodeConfig.Consenter.TLSCACerts {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
+	}
+	connInfo := &configack.ConnectionInfo{
+		TLSCert:           r.routerNodeConfig.TLSCertificateFile,
+		TLSKey:            r.routerNodeConfig.TLSPrivateKeyFile,
+		ConsensusEndpoint: r.routerNodeConfig.Consenter.Endpoint,
+		ConsensusRootCAs:  tlsCAsOfConsenter,
+		PartyID:           r.routerNodeConfig.PartyID,
+		NodeType:          protos.NodeType_ROUTER,
+		Shard:             0,
+	}
+	r.configAcker = configack.NewSender(connInfo, r.logger)
 
 	// create shard routers
 	batcherEndpoints := make(map[types.ShardID]string)
@@ -299,6 +316,9 @@ func (r *Router) Stop() {
 	}
 
 	r.wal.Close()
+
+	// stop the config acker
+	r.configAcker.Stop()
 
 	r.status.SetState(node_utils.StateStopped)
 
@@ -667,6 +687,17 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 		return
 	}
 
+	// send ack to the consensus node
+	configSeq, err := utils.GetConfigSequenceFromBlock(r.logger, configBlock, r.routerNodeConfig.BCCSP)
+	if err != nil {
+		r.logger.Warnf("failed to get config sequence from block %d", configSeq)
+		return
+	}
+	if err := r.configAcker.SubmitConfigAck(configSeq); err != nil {
+		r.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
+	}
+
+	// apply config
 	adminRequired, err := r.ApplyConfig(configBlock)
 	if err != nil {
 		r.logger.Panicf("Failed to apply last config: %v", err)

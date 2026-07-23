@@ -13,6 +13,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
+
 	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
@@ -126,6 +128,12 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.txCount = txCount
 	c.PrevHash = prevHash
 	c.fullConfig = config
+
+	var shards []arma_types.ShardID
+	for _, shardInfo := range c.Config.Shards {
+		shards = append(shards, shardInfo.ShardId)
+	}
+	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards)
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
 	setupComm(c)

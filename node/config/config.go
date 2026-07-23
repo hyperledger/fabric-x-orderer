@@ -127,6 +127,7 @@ type AssemblerNodeConfig struct {
 	Bundle             channelconfig.Resources
 	Operations         *operations.Operations
 	Metrics            *operations.Metrics
+	BCCSP              bccsp.BCCSP
 }
 
 type BatcherNodeConfig struct {
@@ -157,6 +158,7 @@ type BatcherNodeConfig struct {
 	Bundle                              channelconfig.Resources
 	Operations                          *operations.Operations
 	Metrics                             *operations.Metrics
+	BCCSP                               bccsp.BCCSP
 }
 
 type ConsenterNodeConfig struct {

@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
+
 	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -88,6 +90,7 @@ type Batcher struct {
 	mainExitChan                       chan struct{}
 	isStopped                          bool
 	isSoftStopped                      bool
+	configAcker                        configack.Sender
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -201,6 +204,8 @@ func (b *Batcher) Stop() {
 		b.opsSystem.Stop()
 	}
 
+	b.configAcker.Stop()
+
 	b.wal.Close()
 	b.Net.Stop()
 	b.Ledger.Close()
@@ -306,6 +311,17 @@ func (b *Batcher) replicateDecision() {
 func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	b.SoftStop()
 	b.logger.Infof("Apply config")
+
+	// send ack to the consensus node
+	configSeq, err := utils.GetConfigSequenceFromBlock(b.logger, configBlock, b.config.BCCSP)
+	if err != nil {
+		b.logger.Warnf("failed to get config sequence from block %d", configSeq)
+		return
+	}
+	if err := b.configAcker.SubmitConfigAck(configSeq); err != nil {
+		b.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
+	}
+
 	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
 	if err != nil {
 		b.logger.Panicf("Failed applying new config: %s", err)
