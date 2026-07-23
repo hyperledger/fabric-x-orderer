@@ -112,7 +112,7 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
 - `request/` — router-side request pool/batching internals (pending, buckets, batch store).
 - `common/` — cross-cutting infra: `policy`, `msputils`, `requestfilter`, `monitoring`,
   `operations` (ops/metrics endpoint), `synchronizer` (shared state-sync), `configstore`.
-- Protobuf definitions live under `node/protos/` and `node/comm/`; regenerate with `make protos`,
+- Protobuf definitions live under `node/protos/` and `common/ledger/blkstorage/` (test-only protos live under `node/comm/testdata/`); regenerate with `make protos`,
   never hand-edit generated `.pb.go` files. `check-protos` verifies they are current.
 - Dependencies are **vendored** (`vendor/`); `make check-deps` flags unused vendored deps.
 
