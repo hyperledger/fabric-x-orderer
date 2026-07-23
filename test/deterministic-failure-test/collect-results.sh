@@ -83,7 +83,7 @@ done
 echo "Creating summary report..."
 cat > test-results/summary/summary.txt <<EOF
 ========================================
-Chaos Test Summary
+Deterministic Failure Test Summary
 ========================================
 Date: $(date)
 Duration: ${DURATION} minutes
@@ -92,7 +92,7 @@ TX Size: ${TX_SIZE} bytes
 Total TXs Expected: $((DURATION * 60 * TX_RATE))
 Parties: ${NUM_PARTIES}
 Shards: ${NUM_SHARDS}
-Chaos Enabled: ${CHAOS_ENABLED}
+Failure Runner Enabled: ${FAILURE_RUNNER_ENABLED}
 
 ========================================
 Loader Results
