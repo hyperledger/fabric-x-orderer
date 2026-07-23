@@ -238,7 +238,7 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
-		panic(fmt.Sprintf("error launching router, failed extracting router config: %s", err))
+		panic(fmt.Sprintf("failed extracting router config bccsp: %s", err))
 	}
 
 	// use shards to get every party's RootCAs
@@ -291,6 +291,11 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
+	}
+
+	bccsp, err := config.GetBCCSP()
+	if err != nil {
+		panic(fmt.Sprintf("failed extracting batcher config bccsp: %s", err))
 	}
 
 	// use shards to get every party's RootCAs
@@ -348,6 +353,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
+		BCCSP:                               bccsp,
 	}
 
 	if batcherConfig.FirstStrikeThreshold, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.FirstStrikeThreshold); err != nil {
@@ -381,7 +387,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
-		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
+		panic(fmt.Sprintf("failed extracting consenter config bccsp: %s", err))
 	}
 
 	// TODO: avoid duplications in clientRootCAs
@@ -433,6 +439,11 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 }
 
 func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
+	bccsp, err := config.GetBCCSP()
+	if err != nil {
+		panic(fmt.Sprintf("failed extracting assembler config bccsp: %s", err))
+	}
+
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -485,6 +496,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
 		},
 		Bundle: bundle,
+		BCCSP:  bccsp,
 	}
 	return assemblerConfig
 }

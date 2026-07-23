@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package assembler_test
 
 import (
+	"context"
 	"encoding/asn1"
 	"fmt"
 	"net"
@@ -19,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -76,6 +78,7 @@ func NewStubConsenter(t *testing.T, partyID types.PartyID, ca tlsgen.CA) *stubCo
 	}
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), stubConsenter)
+	protos.RegisterConsensusServer(server.Server(), stubConsenter)
 
 	go func() {
 		address := server.Address()
@@ -215,4 +218,21 @@ func (sc *stubConsenter) SetNextDecision(ba *state.AvailableBatchOrdered) {
 	protoutil.InitBlockMetadata(block)
 	block.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = state.DecisionSignaturesToBytes(signatures)
 	sc.decisions <- block
+}
+
+func (sc *stubConsenter) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+	return &protos.ConfigAckResponse{}, nil
+}
+
+func (sc *stubConsenter) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
+	return fmt.Errorf("NotifyEvent not implemented")
+}
+
+func (sc *stubConsenter) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
+	resp := &protos.SubmitResponse{
+		Error:   "dummy submit config",
+		ReqID:   request.Identity,
+		TraceId: request.TraceId,
+	}
+	return resp, nil
 }
