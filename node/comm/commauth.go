@@ -136,9 +136,13 @@ func (ac *AuthCommMgr) getOrCreateMapping() MemberMapping {
 func (ac *AuthCommMgr) updateStubInMapping(mapping MemberMapping, node RemoteNode) {
 	stub := mapping.ByID(node.ID)
 	if stub == nil {
-		ac.Logger.Infof("Allocating a new stub for node %v with endpoint %v", node.ID, node.Endpoint)
+		ac.Logger.Infof("Allocating a new stub for node %d with endpoint %v", node.ID, node.Endpoint)
 		stub = &Stub{}
 	}
+
+	// First disconnect and deactivate the stub
+	ac.Connections.Disconnect(stub.Endpoint)
+	stub.Deactivate()
 
 	// Overwrite the stub Node data with the new data
 	stub.RemoteNode = node
@@ -146,13 +150,10 @@ func (ac *AuthCommMgr) updateStubInMapping(mapping MemberMapping, node RemoteNod
 	// Put the stub into the mapping
 	mapping.Put(stub)
 
-	// Check if the stub needs activation.
-	if stub.Active() {
-		return
+	// Now activate the stub
+	if err := stub.Activate(ac.createRemoteContext(stub)); err != nil {
+		ac.Logger.Warnf("Unable to activate stub for node %d: %v", node.ID, err)
 	}
-
-	// Activate the stub
-	stub.Activate(ac.createRemoteContext(stub))
 }
 
 func (ac *AuthCommMgr) createRemoteContext(stub *Stub) func() (*RemoteContext, error) {
