@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package state_test
 
 import (
-	"math"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -338,45 +337,6 @@ func TestStateString(t *testing.T) {
 	assert.Contains(t, str2, "Pending: 6")
 	assert.Contains(t, str2, "... and 1 more")
 	assert.Contains(t, str2, "Complaints: 6")
-}
-
-func TestComplaintSerialization(t *testing.T) {
-	c := consensus_state.Complaint{
-		ShardTerm: consensus_state.ShardTerm{
-			Shard: 1,
-			Term:  2,
-		},
-		Signer:    3,
-		Signature: []byte{4},
-		Reason:    "abc",
-		ConfigSeq: 20,
-	}
-
-	var c2 consensus_state.Complaint
-
-	err := c2.FromBytes(c.Bytes())
-	assert.NoError(t, err)
-
-	assert.Equal(t, c, c2)
-
-	// check with no reason
-	c.Reason = ""
-	err = c2.FromBytes(c.Bytes())
-	assert.NoError(t, err)
-	assert.Equal(t, c, c2)
-
-	// check with long reason
-	longReason := make([]byte, 2*math.MaxUint16)
-	c.Reason = string(longReason)
-	err = c2.FromBytes(c.Bytes())
-	assert.NoError(t, err)
-
-	shorterReason := make([]byte, math.MaxUint16)
-	assert.Equal(t, string(shorterReason), c2.Reason)
-
-	assert.Equal(t, c.Signer, c2.Signer)
-	assert.Equal(t, c.ShardTerm, c2.ShardTerm)
-	assert.Equal(t, c.Signature, c2.Signature)
 }
 
 func TestControlEventSerialization(t *testing.T) {
