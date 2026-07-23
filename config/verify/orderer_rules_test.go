@@ -512,11 +512,11 @@ func generateConsenterTLSCert(t *testing.T, dir string, partyID int) []byte {
 
 	org := fmt.Sprintf("org%d", partyID)
 
-	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "tlsca", "tlsca-cert.pem")
+	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "tlsca", fmt.Sprintf("tls%s-CA-cert.pem", org))
 	tlsCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "tlsca", "priv_sk")
 
-	tlsDir := filepath.Join(dir, "crypto", "ordererOrganizations", org, "orderers", fmt.Sprintf("party%d", partyID), "consenter", "tls")
-	newKeyPath := filepath.Join(tlsDir, "key.pem")
+	tlsDir := filepath.Join(dir, "crypto", "ordererOrganizations", org, "orderers", fmt.Sprintf("party%d", partyID), "consenter", "tls", "server.crt")
+	newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "orderers", fmt.Sprintf("party%d", partyID), "consenter", "tls", "server.key")
 
 	newCert, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", tlsDir, newKeyPath, []string{"127.0.0.1"})
 	require.NoError(t, err)

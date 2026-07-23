@@ -91,7 +91,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		t.Logf(">>> Step 2: Submitting first config update (batch creation timeout)")
 
 		// Create router context for config submission
-		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
+		routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/server.crt"))
 		require.NoError(t, err)
 		block, _ := pem.Decode(routerCertBytes)
 		require.NotNil(t, block)

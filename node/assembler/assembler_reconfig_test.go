@@ -165,10 +165,10 @@ func TestAssemblerCertUpdate(t *testing.T) {
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(testSetup.netInfo)
 	require.NotNil(t, nodesIPs)
 
-	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "tlsca", "tlsca-cert.pem")
+	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "tlsca", fmt.Sprintf("tlsorg%d-CA-cert.pem", partyId))
 	tlsCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "tlsca", "priv_sk")
-	newAssemblerTLSCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "orderers", fmt.Sprintf("party%d", partyId), "assembler", "tls")
-	newAssemblerTLSKeyPath := filepath.Join(newAssemblerTLSCertPath, "key.pem")
+	newAssemblerTLSCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "orderers", fmt.Sprintf("party%d", partyId), "assembler", "tls", "server.crt")
+	newAssemblerTLSKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", partyId), "orderers", fmt.Sprintf("party%d", partyId), "assembler", "tls", "server.key")
 
 	newAssemblerTLSCert, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newAssemblerTLSCertPath, newAssemblerTLSKeyPath, nodesIPs)
 	require.NoError(t, err)

@@ -41,7 +41,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 
 	// 1.
 	networkConfig := testutil.GenerateNetworkConfig(t, "mTLS", "mTLS")
-	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	_, err := armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir)
 	require.NoError(t, err)
 
 	// 2.
@@ -110,7 +110,7 @@ func TestLoadLocalConfigYaml_MultipleOrMissingRoles(t *testing.T) {
 
 	// Create local config files
 	networkConfig := testutil.GenerateNetworkConfig(t, "mTLS", "mTLS")
-	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	_, err := armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir)
 	require.NoError(t, err)
 
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)
@@ -169,7 +169,7 @@ func TestLoadLocalConfigAppliesGeneralDefaults(t *testing.T) {
 	require.DirExists(t, dir)
 
 	networkConfig := testutil.GenerateNetworkConfig(t, "mTLS", "mTLS")
-	err := armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	_, err := armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir)
 	require.NoError(t, err)
 
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)

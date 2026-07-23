@@ -183,7 +183,6 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 	}
 
 	partyPath := filepath.Join(generalConfigParams.cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", generalConfigParams.partyID), "orderers", fmt.Sprintf("party%d", generalConfigParams.partyID))
-	orgPath := filepath.Join(generalConfigParams.cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", generalConfigParams.partyID))
 
 	bccsp := &factory.FactoryOpts{
 		Default: "SW",
@@ -198,9 +197,9 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 		ListenPort:    generalConfigParams.listenPort,
 		TLSConfig: config.TLSConfigYaml{
 			Enabled:            generalConfigParams.tlsEnabled,
-			PrivateKey:         filepath.Join(partyPath, nodeRole, "tls", "key.pem"),
-			Certificate:        filepath.Join(partyPath, nodeRole, "tls", "tls-cert.pem"),
-			RootCAs:            []string{filepath.Join(orgPath, "msp", "tlscacerts", "tlsca-cert.pem")},
+			PrivateKey:         filepath.Join(partyPath, nodeRole, "tls", "server.key"),
+			Certificate:        filepath.Join(partyPath, nodeRole, "tls", "server.crt"),
+			RootCAs:            []string{filepath.Join(partyPath, nodeRole, "tls", "ca.crt")},
 			ClientAuthRequired: generalConfigParams.clientAuthRequired,
 		},
 		KeepaliveSettings: DefaultKeepaliveOptions,
@@ -221,8 +220,8 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 	if generalConfigParams.role == "consenter" {
 		generalConfig.Cluster = config.ClusterYaml{
 			SendBufferSize:    DefaultSendBufferSize,
-			ClientCertificate: filepath.Join(partyPath, nodeRole, "tls", "tls-cert.pem"),
-			ClientPrivateKey:  filepath.Join(partyPath, nodeRole, "tls", "key.pem"),
+			ClientCertificate: filepath.Join(partyPath, nodeRole, "tls", "server.crt"),
+			ClientPrivateKey:  filepath.Join(partyPath, nodeRole, "tls", "server.key"),
 			ReplicationPolicy: "",
 		}
 	}

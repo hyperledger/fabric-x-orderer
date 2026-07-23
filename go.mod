@@ -3,7 +3,7 @@ module github.com/hyperledger/fabric-x-orderer
 go 1.26.5
 
 require (
-	github.com/hyperledger/fabric-x-common v0.2.8
+	github.com/hyperledger/fabric-x-common v0.2.9-0.20260723080247-bb9c7dc14898
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
@@ -17,6 +17,7 @@ require (
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
+	github.com/cockroachdb/errors v1.14.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/hyperledger-labs/SmartBFT v1.0.1
 	github.com/hyperledger/fabric-config v0.3.0
@@ -38,7 +39,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cockroachdb/errors v1.14.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/consensys/gnark-crypto v0.20.1 // indirect

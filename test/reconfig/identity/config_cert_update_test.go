@@ -133,28 +133,28 @@ func TestChangePartyCertificates(t *testing.T) {
 	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
 	require.NotNil(t, nodesIPs)
 
-	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "tlsca", "tlsca-cert.pem")
+	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "tlsca", fmt.Sprintf("tls%s-CA-cert.pem", updateOrg))
 	tlsCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "tlsca", "priv_sk")
 
-	signCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "ca", "ca-cert.pem")
+	signCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "ca", fmt.Sprintf("%s-CA-cert.pem", updateOrg))
 	signCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "ca", "priv_sk")
 
 	// Update the router TLS certs in the config
-	newRouterTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls")
-	newRouterTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "key.pem")
+	newRouterTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "server.crt")
+	newRouterTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "server.key")
 	newRouterTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newRouterTlsCertPath, newRouterTlsKeyPath, nodesIPs)
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateRouterTLSCert(t, partyToUpdate, newRouterTlsCertBytes)
 
 	// Update the batchers TLS certs and signing certs in the config
 	for shardToUpdate := types.ShardID(1); int(shardToUpdate) <= numOfShards; shardToUpdate++ {
-		newBatcherTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls")
-		newBatcherTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls", "key.pem")
+		newBatcherTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls", "server.crt")
+		newBatcherTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls", "server.key")
 		newBatcherTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newBatcherTlsCertPath, newBatcherTlsKeyPath, nodesIPs)
 		require.NoError(t, err)
 		configUpdateBuilder.UpdateBatcherTLSCert(t, partyToUpdate, shardToUpdate, newBatcherTlsCertBytes)
 
-		newBatcherSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "signcerts")
+		newBatcherSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "signcerts", fmt.Sprintf("batcher%d-cert.pem", shardToUpdate))
 		newBatcherSignKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "keystore", "priv_sk")
 		newBatcherSignCertBytes, err := armageddon.CreateNewCertificateFromCA(signCACertPath, signCAPrivKeyPath, "sign", newBatcherSignCertPath, newBatcherSignKeyPath, nodesIPs)
 		require.NoError(t, err)
@@ -162,21 +162,21 @@ func TestChangePartyCertificates(t *testing.T) {
 	}
 
 	// Update the assembler TLS certs in the config
-	newAssemblerTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls")
-	newAssemblerTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "key.pem")
+	newAssemblerTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "server.crt")
+	newAssemblerTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "server.key")
 	newAssemblerTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newAssemblerTlsCertPath, newAssemblerTlsKeyPath, nodesIPs)
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateAssemblerTLSCert(t, partyToUpdate, newAssemblerTlsCertBytes)
 
 	// Update the consenter TLS certs in the config
-	newConsenterTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls")
-	newConsenterTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "key.pem")
+	newConsenterTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "server.crt")
+	newConsenterTlsKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "server.key")
 	newConsenterTlsCertBytes, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", newConsenterTlsCertPath, newConsenterTlsKeyPath, nodesIPs)
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateConsensusTLSCert(t, partyToUpdate, newConsenterTlsCertBytes)
 
 	// Update the consenter signing certs in the config
-	newConsenterSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts")
+	newConsenterSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "consenter-cert.pem")
 	newConsenterSignKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "keystore", "priv_sk")
 	newConsenterSignCertBytes, err := armageddon.CreateNewCertificateFromCA(signCACertPath, signCAPrivKeyPath, "sign", newConsenterSignCertPath, newConsenterSignKeyPath, nodesIPs)
 	require.NoError(t, err)
@@ -217,7 +217,7 @@ func TestChangePartyCertificates(t *testing.T) {
 	}
 	require.NotNil(t, updatedPartyConfig, "Updated party config not found in the config")
 
-	newTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "tls-cert.pem"))
+	newTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "server.crt"))
 	require.NoError(t, err)
 	// Verify that the router TLS cert path is updated in the config
 	require.Equal(t, newTlsCertBytes, updatedPartyConfig.RouterConfig.GetTlsCert(), "Certificate path was not updated in the config")
@@ -225,23 +225,23 @@ func TestChangePartyCertificates(t *testing.T) {
 	// Verify that the batcher TLS certs path are updated in the config
 	for _, shardConfig := range updatedPartyConfig.BatchersConfig {
 		newBatcherTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardID), "tls")
-		newTlsCertBytes, err = os.ReadFile(filepath.Join(newBatcherTlsCertPath, "tls-cert.pem"))
+		newTlsCertBytes, err = os.ReadFile(filepath.Join(newBatcherTlsCertPath, "server.crt"))
 		require.NoError(t, err)
 		newBatcherSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardID), "msp", "signcerts")
-		newSignCertBytes, err := os.ReadFile(filepath.Join(newBatcherSignCertPath, "sign-cert.pem"))
+		newSignCertBytes, err := os.ReadFile(filepath.Join(newBatcherSignCertPath, fmt.Sprintf("batcher%d-cert.pem", shardConfig.ShardID)))
 		require.NoError(t, err)
 		require.Equal(t, newTlsCertBytes, shardConfig.GetTlsCert(), "Batcher certificate path was not updated in the config")
 		require.Equal(t, newSignCertBytes, shardConfig.GetSignCert(), "Batcher signing certificate path was not updated in the config")
 	}
 
-	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "tls-cert.pem"))
+	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "server.crt"))
 	require.NoError(t, err)
 	// Verify that the assembler TLS cert path is updated in the config
 	require.Equal(t, newTlsCertBytes, updatedPartyConfig.AssemblerConfig.GetTlsCert(), "Certificate path was not updated in the config")
 
-	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "tls-cert.pem"))
+	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "server.crt"))
 	require.NoError(t, err)
-	newSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "sign-cert.pem"))
+	newSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "consenter-cert.pem"))
 	require.NoError(t, err)
 	// Verify that the consenter TLS and signing cert paths are updated in the config
 	require.Equal(t, newTlsCertBytes, updatedPartyConfig.ConsenterConfig.GetTlsCert(), "Consenter certificate path was not updated in the config")
@@ -422,7 +422,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	require.NoError(t, err, "failed to create config update directory")
 	defer os.RemoveAll(configUpdateDir)
 
-	err = armageddon.GenerateCryptoConfig(networkConfig, configUpdateDir)
+	_, err = armageddon.GenerateCryptoConfigWithProfile(networkConfig, configUpdateDir)
 	require.NoError(t, err, "failed to regenerate crypto config with Armageddon")
 
 	// merge the new crypto config for the updated party to the existing crypto config directory so that the config update builder can pick up the new certs
@@ -434,12 +434,12 @@ func TestChangePartyCACertificates(t *testing.T) {
 	)
 
 	// Append the new TLS CA cert and Sign CA cert to the config update builder
-	newTlsCACertPath := filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", "tlsca-cert.pem")
+	newTlsCACertPath := filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", fmt.Sprintf("tls%s-CA-cert.pem", updateOrg))
 	newTlsCACertBytes, err := os.ReadFile(newTlsCACertPath)
 	require.NoError(t, err)
 	configUpdateBuilder.AppendPartyTLSCACerts(t, partyToUpdate, [][]byte{newTlsCACertBytes})
 
-	newSignCACertPath := filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", "ca-cert.pem")
+	newSignCACertPath := filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", fmt.Sprintf("%s-CA-cert.pem", updateOrg))
 	newSignCACertBytes, err := os.ReadFile(newSignCACertPath)
 	require.NoError(t, err)
 	configUpdateBuilder.AppendPartyCACerts(t, partyToUpdate, [][]byte{newSignCACertBytes})
@@ -538,38 +538,38 @@ func TestChangePartyCACertificates(t *testing.T) {
 	configUpdateBuilder = configutil.NewConfigUpdateBuilder(t, dir, newConfigBlockPath)
 
 	// Update the router TLS certs in the config
-	newRouterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "tls-cert.pem"))
+	newRouterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "tls", "server.crt"))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateRouterTLSCert(t, partyToUpdate, newRouterTlsCertBytes)
 
 	// Update the batchers TLS certs and signing certs in the config
 	for shardToUpdate := types.ShardID(1); int(shardToUpdate) <= numOfShards; shardToUpdate++ {
-		newBatcherTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls", "tls-cert.pem"))
+		newBatcherTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "tls", "server.crt"))
 		require.NoError(t, err)
 		configUpdateBuilder.UpdateBatcherTLSCert(t, partyToUpdate, shardToUpdate, newBatcherTlsCertBytes)
 
-		newBatcherSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "signcerts", "sign-cert.pem"))
+		newBatcherSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardToUpdate), "msp", "signcerts", fmt.Sprintf("batcher%d-cert.pem", shardToUpdate)))
 		require.NoError(t, err)
 		configUpdateBuilder.UpdateBatcherSignCert(t, partyToUpdate, shardToUpdate, newBatcherSignCertBytes)
 	}
 
 	// Update the assembler TLS certs in the config
-	newAssemblerTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "tls-cert.pem"))
+	newAssemblerTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "server.crt"))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateAssemblerTLSCert(t, partyToUpdate, newAssemblerTlsCertBytes)
 
 	// Update the consenter TLS certs in the config
-	newConsenterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "tls-cert.pem"))
+	newConsenterTlsCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "server.crt"))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateConsensusTLSCert(t, partyToUpdate, newConsenterTlsCertBytes)
 
 	// Update the consenter signing certs in the config
-	newConsenterSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "sign-cert.pem"))
+	newConsenterSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "consenter-cert.pem"))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateConsenterSignCert(t, partyToUpdate, newConsenterSignCertBytes)
 
 	// Update the admin cert in the config
-	newAdminCertBytes, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "admincerts", fmt.Sprintf("Admin@Org%d-cert.pem", partyToUpdate)))
+	newAdminCertBytes, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "admincerts", fmt.Sprintf("Admin@org%d-cert.pem", partyToUpdate)))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateMSPAdminCerts(t, partyToUpdate, [][]byte{newAdminCertBytes})
 
@@ -645,13 +645,31 @@ func TestChangePartyCACertificates(t *testing.T) {
 	copyDir(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg), dstDir, copyAllPredicate, false)
 
 	// Set the new TLS CA cert and Sign CA cert to the config update builder
-	tlsCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", "tlsca-cert.pem"))
+	tlsCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "tlscacerts", fmt.Sprintf("tls%s-CA-cert.pem", updateOrg)))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdatePartyTLSCACerts(t, partyToUpdate, [][]byte{tlsCACertBytes})
 
-	signCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", "ca-cert.pem"))
+	signCACertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "cacerts", fmt.Sprintf("%s-CA-cert.pem", updateOrg)))
 	require.NoError(t, err)
 	configUpdateBuilder.UpdatePartyCACerts(t, partyToUpdate, [][]byte{signCACertBytes})
+
+	// Update the known certs in the config update builder to include all known certs from the party's MSP directory
+	knownCerts := [][]byte{}
+	knownCertsDir := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "msp", "knowncerts")
+
+	// Read all files in the knowncerts directory and append their contents to the knownCerts slice
+	files, err := os.ReadDir(knownCertsDir)
+	require.NoError(t, err)
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		certPath := filepath.Join(knownCertsDir, file.Name())
+		certBytes, err := os.ReadFile(certPath)
+		require.NoError(t, err)
+		knownCerts = append(knownCerts, certBytes)
+	}
+	configUpdateBuilder.UpdateOrgKnownCerts(t, updateOrg, knownCerts)
 
 	// Submit a new config update
 	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
@@ -753,7 +771,8 @@ type copyPredicate func(path string, d os.DirEntry) bool
 func copyNonCAFilesPredicate(path string, d os.DirEntry) bool {
 	slash := filepath.ToSlash(path)
 	if strings.Contains(slash, "/admincerts/") || strings.HasSuffix(slash, "/admincerts") ||
-		strings.Contains(slash, "/users/admin/") || strings.HasSuffix(slash, "/users/admin") {
+		strings.Contains(slash, "/users/admin/") || strings.HasSuffix(slash, "/users/admin") ||
+		strings.Contains(slash, "/users/Admin@") || strings.HasSuffix(slash, "/users/Admin@") {
 		return false
 	}
 	if d.IsDir() {

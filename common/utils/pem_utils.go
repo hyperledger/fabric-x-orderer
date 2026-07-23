@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -100,4 +101,24 @@ func Parsex509Cert(certBytes []byte) (*x509.Certificate, error) {
 
 	cert, err := x509.ParseCertificate(pbl.Bytes)
 	return cert, err
+}
+
+func PemFilesFromDir(dir string) ([]string, error) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(e.Name()), ".pem") {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) == 0 {
+		return nil, errors.Errorf("no .pem files found in directory %s", dir)
+	}
+	return names, nil
 }

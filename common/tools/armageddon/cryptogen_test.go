@@ -21,6 +21,6 @@ func TestGenerateCryptoConfig(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	networkConfig := testutil.GenerateNetworkConfig(t, "none", "none")
-	err = armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	_, err = armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir)
 	require.NoError(t, err)
 }

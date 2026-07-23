@@ -565,7 +565,9 @@ func TestRunNodesAndGetResponseFromOperationEndpoints(t *testing.T) {
 func TestSecuredTLSOperationsService(t *testing.T) {
 	// 1. compile arma
 	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
-	defer gexec.CleanupBuildArtifacts()
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
 	require.NoError(t, err)
 	require.NotNil(t, armaBinaryPath)
 
@@ -592,11 +594,12 @@ func TestSecuredTLSOperationsService(t *testing.T) {
 
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
+	tlsCAFilePath := path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsorg1-CA-cert.pem")
 	routerConfigPath := path.Join(dir, "config/party1/local_config_router.yaml")
 	routerLocalConfig := testutil.ReadNodeConfigFromYaml(t, routerConfigPath)
 	routerLocalConfig.OperationsConfig.TLSConfig.Enabled = true
 	routerLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
-	routerLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	routerLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{tlsCAFilePath}
 	err = test_utils.WriteToYAML(&routerLocalConfig, routerConfigPath)
 	require.NoError(t, err)
 
@@ -604,7 +607,7 @@ func TestSecuredTLSOperationsService(t *testing.T) {
 	batcherLocalConfig := testutil.ReadNodeConfigFromYaml(t, batcherConfigPath)
 	batcherLocalConfig.OperationsConfig.TLSConfig.Enabled = true
 	batcherLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
-	batcherLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	batcherLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{tlsCAFilePath}
 	err = test_utils.WriteToYAML(&batcherLocalConfig, batcherConfigPath)
 	require.NoError(t, err)
 
@@ -612,7 +615,7 @@ func TestSecuredTLSOperationsService(t *testing.T) {
 	consenterLocalConfig := testutil.ReadNodeConfigFromYaml(t, consenterConfigPath)
 	consenterLocalConfig.OperationsConfig.TLSConfig.Enabled = true
 	consenterLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
-	consenterLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	consenterLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{tlsCAFilePath}
 	err = test_utils.WriteToYAML(&consenterLocalConfig, consenterConfigPath)
 	require.NoError(t, err)
 
@@ -620,13 +623,15 @@ func TestSecuredTLSOperationsService(t *testing.T) {
 	assemblerLocalConfig := testutil.ReadNodeConfigFromYaml(t, assemblerConfigPath)
 	assemblerLocalConfig.OperationsConfig.TLSConfig.Enabled = true
 	assemblerLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired = true
-	assemblerLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem")}
+	assemblerLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs = []string{tlsCAFilePath}
 	err = test_utils.WriteToYAML(&assemblerLocalConfig, assemblerConfigPath)
 	require.NoError(t, err)
 
 	readyChan := make(chan string, numOfArmaNodes)
 	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
-	defer armaNetwork.Stop()
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
 
 	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
 
@@ -645,14 +650,14 @@ func TestSecuredTLSOperationsService(t *testing.T) {
 	tlsOpts := []func(config *tls.Config){
 		func(config *tls.Config) {
 			cert, err := tls.LoadX509KeyPair(
-				path.Join(dir, "crypto/ordererOrganizations/org1/users/user/tls/user-tls-cert.pem"),
-				path.Join(dir, "crypto/ordererOrganizations/org1/users/user/tls/user-key.pem"),
+				path.Join(dir, "crypto/ordererOrganizations/org1/users/client@org1/tls/client.crt"),
+				path.Join(dir, "crypto/ordererOrganizations/org1/users/client@org1/tls/client.key"),
 			)
 			require.NoError(t, err)
 			config.Certificates = []tls.Certificate{cert}
 		},
 		func(config *tls.Config) {
-			pemBytes, err := os.ReadFile(path.Join(dir, "crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem"))
+			pemBytes, err := os.ReadFile(tlsCAFilePath)
 			require.NoError(t, err)
 
 			clientCAPool := x509.NewCertPool()
