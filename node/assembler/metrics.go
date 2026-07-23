@@ -46,6 +46,13 @@ var (
 		LabelNames: []string{"party_id"},
 		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
 	}
+
+	prefetchIndexSizeOpts = metrics.GaugeOpts{
+		Namespace:  "assembler",
+		Name:       "prefetch_index_size_bytes",
+		Help:       "The current size of the assembler prefetch index for a shard in bytes.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type Metrics struct {
@@ -54,12 +61,14 @@ type Metrics struct {
 	batchUnaryFetchLatency             metrics.Histogram
 	attestationToBatchCollationLatency metrics.Histogram
 	batchLedgerAppendLatency           metrics.Histogram
-	logger                             *flogging.FabricLogger
-	interval                           time.Duration
-	stopChan                           chan struct{}
-	stopOnce                           sync.Once
-	startOnce                          sync.Once
-	partyID                            arma_types.PartyID
+	prefetchIndexSize                  metrics.Gauge
+
+	logger    *flogging.FabricLogger
+	interval  time.Duration
+	stopChan  chan struct{}
+	stopOnce  sync.Once
+	startOnce sync.Once
+	partyID   arma_types.PartyID
 }
 
 func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
@@ -77,6 +86,8 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *
 	attestationToBatchCollationLatency := provider.NewHistogram(attestationToBatchCollationLatencyOpts).With([]string{partyID}...)
 	batchLedgerAppendLatency := provider.NewHistogram(batchLedgerAppendLatencyOpts).With([]string{partyID}...)
 
+	prefetchIndexSize := provider.NewGauge(prefetchIndexSizeOpts)
+
 	return &Metrics{
 		ledgerMetrics:                      ledgerMetrics,
 		deliverMetrics:                     deliverMetrics,
@@ -87,6 +98,7 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *
 		batchUnaryFetchLatency:             batchUnaryFetchLatency,
 		attestationToBatchCollationLatency: attestationToBatchCollationLatency,
 		batchLedgerAppendLatency:           batchLedgerAppendLatency,
+		prefetchIndexSize:                  prefetchIndexSize,
 	}
 }
 
@@ -149,4 +161,12 @@ func (m *Metrics) trackMetrics() {
 			return
 		}
 	}
+}
+
+func (m *Metrics) updatePrefetchIndexSize(shardID arma_types.ShardID, deltaBytes int) {
+	m.prefetchIndexSize.With(fmt.Sprintf("%d", m.partyID), fmt.Sprintf("%d", shardID)).Add(float64(deltaBytes))
+}
+
+func (m *Metrics) resetPrefetchIndexSize(shardID arma_types.ShardID) {
+	m.prefetchIndexSize.With(fmt.Sprintf("%d", m.partyID), fmt.Sprintf("%d", shardID)).Set(0)
 }

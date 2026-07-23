@@ -12,10 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -79,15 +82,25 @@ func setupPartitionPrefetchIndexTest(t *testing.T, maxSizeBytes int) *partitionP
 		vars.timers = append(vars.timers, timer)
 		return timer
 	})
+	logger := testutil.CreateLogger(t, 1)
+	metrics := assembler.NewMetrics(&config.AssemblerNodeConfig{
+		PartyId: 1,
+		Metrics: &operations.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: time.Second,
+		},
+	}, &node_ledger.AssemblerLedgerMetrics{}, logger)
+
 	partitionPrefetchIndex := assembler.NewPartitionPrefetchIndex(
 		vars.partition,
-		testutil.CreateLogger(t, 1),
+		logger,
 		defaultTtl,
 		maxSizeBytes,
 		timerFactoryMock,
 		cacheFactory,
 		vars.batchRequestChan,
 		10*time.Second,
+		metrics,
 	)
 	vars.partitionPrefetchIndex = partitionPrefetchIndex
 	return vars

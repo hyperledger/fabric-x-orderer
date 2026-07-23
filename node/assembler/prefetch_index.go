@@ -35,6 +35,7 @@ type PrefetchIndexerFactory interface {
 		batchCacheFactory BatchCacheFactory,
 		partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
 		popWaitMonitorTimeout time.Duration,
+		metrics *Metrics,
 	) PrefetchIndexer
 }
 
@@ -51,6 +52,7 @@ func (f *DefaultPrefetchIndexerFactory) Create(
 	batchCacheFactory BatchCacheFactory,
 	partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
 	popWaitMonitorTimeout time.Duration,
+	metrics *Metrics,
 ) PrefetchIndexer {
 	return NewPrefetchIndex(
 		shards,
@@ -63,6 +65,7 @@ func (f *DefaultPrefetchIndexerFactory) Create(
 		batchCacheFactory,
 		partitionPrefetchIndexerFactory,
 		popWaitMonitorTimeout,
+		metrics,
 	)
 }
 
@@ -70,6 +73,7 @@ type PrefetchIndex struct {
 	logger           *flogging.FabricLogger
 	partitionToIndex map[ShardPrimary]PartitionPrefetchIndexer
 	batchRequestChan chan types.BatchID
+	metrics          *Metrics
 }
 
 func NewPrefetchIndex(
@@ -83,11 +87,13 @@ func NewPrefetchIndex(
 	batchCacheFactory BatchCacheFactory,
 	partitionPrefetchIndexerFactory PartitionPrefetchIndexerFactory,
 	popWaitMonitorTimeout time.Duration,
+	metrics *Metrics,
 ) *PrefetchIndex {
 	pi := &PrefetchIndex{
 		logger:           logger,
 		partitionToIndex: make(map[ShardPrimary]PartitionPrefetchIndexer, len(shards)*len(parties)),
 		batchRequestChan: make(chan types.BatchID, requestChannelSize),
+		metrics:          metrics,
 	}
 	for _, shardId := range shards {
 		for _, partyId := range parties {
@@ -101,6 +107,7 @@ func NewPrefetchIndex(
 				batchCacheFactory,
 				pi.batchRequestChan,
 				popWaitMonitorTimeout,
+				metrics,
 			)
 		}
 	}
@@ -113,7 +120,11 @@ func (pi *PrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch, error) {
 		pi.logger.Debugf("PrefetchIndex PopOrWait %s in %v", BatchToString(batchId), time.Since(t1))
 	}()
 	partitionIndex := pi.partitionToIndex[ShardPrimaryFromBatch(batchId)]
-	return partitionIndex.PopOrWait(batchId)
+	batch, err := partitionIndex.PopOrWait(batchId)
+	if err == nil {
+		pi.metrics.updatePrefetchIndexSize(batch.Shard(), -batchSizeBytes(batch))
+	}
+	return batch, err
 }
 
 func (pi *PrefetchIndex) Put(batch types.Batch) error {
@@ -139,7 +150,14 @@ func (pi *PrefetchIndex) Requests() <-chan types.BatchID {
 }
 
 func (pi *PrefetchIndex) Stop() {
-	for _, index := range pi.partitionToIndex {
+	shards := make(map[types.ShardID]struct{})
+
+	for partition, index := range pi.partitionToIndex {
 		index.Stop()
+		shards[partition.Shard] = struct{}{}
+	}
+
+	for shardID := range shards {
+		pi.metrics.resetPrefetchIndexSize(shardID)
 	}
 }
