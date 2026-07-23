@@ -1,5 +1,9 @@
 # Hyperledger Fabric-X Orderer
 
+## CI Status
+
+[![Deterministic Failure Test](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml/badge.svg)](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml)
+
 This repository contains the ordering service of fabric-x.
 The ordering service is based on the Arma protocol:
 

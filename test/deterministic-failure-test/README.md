@@ -1,36 +1,36 @@
-# Chaos Test
+# Deterministic Failure Test
 
 ## Overview
 
-This directory contains the scripts used to run the ARMA chaos test.
+This directory contains the scripts used to run the ARMA deterministic failure test.
 
-The test starts a local ARMA network (4 parties, 2 shards by default), sends transactions through the loader, pulls blocks from each party's assembler via receivers, optionally runs a chaos runner that stops and restarts ARMA components one party at a time, monitors progress, and then collects logs, statistics, and a summary.
+The test starts a local ARMA network (4 parties, 2 shards by default), sends transactions through the loader, pulls blocks from each party's assembler via receivers, optionally runs a failure runner that stops and restarts ARMA components one party at a time, monitors progress, and then collects logs, statistics, and a summary.
 
 The same scripts are used by the GitHub Actions workflow and can also be executed locally from the command line on a Linux machine.
 
 ## Scripts
 
 ```text
-test/chaos/
-├── chaos-test.sh
+test/deterministic-failure-test/
+├── deterministic-failure-test.sh
 ├── start-arma-network.sh
-├── chaos-runner.sh
+├── failure-runner.sh
 ├── monitor-completion.sh
 ├── collect-results.sh
 └── README.md
 ```
 
-### `chaos-test.sh`
+### `deterministic-failure-test.sh`
 
 Main orchestration script.
 
-It reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, starts the ARMA network, starts receivers and the loader, optionally starts the chaos runner, runs the monitor, and collects results.
+It reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, starts the ARMA network, starts receivers and the loader, optionally starts the failure runner, runs the monitor, and collects results.
 
 ### `start-arma-network.sh`
 
 Starts all ARMA network components in the correct order: consenters first, then batchers, assemblers, and routers. Stores each process PID under the test directory.
 
-### `chaos-runner.sh`
+### `failure-runner.sh`
 
 Stops and restarts ARMA components one party at a time in a continuous loop until the stop signal is received.
 
@@ -40,8 +40,8 @@ For each party it kills and restarts: assembler, consenter, router, then all bat
 
 Monitors test execution.
 
-- In chaos mode: prints a status snapshot after each party's full chaos cycle completes.
-- Without chaos: prints a status snapshot every 5 minutes.
+- In failure runner mode: prints a status snapshot after each party's full failure cycle completes.
+- Without failure runner: prints a status snapshot every 5 minutes.
 - Always: stops when the configured duration is reached or when the loader and all receivers finish early.
 
 After duration expires, stops the loader immediately then gives receivers a 30-second drain window to pull remaining blocks from the assemblers before killing them.
@@ -73,35 +73,35 @@ Run the test from the repository root.
 
 Execute the test from the repository root.
 
-### Without chaos (basic smoke test)
+### Without failure runner (basic smoke test)
 
 ```bash
-chmod +x test/chaos/*.sh
+chmod +x test/deterministic-failure-test/*.sh
 
 DURATION_MINUTES=5 \
 TX_RATE=100 \
 TX_SIZE=300 \
 NUM_PARTIES=4 \
 NUM_SHARDS=2 \
-CHAOS_ENABLED=false \
-test/chaos/chaos-test.sh
+FAILURE_RUNNER_ENABLED=false \
+test/deterministic-failure-test/deterministic-failure-test.sh
 ```
 
-### With chaos enabled
+### With failure runner enabled
 
-```bashsame idea
-chmod +x test/chaos/*.sh
+```bash
+chmod +x test/deterministic-failure-test/*.sh
 
 DURATION_MINUTES=5 \
 TX_RATE=1000 \
 TX_SIZE=300 \
 NUM_PARTIES=4 \
 NUM_SHARDS=2 \
-CHAOS_ENABLED=true \
-CHAOS_INITIAL_WAIT=120 \
-CHAOS_STOP_DURATION=30 \
-CHAOS_RESTART_WAIT=30 \
-test/chaos/chaos-test.sh
+FAILURE_RUNNER_ENABLED=true \
+FAILURE_RUNNER_INITIAL_WAIT=120 \
+FAILURE_RUNNER_STOP_DURATION=30 \
+FAILURE_RUNNER_RESTART_WAIT=30 \
+test/deterministic-failure-test/deterministic-failure-test.sh
 ```
 
 The values can be adjusted as needed for the desired test configuration.
@@ -110,7 +110,7 @@ The values can be adjusted as needed for the desired test configuration.
 
 The test is configured using environment variables.
 
-The values shown below are the defaults used by `chaos-test.sh`.
+The values shown below are the defaults used by `deterministic-failure-test.sh`.
 
 | Variable              | Description                                   | Default |
 | --------------------- | --------------------------------------------- | ------- |
@@ -119,14 +119,14 @@ The values shown below are the defaults used by `chaos-test.sh`.
 | `TX_SIZE`             | Transaction size in bytes                     | `300`   |
 | `NUM_PARTIES`         | Number of parties                             | `4`     |
 | `NUM_SHARDS`          | Number of shards                              | `2`     |
-| `CHAOS_ENABLED`       | Whether to run the chaos runner               | `true`  |
-| `CHAOS_INITIAL_WAIT`  | Wait before first chaos action, in seconds    | `300`   |
-| `CHAOS_STOP_DURATION` | How long to keep a component down, in seconds | `60`    |
-| `CHAOS_RESTART_WAIT`  | Wait after restarting a component, in seconds | `60`    |
+| `FAILURE_RUNNER_ENABLED`       | Whether to run the failure runner             | `true`  |
+| `FAILURE_RUNNER_INITIAL_WAIT`  | Wait before first failure action, in seconds  | `300`   |
+| `FAILURE_RUNNER_STOP_DURATION` | How long to keep a component down, in seconds | `60`    |
+| `FAILURE_RUNNER_RESTART_WAIT`  | Wait after restarting a component, in seconds | `60`    |
 
 ## Test Flow
 
-When `chaos-test.sh` runs, it performs the following steps:
+When `deterministic-failure-test.sh` runs, it performs the following steps:
 
 1. Reads configuration from environment variables.
 2. Calculates the total number of transactions (`DURATION_MINUTES × 60 × TX_RATE`).
@@ -138,9 +138,9 @@ When `chaos-test.sh` runs, it performs the following steps:
 8. Starts the ARMA network using `start-arma-network.sh`.
 9. Starts one receiver per party (background).
 10. Starts the loader (background).
-11. Starts `chaos-runner.sh` if `CHAOS_ENABLED=true` (background).
+11. Starts `deterministic-failure-runner.sh` if `FAILURE_RUNNER_ENABLED=true` (background).
 12. Runs `monitor-completion.sh` (blocks until duration expires or all components finish).
-13. Waits briefly for the chaos runner to stop gracefully.
+13. Waits briefly for the failure runner to stop gracefully.
 14. Runs `collect-results.sh`.
 15. Kills any remaining `arma` and `armageddon` processes.
 
@@ -150,9 +150,9 @@ Each party runs an independent assembler. Every transaction sent by the loader i
 
 The receiver stops pulling when it has received at least `expectedTxs` transactions. Because it processes whole blocks, it may overshoot by the number of transactions in the final block — this is expected and not an error.
 
-## Chaos Behaviour
+## Failure Runner Behaviour
 
-The chaos runner cycles through all parties in order. For each party it kills and waits `CHAOS_STOP_DURATION` seconds, then restarts:
+The failure runner cycles through all parties in order. For each party it kills and waits `FAILURE_RUNNER_STOP_DURATION` seconds, then restarts:
 
 1. Assembler
 2. Consenter
@@ -160,7 +160,7 @@ The chaos runner cycles through all parties in order. For each party it kills an
 4. Batcher shard 1
 5. Batcher shard 2 (and any further shards)
 
-After the restart, it waits `CHAOS_RESTART_WAIT` seconds before moving to the next component. After all components of a party are done, it signals the monitor to print a status snapshot, then moves to the next party.
+After the restart, it waits `FAILURE_RUNNER_RESTART_WAIT` seconds before moving to the next component. After all components of a party are done, it signals the monitor to print a status snapshot, then moves to the next party.
 
 A full round across all 4 parties with default timings (`STOP_DURATION=60`, `RESTART_WAIT=60`) takes approximately:
 ```
@@ -172,7 +172,7 @@ A full round across all 4 parties with default timings (`STOP_DURATION=60`, `RES
 During execution, the test creates a temporary directory:
 
 ```text
-/tmp/chaos-test-XXXXXX/
+/tmp/deterministic-failure-test-XXXXXX/
 ├── config/          # generated armageddon config per party
 ├── crypto/          # generated crypto material
 ├── bootstrap/       # genesis block and shared config
@@ -192,7 +192,7 @@ test-results/
 
 ## GitHub Actions Workflow
 
-The workflow is defined at `.github/workflows/chaos-test.yml`.
+The workflow is defined at `.github/workflows/deterministic-failure-test.yml`.
 
 It runs on a schedule (Sunday–Thursday: 2-hour test, Friday: 5.5-hour test) and can also be triggered manually via `workflow_dispatch`.
 
@@ -202,8 +202,9 @@ Steps:
 3. Builds binaries with `make binary`.
 4. Determines test duration (schedule-based or from manual input).
 5. Sets configuration via environment variables.
-6. Runs `test/chaos/chaos-test.sh`.
-7. Uploads `test-results/` artifacts (summary, statistics, logs — all as separate CI artifacts).
+6. Runs `test/deterministic-failure-test/deterministic-failure-test.sh`.
+7. Publishes the test summary directly to the workflow run's Summary tab (plain text, no download needed).
+8. Uploads `test-results/` artifacts (statistics and logs — as separate CI artifacts).
 
 ## Manual Workflow Trigger
 
@@ -216,7 +217,7 @@ The following parameters can be set when triggering manually:
 | `tx_size`             | Transaction size in bytes            | `300`   |
 | `num_parties`         | Number of parties (4, 7, or 10)      | `4`     |
 | `num_shards`          | Number of shards (1, 2, or 4)        | `2`     |
-| `chaos_enabled`       | Enable chaos testing                 | `true`  |
-| `chaos_initial_wait`  | Wait before starting chaos (seconds) | `300`   |
-| `chaos_stop_duration` | How long to keep component down (s)  | `60`    |
-| `chaos_restart_wait`  | Wait after component restart (s)     | `60`    |
+| `failure_runner_enabled`       | Enable failure runner                        | `true`  |
+| `failure_runner_initial_wait`  | Wait before starting failure runner (seconds)| `300`   |
+| `failure_runner_stop_duration` | How long to keep component down (s)          | `60`    |
+| `failure_runner_restart_wait`  | Wait after component restart (s)             | `60`    |

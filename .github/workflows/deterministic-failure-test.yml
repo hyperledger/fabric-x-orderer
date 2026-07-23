@@ -2,13 +2,13 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-name: Chaos Test
+name: Deterministic Failure Test
 
 on:
   schedule:
-    # Sunday-Thursday: 2-hour chaos test
+    # Sunday-Thursday: 2-hour test
     - cron: '0 3 * * 0-4'
-    # Friday: Extended 5.5-hour chaos test
+    # Friday: Extended 5.5-hour test
     - cron: '0 3 * * 5'
 
   workflow_dispatch:
@@ -46,22 +46,22 @@ on:
           - '1'
           - '2'
           - '4'
-      chaos_enabled:
-        description: 'Enable chaos testing'
+      failure_runner_enabled:
+        description: 'Enable deterministic failure runner'
         required: true
         default: true
         type: boolean
-      chaos_initial_wait:
-        description: 'Wait before starting chaos (seconds)'
+      failure_runner_initial_wait:
+        description: 'Wait before starting deterministic failure runner (seconds)'
         required: true
         default: '300'
         type: string
-      chaos_stop_duration:
+      failure_runner_stop_duration:
         description: 'How long to keep component down (seconds)'
         required: true
         default: '60'
         type: string
-      chaos_restart_wait:
+      failure_runner_restart_wait:
         description: 'Wait after component restart (seconds)'
         required: true
         default: '60'
@@ -75,8 +75,8 @@ permissions:
   contents: read
 
 jobs:
-  chaos-test:
-    name: Chaos Test
+  deterministic-failure-test:
+    name: Deterministic Failure Test
     runs-on: ubuntu-latest
     timeout-minutes: 350
     if: github.repository == 'hyperledger/fabric-x-orderer' || github.event_name == 'workflow_dispatch'
@@ -116,34 +116,36 @@ jobs:
             fi
           fi
 
-      - name: Run Chaos Test
+      - name: Run Deterministic Failure Test
         env:
           DURATION_MINUTES: ${{ steps.duration.outputs.minutes }}
           TX_RATE: ${{ inputs.tx_rate || '1000' }}
           TX_SIZE: ${{ inputs.tx_size || '300' }}
           NUM_PARTIES: ${{ inputs.num_parties || '4' }}
           NUM_SHARDS: ${{ inputs.num_shards || '2' }}
-          CHAOS_ENABLED: ${{ inputs.chaos_enabled != false }}
-          CHAOS_INITIAL_WAIT: ${{ inputs.chaos_initial_wait || '300' }}
-          CHAOS_STOP_DURATION: ${{ inputs.chaos_stop_duration || '60' }}
-          CHAOS_RESTART_WAIT: ${{ inputs.chaos_restart_wait || '60' }}
+          FAILURE_RUNNER_ENABLED: ${{ inputs.failure_runner_enabled != false }}
+          FAILURE_RUNNER_INITIAL_WAIT: ${{ inputs.failure_runner_initial_wait || '300' }}
+          FAILURE_RUNNER_STOP_DURATION: ${{ inputs.failure_runner_stop_duration || '60' }}
+          FAILURE_RUNNER_RESTART_WAIT: ${{ inputs.failure_runner_restart_wait || '60' }}
         run: |
-          chmod +x test/chaos/*.sh
-          test/chaos/chaos-test.sh
+          chmod +x test/deterministic-failure-test/*.sh
+          test/deterministic-failure-test/deterministic-failure-test.sh
 
-      - name: Upload test summary
+      - name: Publish test summary
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: chaos-test-summary-${{ github.run_number }}
-          path: test-results/summary/
-          retention-days: 30
+        run: |
+          echo "## Deterministic Failure Test — Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          if [ -d test-results/summary ] && [ -n "$(ls -A test-results/summary 2>/dev/null)" ]; then
+            cat test-results/summary/* >> $GITHUB_STEP_SUMMARY
+          else
+            echo "_No summary files were produced._" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload statistics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chaos-test-statistics-${{ github.run_number }}
+          name: deterministic-failure-test-statistics-${{ github.run_number }}
           path: test-results/statistics/
           retention-days: 30
 
@@ -151,7 +153,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chaos-test-logs-${{ github.run_number }}
+          name: deterministic-failure-test-logs-${{ github.run_number }}
           path: test-results/logs/
           retention-days: 30
           if-no-files-found: ignore
