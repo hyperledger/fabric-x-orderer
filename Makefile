@@ -13,8 +13,9 @@
 #   - linter-extra: runs extra lint checks on new changes since 'main'
 #   - check-license: checks files for Apache license header
 # 	- check-dco: check that commits include Signed-off-by
-#	- docker-local: builds a single-platform image for the host’s OS/architecture
+#	- docker-local: builds a single-platform image for the host's OS/architecture
 #   - docker-multiarch: wrapper that triggers docker builds for multiple platforms
+#   - deterministic-failure-test: runs the deterministic failure test locally (5 min, 1000 tx/s, failure runner enabled)
 
 # Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
@@ -143,6 +144,30 @@ integration-reconfig-params:
 .PHONY: integration-reconfig-configtx
 integration-reconfig-configtx:
 	go test -race -timeout 15m ./test/reconfig/configtx/...
+
+DURATION_MINUTES          ?= 5
+TX_RATE                   ?= 1000
+TX_SIZE                   ?= 300
+NUM_PARTIES               ?= 4
+NUM_SHARDS                ?= 2
+FAILURE_RUNNER_ENABLED    ?= true
+FAILURE_RUNNER_INITIAL_WAIT   ?= 90
+FAILURE_RUNNER_STOP_DURATION  ?= 30
+FAILURE_RUNNER_RESTART_WAIT   ?= 30
+
+.PHONY: deterministic-failure-test
+deterministic-failure-test: binary
+	@chmod +x test/deterministic-failure-test/deterministic-failure-test.sh
+	DURATION_MINUTES=$(DURATION_MINUTES) \
+	TX_RATE=$(TX_RATE) \
+	TX_SIZE=$(TX_SIZE) \
+	NUM_PARTIES=$(NUM_PARTIES) \
+	NUM_SHARDS=$(NUM_SHARDS) \
+	FAILURE_RUNNER_ENABLED=$(FAILURE_RUNNER_ENABLED) \
+	FAILURE_RUNNER_INITIAL_WAIT=$(FAILURE_RUNNER_INITIAL_WAIT) \
+	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
+	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
+	test/deterministic-failure-test/deterministic-failure-test.sh
 
 .PHONY: sample-tests
 sample-tests:
