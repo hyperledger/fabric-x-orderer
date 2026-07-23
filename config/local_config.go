@@ -116,12 +116,10 @@ type TLSConfigYaml struct {
 // Bootstrap configures how to obtain the bootstrap configuration.
 type Bootstrap struct {
 	// Method specifies the method by which to obtain the bootstrap configuration.
-	// The option can be one of:
-	//  1. "block" - path to a file containing the genesis block or config block
-	//  2. "yaml" - path to a file containing a YAML boostrap configuration (i.e. ./shared_config.yaml).
+	// The only supported option is: "block" - path to a file containing the genesis block or a config block
 	Method string `yaml:"Method,omitempty"`
 	//  File is the path for the bootstrap configuration.
-	//  The bootstrap file can be the genesis block, and it can also be a config block for late bootstrap.
+	//  The bootstrap file can be the genesis block, a config block for late join or rejoin.
 	File string `yaml:"File,omitempty"`
 }
 
@@ -282,7 +280,7 @@ func validateLocalConfig(nodeLocalConfig *NodeLocalConfig) (string, error) {
 		return "", fmt.Errorf("node local config is not valid, bootstrap method is missing")
 	}
 
-	if generalConfig.Bootstrap.Method != "block" && generalConfig.Bootstrap.Method != "yaml" {
+	if generalConfig.Bootstrap.Method != "block" {
 		return "", fmt.Errorf("node local config is not valid, unsupported bootstrap method: %s", generalConfig.Bootstrap.Method)
 	}
 
