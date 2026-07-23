@@ -63,21 +63,35 @@ func (c *Consenter) Index(digests [][]byte) {
 	}
 }
 
+// bafGroupKey is the comparable form of types.BatchID (<shard, primary, seq, digest>): the
+// tuple that identifies a batch. digest is a string because BatchID.Digest() ([]byte) is not
+// map-key-comparable. Fragments are grouped by batch identity so that each block corresponds
+// to exactly one batch. In the honest case there is one batch per <seq, shard> (unchanged
+// behavior); distinct digests (an equivocating primary) or distinct primaries (e.g. the same
+// batch re-produced across a rotation) are different BatchIDs and therefore different blocks.
+// This guarantees every group is a single batch, so consumers that read only the first
+// fragment (ba[0]) always see a threshold-attested batch rather than a stale/minority digest
+// that happened to be first in Pending order.
+type bafGroupKey struct {
+	seq     types.BatchSequence
+	shard   types.ShardID
+	primary types.PartyID
+	digest  string
+}
+
+func bafKey(baf types.BatchAttestationFragment) bafGroupKey {
+	return bafGroupKey{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary(), digest: string(baf.Digest())}
+}
+
 func aggregateFragments(batchAttestationFragments []types.BatchAttestationFragment) [][]types.BatchAttestationFragment {
 	index := indexBAFs(batchAttestationFragments)
 
 	var attestations [][]types.BatchAttestationFragment
 
-	added := make(map[struct {
-		seq   types.BatchSequence
-		shard types.ShardID
-	}]struct{})
+	added := make(map[bafGroupKey]struct{})
 
 	for _, baf := range batchAttestationFragments {
-		key := struct {
-			seq   types.BatchSequence
-			shard types.ShardID
-		}{seq: baf.Seq(), shard: baf.Shard()}
+		key := bafKey(baf)
 
 		if _, added := added[key]; added {
 			continue
@@ -92,23 +106,12 @@ func aggregateFragments(batchAttestationFragments []types.BatchAttestationFragme
 	return attestations
 }
 
-func indexBAFs(batchAttestationFragments []types.BatchAttestationFragment) map[struct {
-	seq   types.BatchSequence
-	shard types.ShardID
-}][]types.BatchAttestationFragment {
-	index := make(map[struct {
-		seq   types.BatchSequence
-		shard types.ShardID
-	}][]types.BatchAttestationFragment)
+func indexBAFs(batchAttestationFragments []types.BatchAttestationFragment) map[bafGroupKey][]types.BatchAttestationFragment {
+	index := make(map[bafGroupKey][]types.BatchAttestationFragment)
 
 	for _, baf := range batchAttestationFragments {
-		key := struct {
-			seq   types.BatchSequence
-			shard types.ShardID
-		}{seq: baf.Seq(), shard: baf.Shard()}
-		fragments := index[key]
-		fragments = append(fragments, baf)
-		index[key] = fragments
+		key := bafKey(baf)
+		index[key] = append(index[key], baf)
 	}
 	return index
 }

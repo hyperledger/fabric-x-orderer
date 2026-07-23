@@ -45,6 +45,15 @@ type batchAttestationVote struct {
 	signer  types.PartyID
 }
 
+// thresholdDigestKey identifies a batch (the comparable form of types.BatchID:
+// <shard, primary, seq> via vote, plus digest) that reached the signature threshold.
+// digest is the hex-encoded digest, matching the inner key produced by
+// batchAttestationVotesByDigests.
+type thresholdDigestKey struct {
+	vote   batchAttestationVote
+	digest string
+}
+
 type State struct {
 	N          uint16
 	Quorum     uint16
@@ -851,28 +860,33 @@ func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []t
 	// <seq, shard, primary> --> { digest -->  signer }
 	m := batchAttestationVotesByDigests(s)
 
-	batchAttestationsWithThreshold := make(map[batchAttestationVote]struct{})
+	// tuplesWithThreshold holds the <seq, shard, primary> tuples for which at least one
+	// digest reached threshold. It governs which pending BAFs are removed: once a tuple is
+	// decided, all of its pending fragments are cleared (including stale minority/equivocating
+	// digests), exactly as before.
+	tuplesWithThreshold := make(map[batchAttestationVote]struct{})
+
+	// thresholdDigests holds the specific <seq, shard, primary, digest> that individually
+	// reached threshold. Only fragments of these digests are extracted as attestations, so an
+	// under-attested (equivocating) digest can never back a committed block. If more than one
+	// digest for the same tuple reaches threshold (byzantine primary), each is extracted and
+	// downstream becomes its own block.
+	thresholdDigests := make(map[thresholdDigestKey]struct{})
 
 	for batchAttestation, digest2signers := range m {
-		var foundThreshold bool
-
 		l.Debugf("A total of %d digests where found for seq %d in shard %d with primary %d", len(digest2signers), batchAttestation.seq, batchAttestation.shard, batchAttestation.primary)
 
-		for _, signers := range digest2signers {
+		for digest, signers := range digest2signers {
 			if len(signers) >= int(s.Threshold) {
-				foundThreshold = true
-				l.Debugf("Found threshold (%d > %d) of batch attestation fragments for shard %d, seq %d", len(signers), s.Threshold-1, batchAttestation.shard, batchAttestation.seq)
-				break
+				l.Debugf("Found threshold (%d >= %d) of batch attestation fragments for shard %d, seq %d, digest %s", len(signers), s.Threshold, batchAttestation.shard, batchAttestation.seq, digest)
+				tuplesWithThreshold[batchAttestation] = struct{}{}
+				thresholdDigests[thresholdDigestKey{vote: batchAttestation, digest: digest}] = struct{}{}
 			}
 		}
 
-		if !foundThreshold {
+		if _, ok := tuplesWithThreshold[batchAttestation]; !ok {
 			l.Debugf("Could not find a threshold of batch attestation fragments for shard %d, seq %d", batchAttestation.shard, batchAttestation.seq)
-			continue
 		}
-
-		batchAttestationsWithThreshold[batchAttestation] = struct{}{}
-
 	} // for all <seq, shard, primary>
 
 	var extracted []types.BatchAttestationFragment
@@ -881,13 +895,17 @@ func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []t
 
 	// We iterate over the pending because we need deterministic processing
 	for _, baf := range s.Pending {
-		if _, exists := batchAttestationsWithThreshold[batchAttestationVote{
-			seq:     baf.Seq(),
-			shard:   baf.Shard(),
-			primary: baf.Primary(),
-		}]; !exists {
+		vote := batchAttestationVote{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary()}
+
+		if _, decided := tuplesWithThreshold[vote]; !decided {
+			// No digest for this tuple reached threshold yet; keep it pending.
 			newPending = append(newPending, baf)
-		} else {
+			continue
+		}
+
+		// The tuple is decided and thus removed from Pending. Only emit fragments whose digest
+		// actually reached threshold; minority/equivocating digests are dropped, not extracted.
+		if _, ok := thresholdDigests[thresholdDigestKey{vote: vote, digest: hex.EncodeToString(baf.Digest())}]; ok {
 			extracted = append(extracted, baf)
 		}
 	}
