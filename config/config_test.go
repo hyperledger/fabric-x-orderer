@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/msputils/mock"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -466,6 +467,118 @@ func TestExtractAssemblerAddresses(t *testing.T) {
 			require.Equal(t, len(rootCert), len(sharedPartyConfig.TLSCACerts[i]))
 		}
 	}
+}
+
+// TestReadConfigRejoinBlock verifies how a router selects between the last config block in its
+// config store and the bootstrap block: it must always boot from the more advanced block (by
+// sequence number). When the bootstrap block is ahead (a rejoin-block) it is selected and
+// persisted to the config store; otherwise the stored block is kept and the store is untouched.
+func TestReadConfigRejoinBlock(t *testing.T) {
+	dir := t.TempDir()
+	numOfParties := 4
+	numOfShards := 2
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	testLogger := testutil.CreateLoggerForModule(t, "ReadConfigRejoin", zap.DebugLevel)
+	localConfigPathRouter := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
+
+	// genesisBlock is a valid config block, used as the template for both stored and bootstrap blocks.
+	genesisData, err := os.ReadFile(filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	require.NoError(t, err)
+	genesisBlock, err := protoutil.UnmarshalBlock(genesisData)
+	require.NoError(t, err)
+
+	// configBlockOfNumber returns a clone of the genesis config block with the given sequence number.
+	configBlockOfNumber := func(number uint64) *common.Block {
+		block := proto.Clone(genesisBlock).(*common.Block)
+		block.Header.Number = number
+		return block
+	}
+
+	// writeBootstrapBlock writes a config block with the given number to a file and returns its path.
+	writeBootstrapBlock := func(t *testing.T, name string, number uint64) string {
+		path := filepath.Join(dir, "bootstrap", name)
+		require.NoError(t, os.WriteFile(path, protoutil.MarshalOrPanic(configBlockOfNumber(number)), 0o644))
+		return path
+	}
+
+	// seedStore creates a config store at storagePath and adds a config block with the given number.
+	seedStore := func(t *testing.T, storagePath string, number uint64) *configstore.Store {
+		store, err := configstore.NewStore(storagePath)
+		require.NoError(t, err)
+		require.NoError(t, store.Add(configBlockOfNumber(number)))
+		return store
+	}
+
+	// readRouterConfig points the router local config at the given storage path and bootstrap file, then reads it.
+	readRouterConfig := func(t *testing.T, storagePath, bootstrapPath string) *common.Block {
+		testutil.EditDirectoryInNodeConfigYAML(t, localConfigPathRouter, storagePath, bootstrapPath, 0)
+		_, block, err := config.ReadConfig(localConfigPathRouter, testLogger)
+		require.NoError(t, err)
+		require.NotNil(t, block)
+		return block
+	}
+
+	t.Run("empty store, bootstrap taken and persisted", func(t *testing.T) {
+		storagePath := filepath.Join(dir, "storage", "empty")
+		bootstrapPath := writeBootstrapBlock(t, "empty_bootstrap.block", 0)
+
+		block := readRouterConfig(t, storagePath, bootstrapPath)
+		require.Equal(t, uint64(0), block.Header.Number)
+
+		store, err := configstore.NewStore(storagePath)
+		require.NoError(t, err)
+		last, err := store.Last()
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), last.Header.Number)
+	})
+
+	t.Run("bootstrap ahead of stored, bootstrap taken and persisted", func(t *testing.T) {
+		storagePath := filepath.Join(dir, "storage", "ahead")
+		store := seedStore(t, storagePath, 3)
+		bootstrapPath := writeBootstrapBlock(t, "ahead_bootstrap.block", 5)
+
+		block := readRouterConfig(t, storagePath, bootstrapPath)
+		// The bootstrap block is ahead of the stored block, so it must be selected.
+		require.Equal(t, uint64(5), block.Header.Number)
+
+		// The rejoin-block must have been persisted to the config store.
+		last, err := store.Last()
+		require.NoError(t, err)
+		require.Equal(t, uint64(5), last.Header.Number)
+	})
+
+	t.Run("bootstrap behind stored, stored kept and store untouched", func(t *testing.T) {
+		storagePath := filepath.Join(dir, "storage", "behind")
+		store := seedStore(t, storagePath, 5)
+		bootstrapPath := writeBootstrapBlock(t, "behind_bootstrap.block", 3)
+
+		block := readRouterConfig(t, storagePath, bootstrapPath)
+		// The stored block is ahead of the bootstrap block, so the stored block must be kept.
+		require.Equal(t, uint64(5), block.Header.Number)
+
+		// The behind bootstrap block must NOT have been persisted.
+		nums, err := store.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Equal(t, []uint64{5}, nums)
+	})
+
+	t.Run("bootstrap equal to stored, stored kept and store untouched", func(t *testing.T) {
+		storagePath := filepath.Join(dir, "storage", "equal")
+		store := seedStore(t, storagePath, 5)
+		bootstrapPath := writeBootstrapBlock(t, "equal_bootstrap.block", 5)
+
+		block := readRouterConfig(t, storagePath, bootstrapPath)
+		// Equal sequence numbers: the stored block is kept and no duplicate is added.
+		require.Equal(t, uint64(5), block.Header.Number)
+
+		nums, err := store.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Equal(t, []uint64{5}, nums)
+	})
 }
 
 func ChangeExpirationTimeOfCert(t *testing.T, cert []byte, caCert []byte, caPrivateKey []byte) ([]byte, error) {

@@ -58,113 +58,119 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 		return nil, nil, err
 	}
 
-	var lastConfigBlock *common.Block
+	// lastStoredConfigBlock is the last config block found in the node's local storage.
+	// It stays nil for a node with empty local storage.
+	var lastStoredConfigBlock *common.Block
+	// configStore is non-nil only for router/batcher nodes, which persist config blocks in a config store.
 	var configStore *configstore.Store
 
-	switch conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method {
-	case "yaml":
-		conf.SharedConfig, _, err = LoadSharedConfig(conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+	// If node is router or batcher, check if config store has blocks, and if yes take the last stored block.
+	if nodeRole == RouterStr || nodeRole == BatcherStr {
+		configStore, err = configstore.NewStore(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "failed to read the shared configuration from: %s", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File)
+			return nil, nil, fmt.Errorf("failed creating %s config store: %s", nodeRole, err)
 		}
-	case "block":
-		logger.Infof("reading shared config from block for %s node", nodeRole)
-		// If node is router or batcher, check if config store has blocks, and if yes bootstrap from the last block
-		if nodeRole == RouterStr || nodeRole == BatcherStr {
-			configStore, err = configstore.NewStore(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed creating %s config store: %s", nodeRole, err)
-			}
-			listBlockNumbers, err := configStore.ListBlockNumbers()
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to list blocks from %s config store: %s", nodeRole, err)
-			}
-
-			if len(listBlockNumbers) > 0 {
-				lastBlockNumberIdx := uint64(len(listBlockNumbers) - 1)
-				lastBlockNumber := listBlockNumbers[lastBlockNumberIdx]
-				lastConfigBlock, err = configStore.GetByNumber(lastBlockNumber)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to retrieve the last block from %s config store: %s", nodeRole, err)
-				}
-				logger.Infof("last block number %d was retrieved from %s config store", lastBlockNumber, nodeRole)
-			}
-		}
-
-		// If node is assembler, check if its ledger has blocks, and if yes bootstrap from the last block
-		if nodeRole == AssemblerStr {
-			assemblerLedgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
-			assemblerLedger, err := assemblerLedgerFactory.Create(logger, conf.LocalConfig.NodeLocalConfig.FileStore.Path)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to create assembler ledger instance: %s", err)
-			}
-			defer assemblerLedger.Close()
-			if assemblerLedger.LedgerReader().Height() > 0 {
-				lastConfigBlock, err = node_ledger.GetLastConfigBlockFromAssemblerLedger(assemblerLedger)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to retrieve last config block from assembler ledger: %s", err)
-				}
-			}
-		}
-
-		// If node is consensus, get the last decision from the ledger, extract the decision number of the last config block and get the last available block from it.
-		if nodeRole == ConsensusStr {
-			consensusLedger, err := node_ledger.NewConsensusLedger(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to create consensus ledger instance: %s", err)
-			}
-			defer consensusLedger.Close()
-
-			lastConfigBlock, err = GetLastConfigBlockFromConsensusLedger(consensusLedger, logger)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to get the last config block from consensus ledger instance: %s", err)
-			}
-		}
-
-		if lastConfigBlock == nil {
-			lastConfigBlock, err = readGenesisBlockFromBootstrapPath(conf.LocalConfig)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to read genesis block from bootstrap file, err: %v", err)
-			}
-
-			// this is relevant only for batcher and router nodes
-			if configStore != nil {
-				err = configStore.Add(lastConfigBlock)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to add the genesis block to the config store: %s", err)
-				}
-				logger.Infof("Append genesis block to the %s config store", nodeRole)
-			}
-		}
-
-		bccsp, err := conf.GetBCCSP()
+		listBlockNumbers, err := configStore.ListBlockNumbers()
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+			return nil, nil, fmt.Errorf("failed to list blocks from %s config store: %s", nodeRole, err)
 		}
 
-		conf.SharedConfig, err = sharedConfigFromBlock(lastConfigBlock, bccsp)
+		if len(listBlockNumbers) > 0 {
+			lastBlockNumberIdx := uint64(len(listBlockNumbers) - 1)
+			lastBlockNumber := listBlockNumbers[lastBlockNumberIdx]
+			lastStoredConfigBlock, err = configStore.GetByNumber(lastBlockNumber)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to retrieve the last block from %s config store: %s", nodeRole, err)
+			}
+			logger.Infof("last block number %d was retrieved from %s config store", lastBlockNumber, nodeRole)
+		}
+	}
+
+	// If node is assembler, check if its ledger has blocks, and if yes take the last config block.
+	if nodeRole == AssemblerStr {
+		assemblerLedgerFactory := &node_ledger.DefaultAssemblerLedgerFactory{}
+		assemblerLedger, err := assemblerLedgerFactory.Create(logger, conf.LocalConfig.NodeLocalConfig.FileStore.Path)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to read the shared configuration from block, err: %v", err)
+			return nil, nil, fmt.Errorf("failed to create assembler ledger instance: %s", err)
+		}
+		defer assemblerLedger.Close()
+		if assemblerLedger.LedgerReader().Height() > 0 {
+			lastStoredConfigBlock, err = node_ledger.GetLastConfigBlockFromAssemblerLedger(assemblerLedger)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to retrieve last config block from assembler ledger: %s", err)
+			}
+		}
+	}
+
+	// If node is consensus, get the last decision from the ledger, extract the decision number of the last config block and get the last available block from it.
+	if nodeRole == ConsensusStr {
+		consensusLedger, err := node_ledger.NewConsensusLedger(conf.LocalConfig.NodeLocalConfig.FileStore.Path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create consensus ledger instance: %s", err)
+		}
+		defer consensusLedger.Close()
+
+		lastStoredConfigBlock, err = GetLastConfigBlockFromConsensusLedger(consensusLedger, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get the last config block from consensus ledger instance: %s", err)
+		}
+	}
+
+	// Read the bootstrap block from the configured bootstrap file. It may be a genesis
+	// block (fresh start), or an advanced config block for late join or rejoin.
+	bootstrapBlock, err := readBootstrapConfigBlock(conf.LocalConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read bootstrap block from bootstrap file, err: %v", err)
+	}
+
+	// Select the more advanced block (by sequence number) between the last block in local storage and the bootstrap block.
+	var lastConfigBlock *common.Block
+	if lastStoredConfigBlock != nil && lastStoredConfigBlock.Header.Number >= bootstrapBlock.Header.Number {
+		lastConfigBlock = lastStoredConfigBlock
+	} else {
+		lastConfigBlock = bootstrapBlock
+		if lastStoredConfigBlock != nil {
+			logger.Infof("rejoin-block detected: bootstrap block %d is ahead of last stored config block %d, recovering from the bootstrap block",
+				bootstrapBlock.Header.Number, lastStoredConfigBlock.Header.Number)
 		}
 
-	default:
-		return nil, nil, errors.Errorf("bootstrap method %s is invalid", conf.LocalConfig.NodeLocalConfig.GeneralConfig.Bootstrap.Method)
+		// Persist the bootstrap block. This is relevant only for batcher and router nodes.
+		if configStore != nil {
+			err = configStore.Add(bootstrapBlock)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to add the bootstrap block to the config store: %s", err)
+			}
+			logger.Infof("Append bootstrap block %d to the %s config store", bootstrapBlock.Header.Number, nodeRole)
+		}
+	}
+
+	bccsp, err := conf.GetBCCSP()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+	}
+
+	conf.SharedConfig, err = sharedConfigFromBlock(lastConfigBlock, bccsp)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read the shared configuration from block, err: %v", err)
 	}
 
 	return conf, lastConfigBlock, nil
 }
 
-func readGenesisBlockFromBootstrapPath(conf *LocalConfig) (*common.Block, error) {
+// readBootstrapConfigBlock reads the block pointed to by the bootstrap file in the local config.
+// The bootstrap block is not necessarily the genesis block: it can also be a config block for late
+// bootstrap, or a config block used to rejoin.
+func readBootstrapConfigBlock(conf *LocalConfig) (*common.Block, error) {
 	blockPath := conf.NodeLocalConfig.GeneralConfig.Bootstrap.File
 	data, err := os.ReadFile(blockPath)
 	if err != nil {
 		return nil, fmt.Errorf("could not read block %s", blockPath)
 	}
-	genesisBlock, err := protoutil.UnmarshalBlock(data)
+	bootstrapBlock, err := protoutil.UnmarshalBlock(data)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling to block: %s", err)
 	}
-	return genesisBlock, nil
+	return bootstrapBlock, nil
 }
 
 func sharedConfigFromBlock(block *common.Block, bccsp bccsp.BCCSP) (*ordererpb.SharedConfig, error) {
