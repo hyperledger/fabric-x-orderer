@@ -81,7 +81,6 @@ Default values used by the target:
 | `NUM_PARTIES`                  | `4`    |
 | `NUM_SHARDS`                   | `2`    |
 | `FAILURE_RUNNER_ENABLED`       | `true` |
-| `FAILURE_RUNNER_INITIAL_WAIT`  | `90`   |
 | `FAILURE_RUNNER_STOP_DURATION` | `30`   |
 | `FAILURE_RUNNER_RESTART_WAIT`  | `30`   |
 
@@ -107,9 +106,10 @@ The values shown below are the defaults used by `deterministic-failure-test.sh`.
 | `NUM_PARTIES`         | Number of parties                             | `4`     |
 | `NUM_SHARDS`          | Number of shards                              | `2`     |
 | `FAILURE_RUNNER_ENABLED`       | Whether to run the failure runner             | `true`  |
-| `FAILURE_RUNNER_INITIAL_WAIT`  | Wait before first failure action, in seconds  | `300`   |
 | `FAILURE_RUNNER_STOP_DURATION` | How long to keep a component down, in seconds | `60`    |
 | `FAILURE_RUNNER_RESTART_WAIT`  | Wait after restarting a component, in seconds | `60`    |
+
+Network readiness is detected automatically via `/healthz` on each component after it starts — no startup wait needs to be configured.
 
 ## Test Flow
 
@@ -122,7 +122,7 @@ When `deterministic-failure-test.sh` runs, it performs the following steps:
 5. Runs `./bin/armageddon generate --sampleConfigPath=testutil/fabric/sampleconfig`.
 6. Patches all generated `Location` (FileStore) and `WALDir` (consenter) paths to writable per-component subdirectories under the temp dir.
 7. Removes stale log files from any previous run.
-8. Starts the ARMA network via the `start_arma_network` function.
+8. Starts the ARMA network via `start_arma_network`, which polls `/healthz` on each component immediately after it starts. If any component fails to become healthy within 60 s the test aborts immediately, naming the failing component in the error output and in `test-results/startup_failure.txt`.
 9. Starts one receiver per party (background).
 10. Starts the loader (background).
 11. Starts `run_failure_runner` if `FAILURE_RUNNER_ENABLED=true` (background).
@@ -205,6 +205,5 @@ The following parameters can be set when triggering manually:
 | `num_parties`         | Number of parties (4, 7, or 10)      | `4`     |
 | `num_shards`          | Number of shards (1, 2, or 4)        | `2`     |
 | `failure_runner_enabled`       | Enable failure runner                        | `true`  |
-| `failure_runner_initial_wait`  | Wait before starting failure runner (seconds)| `300`   |
 | `failure_runner_stop_duration` | How long to keep component down (s)          | `60`    |
 | `failure_runner_restart_wait`  | Wait after component restart (s)             | `60`    |

@@ -37,10 +37,75 @@ FAILURE_RUNNER_ENABLED=${FAILURE_RUNNER_ENABLED:-true}
 export DURATION TX_RATE TX_SIZE NUM_PARTIES NUM_SHARDS FAILURE_RUNNER_ENABLED
 
 # ---------------------------------------------------------------------------
+# wait_for_healthz
+#   Polls a single component's log file for the health-check URL logged at
+#   startup, then polls that URL until it returns HTTP 200.
+#
+#   Phase 1 (up to 60 s): wait for the line
+#       "Health check serving on URL: http://..." to appear in the log.
+#   Phase 2 (up to 60 s): poll the URL with curl until HTTP 200.
+#
+#   On any timeout the failure reason is written to test-results/startup_failure.txt
+#   and the script exits with code 1, aborting the test before it starts.
+#
+# Args: log_file  label  test_dir
+#   log_file — component log file, e.g. consenter1.log
+#   label    — human-readable name, e.g. "Consenter 1"
+#   test_dir — path to the temp test directory (used only for failure file)
+# ---------------------------------------------------------------------------
+wait_for_healthz() {
+  local log_file=$1
+  local label=$2
+  local test_dir=$3
+  local phase_timeout=60
+
+  # Phase 1: wait for the health URL to appear in the log
+  local url=""
+  local elapsed=0
+  while [ -z "$url" ] && [ $elapsed -lt $phase_timeout ]; do
+    url=$(grep -oP 'Health check serving on URL:\s+\K(https?://\S+)' "$log_file" 2>/dev/null || true)
+    if [ -z "$url" ]; then
+      sleep 1
+      elapsed=$((elapsed + 1))
+    fi
+  done
+
+  if [ -z "$url" ]; then
+    local reason="${label} failed to start: health check URL never appeared in log within ${phase_timeout}s"
+    echo "❌ ${reason}"
+    mkdir -p test-results
+    echo "${reason}" > test-results/startup_failure.txt
+    exit 1
+  fi
+
+  echo "  ${label}: health URL found at ${url}"
+
+  # Phase 2: poll the URL until HTTP 200
+  elapsed=0
+  while [ $elapsed -lt $phase_timeout ]; do
+    if curl -sf "$url" > /dev/null 2>&1; then
+      echo "  ✅ ${label} healthy"
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  local reason="${label} failed to start: /healthz at ${url} did not return HTTP 200 within ${phase_timeout}s"
+  echo "❌ ${reason}"
+  mkdir -p test-results
+  echo "${reason}" > test-results/startup_failure.txt
+  exit 1
+}
+
+# ---------------------------------------------------------------------------
 # start_arma_network
 #   Starts all ARMA network components in the correct order: consenters first,
 #   then batchers, assemblers, and routers.  Stores each process PID under
 #   ${TEST_DIR}/pids/.
+#
+#   After starting each component, wait_for_healthz is called to confirm it is
+#   up and healthy before proceeding — no fixed sleep is used.
 #
 # Args: TEST_DIR  NUM_PARTIES  NUM_SHARDS
 # ---------------------------------------------------------------------------
@@ -66,7 +131,7 @@ start_arma_network() {
   echo "${WORK_DIR}" > ${PID_DIR}/work_dir.txt
   echo "Working directory: ${WORK_DIR}"
 
-  # Start consenters first
+  # Start consenters first and wait for each to be healthy before continuing
   echo "Starting consenters..."
   for i in $(seq 1 $NUM_PARTIES); do
     ./bin/arma consensus \
@@ -75,13 +140,10 @@ start_arma_network() {
     local PID=$!
     echo ${PID} > ${PID_DIR}/consensus${i}.pid
     echo "  Started consenter ${i} (PID: ${PID})"
+    wait_for_healthz "consenter${i}.log" "Consenter ${i}" "${TEST_DIR}"
   done
 
-  # Wait for consenters to initialize
-  echo "Waiting 5 seconds for consenters to initialize..."
-  sleep 5
-
-  # Start batchers
+  # Start batchers and wait for each to be healthy
   echo "Starting batchers..."
   for i in $(seq 1 $NUM_PARTIES); do
     for j in $(seq 1 $NUM_SHARDS); do
@@ -91,10 +153,11 @@ start_arma_network() {
       local PID=$!
       echo ${PID} > ${PID_DIR}/batcher${i}-${j}.pid
       echo "  Started batcher ${i}-${j} (PID: ${PID})"
+      wait_for_healthz "batcher${i}-${j}.log" "Batcher ${i}-${j}" "${TEST_DIR}"
     done
   done
 
-  # Start assemblers
+  # Start assemblers and wait for each to be healthy
   echo "Starting assemblers..."
   for i in $(seq 1 $NUM_PARTIES); do
     ./bin/arma assembler \
@@ -103,9 +166,10 @@ start_arma_network() {
     local PID=$!
     echo ${PID} > ${PID_DIR}/assembler${i}.pid
     echo "  Started assembler ${i} (PID: ${PID})"
+    wait_for_healthz "assembler${i}.log" "Assembler ${i}" "${TEST_DIR}"
   done
 
-  # Start routers
+  # Start routers and wait for each to be healthy
   echo "Starting routers..."
   for i in $(seq 1 $NUM_PARTIES); do
     ./bin/arma router \
@@ -114,14 +178,11 @@ start_arma_network() {
     local PID=$!
     echo ${PID} > ${PID_DIR}/router${i}.pid
     echo "  Started router ${i} (PID: ${PID})"
+    wait_for_healthz "router${i}.log" "Router ${i}" "${TEST_DIR}"
   done
 
-  # Wait for network to stabilize
-  echo "Waiting 10 seconds for network to stabilize..."
-  sleep 10
-
   echo "=========================================="
-  echo "✅ ARMA network started successfully"
+  echo "✅ ARMA network started — all components healthy"
   echo "=========================================="
 }
 
@@ -142,7 +203,6 @@ run_failure_runner() {
   local NUM_SHARDS=$3
 
   # Read timing configuration from environment or use defaults
-  local INITIAL_WAIT=${FAILURE_RUNNER_INITIAL_WAIT:-300}
   local STOP_WAIT=${FAILURE_RUNNER_STOP_DURATION:-60}
   local START_WAIT=${FAILURE_RUNNER_RESTART_WAIT:-60}
 
@@ -157,7 +217,6 @@ run_failure_runner() {
   echo "Failure Runner Started"
   echo "=========================================="
   echo "Configuration:"
-  echo "  Initial wait: ${INITIAL_WAIT}s"
   echo "  Stop duration: ${STOP_WAIT}s"
   echo "  Restart wait: ${START_WAIT}s"
   echo "  PID directory: ${PID_DIR}"
@@ -165,8 +224,8 @@ run_failure_runner() {
   echo "  Stop signal file: ${STOP_SIGNAL}"
   echo "=========================================="
 
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting ${INITIAL_WAIT}s for network to stabilize..."
-  sleep $INITIAL_WAIT
+  # No initial wait needed — start_arma_network already confirmed all components
+  # are healthy via /healthz before returning.
 
   # Inner helper: kill and restart a single component
   # Args: component  party  shard(optional)  config_file  log_file
