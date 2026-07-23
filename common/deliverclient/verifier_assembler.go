@@ -42,17 +42,13 @@ func (bva *BlockVerifierAssembler) VerifierFromConfig(configuration *common.Conf
 		return createErrorFunc(err), err
 	}
 
-	bftEnabled := bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
-
 	var consenters []*common.Consenter
-	if bftEnabled {
-		cfg, ok := bundle.OrdererConfig()
-		if !ok {
-			err := errors.New("no orderer section in config block")
-			return createErrorFunc(err), err
-		}
-		consenters = cfg.Consenters()
+	cfg, ok := bundle.OrdererConfig()
+	if !ok {
+		err := errors.New("no orderer section in config block")
+		return createErrorFunc(err), err
 	}
+	consenters = cfg.Consenters()
 
-	return protoutil.BlockSignatureVerifier(bftEnabled, consenters, policy), nil
+	return protoutil.BlockSignatureVerifier(true, consenters, policy), nil
 }

@@ -386,18 +386,14 @@ func BlockVerifierBuilder(bccsp bccsp.BCCSP) func(block *common.Block) protoutil
 			return createErrorFunc(errors.New("no policies in config block"))
 		}
 
-		bftEnabled := bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
-
 		var consenters []*common.Consenter
-		if bftEnabled {
-			cfg, ok := bundle.OrdererConfig()
-			if !ok {
-				return createErrorFunc(errors.New("no orderer section in config block"))
-			}
-			consenters = cfg.Consenters()
+		cfg, ok := bundle.OrdererConfig()
+		if !ok {
+			return createErrorFunc(errors.New("no orderer section in config block"))
 		}
+		consenters = cfg.Consenters()
 
-		return protoutil.BlockSignatureVerifier(bftEnabled, consenters, policy)
+		return protoutil.BlockSignatureVerifier(true, consenters, policy)
 	}
 }
 
