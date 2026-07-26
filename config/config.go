@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
+	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -123,6 +124,11 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 		return nil, nil, fmt.Errorf("failed to read bootstrap block from bootstrap file, err: %v", err)
 	}
 
+	bccsp, err := conf.GetBCCSP()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+	}
+
 	// Select the more advanced block (by sequence number) between the last block in local storage and the bootstrap block.
 	var lastConfigBlock *common.Block
 	if lastStoredConfigBlock != nil && lastStoredConfigBlock.Header.Number >= bootstrapBlock.Header.Number {
@@ -134,6 +140,15 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 				bootstrapBlock.Header.Number, lastStoredConfigBlock.Header.Number)
 		}
 
+		env, err := protoutil.ExtractEnvelope(lastConfigBlock, 0)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to extract envelope from bootstrap block: %w", err)
+		}
+
+		if err := (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, bccsp, conf.LocalConfig.NodeLocalConfig.PartyID); err != nil {
+			return nil, nil, fmt.Errorf("failed to validate bootstrap config: %w", err)
+		}
+
 		// Persist the bootstrap block. This is relevant only for batcher and router nodes.
 		if configStore != nil {
 			err = configStore.Add(bootstrapBlock)
@@ -142,11 +157,6 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 			}
 			logger.Infof("Append bootstrap block %d to the %s config store", bootstrapBlock.Header.Number, nodeRole)
 		}
-	}
-
-	bccsp, err := conf.GetBCCSP()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to initialize BCCSP from config")
 	}
 
 	conf.SharedConfig, err = sharedConfigFromBlock(lastConfigBlock, bccsp)
