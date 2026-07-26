@@ -222,7 +222,7 @@ Metrics:
   Provider: prometheus
 
    # MetricsLogInterval defines metrics log period; 0 disables.
-  MetricsLogInterval: 0s
+  MetricsLogInterval: 10s
 
 ################################################################################
 #
@@ -256,9 +256,8 @@ Batcher:
 # Assembler specific parameters
 Assembler:
   PrefetchBufferMemoryBytes: 1073741824
-  LedgerScanTimeout: 5s
-  EvictionTtlL: 1h
+  RestartLedgerScanTimeout: 5s
+  PrefetchEvictionTtl: 1h
   PopWaitMonitorTimeout: 1s
   ReplicationChannelSize: 100
   BatchRequestsChannelSize: 1000
-

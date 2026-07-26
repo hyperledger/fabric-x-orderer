@@ -34,13 +34,19 @@ General:
     BCCSP:
         Default: SW
         SW:
-            Hash: SHA2
             Security: 256
-            FileKeyStore:
-                KeyStore:
+            Hash: SHA2
     LogSpec: info
-    ClientSignatureVerificationRequired: false
-FileStore: {}
+FileStore:
+    Location: /var/dec-trust/production/orderer/store
 Router:
     NumberOfConnectionsPerBatcher: 10
     NumberOfStreamsPerConnection: 5
+Operations:
+    ListenAddress: 127.0.0.1
+    TLS:
+        Enabled: false
+        ClientAuthRequired: false
+Metrics:
+    Provider: prometheus
+    MetricsLogInterval: 10s

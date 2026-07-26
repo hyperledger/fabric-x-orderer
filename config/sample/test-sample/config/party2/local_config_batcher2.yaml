@@ -34,13 +34,9 @@ General:
     BCCSP:
         Default: SW
         SW:
-            Hash: SHA2
             Security: 256
-            FileKeyStore:
-                KeyStore:
+            Hash: SHA2
     LogSpec: info
-    ClientSignatureVerificationRequired: false    
-    MetricsLogInterval: 0s
 FileStore:
     Location: /var/dec-trust/production/orderer/store
 Batcher:
@@ -48,3 +44,11 @@ Batcher:
     BatchSequenceGap: 10
     MemPoolMaxSize: 1000000
     SubmitTimeout: 500ms
+Operations:
+    ListenAddress: 127.0.0.1
+    TLS:
+        Enabled: false
+        ClientAuthRequired: false
+Metrics:
+    Provider: prometheus
+    MetricsLogInterval: 10s
