@@ -114,6 +114,9 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
 
+		// send ack to consensus
+		sendConfigAcks(consensusNodes, configSeq+1)
+
 		// Wait for all consensus nodes to apply new config
 		configSeq++
 		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
@@ -172,6 +175,9 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 
 		_, err = activeConsenters[0].SubmitConfig(routerCtx, configReq)
 		require.NoError(t, err)
+
+		// send ack to consensus
+		sendConfigAcks(activeConsenters, configSeq+1)
 
 		// Wait for active consensus nodes to apply new config
 		configSeq++

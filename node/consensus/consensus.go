@@ -967,7 +967,7 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 		return
 	}
 	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %v\n", configSeq)
-	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second*120)
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancelFunc()
 	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, uint64(configSeq))
 	if !allAcksReceived {

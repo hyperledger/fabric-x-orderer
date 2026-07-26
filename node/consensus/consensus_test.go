@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
@@ -331,21 +332,22 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 	consenterNodeConfig.BFTConfig.RequestBatchMaxInterval = 500 * time.Millisecond // wait for all control events before creating a new batch
 
 	c := &node_consensus.Consensus{
-		Config:       &consenterNodeConfig,
-		PartyID:      partyID,
-		PrevHash:     prevHash,
-		Logger:       l,
-		Signer:       signer,
-		SigVerifier:  verifier,
-		State:        initialState,
-		CurrentNodes: nodes,
-		Storage:      ledger,
-		Arma:         consenter,
-		BADB:         db,
-		Net:          &consensus_mocks.FakeNetStopper{},
-		Synchronizer: &consensus_mocks.FakeSynchronizerStopper{},
-		Metrics:      node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
-		MainExitChan: make(chan struct{}),
+		Config:            &consenterNodeConfig,
+		PartyID:           partyID,
+		PrevHash:          prevHash,
+		Logger:            l,
+		Signer:            signer,
+		SigVerifier:       verifier,
+		State:             initialState,
+		CurrentNodes:      nodes,
+		Storage:           ledger,
+		Arma:              consenter,
+		BADB:              db,
+		Net:               &consensus_mocks.FakeNetStopper{},
+		Synchronizer:      &consensus_mocks.FakeSynchronizerStopper{},
+		Metrics:           node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
+		MainExitChan:      make(chan struct{}),
+		ConfigAckReceiver: configack.NewReceiver(l, []arma_types.ShardID{1, 2}),
 	}
 	c.InitOperationSystem()
 
