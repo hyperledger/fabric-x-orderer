@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
@@ -166,4 +169,20 @@ func CreateGRPCBatcher(conf *config.BatcherNodeConfig) *comm.GRPCServer {
 		os.Exit(1)
 	}
 	return srv
+}
+
+type NodeStopper interface {
+	Stop()
+}
+
+func StopSignalListen(node NodeStopper, logger *flogging.FabricLogger, nodeAddr string) {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGTERM)
+
+	go func() {
+		defer signal.Stop(signalChan)
+		<-signalChan
+		logger.Infof("SIGTERM signal caught, the node listening on %s is about to shutdown:", nodeAddr)
+		node.Stop()
+	}()
 }
