@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -1342,6 +1343,7 @@ func TestJoinMultipleParties(t *testing.T) {
 type exportConfigBlockToFile struct {
 	configSeq uint64
 	path      string
+	writeLock sync.Mutex
 }
 
 func (ec *exportConfigBlockToFile) HandleBlock(t *testing.T, block *common.Block) error {
@@ -1354,6 +1356,8 @@ func (ec *exportConfigBlockToFile) HandleBlock(t *testing.T, block *common.Block
 		require.NoError(t, err)
 		if configEnv.GetConfig().GetSequence() == ec.configSeq {
 			configBlock := &common.Block{Header: block.GetHeader(), Data: block.GetData(), Metadata: block.GetMetadata()}
+			ec.writeLock.Lock()
+			defer ec.writeLock.Unlock()
 			err := configtxgen.WriteOutputBlock(configBlock, ec.path)
 			require.NoError(t, err)
 		}
