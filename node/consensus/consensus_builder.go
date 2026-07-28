@@ -44,7 +44,8 @@ import (
 
 func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, logger *flogging.FabricLogger, mainExitChan chan struct{}, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	c := &Consensus{
-		MainExitChan: mainExitChan,
+		MainExitChan:  mainExitChan,
+		ReconfigAbort: make(chan struct{}),
 		status: node_utils.NodeStatus{
 			State:                node_utils.StateInitializing,
 			ConfigSequenceNumber: nodeConfig.Bundle.ConfigtxValidator().Sequence(),
