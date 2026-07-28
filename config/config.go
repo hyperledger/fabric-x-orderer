@@ -140,6 +140,7 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 				bootstrapBlock.Header.Number, lastStoredConfigBlock.Header.Number)
 		}
 
+		// Validate the internal consistency of the bootstrap config before applying it.
 		env, err := protoutil.ExtractEnvelope(lastConfigBlock, 0)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to extract envelope from bootstrap block: %w", err)
