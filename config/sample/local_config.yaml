@@ -81,9 +81,8 @@ General:
 
   # Bootstrap: how to obtain the bootstrap configuration.
   Bootstrap:
-    # Method: The method by which to obtain the bootstrap configuration. The option can be one of:
+    # Method: The method by which to obtain the bootstrap configuration. The only supported option is:
     #   "block" - path to a file containing the genesis block or config block
-    #   "yaml" - path to a file containing a YAML boostrap configuration (see: ./shared_config.yaml).
     Method: block
     # File: The file containing the bootstrap configuration.
     # The bootstrap file can be the genesis block, and it can also be
