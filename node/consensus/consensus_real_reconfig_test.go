@@ -137,7 +137,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 
 		// send ack to consensus
 		configSeq++
-		sendConfigAcks(consensusNodes, configSeq)
+		sendConfigAcks(t, consensusNodes, configSeq)
 
 		// wait for consensus nodes to apply new config and run again
 		waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
@@ -178,7 +178,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		// send ack to consensus
-		sendConfigAcks(consensusNodes, configSeq+1)
+		sendConfigAcks(t, consensusNodes, configSeq+1)
 
 		// wait for the updated consensus node to enter pending admin state and then stop the node
 		for _, consenter := range consensusNodes {
@@ -240,7 +240,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		// send ack to consensus
-		sendConfigAcks(consensusNodes, configSeq+1)
+		sendConfigAcks(t, consensusNodes, configSeq+1)
 
 		// wait for the removed consensus node to enter pending admin state and then stop the node
 		for _, consenter := range consensusNodes {
@@ -300,7 +300,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		// send ack to consensus
-		sendConfigAcks(consensusNodes, configSeq+1)
+		sendConfigAcks(t, consensusNodes, configSeq+1)
 
 		// wait for the removed consensus node to enter pending admin state and then stop the node
 		for _, consenter := range consensusNodes {
@@ -401,7 +401,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		// send ack to consensus
-		sendConfigAcks(consensusNodes, configSeq+1)
+		sendConfigAcks(t, consensusNodes, configSeq+1)
 
 		// update the node local config
 		localConfig, _, err := config.LoadLocalConfig(consenterNodeConfigPath, configLogger)
@@ -478,7 +478,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		// send ack to consensus
-		sendConfigAcks(consensusNodes, configSeq+1)
+		sendConfigAcks(t, consensusNodes, configSeq+1)
 
 		// wait for existing consensus nodes to apply new config and run again
 		configSeq++
@@ -620,27 +620,30 @@ func waitForPendingAdminState(t *testing.T, consenter *consensus_node.Consensus,
 	}, 120*time.Second, 100*time.Millisecond)
 }
 
-func sendConfigAcks(consensusNodes []*consensus_node.Consensus, configSeq types.ConfigSequence) {
+func sendConfigAcks(t *testing.T, consensusNodes []*consensus_node.Consensus, configSeq types.ConfigSequence) {
 	for _, node := range consensusNodes {
 		// one router ack
-		node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
+		err := node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
 			NodeType:  protos.NodeType_ROUTER,
 			Shard:     0,
 			ConfigSeq: uint32(configSeq),
 		})
+		require.NoError(t, err)
 		// one assembler ack
-		node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
+		err = node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
 			NodeType:  protos.NodeType_ASSEMBLER,
 			Shard:     0,
 			ConfigSeq: uint32(configSeq),
 		})
+		require.NoError(t, err)
 		// one batcher ack per shard
 		for _, shard := range node.Config.Shards {
-			node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
+			err = node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
 				NodeType:  protos.NodeType_BATCHER,
 				Shard:     uint32(shard.ShardId),
 				ConfigSeq: uint32(configSeq),
 			})
+			require.NoError(t, err)
 		}
 	}
 }

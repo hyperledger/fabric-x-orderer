@@ -47,6 +47,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const ConfigAckReceiverTimeout = time.Second * 60
+
 type Storage interface {
 	Append(block *common.Block)
 	Height() uint64
@@ -960,24 +962,26 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 	c.Logger.Infof("Processing new config block number %d", configBlock.Header.Number)
 
-	// wait for acks
-	configSeq, err := utils.GetConfigSequenceFromBlock(c.Logger, configBlock, c.Config.BCCSP)
-	if err != nil {
-		c.Logger.Warnf("failed to get config sequence from block %d", configSeq)
-		return
-	}
-	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %v\n", configSeq)
-	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second*60)
-	defer cancelFunc()
-	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, uint64(configSeq))
-	if !allAcksReceived {
-		c.Logger.Warnf("consenter did not receive acknowledgments from all nodes on sequence %v\n", configSeq)
-	}
-	c.Logger.Infof("all acknowledgement have been received, is it safe to apply the new configuration")
-
 	c.Logger.Infof("Soft stop")
 	c.SoftStop()
 
+	// wait for acks
+	configSeq, err := utils.GetConfigSequenceFromBlock(configBlock, c.Config.BCCSP)
+	if err != nil {
+		c.Logger.Warnf("failed to get config sequence from block: %s", err)
+		return
+	}
+	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ConfigAckReceiverTimeout)
+	defer cancelFunc()
+	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, uint64(configSeq))
+	if !allAcksReceived {
+		c.Logger.Warnf("consenter did not receive acknowledgments from all nodes on sequence %d", configSeq)
+	} else {
+		c.Logger.Infof("all acknowledgement have been received, it is safe to apply the new configuration")
+	}
+
+	// apply config
 	isAdminOperationRequired, err := c.ApplyConfig(configBlock)
 	if err != nil {
 		c.Logger.Panicf("Failed to apply new config: %s", err)

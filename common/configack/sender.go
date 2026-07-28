@@ -18,6 +18,8 @@ import (
 	"google.golang.org/grpc"
 )
 
+const SubmitConfigAckTimeout = 60 * time.Second
+
 type Sender interface {
 	Stop()
 	SubmitConfigAck(configSeq uint32) error
@@ -90,7 +92,7 @@ func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender 
 // if the total timeout expires or if ca.ctx is cancelled, for example when the
 // sender is stopped.
 func (s *sender) SubmitConfigAck(configSeq uint32) error {
-	ctx, cancel := context.WithTimeout(s.ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, SubmitConfigAckTimeout)
 	defer cancel()
 
 	err := s.submitWithRetry(ctx, configSeq)

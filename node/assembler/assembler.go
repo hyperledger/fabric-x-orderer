@@ -402,9 +402,9 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 	}
 
 	// send ack to the consensus node
-	configSeq, err := common_utils.GetConfigSequenceFromBlock(a.logger, configBlock, a.assemblerNodeConfig.BCCSP)
+	configSeq, err := common_utils.GetConfigSequenceFromBlock(configBlock, a.assemblerNodeConfig.BCCSP)
 	if err != nil {
-		a.logger.Warnf("failed to get config sequence from block %d", configSeq)
+		a.logger.Warnf("failed to get config sequence from block: %s", err)
 		return
 	}
 	if err := a.configAcker.SubmitConfigAck(configSeq); err != nil {

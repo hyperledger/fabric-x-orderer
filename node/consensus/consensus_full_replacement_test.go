@@ -134,7 +134,7 @@ func TestConsensusFullReplacement(t *testing.T) {
 			require.NoError(t, err)
 
 			// send ack to consensus
-			sendConfigAcks(consensusNodes, configSeq+1)
+			sendConfigAcks(t, consensusNodes, configSeq+1)
 
 			configSeq++
 			waitForRunningStateMultiNodes(t, consensusNodes, uint64(configSeq))
@@ -199,7 +199,7 @@ func TestConsensusFullReplacement(t *testing.T) {
 			require.NoError(t, err)
 
 			// send ack to consensus
-			sendConfigAcks(consensusNodes, configSeq+1)
+			sendConfigAcks(t, consensusNodes, configSeq+1)
 
 			// Wait for the removed party to enter pending-admin state, then stop it
 			for _, consenter := range consensusNodes {

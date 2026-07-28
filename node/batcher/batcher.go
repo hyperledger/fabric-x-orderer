@@ -16,14 +16,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/configack"
-
 	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -205,7 +204,6 @@ func (b *Batcher) Stop() {
 	}
 
 	b.configAcker.Stop()
-
 	b.wal.Close()
 	b.Net.Stop()
 	b.Ledger.Close()
@@ -313,9 +311,9 @@ func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	b.logger.Infof("Apply config")
 
 	// send ack to the consensus node
-	configSeq, err := utils.GetConfigSequenceFromBlock(b.logger, configBlock, b.config.BCCSP)
+	configSeq, err := utils.GetConfigSequenceFromBlock(configBlock, b.config.BCCSP)
 	if err != nil {
-		b.logger.Warnf("failed to get config sequence from block %d", configSeq)
+		b.logger.Warnf("failed to get config sequence from block: %s", err)
 		return
 	}
 	if err := b.configAcker.SubmitConfigAck(configSeq); err != nil {

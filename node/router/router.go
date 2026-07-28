@@ -688,9 +688,9 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 	}
 
 	// send ack to the consensus node
-	configSeq, err := utils.GetConfigSequenceFromBlock(r.logger, configBlock, r.routerNodeConfig.BCCSP)
+	configSeq, err := utils.GetConfigSequenceFromBlock(configBlock, r.routerNodeConfig.BCCSP)
 	if err != nil {
-		r.logger.Warnf("failed to get config sequence from block %d", configSeq)
+		r.logger.Warnf("failed to get config sequence from block: %s", err)
 		return
 	}
 	if err := r.configAcker.SubmitConfigAck(configSeq); err != nil {

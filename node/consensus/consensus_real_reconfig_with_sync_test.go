@@ -115,7 +115,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		require.NoError(t, err)
 
 		// send ack to consensus
-		sendConfigAcks(consensusNodes, configSeq+1)
+		sendConfigAcks(t, consensusNodes, configSeq+1)
 
 		// Wait for all consensus nodes to apply new config
 		configSeq++
@@ -177,7 +177,7 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		require.NoError(t, err)
 
 		// send ack to consensus
-		sendConfigAcks(activeConsenters, configSeq+1)
+		sendConfigAcks(t, activeConsenters, configSeq+1)
 
 		// Wait for active consensus nodes to apply new config
 		configSeq++
