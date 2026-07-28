@@ -85,6 +85,21 @@ jobs:
           go-version-file: go.mod
       - run: make unit-tests-consensus-full-replacement
         name: Run Unit Tests Consensus Full Replacement
+  integration-reconfig-membership-full-parties-replacement:
+    name: Reconfig Membership Full Parties Replacement
+    needs: basic-checks
+    runs-on: ${{ github.repository == 'hyperledger/fabric-x-orderer' && 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+        name: Checkout Fabric-X Code
+      - uses: actions/setup-go@v6
+        name: Install Go
+        with:
+          go-version-file: go.mod
+      - run: make integration-reconfig-membership-full-parties-replacement
+        name: Run Integration Reconfig Membership Full Parties Replacement
   unit-tests-batcher:
     name: Unit Tests Batcher
     needs: basic-checks
