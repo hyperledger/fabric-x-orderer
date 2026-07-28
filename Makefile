@@ -17,7 +17,8 @@
 #   - docker-multiarch: wrapper that triggers docker builds for multiple platforms
 #   - build-test-node-image: builds the all-in-one test-node image for the host's OS/architecture
 #   - build-multiplatform-test-node-image: builds the all-in-one test-node image for multiple platforms
-#   - deterministic-failure-test: runs the deterministic failure test locally (5 min, 1000 tx/s, failure runner enabled)
+#   - deterministic-failure-test:    runs the deterministic failure test locally (5 min, 1000 tx/s, failure runner enabled)
+#   - fully-randomized-failure-test: runs the fully randomized failure test locally (5 min, 1000 tx/s, failure runner enabled)
 
 # Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
@@ -174,6 +175,19 @@ deterministic-failure-test: binary
 	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
 	test/deterministic-failure-test/deterministic-failure-test.sh
+
+.PHONY: fully-randomized-failure-test
+fully-randomized-failure-test: binary
+	@chmod +x test/fully-randomized-failure-test/fully-randomized-failure-test.sh
+	DURATION_MINUTES=$(DURATION_MINUTES) \
+	TX_RATE=$(TX_RATE) \
+	TX_SIZE=$(TX_SIZE) \
+	NUM_PARTIES=$(NUM_PARTIES) \
+	NUM_SHARDS=$(NUM_SHARDS) \
+	FAILURE_RUNNER_ENABLED=$(FAILURE_RUNNER_ENABLED) \
+	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
+	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
+	test/fully-randomized-failure-test/fully-randomized-failure-test.sh
 
 .PHONY: sample-tests
 sample-tests:
