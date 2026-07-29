@@ -612,8 +612,15 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 			broadcastClient.SendTxToAllRouters(env)
 		}
 	case "short":
-		fmt.Fprintf(os.Stderr, "Short signing mode is not yet supported")
-		os.Exit(3)
+		for i := 0; i < numOfTxs; i++ {
+			env = tx.PrepareSignedEnvelopeWithCertificateID(i, txSize, sessionNumber, signer, certBytes, org)
+			status := rl.GetToken()
+			if !status {
+				fmt.Fprintf(os.Stderr, "failed to send tx %d in signed mode %s", i+1, signedMode)
+				os.Exit(3)
+			}
+			broadcastClient.SendTxToAllRouters(env)
+		}
 	default:
 		for i := 0; i < numOfTxs; i++ {
 			env = tx.PrepareUnsignedEnvelope(i, txSize, sessionNumber)
