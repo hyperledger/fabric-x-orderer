@@ -28,10 +28,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestConsensusFullReplacement tests the consensus behavior when parties are replaced.
+// TestConsensusFullReplacement tests the consensus behavior when parties are replaced,
+// including stopping a party mid-replacement and rejoining it once its original cohort is gone.
 // Starting with parties 1,2,3,4, the test loops 6 times.
-// Each iteration i (1..6) adds party i+4 and then removes party i.
-// Final state: parties 7,8,9,10
+// Each iteration i (1..6) adds party i+4 and then removes party i, so the active set walks
+// {1,2,3,4} -> {2,3,4,5} -> {3,4,5,6} -> {4,5,6,7} -> {5,6,7,8} -> {6,7,8,9} -> {7,8,9,10}.
+// Party 7 joins at iteration 3 (cohort {4,5,6,7}); it is stopped right after it joins and
+// stays down through the remaining iterations, during which 4,5,6 are all removed and replaced
+// by 8,9,10. After the loop, party 7 rejoins by bootstrapping from the latest config block
+// ({7,8,9,10}) while reusing its existing ledger, then must sync and commit a simple request.
+// Final state: parties 7,8,9,10.
 func TestConsensusFullReplacement(t *testing.T) {
 	// Start with parties 1,2,3,4 only
 	initialParties := []types.PartyID{1, 2, 3, 4}
@@ -240,7 +246,53 @@ func TestConsensusFullReplacement(t *testing.T) {
 			routerCtx, err = createContextForSubmitConfig(cert)
 			require.NoError(t, err)
 		})
+
+		// After party 7 has joined and been verified alive+synced, stop it.
+		// It stays down through the remaining iterations and rejoins at the end.
+		if newParty == types.PartyID(7) {
+			var filtered []*consensus_node.Consensus
+			for _, cn := range consensusNodes {
+				if cn.GetPartyID() == types.PartyID(7) {
+					t.Logf(">>> Stopping party 7 (will rejoin from latest config block at the end)")
+					cn.Stop()
+					continue
+				}
+				filtered = append(filtered, cn)
+			}
+			consensusNodes = filtered
+			require.Equal(t, 3, len(consensusNodes), "expected 3 live nodes after stopping party 7")
+		}
 	}
+
+	// ── Rejoin party 7 from the latest config block ──────────────────────────
+	// Party 7 was stopped right after it joined (cohort {4,5,6,7}). Its stored
+	// config is now stale; on rejoin it boots from the more-advanced bootstrap
+	// config block ({7,8,9,10}) and syncs forward.
+	t.Logf(">>> Rejoining party 7 from the latest config block")
+	require.NotNil(t, lastConfigBlock, "lastConfigBlock must not be nil before rejoin")
+
+	party7ConfigPath := filepath.Join(dir, "config", "party7", "local_config_consenter.yaml")
+	party7Cfg := testutil.ReadNodeConfigFromYaml(t, party7ConfigPath)
+	party7StoragePath := party7Cfg.FileStore.Path
+	party7MonitoringPort := party7Cfg.OperationsConfig.ListenPort
+	require.NotEmpty(t, party7StoragePath, "party 7 storage path must be preserved on rejoin")
+
+	rejoinConfigBlockPath := filepath.Join(t.TempDir(), "config.block")
+	require.NoError(t, configtxgen.WriteOutputBlock(lastConfigBlock, rejoinConfigBlockPath))
+
+	// Repoint only the bootstrap file; keep the existing storage dir (reuse ledger)
+	// and monitoring port.
+	testutil.EditDirectoryInNodeConfigYAML(t, party7ConfigPath, party7StoragePath, rejoinConfigBlockPath, party7MonitoringPort)
+
+	rejoinNodes, rejoinServers, rejoinConfigBlock := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{7})
+	require.Len(t, rejoinNodes, 1)
+	require.NotNil(t, rejoinConfigBlock)
+	startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{7}, rejoinNodes, rejoinServers)
+	waitForRunningState(t, rejoinNodes[0], uint64(configSeq))
+
+	consensusNodes = append(consensusNodes, rejoinNodes[0])
+	time.Sleep(30 * time.Second) // let connections reestablish after rejoin
+	t.Logf(">>> Party 7 rejoined and reached running state at configSeq %d", configSeq)
 
 	// Final verification: active set should be {7,8,9,10}
 	require.Equal(t, 4, len(consensusNodes), "Final consensus node count mismatch")
@@ -258,6 +310,19 @@ func TestConsensusFullReplacement(t *testing.T) {
 	}
 
 	t.Logf(">>> Complete replacement! Started with parties 1,2,3,4 and ended with parties %v", actualPartyIDs)
+
+	// Final check: with party 7 rejoined, commit a simple request signed by two
+	// current parties (8 and 9). sendSimpleRequest polls every node in
+	// consensusNodes — including the rejoined party 7 — so this asserts both that
+	// party 7 synced and that the cluster commits with party 7 participating.
+	pk8, err := loadBatcherPrivateKey(t, dir, types.PartyID(8))
+	require.NoError(t, err)
+	pk9, err := loadBatcherPrivateKey(t, dir, types.PartyID(9))
+	require.NoError(t, err)
+	lastBlockNumber++
+	t.Logf(">>> Sending post-rejoin request at block %d", lastBlockNumber)
+	sendSimpleRequest(t, consensusNodes, pk8, pk9, types.PartyID(8), types.PartyID(9), configSeq, lastBlockNumber, "")
+	t.Logf(">>> Post-rejoin request committed at block %d on all %d nodes", lastBlockNumber, len(consensusNodes))
 
 	// Cleanup
 	for _, cn := range consensusNodes {
